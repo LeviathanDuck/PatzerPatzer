@@ -461,6 +461,47 @@ function renderEval(): VNode {
   return h('div.eval-display', score + best);
 }
 
+// --- Import filters ---
+// Adapted from docs/reference/ImportControls/index.jsx
+// Shared filters applied to both Chess.com and Lichess username imports.
+
+type ImportSpeed = 'all' | 'bullet' | 'blitz' | 'rapid' | 'classical';
+
+let importFilterRated = true;
+let importFilterSpeed: ImportSpeed = 'all';
+
+const SPEED_OPTIONS: { value: ImportSpeed; label: string }[] = [
+  { value: 'all',       label: 'All'       },
+  { value: 'bullet',    label: 'Bullet'    },
+  { value: 'blitz',     label: 'Blitz'     },
+  { value: 'rapid',     label: 'Rapid'     },
+  { value: 'classical', label: 'Classical' },
+];
+
+const FILTER_PILL_BASE  = 'background:#1a1a1a;color:#888;border:1px solid #333;border-radius:3px;padding:2px 7px;font-size:0.8rem;cursor:pointer';
+const FILTER_PILL_ACTIVE = 'background:#1e3a1e;color:#6f6;border:1px solid #3a7a3a;border-radius:3px;padding:2px 7px;font-size:0.8rem;cursor:pointer';
+
+function renderImportFilters(): VNode {
+  return h('div.pgn-import', [
+    h('div.pgn-import__row', [
+      h('label', { attrs: { style: 'display:flex;align-items:center;gap:5px;font-size:0.85rem;cursor:pointer;user-select:none' } }, [
+        h('input', {
+          attrs: { type: 'checkbox', checked: importFilterRated },
+          on: { change: (e: Event) => { importFilterRated = (e.target as HTMLInputElement).checked; redraw(); } },
+        }),
+        'Rated only',
+      ]),
+      h('span', { attrs: { style: 'color:#888;font-size:0.8rem;margin-left:8px' } }, 'Speed:'),
+      ...SPEED_OPTIONS.map(({ value, label }) =>
+        h('button', {
+          attrs: { style: importFilterSpeed === value ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE },
+          on: { click: () => { importFilterSpeed = value; redraw(); } },
+        }, label)
+      ),
+    ]),
+  ]);
+}
+
 // --- Chess.com username import ---
 // Adapted from docs/reference/api/chesscom.js
 // Fetches the most recent month of rated standard games for a given username.
@@ -477,7 +518,7 @@ function normalizeChesscomResult(whiteResult: string, blackResult: string): stri
   return '1/2-1/2';
 }
 
-async function fetchChesscomGames(username: string): Promise<ImportedGame[]> {
+async function fetchChesscomGames(username: string, rated: boolean, speed: ImportSpeed): Promise<ImportedGame[]> {
   // 1. Fetch archive list (one URL per month the player has games)
   const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
   if (!archivesRes.ok) {
@@ -494,11 +535,13 @@ async function fetchChesscomGames(username: string): Promise<ImportedGame[]> {
   const gamesData = await gamesRes.json() as { games?: any[] };
   const rawGames: any[] = gamesData.games ?? [];
 
-  // 3. Normalize: rated, standard, no daily — newest first
+  // 3. Normalize: standard, no daily, apply filters — newest first
   const result: ImportedGame[] = [];
   for (let i = rawGames.length - 1; i >= 0; i--) {
     const raw = rawGames[i];
-    if (!raw.rated || raw.rules !== 'chess' || raw.time_class === 'daily') continue;
+    if (raw.rules !== 'chess' || raw.time_class === 'daily') continue;
+    if (rated && !raw.rated) continue;
+    if (speed !== 'all' && raw.time_class !== speed) continue;
     const pgn: string = raw.pgn ?? '';
     if (!pgn) continue;
     try {
@@ -525,7 +568,7 @@ async function importChesscom(): Promise<void> {
   chesscomError = null;
   redraw();
   try {
-    const games = await fetchChesscomGames(name);
+    const games = await fetchChesscomGames(name, importFilterRated, importFilterSpeed);
     if (games.length === 0) {
       chesscomError = 'No recent rated games found.';
     } else {
@@ -567,8 +610,11 @@ let lichessUsername = '';
 let lichessLoading = false;
 let lichessError: string | null = null;
 
-async function fetchLichessGames(username: string): Promise<ImportedGame[]> {
-  const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?max=30&rated=true`;
+async function fetchLichessGames(username: string, rated: boolean, speed: ImportSpeed): Promise<ImportedGame[]> {
+  const params = new URLSearchParams({ max: '30' });
+  if (rated) params.set('rated', 'true');
+  if (speed !== 'all') params.set('perfType', speed);
+  const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
   const res = await fetch(url, { headers: { 'Accept': 'application/x-chess-pgn' } });
   if (!res.ok) {
     throw new Error(res.status === 404 ? 'Lichess: user not found' : `Lichess API error ${res.status}`);
@@ -607,7 +653,7 @@ async function importLichess(): Promise<void> {
   lichessError = null;
   redraw();
   try {
-    const games = await fetchLichessGames(name);
+    const games = await fetchLichessGames(name, importFilterRated, importFilterSpeed);
     if (games.length === 0) {
       lichessError = 'No recent rated games found.';
     } else {
@@ -730,6 +776,7 @@ function routeContent(route: Route): VNode {
         ]),
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderMoveList(),
+        renderImportFilters(),
         renderChesscomImport(),
         renderLichessImport(),
         renderPgnImport(),
