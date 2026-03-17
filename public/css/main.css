@@ -415,6 +415,45 @@ body {
   font-weight: 600;
 }
 
+.game-list {
+  width: 100%;
+  max-width: 600px;
+}
+.game-list__header {
+  font-size: 0.8rem;
+  color: #888;
+  padding: 4px 0;
+}
+.game-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.game-list__row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.game-list__row:hover {
+  background: #2a2a2a;
+}
+.game-list__row.active {
+  background: #1e3a1e;
+  color: #6f6;
+}
+.game-list li + li {
+  border-top: 1px solid #2a2a2a;
+}
+
 .analyse {
   display: flex;
   flex-direction: column;

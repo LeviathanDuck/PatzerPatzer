@@ -5325,11 +5325,22 @@ function pgnToTree(pgn) {
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
 var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
+var importedGames = [];
+var selectedGameId = null;
 var selectedGamePgn = null;
 function getActivePgn() {
   return selectedGamePgn ?? SAMPLE_PGN;
 }
 var ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+function loadGame(pgn) {
+  selectedGamePgn = pgn;
+  ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+  currentEval = {};
+  syncBoard();
+  syncArrow();
+  evalCurrentPosition();
+  redraw();
+}
 var engineEnabled = false;
 var engineReady = false;
 var engineInitialized = false;
@@ -5542,6 +5553,22 @@ function renderEval() {
   const best = currentEval.best ? ` | Best: ${currentEval.best}` : "";
   return h("div.eval-display", score + best);
 }
+function renderGameList() {
+  if (importedGames.length === 0) return h("div");
+  return h("div.game-list", [
+    h("div.game-list__header", `${importedGames.length} imported game${importedGames.length === 1 ? "" : "s"}`),
+    h("ul", importedGames.map((game) => {
+      const label = game.white && game.black ? `${game.white} vs ${game.black}${game.result ? " \xB7 " + game.result : ""}${game.date ? " \xB7 " + game.date.slice(0, 10) : ""}` : game.id;
+      return h("li", h("button.game-list__row", {
+        class: { active: game.id === selectedGameId },
+        on: { click: () => {
+          selectedGameId = game.id;
+          loadGame(game.pgn);
+        } }
+      }, label));
+    }))
+  ]);
+}
 function routeContent(route) {
   switch (route.name) {
     case "analysis-game":
@@ -5561,7 +5588,8 @@ function routeContent(route) {
           )
         ]),
         h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
-        renderMoveList()
+        renderMoveList(),
+        renderGameList()
       ]);
     case "puzzles":
       return h("h1", "Puzzles Page");

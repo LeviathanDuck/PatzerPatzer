@@ -15,10 +15,21 @@ const patch = init([classModule, attributesModule, eventListenersModule]);
 
 // --- Game library state ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts (game data passed in at boot)
-// selectedGamePgn is set by the game import flow (built in a later task).
+// importedGames is populated by the game import flow (task 8.x).
 // loadGame() is the integration point — call it when a game is selected.
 
+export interface ImportedGame {
+  id: string;
+  pgn: string;
+  white?: string;
+  black?: string;
+  result?: string;
+  date?: string;
+}
+
 const SAMPLE_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
+let importedGames: ImportedGame[] = [];
+let selectedGameId: string | null = null;
 let selectedGamePgn: string | null = null;
 
 function getActivePgn(): string {
@@ -30,9 +41,8 @@ function getActivePgn(): string {
 let ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
 
 /**
- * Load a new game into the analysis board.
- * Called by the game import UI (built in a later task).
- * Falls back to SAMPLE_PGN when pgn is null.
+ * Load a game into the analysis board by PGN.
+ * Resets analysis state and re-evaluates if engine is on.
  */
 function loadGame(pgn: string | null): void {
   selectedGamePgn = pgn;
@@ -40,6 +50,7 @@ function loadGame(pgn: string | null): void {
   currentEval = {};
   syncBoard();
   syncArrow();
+  evalCurrentPosition();
   redraw();
 }
 
@@ -310,6 +321,25 @@ function renderEval(): VNode {
   return h('div.eval-display', score + best);
 }
 
+// --- Game list ---
+// Adapted from docs/reference/GameImport/index.jsx
+
+function renderGameList(): VNode {
+  if (importedGames.length === 0) return h('div');
+  return h('div.game-list', [
+    h('div.game-list__header', `${importedGames.length} imported game${importedGames.length === 1 ? '' : 's'}`),
+    h('ul', importedGames.map(game => {
+      const label = (game.white && game.black)
+        ? `${game.white} vs ${game.black}${game.result ? ' · ' + game.result : ''}${game.date ? ' · ' + game.date.slice(0, 10) : ''}`
+        : game.id;
+      return h('li', h('button.game-list__row', {
+        class: { active: game.id === selectedGameId },
+        on: { click: () => { selectedGameId = game.id; loadGame(game.pgn); } },
+      }, label));
+    })),
+  ]);
+}
+
 // --- Route views ---
 
 function routeContent(route: Route): VNode {
@@ -330,6 +360,7 @@ function routeContent(route: Route): VNode {
         ]),
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderMoveList(),
+        renderGameList(),
       ]);
     case 'puzzles':  return h('h1', 'Puzzles Page');
     case 'openings': return h('h1', 'Openings Page');
