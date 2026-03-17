@@ -20,3 +20,11 @@ body {
   width: 400px;
   height: 400px;
 }
+
+.analyse {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  gap: 16px;
+}
