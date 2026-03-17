@@ -22,8 +22,7 @@ Engine
 
 Create a `.env` file:
 
-ADMIN_PASSWORD=your_password_here  
-JWT_SECRET=your_long_random_secret_here
+
 
 ## Development
 
