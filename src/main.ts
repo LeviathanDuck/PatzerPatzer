@@ -504,6 +504,87 @@ function renderChesscomImport(): VNode {
   ]);
 }
 
+// --- Lichess username import ---
+// Lichess public API: GET /api/games/user/{username}?max=N&rated=true
+// Returns multi-game PGN text when Accept: application/x-chess-pgn is sent.
+// Lichess uses UTCDate rather than Date in PGN headers.
+
+let lichessUsername = '';
+let lichessLoading = false;
+let lichessError: string | null = null;
+
+async function fetchLichessGames(username: string): Promise<ImportedGame[]> {
+  const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?max=30&rated=true`;
+  const res = await fetch(url, { headers: { 'Accept': 'application/x-chess-pgn' } });
+  if (!res.ok) {
+    throw new Error(res.status === 404 ? 'Lichess: user not found' : `Lichess API error ${res.status}`);
+  }
+  const text = await res.text();
+  if (!text.trim()) return [];
+
+  // Split multi-game PGN: blank line followed by the next [Event header
+  const gameTexts = text.trim().split(/\n\n(?=\[Event )/).filter(s => s.trim());
+
+  const result: ImportedGame[] = [];
+  for (const pgn of gameTexts) {
+    try {
+      pgnToTree(pgn); // validate — skip games that fail to parse
+    } catch {
+      continue;
+    }
+    // Lichess uses UTCDate; fall back to Date if absent
+    const date = (parsePgnHeader(pgn, 'UTCDate') ?? parsePgnHeader(pgn, 'Date'))?.replace(/\./g, '-');
+    result.push({
+      id:     `game-${++gameIdCounter}`,
+      pgn,
+      white:  parsePgnHeader(pgn, 'White'),
+      black:  parsePgnHeader(pgn, 'Black'),
+      result: parsePgnHeader(pgn, 'Result'),
+      date,
+    });
+  }
+  return result;
+}
+
+async function importLichess(): Promise<void> {
+  const name = lichessUsername.trim();
+  if (!name || lichessLoading) return;
+  lichessLoading = true;
+  lichessError = null;
+  redraw();
+  try {
+    const games = await fetchLichessGames(name);
+    if (games.length === 0) {
+      lichessError = 'No recent rated games found.';
+    } else {
+      importedGames = [...importedGames, ...games];
+      selectedGameId = games[0]!.id;
+      loadGame(games[0]!.pgn); // calls redraw()
+    }
+  } catch (err) {
+    lichessError = err instanceof Error ? err.message : 'Import failed.';
+  } finally {
+    lichessLoading = false;
+    redraw();
+  }
+}
+
+function renderLichessImport(): VNode {
+  return h('div.pgn-import', [
+    h('div.pgn-import__row', [
+      h('input', {
+        attrs: { placeholder: 'Lichess username', type: 'text', disabled: lichessLoading },
+        on: { input: (e: Event) => { lichessUsername = (e.target as HTMLInputElement).value; } },
+      }),
+      h('button', {
+        attrs: { disabled: lichessLoading || !lichessUsername.trim() },
+        on: { click: () => { void importLichess(); } },
+      }, lichessLoading ? 'Importing…' : 'Import Lichess'),
+    ]),
+    lichessError ? h('span.pgn-import__error', lichessError) : h('span'),
+  ]);
+}
+
 // --- PGN paste import ---
 
 let pgnInput = '';
@@ -594,6 +675,7 @@ function routeContent(route: Route): VNode {
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderMoveList(),
         renderChesscomImport(),
+        renderLichessImport(),
         renderPgnImport(),
         renderGameList(),
       ]);
