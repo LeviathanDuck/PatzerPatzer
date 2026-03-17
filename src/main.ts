@@ -63,10 +63,14 @@ function parseEngineLine(line: string): void {
       }
     }
     if (best) currentEval.best = best;
-    if (score !== undefined || best) console.log('[eval]', { ...currentEval });
+    if (score !== undefined || best) {
+      console.log('[eval]', { ...currentEval });
+      redraw();
+    }
   } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
     currentEval.best = parts[1];
     console.log('[eval] bestmove', { ...currentEval });
+    redraw();
   }
 }
 
@@ -225,6 +229,20 @@ function renderMoveList(): VNode {
   return h('div.move-list', moves);
 }
 
+// --- Eval display ---
+// Adapted from lichess-org/lila: ui/analyse/src/view/ (evaluation rendering)
+
+function renderEval(): VNode {
+  if (!engineEnabled) return h('div.eval-display');
+  const score = currentEval.mate !== undefined
+    ? `Mate in ${Math.abs(currentEval.mate)}`
+    : currentEval.cp !== undefined
+      ? `Eval: ${currentEval.cp >= 0 ? '+' : ''}${(currentEval.cp / 100).toFixed(2)}`
+      : 'Evaluating…';
+  const best = currentEval.best ? ` | Best: ${currentEval.best}` : '';
+  return h('div.eval-display', score + best);
+}
+
 // --- Route views ---
 
 function routeContent(route: Route): VNode {
@@ -234,6 +252,7 @@ function routeContent(route: Route): VNode {
     case 'analysis':
       return h('div.analyse', [
         h('h1', 'Analysis Page'),
+        renderEval(),
         h('div.controls', [
           h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
           h('button', { on: { click: flip } }, 'Flip Board'),
