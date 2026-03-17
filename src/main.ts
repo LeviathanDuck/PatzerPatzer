@@ -64,8 +64,35 @@ interface PositionEval {
   best?: string;
   /** cp delta vs previous mainline position (positive = better for white) */
   delta?: number;
-  /** centipawn loss from the mover's perspective (positive = worse for mover) */
+  /**
+   * Win-chance shift from the mover's perspective (positive = worse for mover).
+   * Replaces raw cp loss — uses the sigmoid scale so lopsided positions don't over-trigger.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
+   */
   loss?: number;
+}
+
+// --- Win-chances conversion ---
+// Adapted from lichess-org/lila: ui/lib/src/ceval/winningChances.ts
+// Maps centipawns to a [-1, 1] win-probability scale via sigmoid.
+// This compresses the scale in lopsided positions so a 200cp swing when already
+// up +800 correctly registers as much smaller than the same swing near equality.
+
+const WIN_CHANCE_MULTIPLIER = -0.00368208; // https://github.com/lichess-org/lila/pull/11148
+
+function rawWinChances(cp: number): number {
+  return 2 / (1 + Math.exp(WIN_CHANCE_MULTIPLIER * cp)) - 1;
+}
+
+function evalWinChances(ev: PositionEval): number | undefined {
+  if (ev.mate !== undefined) {
+    const cp = (21 - Math.min(10, Math.abs(ev.mate))) * 100;
+    return rawWinChances(cp * (ev.mate > 0 ? 1 : -1));
+  }
+  if (ev.cp !== undefined) {
+    return rawWinChances(Math.min(Math.max(-1000, ev.cp), 1000));
+  }
+  return undefined;
 }
 
 let engineEnabled = false;
@@ -118,18 +145,27 @@ function parseEngineLine(line: string): void {
     currentEval.best = parts[1];
     const stored: PositionEval = { ...currentEval };
     const parentEval = evalCache.get(evalParentNodeId);
+    // Raw cp delta (kept for reference)
     if (parentEval?.cp !== undefined && stored.cp !== undefined) {
       stored.delta = stored.cp - parentEval.cp;
-      // Normalized loss from the mover's perspective.
-      // Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts (shift)
-      // White moved (odd ply): loss = drop in White eval = parentCp - currentCp
-      // Black moved (even ply): loss = rise in White eval = currentCp - parentCp
-      const whiteToMove = evalNodePly % 2 === 1;
-      stored.loss = whiteToMove ? -stored.delta : stored.delta;
+    }
+    // Win-chance shift from mover's perspective.
+    // Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
+    // povDiff(moverColor, nodeEval, prevEval) = (moverNodeWc - moverPrevWc) / 2
+    // loss = -povDiff = (moverPrevWc - moverNodeWc) / 2  [positive = worse for mover]
+    if (parentEval) {
+      const nodeWc   = evalWinChances(stored);
+      const parentWc = evalWinChances(parentEval);
+      if (nodeWc !== undefined && parentWc !== undefined) {
+        const whiteToMove   = evalNodePly % 2 === 1;
+        const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
+        const moverParentWc = whiteToMove ? parentWc : -parentWc;
+        stored.loss = (moverParentWc - moverNodeWc) / 2;
+      }
     }
     evalCache.set(evalNodeId, stored);
     currentEval = stored;
-    console.log('[eval cache]', evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss });
+    console.log('[eval cache]', evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
     syncArrow();
     redraw();
   }
@@ -300,13 +336,12 @@ function renderBoard(): VNode {
 // --- Move list ---
 // Adapted from lichess-org/lila: ui/analyse/src/treeView/inlineView.ts
 
-// Provisional classification thresholds (centipawn loss from mover's perspective).
-// Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts verdict thresholds,
-// expressed in raw cp rather than winning-chances units.
+// Classification thresholds — win-chance shift from mover's perspective (0–1 scale).
+// Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts verdict thresholds exactly.
 const LOSS_THRESHOLDS = {
-  inaccuracy: 30,
-  mistake:    80,
-  blunder:   180,
+  inaccuracy: 0.025,
+  mistake:    0.06,
+  blunder:    0.14,
 } as const;
 
 type MoveLabel = 'inaccuracy' | 'mistake' | 'blunder';
