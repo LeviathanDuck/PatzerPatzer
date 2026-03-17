@@ -5331,6 +5331,28 @@ function renderBoard() {
     }
   });
 }
+function renderMoveList() {
+  const moves = [];
+  let path = "";
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node = ctrl.mainline[i];
+    path += node.id;
+    const nodePath = path;
+    const isWhite = node.ply % 2 === 1;
+    if (isWhite) {
+      moves.push(h("span.move-num", `${Math.ceil(node.ply / 2)}.`));
+    }
+    moves.push(h("span.move", {
+      class: { active: nodePath === ctrl.path },
+      on: { click: () => {
+        ctrl.setPath(nodePath);
+        syncBoard();
+        redraw();
+      } }
+    }, node.san ?? ""));
+  }
+  return h("div.move-list", moves);
+}
 function routeContent(route) {
   switch (route.name) {
     case "analysis-game":
@@ -5343,7 +5365,8 @@ function routeContent(route) {
           h("button", { on: { click: flip } }, "Flip Board"),
           h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192")
         ]),
-        renderBoard()
+        renderBoard(),
+        renderMoveList()
       ]);
     case "puzzles":
       return h("h1", "Puzzles Page");
