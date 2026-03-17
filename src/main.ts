@@ -1,3 +1,5 @@
+import { Chessground as makeChessground } from '@lichess-org/chessground';
+import type { Api as CgApi } from '@lichess-org/chessground/api';
 import { init, classModule, attributesModule, h, type VNode } from 'snabbdom';
 import { current, onChange, type Route } from './router';
 
@@ -36,12 +38,33 @@ function renderNav(route: Route): VNode {
   ));
 }
 
+// Chessground instance — persists across re-renders, cleaned up on destroy
+let cgInstance: CgApi | undefined;
+
+// Adapted from lichess-org/lila: ui/puzzle/src/view/chessground.ts
+function renderBoard(): VNode {
+  return h('div.cg-wrap', {
+    hook: {
+      insert: vnode => {
+        cgInstance = makeChessground(vnode.elm as HTMLElement, {
+          orientation: 'white',
+          viewOnly: true,
+        });
+      },
+      destroy: () => {
+        cgInstance?.destroy();
+        cgInstance = undefined;
+      },
+    },
+  });
+}
+
 function routeContent(route: Route): VNode {
   switch (route.name) {
     case 'analysis-game':
       return h('h1', `Analysis Game: ${route.params['id']}`);
     case 'analysis':
-      return h('h1', 'Analysis Page');
+      return h('div.analyse', [h('h1', 'Analysis Page'), renderBoard()]);
     case 'puzzles':
       return h('h1', 'Puzzles Page');
     case 'openings':

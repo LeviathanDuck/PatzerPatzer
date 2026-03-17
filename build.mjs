@@ -13,8 +13,14 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-// Compile SCSS
+// Compile SCSS + prepend Chessground CSS
+const cgCss = [
+  'node_modules/@lichess-org/chessground/assets/chessground.base.css',
+  'node_modules/@lichess-org/chessground/assets/chessground.brown.css',
+  'node_modules/@lichess-org/chessground/assets/chessground.cburnett.css',
+].map(f => fs.readFileSync(f, 'utf8')).join('\n');
+
 fs.mkdirSync('public/css', { recursive: true });
 const result = sass.compile('src/styles/main.scss');
-fs.writeFileSync('public/css/main.css', result.css);
+fs.writeFileSync('public/css/main.css', cgCss + '\n' + result.css);
 console.log('  public/css/main.css');
