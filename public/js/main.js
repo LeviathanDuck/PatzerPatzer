@@ -5612,6 +5612,91 @@ function renderEval() {
   const best = currentEval.best ? ` | Best: ${currentEval.best}` : "";
   return h("div.eval-display", score + best);
 }
+var chesscomUsername = "";
+var chesscomLoading = false;
+var chesscomError = null;
+var CHESSCOM_BASE = "https://api.chess.com/pub/player";
+function normalizeChesscomResult(whiteResult, blackResult) {
+  if (whiteResult === "win") return "1-0";
+  if (blackResult === "win") return "0-1";
+  return "1/2-1/2";
+}
+async function fetchChesscomGames(username) {
+  const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
+  if (!archivesRes.ok) {
+    throw new Error(archivesRes.status === 404 ? "Chess.com: user not found" : `Chess.com API error ${archivesRes.status}`);
+  }
+  const archivesData = await archivesRes.json();
+  const archives = archivesData.archives ?? [];
+  if (archives.length === 0) return [];
+  const latestUrl = archives[archives.length - 1];
+  const gamesRes = await fetch(latestUrl);
+  if (!gamesRes.ok) throw new Error(`Chess.com API error ${gamesRes.status}`);
+  const gamesData = await gamesRes.json();
+  const rawGames = gamesData.games ?? [];
+  const result = [];
+  for (let i = rawGames.length - 1; i >= 0; i--) {
+    const raw = rawGames[i];
+    if (!raw.rated || raw.rules !== "chess" || raw.time_class === "daily") continue;
+    const pgn = raw.pgn ?? "";
+    if (!pgn) continue;
+    try {
+      pgnToTree(pgn);
+    } catch {
+      continue;
+    }
+    result.push({
+      id: `game-${++gameIdCounter}`,
+      pgn,
+      white: raw.white?.username ?? void 0,
+      black: raw.black?.username ?? void 0,
+      result: normalizeChesscomResult(raw.white?.result ?? "", raw.black?.result ?? ""),
+      date: parsePgnHeader(pgn, "Date")?.replace(/\./g, "-")
+    });
+  }
+  return result;
+}
+async function importChesscom() {
+  const name = chesscomUsername.trim();
+  if (!name || chesscomLoading) return;
+  chesscomLoading = true;
+  chesscomError = null;
+  redraw();
+  try {
+    const games = await fetchChesscomGames(name);
+    if (games.length === 0) {
+      chesscomError = "No recent rated games found.";
+    } else {
+      importedGames = [...importedGames, ...games];
+      selectedGameId = games[0].id;
+      loadGame(games[0].pgn);
+    }
+  } catch (err) {
+    chesscomError = err instanceof Error ? err.message : "Import failed.";
+  } finally {
+    chesscomLoading = false;
+    redraw();
+  }
+}
+function renderChesscomImport() {
+  return h("div.pgn-import", [
+    h("div.pgn-import__row", [
+      h("input", {
+        attrs: { placeholder: "Chess.com username", type: "text", disabled: chesscomLoading },
+        on: { input: (e) => {
+          chesscomUsername = e.target.value;
+        } }
+      }),
+      h("button", {
+        attrs: { disabled: chesscomLoading || !chesscomUsername.trim() },
+        on: { click: () => {
+          void importChesscom();
+        } }
+      }, chesscomLoading ? "Importing\u2026" : "Import Chess.com")
+    ]),
+    chesscomError ? h("span.pgn-import__error", chesscomError) : h("span")
+  ]);
+}
 var pgnInput = "";
 var pgnError = null;
 var pgnKey = 0;
@@ -5694,6 +5779,7 @@ function routeContent(route) {
         ]),
         h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
         renderMoveList(),
+        renderChesscomImport(),
         renderPgnImport(),
         renderGameList()
       ]);
