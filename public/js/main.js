@@ -5384,6 +5384,12 @@ function view(route) {
     h("main", [routeContent(route)])
   ]);
 }
+document.addEventListener("keydown", (e) => {
+  const tag = e.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if (e.key === "ArrowRight") next();
+  else if (e.key === "ArrowLeft") prev();
+});
 var app = document.getElementById("app");
 var currentRoute = current();
 var vnode2 = patch(app, view(currentRoute));
