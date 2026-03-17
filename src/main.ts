@@ -300,6 +300,24 @@ function renderBoard(): VNode {
 // --- Move list ---
 // Adapted from lichess-org/lila: ui/analyse/src/treeView/inlineView.ts
 
+// Provisional classification thresholds (centipawn loss from mover's perspective).
+// Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts verdict thresholds,
+// expressed in raw cp rather than winning-chances units.
+const LOSS_THRESHOLDS = {
+  inaccuracy: 30,
+  mistake:    80,
+  blunder:   180,
+} as const;
+
+type MoveLabel = 'inaccuracy' | 'mistake' | 'blunder';
+
+function classifyLoss(loss: number): MoveLabel | null {
+  if (loss >= LOSS_THRESHOLDS.blunder)    return 'blunder';
+  if (loss >= LOSS_THRESHOLDS.mistake)    return 'mistake';
+  if (loss >= LOSS_THRESHOLDS.inaccuracy) return 'inaccuracy';
+  return null;
+}
+
 function renderMoveList(): VNode {
   const moves: VNode[] = [];
   let path = '';
@@ -311,10 +329,12 @@ function renderMoveList(): VNode {
     if (isWhite) {
       moves.push(h('span.move-num', `${Math.ceil(node.ply / 2)}.`));
     }
+    const cached = evalCache.get(node.id);
+    const label = cached?.loss !== undefined ? classifyLoss(cached.loss) : null;
     moves.push(h('span.move', {
       class: { active: nodePath === ctrl.path },
       on: { click: () => { ctrl.setPath(nodePath); syncBoard(); evalCurrentPosition(); redraw(); } },
-    }, node.san ?? ''));
+    }, label ? `${node.san} ${label}` : (node.san ?? '')));
   }
   return h('div.move-list', moves);
 }

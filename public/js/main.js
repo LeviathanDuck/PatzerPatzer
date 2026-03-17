@@ -5533,6 +5533,17 @@ function renderBoard() {
     }
   });
 }
+var LOSS_THRESHOLDS = {
+  inaccuracy: 30,
+  mistake: 80,
+  blunder: 180
+};
+function classifyLoss(loss) {
+  if (loss >= LOSS_THRESHOLDS.blunder) return "blunder";
+  if (loss >= LOSS_THRESHOLDS.mistake) return "mistake";
+  if (loss >= LOSS_THRESHOLDS.inaccuracy) return "inaccuracy";
+  return null;
+}
 function renderMoveList() {
   const moves = [];
   let path = "";
@@ -5544,6 +5555,8 @@ function renderMoveList() {
     if (isWhite) {
       moves.push(h("span.move-num", `${Math.ceil(node.ply / 2)}.`));
     }
+    const cached = evalCache.get(node.id);
+    const label = cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
     moves.push(h("span.move", {
       class: { active: nodePath === ctrl.path },
       on: { click: () => {
@@ -5552,7 +5565,7 @@ function renderMoveList() {
         evalCurrentPosition();
         redraw();
       } }
-    }, node.san ?? ""));
+    }, label ? `${node.san} ${label}` : node.san ?? ""));
   }
   return h("div.move-list", moves);
 }
