@@ -3,6 +3,7 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import { uciToMove } from '@lichess-org/chessground/util';
 import { init, classModule, attributesModule, eventListenersModule, h, type VNode } from 'snabbdom';
 import { AnalyseCtrl } from './analyse/ctrl';
+import { StockfishProtocol } from './ceval/protocol';
 import { current, onChange, type Route } from './router';
 import { pathInit } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
@@ -15,6 +16,48 @@ const patch = init([classModule, attributesModule, eventListenersModule]);
 
 const TEST_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
 const ctrl = new AnalyseCtrl(pgnToTree(TEST_PGN));
+
+// --- Engine ---
+// Mirrors lichess-org/lila: ui/lib/src/ceval/ toggle + state management
+
+let engineEnabled = false;
+let engineReady = false;
+let engineInitialized = false;
+const protocol = new StockfishProtocol();
+
+protocol.onMessage(line => {
+  console.log('[SF]', line);
+  if (line.trim() === 'readyok') {
+    engineReady = true;
+    evalCurrentPosition();
+    redraw(); // update button label: Loading → On
+  }
+});
+
+function evalCurrentPosition(): void {
+  if (!engineEnabled || !engineReady) return;
+  protocol.stop();
+  protocol.setPosition(ctrl.node.fen);
+  protocol.go(10);
+}
+
+// Adapted from lichess-org/lila: ui/lib/src/ceval/ctrl.ts toggle
+function toggleEngine(): void {
+  engineEnabled = !engineEnabled;
+  if (engineEnabled) {
+    if (!engineInitialized) {
+      engineInitialized = true;
+      // Relative URL resolves against the page (public/index.html) → public/stockfish/...
+      protocol.init('stockfish/stockfish-nnue-16-single.js');
+      // evalCurrentPosition() will be called once readyok arrives
+    } else if (engineReady) {
+      evalCurrentPosition();
+    }
+  } else {
+    protocol.stop();
+  }
+  redraw();
+}
 
 // --- Board sync ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts showGround / makeCgOpts
@@ -38,6 +81,7 @@ function next(): void {
   if (!child) return;
   ctrl.setPath(ctrl.path + child.id);
   syncBoard();
+  evalCurrentPosition();
   redraw();
 }
 
@@ -45,6 +89,7 @@ function prev(): void {
   if (ctrl.path === '') return;
   ctrl.setPath(pathInit(ctrl.path));
   syncBoard();
+  evalCurrentPosition();
   redraw();
 }
 
@@ -127,7 +172,7 @@ function renderMoveList(): VNode {
     }
     moves.push(h('span.move', {
       class: { active: nodePath === ctrl.path },
-      on: { click: () => { ctrl.setPath(nodePath); syncBoard(); redraw(); } },
+      on: { click: () => { ctrl.setPath(nodePath); syncBoard(); evalCurrentPosition(); redraw(); } },
     }, node.san ?? ''));
   }
   return h('div.move-list', moves);
@@ -146,6 +191,9 @@ function routeContent(route: Route): VNode {
           h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
           h('button', { on: { click: flip } }, 'Flip Board'),
           h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
+          h('button', { on: { click: toggleEngine }, class: { active: engineEnabled } },
+            engineEnabled ? (engineReady ? 'Engine: On' : 'Engine: Loading…') : 'Engine: Off'
+          ),
         ]),
         h('div.analyse__board', [renderBoard()]),
         renderMoveList(),

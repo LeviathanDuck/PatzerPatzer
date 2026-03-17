@@ -2628,6 +2628,75 @@ var AnalyseCtrl = class {
   }
 };
 
+// src/ceval/protocol.ts
+var StockfishProtocol = class {
+  constructor() {
+    __publicField(this, "worker");
+    __publicField(this, "onLine");
+    /** Human-readable engine name received from the "id name" response. */
+    __publicField(this, "engineName");
+  }
+  /**
+   * Spin up the worker and begin the UCI handshake.
+   * workerUrl points to the Stockfish JS file served as a static asset.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/engines/simpleEngine.ts (start)
+   */
+  init(workerUrl) {
+    this.worker = new Worker(workerUrl);
+    this.worker.addEventListener("message", (e) => this.received(e.data));
+    this.worker.addEventListener("error", (e) => {
+      console.error("[ceval] worker error \u2014 url:", workerUrl, "| message:", e.message || "(none)", "| file:", e.filename || "(none)", "| line:", e.lineno);
+    });
+    this.send("uci");
+  }
+  /** Register a callback that fires for every raw UCI line from the engine. */
+  onMessage(cb) {
+    this.onLine = cb;
+  }
+  /**
+   * Send a FEN position to the engine.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork position command.
+   */
+  setPosition(fen) {
+    this.send(`position fen ${fen}`);
+  }
+  /**
+   * Start a fixed-depth search on the current position.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
+   */
+  go(depth) {
+    this.send(`go depth ${depth}`);
+  }
+  /** Interrupt a running search. */
+  stop() {
+    this.send("stop");
+  }
+  /** Shut down the engine and terminate the worker. */
+  destroy() {
+    this.send("quit");
+    this.worker?.terminate();
+    this.worker = void 0;
+  }
+  send(cmd) {
+    this.worker?.postMessage(cmd);
+  }
+  /**
+   * Handle a raw UCI line from the engine.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts received
+   */
+  received(line) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === "id" && parts[1] === "name") {
+      this.engineName = parts.slice(2).join(" ");
+    } else if (parts[0] === "uciok") {
+      this.send("setoption name UCI_AnalyseMode value true");
+      this.send("ucinewgame");
+      this.send("isready");
+    }
+    this.onLine?.(line);
+  }
+};
+
 // src/router.ts
 var routes = [
   { pattern: ["analysis", ":id"], name: "analysis-game" },
@@ -5257,6 +5326,38 @@ console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
 var TEST_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
 var ctrl = new AnalyseCtrl(pgnToTree(TEST_PGN));
+var engineEnabled = false;
+var engineReady = false;
+var engineInitialized = false;
+var protocol = new StockfishProtocol();
+protocol.onMessage((line) => {
+  console.log("[SF]", line);
+  if (line.trim() === "readyok") {
+    engineReady = true;
+    evalCurrentPosition();
+    redraw();
+  }
+});
+function evalCurrentPosition() {
+  if (!engineEnabled || !engineReady) return;
+  protocol.stop();
+  protocol.setPosition(ctrl.node.fen);
+  protocol.go(10);
+}
+function toggleEngine() {
+  engineEnabled = !engineEnabled;
+  if (engineEnabled) {
+    if (!engineInitialized) {
+      engineInitialized = true;
+      protocol.init("stockfish/stockfish-nnue-16-single.js");
+    } else if (engineReady) {
+      evalCurrentPosition();
+    }
+  } else {
+    protocol.stop();
+  }
+  redraw();
+}
 function syncBoard() {
   if (!cgInstance) return;
   const node = ctrl.node;
@@ -5271,12 +5372,14 @@ function next() {
   if (!child) return;
   ctrl.setPath(ctrl.path + child.id);
   syncBoard();
+  evalCurrentPosition();
   redraw();
 }
 function prev() {
   if (ctrl.path === "") return;
   ctrl.setPath(pathInit(ctrl.path));
   syncBoard();
+  evalCurrentPosition();
   redraw();
 }
 function activeSection(route) {
@@ -5350,6 +5453,7 @@ function renderMoveList() {
       on: { click: () => {
         ctrl.setPath(nodePath);
         syncBoard();
+        evalCurrentPosition();
         redraw();
       } }
     }, node.san ?? ""));
@@ -5366,7 +5470,12 @@ function routeContent(route) {
         h("div.controls", [
           h("button", { on: { click: prev }, attrs: { disabled: ctrl.path === "" } }, "\u2190 Prev"),
           h("button", { on: { click: flip } }, "Flip Board"),
-          h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192")
+          h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192"),
+          h(
+            "button",
+            { on: { click: toggleEngine }, class: { active: engineEnabled } },
+            engineEnabled ? engineReady ? "Engine: On" : "Engine: Loading\u2026" : "Engine: Off"
+          )
         ]),
         h("div.analyse__board", [renderBoard()]),
         renderMoveList()
