@@ -147,7 +147,7 @@ function routeContent(route: Route): VNode {
           h('button', { on: { click: flip } }, 'Flip Board'),
           h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
         ]),
-        renderBoard(),
+        h('div.analyse__board', [renderBoard()]),
         renderMoveList(),
       ]);
     case 'puzzles':  return h('h1', 'Puzzles Page');

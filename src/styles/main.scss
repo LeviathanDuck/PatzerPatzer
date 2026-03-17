@@ -16,9 +16,14 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+.analyse__board {
+  width: 100%;
+  max-width: 600px;
+}
+
 .cg-wrap {
-  width: 400px;
-  height: 400px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
 }
 
 .move-list {
@@ -26,7 +31,7 @@ body {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 4px;
-  max-width: 400px;
+  max-width: 600px;
   font-size: 0.95rem;
   line-height: 1.6;
 
