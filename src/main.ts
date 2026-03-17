@@ -63,6 +63,7 @@ function loadGame(pgn: string | null): void {
 interface StoredGames {
   games: ImportedGame[];
   selectedId: string | null;
+  path?: string;
 }
 
 let _idb: IDBDatabase | undefined;
@@ -82,7 +83,7 @@ async function saveGamesToIdb(): Promise<void> {
     const db = await openGameDb();
     const tx = db.transaction('game-library', 'readwrite');
     tx.objectStore('game-library').put(
-      { games: importedGames, selectedId: selectedGameId } satisfies StoredGames,
+      { games: importedGames, selectedId: selectedGameId, path: ctrl.path } satisfies StoredGames,
       'imported-games',
     );
   } catch (e) {
@@ -309,6 +310,7 @@ function next(): void {
   ctrl.setPath(ctrl.path + child.id);
   syncBoard();
   evalCurrentPosition();
+  void saveGamesToIdb();
   redraw();
 }
 
@@ -317,6 +319,7 @@ function prev(): void {
   ctrl.setPath(pathInit(ctrl.path));
   syncBoard();
   evalCurrentPosition();
+  void saveGamesToIdb();
   redraw();
 }
 
@@ -418,7 +421,7 @@ function renderMoveList(): VNode {
     const label = cached?.loss !== undefined ? classifyLoss(cached.loss) : null;
     moves.push(h('span.move', {
       class: { active: nodePath === ctrl.path },
-      on: { click: () => { ctrl.setPath(nodePath); syncBoard(); evalCurrentPosition(); redraw(); } },
+      on: { click: () => { ctrl.setPath(nodePath); syncBoard(); evalCurrentPosition(); void saveGamesToIdb(); redraw(); } },
     }, label ? `${node.san} ${label}` : (node.san ?? '')));
   }
   return h('div.move-list', moves);
@@ -784,6 +787,8 @@ void loadGamesFromIdb().then(stored => {
   ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));
   evalCache.clear();
   currentEval = {};
+  // Restore analysis path — ctrl.setPath is a no-op if the path is invalid for this tree
+  if (stored.path) ctrl.setPath(stored.path);
   syncBoard();
   syncArrow();
   redraw();

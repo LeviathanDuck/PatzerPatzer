@@ -5360,7 +5360,7 @@ async function saveGamesToIdb() {
     const db = await openGameDb();
     const tx = db.transaction("game-library", "readwrite");
     tx.objectStore("game-library").put(
-      { games: importedGames, selectedId: selectedGameId },
+      { games: importedGames, selectedId: selectedGameId, path: ctrl.path },
       "imported-games"
     );
   } catch (e) {
@@ -5529,6 +5529,7 @@ function next() {
   ctrl.setPath(ctrl.path + child.id);
   syncBoard();
   evalCurrentPosition();
+  void saveGamesToIdb();
   redraw();
 }
 function prev() {
@@ -5536,6 +5537,7 @@ function prev() {
   ctrl.setPath(pathInit(ctrl.path));
   syncBoard();
   evalCurrentPosition();
+  void saveGamesToIdb();
   redraw();
 }
 function activeSection(route) {
@@ -5623,6 +5625,7 @@ function renderMoveList() {
         ctrl.setPath(nodePath);
         syncBoard();
         evalCurrentPosition();
+        void saveGamesToIdb();
         redraw();
       } }
     }, label ? `${node.san} ${label}` : node.san ?? ""));
@@ -5938,6 +5941,7 @@ void loadGamesFromIdb().then((stored) => {
   ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));
   evalCache.clear();
   currentEval = {};
+  if (stored.path) ctrl.setPath(stored.path);
   syncBoard();
   syncArrow();
   redraw();
