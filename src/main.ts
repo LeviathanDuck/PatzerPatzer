@@ -47,6 +47,7 @@ let ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
 function loadGame(pgn: string | null): void {
   selectedGamePgn = pgn;
   ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+  evalCache.clear();
   currentEval = {};
   syncBoard();
   syncArrow();
@@ -61,12 +62,17 @@ interface PositionEval {
   cp?: number;
   mate?: number;
   best?: string;
+  /** cp delta vs previous mainline position (positive = better for white) */
+  delta?: number;
 }
 
 let engineEnabled = false;
 let engineReady = false;
 let engineInitialized = false;
 let currentEval: PositionEval = {};
+const evalCache = new Map<string, PositionEval>();
+let evalNodeId = '';
+let evalParentNodeId = '';
 const protocol = new StockfishProtocol();
 
 /**
@@ -107,7 +113,14 @@ function parseEngineLine(line: string): void {
     }
   } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
     currentEval.best = parts[1];
-    console.log('[eval] bestmove', { ...currentEval });
+    const stored: PositionEval = { ...currentEval };
+    const parentEval = evalCache.get(evalParentNodeId);
+    if (parentEval?.cp !== undefined && stored.cp !== undefined) {
+      stored.delta = stored.cp - parentEval.cp;
+    }
+    evalCache.set(evalNodeId, stored);
+    currentEval = stored;
+    console.log('[eval cache]', evalNodeId, stored);
     syncArrow();
     redraw();
   }
@@ -125,6 +138,15 @@ protocol.onMessage(line => {
 
 function evalCurrentPosition(): void {
   if (!engineEnabled || !engineReady) return;
+  const cached = evalCache.get(ctrl.node.id);
+  if (cached) {
+    currentEval = { ...cached };
+    syncArrow();
+    redraw();
+    return;
+  }
+  evalNodeId = ctrl.node.id;
+  evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
   currentEval = {}; // reset for new position
   syncArrow();      // clear stale arrow immediately
   protocol.stop();
