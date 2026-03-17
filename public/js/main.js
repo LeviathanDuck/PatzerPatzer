@@ -5499,6 +5499,21 @@ function renderMoveList() {
   }
   return h("div.move-list", moves);
 }
+function evalPct() {
+  if (!engineEnabled) return 50;
+  if (currentEval.mate !== void 0) return currentEval.mate > 0 ? 100 : 0;
+  if (currentEval.cp !== void 0) {
+    const pct = 50 + currentEval.cp / 20;
+    return Math.max(0, Math.min(100, pct));
+  }
+  return 50;
+}
+function renderEvalBar() {
+  const pct = evalPct();
+  return h("div.eval-bar", [
+    h("div.eval-bar__fill", { attrs: { style: `height: ${pct}%` } })
+  ]);
+}
 function renderEval() {
   if (!engineEnabled) return h("div.eval-display");
   const score = currentEval.mate !== void 0 ? `Mate in ${Math.abs(currentEval.mate)}` : currentEval.cp !== void 0 ? `Eval: ${currentEval.cp >= 0 ? "+" : ""}${(currentEval.cp / 100).toFixed(2)}` : "Evaluating\u2026";
@@ -5523,7 +5538,7 @@ function routeContent(route) {
             engineEnabled ? engineReady ? "Engine: On" : "Engine: Loading\u2026" : "Engine: Off"
           )
         ]),
-        h("div.analyse__board", [renderBoard()]),
+        h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
         renderMoveList()
       ]);
     case "puzzles":
