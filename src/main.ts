@@ -5,17 +5,24 @@ console.log('Patzer Pro');
 
 const patch = init([classModule, attributesModule]);
 
-function view(route: Route): VNode {
+function routeContent(route: Route): VNode {
   switch (route.name) {
     case 'analysis-game':
-      return h('div', [h('h1', `Analysis Game: ${route.params['id']}`)]);
+      return h('h1', `Analysis Game: ${route.params['id']}`);
     case 'analysis':
-      return h('div', [h('h1', 'Analysis Page')]);
+      return h('h1', 'Analysis Page');
     case 'puzzles':
-      return h('div', [h('h1', 'Puzzles Page')]);
+      return h('h1', 'Puzzles Page');
     default:
-      return h('div', [h('h1', 'Home')]);
+      return h('h1', 'Home');
   }
+}
+
+function view(route: Route): VNode {
+  return h('div#shell', [
+    h('header', h('span', 'Patzer Pro')),
+    h('main', [routeContent(route)]),
+  ]);
 }
 
 const app = document.getElementById('app')!;
