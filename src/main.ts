@@ -321,6 +321,56 @@ function renderEval(): VNode {
   return h('div.eval-display', score + best);
 }
 
+// --- PGN paste import ---
+
+let pgnInput = '';
+let pgnError: string | null = null;
+let pgnKey = 0;      // incremented on successful import to reset the textarea via Snabbdom key
+let gameIdCounter = 0;
+
+function parsePgnHeader(pgn: string, tag: string): string | undefined {
+  return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
+}
+
+function importPgn(): void {
+  const raw = pgnInput.trim();
+  if (!raw) return;
+  try {
+    pgnToTree(raw); // validate — throws on bad PGN
+    const game: ImportedGame = {
+      id: `game-${++gameIdCounter}`,
+      pgn: raw,
+      white:  parsePgnHeader(raw, 'White'),
+      black:  parsePgnHeader(raw, 'Black'),
+      result: parsePgnHeader(raw, 'Result'),
+      date:   parsePgnHeader(raw, 'Date')?.replace(/\./g, '-'),
+    };
+    importedGames = [...importedGames, game];
+    selectedGameId = game.id;
+    pgnError = null;
+    pgnInput = '';
+    pgnKey++;        // new key causes Snabbdom to recreate the textarea (clears it)
+    loadGame(game.pgn); // calls redraw()
+  } catch (_) {
+    pgnError = 'Invalid PGN — could not parse.';
+    redraw();
+  }
+}
+
+function renderPgnImport(): VNode {
+  return h('div.pgn-import', [
+    h('textarea.pgn-import__input', {
+      key: pgnKey,
+      attrs: { placeholder: 'Paste PGN here…', rows: 4 },
+      on: { input: (e: Event) => { pgnInput = (e.target as HTMLTextAreaElement).value; } },
+    }),
+    h('div.pgn-import__row', [
+      h('button', { on: { click: importPgn } }, 'Import PGN'),
+      pgnError ? h('span.pgn-import__error', pgnError) : h('span'),
+    ]),
+  ]);
+}
+
 // --- Game list ---
 // Adapted from docs/reference/GameImport/index.jsx
 
@@ -360,6 +410,7 @@ function routeContent(route: Route): VNode {
         ]),
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderMoveList(),
+        renderPgnImport(),
         renderGameList(),
       ]);
     case 'puzzles':  return h('h1', 'Puzzles Page');

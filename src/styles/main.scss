@@ -80,6 +80,38 @@ body {
   }
 }
 
+.pgn-import {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  &__input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #111;
+    color: var(--text);
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.8rem;
+    resize: vertical;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &__error {
+    color: #f66;
+    font-size: 0.8rem;
+  }
+}
+
 .game-list {
   width: 100%;
   max-width: 600px;
