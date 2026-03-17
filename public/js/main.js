@@ -5368,7 +5368,7 @@ function routeContent(route) {
           h("button", { on: { click: flip } }, "Flip Board"),
           h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192")
         ]),
-        renderBoard(),
+        h("div.analyse__board", [renderBoard()]),
         renderMoveList()
       ]);
     case "puzzles":
