@@ -11,6 +11,9 @@ importers:
       '@lichess-org/chessground':
         specifier: ^10.1.0
         version: 10.1.0
+      chessops:
+        specifier: ^0.15.0
+        version: 0.15.0
       snabbdom:
         specifier: ^3.6.2
         version: 3.6.3
@@ -26,6 +29,10 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@badrap/result@0.3.1':
+    resolution: {integrity: sha512-ECvpsyZYknoRD0peG1K+UkX5llld3TyK1Ot9Cq2epSoWK19nyzpGKVl98sadSmohu5wHNuiDl+Ex9SVdcIjiFg==}
+    engines: {node: '>= 22'}
 
   '@esbuild/aix-ppc64@0.27.4':
     resolution: {integrity: sha512-cQPwL2mp2nSmHHJlCyoXgHGhbEPMrEEU5xhkcy3Hs/O7nGZqEpZ2sUtLaL9MORLtDfRvVl2/3PAuEkYZH0Ty8Q==}
@@ -274,6 +281,9 @@ packages:
     resolution: {integrity: sha512-tmmZ3lQxAe/k/+rNnXQRawJ4NjxO2hqiOLTHvWchtGZULp4RyFeh6aU4XdOYBFe2KE1oShQTv4AblOs2iOrNnQ==}
     engines: {node: '>= 10.0.0'}
 
+  chessops@0.15.0:
+    resolution: {integrity: sha512-4Ps0O8/UO09tDGbze1mMilUSMZjVYMFtQvrhlCQV385cO0BgdUPUZsq/r1Qrf6UQ4J0i7XcMbRRvFRKu+Ith1w==}
+
   chokidar@4.0.3:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
     engines: {node: '>= 14.16.0'}
@@ -328,6 +338,8 @@ packages:
     hasBin: true
 
 snapshots:
+
+  '@badrap/result@0.3.1': {}
 
   '@esbuild/aix-ppc64@0.27.4':
     optional: true
@@ -469,6 +481,10 @@ snapshots:
       '@parcel/watcher-win32-ia32': 2.5.6
       '@parcel/watcher-win32-x64': 2.5.6
     optional: true
+
+  chessops@0.15.0:
+    dependencies:
+      '@badrap/result': 0.3.1
 
   chokidar@4.0.3:
     dependencies:
