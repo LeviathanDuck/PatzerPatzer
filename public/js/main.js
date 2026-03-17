@@ -5342,6 +5342,20 @@ function loadGame(pgn) {
   evalCurrentPosition();
   redraw();
 }
+var WIN_CHANCE_MULTIPLIER = -368208e-8;
+function rawWinChances(cp) {
+  return 2 / (1 + Math.exp(WIN_CHANCE_MULTIPLIER * cp)) - 1;
+}
+function evalWinChances(ev) {
+  if (ev.mate !== void 0) {
+    const cp = (21 - Math.min(10, Math.abs(ev.mate))) * 100;
+    return rawWinChances(cp * (ev.mate > 0 ? 1 : -1));
+  }
+  if (ev.cp !== void 0) {
+    return rawWinChances(Math.min(Math.max(-1e3, ev.cp), 1e3));
+  }
+  return void 0;
+}
 var engineEnabled = false;
 var engineReady = false;
 var engineInitialized = false;
@@ -5388,12 +5402,20 @@ function parseEngineLine(line) {
     const parentEval = evalCache.get(evalParentNodeId);
     if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
       stored.delta = stored.cp - parentEval.cp;
-      const whiteToMove = evalNodePly % 2 === 1;
-      stored.loss = whiteToMove ? -stored.delta : stored.delta;
+    }
+    if (parentEval) {
+      const nodeWc = evalWinChances(stored);
+      const parentWc = evalWinChances(parentEval);
+      if (nodeWc !== void 0 && parentWc !== void 0) {
+        const whiteToMove = evalNodePly % 2 === 1;
+        const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
+        const moverParentWc = whiteToMove ? parentWc : -parentWc;
+        stored.loss = (moverParentWc - moverNodeWc) / 2;
+      }
     }
     evalCache.set(evalNodeId, stored);
     currentEval = stored;
-    console.log("[eval cache]", evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss });
+    console.log("[eval cache]", evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
     syncArrow();
     redraw();
   }
@@ -5534,9 +5556,9 @@ function renderBoard() {
   });
 }
 var LOSS_THRESHOLDS = {
-  inaccuracy: 30,
-  mistake: 80,
-  blunder: 180
+  inaccuracy: 0.025,
+  mistake: 0.06,
+  blunder: 0.14
 };
 function classifyLoss(loss) {
   if (loss >= LOSS_THRESHOLDS.blunder) return "blunder";
