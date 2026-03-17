@@ -2485,6 +2485,73 @@ function updateClass(oldVnode, vnode3) {
 }
 var classModule = { create: updateClass, update: updateClass };
 
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/modules/eventlisteners.js
+function invokeHandler(handler, vnode3, event) {
+  if (typeof handler === "function") {
+    handler.call(vnode3, event, vnode3);
+  } else if (typeof handler === "object") {
+    for (let i = 0; i < handler.length; i++) {
+      invokeHandler(handler[i], vnode3, event);
+    }
+  }
+}
+function handleEvent(event, vnode3) {
+  const name = event.type;
+  const on = vnode3.data.on;
+  if (on && on[name]) {
+    invokeHandler(on[name], vnode3, event);
+  }
+}
+function createListener() {
+  return function handler(event) {
+    handleEvent(event, handler.vnode);
+  };
+}
+function updateEventListeners(oldVnode, vnode3) {
+  const oldOn = oldVnode.data.on;
+  const oldListener = oldVnode.listener;
+  const oldElm = oldVnode.elm;
+  const on = vnode3 && vnode3.data.on;
+  const elm = vnode3 && vnode3.elm;
+  let name;
+  if (oldOn === on) {
+    return;
+  }
+  if (oldOn && oldListener) {
+    if (!on) {
+      for (name in oldOn) {
+        oldElm.removeEventListener(name, oldListener, false);
+      }
+    } else {
+      for (name in oldOn) {
+        if (!on[name]) {
+          oldElm.removeEventListener(name, oldListener, false);
+        }
+      }
+    }
+  }
+  if (on) {
+    const listener = vnode3.listener = oldVnode.listener || createListener();
+    listener.vnode = vnode3;
+    if (!oldOn) {
+      for (name in on) {
+        elm.addEventListener(name, listener, false);
+      }
+    } else {
+      for (name in on) {
+        if (!oldOn[name]) {
+          elm.addEventListener(name, listener, false);
+        }
+      }
+    }
+  }
+}
+var eventListenersModule = {
+  create: updateEventListeners,
+  update: updateEventListeners,
+  destroy: updateEventListeners
+};
+
 // src/router.ts
 var routes = [
   { pattern: ["analysis", ":id"], name: "analysis-game" },
@@ -2523,7 +2590,7 @@ function onChange2(fn) {
 
 // src/main.ts
 console.log("Patzer Pro");
-var patch = init([classModule, attributesModule]);
+var patch = init([classModule, attributesModule, eventListenersModule]);
 function activeSection(route) {
   switch (route.name) {
     case "analysis":
@@ -2552,13 +2619,20 @@ function renderNav(route) {
   ));
 }
 var cgInstance;
+var orientation = "white";
+function flip() {
+  orientation = orientation === "white" ? "black" : "white";
+  cgInstance?.set({ orientation });
+  redraw();
+}
 function renderBoard() {
   return h("div.cg-wrap", {
     hook: {
       insert: (vnode3) => {
         cgInstance = Chessground(vnode3.elm, {
-          orientation: "white",
-          viewOnly: true
+          orientation,
+          viewOnly: false,
+          drawable: { enabled: true }
         });
       },
       destroy: () => {
@@ -2573,7 +2647,11 @@ function routeContent(route) {
     case "analysis-game":
       return h("h1", `Analysis Game: ${route.params["id"]}`);
     case "analysis":
-      return h("div.analyse", [h("h1", "Analysis Page"), renderBoard()]);
+      return h("div.analyse", [
+        h("h1", "Analysis Page"),
+        h("button", { on: { click: flip } }, "Flip Board"),
+        renderBoard()
+      ]);
     case "puzzles":
       return h("h1", "Puzzles Page");
     case "openings":
@@ -2591,8 +2669,13 @@ function view(route) {
   ]);
 }
 var app = document.getElementById("app");
-var vnode2 = patch(app, view(current()));
+var currentRoute = current();
+var vnode2 = patch(app, view(currentRoute));
+function redraw() {
+  vnode2 = patch(vnode2, view(currentRoute));
+}
 onChange2((route) => {
-  vnode2 = patch(vnode2, view(route));
+  currentRoute = route;
+  vnode2 = patch(vnode2, view(currentRoute));
 });
 //# sourceMappingURL=main.js.map
