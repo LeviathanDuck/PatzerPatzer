@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/main.ts"],
+  "sourcesContent": ["console.log('Patzer Pro');\n\nconst app = document.getElementById('app');\nif (app) {\n  const h1 = document.createElement('h1');\n  h1.textContent = 'Patzer Pro';\n  app.appendChild(h1);\n}\n"],
+  "mappings": ";AAAA,QAAQ,IAAI,YAAY;AAExB,IAAM,MAAM,SAAS,eAAe,KAAK;AACzC,IAAI,KAAK;AACP,QAAM,KAAK,SAAS,cAAc,IAAI;AACtC,KAAG,cAAc;AACjB,MAAI,YAAY,EAAE;AACpB;",
+  "names": []
+}
