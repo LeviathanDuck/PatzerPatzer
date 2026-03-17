@@ -5342,6 +5342,44 @@ function loadGame(pgn) {
   evalCurrentPosition();
   redraw();
 }
+var _idb;
+function openGameDb() {
+  if (_idb) return Promise.resolve(_idb);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("patzer-pro", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("game-library");
+    req.onsuccess = () => {
+      _idb = req.result;
+      resolve(_idb);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function saveGamesToIdb() {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction("game-library", "readwrite");
+    tx.objectStore("game-library").put(
+      { games: importedGames, selectedId: selectedGameId },
+      "imported-games"
+    );
+  } catch (e) {
+    console.warn("[idb] save failed", e);
+  }
+}
+async function loadGamesFromIdb() {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("game-library", "readonly").objectStore("game-library").get("imported-games");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[idb] load failed", e);
+    return void 0;
+  }
+}
 var WIN_CHANCE_MULTIPLIER = -368208e-8;
 function rawWinChances(cp) {
   return 2 / (1 + Math.exp(WIN_CHANCE_MULTIPLIER * cp)) - 1;
@@ -5669,6 +5707,7 @@ async function importChesscom() {
     } else {
       importedGames = [...importedGames, ...games];
       selectedGameId = games[0].id;
+      void saveGamesToIdb();
       loadGame(games[0].pgn);
     }
   } catch (err) {
@@ -5741,6 +5780,7 @@ async function importLichess() {
     } else {
       importedGames = [...importedGames, ...games];
       selectedGameId = games[0].id;
+      void saveGamesToIdb();
       loadGame(games[0].pgn);
     }
   } catch (err) {
@@ -5794,6 +5834,7 @@ function importPgn() {
     pgnError = null;
     pgnInput = "";
     pgnKey++;
+    void saveGamesToIdb();
     loadGame(game.pgn);
   } catch (_) {
     pgnError = "Invalid PGN \u2014 could not parse.";
@@ -5887,5 +5928,18 @@ function redraw() {
 onChange2((route) => {
   currentRoute = route;
   vnode2 = patch(vnode2, view(currentRoute));
+});
+void loadGamesFromIdb().then((stored) => {
+  if (!stored || stored.games.length === 0) return;
+  importedGames = stored.games;
+  const toLoad = stored.games.find((g) => g.id === stored.selectedId) ?? stored.games[0];
+  selectedGameId = toLoad.id;
+  selectedGamePgn = toLoad.pgn;
+  ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));
+  evalCache.clear();
+  currentEval = {};
+  syncBoard();
+  syncArrow();
+  redraw();
 });
 //# sourceMappingURL=main.js.map

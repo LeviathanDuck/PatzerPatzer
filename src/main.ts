@@ -55,6 +55,56 @@ function loadGame(pgn: string | null): void {
   redraw();
 }
 
+// --- IndexedDB persistence ---
+// Minimal local storage for imported games — one DB, one store, one record.
+// Mirrors the pattern of lichess-org/lila: ui/analyse/src/idbTree.ts but stripped
+// to the minimum needed for persisting the imported games list only.
+
+interface StoredGames {
+  games: ImportedGame[];
+  selectedId: string | null;
+}
+
+let _idb: IDBDatabase | undefined;
+
+function openGameDb(): Promise<IDBDatabase> {
+  if (_idb) return Promise.resolve(_idb);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('patzer-pro', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('game-library');
+    req.onsuccess    = () => { _idb = req.result; resolve(_idb); };
+    req.onerror      = () => reject(req.error);
+  });
+}
+
+async function saveGamesToIdb(): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('game-library', 'readwrite');
+    tx.objectStore('game-library').put(
+      { games: importedGames, selectedId: selectedGameId } satisfies StoredGames,
+      'imported-games',
+    );
+  } catch (e) {
+    console.warn('[idb] save failed', e);
+  }
+}
+
+async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('game-library', 'readonly')
+        .objectStore('game-library').get('imported-games');
+      req.onsuccess = () => resolve(req.result as StoredGames | undefined);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[idb] load failed', e);
+    return undefined;
+  }
+}
+
 // --- Engine ---
 // Mirrors lichess-org/lila: ui/lib/src/ceval/ toggle + state management
 
@@ -478,6 +528,7 @@ async function importChesscom(): Promise<void> {
     } else {
       importedGames = [...importedGames, ...games];
       selectedGameId = games[0]!.id;
+      void saveGamesToIdb();
       loadGame(games[0]!.pgn); // calls redraw()
     }
   } catch (err) {
@@ -559,6 +610,7 @@ async function importLichess(): Promise<void> {
     } else {
       importedGames = [...importedGames, ...games];
       selectedGameId = games[0]!.id;
+      void saveGamesToIdb();
       loadGame(games[0]!.pgn); // calls redraw()
     }
   } catch (err) {
@@ -614,6 +666,7 @@ function importPgn(): void {
     pgnError = null;
     pgnInput = '';
     pgnKey++;        // new key causes Snabbdom to recreate the textarea (clears it)
+    void saveGamesToIdb();
     loadGame(game.pgn); // calls redraw()
   } catch (_) {
     pgnError = 'Invalid PGN — could not parse.';
@@ -716,4 +769,22 @@ function redraw(): void {
 onChange(route => {
   currentRoute = route;
   vnode = patch(vnode, view(currentRoute));
+});
+
+// --- Startup: restore persisted games ---
+// Runs after the initial render so the board already exists when syncBoard is called.
+// Mirrors the deferred-load pattern of lichess-org/lila: ui/analyse/src/idbTree.ts merge()
+void loadGamesFromIdb().then(stored => {
+  if (!stored || stored.games.length === 0) return;
+  importedGames = stored.games;
+  // Restore the previously selected game, or fall back to the first one
+  const toLoad = stored.games.find(g => g.id === stored.selectedId) ?? stored.games[0]!;
+  selectedGameId = toLoad.id;
+  selectedGamePgn = toLoad.pgn;
+  ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));
+  evalCache.clear();
+  currentEval = {};
+  syncBoard();
+  syncArrow();
+  redraw();
 });
