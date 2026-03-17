@@ -1,26 +1,61 @@
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
+import { uciToMove } from '@lichess-org/chessground/util';
 import { init, classModule, attributesModule, eventListenersModule, h, type VNode } from 'snabbdom';
+import { AnalyseCtrl } from './analyse/ctrl';
 import { current, onChange, type Route } from './router';
+import { pathInit } from './tree/ops';
+import { pgnToTree } from './tree/pgn';
 
 console.log('Patzer Pro');
 
 const patch = init([classModule, attributesModule, eventListenersModule]);
 
-// Derive the active section from the first path segment
+// --- Analysis controller (persists for the session) ---
+
+const TEST_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
+const ctrl = new AnalyseCtrl(pgnToTree(TEST_PGN));
+
+// --- Board sync ---
+// Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts showGround / makeCgOpts
+
+function syncBoard(): void {
+  if (!cgInstance) return;
+  const node = ctrl.node;
+  cgInstance.set({
+    fen: node.fen,
+    lastMove: uciToMove(node.uci),
+  });
+}
+
+// --- Navigation ---
+
+function next(): void {
+  const child = ctrl.node.children[0];
+  if (!child) return;
+  ctrl.setPath(ctrl.path + child.id);
+  syncBoard();
+  redraw();
+}
+
+function prev(): void {
+  if (ctrl.path === '') return;
+  ctrl.setPath(pathInit(ctrl.path));
+  syncBoard();
+  redraw();
+}
+
+// --- App nav ---
+
 function activeSection(route: Route): string {
   switch (route.name) {
     case 'analysis':
     case 'analysis-game':
       return 'analysis';
-    case 'puzzles':
-      return 'puzzles';
-    case 'openings':
-      return 'openings';
-    case 'stats':
-      return 'stats';
-    default:
-      return '';
+    case 'puzzles':  return 'puzzles';
+    case 'openings': return 'openings';
+    case 'stats':    return 'stats';
+    default:         return '';
   }
 }
 
@@ -38,7 +73,8 @@ function renderNav(route: Route): VNode {
   ));
 }
 
-// Chessground instance — persists across re-renders, cleaned up on destroy
+// --- Board ---
+
 let cgInstance: CgApi | undefined;
 let orientation: 'white' | 'black' = 'white';
 
@@ -49,7 +85,7 @@ function flip(): void {
   redraw();
 }
 
-// Adapted from lichess-org/lila: ui/puzzle/src/view/chessground.ts
+// Adapted from lichess-org/lila: ui/analyse/src/ground.ts render
 function renderBoard(): VNode {
   return h('div.cg-wrap', {
     hook: {
@@ -58,6 +94,8 @@ function renderBoard(): VNode {
           orientation,
           viewOnly: false,
           drawable: { enabled: true },
+          fen: ctrl.node.fen,
+          lastMove: uciToMove(ctrl.node.uci),
         });
       },
       destroy: () => {
@@ -68,6 +106,8 @@ function renderBoard(): VNode {
   });
 }
 
+// --- Route views ---
+
 function routeContent(route: Route): VNode {
   switch (route.name) {
     case 'analysis-game':
@@ -75,17 +115,17 @@ function routeContent(route: Route): VNode {
     case 'analysis':
       return h('div.analyse', [
         h('h1', 'Analysis Page'),
-        h('button', { on: { click: flip } }, 'Flip Board'),
+        h('div.controls', [
+          h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
+          h('button', { on: { click: flip } }, 'Flip Board'),
+          h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
+        ]),
         renderBoard(),
       ]);
-    case 'puzzles':
-      return h('h1', 'Puzzles Page');
-    case 'openings':
-      return h('h1', 'Openings Page');
-    case 'stats':
-      return h('h1', 'Stats Page');
-    default:
-      return h('h1', 'Home');
+    case 'puzzles':  return h('h1', 'Puzzles Page');
+    case 'openings': return h('h1', 'Openings Page');
+    case 'stats':    return h('h1', 'Stats Page');
+    default:         return h('h1', 'Home');
   }
 }
 
@@ -95,6 +135,8 @@ function view(route: Route): VNode {
     h('main', [routeContent(route)]),
   ]);
 }
+
+// --- Bootstrap ---
 
 const app = document.getElementById('app')!;
 let currentRoute = current();
