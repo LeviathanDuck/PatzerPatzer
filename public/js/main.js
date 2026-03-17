@@ -5348,6 +5348,7 @@ var engineInitialized = false;
 var currentEval = {};
 var evalCache = /* @__PURE__ */ new Map();
 var evalNodeId = "";
+var evalNodePly = 0;
 var evalParentNodeId = "";
 var protocol = new StockfishProtocol();
 function parseEngineLine(line) {
@@ -5387,10 +5388,12 @@ function parseEngineLine(line) {
     const parentEval = evalCache.get(evalParentNodeId);
     if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
       stored.delta = stored.cp - parentEval.cp;
+      const whiteToMove = evalNodePly % 2 === 1;
+      stored.loss = whiteToMove ? -stored.delta : stored.delta;
     }
     evalCache.set(evalNodeId, stored);
     currentEval = stored;
-    console.log("[eval cache]", evalNodeId, stored);
+    console.log("[eval cache]", evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss });
     syncArrow();
     redraw();
   }
@@ -5414,6 +5417,7 @@ function evalCurrentPosition() {
     return;
   }
   evalNodeId = ctrl.node.id;
+  evalNodePly = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? "";
   currentEval = {};
   syncArrow();

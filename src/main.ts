@@ -64,6 +64,8 @@ interface PositionEval {
   best?: string;
   /** cp delta vs previous mainline position (positive = better for white) */
   delta?: number;
+  /** centipawn loss from the mover's perspective (positive = worse for mover) */
+  loss?: number;
 }
 
 let engineEnabled = false;
@@ -72,6 +74,7 @@ let engineInitialized = false;
 let currentEval: PositionEval = {};
 const evalCache = new Map<string, PositionEval>();
 let evalNodeId = '';
+let evalNodePly = 0;
 let evalParentNodeId = '';
 const protocol = new StockfishProtocol();
 
@@ -117,10 +120,16 @@ function parseEngineLine(line: string): void {
     const parentEval = evalCache.get(evalParentNodeId);
     if (parentEval?.cp !== undefined && stored.cp !== undefined) {
       stored.delta = stored.cp - parentEval.cp;
+      // Normalized loss from the mover's perspective.
+      // Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts (shift)
+      // White moved (odd ply): loss = drop in White eval = parentCp - currentCp
+      // Black moved (even ply): loss = rise in White eval = currentCp - parentCp
+      const whiteToMove = evalNodePly % 2 === 1;
+      stored.loss = whiteToMove ? -stored.delta : stored.delta;
     }
     evalCache.set(evalNodeId, stored);
     currentEval = stored;
-    console.log('[eval cache]', evalNodeId, stored);
+    console.log('[eval cache]', evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss });
     syncArrow();
     redraw();
   }
@@ -146,6 +155,7 @@ function evalCurrentPosition(): void {
     return;
   }
   evalNodeId = ctrl.node.id;
+  evalNodePly = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
   currentEval = {}; // reset for new position
   syncArrow();      // clear stale arrow immediately
