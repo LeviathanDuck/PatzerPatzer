@@ -587,6 +587,8 @@ var routes = [
   { pattern: ["analysis", ":id"], name: "analysis-game" },
   { pattern: ["analysis"], name: "analysis" },
   { pattern: ["puzzles"], name: "puzzles" },
+  { pattern: ["openings"], name: "openings" },
+  { pattern: ["stats"], name: "stats" },
   { pattern: [], name: "home" }
 ];
 function parse(hash) {
@@ -619,6 +621,33 @@ function onChange(fn) {
 // src/main.ts
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule]);
+function activeSection(route) {
+  switch (route.name) {
+    case "analysis":
+    case "analysis-game":
+      return "analysis";
+    case "puzzles":
+      return "puzzles";
+    case "openings":
+      return "openings";
+    case "stats":
+      return "stats";
+    default:
+      return "";
+  }
+}
+var navLinks = [
+  { label: "Analysis", href: "#/analysis", section: "analysis" },
+  { label: "Puzzles", href: "#/puzzles", section: "puzzles" },
+  { label: "Openings", href: "#/openings", section: "openings" },
+  { label: "Stats", href: "#/stats", section: "stats" }
+];
+function renderNav(route) {
+  const active = activeSection(route);
+  return h("nav", navLinks.map(
+    ({ label, href, section }) => h("a", { attrs: { href }, class: { active: active === section } }, label)
+  ));
+}
 function routeContent(route) {
   switch (route.name) {
     case "analysis-game":
@@ -627,13 +656,17 @@ function routeContent(route) {
       return h("h1", "Analysis Page");
     case "puzzles":
       return h("h1", "Puzzles Page");
+    case "openings":
+      return h("h1", "Openings Page");
+    case "stats":
+      return h("h1", "Stats Page");
     default:
       return h("h1", "Home");
   }
 }
 function view(route) {
   return h("div#shell", [
-    h("header", h("span", "Patzer Pro")),
+    h("header", [h("span", "Patzer Pro"), renderNav(route)]),
     h("main", [routeContent(route)])
   ]);
 }
