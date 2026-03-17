@@ -159,6 +159,16 @@ function view(route: Route): VNode {
   ]);
 }
 
+// --- Keyboard navigation ---
+// Adapted from lichess-org/lila: ui/analyse/src/keyboard.ts
+
+document.addEventListener('keydown', (e: KeyboardEvent) => {
+  const tag = (e.target as HTMLElement).tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.key === 'ArrowRight') next();
+  else if (e.key === 'ArrowLeft') prev();
+});
+
 // --- Bootstrap ---
 
 const app = document.getElementById('app')!;
