@@ -1,11 +1,11 @@
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
-import { init, classModule, attributesModule, h, type VNode } from 'snabbdom';
+import { init, classModule, attributesModule, eventListenersModule, h, type VNode } from 'snabbdom';
 import { current, onChange, type Route } from './router';
 
 console.log('Patzer Pro');
 
-const patch = init([classModule, attributesModule]);
+const patch = init([classModule, attributesModule, eventListenersModule]);
 
 // Derive the active section from the first path segment
 function activeSection(route: Route): string {
@@ -40,6 +40,14 @@ function renderNav(route: Route): VNode {
 
 // Chessground instance — persists across re-renders, cleaned up on destroy
 let cgInstance: CgApi | undefined;
+let orientation: 'white' | 'black' = 'white';
+
+// Adapted from lichess-org/lila: ui/analyse/src/ctrl.ts (flip)
+function flip(): void {
+  orientation = orientation === 'white' ? 'black' : 'white';
+  cgInstance?.set({ orientation });
+  redraw();
+}
 
 // Adapted from lichess-org/lila: ui/puzzle/src/view/chessground.ts
 function renderBoard(): VNode {
@@ -47,8 +55,9 @@ function renderBoard(): VNode {
     hook: {
       insert: vnode => {
         cgInstance = makeChessground(vnode.elm as HTMLElement, {
-          orientation: 'white',
-          viewOnly: true,
+          orientation,
+          viewOnly: false,
+          drawable: { enabled: true },
         });
       },
       destroy: () => {
@@ -64,7 +73,11 @@ function routeContent(route: Route): VNode {
     case 'analysis-game':
       return h('h1', `Analysis Game: ${route.params['id']}`);
     case 'analysis':
-      return h('div.analyse', [h('h1', 'Analysis Page'), renderBoard()]);
+      return h('div.analyse', [
+        h('h1', 'Analysis Page'),
+        h('button', { on: { click: flip } }, 'Flip Board'),
+        renderBoard(),
+      ]);
     case 'puzzles':
       return h('h1', 'Puzzles Page');
     case 'openings':
@@ -84,8 +97,14 @@ function view(route: Route): VNode {
 }
 
 const app = document.getElementById('app')!;
-let vnode = patch(app, view(current()));
+let currentRoute = current();
+let vnode = patch(app, view(currentRoute));
+
+function redraw(): void {
+  vnode = patch(vnode, view(currentRoute));
+}
 
 onChange(route => {
-  vnode = patch(vnode, view(route));
+  currentRoute = route;
+  vnode = patch(vnode, view(currentRoute));
 });
