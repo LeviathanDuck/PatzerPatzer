@@ -8,6 +8,8 @@ const routes: { pattern: string[]; name: string }[] = [
   { pattern: ['analysis', ':id'], name: 'analysis-game' },
   { pattern: ['analysis'], name: 'analysis' },
   { pattern: ['puzzles'], name: 'puzzles' },
+  { pattern: ['openings'], name: 'openings' },
+  { pattern: ['stats'], name: 'stats' },
   { pattern: [], name: 'home' },
 ];
 
