@@ -5359,11 +5359,13 @@ function parseEngineLine(line) {
     if (best) currentEval.best = best;
     if (score !== void 0 || best) {
       console.log("[eval]", { ...currentEval });
+      syncArrow();
       redraw();
     }
   } else if (parts[0] === "bestmove" && parts[1] && parts[1] !== "(none)") {
     currentEval.best = parts[1];
     console.log("[eval] bestmove", { ...currentEval });
+    syncArrow();
     redraw();
   }
 }
@@ -5379,9 +5381,23 @@ protocol.onMessage((line) => {
 function evalCurrentPosition() {
   if (!engineEnabled || !engineReady) return;
   currentEval = {};
+  syncArrow();
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(10);
+}
+function syncArrow() {
+  if (!cgInstance) return;
+  const shapes = [];
+  if (engineEnabled && currentEval.best) {
+    const uci = currentEval.best;
+    shapes.push({
+      orig: uci.slice(0, 2),
+      dest: uci.slice(2, 4),
+      brush: "paleBlue"
+    });
+  }
+  cgInstance.set({ drawable: { autoShapes: shapes } });
 }
 function toggleEngine() {
   engineEnabled = !engineEnabled;
@@ -5394,6 +5410,8 @@ function toggleEngine() {
     }
   } else {
     protocol.stop();
+    currentEval = {};
+    syncArrow();
   }
   redraw();
 }

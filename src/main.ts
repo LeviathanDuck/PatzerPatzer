@@ -1,5 +1,6 @@
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
+import type { DrawShape } from '@lichess-org/chessground/draw';
 import { uciToMove } from '@lichess-org/chessground/util';
 import { init, classModule, attributesModule, eventListenersModule, h, type VNode } from 'snabbdom';
 import { AnalyseCtrl } from './analyse/ctrl';
@@ -65,11 +66,13 @@ function parseEngineLine(line: string): void {
     if (best) currentEval.best = best;
     if (score !== undefined || best) {
       console.log('[eval]', { ...currentEval });
+      syncArrow();
       redraw();
     }
   } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
     currentEval.best = parts[1];
     console.log('[eval] bestmove', { ...currentEval });
+    syncArrow();
     redraw();
   }
 }
@@ -87,9 +90,26 @@ protocol.onMessage(line => {
 function evalCurrentPosition(): void {
   if (!engineEnabled || !engineReady) return;
   currentEval = {}; // reset for new position
+  syncArrow();      // clear stale arrow immediately
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(10);
+}
+
+// Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts makeShapesFromUci
+// autoShapes is the programmatic layer — does not affect user-drawn shapes.
+function syncArrow(): void {
+  if (!cgInstance) return;
+  const shapes: DrawShape[] = [];
+  if (engineEnabled && currentEval.best) {
+    const uci = currentEval.best;
+    shapes.push({
+      orig: uci.slice(0, 2) as Key,
+      dest: uci.slice(2, 4) as Key,
+      brush: 'paleBlue',
+    });
+  }
+  cgInstance.set({ drawable: { autoShapes: shapes } });
 }
 
 // Adapted from lichess-org/lila: ui/lib/src/ceval/ctrl.ts toggle
@@ -106,6 +126,8 @@ function toggleEngine(): void {
     }
   } else {
     protocol.stop();
+    currentEval = {};
+    syncArrow(); // clear arrow when engine turns off
   }
   redraw();
 }
