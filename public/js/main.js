@@ -5357,10 +5357,14 @@ function parseEngineLine(line) {
       }
     }
     if (best) currentEval.best = best;
-    if (score !== void 0 || best) console.log("[eval]", { ...currentEval });
+    if (score !== void 0 || best) {
+      console.log("[eval]", { ...currentEval });
+      redraw();
+    }
   } else if (parts[0] === "bestmove" && parts[1] && parts[1] !== "(none)") {
     currentEval.best = parts[1];
     console.log("[eval] bestmove", { ...currentEval });
+    redraw();
   }
 }
 protocol.onMessage((line) => {
@@ -5495,6 +5499,12 @@ function renderMoveList() {
   }
   return h("div.move-list", moves);
 }
+function renderEval() {
+  if (!engineEnabled) return h("div.eval-display");
+  const score = currentEval.mate !== void 0 ? `Mate in ${Math.abs(currentEval.mate)}` : currentEval.cp !== void 0 ? `Eval: ${currentEval.cp >= 0 ? "+" : ""}${(currentEval.cp / 100).toFixed(2)}` : "Evaluating\u2026";
+  const best = currentEval.best ? ` | Best: ${currentEval.best}` : "";
+  return h("div.eval-display", score + best);
+}
 function routeContent(route) {
   switch (route.name) {
     case "analysis-game":
@@ -5502,6 +5512,7 @@ function routeContent(route) {
     case "analysis":
       return h("div.analyse", [
         h("h1", "Analysis Page"),
+        renderEval(),
         h("div.controls", [
           h("button", { on: { click: prev }, attrs: { disabled: ctrl.path === "" } }, "\u2190 Prev"),
           h("button", { on: { click: flip } }, "Flip Board"),
