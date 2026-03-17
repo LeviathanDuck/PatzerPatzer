@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../src/ceval/worker.ts"],
+  "sourcesContent": ["// Stockfish Web Worker entry point\n// Adapted from lichess-org/lila: ui/lib/src/ceval/engines/simpleEngine.ts\n//\n// This worker is loaded by the main thread via:\n//   new Worker('/js/stockfish-worker.js')\n//\n// The worker bridges the main thread and the Stockfish engine.\n// UCI protocol integration is implemented in task 7.2.\n// Stockfish engine loading is implemented in task 7.2.\n\nself.onmessage = (_e: MessageEvent) => {\n  // UCI message forwarding is implemented in task 7.2\n};\n\n// Signal to the main thread that the worker script loaded successfully\nself.postMessage({ type: 'ready' });\n"],
+  "mappings": ";;AAUA,OAAK,YAAY,CAAC,OAAqB;AAAA,EAEvC;AAGA,OAAK,YAAY,EAAE,MAAM,QAAQ,CAAC;",
+  "names": []
+}

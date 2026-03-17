@@ -17,6 +17,9 @@ importers:
       snabbdom:
         specifier: ^3.6.2
         version: 3.6.3
+      stockfish:
+        specifier: ^16.0.0
+        version: 16.0.0
     devDependencies:
       esbuild:
         specifier: ^0.27.3
@@ -332,6 +335,10 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
+  stockfish@16.0.0:
+    resolution: {integrity: sha512-uu4AqsE2x0tD+SsYzZy4UtqeH4U9zDi1V8loDFDbMwCtvumGXF9j81Pg1ZmIkUgZhwQqPxQAv8IN5oy6hZa7Bw==}
+    hasBin: true
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -551,5 +558,7 @@ snapshots:
   snabbdom@3.6.3: {}
 
   source-map-js@1.2.1: {}
+
+  stockfish@16.0.0: {}
 
   typescript@5.9.3: {}
