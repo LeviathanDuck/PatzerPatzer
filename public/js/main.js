@@ -5324,8 +5324,12 @@ function pgnToTree(pgn) {
 // src/main.ts
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
-var TEST_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
-var ctrl = new AnalyseCtrl(pgnToTree(TEST_PGN));
+var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
+var selectedGamePgn = null;
+function getActivePgn() {
+  return selectedGamePgn ?? SAMPLE_PGN;
+}
+var ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
 var engineEnabled = false;
 var engineReady = false;
 var engineInitialized = false;
