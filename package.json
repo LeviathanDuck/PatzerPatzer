@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@lichess-org/chessground": "^10.1.0",
+    "chessops": "^0.15.0",
     "snabbdom": "^3.6.2"
   },
   "devDependencies": {
