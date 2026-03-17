@@ -13,10 +13,35 @@ console.log('Patzer Pro');
 
 const patch = init([classModule, attributesModule, eventListenersModule]);
 
+// --- Game library state ---
+// Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts (game data passed in at boot)
+// selectedGamePgn is set by the game import flow (built in a later task).
+// loadGame() is the integration point — call it when a game is selected.
+
+const SAMPLE_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
+let selectedGamePgn: string | null = null;
+
+function getActivePgn(): string {
+  return selectedGamePgn ?? SAMPLE_PGN;
+}
+
 // --- Analysis controller (persists for the session) ---
 
-const TEST_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
-const ctrl = new AnalyseCtrl(pgnToTree(TEST_PGN));
+let ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+
+/**
+ * Load a new game into the analysis board.
+ * Called by the game import UI (built in a later task).
+ * Falls back to SAMPLE_PGN when pgn is null.
+ */
+function loadGame(pgn: string | null): void {
+  selectedGamePgn = pgn;
+  ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+  currentEval = {};
+  syncBoard();
+  syncArrow();
+  redraw();
+}
 
 // --- Engine ---
 // Mirrors lichess-org/lila: ui/lib/src/ceval/ toggle + state management
