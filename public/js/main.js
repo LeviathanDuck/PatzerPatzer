@@ -619,17 +619,23 @@ function onChange(fn) {
 // src/main.ts
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule]);
-function view(route) {
+function routeContent(route) {
   switch (route.name) {
     case "analysis-game":
-      return h("div", [h("h1", `Analysis Game: ${route.params["id"]}`)]);
+      return h("h1", `Analysis Game: ${route.params["id"]}`);
     case "analysis":
-      return h("div", [h("h1", "Analysis Page")]);
+      return h("h1", "Analysis Page");
     case "puzzles":
-      return h("div", [h("h1", "Puzzles Page")]);
+      return h("h1", "Puzzles Page");
     default:
-      return h("div", [h("h1", "Home")]);
+      return h("h1", "Home");
   }
+}
+function view(route) {
+  return h("div#shell", [
+    h("header", h("span", "Patzer Pro")),
+    h("main", [routeContent(route)])
+  ]);
 }
 var app = document.getElementById("app");
 var vnode2 = patch(app, view(current()));
