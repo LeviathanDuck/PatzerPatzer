@@ -408,6 +408,102 @@ function renderEval(): VNode {
   return h('div.eval-display', score + best);
 }
 
+// --- Chess.com username import ---
+// Adapted from docs/reference/api/chesscom.js
+// Fetches the most recent month of rated standard games for a given username.
+
+let chesscomUsername = '';
+let chesscomLoading = false;
+let chesscomError: string | null = null;
+
+const CHESSCOM_BASE = 'https://api.chess.com/pub/player';
+
+function normalizeChesscomResult(whiteResult: string, blackResult: string): string {
+  if (whiteResult === 'win') return '1-0';
+  if (blackResult === 'win') return '0-1';
+  return '1/2-1/2';
+}
+
+async function fetchChesscomGames(username: string): Promise<ImportedGame[]> {
+  // 1. Fetch archive list (one URL per month the player has games)
+  const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
+  if (!archivesRes.ok) {
+    throw new Error(archivesRes.status === 404 ? 'Chess.com: user not found' : `Chess.com API error ${archivesRes.status}`);
+  }
+  const archivesData = await archivesRes.json() as { archives?: string[] };
+  const archives = archivesData.archives ?? [];
+  if (archives.length === 0) return [];
+
+  // 2. Fetch only the most recent archive month
+  const latestUrl = archives[archives.length - 1]!;
+  const gamesRes = await fetch(latestUrl);
+  if (!gamesRes.ok) throw new Error(`Chess.com API error ${gamesRes.status}`);
+  const gamesData = await gamesRes.json() as { games?: any[] };
+  const rawGames: any[] = gamesData.games ?? [];
+
+  // 3. Normalize: rated, standard, no daily — newest first
+  const result: ImportedGame[] = [];
+  for (let i = rawGames.length - 1; i >= 0; i--) {
+    const raw = rawGames[i];
+    if (!raw.rated || raw.rules !== 'chess' || raw.time_class === 'daily') continue;
+    const pgn: string = raw.pgn ?? '';
+    if (!pgn) continue;
+    try {
+      pgnToTree(pgn); // validate — skip games that fail to parse
+    } catch {
+      continue;
+    }
+    result.push({
+      id: `game-${++gameIdCounter}`,
+      pgn,
+      white:  raw.white?.username ?? undefined,
+      black:  raw.black?.username ?? undefined,
+      result: normalizeChesscomResult(raw.white?.result ?? '', raw.black?.result ?? ''),
+      date:   parsePgnHeader(pgn, 'Date')?.replace(/\./g, '-'),
+    });
+  }
+  return result;
+}
+
+async function importChesscom(): Promise<void> {
+  const name = chesscomUsername.trim();
+  if (!name || chesscomLoading) return;
+  chesscomLoading = true;
+  chesscomError = null;
+  redraw();
+  try {
+    const games = await fetchChesscomGames(name);
+    if (games.length === 0) {
+      chesscomError = 'No recent rated games found.';
+    } else {
+      importedGames = [...importedGames, ...games];
+      selectedGameId = games[0]!.id;
+      loadGame(games[0]!.pgn); // calls redraw()
+    }
+  } catch (err) {
+    chesscomError = err instanceof Error ? err.message : 'Import failed.';
+  } finally {
+    chesscomLoading = false;
+    redraw();
+  }
+}
+
+function renderChesscomImport(): VNode {
+  return h('div.pgn-import', [
+    h('div.pgn-import__row', [
+      h('input', {
+        attrs: { placeholder: 'Chess.com username', type: 'text', disabled: chesscomLoading },
+        on: { input: (e: Event) => { chesscomUsername = (e.target as HTMLInputElement).value; } },
+      }),
+      h('button', {
+        attrs: { disabled: chesscomLoading || !chesscomUsername.trim() },
+        on: { click: () => { void importChesscom(); } },
+      }, chesscomLoading ? 'Importing…' : 'Import Chess.com'),
+    ]),
+    chesscomError ? h('span.pgn-import__error', chesscomError) : h('span'),
+  ]);
+}
+
 // --- PGN paste import ---
 
 let pgnInput = '';
@@ -497,6 +593,7 @@ function routeContent(route: Route): VNode {
         ]),
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderMoveList(),
+        renderChesscomImport(),
         renderPgnImport(),
         renderGameList(),
       ]);
