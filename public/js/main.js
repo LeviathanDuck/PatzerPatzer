@@ -5553,6 +5553,52 @@ function renderEval() {
   const best = currentEval.best ? ` | Best: ${currentEval.best}` : "";
   return h("div.eval-display", score + best);
 }
+var pgnInput = "";
+var pgnError = null;
+var pgnKey = 0;
+var gameIdCounter = 0;
+function parsePgnHeader(pgn, tag) {
+  return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
+}
+function importPgn() {
+  const raw = pgnInput.trim();
+  if (!raw) return;
+  try {
+    pgnToTree(raw);
+    const game = {
+      id: `game-${++gameIdCounter}`,
+      pgn: raw,
+      white: parsePgnHeader(raw, "White"),
+      black: parsePgnHeader(raw, "Black"),
+      result: parsePgnHeader(raw, "Result"),
+      date: parsePgnHeader(raw, "Date")?.replace(/\./g, "-")
+    };
+    importedGames = [...importedGames, game];
+    selectedGameId = game.id;
+    pgnError = null;
+    pgnInput = "";
+    pgnKey++;
+    loadGame(game.pgn);
+  } catch (_) {
+    pgnError = "Invalid PGN \u2014 could not parse.";
+    redraw();
+  }
+}
+function renderPgnImport() {
+  return h("div.pgn-import", [
+    h("textarea.pgn-import__input", {
+      key: pgnKey,
+      attrs: { placeholder: "Paste PGN here\u2026", rows: 4 },
+      on: { input: (e) => {
+        pgnInput = e.target.value;
+      } }
+    }),
+    h("div.pgn-import__row", [
+      h("button", { on: { click: importPgn } }, "Import PGN"),
+      pgnError ? h("span.pgn-import__error", pgnError) : h("span")
+    ])
+  ]);
+}
 function renderGameList() {
   if (importedGames.length === 0) return h("div");
   return h("div.game-list", [
@@ -5589,6 +5635,7 @@ function routeContent(route) {
         ]),
         h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
         renderMoveList(),
+        renderPgnImport(),
         renderGameList()
       ]);
     case "puzzles":
