@@ -5329,17 +5329,52 @@ var ctrl = new AnalyseCtrl(pgnToTree(TEST_PGN));
 var engineEnabled = false;
 var engineReady = false;
 var engineInitialized = false;
+var currentEval = {};
 var protocol = new StockfishProtocol();
+function parseEngineLine(line) {
+  const parts = line.trim().split(/\s+/);
+  if (parts[0] === "info") {
+    let isMate = false;
+    let score;
+    let best;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i] === "score") {
+        isMate = parts[++i] === "mate";
+        score = parseInt(parts[++i]);
+        if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
+      } else if (parts[i] === "pv") {
+        best = parts[i + 1];
+        break;
+      }
+    }
+    if (score !== void 0) {
+      if (isMate) {
+        currentEval.mate = score;
+        currentEval.cp = void 0;
+      } else {
+        currentEval.cp = score;
+        currentEval.mate = void 0;
+      }
+    }
+    if (best) currentEval.best = best;
+    if (score !== void 0 || best) console.log("[eval]", { ...currentEval });
+  } else if (parts[0] === "bestmove" && parts[1] && parts[1] !== "(none)") {
+    currentEval.best = parts[1];
+    console.log("[eval] bestmove", { ...currentEval });
+  }
+}
 protocol.onMessage((line) => {
-  console.log("[SF]", line);
   if (line.trim() === "readyok") {
     engineReady = true;
     evalCurrentPosition();
     redraw();
+  } else {
+    parseEngineLine(line);
   }
 });
 function evalCurrentPosition() {
   if (!engineEnabled || !engineReady) return;
+  currentEval = {};
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(10);

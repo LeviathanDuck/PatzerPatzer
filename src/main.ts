@@ -20,22 +20,69 @@ const ctrl = new AnalyseCtrl(pgnToTree(TEST_PGN));
 // --- Engine ---
 // Mirrors lichess-org/lila: ui/lib/src/ceval/ toggle + state management
 
+interface PositionEval {
+  cp?: number;
+  mate?: number;
+  best?: string;
+}
+
 let engineEnabled = false;
 let engineReady = false;
 let engineInitialized = false;
+let currentEval: PositionEval = {};
 const protocol = new StockfishProtocol();
 
+/**
+ * Parse a single UCI output line into currentEval.
+ * Adapted from lichess-org/lila: ui/lib/src/ceval/protocol.ts received
+ */
+function parseEngineLine(line: string): void {
+  const parts = line.trim().split(/\s+/);
+  if (parts[0] === 'info') {
+    let isMate = false;
+    let score: number | undefined;
+    let best: string | undefined;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i] === 'score') {
+        isMate = parts[++i] === 'mate';
+        score = parseInt(parts[++i]);
+        // skip lowerbound / upperbound tokens
+        if (parts[i + 1] === 'lowerbound' || parts[i + 1] === 'upperbound') i++;
+      } else if (parts[i] === 'pv') {
+        best = parts[i + 1]; // first move in principal variation
+        break;
+      }
+    }
+    if (score !== undefined) {
+      if (isMate) {
+        currentEval.mate = score;
+        currentEval.cp = undefined;
+      } else {
+        currentEval.cp = score;
+        currentEval.mate = undefined;
+      }
+    }
+    if (best) currentEval.best = best;
+    if (score !== undefined || best) console.log('[eval]', { ...currentEval });
+  } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
+    currentEval.best = parts[1];
+    console.log('[eval] bestmove', { ...currentEval });
+  }
+}
+
 protocol.onMessage(line => {
-  console.log('[SF]', line);
   if (line.trim() === 'readyok') {
     engineReady = true;
     evalCurrentPosition();
     redraw(); // update button label: Loading → On
+  } else {
+    parseEngineLine(line);
   }
 });
 
 function evalCurrentPosition(): void {
   if (!engineEnabled || !engineReady) return;
+  currentEval = {}; // reset for new position
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(10);
