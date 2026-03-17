@@ -18,6 +18,8 @@ const ctrl = new AnalyseCtrl(pgnToTree(TEST_PGN));
 
 // --- Board sync ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts showGround / makeCgOpts
+// Board state is updated directly via cgInstance.set() — never via Snabbdom re-render.
+// The cg-wrap element is keyed so Snabbdom always reuses it rather than recreating it.
 
 function syncBoard(): void {
   if (!cgInstance) return;
@@ -25,6 +27,7 @@ function syncBoard(): void {
   cgInstance.set({
     fen: node.fen,
     lastMove: uciToMove(node.uci),
+    turnColor: node.ply % 2 === 0 ? 'white' : 'black',
   });
 }
 
@@ -88,6 +91,7 @@ function flip(): void {
 // Adapted from lichess-org/lila: ui/analyse/src/ground.ts render
 function renderBoard(): VNode {
   return h('div.cg-wrap', {
+    key: 'board',
     hook: {
       insert: vnode => {
         cgInstance = makeChessground(vnode.elm as HTMLElement, {
@@ -96,6 +100,7 @@ function renderBoard(): VNode {
           drawable: { enabled: true },
           fen: ctrl.node.fen,
           lastMove: uciToMove(ctrl.node.uci),
+          turnColor: ctrl.node.ply % 2 === 0 ? 'white' : 'black',
         });
       },
       destroy: () => {
