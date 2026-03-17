@@ -5697,6 +5697,78 @@ function renderChesscomImport() {
     chesscomError ? h("span.pgn-import__error", chesscomError) : h("span")
   ]);
 }
+var lichessUsername = "";
+var lichessLoading = false;
+var lichessError = null;
+async function fetchLichessGames(username) {
+  const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?max=30&rated=true`;
+  const res = await fetch(url, { headers: { "Accept": "application/x-chess-pgn" } });
+  if (!res.ok) {
+    throw new Error(res.status === 404 ? "Lichess: user not found" : `Lichess API error ${res.status}`);
+  }
+  const text = await res.text();
+  if (!text.trim()) return [];
+  const gameTexts = text.trim().split(/\n\n(?=\[Event )/).filter((s) => s.trim());
+  const result = [];
+  for (const pgn of gameTexts) {
+    try {
+      pgnToTree(pgn);
+    } catch {
+      continue;
+    }
+    const date = (parsePgnHeader(pgn, "UTCDate") ?? parsePgnHeader(pgn, "Date"))?.replace(/\./g, "-");
+    result.push({
+      id: `game-${++gameIdCounter}`,
+      pgn,
+      white: parsePgnHeader(pgn, "White"),
+      black: parsePgnHeader(pgn, "Black"),
+      result: parsePgnHeader(pgn, "Result"),
+      date
+    });
+  }
+  return result;
+}
+async function importLichess() {
+  const name = lichessUsername.trim();
+  if (!name || lichessLoading) return;
+  lichessLoading = true;
+  lichessError = null;
+  redraw();
+  try {
+    const games = await fetchLichessGames(name);
+    if (games.length === 0) {
+      lichessError = "No recent rated games found.";
+    } else {
+      importedGames = [...importedGames, ...games];
+      selectedGameId = games[0].id;
+      loadGame(games[0].pgn);
+    }
+  } catch (err) {
+    lichessError = err instanceof Error ? err.message : "Import failed.";
+  } finally {
+    lichessLoading = false;
+    redraw();
+  }
+}
+function renderLichessImport() {
+  return h("div.pgn-import", [
+    h("div.pgn-import__row", [
+      h("input", {
+        attrs: { placeholder: "Lichess username", type: "text", disabled: lichessLoading },
+        on: { input: (e) => {
+          lichessUsername = e.target.value;
+        } }
+      }),
+      h("button", {
+        attrs: { disabled: lichessLoading || !lichessUsername.trim() },
+        on: { click: () => {
+          void importLichess();
+        } }
+      }, lichessLoading ? "Importing\u2026" : "Import Lichess")
+    ]),
+    lichessError ? h("span.pgn-import__error", lichessError) : h("span")
+  ]);
+}
 var pgnInput = "";
 var pgnError = null;
 var pgnKey = 0;
@@ -5780,6 +5852,7 @@ function routeContent(route) {
         h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
         renderMoveList(),
         renderChesscomImport(),
+        renderLichessImport(),
         renderPgnImport(),
         renderGameList()
       ]);
