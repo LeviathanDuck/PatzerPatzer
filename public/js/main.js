@@ -5262,7 +5262,8 @@ function syncBoard() {
   const node = ctrl.node;
   cgInstance.set({
     fen: node.fen,
-    lastMove: uciToMove(node.uci)
+    lastMove: uciToMove(node.uci),
+    turnColor: node.ply % 2 === 0 ? "white" : "black"
   });
 }
 function next() {
@@ -5314,6 +5315,7 @@ function flip() {
 }
 function renderBoard() {
   return h("div.cg-wrap", {
+    key: "board",
     hook: {
       insert: (vnode3) => {
         cgInstance = Chessground(vnode3.elm, {
@@ -5321,7 +5323,8 @@ function renderBoard() {
           viewOnly: false,
           drawable: { enabled: true },
           fen: ctrl.node.fen,
-          lastMove: uciToMove(ctrl.node.uci)
+          lastMove: uciToMove(ctrl.node.uci),
+          turnColor: ctrl.node.ply % 2 === 0 ? "white" : "black"
         });
       },
       destroy: () => {
