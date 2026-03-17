@@ -106,6 +106,28 @@ function renderBoard(): VNode {
   });
 }
 
+// --- Move list ---
+// Adapted from lichess-org/lila: ui/analyse/src/treeView/inlineView.ts
+
+function renderMoveList(): VNode {
+  const moves: VNode[] = [];
+  let path = '';
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node = ctrl.mainline[i]!;
+    path += node.id;
+    const nodePath = path; // capture for closure
+    const isWhite = node.ply % 2 === 1;
+    if (isWhite) {
+      moves.push(h('span.move-num', `${Math.ceil(node.ply / 2)}.`));
+    }
+    moves.push(h('span.move', {
+      class: { active: nodePath === ctrl.path },
+      on: { click: () => { ctrl.setPath(nodePath); syncBoard(); redraw(); } },
+    }, node.san ?? ''));
+  }
+  return h('div.move-list', moves);
+}
+
 // --- Route views ---
 
 function routeContent(route: Route): VNode {
@@ -121,6 +143,7 @@ function routeContent(route: Route): VNode {
           h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
         ]),
         renderBoard(),
+        renderMoveList(),
       ]);
     case 'puzzles':  return h('h1', 'Puzzles Page');
     case 'openings': return h('h1', 'Openings Page');
