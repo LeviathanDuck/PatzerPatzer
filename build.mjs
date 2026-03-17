@@ -27,18 +27,20 @@ await esbuild.build({
 });
 
 // Copy Stockfish engine files to public/stockfish/
-// stockfish npm package provides browser-compatible JS builds.
+// stockfish@16 provides single-threaded NNUE build under src/stockfish-nnue-16-single.*
 fs.mkdirSync('public/stockfish', { recursive: true });
-const sfCandidates = [
-  'node_modules/stockfish/stockfish.js',
-  'node_modules/stockfish/src/stockfish.js',
+const sfAssets = [
+  ['node_modules/stockfish/src/stockfish-nnue-16-single.js',   'public/stockfish/stockfish-nnue-16-single.js'],
+  ['node_modules/stockfish/src/stockfish-nnue-16-single.wasm', 'public/stockfish/stockfish-nnue-16-single.wasm'],
+  ['node_modules/stockfish/src/nn-5af11540bbfe.nnue',          'public/stockfish/nn-5af11540bbfe.nnue'],
 ];
-const sfSrc = sfCandidates.find(f => fs.existsSync(f));
-if (sfSrc) {
-  fs.copyFileSync(sfSrc, 'public/stockfish/stockfish.js');
-  console.log('  public/stockfish/stockfish.js');
-} else {
-  console.warn('  WARNING: stockfish.js not found — run pnpm install');
+for (const [src, dst] of sfAssets) {
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, dst);
+    console.log(' ', dst);
+  } else {
+    console.warn('  WARNING: missing', src);
+  }
 }
 
 // Compile SCSS + prepend Chessground CSS

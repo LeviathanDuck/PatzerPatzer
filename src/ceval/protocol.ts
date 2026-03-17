@@ -21,7 +21,9 @@ export class StockfishProtocol {
   init(workerUrl: string): void {
     this.worker = new Worker(workerUrl);
     this.worker.addEventListener('message', (e: MessageEvent<string>) => this.received(e.data));
-    this.worker.addEventListener('error', (e: ErrorEvent) => console.error('[ceval] worker error', e));
+    this.worker.addEventListener('error', (e: ErrorEvent) => {
+      console.error('[ceval] worker error — url:', workerUrl, '| message:', e.message || '(none)', '| file:', e.filename || '(none)', '| line:', e.lineno);
+    });
     this.send('uci');
   }
 
@@ -75,7 +77,6 @@ export class StockfishProtocol {
       // Analysis mode: disable contempt, enable Chess960 notation.
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts connected/received
       this.send('setoption name UCI_AnalyseMode value true');
-      this.send('setoption name Analysis Contempt value Off');
       this.send('ucinewgame');
       this.send('isready');
     }
