@@ -229,6 +229,26 @@ function renderMoveList(): VNode {
   return h('div.move-list', moves);
 }
 
+// --- Eval bar ---
+// Adapted from lichess-org/lila: ui/analyse/src/view/ (evaluation bar)
+
+function evalPct(): number {
+  if (!engineEnabled) return 50;
+  if (currentEval.mate !== undefined) return currentEval.mate > 0 ? 100 : 0;
+  if (currentEval.cp !== undefined) {
+    const pct = 50 + currentEval.cp / 20;
+    return Math.max(0, Math.min(100, pct));
+  }
+  return 50;
+}
+
+function renderEvalBar(): VNode {
+  const pct = evalPct();
+  return h('div.eval-bar', [
+    h('div.eval-bar__fill', { attrs: { style: `height: ${pct}%` } }),
+  ]);
+}
+
 // --- Eval display ---
 // Adapted from lichess-org/lila: ui/analyse/src/view/ (evaluation rendering)
 
@@ -261,7 +281,7 @@ function routeContent(route: Route): VNode {
             engineEnabled ? (engineReady ? 'Engine: On' : 'Engine: Loading…') : 'Engine: Off'
           ),
         ]),
-        h('div.analyse__board', [renderBoard()]),
+        h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderMoveList(),
       ]);
     case 'puzzles':  return h('h1', 'Puzzles Page');

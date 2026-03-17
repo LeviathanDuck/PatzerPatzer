@@ -356,9 +356,30 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-.analyse__board {
+.analyse__board-wrap {
+  display: flex;
+  flex-direction: row;
   width: 100%;
   max-width: 600px;
+  gap: 6px;
+}
+
+.eval-bar {
+  width: 20px;
+  flex-shrink: 0;
+  background: #333;
+  display: flex;
+  flex-direction: column-reverse;
+  align-self: stretch;
+}
+.eval-bar__fill {
+  background: #e8e8e8;
+  width: 100%;
+  transition: height 0.1s;
+}
+
+.analyse__board {
+  flex: 1;
 }
 
 .cg-wrap {
