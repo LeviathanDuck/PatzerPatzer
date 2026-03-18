@@ -621,6 +621,164 @@ function classifyLoss(loss: number): MoveLabel | null {
   return null;
 }
 
+// --- Analysis accuracy summary ---
+// Adapted from lichess-org/lila: modules/analyse/src/main/AccuracyPercent.scala
+//
+// Per-move accuracy uses the exponential decay curve fit to win-percent loss.
+// Game accuracy = (volatility-weighted mean + harmonic mean) / 2.
+// Both formulas match Lichess exactly — see AccuracyPercent.scala for derivation.
+
+/**
+ * Per-move accuracy from a win-percent diff (mover's perspective).
+ * diff > 0 = mover lost advantage; diff < 0 = mover improved.
+ * Matches lichess-org/lila: modules/analyse/src/main/AccuracyPercent.scala fromWinPercentDiff
+ */
+function moveAccuracyFromDiff(diff: number): number {
+  if (diff < 0) return 100; // improvement → perfect
+  const raw = 103.1668100711649 * Math.exp(-0.04354415386753951 * diff) + -3.166924740191411;
+  return Math.max(0, Math.min(100, raw + 1));
+}
+
+interface PlayerSummary {
+  accuracy: number | null;
+  blunders:     number;
+  mistakes:     number;
+  inaccuracies: number;
+}
+
+interface AnalysisSummary {
+  white: PlayerSummary;
+  black: PlayerSummary;
+}
+
+/**
+ * Aggregate per-move accuracy into a game accuracy figure.
+ * Matches lichess-org/lila: modules/analyse/src/main/AccuracyPercent.scala gameAccuracy.
+ * window = max(2, min(8, floor(n/10)));  weights = stdDev per sliding window, clamped [0.5, 12].
+ * Result = (volatility-weighted mean + harmonic mean) / 2, clamped [0, 100].
+ */
+function aggregateAccuracy(accs: number[]): number | null {
+  const n = accs.length;
+  if (n < 2) return null;
+
+  const window = Math.max(2, Math.min(8, Math.floor(n / 10)));
+
+  // Sliding window std devs — moves.sliding(window) in Lichess produces n-window+1 entries.
+  const weights: number[] = [];
+  for (let s = 0; s + window <= n; s++) {
+    const slice = accs.slice(s, s + window);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length;
+    weights.push(Math.max(0.5, Math.min(12, Math.sqrt(variance))));
+  }
+
+  // Lichess zip truncates to the shorter sequence (n - window + 1 pairs)
+  const pairLen = weights.length;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (let i = 0; i < pairLen; i++) {
+    weightedSum += accs[i]! * weights[i]!;
+    totalWeight += weights[i]!;
+  }
+  const weightedMean = totalWeight > 0 ? weightedSum / totalWeight : 0;
+
+  // Harmonic mean uses all n moves (Lichess: moves.size / moves.map(1/a).sum)
+  const harmonicMean = n / accs.reduce((acc, a) => acc + 1 / Math.max(a, 0.001), 0);
+
+  return Math.max(0, Math.min(100, (weightedMean + harmonicMean) / 2));
+}
+
+function computeAnalysisSummary(): AnalysisSummary | null {
+  if (evalCache.size === 0) return null;
+
+  const whiteAccs: number[] = [];
+  const blackAccs: number[] = [];
+  let wBlunders = 0, wMistakes = 0, wInaccuracies = 0;
+  let bBlunders = 0, bMistakes = 0, bInaccuracies = 0;
+
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node   = ctrl.mainline[i]!;
+    const parent = ctrl.mainline[i - 1]!;
+
+    const nodeEval   = evalCache.get(node.id);
+    const parentEval = evalCache.get(parent.id);
+    if (!nodeEval || !parentEval) continue;
+
+    const nodeWc   = evalWinChances(nodeEval);
+    const parentWc = evalWinChances(parentEval);
+    if (nodeWc === undefined || parentWc === undefined) continue;
+
+    // Convert win-chance [-1,1] → win-percent [0,100] (white perspective)
+    const nodeWp   = (nodeWc   + 1) / 2 * 100;
+    const parentWp = (parentWc + 1) / 2 * 100;
+
+    const isWhiteMove = node.ply % 2 === 1;
+
+    // diff = mover's advantage before move - mover's advantage after move
+    // White: loses advantage when nodeWp < parentWp → diff = parentWp - nodeWp
+    // Black: loses advantage when nodeWp > parentWp → diff = nodeWp - parentWp
+    // Matches lichess-org/lila: AccuracyPercent.scala color.fold((prev,next),(next,prev))
+    const diff = isWhiteMove ? (parentWp - nodeWp) : (nodeWp - parentWp);
+    const acc  = moveAccuracyFromDiff(diff);
+
+    if (isWhiteMove) {
+      whiteAccs.push(acc);
+    } else {
+      blackAccs.push(acc);
+    }
+
+    // Count move labels using the same best-move-played short-circuit as renderMoveList
+    const playedBest = node.uci !== undefined && node.uci === parentEval.best;
+    const label = (!playedBest && nodeEval.loss !== undefined) ? classifyLoss(nodeEval.loss) : null;
+    if (isWhiteMove) {
+      if (label === 'blunder') wBlunders++;
+      else if (label === 'mistake') wMistakes++;
+      else if (label === 'inaccuracy') wInaccuracies++;
+    } else {
+      if (label === 'blunder') bBlunders++;
+      else if (label === 'mistake') bMistakes++;
+      else if (label === 'inaccuracy') bInaccuracies++;
+    }
+  }
+
+  if (whiteAccs.length === 0 && blackAccs.length === 0) return null;
+
+  return {
+    white: { accuracy: aggregateAccuracy(whiteAccs), blunders: wBlunders, mistakes: wMistakes, inaccuracies: wInaccuracies },
+    black: { accuracy: aggregateAccuracy(blackAccs), blunders: bBlunders, mistakes: bMistakes, inaccuracies: bInaccuracies },
+  };
+}
+
+function renderAnalysisSummary(): VNode {
+  // Only show once there's enough eval data to be meaningful
+  if (!analysisComplete && evalCache.size < 4) return h('div');
+
+  const summary = computeAnalysisSummary();
+  if (!summary) return h('div');
+
+  const game = importedGames.find(g => g.id === selectedGameId);
+  const whiteName = game?.white ?? 'White';
+  const blackName = game?.black ?? 'Black';
+
+  function playerCol(name: string, data: PlayerSummary): VNode {
+    const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : '—';
+    const breakdown: VNode[] = [];
+    if (data.blunders     > 0) breakdown.push(h('span.summary__blunder',     `${data.blunders} blunder${data.blunders !== 1 ? 's' : ''}`));
+    if (data.mistakes     > 0) breakdown.push(h('span.summary__mistake',     `${data.mistakes} mistake${data.mistakes !== 1 ? 's' : ''}`));
+    if (data.inaccuracies > 0) breakdown.push(h('span.summary__inaccuracy',  `${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? 'ies' : 'y'}`));
+    return h('div.summary__col', [
+      h('div.summary__name', name),
+      h('div.summary__accuracy', accText),
+      breakdown.length > 0 ? h('div.summary__breakdown', breakdown) : h('div.summary__breakdown', '—'),
+    ]);
+  }
+
+  return h('div.analysis-summary', [
+    playerCol(whiteName, summary.white),
+    playerCol(blackName, summary.black),
+  ]);
+}
+
 function renderMoveList(): VNode {
   const moves: VNode[] = [];
   let path = '';
@@ -1314,6 +1472,7 @@ function routeContent(route: Route): VNode {
         renderAnalysisControls(),
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderEvalGraph(),
+        renderAnalysisSummary(),
         renderMoveList(),
         renderPuzzleCandidates(),
         renderImportFilters(),
