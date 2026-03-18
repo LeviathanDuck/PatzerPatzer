@@ -787,19 +787,26 @@ function buildArrowShapes(): DrawShape[] {
     }
   }
 
-  // Played move arrow — green (matches Lichess), shown regardless of engine state
-  if (showPlayedArrow) {
-    const nextNode = ctrl.node.children[0];
-    if (nextNode?.move?.uci) {
-      const uci = nextNode.move.uci;
-      shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'green' });
-    }
-  }
-
   // Threat arrow — red (opponent best response, keyboard 'x')
   if (engineEnabled && threatMode && threatEval.best) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'red' });
+  }
+
+  // Played move arrow — pushed last so it always renders on top of engine arrows.
+  // Uses solid red (opacity 1) at lineWidth 9 so it isn't color-blended by the
+  // paleBlue engine arrow beneath; the wider paleBlue still shows as a visible border.
+  if (showPlayedArrow) {
+    const nextNode = ctrl.node.children[0];
+    if (nextNode?.uci) {
+      const uci = nextNode.uci;
+      shapes.push({
+        orig: uci.slice(0, 2) as Key,
+        dest: uci.slice(2, 4) as Key,
+        brush: 'red',
+        modifiers: { lineWidth: 9 },
+      });
+    }
   }
 
   return shapes;
@@ -1048,7 +1055,13 @@ function renderBoard(): VNode {
         cgInstance = makeChessground(vnode.elm as HTMLElement, {
           orientation,
           viewOnly: false,
-          drawable: { enabled: true },
+          drawable: {
+            enabled: true,
+            brushes: {
+              // Boost paleBlue opacity from default 0.4 → 0.65 for a bolder engine line
+              paleBlue: { key: 'pb', color: '#003088', opacity: 0.65, lineWidth: 15 },
+            },
+          },
           fen: node.fen,
           lastMove: uciToMove(node.uci),
           turnColor: node.ply % 2 === 0 ? 'white' : 'black',
