@@ -881,33 +881,76 @@ function renderAnalysisSummary(): VNode {
   ]);
 }
 
-function renderMoveList(): VNode {
-  const moves: VNode[] = [];
-  let path = '';
-  for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i]!;
-    const parentNode = ctrl.mainline[i - 1]!;
-    path += node.id;
-    const nodePath = path; // capture for closure
-    const isWhite = node.ply % 2 === 1;
-    if (isWhite) {
-      moves.push(h('span.move-num', `${Math.ceil(node.ply / 2)}.`));
-    }
-    const cached = evalCache.get(node.id);
-    const parentCached = evalCache.get(parentNode.id);
-    // Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts makeComment
-    // If the played move equals the engine's best from the parent position, suppress the label.
-    const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
-    const label = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
-    moves.push(h('span.move', {
-      class: { active: nodePath === ctrl.path },
-      on: { click: () => navigate(nodePath) },
-    }, label ? [
-      node.san ?? '',
-      h('span', { attrs: { style: `margin-left:3px;font-size:0.75em;color:${label === 'blunder' ? '#f66' : label === 'mistake' ? '#f84' : '#fa4'}` } }, label),
-    ] : (node.san ?? '')));
+// --- Move list (tree view) ---
+// Adapted from lichess-org/lila: ui/analyse/src/treeView/inlineView.ts
+//
+// Renders the full move tree with mainline and inline side variations.
+// Mainline = children[0] at every level; variations = children[1+].
+// Each variation is wrapped in parens: ( 1...c5 2. Nf3 )
+// After a variation block, the mainline black move shows an explicit "N…" index.
+
+/** One clickable move span, with eval label if applicable. */
+function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode): VNode {
+  const cached       = evalCache.get(node.id);
+  const parentCached = evalCache.get(parent.id);
+  // Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts makeComment
+  const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
+  const label = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
+  return h('span.move', {
+    class: { active: path === ctrl.path },
+    on: { click: () => navigate(path) },
+  }, label ? [
+    node.san ?? '',
+    h('span', { attrs: { style: `margin-left:3px;font-size:0.75em;color:${label === 'blunder' ? '#f66' : label === 'mistake' ? '#f84' : '#fa4'}` } }, label),
+  ] : (node.san ?? ''));
+}
+
+/**
+ * Recursively render a node and its full continuation.
+ *
+ * needsMoveNum — caller sets true at the start of a variation or after any
+ * inline variation block so that a black move gets an explicit "N…" prefix.
+ *
+ * Mirrors the rendering logic of lichess-org/lila:
+ *   ui/analyse/src/treeView/inlineView.ts renderNodes / moveNode
+ */
+function renderNodeLine(node: TreeNode, path: TreePath, parent: TreeNode, needsMoveNum: boolean): VNode[] {
+  const out: VNode[] = [];
+
+  // Move index: always before white's move; before black's if explicitly requested
+  if (needsMoveNum || node.ply % 2 === 1) {
+    const n = Math.ceil(node.ply / 2);
+    out.push(h('span.move-num', node.ply % 2 === 1 ? `${n}.` : `${n}…`));
   }
-  return h('div.move-list', moves);
+
+  out.push(renderMoveSpan(node, path, parent));
+
+  const [mainChild, ...varChildren] = node.children;
+
+  // Inline variation blocks: children[1+] at this position
+  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts lines()
+  for (const varChild of varChildren) {
+    const varPath = path + varChild.id;
+    const varContent = renderNodeLine(varChild, varPath, node, true);
+    out.push(h('span', {
+      attrs: { style: 'color:#666;font-size:0.9em;margin:0 2px' },
+    }, ['( ', ...varContent, ' )']));
+  }
+
+  // Mainline continuation: after any variation block a black move needs "N…"
+  if (mainChild) {
+    const mainPath = path + mainChild.id;
+    const contNeedsNum = varChildren.length > 0 && mainChild.ply % 2 === 0;
+    out.push(...renderNodeLine(mainChild, mainPath, node, contNeedsNum));
+  }
+
+  return out;
+}
+
+function renderMoveList(): VNode {
+  const firstChild = ctrl.root.children[0];
+  if (!firstChild) return h('div.move-list');
+  return h('div.move-list', renderNodeLine(firstChild, firstChild.id, ctrl.root, true));
 }
 
 // --- Eval bar ---
