@@ -553,6 +553,7 @@ interface PuzzleCandidate {
   bestMove:  string;        // engine best from that position (puzzle solution)
   san:       string;        // the mistake move that was played
   loss:      number;        // win-chance shift (mover's perspective)
+  ply:       number;        // ply of the mistake node (for move number display)
 }
 
 let puzzleCandidates: PuzzleCandidate[] = [];
@@ -586,6 +587,7 @@ function extractPuzzleCandidates(): PuzzleCandidate[] {
         bestMove: parentEval.best,
         san:      node.san ?? '',
         loss:     nodeEval.loss,
+        ply:      node.ply,
       });
     }
   }
@@ -609,20 +611,39 @@ function renderAnalyzeAll(): VNode {
 }
 
 function renderPuzzleCandidates(): VNode {
-  const label = engineEnabled
+  const canExtract = engineEnabled && !batchAnalyzing;
+  const btnLabel = canExtract
     ? `Find Puzzles (${puzzleCandidates.length})`
-    : 'Find Puzzles (engine off)';
-  return h('div.pgn-import', [
-    h('div.pgn-import__row', [
+    : batchAnalyzing ? 'Find Puzzles (analyzing…)' : 'Find Puzzles (engine off)';
+
+  const rows = puzzleCandidates.map(c => {
+    const moveNum  = Math.ceil(c.ply / 2);
+    const side     = c.ply % 2 === 1 ? '' : '…';
+    const heading  = `${moveNum}${side}. ${c.san}`;
+    const lossText = `−${(c.loss * 100).toFixed(0)}%`;
+    const isActive = ctrl.path === c.path;
+    return h('li', h('button.game-list__row', {
+      class: { active: isActive },
+      on: { click: () => { ctrl.setPath(c.path); syncBoard(); void saveGamesToIdb(); redraw(); } },
+    }, [
+      h('span', { attrs: { style: 'font-weight:600;margin-right:8px' } }, heading),
+      h('span', { attrs: { style: 'color:#f88;margin-right:8px' } }, lossText),
+      h('span', { attrs: { style: 'color:#888;font-size:0.8rem' } }, `best: ${c.bestMove}`),
+    ]));
+  });
+
+  return h('div.game-list', { attrs: { style: 'max-width:600px' } }, [
+    h('div.pgn-import__row', { attrs: { style: 'margin-bottom:6px' } }, [
       h('button', {
-        attrs: { disabled: !engineEnabled },
+        attrs: { disabled: !canExtract },
         on: { click: () => { extractPuzzleCandidates(); redraw(); } },
-      }, label),
-      puzzleCandidates.length > 0
-        ? h('span', { attrs: { style: 'font-size:0.8rem;color:#888' } },
-            `${puzzleCandidates.length} candidate${puzzleCandidates.length === 1 ? '' : 's'} found`)
-        : h('span'),
+      }, btnLabel),
     ]),
+    puzzleCandidates.length > 0
+      ? h('ul', rows)
+      : h('div.game-list__header', batchState === 'complete'
+          ? 'No blunder-level candidates found in this game.'
+          : 'Run extraction after analysis completes.'),
   ]);
 }
 
