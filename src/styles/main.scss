@@ -581,3 +581,66 @@ header {
   padding: 24px 16px;
   gap: 16px;
 }
+
+// Keyboard help modal — mirrors lichess-org/lila: ui/analyse/src/keyboard.ts view
+.keyboard-help {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &__box {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 20px 24px;
+    min-width: 320px;
+    position: relative;
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1rem;
+      color: #e8e8e8;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    td {
+      padding: 4px 8px 4px 0;
+      font-size: 0.82rem;
+      color: #aaa;
+      vertical-align: middle;
+
+      &:first-child {
+        font-family: monospace;
+        color: #e8e8e8;
+        white-space: nowrap;
+        padding-right: 16px;
+      }
+    }
+
+    tr + tr td {
+      border-top: 1px solid #2a2a2a;
+    }
+  }
+
+  &__close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 2px 6px;
+
+    &:hover { color: #e8e8e8; }
+  }
+}

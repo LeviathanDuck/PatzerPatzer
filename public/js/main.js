@@ -5779,6 +5779,20 @@ function evalThreatPosition() {
   protocol.setPosition(flipFenColor(ctrl.node.fen));
   protocol.go(analysisDepth);
 }
+function toggleThreatMode() {
+  threatMode = !threatMode;
+  if (threatMode) {
+    evalThreatPosition();
+  } else {
+    if (evalIsThreat) {
+      protocol.stop();
+      evalIsThreat = false;
+    }
+    threatEval = {};
+    syncArrow();
+    redraw();
+  }
+}
 function evalCurrentPosition() {
   if (batchAnalyzing) return;
   if (!engineEnabled || !engineReady) return;
@@ -7130,7 +7144,8 @@ function routeContent(route) {
         renderChesscomImport(),
         renderLichessImport(),
         renderPgnImport(),
-        renderGameList()
+        renderGameList(),
+        renderKeyboardHelp()
       ]);
     case "puzzles":
       return h("h1", "Puzzles Page");
@@ -7169,18 +7184,147 @@ function view(route) {
     h("main", [routeContent(route)])
   ]);
 }
+function previousBranch() {
+  let path = pathInit(ctrl.path);
+  while (path.length > 0) {
+    const node = ctrl.nodeList.find((n) => ctrl.path.startsWith(path) && path.length === ctrl.nodeList.indexOf(n) * 2);
+    const parent = (() => {
+      let p = ctrl.root;
+      const parts = [];
+      for (let i = 0; i < path.length; i += 2) parts.push(path.slice(i, i + 2));
+      for (const id of parts.slice(0, -1)) {
+        const child = p.children.find((c) => c.id === id);
+        if (!child) return null;
+        p = child;
+      }
+      return p;
+    })();
+    if (parent && parent.children.length >= 2) {
+      navigate(path);
+      return;
+    }
+    path = pathInit(path);
+  }
+  navigate("");
+}
+function nextBranch() {
+  let path = ctrl.path;
+  let node = ctrl.node;
+  while (node.children.length === 1) {
+    path += node.children[0].id;
+    node = node.children[0];
+  }
+  if (node.children.length >= 2) navigate(path + node.children[0].id);
+  else last();
+}
+function nextSibling2() {
+  const parentPath = pathInit(ctrl.path);
+  const parentNode2 = ctrl.nodeList[ctrl.nodeList.length - 2];
+  if (!parentNode2 || parentNode2.children.length < 2) return;
+  const idx = parentNode2.children.findIndex((c) => c.id === ctrl.node.id);
+  const next2 = parentNode2.children[(idx + 1) % parentNode2.children.length];
+  navigate(parentPath + next2.id);
+}
+function prevSibling() {
+  const parentPath = pathInit(ctrl.path);
+  const parentNode2 = ctrl.nodeList[ctrl.nodeList.length - 2];
+  if (!parentNode2 || parentNode2.children.length < 2) return;
+  const idx = parentNode2.children.findIndex((c) => c.id === ctrl.node.id);
+  const prev2 = parentNode2.children[(idx - 1 + parentNode2.children.length) % parentNode2.children.length];
+  navigate(parentPath + prev2.id);
+}
+function playBestMove() {
+  const best = currentEval.best;
+  if (!best || best.length < 4) return;
+  const orig = best.slice(0, 2);
+  const dest = best.slice(2, 4);
+  const promotion = best.length > 4 ? best.slice(4) : void 0;
+  completeMove(orig, dest, promotion);
+}
+var showKeyboardHelp = false;
+function renderKeyboardHelp() {
+  if (!showKeyboardHelp) return null;
+  return h("div.keyboard-help", {
+    on: { click: () => {
+      showKeyboardHelp = false;
+      redraw();
+    } }
+  }, [
+    h("div.keyboard-help__box", { on: { click: (e) => e.stopPropagation() } }, [
+      h("h2", "Keyboard shortcuts"),
+      h("table", [
+        h("tbody", [
+          ["\u2190  /  \u2192", "Previous / next move"],
+          ["\u2191  /  \u2193", "First / last move"],
+          ["Shift + \u2190", "Jump to previous fork"],
+          ["Shift + \u2192", "Jump to next fork"],
+          ["Shift + \u2191\u2193", "Switch variation at fork"],
+          ["Space", "Play engine best move"],
+          ["l", "Toggle engine"],
+          ["a", "Toggle engine arrows"],
+          ["x", "Toggle threat mode"],
+          ["f", "Flip board"],
+          ["?", "Show this help"]
+        ].map(([key, desc]) => h("tr", [h("td", key), h("td", desc)])))
+      ]),
+      h("button.keyboard-help__close", { on: { click: () => {
+        showKeyboardHelp = false;
+        redraw();
+      } } }, "\u2715")
+    ])
+  ]);
+}
 document.addEventListener("keydown", (e) => {
   const tag = e.target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA") return;
-  if (e.key === "ArrowRight") next();
-  else if (e.key === "ArrowLeft") prev();
-  else if (e.key === "ArrowUp") {
+  if (e.shiftKey) {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      previousBranch();
+      redraw();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      nextBranch();
+      redraw();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      nextSibling2();
+      redraw();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      prevSibling();
+      redraw();
+    }
+    return;
+  }
+  if (e.key === "ArrowRight") {
+    next();
+    redraw();
+  } else if (e.key === "ArrowLeft") {
+    prev();
+    redraw();
+  } else if (e.key === "ArrowUp") {
     e.preventDefault();
     first();
+    redraw();
   } else if (e.key === "ArrowDown") {
     e.preventDefault();
     last();
-  } else if (e.key === "x" || e.key === "X") flip();
+    redraw();
+  } else if (e.key === "f" || e.key === "F") flip();
+  else if (e.key === "x" || e.key === "X") toggleThreatMode();
+  else if (e.key === "l" || e.key === "L") toggleEngine();
+  else if (e.key === "a" || e.key === "A") {
+    showEngineArrows = !showEngineArrows;
+    syncArrow();
+    redraw();
+  } else if (e.key === " ") {
+    e.preventDefault();
+    playBestMove();
+  } else if (e.key === "?") {
+    showKeyboardHelp = !showKeyboardHelp;
+    redraw();
+  }
 });
 var app = document.getElementById("app");
 var currentRoute = current();
