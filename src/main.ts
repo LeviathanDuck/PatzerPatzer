@@ -371,6 +371,14 @@ const evalCache = new Map<string, PositionEval>();
 let evalNodeId = '';
 let evalNodePly = 0;
 let evalParentNodeId = '';
+/** True between sending 'go' and receiving the corresponding 'bestmove'. */
+let engineSearchActive = false;
+/**
+ * True when we sent 'stop' while a search was in flight and expect one stale
+ * 'bestmove' to arrive before the real result for the new position.
+ * Set in evalBatchItem / evalCurrentPosition whenever a previous search was active.
+ */
+let awaitingStopBestmove = false;
 const protocol = new StockfishProtocol();
 
 // --- Engine settings ---
@@ -494,7 +502,15 @@ function parseEngineLine(line: string): void {
       currentEval.lines = pendingLines.slice(1).filter(Boolean) as EvalLine[];
       if (!batchAnalyzing) redraw();
     }
-  } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
+  } else if (parts[0] === 'bestmove') {
+    engineSearchActive = false;
+    // Discard the stale bestmove that arrives after a 'stop' interrupted a previous search.
+    // This prevents the previous position's result from being stored under the new nodeId.
+    if (awaitingStopBestmove) {
+      awaitingStopBestmove = false;
+      return;
+    }
+    if (!parts[1] || parts[1] === '(none)') return; // no legal move (checkmate/stalemate)
     if (evalIsThreat) {
       // Threat eval complete — store best move and redraw
       threatEval.best = parts[1];
@@ -609,6 +625,8 @@ function evalCurrentPosition(): void {
   pendingLines = [];
   arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   syncArrow(); // clear stale arrows from previous position immediately
+  awaitingStopBestmove = engineSearchActive; // discard stale bestmove if one is in flight
+  engineSearchActive   = true;
   evalNodeId       = ctrl.node.id;
   evalNodePly      = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
@@ -660,11 +678,13 @@ function startBatchAnalysis(): void {
 }
 
 function evalBatchItem(item: BatchItem): void {
-  evalNodeId      = item.nodeId;
-  evalNodePly     = item.nodePly;
+  awaitingStopBestmove = engineSearchActive; // discard stale bestmove if one is in flight
+  engineSearchActive   = true;
+  evalNodeId       = item.nodeId;
+  evalNodePly      = item.nodePly;
   evalParentNodeId = item.parentNodeId;
-  currentEval     = {};
-  pendingLines    = [];
+  currentEval      = {};
+  pendingLines     = [];
   protocol.stop();
   protocol.setPosition(item.fen);
   protocol.go(analysisDepth); // always MultiPV=1 for batch efficiency
