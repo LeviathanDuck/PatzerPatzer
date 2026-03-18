@@ -379,6 +379,8 @@ let multiPv = 3;             // number of candidate lines (UCI MultiPV), 1–5
 let showEngineSettings = false;
 /** PV board preview — set when hovering a pv-san span; cleared on mouseleave. */
 let pvBoard: { fen: string; uci: string } | null = null;
+/** Last known mouse position for floating preview placement. */
+let pvBoardPos: { x: number; y: number } = { x: 0, y: 0 };
 let showEngineArrows = true; // show engine line arrows on board (default on)
 let arrowAllLines = true;    // draw arrows for all PV lines; false = top line only
 let showPlayedArrow = true;  // draw arrow for the next move actually played in game
@@ -1792,6 +1794,7 @@ function renderPvBox(): VNode | null {
   if (rows.length === 0) return null;
 
   // Attach hover listeners imperatively to avoid per-move re-registration overhead.
+  // mousemove updates the floating overlay position directly (no redraw) for smoothness.
   // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs hook
   return h('div.pv_box', {
     hook: {
@@ -1803,9 +1806,21 @@ function renderPvBox(): VNode | null {
           const sep = dataBoard.indexOf('|');
           const newFen = dataBoard.slice(0, sep);
           const newUci = dataBoard.slice(sep + 1);
+          pvBoardPos = { x: e.clientX, y: e.clientY };
           if (pvBoard?.fen === newFen && pvBoard?.uci === newUci) return;
           pvBoard = { fen: newFen, uci: newUci };
           redraw();
+        });
+        el.addEventListener('mousemove', (e: MouseEvent) => {
+          pvBoardPos = { x: e.clientX, y: e.clientY };
+          // Update position directly on DOM to avoid Snabbdom redraw per-frame.
+          const overlay = document.querySelector<HTMLElement>('.pv-board-float');
+          if (overlay) {
+            const left = Math.min(e.clientX + 16, window.innerWidth - 208);
+            const top  = Math.min(e.clientY + 16, window.innerHeight - 208);
+            overlay.style.left = `${left}px`;
+            overlay.style.top  = `${top}px`;
+          }
         });
         el.addEventListener('mouseleave', () => {
           if (!pvBoard) return;
@@ -1814,40 +1829,47 @@ function renderPvBox(): VNode | null {
         });
       },
     },
-  }, [...rows, renderPvBoard()]);
+  }, rows);
 }
 
 /**
- * Mini Chessground board that previews the position reached by a hovered PV move.
+ * Floating PV board preview — fixed overlay near the mouse cursor.
+ * Shown when hovering a pv-san span; hidden when pvBoard is null.
  * Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvBoard
  */
 function renderPvBoard(): VNode | null {
   if (!pvBoard) return null;
   const { fen, uci } = pvBoard;
+  const left = Math.min(pvBoardPos.x + 16, window.innerWidth - 208);
+  const top  = Math.min(pvBoardPos.y + 16, window.innerHeight - 208);
+  const arrow = uci.length >= 4
+    ? [{ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleBlue' }]
+    : [];
   const cgConfig = {
     fen,
     lastMove: uciToMove(uci),
     orientation,
     coordinates: false,
     viewOnly: true,
-    drawable: { enabled: false, visible: false },
+    drawable: { enabled: false, visible: true, autoShapes: arrow },
   };
-  return h('div.pv-board', [
-    h('div.pv-board-square', [
-      h('div.cg-wrap', {
-        hook: {
-          insert: (vnode) => {
-            (vnode.elm as any)._cg = makeChessground(vnode.elm as HTMLElement, cgConfig);
-          },
-          update: (_old, vnode) => {
-            (vnode.elm as any)._cg?.set(cgConfig);
-          },
-          destroy: (vnode) => {
-            (vnode.elm as any)._cg?.destroy();
-          },
+  return h('div.pv-board-float', {
+    key: 'pv-board-float',
+    attrs: { style: `left:${left}px;top:${top}px` },
+  }, [
+    h('div.cg-wrap', {
+      hook: {
+        insert: (vnode) => {
+          (vnode.elm as any)._cg = makeChessground(vnode.elm as HTMLElement, cgConfig);
         },
-      }),
-    ]),
+        update: (_old, vnode) => {
+          (vnode.elm as any)._cg?.set(cgConfig);
+        },
+        destroy: (vnode) => {
+          (vnode.elm as any)._cg?.destroy();
+        },
+      },
+    }),
   ]);
 }
 
@@ -2483,6 +2505,7 @@ function view(route: Route): VNode {
       h('button.dev-reset', { on: { click: () => void resetAllData() } }, 'Reset Data'),
     ]),
     h('main', [routeContent(route)]),
+    renderPvBoard(),
   ]);
 }
 
