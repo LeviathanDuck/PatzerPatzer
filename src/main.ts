@@ -292,15 +292,19 @@ async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
 // Mirrors lichess-org/lila: ui/lib/src/ceval/ toggle + state management
 
 interface EvalLine {
-  cp?:   number;
-  mate?: number;
-  best?: string;
+  cp?:    number;
+  mate?:  number;
+  best?:  string;
+  /** Full PV move sequence in UCI notation (for display). */
+  moves?: string[];
 }
 
 interface PositionEval {
   cp?: number;
   mate?: number;
   best?: string;
+  /** Full PV move sequence in UCI notation (for display). */
+  moves?: string[];
   /** cp delta vs previous mainline position (positive = better for white) */
   delta?: number;
   /**
@@ -371,7 +375,7 @@ const protocol = new StockfishProtocol();
 
 // --- Engine settings ---
 // Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts
-let multiPv = 1;             // number of candidate lines (UCI MultiPV), 1–5
+let multiPv = 3;             // number of candidate lines (UCI MultiPV), 1–5
 let showEngineSettings = false;
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 let pendingLines: EvalLine[] = [];
@@ -426,6 +430,7 @@ function parseEngineLine(line: string): void {
     let isMate = false;
     let score: number | undefined;
     let best: string | undefined;
+    let pvMoves: string[] = [];
     let pvIndex = 1; // multipv line index (1-based); 1 when MultiPV = 1 or not reported
     for (let i = 1; i < parts.length; i++) {
       if (parts[i] === 'multipv') {
@@ -436,7 +441,9 @@ function parseEngineLine(line: string): void {
         // skip lowerbound / upperbound tokens
         if (parts[i + 1] === 'lowerbound' || parts[i + 1] === 'upperbound') i++;
       } else if (parts[i] === 'pv') {
-        best = parts[i + 1]; // first move in principal variation
+        // Capture full PV sequence — mirrors lichess renderPvMoves (uses all moves, not just first)
+        pvMoves = parts.slice(i + 1);
+        best = pvMoves[0];
         break;
       }
     }
@@ -453,20 +460,25 @@ function parseEngineLine(line: string): void {
         else        { ev.cp = s;   ev.mate = undefined; }
       }
       if (best) ev.best = best;
+      if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if ((score !== undefined || best) && !batchAnalyzing) {
         syncArrow();
         redraw();
       }
     } else if (!evalIsThreat && score !== undefined) {
-      // Secondary PV line (MultiPV 2, 3, …) — accumulate in pendingLines.
+      // Secondary PV line (MultiPV 2, 3, …).
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts multiPv handling.
       const s = evalNodePly % 2 === 1 ? -score : score;
-      const idx = pvIndex - 1; // 0-based index into pendingLines (0 = multipv 2)
+      const idx = pvIndex - 1; // pendingLines[1] = multipv 2, [2] = multipv 3, …
       if (!pendingLines[idx]) pendingLines[idx] = {};
       const pl = pendingLines[idx]!;
       if (isMate) { pl.mate = s; pl.cp = undefined; }
       else        { pl.cp = s;   pl.mate = undefined; }
       if (best) pl.best = best;
+      if (pvMoves.length > 0) pl.moves = pvMoves;
+      // Push secondary lines into currentEval.lines in real-time so renderPvBox
+      // shows all lines during analysis — mirrors Lichess's progressive pv accumulation.
+      currentEval.lines = pendingLines.slice(1).filter(Boolean) as EvalLine[];
       if (!batchAnalyzing) redraw();
     }
   } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
@@ -478,12 +490,8 @@ function parseEngineLine(line: string): void {
       redraw();
     } else {
       currentEval.best = parts[1];
-      const stored: PositionEval = { ...currentEval };
-      // Attach secondary lines collected during this search
-      if (pendingLines.length > 0) {
-        stored.lines = pendingLines.slice(1).filter(Boolean); // index 0 = multipv 2, etc.
-        pendingLines = [];
-      }
+      const stored: PositionEval = { ...currentEval }; // includes .lines set by secondary info handler
+      pendingLines = [];
       const parentEval = evalCache.get(evalParentNodeId);
       // Raw cp delta (kept for reference)
       if (parentEval?.cp !== undefined && stored.cp !== undefined) {
@@ -636,9 +644,10 @@ function evalBatchItem(item: BatchItem): void {
   evalNodePly     = item.nodePly;
   evalParentNodeId = item.parentNodeId;
   currentEval     = {};
+  pendingLines    = [];
   protocol.stop();
   protocol.setPosition(item.fen);
-  protocol.go(analysisDepth);
+  protocol.go(analysisDepth); // always MultiPV=1 for batch efficiency
 }
 
 /**
@@ -1395,32 +1404,83 @@ function renderEval(): VNode {
 
   const computing = !currentEval.cp && currentEval.mate === undefined && engineReady;
 
-  // Secondary PV lines (MultiPV 2, 3, …) — shown when multiPv > 1
-  // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pvs rendering
-  const secondaryLines = (currentEval.lines ?? []).map((line, i) => {
-    const lineScore = formatScore(line);
-    const linePositive = line.cp !== undefined ? line.cp > 0 : line.mate !== undefined ? line.mate > 0 : null;
-    return h('div.ceval__pv-line', [
-      h('span.ceval__pv-score', {
-        class: { 'ceval__score--white': linePositive === true, 'ceval__score--black': linePositive === false },
-      }, lineScore),
-      line.best ? h('span.ceval__pv-best', uciToSan(ctrl.node.fen, line.best)) : null,
-    ]);
-  }).filter(Boolean);
-
   return h('div.ceval-box', [
-    h('div.ceval__primary', [
-      h('span.ceval__score', {
-        class: { 'ceval__score--white': isPositive === true, 'ceval__score--black': isPositive === false },
-      }, computing ? '…' : score),
-      currentEval.best
-        ? h('span.ceval__best', uciToSan(ctrl.node.fen, currentEval.best))
-        : engineReady
-          ? h('span.ceval__info', batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}…` : '')
-          : h('span.ceval__info', 'Loading engine…'),
-    ]),
-    ...secondaryLines,
+    h('span.ceval__score', {
+      class: { 'ceval__score--white': isPositive === true, 'ceval__score--black': isPositive === false },
+    }, computing ? '…' : score),
+    currentEval.best
+      ? h('span.ceval__best', uciToSan(ctrl.node.fen, currentEval.best))
+      : engineReady
+        ? h('span.ceval__info', batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}…` : '')
+        : h('span.ceval__info', 'Loading engine…'),
   ]);
+}
+
+/**
+ * Render a PV move sequence as SAN spans with move-number prefixes.
+ * Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvMoves
+ */
+function renderPvMoves(fen: string, moves: string[]): VNode[] {
+  const MAX_PV_MOVES = 12;
+  try {
+    const setup = parseFen(fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    const vnodes: VNode[] = [];
+    for (let i = 0; i < Math.min(moves.length, MAX_PV_MOVES); i++) {
+      if (pos.turn === 'white') {
+        vnodes.push(h('span.pv-num', `${pos.fullmoves}.`));
+      } else if (i === 0) {
+        vnodes.push(h('span.pv-num', `${pos.fullmoves}…`));
+      }
+      const move = parseUci(moves[i]!);
+      if (!move) break;
+      const san = makeSanAndPlay(pos, move);
+      if (san === '--') break;
+      vnodes.push(h('span.pv-san', san));
+    }
+    return vnodes;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Render the PV lines box below the eval bar.
+ * When MultiPV > 1: shows score + moves for each line.
+ * When MultiPV = 1: shows just the primary move sequence (no score — already shown above).
+ * Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs + renderPv
+ */
+function renderPvBox(): VNode | null {
+  if (!engineEnabled) return null;
+  const primaryMoves = currentEval.moves ?? [];
+  const secondaryLines = currentEval.lines ?? [];
+  if (primaryMoves.length === 0 && secondaryLines.length === 0) return null;
+
+  const fen = ctrl.node.fen;
+
+  function pvRow(ev: EvalLine | PositionEval, showScore: boolean): VNode {
+    const score = formatScore(ev);
+    const isPositive = ev.cp !== undefined ? ev.cp > 0 : ev.mate !== undefined ? ev.mate > 0 : null;
+    const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
+    return h('div.pv', [
+      showScore
+        ? h('strong', {
+            class: { 'pv__score--white': isPositive === true, 'pv__score--black': isPositive === false },
+          }, score)
+        : null,
+      ...pvNodes,
+    ]);
+  }
+
+  const showScore = multiPv > 1;
+  const rows: VNode[] = [];
+  if (primaryMoves.length > 0) rows.push(pvRow(currentEval, showScore));
+  for (const line of secondaryLines) {
+    if (line.moves?.length) rows.push(pvRow(line, showScore));
+  }
+
+  if (rows.length === 0) return null;
+  return h('div.pv_box', rows);
 }
 
 /**
@@ -1945,6 +2005,7 @@ function routeContent(route: Route): VNode {
       return h('div.analyse', [
         h('h1', 'Analysis Page'),
         renderEval(),
+        renderPvBox(),
         renderEngineSettings(),
         h('div.controls', [
           h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
