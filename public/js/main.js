@@ -5342,6 +5342,8 @@ function loadGame(pgn) {
   batchDone = 0;
   batchAnalyzing = false;
   batchState = "idle";
+  analysisRunning = false;
+  analysisComplete = false;
   syncBoard();
   syncArrow();
   evalCurrentPosition();
@@ -5351,14 +5353,48 @@ var _idb;
 function openGameDb() {
   if (_idb) return Promise.resolve(_idb);
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("patzer-pro", 1);
-    req.onupgradeneeded = () => req.result.createObjectStore("game-library");
+    const req = indexedDB.open("patzer-pro", 2);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("game-library")) db.createObjectStore("game-library");
+      if (!db.objectStoreNames.contains("puzzle-library")) db.createObjectStore("puzzle-library");
+    };
     req.onsuccess = () => {
       _idb = req.result;
       resolve(_idb);
     };
     req.onerror = () => reject(req.error);
   });
+}
+var savedPuzzles = [];
+async function savePuzzlesToIdb() {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction("puzzle-library", "readwrite");
+    tx.objectStore("puzzle-library").put(savedPuzzles, "saved-puzzles");
+  } catch (e) {
+    console.warn("[idb] puzzle save failed", e);
+  }
+}
+async function loadPuzzlesFromIdb() {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("puzzle-library", "readonly").objectStore("puzzle-library").get("saved-puzzles");
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[idb] puzzle load failed", e);
+    return [];
+  }
+}
+function savePuzzle(c) {
+  const already = savedPuzzles.some((p) => p.gameId === c.gameId && p.path === c.path);
+  if (already) return;
+  savedPuzzles = [...savedPuzzles, c];
+  void savePuzzlesToIdb();
+  redraw();
 }
 async function saveGamesToIdb() {
   try {
@@ -5412,6 +5448,9 @@ var batchQueue = [];
 var batchDone = 0;
 var batchAnalyzing = false;
 var batchState = "idle";
+var analysisDepth = 12;
+var analysisRunning = false;
+var analysisComplete = false;
 function parseEngineLine(line) {
   const parts = line.trim().split(/\s+/);
   if (parts[0] === "info") {
@@ -5499,7 +5538,7 @@ function evalCurrentPosition() {
   syncArrow();
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
-  protocol.go(10);
+  protocol.go(analysisDepth);
 }
 function startBatchAnalysis() {
   if (!engineEnabled || !engineReady || batchAnalyzing) return;
@@ -5515,6 +5554,8 @@ function startBatchAnalysis() {
   batchDone = 0;
   batchAnalyzing = queue.length > 0;
   batchState = queue.length > 0 ? "analyzing" : "complete";
+  analysisRunning = queue.length > 0;
+  analysisComplete = queue.length === 0;
   redraw();
   if (queue.length > 0) evalBatchItem(queue[0]);
 }
@@ -5525,7 +5566,7 @@ function evalBatchItem(item) {
   currentEval = {};
   protocol.stop();
   protocol.setPosition(item.fen);
-  protocol.go(10);
+  protocol.go(analysisDepth);
 }
 function advanceBatch() {
   batchDone++;
@@ -5535,6 +5576,8 @@ function advanceBatch() {
   } else {
     batchAnalyzing = false;
     batchState = "complete";
+    analysisRunning = false;
+    analysisComplete = true;
     syncArrow();
     redraw();
   }
@@ -5734,12 +5777,64 @@ function extractPuzzleCandidates() {
   console.log("[puzzles] extracted", candidates.length, "candidates", candidates);
   return candidates;
 }
-function renderAnalyzeAll() {
+var DEPTH_OPTIONS = [8, 10, 12, 15, 18];
+function renderAnalysisControls() {
   const canRun = engineEnabled && engineReady && !batchAnalyzing;
-  const label = batchAnalyzing ? `Analyzing\u2026 ${batchDone} / ${batchQueue.length}` : batchState === "complete" ? `Analysis complete (${batchDone} / ${batchQueue.length + batchDone} nodes)` : "Analyze All Moves";
+  const hasGame = ctrl.mainline.length > 1;
+  const statusText = analysisRunning ? `Analyzing\u2026 ${batchDone} / ${batchQueue.length}` : analysisComplete ? `Analysis complete (${batchDone} positions)` : "Idle";
   return h("div.pgn-import", [
     h("div.pgn-import__row", [
-      h("button", { attrs: { disabled: !canRun }, on: { click: startBatchAnalysis } }, label)
+      h("span", { attrs: { style: "font-size:0.8rem;color:#888" } }, statusText)
+    ]),
+    h("div.pgn-import__row", [
+      h("span", { attrs: { style: "color:#888;font-size:0.8rem" } }, "Depth:"),
+      ...DEPTH_OPTIONS.map(
+        (d) => h("button", {
+          attrs: { style: analysisDepth === d ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE },
+          on: { click: () => {
+            analysisDepth = d;
+            redraw();
+          } }
+        }, String(d))
+      )
+    ]),
+    h("div.pgn-import__row", [
+      h("button", {
+        attrs: { disabled: !canRun },
+        on: { click: startBatchAnalysis }
+      }, "Analyze All"),
+      h("button", {
+        attrs: { disabled: !hasGame || batchAnalyzing },
+        on: {
+          click: () => {
+            evalCache.clear();
+            currentEval = {};
+            puzzleCandidates = [];
+            batchQueue = [];
+            batchDone = 0;
+            batchAnalyzing = false;
+            batchState = "idle";
+            analysisRunning = false;
+            analysisComplete = false;
+            syncArrow();
+            startBatchAnalysis();
+          }
+        }
+      }, "Re-analyze"),
+      h("button", {
+        attrs: { disabled: batchAnalyzing },
+        on: {
+          click: () => {
+            evalCache.clear();
+            currentEval = {};
+            puzzleCandidates = [];
+            analysisRunning = false;
+            analysisComplete = false;
+            syncArrow();
+            redraw();
+          }
+        }
+      }, "Clear Eval Cache")
     ])
   ]);
 }
@@ -5752,19 +5847,33 @@ function renderPuzzleCandidates() {
     const heading = `${moveNum}${side}. ${c.san}`;
     const lossText = `\u2212${(c.loss * 100).toFixed(0)}%`;
     const isActive = ctrl.path === c.path;
-    return h("li", h("button.game-list__row", {
-      class: { active: isActive },
-      on: { click: () => {
-        ctrl.setPath(c.path);
-        syncBoard();
-        void saveGamesToIdb();
-        redraw();
-      } }
-    }, [
-      h("span", { attrs: { style: "font-weight:600;margin-right:8px" } }, heading),
-      h("span", { attrs: { style: "color:#f88;margin-right:8px" } }, lossText),
-      h("span", { attrs: { style: "color:#888;font-size:0.8rem" } }, `best: ${c.bestMove}`)
-    ]));
+    const isSaved = savedPuzzles.some((p) => p.gameId === c.gameId && p.path === c.path);
+    return h("li", { attrs: { style: "display:flex;align-items:center" } }, [
+      h("button.game-list__row", {
+        class: { active: isActive },
+        attrs: { style: "flex:1" },
+        on: { click: () => {
+          ctrl.setPath(c.path);
+          syncBoard();
+          void saveGamesToIdb();
+          redraw();
+        } }
+      }, [
+        h("span", { attrs: { style: "font-weight:600;margin-right:8px" } }, heading),
+        h("span", { attrs: { style: "color:#f88;margin-right:8px" } }, lossText),
+        h("span", { attrs: { style: "color:#888;font-size:0.8rem" } }, `best: ${c.bestMove}`)
+      ]),
+      h("button", {
+        attrs: {
+          style: "flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px;cursor:pointer",
+          disabled: isSaved,
+          title: isSaved ? "Already saved" : "Save this puzzle"
+        },
+        on: { click: () => {
+          savePuzzle(c);
+        } }
+      }, isSaved ? "\u2713 Saved" : "Save")
+    ]);
   });
   return h("div.game-list", { attrs: { style: "max-width:600px" } }, [
     h("div.pgn-import__row", { attrs: { style: "margin-bottom:6px" } }, [
@@ -6061,9 +6170,9 @@ function routeContent(route) {
             engineEnabled ? engineReady ? "Engine: On" : "Engine: Loading\u2026" : "Engine: Off"
           )
         ]),
+        renderAnalysisControls(),
         h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
         renderMoveList(),
-        renderAnalyzeAll(),
         renderPuzzleCandidates(),
         renderImportFilters(),
         renderChesscomImport(),
@@ -6102,6 +6211,9 @@ function redraw() {
 onChange2((route) => {
   currentRoute = route;
   vnode2 = patch(vnode2, view(currentRoute));
+});
+void loadPuzzlesFromIdb().then((puzzles) => {
+  savedPuzzles = puzzles;
 });
 void loadGamesFromIdb().then((stored) => {
   if (!stored || stored.games.length === 0) return;

@@ -50,10 +50,12 @@ function loadGame(pgn: string | null): void {
   evalCache.clear();
   currentEval = {};
   puzzleCandidates = [];
-  batchQueue     = [];
-  batchDone      = 0;
-  batchAnalyzing = false;
-  batchState     = 'idle';
+  batchQueue       = [];
+  batchDone        = 0;
+  batchAnalyzing   = false;
+  batchState       = 'idle';
+  analysisRunning  = false;
+  analysisComplete = false;
   syncBoard();
   syncArrow();
   evalCurrentPosition();
@@ -76,11 +78,52 @@ let _idb: IDBDatabase | undefined;
 function openGameDb(): Promise<IDBDatabase> {
   if (_idb) return Promise.resolve(_idb);
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('patzer-pro', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('game-library');
+    const req = indexedDB.open('patzer-pro', 2);
+    req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
+      const db = (e.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains('game-library'))   db.createObjectStore('game-library');
+      if (!db.objectStoreNames.contains('puzzle-library')) db.createObjectStore('puzzle-library');
+    };
     req.onsuccess    = () => { _idb = req.result; resolve(_idb); };
     req.onerror      = () => reject(req.error);
   });
+}
+
+// Saved puzzles — persisted to the puzzle-library store
+let savedPuzzles: PuzzleCandidate[] = [];
+
+async function savePuzzlesToIdb(): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('puzzle-library', 'readwrite');
+    tx.objectStore('puzzle-library').put(savedPuzzles, 'saved-puzzles');
+  } catch (e) {
+    console.warn('[idb] puzzle save failed', e);
+  }
+}
+
+async function loadPuzzlesFromIdb(): Promise<PuzzleCandidate[]> {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('puzzle-library', 'readonly')
+        .objectStore('puzzle-library').get('saved-puzzles');
+      req.onsuccess = () => resolve((req.result as PuzzleCandidate[] | undefined) ?? []);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[idb] puzzle load failed', e);
+    return [];
+  }
+}
+
+function savePuzzle(c: PuzzleCandidate): void {
+  // Deduplicate by gameId + path
+  const already = savedPuzzles.some(p => p.gameId === c.gameId && p.path === c.path);
+  if (already) return;
+  savedPuzzles = [...savedPuzzles, c];
+  void savePuzzlesToIdb();
+  redraw();
 }
 
 async function saveGamesToIdb(): Promise<void> {
@@ -130,9 +173,26 @@ interface PositionEval {
 
 // --- Win-chances conversion ---
 // Adapted from lichess-org/lila: ui/lib/src/ceval/winningChances.ts
-// Maps centipawns to a [-1, 1] win-probability scale via sigmoid.
-// This compresses the scale in lopsided positions so a 200cp swing when already
-// up +800 correctly registers as much smaller than the same swing near equality.
+//
+// ── Exact Lichess parity ────────────────────────────────────────────────────
+// • Sigmoid formula and multiplier −0.00368208 (lila PR #11148)
+// • cp clamped to [−1000, 1000] before the sigmoid
+// • Mate converted to cp equivalent: (21 − min(10, |mate|)) × 100
+// • povDiff formula: loss = (moverPrevWc − moverNodeWc) / 2
+// • Classification thresholds: 0.025 / 0.06 / 0.14
+//
+// ── Intentional divergence ──────────────────────────────────────────────────
+// • Mover perspective: Lichess practice mode uses root.bottomColor() (fixed
+//   player POV for the whole game). We use node.ply % 2 to identify the
+//   actual mover at each node. This is correct for general analysis where we
+//   want to label each player's own mistakes, not shifts from one player's POV.
+//
+// ── Known approximations ────────────────────────────────────────────────────
+// • No "played best move" short-circuit: Lichess suppresses labels when the
+//   played UCI equals the engine's best from the parent position. We rely on
+//   the 0.025 threshold to naturally absorb near-zero shifts.
+// • No tablebase / threefold / 50-move-rule overrides: Lichess sets cp=0 for
+//   drawn positions regardless of engine output. We use raw engine cp.
 
 const WIN_CHANCE_MULTIPLIER = -0.00368208; // https://github.com/lichess-org/lila/pull/11148
 
@@ -142,6 +202,8 @@ function rawWinChances(cp: number): number {
 
 function evalWinChances(ev: PositionEval): number | undefined {
   if (ev.mate !== undefined) {
+    // Mate in N converted to a large cp equivalent, capped at mate-in-10.
+    // Matches lichess-org/lila: ui/lib/src/ceval/winningChances.ts mateWinningChances
     const cp = (21 - Math.min(10, Math.abs(ev.mate))) * 100;
     return rawWinChances(cp * (ev.mate > 0 ? 1 : -1));
   }
@@ -178,6 +240,10 @@ let batchQueue:     BatchItem[] = [];
 let batchDone      = 0;
 let batchAnalyzing = false;
 let batchState: BatchState = 'idle';
+
+let analysisDepth    = 12;
+let analysisRunning  = false;
+let analysisComplete = false;
 
 /**
  * Parse a single UCI output line into currentEval.
@@ -278,7 +344,7 @@ function evalCurrentPosition(): void {
   syncArrow();      // clear stale arrow immediately
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
-  protocol.go(10);
+  protocol.go(analysisDepth);
 }
 
 function startBatchAnalysis(): void {
@@ -294,10 +360,12 @@ function startBatchAnalysis(): void {
     parentId = node.id;
   }
 
-  batchQueue     = queue;
-  batchDone      = 0;
-  batchAnalyzing = queue.length > 0;
-  batchState     = queue.length > 0 ? 'analyzing' : 'complete';
+  batchQueue       = queue;
+  batchDone        = 0;
+  batchAnalyzing   = queue.length > 0;
+  batchState       = queue.length > 0 ? 'analyzing' : 'complete';
+  analysisRunning  = queue.length > 0;
+  analysisComplete = queue.length === 0;
   redraw();
 
   if (queue.length > 0) evalBatchItem(queue[0]!);
@@ -310,7 +378,7 @@ function evalBatchItem(item: BatchItem): void {
   currentEval     = {};
   protocol.stop();
   protocol.setPosition(item.fen);
-  protocol.go(10);
+  protocol.go(analysisDepth);
 }
 
 function advanceBatch(): void {
@@ -319,8 +387,10 @@ function advanceBatch(): void {
   if (batchDone < batchQueue.length) {
     evalBatchItem(batchQueue[batchDone]!);
   } else {
-    batchAnalyzing = false;
-    batchState     = 'complete';
+    batchAnalyzing   = false;
+    batchState       = 'complete';
+    analysisRunning  = false;
+    analysisComplete = true;
     syncArrow(); // restore arrow for current board position
     redraw();
   }
@@ -596,16 +666,68 @@ function extractPuzzleCandidates(): PuzzleCandidate[] {
   return candidates;
 }
 
-function renderAnalyzeAll(): VNode {
-  const canRun = engineEnabled && engineReady && !batchAnalyzing;
-  const label = batchAnalyzing
+const DEPTH_OPTIONS = [8, 10, 12, 15, 18];
+
+function renderAnalysisControls(): VNode {
+  const canRun  = engineEnabled && engineReady && !batchAnalyzing;
+  const hasGame = ctrl.mainline.length > 1;
+
+  const statusText = analysisRunning
     ? `Analyzing… ${batchDone} / ${batchQueue.length}`
-    : batchState === 'complete'
-      ? `Analysis complete (${batchDone} / ${batchQueue.length + batchDone} nodes)`
-      : 'Analyze All Moves';
+    : analysisComplete
+      ? `Analysis complete (${batchDone} positions)`
+      : 'Idle';
+
   return h('div.pgn-import', [
     h('div.pgn-import__row', [
-      h('button', { attrs: { disabled: !canRun }, on: { click: startBatchAnalysis } }, label),
+      h('span', { attrs: { style: 'font-size:0.8rem;color:#888' } }, statusText),
+    ]),
+    h('div.pgn-import__row', [
+      h('span', { attrs: { style: 'color:#888;font-size:0.8rem' } }, 'Depth:'),
+      ...DEPTH_OPTIONS.map(d =>
+        h('button', {
+          attrs: { style: analysisDepth === d ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE },
+          on: { click: () => { analysisDepth = d; redraw(); } },
+        }, String(d))
+      ),
+    ]),
+    h('div.pgn-import__row', [
+      h('button', {
+        attrs: { disabled: !canRun },
+        on: { click: startBatchAnalysis },
+      }, 'Analyze All'),
+      h('button', {
+        attrs: { disabled: !hasGame || batchAnalyzing },
+        on: {
+          click: () => {
+            evalCache.clear();
+            currentEval = {};
+            puzzleCandidates = [];
+            batchQueue       = [];
+            batchDone        = 0;
+            batchAnalyzing   = false;
+            batchState       = 'idle';
+            analysisRunning  = false;
+            analysisComplete = false;
+            syncArrow();
+            startBatchAnalysis();
+          },
+        },
+      }, 'Re-analyze'),
+      h('button', {
+        attrs: { disabled: batchAnalyzing },
+        on: {
+          click: () => {
+            evalCache.clear();
+            currentEval = {};
+            puzzleCandidates = [];
+            analysisRunning  = false;
+            analysisComplete = false;
+            syncArrow();
+            redraw();
+          },
+        },
+      }, 'Clear Eval Cache'),
     ]),
   ]);
 }
@@ -622,14 +744,26 @@ function renderPuzzleCandidates(): VNode {
     const heading  = `${moveNum}${side}. ${c.san}`;
     const lossText = `−${(c.loss * 100).toFixed(0)}%`;
     const isActive = ctrl.path === c.path;
-    return h('li', h('button.game-list__row', {
-      class: { active: isActive },
-      on: { click: () => { ctrl.setPath(c.path); syncBoard(); void saveGamesToIdb(); redraw(); } },
-    }, [
-      h('span', { attrs: { style: 'font-weight:600;margin-right:8px' } }, heading),
-      h('span', { attrs: { style: 'color:#f88;margin-right:8px' } }, lossText),
-      h('span', { attrs: { style: 'color:#888;font-size:0.8rem' } }, `best: ${c.bestMove}`),
-    ]));
+    const isSaved  = savedPuzzles.some(p => p.gameId === c.gameId && p.path === c.path);
+    return h('li', { attrs: { style: 'display:flex;align-items:center' } }, [
+      h('button.game-list__row', {
+        class: { active: isActive },
+        attrs: { style: 'flex:1' },
+        on: { click: () => { ctrl.setPath(c.path); syncBoard(); void saveGamesToIdb(); redraw(); } },
+      }, [
+        h('span', { attrs: { style: 'font-weight:600;margin-right:8px' } }, heading),
+        h('span', { attrs: { style: 'color:#f88;margin-right:8px' } }, lossText),
+        h('span', { attrs: { style: 'color:#888;font-size:0.8rem' } }, `best: ${c.bestMove}`),
+      ]),
+      h('button', {
+        attrs: {
+          style: 'flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px;cursor:pointer',
+          disabled: isSaved,
+          title: isSaved ? 'Already saved' : 'Save this puzzle',
+        },
+        on: { click: () => { savePuzzle(c); } },
+      }, isSaved ? '✓ Saved' : 'Save'),
+    ]);
   });
 
   return h('div.game-list', { attrs: { style: 'max-width:600px' } }, [
@@ -960,9 +1094,9 @@ function routeContent(route: Route): VNode {
             engineEnabled ? (engineReady ? 'Engine: On' : 'Engine: Loading…') : 'Engine: Off'
           ),
         ]),
+        renderAnalysisControls(),
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderMoveList(),
-        renderAnalyzeAll(),
         renderPuzzleCandidates(),
         renderImportFilters(),
         renderChesscomImport(),
@@ -1008,6 +1142,9 @@ onChange(route => {
   currentRoute = route;
   vnode = patch(vnode, view(currentRoute));
 });
+
+// --- Startup: restore persisted puzzles ---
+void loadPuzzlesFromIdb().then(puzzles => { savedPuzzles = puzzles; });
 
 // --- Startup: restore persisted games ---
 // Runs after the initial render so the board already exists when syncBoard is called.
