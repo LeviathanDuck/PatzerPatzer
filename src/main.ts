@@ -1030,6 +1030,15 @@ function navigate(path: string): void {
   evalCurrentPosition(); // updates currentEval, arrow, and triggers threat eval if on
   void saveGamesToIdb();
   redraw();
+  scrollActiveIntoView();
+}
+
+// Keep the active move visible in the move list after each navigation step.
+// Mirrors lichess-org/lila: ui/analyse/src/view/moves.ts (tree scroll helper)
+function scrollActiveIntoView(): void {
+  requestAnimationFrame(() => {
+    document.querySelector<HTMLElement>('.move.active')?.scrollIntoView({ block: 'nearest' });
+  });
 }
 
 function next(): void {
@@ -2552,6 +2561,27 @@ document.addEventListener('keydown', (e: KeyboardEvent) => {
   else if (e.key === ' ') { e.preventDefault(); playBestMove(); }
   else if (e.key === '?') { showKeyboardHelp = !showKeyboardHelp; redraw(); }
 });
+
+// Mousewheel navigation over the board — scroll down = next move, up = prev move.
+// Adapted from lichess-org/lila: ui/lib/src/view/controls.ts stepwiseScroll
+// Pixel-mode (trackpad) accumulates delta and requires ≥10px before stepping,
+// preventing accidental triggers on inertia scrolls.
+let wheelPixelAccum = 0;
+document.addEventListener('wheel', (e: WheelEvent) => {
+  if (e.ctrlKey) return; // allow pinch-zoom
+  const boardWrap = document.querySelector('.analyse__board-wrap');
+  if (!boardWrap?.contains(e.target as Node)) return;
+  e.preventDefault();
+  if (e.deltaMode === 0) {
+    // Pixel mode: accumulate until threshold to avoid over-triggering on trackpads
+    wheelPixelAccum += e.deltaY;
+    if (Math.abs(wheelPixelAccum) < 10) return;
+  }
+  wheelPixelAccum = 0;
+  if (e.deltaY > 0) next();
+  else prev();
+  redraw();
+}, { passive: false });
 
 // --- Bootstrap ---
 
