@@ -49,6 +49,11 @@ function loadGame(pgn: string | null): void {
   ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
   evalCache.clear();
   currentEval = {};
+  puzzleCandidates = [];
+  batchQueue     = [];
+  batchDone      = 0;
+  batchAnalyzing = false;
+  batchState     = 'idle';
   syncBoard();
   syncArrow();
   evalCurrentPosition();
@@ -156,6 +161,24 @@ let evalNodePly = 0;
 let evalParentNodeId = '';
 const protocol = new StockfishProtocol();
 
+// --- Batch analysis queue ---
+// Sequential mainline analysis driven by the bestmove callback.
+// When batchAnalyzing is true the batch owns the engine; evalCurrentPosition() yields.
+
+interface BatchItem {
+  nodeId:       string;
+  nodePly:      number;
+  parentNodeId: string;
+  fen:          string;
+}
+
+type BatchState = 'idle' | 'analyzing' | 'complete';
+
+let batchQueue:     BatchItem[] = [];
+let batchDone      = 0;
+let batchAnalyzing = false;
+let batchState: BatchState = 'idle';
+
 /**
  * Parse a single UCI output line into currentEval.
  * Adapted from lichess-org/lila: ui/lib/src/ceval/protocol.ts received
@@ -188,9 +211,11 @@ function parseEngineLine(line: string): void {
     }
     if (best) currentEval.best = best;
     if (score !== undefined || best) {
-      console.log('[eval]', { ...currentEval });
-      syncArrow();
-      redraw();
+      if (!batchAnalyzing) {
+        console.log('[eval]', { ...currentEval });
+        syncArrow();
+        redraw();
+      }
     }
   } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
     currentEval.best = parts[1];
@@ -217,8 +242,12 @@ function parseEngineLine(line: string): void {
     evalCache.set(evalNodeId, stored);
     currentEval = stored;
     console.log('[eval cache]', evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
-    syncArrow();
-    redraw();
+    if (batchAnalyzing) {
+      advanceBatch(); // drives the queue; skips syncArrow/redraw until done
+    } else {
+      syncArrow();
+      redraw();
+    }
   }
 }
 
@@ -233,6 +262,7 @@ protocol.onMessage(line => {
 });
 
 function evalCurrentPosition(): void {
+  if (batchAnalyzing) return; // batch owns the engine; ignore interactive requests
   if (!engineEnabled || !engineReady) return;
   const cached = evalCache.get(ctrl.node.id);
   if (cached) {
@@ -249,6 +279,51 @@ function evalCurrentPosition(): void {
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(10);
+}
+
+function startBatchAnalysis(): void {
+  if (!engineEnabled || !engineReady || batchAnalyzing) return;
+
+  // Build queue: mainline nodes excluding root and already-cached positions
+  const queue: BatchItem[] = [];
+  let parentId = '';
+  for (const node of ctrl.mainline) {
+    if (!evalCache.has(node.id)) {
+      queue.push({ nodeId: node.id, nodePly: node.ply, parentNodeId: parentId, fen: node.fen });
+    }
+    parentId = node.id;
+  }
+
+  batchQueue     = queue;
+  batchDone      = 0;
+  batchAnalyzing = queue.length > 0;
+  batchState     = queue.length > 0 ? 'analyzing' : 'complete';
+  redraw();
+
+  if (queue.length > 0) evalBatchItem(queue[0]!);
+}
+
+function evalBatchItem(item: BatchItem): void {
+  evalNodeId      = item.nodeId;
+  evalNodePly     = item.nodePly;
+  evalParentNodeId = item.parentNodeId;
+  currentEval     = {};
+  protocol.stop();
+  protocol.setPosition(item.fen);
+  protocol.go(10);
+}
+
+function advanceBatch(): void {
+  batchDone++;
+  redraw();
+  if (batchDone < batchQueue.length) {
+    evalBatchItem(batchQueue[batchDone]!);
+  } else {
+    batchAnalyzing = false;
+    batchState     = 'complete';
+    syncArrow(); // restore arrow for current board position
+    redraw();
+  }
 }
 
 // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts makeShapesFromUci
@@ -459,6 +534,96 @@ function renderEval(): VNode {
       : 'Evaluating…';
   const best = currentEval.best ? ` | Best: ${currentEval.best}` : '';
   return h('div.eval-display', score + best);
+}
+
+// --- Puzzle candidate extraction ---
+// Adapted from lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts (makeComment)
+// A candidate is any mainline position where the played move crossed the blunder threshold
+// and the engine had a better move available in the pre-mistake position.
+// The puzzle starts at the parent's FEN; the solution is the engine's best from there.
+
+// Minimum win-chance loss to qualify as a puzzle candidate.
+// Matches LOSS_THRESHOLDS.blunder — tune here only.
+const PUZZLE_CANDIDATE_MIN_LOSS = 0.14;
+
+interface PuzzleCandidate {
+  gameId:    string | null; // source game
+  path:      string;        // TreePath to the mistake node
+  fen:       string;        // FEN of the position BEFORE the mistake (puzzle start)
+  bestMove:  string;        // engine best from that position (puzzle solution)
+  san:       string;        // the mistake move that was played
+  loss:      number;        // win-chance shift (mover's perspective)
+}
+
+let puzzleCandidates: PuzzleCandidate[] = [];
+
+/**
+ * Scan the current mainline for blunder-level moves that have engine data.
+ * Returns candidates and stores them in puzzleCandidates.
+ * Mirrors the swing-detection loop in lichess-org/lila: practiceCtrl.ts makeComment.
+ */
+function extractPuzzleCandidates(): PuzzleCandidate[] {
+  const candidates: PuzzleCandidate[] = [];
+  let path = '';
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node   = ctrl.mainline[i]!;
+    const parent = ctrl.mainline[i - 1]!;
+    path += node.id;
+
+    const nodeEval   = evalCache.get(node.id);
+    const parentEval = evalCache.get(parent.id);
+
+    // Require: evaluated loss above threshold + engine best move from parent position
+    if (
+      nodeEval?.loss !== undefined &&
+      nodeEval.loss >= PUZZLE_CANDIDATE_MIN_LOSS &&
+      parentEval?.best
+    ) {
+      candidates.push({
+        gameId:   selectedGameId,
+        path,
+        fen:      parent.fen,
+        bestMove: parentEval.best,
+        san:      node.san ?? '',
+        loss:     nodeEval.loss,
+      });
+    }
+  }
+  puzzleCandidates = candidates;
+  console.log('[puzzles] extracted', candidates.length, 'candidates', candidates);
+  return candidates;
+}
+
+function renderAnalyzeAll(): VNode {
+  const canRun = engineEnabled && engineReady && !batchAnalyzing;
+  const label = batchAnalyzing
+    ? `Analyzing… ${batchDone} / ${batchQueue.length}`
+    : batchState === 'complete'
+      ? `Analysis complete (${batchDone} / ${batchQueue.length + batchDone} nodes)`
+      : 'Analyze All Moves';
+  return h('div.pgn-import', [
+    h('div.pgn-import__row', [
+      h('button', { attrs: { disabled: !canRun }, on: { click: startBatchAnalysis } }, label),
+    ]),
+  ]);
+}
+
+function renderPuzzleCandidates(): VNode {
+  const label = engineEnabled
+    ? `Find Puzzles (${puzzleCandidates.length})`
+    : 'Find Puzzles (engine off)';
+  return h('div.pgn-import', [
+    h('div.pgn-import__row', [
+      h('button', {
+        attrs: { disabled: !engineEnabled },
+        on: { click: () => { extractPuzzleCandidates(); redraw(); } },
+      }, label),
+      puzzleCandidates.length > 0
+        ? h('span', { attrs: { style: 'font-size:0.8rem;color:#888' } },
+            `${puzzleCandidates.length} candidate${puzzleCandidates.length === 1 ? '' : 's'} found`)
+        : h('span'),
+    ]),
+  ]);
 }
 
 // --- Import filters ---
@@ -776,6 +941,8 @@ function routeContent(route: Route): VNode {
         ]),
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
         renderMoveList(),
+        renderAnalyzeAll(),
+        renderPuzzleCandidates(),
         renderImportFilters(),
         renderChesscomImport(),
         renderLichessImport(),

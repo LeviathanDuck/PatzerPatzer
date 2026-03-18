@@ -5337,6 +5337,11 @@ function loadGame(pgn) {
   ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
   evalCache.clear();
   currentEval = {};
+  puzzleCandidates = [];
+  batchQueue = [];
+  batchDone = 0;
+  batchAnalyzing = false;
+  batchState = "idle";
   syncBoard();
   syncArrow();
   evalCurrentPosition();
@@ -5403,6 +5408,10 @@ var evalNodeId = "";
 var evalNodePly = 0;
 var evalParentNodeId = "";
 var protocol = new StockfishProtocol();
+var batchQueue = [];
+var batchDone = 0;
+var batchAnalyzing = false;
+var batchState = "idle";
 function parseEngineLine(line) {
   const parts = line.trim().split(/\s+/);
   if (parts[0] === "info") {
@@ -5430,9 +5439,11 @@ function parseEngineLine(line) {
     }
     if (best) currentEval.best = best;
     if (score !== void 0 || best) {
-      console.log("[eval]", { ...currentEval });
-      syncArrow();
-      redraw();
+      if (!batchAnalyzing) {
+        console.log("[eval]", { ...currentEval });
+        syncArrow();
+        redraw();
+      }
     }
   } else if (parts[0] === "bestmove" && parts[1] && parts[1] !== "(none)") {
     currentEval.best = parts[1];
@@ -5454,8 +5465,12 @@ function parseEngineLine(line) {
     evalCache.set(evalNodeId, stored);
     currentEval = stored;
     console.log("[eval cache]", evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
-    syncArrow();
-    redraw();
+    if (batchAnalyzing) {
+      advanceBatch();
+    } else {
+      syncArrow();
+      redraw();
+    }
   }
 }
 protocol.onMessage((line) => {
@@ -5468,6 +5483,7 @@ protocol.onMessage((line) => {
   }
 });
 function evalCurrentPosition() {
+  if (batchAnalyzing) return;
   if (!engineEnabled || !engineReady) return;
   const cached = evalCache.get(ctrl.node.id);
   if (cached) {
@@ -5484,6 +5500,44 @@ function evalCurrentPosition() {
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(10);
+}
+function startBatchAnalysis() {
+  if (!engineEnabled || !engineReady || batchAnalyzing) return;
+  const queue = [];
+  let parentId = "";
+  for (const node of ctrl.mainline) {
+    if (!evalCache.has(node.id)) {
+      queue.push({ nodeId: node.id, nodePly: node.ply, parentNodeId: parentId, fen: node.fen });
+    }
+    parentId = node.id;
+  }
+  batchQueue = queue;
+  batchDone = 0;
+  batchAnalyzing = queue.length > 0;
+  batchState = queue.length > 0 ? "analyzing" : "complete";
+  redraw();
+  if (queue.length > 0) evalBatchItem(queue[0]);
+}
+function evalBatchItem(item) {
+  evalNodeId = item.nodeId;
+  evalNodePly = item.nodePly;
+  evalParentNodeId = item.parentNodeId;
+  currentEval = {};
+  protocol.stop();
+  protocol.setPosition(item.fen);
+  protocol.go(10);
+}
+function advanceBatch() {
+  batchDone++;
+  redraw();
+  if (batchDone < batchQueue.length) {
+    evalBatchItem(batchQueue[batchDone]);
+  } else {
+    batchAnalyzing = false;
+    batchState = "complete";
+    syncArrow();
+    redraw();
+  }
 }
 function syncArrow() {
   if (!cgInstance) return;
@@ -5652,6 +5706,60 @@ function renderEval() {
   const score = currentEval.mate !== void 0 ? `Mate in ${Math.abs(currentEval.mate)}` : currentEval.cp !== void 0 ? `Eval: ${currentEval.cp >= 0 ? "+" : ""}${(currentEval.cp / 100).toFixed(2)}` : "Evaluating\u2026";
   const best = currentEval.best ? ` | Best: ${currentEval.best}` : "";
   return h("div.eval-display", score + best);
+}
+var PUZZLE_CANDIDATE_MIN_LOSS = 0.14;
+var puzzleCandidates = [];
+function extractPuzzleCandidates() {
+  const candidates = [];
+  let path = "";
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node = ctrl.mainline[i];
+    const parent = ctrl.mainline[i - 1];
+    path += node.id;
+    const nodeEval = evalCache.get(node.id);
+    const parentEval = evalCache.get(parent.id);
+    if (nodeEval?.loss !== void 0 && nodeEval.loss >= PUZZLE_CANDIDATE_MIN_LOSS && parentEval?.best) {
+      candidates.push({
+        gameId: selectedGameId,
+        path,
+        fen: parent.fen,
+        bestMove: parentEval.best,
+        san: node.san ?? "",
+        loss: nodeEval.loss
+      });
+    }
+  }
+  puzzleCandidates = candidates;
+  console.log("[puzzles] extracted", candidates.length, "candidates", candidates);
+  return candidates;
+}
+function renderAnalyzeAll() {
+  const canRun = engineEnabled && engineReady && !batchAnalyzing;
+  const label = batchAnalyzing ? `Analyzing\u2026 ${batchDone} / ${batchQueue.length}` : batchState === "complete" ? `Analysis complete (${batchDone} / ${batchQueue.length + batchDone} nodes)` : "Analyze All Moves";
+  return h("div.pgn-import", [
+    h("div.pgn-import__row", [
+      h("button", { attrs: { disabled: !canRun }, on: { click: startBatchAnalysis } }, label)
+    ])
+  ]);
+}
+function renderPuzzleCandidates() {
+  const label = engineEnabled ? `Find Puzzles (${puzzleCandidates.length})` : "Find Puzzles (engine off)";
+  return h("div.pgn-import", [
+    h("div.pgn-import__row", [
+      h("button", {
+        attrs: { disabled: !engineEnabled },
+        on: { click: () => {
+          extractPuzzleCandidates();
+          redraw();
+        } }
+      }, label),
+      puzzleCandidates.length > 0 ? h(
+        "span",
+        { attrs: { style: "font-size:0.8rem;color:#888" } },
+        `${puzzleCandidates.length} candidate${puzzleCandidates.length === 1 ? "" : "s"} found`
+      ) : h("span")
+    ])
+  ]);
 }
 var importFilterRated = true;
 var importFilterSpeed = "all";
@@ -5937,6 +6045,8 @@ function routeContent(route) {
         ]),
         h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
         renderMoveList(),
+        renderAnalyzeAll(),
+        renderPuzzleCandidates(),
         renderImportFilters(),
         renderChesscomImport(),
         renderLichessImport(),
