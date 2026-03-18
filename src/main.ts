@@ -505,43 +505,37 @@ function syncBoard(): void {
 }
 
 // --- Navigation ---
+// Single navigation helper: every path change must go through here so that
+// board, eval arrow, graph, and move list always stay in sync.
+// Mirrors the userJump pattern in lichess-org/lila: ui/analyse/src/ctrl.ts
+
+function navigate(path: string): void {
+  ctrl.setPath(path);
+  syncBoard();
+  evalCurrentPosition(); // updates currentEval, arrow, and triggers threat eval if on
+  void saveGamesToIdb();
+  redraw();
+}
 
 function next(): void {
   const child = ctrl.node.children[0];
   if (!child) return;
-  ctrl.setPath(ctrl.path + child.id);
-  syncBoard();
-  evalCurrentPosition();
-  void saveGamesToIdb();
-  redraw();
+  navigate(ctrl.path + child.id);
 }
 
 function prev(): void {
   if (ctrl.path === '') return;
-  ctrl.setPath(pathInit(ctrl.path));
-  syncBoard();
-  evalCurrentPosition();
-  void saveGamesToIdb();
-  redraw();
+  navigate(pathInit(ctrl.path));
 }
 
 // Mirrors lichess-org/lila: ui/analyse/src/control.ts first / last
 function first(): void {
-  ctrl.setPath('');
-  syncBoard();
-  evalCurrentPosition();
-  void saveGamesToIdb();
-  redraw();
+  navigate('');
 }
 
 function last(): void {
   // Path to the final mainline node = all non-root node IDs concatenated
-  const path = ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, '');
-  ctrl.setPath(path);
-  syncBoard();
-  evalCurrentPosition();
-  void saveGamesToIdb();
-  redraw();
+  navigate(ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, ''));
 }
 
 // --- App nav ---
@@ -647,7 +641,7 @@ function renderMoveList(): VNode {
     const label = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
     moves.push(h('span.move', {
       class: { active: nodePath === ctrl.path },
-      on: { click: () => { ctrl.setPath(nodePath); syncBoard(); evalCurrentPosition(); void saveGamesToIdb(); redraw(); } },
+      on: { click: () => navigate(nodePath) },
     }, label ? `${node.san} ${label}` : (node.san ?? '')));
   }
   return h('div.move-list', moves);
@@ -764,7 +758,7 @@ function renderEvalGraph(): VNode {
     // Invisible wide strip for easier clicking
     svgNodes.push(h('rect', {
       attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: 'transparent' },
-      on: { click: () => { ctrl.setPath(capturePath); syncBoard(); evalCurrentPosition(); void saveGamesToIdb(); redraw(); } },
+      on: { click: () => navigate(capturePath) },
     }));
 
     // Visible dot
@@ -788,17 +782,45 @@ function renderEvalGraph(): VNode {
 }
 
 // --- Eval display ---
-// Adapted from lichess-org/lila: ui/analyse/src/view/ (evaluation rendering)
+// Adapted from lichess-org/lila: ui/lib/src/ceval/util.ts renderEval
+// Score is always from white's perspective (positive = white winning).
+
+/** Format centipawns as +0.8 / -1.2 / #3 / #-3. Matches Lichess renderEval util. */
+function formatScore(ev: PositionEval): string {
+  if (ev.mate !== undefined) {
+    // Positive mate = white mates, negative = black mates (white perspective)
+    return ev.mate > 0 ? `#${ev.mate}` : `#${ev.mate}`;
+  }
+  if (ev.cp !== undefined) {
+    // Round to 1 decimal, cap at ±99 — mirrors lichess-org/lila: ui/lib/src/ceval/util.ts
+    const e = Math.max(Math.min(Math.round(ev.cp / 10) / 10, 99), -99);
+    return (e > 0 ? '+' : '') + e.toFixed(1);
+  }
+  return '…';
+}
 
 function renderEval(): VNode {
-  if (!engineEnabled) return h('div.eval-display');
-  const score = currentEval.mate !== undefined
-    ? `Mate in ${Math.abs(currentEval.mate)}`
-    : currentEval.cp !== undefined
-      ? `Eval: ${currentEval.cp >= 0 ? '+' : ''}${(currentEval.cp / 100).toFixed(2)}`
-      : 'Evaluating…';
-  const best = currentEval.best ? ` | Best: ${currentEval.best}` : '';
-  return h('div.eval-display', score + best);
+  if (!engineEnabled) return h('div.ceval-box.ceval-box--off');
+
+  const score = formatScore(currentEval);
+  const isPositive = currentEval.cp !== undefined
+    ? currentEval.cp > 0
+    : currentEval.mate !== undefined
+      ? currentEval.mate > 0
+      : null;
+
+  const computing = !currentEval.cp && currentEval.mate === undefined && engineReady;
+
+  return h('div.ceval-box', [
+    h('span.ceval__score', {
+      class: { 'ceval__score--white': isPositive === true, 'ceval__score--black': isPositive === false },
+    }, computing ? '…' : score),
+    currentEval.best
+      ? h('span.ceval__best', `Best: ${currentEval.best}`)
+      : engineReady
+        ? h('span.ceval__info', batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}…` : '')
+        : h('span.ceval__info', 'Loading engine…'),
+  ]);
 }
 
 // --- Puzzle candidate extraction ---
@@ -944,7 +966,7 @@ function renderPuzzleCandidates(): VNode {
       h('button.game-list__row', {
         class: { active: isActive },
         attrs: { style: 'flex:1' },
-        on: { click: () => { ctrl.setPath(c.path); syncBoard(); void saveGamesToIdb(); redraw(); } },
+        on: { click: () => navigate(c.path) },
       }, [
         h('span', { attrs: { style: 'font-weight:600;margin-right:8px' } }, heading),
         h('span', { attrs: { style: 'color:#f88;margin-right:8px' } }, lossText),
