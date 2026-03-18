@@ -151,8 +151,8 @@ body {
 
 .ceval-box {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 4px;
   width: 100%;
   max-width: 600px;
   padding: 6px 10px;
@@ -165,6 +165,37 @@ body {
     // Keep space to avoid layout shift when engine is toggled
     visibility: hidden;
   }
+}
+
+.ceval__primary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ceval__pv-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+  border-left: 2px solid #2a2a2a;
+}
+
+.ceval__pv-score {
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  color: #aaa;
+
+  &.ceval__score--white { color: #c8c890; }
+  &.ceval__score--black { color: #7aa8c4; }
+}
+
+.ceval__pv-best {
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: #888;
 }
 
 .ceval__score {
@@ -188,6 +219,45 @@ body {
 .ceval__info {
   font-size: 0.8rem;
   color: #555;
+}
+
+// Engine settings panel
+// Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts
+.ceval-settings {
+  width: 100%;
+  max-width: 600px;
+  background: #111;
+  border-radius: 4px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &__label {
+    font-size: 0.8rem;
+    color: #888;
+    min-width: 46px;
+  }
+
+  &__val {
+    font-size: 0.8rem;
+    color: #aaa;
+    min-width: 36px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type='range'] {
+    flex: 1;
+    accent-color: #4a8;
+  }
 }
 
 .eval-graph {
@@ -246,11 +316,31 @@ body {
 }
 
 .summary__name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.8rem;
   color: #888;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.summary__color-icon {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+
+  &--white {
+    background: #e8e8e8;
+    border: 1px solid #999;
+  }
+
+  &--black {
+    background: #333;
+    border: 1px solid #888;
+  }
 }
 
 .summary__accuracy {
