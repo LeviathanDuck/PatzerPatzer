@@ -291,6 +291,12 @@ async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
 // --- Engine ---
 // Mirrors lichess-org/lila: ui/lib/src/ceval/ toggle + state management
 
+interface EvalLine {
+  cp?:   number;
+  mate?: number;
+  best?: string;
+}
+
 interface PositionEval {
   cp?: number;
   mate?: number;
@@ -303,6 +309,8 @@ interface PositionEval {
    * Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
    */
   loss?: number;
+  /** Secondary PV lines when MultiPV > 1 (indices 0+ correspond to multipv 2, 3, …). */
+  lines?: EvalLine[];
 }
 
 // --- Win-chances conversion ---
@@ -361,6 +369,13 @@ let evalNodePly = 0;
 let evalParentNodeId = '';
 const protocol = new StockfishProtocol();
 
+// --- Engine settings ---
+// Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts
+let multiPv = 1;             // number of candidate lines (UCI MultiPV), 1–5
+let showEngineSettings = false;
+/** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
+let pendingLines: EvalLine[] = [];
+
 // --- Batch analysis queue ---
 // Sequential mainline analysis driven by the bestmove callback.
 // When batchAnalyzing is true the batch owns the engine; evalCurrentPosition() yields.
@@ -411,8 +426,11 @@ function parseEngineLine(line: string): void {
     let isMate = false;
     let score: number | undefined;
     let best: string | undefined;
+    let pvIndex = 1; // multipv line index (1-based); 1 when MultiPV = 1 or not reported
     for (let i = 1; i < parts.length; i++) {
-      if (parts[i] === 'score') {
+      if (parts[i] === 'multipv') {
+        pvIndex = parseInt(parts[++i]);
+      } else if (parts[i] === 'score') {
         isMate = parts[++i] === 'mate';
         score = parseInt(parts[++i]);
         // skip lowerbound / upperbound tokens
@@ -422,21 +440,34 @@ function parseEngineLine(line: string): void {
         break;
       }
     }
-    // Route info into threat or normal eval
-    const ev = evalIsThreat ? threatEval : currentEval;
-    if (score !== undefined) {
-      // Normalize to white's perspective: Stockfish reports from the SIDE-TO-MOVE's perspective.
-      // At odd plies (black to move) the raw score is from black's POV — negate for white's POV.
-      // Threat evals are skipped: we only use their .best UCI, not the score.
-      // Mirrors the normalization Lichess applies when storing ceval.cp in tree nodes.
-      const s = (!evalIsThreat && evalNodePly % 2 === 1) ? -score : score;
-      if (isMate) { ev.mate = s; ev.cp = undefined; }
-      else        { ev.cp = s;   ev.mate = undefined; }
-    }
-    if (best) ev.best = best;
-    if ((score !== undefined || best) && !batchAnalyzing) {
-      syncArrow();
-      redraw();
+
+    if (pvIndex === 1) {
+      // Primary line — route into threat or normal eval as before
+      const ev = evalIsThreat ? threatEval : currentEval;
+      if (score !== undefined) {
+        // Normalize to white's perspective: Stockfish reports from the SIDE-TO-MOVE's perspective.
+        // At odd plies (black to move) the raw score is from black's POV — negate for white's POV.
+        // Mirrors the normalization Lichess applies when storing ceval.cp in tree nodes.
+        const s = (!evalIsThreat && evalNodePly % 2 === 1) ? -score : score;
+        if (isMate) { ev.mate = s; ev.cp = undefined; }
+        else        { ev.cp = s;   ev.mate = undefined; }
+      }
+      if (best) ev.best = best;
+      if ((score !== undefined || best) && !batchAnalyzing) {
+        syncArrow();
+        redraw();
+      }
+    } else if (!evalIsThreat && score !== undefined) {
+      // Secondary PV line (MultiPV 2, 3, …) — accumulate in pendingLines.
+      // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts multiPv handling.
+      const s = evalNodePly % 2 === 1 ? -score : score;
+      const idx = pvIndex - 1; // 0-based index into pendingLines (0 = multipv 2)
+      if (!pendingLines[idx]) pendingLines[idx] = {};
+      const pl = pendingLines[idx]!;
+      if (isMate) { pl.mate = s; pl.cp = undefined; }
+      else        { pl.cp = s;   pl.mate = undefined; }
+      if (best) pl.best = best;
+      if (!batchAnalyzing) redraw();
     }
   } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
     if (evalIsThreat) {
@@ -448,6 +479,11 @@ function parseEngineLine(line: string): void {
     } else {
       currentEval.best = parts[1];
       const stored: PositionEval = { ...currentEval };
+      // Attach secondary lines collected during this search
+      if (pendingLines.length > 0) {
+        stored.lines = pendingLines.slice(1).filter(Boolean); // index 0 = multipv 2, etc.
+        pendingLines = [];
+      }
       const parentEval = evalCache.get(evalParentNodeId);
       // Raw cp delta (kept for reference)
       if (parentEval?.cp !== undefined && stored.cp !== undefined) {
@@ -512,7 +548,7 @@ function evalThreatPosition(): void {
   evalIsThreat = true;
   protocol.stop();
   protocol.setPosition(flipFenColor(ctrl.node.fen));
-  protocol.go(analysisDepth);
+  protocol.go(analysisDepth); // always 1 line — only the best move arrow is needed
 }
 
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode (keyboard 'x')
@@ -545,11 +581,12 @@ function evalCurrentPosition(): void {
   evalNodeId = ctrl.node.id;
   evalNodePly = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
-  currentEval = {}; // reset for new position
-  syncArrow();      // clear stale arrow immediately
+  currentEval  = {}; // reset for new position
+  pendingLines = []; // clear any stale secondary lines
+  syncArrow();       // clear stale arrow immediately
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
-  protocol.go(analysisDepth);
+  protocol.go(analysisDepth, multiPv);
 }
 
 /**
@@ -1090,22 +1127,25 @@ function renderAnalysisSummary(): VNode {
   const whiteName = game?.white ?? 'White';
   const blackName = game?.black ?? 'Black';
 
-  function playerCol(name: string, data: PlayerSummary): VNode {
+  function playerCol(name: string, data: PlayerSummary, color: 'white' | 'black'): VNode {
     const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : '—';
     const breakdown: VNode[] = [];
     if (data.blunders     > 0) breakdown.push(h('span.summary__blunder',     `${data.blunders} blunder${data.blunders !== 1 ? 's' : ''}`));
     if (data.mistakes     > 0) breakdown.push(h('span.summary__mistake',     `${data.mistakes} mistake${data.mistakes !== 1 ? 's' : ''}`));
     if (data.inaccuracies > 0) breakdown.push(h('span.summary__inaccuracy',  `${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? 'ies' : 'y'}`));
     return h('div.summary__col', [
-      h('div.summary__name', name),
+      h('div.summary__name', [
+        h('span.summary__color-icon', { class: { 'summary__color-icon--white': color === 'white', 'summary__color-icon--black': color === 'black' } }),
+        name,
+      ]),
       h('div.summary__accuracy', accText),
       breakdown.length > 0 ? h('div.summary__breakdown', breakdown) : h('div.summary__breakdown', '—'),
     ]);
   }
 
   return h('div.analysis-summary', [
-    playerCol(whiteName, summary.white),
-    playerCol(blackName, summary.black),
+    playerCol(whiteName, summary.white, 'white'),
+    playerCol(blackName, summary.black, 'black'),
   ]);
 }
 
@@ -1129,7 +1169,7 @@ function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode): VNode
     on: { click: () => navigate(path) },
   }, label ? [
     node.san ?? '',
-    h('span', { attrs: { style: `margin-left:3px;font-size:0.75em;color:${label === 'blunder' ? '#f66' : label === 'mistake' ? '#f84' : '#fa4'}` } }, label),
+    h('span', { attrs: { style: `margin-left:2px;color:${label === 'blunder' ? '#f66' : label === 'mistake' ? '#f84' : '#fa4'}` } }, label === 'blunder' ? '??' : label === 'mistake' ? '?' : '?!'),
   ] : (node.san ?? ''));
 }
 
@@ -1355,15 +1395,73 @@ function renderEval(): VNode {
 
   const computing = !currentEval.cp && currentEval.mate === undefined && engineReady;
 
+  // Secondary PV lines (MultiPV 2, 3, …) — shown when multiPv > 1
+  // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pvs rendering
+  const secondaryLines = (currentEval.lines ?? []).map((line, i) => {
+    const lineScore = formatScore(line);
+    const linePositive = line.cp !== undefined ? line.cp > 0 : line.mate !== undefined ? line.mate > 0 : null;
+    return h('div.ceval__pv-line', [
+      h('span.ceval__pv-score', {
+        class: { 'ceval__score--white': linePositive === true, 'ceval__score--black': linePositive === false },
+      }, lineScore),
+      line.best ? h('span.ceval__pv-best', uciToSan(ctrl.node.fen, line.best)) : null,
+    ]);
+  }).filter(Boolean);
+
   return h('div.ceval-box', [
-    h('span.ceval__score', {
-      class: { 'ceval__score--white': isPositive === true, 'ceval__score--black': isPositive === false },
-    }, computing ? '…' : score),
-    currentEval.best
-      ? h('span.ceval__best', `Best: ${uciToSan(ctrl.node.fen, currentEval.best)}`)
-      : engineReady
-        ? h('span.ceval__info', batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}…` : '')
-        : h('span.ceval__info', 'Loading engine…'),
+    h('div.ceval__primary', [
+      h('span.ceval__score', {
+        class: { 'ceval__score--white': isPositive === true, 'ceval__score--black': isPositive === false },
+      }, computing ? '…' : score),
+      currentEval.best
+        ? h('span.ceval__best', uciToSan(ctrl.node.fen, currentEval.best))
+        : engineReady
+          ? h('span.ceval__info', batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}…` : '')
+          : h('span.ceval__info', 'Loading engine…'),
+    ]),
+    ...secondaryLines,
+  ]);
+}
+
+/**
+ * Engine settings panel — Lines (MultiPV) and Depth sliders.
+ * Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts renderCevalSettings
+ */
+function renderEngineSettings(): VNode | null {
+  if (!showEngineSettings) return null;
+  return h('div.ceval-settings', [
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-multipv' } }, 'Lines'),
+      h('input#ceval-multipv', {
+        attrs: { type: 'range', min: 1, max: 5, step: 1, value: multiPv },
+        on: {
+          input: (e: Event) => {
+            multiPv = parseInt((e.target as HTMLInputElement).value);
+            pendingLines = [];
+            // Re-evaluate current position with new MultiPV setting
+            if (engineEnabled && engineReady && !batchAnalyzing) {
+              currentEval = {};
+              evalCurrentPosition();
+            }
+            redraw();
+          },
+        },
+      }),
+      h('span.ceval-settings__val', `${multiPv} / 5`),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-depth' } }, 'Depth'),
+      h('input#ceval-depth', {
+        attrs: { type: 'range', min: 8, max: 24, step: 1, value: analysisDepth },
+        on: {
+          input: (e: Event) => {
+            analysisDepth = parseInt((e.target as HTMLInputElement).value);
+            redraw();
+          },
+        },
+      }),
+      h('span.ceval-settings__val', String(analysisDepth)),
+    ]),
   ]);
 }
 
@@ -1427,8 +1525,6 @@ function extractPuzzleCandidates(): PuzzleCandidate[] {
   return candidates;
 }
 
-const DEPTH_OPTIONS = [8, 10, 12, 15, 18];
-
 function renderAnalysisControls(): VNode {
   const canRun  = !batchAnalyzing && ctrl.mainline.length > 1;
   const hasGame = ctrl.mainline.length > 1;
@@ -1442,15 +1538,6 @@ function renderAnalysisControls(): VNode {
   return h('div.pgn-import', [
     h('div.pgn-import__row', [
       h('span', { attrs: { style: 'font-size:0.8rem;color:#888' } }, statusText),
-    ]),
-    h('div.pgn-import__row', [
-      h('span', { attrs: { style: 'color:#888;font-size:0.8rem' } }, 'Depth:'),
-      ...DEPTH_OPTIONS.map(d =>
-        h('button', {
-          attrs: { style: analysisDepth === d ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE },
-          on: { click: () => { analysisDepth = d; redraw(); } },
-        }, String(d))
-      ),
     ]),
     h('div.pgn-import__row', [
       h('button', {
@@ -1858,6 +1945,7 @@ function routeContent(route: Route): VNode {
       return h('div.analyse', [
         h('h1', 'Analysis Page'),
         renderEval(),
+        renderEngineSettings(),
         h('div.controls', [
           h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
           h('button', { on: { click: flip } }, 'Flip Board'),
@@ -1865,6 +1953,11 @@ function routeContent(route: Route): VNode {
           h('button', { on: { click: toggleEngine }, class: { active: engineEnabled } },
             engineEnabled ? (engineReady ? 'Engine: On' : 'Engine: Loading…') : 'Engine: Off'
           ),
+          h('button', {
+            class: { active: showEngineSettings },
+            attrs: { title: 'Engine settings' },
+            on: { click: () => { showEngineSettings = !showEngineSettings; redraw(); } },
+          }, '⚙'),
         ]),
         renderAnalysisControls(),
         h('div.analyse__board-wrap', [
