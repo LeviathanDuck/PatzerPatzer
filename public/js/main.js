@@ -5633,9 +5633,13 @@ var evalCache = /* @__PURE__ */ new Map();
 var evalNodeId = "";
 var evalNodePly = 0;
 var evalParentNodeId = "";
+var engineSearchActive = false;
+var awaitingStopBestmove = false;
 var protocol = new StockfishProtocol();
 var multiPv = 3;
 var showEngineSettings = false;
+var pvBoard = null;
+var pvBoardPos = { x: 0, y: 0 };
 var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
@@ -5647,7 +5651,7 @@ var batchQueue = [];
 var batchDone = 0;
 var batchAnalyzing = false;
 var batchState = "idle";
-var analysisDepth = 18;
+var analysisDepth = 22;
 var analysisRunning = false;
 var pendingBatchOnReady = false;
 var analysisComplete = false;
@@ -5714,7 +5718,16 @@ function parseEngineLine(line) {
       currentEval.lines = pendingLines.slice(1).filter(Boolean);
       if (!batchAnalyzing) redraw();
     }
-  } else if (parts[0] === "bestmove" && parts[1] && parts[1] !== "(none)") {
+  } else if (parts[0] === "bestmove") {
+    if (awaitingStopBestmove) {
+      awaitingStopBestmove = false;
+      currentEval = {};
+      pendingLines = [];
+      console.log("[ceval] stale bestmove discarded \u2014 currentEval reset");
+      return;
+    }
+    engineSearchActive = false;
+    if (!parts[1] || parts[1] === "(none)") return;
     if (evalIsThreat) {
       threatEval.best = parts[1];
       evalIsThreat = false;
@@ -5740,7 +5753,7 @@ function parseEngineLine(line) {
       }
       evalCache.set(evalNodeId, stored);
       currentEval = stored;
-      console.log("[eval cache]", evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
+      console.log("[eval cache]", evalNodeId, "ply:", evalNodePly, "best:", stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
       if (batchAnalyzing) {
         advanceBatch();
       } else {
@@ -5814,10 +5827,13 @@ function evalCurrentPosition() {
   pendingLines = [];
   arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   syncArrow();
+  const wasActive = engineSearchActive;
+  awaitingStopBestmove = wasActive;
+  engineSearchActive = true;
   evalNodeId = ctrl.node.id;
   evalNodePly = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? "";
-  protocol.stop();
+  if (wasActive) protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(analysisDepth, multiPv);
 }
@@ -5853,12 +5869,16 @@ function startBatchAnalysis() {
   if (queue.length > 0) evalBatchItem(queue[0]);
 }
 function evalBatchItem(item) {
+  const wasActive = engineSearchActive;
+  awaitingStopBestmove = wasActive;
+  engineSearchActive = true;
   evalNodeId = item.nodeId;
   evalNodePly = item.nodePly;
   evalParentNodeId = item.parentNodeId;
   currentEval = {};
   pendingLines = [];
-  protocol.stop();
+  console.log("[batch]", batchDone + 1, "/", batchQueue.length, "nodeId:", item.nodeId, "ply:", item.nodePly, "awaiting:", wasActive);
+  if (wasActive) protocol.stop();
   protocol.setPosition(item.fen);
   protocol.go(analysisDepth);
 }
@@ -6113,6 +6133,12 @@ function navigate(path) {
   evalCurrentPosition();
   void saveGamesToIdb();
   redraw();
+  scrollActiveIntoView();
+}
+function scrollActiveIntoView() {
+  requestAnimationFrame(() => {
+    document.querySelector(".move.active")?.scrollIntoView({ block: "nearest" });
+  });
 }
 function next() {
   const child = ctrl.node.children[0];
@@ -6571,15 +6597,7 @@ function formatScore(ev) {
 }
 function renderEval() {
   if (!engineEnabled) return h("div.ceval-box.ceval-box--off");
-  const score = formatScore(currentEval);
-  const isPositive = currentEval.cp !== void 0 ? currentEval.cp > 0 : currentEval.mate !== void 0 ? currentEval.mate > 0 : null;
-  const computing = !currentEval.cp && currentEval.mate === void 0 && engineReady;
-  return h("div.ceval-box", [
-    h("span.ceval__score", {
-      class: { "ceval__score--white": isPositive === true, "ceval__score--black": isPositive === false }
-    }, computing ? "\u2026" : score),
-    currentEval.best ? h("span.ceval__best", uciToSan(ctrl.node.fen, currentEval.best)) : engineReady ? h("span.ceval__info", batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}\u2026` : "") : h("span.ceval__info", "Loading engine\u2026")
-  ]);
+  return null;
 }
 function renderPvMoves(fen, moves) {
   const MAX_PV_MOVES = 12;
@@ -6593,11 +6611,13 @@ function renderPvMoves(fen, moves) {
       } else if (i === 0) {
         vnodes.push(h("span.pv-num", `${pos.fullmoves}\u2026`));
       }
-      const move3 = parseUci(moves[i]);
+      const uci = moves[i];
+      const move3 = parseUci(uci);
       if (!move3) break;
       const san = makeSanAndPlay(pos, move3);
       if (san === "--") break;
-      vnodes.push(h("span.pv-san", san));
+      const boardFen = makeFen(pos.toSetup());
+      vnodes.push(h("span.pv-san", { key: `${i}|${uci}`, attrs: { "data-board": `${boardFen}|${uci}` } }, san));
     }
     return vnodes;
   } catch {
@@ -6608,27 +6628,144 @@ function renderPvBox() {
   if (!engineEnabled) return null;
   const primaryMoves = currentEval.moves ?? [];
   const secondaryLines = currentEval.lines ?? [];
-  if (primaryMoves.length === 0 && secondaryLines.length === 0) return null;
   const fen = ctrl.node.fen;
-  function pvRow(ev, showScore2) {
+  function pvRow(ev) {
     const score = formatScore(ev);
     const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
     const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
     return h("div.pv", [
-      showScore2 ? h("strong", {
+      h("strong", {
         class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
-      }, score) : null,
+      }, score),
       ...pvNodes
     ]);
   }
-  const showScore = multiPv > 1;
   const rows = [];
-  if (primaryMoves.length > 0) rows.push(pvRow(currentEval, showScore));
+  if (primaryMoves.length > 0) rows.push(pvRow(currentEval));
   for (const line of secondaryLines) {
-    if (line.moves?.length) rows.push(pvRow(line, showScore));
+    if (line.moves?.length) rows.push(pvRow(line));
   }
-  if (rows.length === 0) return null;
-  return h("div.pv_box", rows);
+  if (rows.length === 0) {
+    const statusText = !engineReady ? "Loading engine\u2026" : batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}\u2026` : "\u2026";
+    return h("div.pv_box", [h("div.pv", [h("span.ceval__info", statusText)])]);
+  }
+  return h("div.pv_box", {
+    hook: {
+      insert: (vnode3) => {
+        const el = vnode3.elm;
+        el.addEventListener("mouseover", (e) => {
+          const dataBoard = e.target.dataset.board;
+          if (!dataBoard) return;
+          const sep = dataBoard.indexOf("|");
+          const newFen = dataBoard.slice(0, sep);
+          const newUci = dataBoard.slice(sep + 1);
+          pvBoardPos = { x: e.clientX, y: e.clientY };
+          if (pvBoard?.fen === newFen && pvBoard?.uci === newUci) return;
+          pvBoard = { fen: newFen, uci: newUci };
+          redraw();
+        });
+        el.addEventListener("mousemove", (e) => {
+          pvBoardPos = { x: e.clientX, y: e.clientY };
+          const overlay = document.querySelector(".pv-board-float");
+          if (overlay) {
+            const left = Math.min(e.clientX + 16, window.innerWidth - 208);
+            const top = Math.min(e.clientY + 16, window.innerHeight - 208);
+            overlay.style.left = `${left}px`;
+            overlay.style.top = `${top}px`;
+          }
+        });
+        el.addEventListener("mouseleave", () => {
+          if (!pvBoard) return;
+          pvBoard = null;
+          redraw();
+        });
+        el.addEventListener("click", (e) => {
+          const sanSpan = e.target.closest("span.pv-san");
+          if (!sanSpan) return;
+          e.preventDefault();
+          const pvRow2 = sanSpan.closest("div.pv");
+          if (!pvRow2) return;
+          const allSans = Array.from(pvRow2.querySelectorAll("span.pv-san"));
+          const clickedIdx = allSans.indexOf(sanSpan);
+          if (clickedIdx < 0) return;
+          const ucis = [];
+          for (let i = 0; i <= clickedIdx; i++) {
+            const db = allSans[i].dataset.board;
+            if (!db) break;
+            ucis.push(db.slice(db.indexOf("|") + 1));
+          }
+          if (ucis.length > 0) playPvUciList(ucis);
+        });
+      }
+    }
+  }, rows);
+}
+function playPvUciList(ucis) {
+  let path = ctrl.path;
+  let node = ctrl.node;
+  for (const uci of ucis) {
+    const existing = node.children.find((c) => c.uci === uci);
+    if (existing) {
+      path += existing.id;
+      node = existing;
+      continue;
+    }
+    const move3 = parseUci(uci);
+    if (!move3) break;
+    try {
+      const setup = parseFen(node.fen).unwrap();
+      const pos = Chess.fromSetup(setup).unwrap();
+      const san = makeSanAndPlay(pos, move3);
+      if (san === "--") break;
+      const newNode = {
+        id: scalachessCharPair(move3),
+        ply: node.ply + 1,
+        san,
+        uci: makeUci(move3),
+        fen: makeFen(pos.toSetup()),
+        children: []
+      };
+      addNode(ctrl.root, path, newNode);
+      path += newNode.id;
+      node = newNode;
+    } catch {
+      break;
+    }
+  }
+  navigate(path);
+}
+function renderPvBoard() {
+  if (!pvBoard) return null;
+  const { fen, uci } = pvBoard;
+  const left = Math.min(pvBoardPos.x + 16, window.innerWidth - 208);
+  const top = Math.min(pvBoardPos.y + 16, window.innerHeight - 208);
+  const arrow = uci.length >= 4 ? [{ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" }] : [];
+  const cgConfig = {
+    fen,
+    lastMove: uciToMove(uci),
+    orientation,
+    coordinates: false,
+    viewOnly: true,
+    drawable: { enabled: false, visible: true, autoShapes: arrow }
+  };
+  return h("div.pv-board-float", {
+    key: "pv-board-float",
+    attrs: { style: `left:${left}px;top:${top}px` }
+  }, [
+    h("div.cg-wrap", {
+      hook: {
+        insert: (vnode3) => {
+          vnode3.elm._cg = Chessground(vnode3.elm, cgConfig);
+        },
+        update: (_old, vnode3) => {
+          vnode3.elm._cg?.set(cgConfig);
+        },
+        destroy: (vnode3) => {
+          vnode3.elm._cg?.destroy();
+        }
+      }
+    })
+  ]);
 }
 function renderEngineSettings() {
   if (!showEngineSettings) return null;
@@ -6654,7 +6791,7 @@ function renderEngineSettings() {
     h("div.ceval-settings__row", [
       h("label.ceval-settings__label", { attrs: { for: "ceval-depth" } }, "Depth"),
       h("input#ceval-depth", {
-        attrs: { type: "range", min: 8, max: 24, step: 1, value: analysisDepth },
+        attrs: { type: "range", min: 8, max: 26, step: 1, value: analysisDepth },
         on: {
           input: (e) => {
             analysisDepth = parseInt(e.target.value);
@@ -7181,7 +7318,8 @@ function view(route) {
       renderNav(route),
       h("button.dev-reset", { on: { click: () => void resetAllData() } }, "Reset Data")
     ]),
-    h("main", [routeContent(route)])
+    h("main", [routeContent(route)]),
+    renderPvBoard()
   ]);
 }
 function previousBranch() {
@@ -7326,6 +7464,21 @@ document.addEventListener("keydown", (e) => {
     redraw();
   }
 });
+var wheelPixelAccum = 0;
+document.addEventListener("wheel", (e) => {
+  if (e.ctrlKey) return;
+  const boardWrap = document.querySelector(".analyse__board-wrap");
+  if (!boardWrap?.contains(e.target)) return;
+  e.preventDefault();
+  if (e.deltaMode === 0) {
+    wheelPixelAccum += e.deltaY;
+    if (Math.abs(wheelPixelAccum) < 10) return;
+  }
+  wheelPixelAccum = 0;
+  if (e.deltaY > 0) next();
+  else prev();
+  redraw();
+}, { passive: false });
 var app = document.getElementById("app");
 var currentRoute = current();
 var vnode2 = patch(app, view(currentRoute));

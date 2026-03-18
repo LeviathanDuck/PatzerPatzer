@@ -419,7 +419,7 @@ let batchDone      = 0;
 let batchAnalyzing = false;
 let batchState: BatchState = 'idle';
 
-let analysisDepth    = 18; // Lichess commentable() requires depth >= 15; 18 matches practice mode default
+let analysisDepth    = 22; // Lichess cloud analysis depth; matches [%eval] annotation quality
 let analysisRunning  = false;
 let pendingBatchOnReady = false; // queued batch start — fires on next readyok
 let analysisComplete = false;
@@ -503,13 +503,19 @@ function parseEngineLine(line: string): void {
       if (!batchAnalyzing) redraw();
     }
   } else if (parts[0] === 'bestmove') {
-    engineSearchActive = false;
     // Discard the stale bestmove that arrives after a 'stop' interrupted a previous search.
     // This prevents the previous position's result from being stored under the new nodeId.
+    // IMPORTANT: do NOT set engineSearchActive = false here — the new search is still running.
+    // Stale info lines may have already corrupted currentEval; reset it so the real search
+    // starts clean (real info lines will repopulate before the real bestmove arrives).
     if (awaitingStopBestmove) {
       awaitingStopBestmove = false;
+      currentEval  = {};
+      pendingLines = [];
+      console.log('[ceval] stale bestmove discarded — currentEval reset');
       return;
     }
+    engineSearchActive = false;
     if (!parts[1] || parts[1] === '(none)') return; // no legal move (checkmate/stalemate)
     if (evalIsThreat) {
       // Threat eval complete — store best move and redraw
@@ -542,7 +548,7 @@ function parseEngineLine(line: string): void {
       }
       evalCache.set(evalNodeId, stored);
       currentEval = stored;
-      console.log('[eval cache]', evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
+      console.log('[eval cache]', evalNodeId, 'ply:', evalNodePly, 'best:', stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
       if (batchAnalyzing) {
         advanceBatch(); // drives the queue; skips syncArrow/redraw until done
       } else {
@@ -625,12 +631,13 @@ function evalCurrentPosition(): void {
   pendingLines = [];
   arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   syncArrow(); // clear stale arrows from previous position immediately
-  awaitingStopBestmove = engineSearchActive; // discard stale bestmove if one is in flight
+  const wasActive      = engineSearchActive;
+  awaitingStopBestmove = wasActive; // discard stale bestmove if one is in flight
   engineSearchActive   = true;
   evalNodeId       = ctrl.node.id;
   evalNodePly      = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
-  protocol.stop();
+  if (wasActive) protocol.stop(); // only interrupt if a search was actually running
   protocol.setPosition(ctrl.node.fen);
   protocol.go(analysisDepth, multiPv);
 }
@@ -678,14 +685,16 @@ function startBatchAnalysis(): void {
 }
 
 function evalBatchItem(item: BatchItem): void {
-  awaitingStopBestmove = engineSearchActive; // discard stale bestmove if one is in flight
+  const wasActive      = engineSearchActive;
+  awaitingStopBestmove = wasActive; // discard stale bestmove if one is in flight
   engineSearchActive   = true;
   evalNodeId       = item.nodeId;
   evalNodePly      = item.nodePly;
   evalParentNodeId = item.parentNodeId;
   currentEval      = {};
   pendingLines     = [];
-  protocol.stop();
+  console.log('[batch]', batchDone + 1, '/', batchQueue.length, 'nodeId:', item.nodeId, 'ply:', item.nodePly, 'awaiting:', wasActive);
+  if (wasActive) protocol.stop(); // only interrupt if a search was actually running
   protocol.setPosition(item.fen);
   protocol.go(analysisDepth); // always MultiPV=1 for batch efficiency
 }
@@ -1972,7 +1981,7 @@ function renderEngineSettings(): VNode | null {
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-depth' } }, 'Depth'),
       h('input#ceval-depth', {
-        attrs: { type: 'range', min: 8, max: 24, step: 1, value: analysisDepth },
+        attrs: { type: 'range', min: 8, max: 26, step: 1, value: analysisDepth },
         on: {
           input: (e: Event) => {
             analysisDepth = parseInt((e.target as HTMLInputElement).value);
