@@ -1,7 +1,7 @@
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
-import { uciToMove } from '@lichess-org/chessground/util';
+import { key2pos, uciToMove } from '@lichess-org/chessground/util';
 import type { NormalMove, Role } from 'chessops';
 import { Chess } from 'chessops/chess';
 import { scalachessCharPair } from 'chessops/compat';
@@ -924,24 +924,34 @@ function onUserMove(orig: string, dest: string): void {
     return;
   }
 
-  // Build a new variation node from the current FEN
+  // Detect pawn promotion — show dialog instead of auto-queening
+  const setup = parseFen(ctrl.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const fromSq = parseSquare(orig);
+  const toSq   = parseSquare(dest);
+  if (fromSq === undefined || toSq === undefined) return;
+  const piece = pos.board.get(fromSq);
+  if (piece?.role === 'pawn' && ((pos.turn === 'white' && toSq >= 56) || (pos.turn === 'black' && toSq < 8))) {
+    pendingPromotion = { orig, dest, color: pos.turn };
+    redraw();
+    return;
+  }
+
+  completeMove(orig, dest);
+}
+
+/**
+ * Finalise a move (with optional promotion role) and add it to the tree.
+ * Adapted from lichess-org/lila: ui/analyse/src/ctrl.ts addNodeLocally
+ */
+function completeMove(orig: string, dest: string, promotion?: Role): void {
   const setup = parseFen(ctrl.node.fen).unwrap();
   const pos = Chess.fromSetup(setup).unwrap();
   const fromSq = parseSquare(orig);
   const toSq = parseSquare(dest);
   if (fromSq === undefined || toSq === undefined) return;
-
-  // Auto-promote to queen when a pawn reaches the back rank
-  let promotion: Role | undefined;
-  const piece = pos.board.get(fromSq);
-  if (piece?.role === 'pawn') {
-    if ((pos.turn === 'white' && toSq >= 56) || (pos.turn === 'black' && toSq < 8)) {
-      promotion = 'queen';
-    }
-  }
-
   const move: NormalMove = { from: fromSq, to: toSq, promotion };
-  const san = makeSanAndPlay(pos, move); // mutates pos to post-move state
+  const san = makeSanAndPlay(pos, move);
   const newNode: TreeNode = {
     id: scalachessCharPair(move),
     ply: ctrl.node.ply + 1,
@@ -950,9 +960,48 @@ function onUserMove(orig: string, dest: string): void {
     fen: makeFen(pos.toSetup()),
     children: [],
   };
-
   addNode(ctrl.root, ctrl.path, newNode);
   navigate(ctrl.path + newNode.id);
+}
+
+/**
+ * Called when the user selects a piece in the promotion dialog.
+ * Adapted from lichess-org/lila: ui/lib/src/game/promotion.ts PromotionCtrl.finish
+ */
+function completePromotion(role: Role): void {
+  if (!pendingPromotion) return;
+  const { orig, dest } = pendingPromotion;
+  pendingPromotion = null;
+  completeMove(orig, dest, role);
+}
+
+const PROMOTION_ROLES: Role[] = ['queen', 'knight', 'rook', 'bishop'];
+
+/**
+ * Renders the promotion piece-choice dialog overlaid on the board.
+ * Positions itself at the destination column, stacking from the back rank.
+ * Adapted from lichess-org/lila: ui/lib/src/game/promotion.ts renderPromotion
+ */
+function renderPromotionDialog(): VNode | null {
+  if (!pendingPromotion) return null;
+  const { dest, color } = pendingPromotion;
+  const [file] = key2pos(dest as Key);
+  // Column left% — same formula as Lichess
+  const left = orientation === 'white' ? file * 12.5 : (7 - file) * 12.5;
+  const vertical = color === orientation ? 'top' : 'bottom';
+
+  // Wrap in .cg-wrap so Chessground's piece background-image CSS rules cascade in
+  return h('div.cg-wrap.promotion-wrap', {
+    on: { click: () => { pendingPromotion = null; syncBoard(); redraw(); } },
+  }, [
+    h('div#promotion-choice.' + vertical, {}, PROMOTION_ROLES.map((role, i) => {
+      const top = (color === orientation ? i : 7 - i) * 12.5;
+      return h('square', {
+        attrs: { style: `top:${top}%;left:${left}%` },
+        on: { click: (e: Event) => { e.stopPropagation(); completePromotion(role); } },
+      }, [h(`piece.${role}.${color}`)]);
+    })),
+  ]);
 }
 
 function syncBoard(): void {
@@ -1036,6 +1085,8 @@ function renderNav(route: Route): VNode {
 
 let cgInstance: CgApi | undefined;
 let orientation: 'white' | 'black' = 'white';
+/** Pending pawn promotion — set when a pawn reaches the back rank, cleared after piece selection. */
+let pendingPromotion: { orig: string; dest: string; color: 'white' | 'black' } | null = null;
 
 // Adapted from lichess-org/lila: ui/analyse/src/ctrl.ts (flip)
 function flip(): void {
@@ -2201,7 +2252,7 @@ function routeContent(route: Route): VNode {
           ...(engineEnabled ? [renderEvalBar()] : []),
           (() => {
             const [topStrip, bottomStrip] = renderPlayerStrips();
-            return h('div.analyse__board', [topStrip, renderBoard(), bottomStrip]);
+            return h('div.analyse__board', [topStrip, h('div.analyse__board-inner', [renderBoard(), renderPromotionDialog()]), bottomStrip]);
           })(),
         ]),
         renderEvalGraph(),

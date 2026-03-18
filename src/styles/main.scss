@@ -70,6 +70,53 @@ header {
   flex-direction: column;
 }
 
+// Inner wrapper provides the relative positioning context for the promotion overlay
+.analyse__board-inner {
+  position: relative;
+  flex: 1;
+}
+
+// Adapted from lichess-org/lila: ui/lib/src/game/promotion.ts renderPromotion
+// .promotion-wrap sits on top of the board and inherits .cg-wrap so piece
+// background-image rules from chessground.cburnett.css cascade correctly.
+.promotion-wrap {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  aspect-ratio: unset !important; // override the 1/1 ratio from .cg-wrap
+}
+
+#promotion-choice {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+
+  square {
+    position: absolute;
+    width: 12.5%;
+    height: 12.5%;
+    background: #222;
+    border: 1px solid #555;
+    cursor: pointer;
+    box-sizing: border-box;
+
+    &:hover { background: #3a3a3a; }
+  }
+
+  piece {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+  }
+}
+
 // Adapted from lichess-org/lila: ui/analyse/src/view/components.ts renderPlayerStrips
 .analyse__player_strip {
   display: flex;
