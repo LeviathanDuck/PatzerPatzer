@@ -42,9 +42,11 @@ export class StockfishProtocol {
 
   /**
    * Start a fixed-depth search on the current position.
+   * multiPv controls how many candidate lines the engine returns (UCI MultiPV option).
    * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
    */
-  go(depth: number): void {
+  go(depth: number, multiPv = 1): void {
+    this.send(`setoption name MultiPV value ${multiPv}`);
     this.send(`go depth ${depth}`);
   }
 
