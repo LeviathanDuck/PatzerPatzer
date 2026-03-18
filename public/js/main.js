@@ -4281,9 +4281,11 @@ var StockfishProtocol = class {
   }
   /**
    * Start a fixed-depth search on the current position.
+   * multiPv controls how many candidate lines the engine returns (UCI MultiPV option).
    * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
    */
-  go(depth) {
+  go(depth, multiPv2 = 1) {
+    this.send(`setoption name MultiPV value ${multiPv2}`);
     this.send(`go depth ${depth}`);
   }
   /** Interrupt a running search. */
@@ -5374,18 +5376,21 @@ function loadGame(pgn) {
   analysisComplete = false;
   syncBoard();
   syncArrow();
-  evalCurrentPosition();
+  if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId);
+  else evalCurrentPosition();
   redraw();
 }
+var ANALYSIS_VERSION = 1;
 var _idb;
 function openGameDb() {
   if (_idb) return Promise.resolve(_idb);
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("patzer-pro", 2);
+    const req = indexedDB.open("patzer-pro", 3);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains("game-library")) db.createObjectStore("game-library");
       if (!db.objectStoreNames.contains("puzzle-library")) db.createObjectStore("puzzle-library");
+      if (!db.objectStoreNames.contains("analysis-library")) db.createObjectStore("analysis-library");
     };
     req.onsuccess = () => {
       _idb = req.result;
@@ -5449,6 +5454,89 @@ async function loadGamesFromIdb() {
     return void 0;
   }
 }
+async function saveAnalysisToIdb(status) {
+  if (!selectedGameId) return;
+  try {
+    const db = await openGameDb();
+    const nodes = {};
+    let path = "";
+    for (let i = 1; i < ctrl.mainline.length; i++) {
+      const node = ctrl.mainline[i];
+      path += node.id;
+      const ev = evalCache.get(node.id);
+      if (ev) {
+        const entry = { nodeId: node.id, path, fen: node.fen };
+        if (ev.cp !== void 0) entry.cp = ev.cp;
+        if (ev.mate !== void 0) entry.mate = ev.mate;
+        if (ev.best !== void 0) entry.best = ev.best;
+        if (ev.loss !== void 0) entry.loss = ev.loss;
+        if (ev.delta !== void 0) entry.delta = ev.delta;
+        nodes[node.id] = entry;
+      }
+    }
+    const record = {
+      gameId: selectedGameId,
+      analysisVersion: ANALYSIS_VERSION,
+      analysisDepth,
+      status,
+      updatedAt: Date.now(),
+      nodes
+    };
+    const tx = db.transaction("analysis-library", "readwrite");
+    tx.objectStore("analysis-library").put(record, selectedGameId);
+  } catch (e) {
+    console.warn("[idb] analysis save failed", e);
+  }
+}
+async function loadAnalysisFromIdb(gameId) {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("analysis-library", "readonly").objectStore("analysis-library").get(gameId);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[idb] analysis load failed", e);
+    return void 0;
+  }
+}
+async function clearAnalysisFromIdb(gameId) {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction("analysis-library", "readwrite");
+    tx.objectStore("analysis-library").delete(gameId);
+  } catch (e) {
+    console.warn("[idb] analysis clear failed", e);
+  }
+}
+async function loadAndRestoreAnalysis(gameId) {
+  const stored = await loadAnalysisFromIdb(gameId);
+  if (!stored) return;
+  if (stored.analysisVersion !== ANALYSIS_VERSION) return;
+  if (stored.analysisDepth !== analysisDepth) return;
+  for (const entry of Object.values(stored.nodes)) {
+    const ev = {};
+    if (entry.cp !== void 0) ev.cp = entry.cp;
+    if (entry.mate !== void 0) ev.mate = entry.mate;
+    if (entry.best !== void 0) ev.best = entry.best;
+    if (entry.loss !== void 0) ev.loss = entry.loss;
+    if (entry.delta !== void 0) ev.delta = entry.delta;
+    evalCache.set(entry.nodeId, ev);
+  }
+  if (stored.status === "complete") {
+    analyzedGameIds.add(gameId);
+    analysisComplete = true;
+    batchState = "complete";
+    const game = importedGames.find((g) => g.id === gameId);
+    const userColor = game ? getUserColor(game) : null;
+    if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
+  }
+  const restoredEval = evalCache.get(ctrl.node.id);
+  if (restoredEval) currentEval = { ...restoredEval };
+  syncArrow();
+  redraw();
+}
 var WIN_CHANCE_MULTIPLIER = -368208e-8;
 function rawWinChances(cp) {
   return 2 / (1 + Math.exp(WIN_CHANCE_MULTIPLIER * cp)) - 1;
@@ -5472,13 +5560,24 @@ var evalNodeId = "";
 var evalNodePly = 0;
 var evalParentNodeId = "";
 var protocol = new StockfishProtocol();
+var multiPv = 3;
+var showEngineSettings = false;
+var showEngineArrows = true;
+var arrowAllLines = true;
+var showPlayedArrow = true;
+var pendingLines = [];
 var batchQueue = [];
 var batchDone = 0;
 var batchAnalyzing = false;
 var batchState = "idle";
 var analysisDepth = 18;
 var analysisRunning = false;
+var pendingBatchOnReady = false;
 var analysisComplete = false;
+var analyzedGameIds = /* @__PURE__ */ new Set();
+var missedTacticGameIds = /* @__PURE__ */ new Set();
+var MISSED_TACTIC_THRESHOLD = 0.1;
+var MISSED_TACTIC_MAX_PLY = 60;
 var threatMode = false;
 var evalIsThreat = false;
 var threatEval = {};
@@ -5488,31 +5587,55 @@ function parseEngineLine(line) {
     let isMate = false;
     let score;
     let best;
+    let pvMoves = [];
+    let pvIndex = 1;
     for (let i = 1; i < parts.length; i++) {
-      if (parts[i] === "score") {
+      if (parts[i] === "multipv") {
+        pvIndex = parseInt(parts[++i]);
+      } else if (parts[i] === "score") {
         isMate = parts[++i] === "mate";
         score = parseInt(parts[++i]);
         if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
       } else if (parts[i] === "pv") {
-        best = parts[i + 1];
+        pvMoves = parts.slice(i + 1);
+        best = pvMoves[0];
         break;
       }
     }
-    const ev = evalIsThreat ? threatEval : currentEval;
-    if (score !== void 0) {
-      const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
-      if (isMate) {
-        ev.mate = s;
-        ev.cp = void 0;
-      } else {
-        ev.cp = s;
-        ev.mate = void 0;
+    if (pvIndex === 1) {
+      const ev = evalIsThreat ? threatEval : currentEval;
+      if (score !== void 0) {
+        const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
+        if (isMate) {
+          ev.mate = s;
+          ev.cp = void 0;
+        } else {
+          ev.cp = s;
+          ev.mate = void 0;
+        }
       }
-    }
-    if (best) ev.best = best;
-    if ((score !== void 0 || best) && !batchAnalyzing) {
-      syncArrow();
-      redraw();
+      if (best) ev.best = best;
+      if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
+      if ((score !== void 0 || best) && !batchAnalyzing) {
+        syncArrow();
+        redraw();
+      }
+    } else if (!evalIsThreat && score !== void 0) {
+      const s = evalNodePly % 2 === 1 ? -score : score;
+      const idx = pvIndex - 1;
+      if (!pendingLines[idx]) pendingLines[idx] = {};
+      const pl = pendingLines[idx];
+      if (isMate) {
+        pl.mate = s;
+        pl.cp = void 0;
+      } else {
+        pl.cp = s;
+        pl.mate = void 0;
+      }
+      if (best) pl.best = best;
+      if (pvMoves.length > 0) pl.moves = pvMoves;
+      currentEval.lines = pendingLines.slice(1).filter(Boolean);
+      if (!batchAnalyzing) redraw();
     }
   } else if (parts[0] === "bestmove" && parts[1] && parts[1] !== "(none)") {
     if (evalIsThreat) {
@@ -5523,6 +5646,7 @@ function parseEngineLine(line) {
     } else {
       currentEval.best = parts[1];
       const stored = { ...currentEval };
+      pendingLines = [];
       const parentEval = evalCache.get(evalParentNodeId);
       if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
         stored.delta = stored.cp - parentEval.cp;
@@ -5553,7 +5677,12 @@ function parseEngineLine(line) {
 protocol.onMessage((line) => {
   if (line.trim() === "readyok") {
     engineReady = true;
-    evalCurrentPosition();
+    if (pendingBatchOnReady) {
+      pendingBatchOnReady = false;
+      startBatchAnalysis();
+    } else {
+      evalCurrentPosition();
+    }
     redraw();
   } else {
     parseEngineLine(line);
@@ -5582,21 +5711,35 @@ function evalCurrentPosition() {
   }
   threatEval = {};
   const cached = evalCache.get(ctrl.node.id);
-  if (cached) {
+  const cachedHasLines = (cached?.lines?.length ?? 0) >= multiPv - 1;
+  if (cached && cachedHasLines) {
     currentEval = { ...cached };
     syncArrow();
     redraw();
     if (threatMode) evalThreatPosition();
     return;
   }
+  currentEval = cached ? { ...cached } : {};
+  pendingLines = [];
+  syncArrow();
   evalNodeId = ctrl.node.id;
   evalNodePly = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? "";
-  currentEval = {};
-  syncArrow();
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
-  protocol.go(analysisDepth);
+  protocol.go(analysisDepth, multiPv);
+}
+function startBatchWhenReady() {
+  if (!engineEnabled) {
+    pendingBatchOnReady = true;
+    toggleEngine();
+    return;
+  }
+  if (!engineReady) {
+    pendingBatchOnReady = true;
+    return;
+  }
+  startBatchAnalysis();
 }
 function startBatchAnalysis() {
   if (!engineEnabled || !engineReady || batchAnalyzing) return;
@@ -5622,12 +5765,38 @@ function evalBatchItem(item) {
   evalNodePly = item.nodePly;
   evalParentNodeId = item.parentNodeId;
   currentEval = {};
+  pendingLines = [];
   protocol.stop();
   protocol.setPosition(item.fen);
   protocol.go(analysisDepth);
 }
+function getUserColor(game) {
+  const knownNames = [chesscomUsername, lichessUsername].map((n) => n.trim().toLowerCase()).filter(Boolean);
+  if (knownNames.length === 0) return null;
+  if (game.white && knownNames.includes(game.white.toLowerCase())) return "white";
+  if (game.black && knownNames.includes(game.black.toLowerCase())) return "black";
+  return null;
+}
+function detectMissedTactics(userColor) {
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node = ctrl.mainline[i];
+    const parent = ctrl.mainline[i - 1];
+    const isWhiteMove = node.ply % 2 === 1;
+    const isUserMove = userColor === null || userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
+    if (!isUserMove) continue;
+    const nodeEval = evalCache.get(node.id);
+    const parentEval = evalCache.get(parent.id);
+    if (!nodeEval || !parentEval || !parentEval.best) continue;
+    const userParentMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
+    if (userParentMate !== void 0 && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
+    if (node.ply >= MISSED_TACTIC_MAX_PLY) continue;
+    if (nodeEval.loss !== void 0 && nodeEval.loss > MISSED_TACTIC_THRESHOLD) return true;
+  }
+  return false;
+}
 function advanceBatch() {
   batchDone++;
+  void saveAnalysisToIdb("partial");
   redraw();
   if (batchDone < batchQueue.length) {
     evalBatchItem(batchQueue[batchDone]);
@@ -5636,16 +5805,42 @@ function advanceBatch() {
     batchState = "complete";
     analysisRunning = false;
     analysisComplete = true;
-    syncArrow();
-    redraw();
+    if (selectedGameId) {
+      analyzedGameIds.add(selectedGameId);
+      const game = importedGames.find((g) => g.id === selectedGameId);
+      const userColor = game ? getUserColor(game) : null;
+      if (detectMissedTactics(userColor)) missedTacticGameIds.add(selectedGameId);
+    }
+    void saveAnalysisToIdb("complete");
+    evalCache.delete(ctrl.node.id);
+    currentEval = {};
+    pendingLines = [];
+    evalCurrentPosition();
   }
 }
 function syncArrow() {
   if (!cgInstance) return;
   const shapes = [];
-  if (engineEnabled && currentEval.best) {
-    const uci = currentEval.best;
-    shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
+  if (engineEnabled && showEngineArrows) {
+    if (currentEval.best) {
+      const uci = currentEval.best;
+      shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
+    }
+    if (arrowAllLines) {
+      for (const line of currentEval.lines ?? []) {
+        if (line.best) {
+          const uci = line.best;
+          shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleRed" });
+        }
+      }
+    }
+  }
+  if (showPlayedArrow) {
+    const nextNode = ctrl.node.children[0];
+    if (nextNode?.move?.uci) {
+      const uci = nextNode.move.uci;
+      shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "green" });
+    }
   }
   if (engineEnabled && threatMode && threatEval.best) {
     const uci = threatEval.best;
@@ -5914,51 +6109,67 @@ function renderAnalysisSummary() {
   const game = importedGames.find((g) => g.id === selectedGameId);
   const whiteName = game?.white ?? "White";
   const blackName = game?.black ?? "Black";
-  function playerCol(name, data) {
+  function playerCol(name, data, color) {
     const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : "\u2014";
     const breakdown = [];
     if (data.blunders > 0) breakdown.push(h("span.summary__blunder", `${data.blunders} blunder${data.blunders !== 1 ? "s" : ""}`));
     if (data.mistakes > 0) breakdown.push(h("span.summary__mistake", `${data.mistakes} mistake${data.mistakes !== 1 ? "s" : ""}`));
     if (data.inaccuracies > 0) breakdown.push(h("span.summary__inaccuracy", `${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? "ies" : "y"}`));
     return h("div.summary__col", [
-      h("div.summary__name", name),
+      h("div.summary__name", [
+        h("span.summary__color-icon", { class: { "summary__color-icon--white": color === "white", "summary__color-icon--black": color === "black" } }),
+        name
+      ]),
       h("div.summary__accuracy", accText),
       breakdown.length > 0 ? h("div.summary__breakdown", breakdown) : h("div.summary__breakdown", "\u2014")
     ]);
   }
   return h("div.analysis-summary", [
-    playerCol(whiteName, summary.white),
-    playerCol(blackName, summary.black)
+    playerCol(whiteName, summary.white, "white"),
+    playerCol(blackName, summary.black, "black")
   ]);
 }
-function renderMoveList() {
-  const moves = [];
-  let path = "";
-  for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i];
-    const parentNode2 = ctrl.mainline[i - 1];
-    path += node.id;
-    const nodePath = path;
-    const isWhite = node.ply % 2 === 1;
-    if (isWhite) {
-      moves.push(h("span.move-num", `${Math.ceil(node.ply / 2)}.`));
-    }
-    const cached = evalCache.get(node.id);
-    const parentCached = evalCache.get(parentNode2.id);
-    const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-    const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
-    moves.push(h("span.move", {
-      class: { active: nodePath === ctrl.path },
-      on: { click: () => navigate(nodePath) }
-    }, label ? [
-      node.san ?? "",
-      h("span", { attrs: { style: `margin-left:3px;font-size:0.75em;color:${label === "blunder" ? "#f66" : label === "mistake" ? "#f84" : "#fa4"}` } }, label)
-    ] : node.san ?? ""));
+function renderMoveSpan(node, path, parent) {
+  const cached = evalCache.get(node.id);
+  const parentCached = evalCache.get(parent.id);
+  const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
+  const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
+  return h("span.move", {
+    class: { active: path === ctrl.path },
+    on: { click: () => navigate(path) }
+  }, label ? [
+    node.san ?? "",
+    h("span", { attrs: { style: `margin-left:2px;color:${label === "blunder" ? "#f66" : label === "mistake" ? "#f84" : "#fa4"}` } }, label === "blunder" ? "??" : label === "mistake" ? "?" : "?!")
+  ] : node.san ?? "");
+}
+function renderNodeLine(node, path, parent, needsMoveNum) {
+  const out = [];
+  if (needsMoveNum || node.ply % 2 === 1) {
+    const n = Math.ceil(node.ply / 2);
+    out.push(h("span.move-num", node.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
   }
-  return h("div.move-list", moves);
+  out.push(renderMoveSpan(node, path, parent));
+  const [mainChild, ...varChildren] = node.children;
+  for (const varChild of varChildren) {
+    const varPath = path + varChild.id;
+    const varContent = renderNodeLine(varChild, varPath, node, true);
+    out.push(h("span", {
+      attrs: { style: "color:#666;font-size:0.9em;margin:0 2px" }
+    }, ["( ", ...varContent, " )"]));
+  }
+  if (mainChild) {
+    const mainPath = path + mainChild.id;
+    const contNeedsNum = varChildren.length > 0 && mainChild.ply % 2 === 0;
+    out.push(...renderNodeLine(mainChild, mainPath, node, contNeedsNum));
+  }
+  return out;
+}
+function renderMoveList() {
+  const firstChild = ctrl.root.children[0];
+  if (!firstChild) return h("div.move-list");
+  return h("div.move-list", renderNodeLine(firstChild, firstChild.id, ctrl.root, true));
 }
 function evalPct() {
-  if (!engineEnabled) return 50;
   if (currentEval.mate !== void 0) return currentEval.mate > 0 ? 100 : 0;
   if (currentEval.cp !== void 0) {
     const pct = 50 + currentEval.cp / 20;
@@ -5986,15 +6197,20 @@ function renderEvalGraph() {
   let path = "";
   for (let i = 1; i <= n; i++) {
     const node = mainline[i];
+    const parent = mainline[i - 1];
     path += node.id;
     const cached = evalCache.get(node.id);
+    const parentCached = evalCache.get(parent.id);
     const wc = cached !== void 0 ? evalWinChances(cached) : void 0;
     if (wc !== void 0) {
+      const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
+      const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
       pts.push({
         x: (i - 1) / (n - 1) * GRAPH_W,
         y: (1 - wc) / 2 * GRAPH_H,
         // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
-        path
+        path,
+        label
       });
     } else {
       pts.push(null);
@@ -6044,11 +6260,13 @@ function renderEvalGraph() {
       attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: "transparent" },
       on: { click: () => navigate(capturePath) }
     }));
+    const dotColor = isCurrent ? "#4a8" : pt.label === "blunder" ? "#f66" : pt.label === "mistake" ? "#f84" : pt.label === "inaccuracy" ? "#fa4" : "#888";
+    const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
     svgNodes.push(h("circle", { attrs: {
       cx: pt.x,
       cy: pt.y,
-      r: isCurrent ? 3.5 : 2,
-      fill: isCurrent ? "#4a8" : "#888",
+      r: dotR,
+      fill: dotColor,
       stroke: isCurrent ? "#fff" : "none",
       "stroke-width": 1
     } }));
@@ -6081,7 +6299,131 @@ function renderEval() {
     h("span.ceval__score", {
       class: { "ceval__score--white": isPositive === true, "ceval__score--black": isPositive === false }
     }, computing ? "\u2026" : score),
-    currentEval.best ? h("span.ceval__best", `Best: ${uciToSan(ctrl.node.fen, currentEval.best)}`) : engineReady ? h("span.ceval__info", batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}\u2026` : "") : h("span.ceval__info", "Loading engine\u2026")
+    currentEval.best ? h("span.ceval__best", uciToSan(ctrl.node.fen, currentEval.best)) : engineReady ? h("span.ceval__info", batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}\u2026` : "") : h("span.ceval__info", "Loading engine\u2026")
+  ]);
+}
+function renderPvMoves(fen, moves) {
+  const MAX_PV_MOVES = 12;
+  try {
+    const setup = parseFen(fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    const vnodes = [];
+    for (let i = 0; i < Math.min(moves.length, MAX_PV_MOVES); i++) {
+      if (pos.turn === "white") {
+        vnodes.push(h("span.pv-num", `${pos.fullmoves}.`));
+      } else if (i === 0) {
+        vnodes.push(h("span.pv-num", `${pos.fullmoves}\u2026`));
+      }
+      const move3 = parseUci(moves[i]);
+      if (!move3) break;
+      const san = makeSanAndPlay(pos, move3);
+      if (san === "--") break;
+      vnodes.push(h("span.pv-san", san));
+    }
+    return vnodes;
+  } catch {
+    return [];
+  }
+}
+function renderPvBox() {
+  if (!engineEnabled) return null;
+  const primaryMoves = currentEval.moves ?? [];
+  const secondaryLines = currentEval.lines ?? [];
+  if (primaryMoves.length === 0 && secondaryLines.length === 0) return null;
+  const fen = ctrl.node.fen;
+  function pvRow(ev, showScore2) {
+    const score = formatScore(ev);
+    const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
+    const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
+    return h("div.pv", [
+      showScore2 ? h("strong", {
+        class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
+      }, score) : null,
+      ...pvNodes
+    ]);
+  }
+  const showScore = multiPv > 1;
+  const rows = [];
+  if (primaryMoves.length > 0) rows.push(pvRow(currentEval, showScore));
+  for (const line of secondaryLines) {
+    if (line.moves?.length) rows.push(pvRow(line, showScore));
+  }
+  if (rows.length === 0) return null;
+  return h("div.pv_box", rows);
+}
+function renderEngineSettings() {
+  if (!showEngineSettings) return null;
+  return h("div.ceval-settings", [
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-multipv" } }, "Lines"),
+      h("input#ceval-multipv", {
+        attrs: { type: "range", min: 1, max: 5, step: 1, value: multiPv },
+        on: {
+          input: (e) => {
+            multiPv = parseInt(e.target.value);
+            pendingLines = [];
+            if (engineEnabled && engineReady && !batchAnalyzing) {
+              currentEval = {};
+              evalCurrentPosition();
+            }
+            redraw();
+          }
+        }
+      }),
+      h("span.ceval-settings__val", `${multiPv} / 5`)
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-depth" } }, "Depth"),
+      h("input#ceval-depth", {
+        attrs: { type: "range", min: 8, max: 24, step: 1, value: analysisDepth },
+        on: {
+          input: (e) => {
+            analysisDepth = parseInt(e.target.value);
+            redraw();
+          }
+        }
+      }),
+      h("span.ceval-settings__val", String(analysisDepth))
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-arrows" } }, "Arrows"),
+      h("input#ceval-arrows", {
+        attrs: { type: "checkbox", checked: showEngineArrows },
+        on: {
+          change: (e) => {
+            showEngineArrows = e.target.checked;
+            syncArrow();
+            redraw();
+          }
+        }
+      })
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-arrow-lines" } }, "All lines"),
+      h("input#ceval-arrow-lines", {
+        attrs: { type: "checkbox", checked: arrowAllLines },
+        on: {
+          change: (e) => {
+            arrowAllLines = e.target.checked;
+            syncArrow();
+            redraw();
+          }
+        }
+      })
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-played-arrow" } }, "Played"),
+      h("input#ceval-played-arrow", {
+        attrs: { type: "checkbox", checked: showPlayedArrow },
+        on: {
+          change: (e) => {
+            showPlayedArrow = e.target.checked;
+            syncArrow();
+            redraw();
+          }
+        }
+      })
+    ])
   ]);
 }
 var PUZZLE_CANDIDATE_MIN_LOSS = 0.14;
@@ -6111,9 +6453,8 @@ function extractPuzzleCandidates() {
   console.log("[puzzles] extracted", candidates.length, "candidates", candidates);
   return candidates;
 }
-var DEPTH_OPTIONS = [8, 10, 12, 15, 18];
 function renderAnalysisControls() {
-  const canRun = engineEnabled && engineReady && !batchAnalyzing;
+  const canRun = !batchAnalyzing && ctrl.mainline.length > 1;
   const hasGame = ctrl.mainline.length > 1;
   const statusText = analysisRunning ? `Analyzing\u2026 ${batchDone} / ${batchQueue.length}` : analysisComplete ? `Analysis complete (${batchDone} positions)` : "Idle";
   return h("div.pgn-import", [
@@ -6121,26 +6462,19 @@ function renderAnalysisControls() {
       h("span", { attrs: { style: "font-size:0.8rem;color:#888" } }, statusText)
     ]),
     h("div.pgn-import__row", [
-      h("span", { attrs: { style: "color:#888;font-size:0.8rem" } }, "Depth:"),
-      ...DEPTH_OPTIONS.map(
-        (d) => h("button", {
-          attrs: { style: analysisDepth === d ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE },
-          on: { click: () => {
-            analysisDepth = d;
-            redraw();
-          } }
-        }, String(d))
-      )
-    ]),
-    h("div.pgn-import__row", [
       h("button", {
         attrs: { disabled: !canRun },
-        on: { click: startBatchAnalysis }
+        on: { click: startBatchWhenReady }
       }, "Analyze All"),
       h("button", {
         attrs: { disabled: !hasGame || batchAnalyzing },
         on: {
           click: () => {
+            if (selectedGameId) {
+              void clearAnalysisFromIdb(selectedGameId);
+              analyzedGameIds.delete(selectedGameId);
+              missedTacticGameIds.delete(selectedGameId);
+            }
             evalCache.clear();
             currentEval = {};
             puzzleCandidates = [];
@@ -6151,7 +6485,7 @@ function renderAnalysisControls() {
             analysisRunning = false;
             analysisComplete = false;
             syncArrow();
-            startBatchAnalysis();
+            startBatchWhenReady();
           }
         }
       }, "Re-analyze"),
@@ -6471,13 +6805,19 @@ function renderGameList() {
     h("div.game-list__header", `${importedGames.length} imported game${importedGames.length === 1 ? "" : "s"}`),
     h("ul", importedGames.map((game) => {
       const label = game.white && game.black ? `${game.white} vs ${game.black}${game.result ? " \xB7 " + game.result : ""}${game.date ? " \xB7 " + game.date.slice(0, 10) : ""}` : game.id;
+      const isAnalyzed = analyzedGameIds.has(game.id);
+      const hasMissedTactic = missedTacticGameIds.has(game.id);
       return h("li", h("button.game-list__row", {
         class: { active: game.id === selectedGameId },
         on: { click: () => {
           selectedGameId = game.id;
           loadGame(game.pgn);
         } }
-      }, label));
+      }, [
+        isAnalyzed ? h("span", { attrs: { style: "color:#4a8;margin-right:4px;font-size:0.8em", title: "Analyzed" } }, "\u2713") : null,
+        hasMissedTactic ? h("span", { attrs: { style: "color:#f84;margin-right:6px;font-size:0.85em;font-weight:700", title: "Missed tactic in opening/middlegame" } }, "!") : null,
+        label
+      ]));
     }))
   ]);
 }
@@ -6489,6 +6829,8 @@ function routeContent(route) {
       return h("div.analyse", [
         h("h1", "Analysis Page"),
         renderEval(),
+        renderPvBox(),
+        renderEngineSettings(),
         h("div.controls", [
           h("button", { on: { click: prev }, attrs: { disabled: ctrl.path === "" } }, "\u2190 Prev"),
           h("button", { on: { click: flip } }, "Flip Board"),
@@ -6497,10 +6839,21 @@ function routeContent(route) {
             "button",
             { on: { click: toggleEngine }, class: { active: engineEnabled } },
             engineEnabled ? engineReady ? "Engine: On" : "Engine: Loading\u2026" : "Engine: Off"
-          )
+          ),
+          h("button", {
+            class: { active: showEngineSettings },
+            attrs: { title: "Engine settings" },
+            on: { click: () => {
+              showEngineSettings = !showEngineSettings;
+              redraw();
+            } }
+          }, "\u2699")
         ]),
         renderAnalysisControls(),
-        h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
+        h("div.analyse__board-wrap", [
+          ...engineEnabled ? [renderEvalBar()] : [],
+          h("div.analyse__board", [renderBoard()])
+        ]),
         renderEvalGraph(),
         renderAnalysisSummary(),
         renderMoveList(),
@@ -6521,9 +6874,30 @@ function routeContent(route) {
       return h("h1", "Home");
   }
 }
+async function resetAllData() {
+  if (!confirm("Reset all data? This clears imported games, analysis, and puzzles.")) return;
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction(["game-library", "puzzle-library", "analysis-library"], "readwrite");
+    tx.objectStore("game-library").clear();
+    tx.objectStore("puzzle-library").clear();
+    tx.objectStore("analysis-library").clear();
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn("[reset] IDB clear failed", e);
+  }
+  window.location.reload();
+}
 function view(route) {
   return h("div#shell", [
-    h("header", [h("span", "Patzer Pro"), renderNav(route)]),
+    h("header", [
+      h("span", "Patzer Pro"),
+      renderNav(route),
+      h("button.dev-reset", { on: { click: () => void resetAllData() } }, "Reset Data")
+    ]),
     h("main", [routeContent(route)])
   ]);
 }
@@ -6566,5 +6940,6 @@ void loadGamesFromIdb().then((stored) => {
   syncBoard();
   syncArrow();
   redraw();
+  void loadAndRestoreAnalysis(toLoad.id);
 });
 //# sourceMappingURL=main.js.map

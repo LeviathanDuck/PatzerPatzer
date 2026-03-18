@@ -301,6 +301,13 @@ header {
     flex: 1;
     accent-color: #4a8;
   }
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    accent-color: #4a8;
+    cursor: pointer;
+  }
 }
 
 .eval-graph {

@@ -377,6 +377,9 @@ const protocol = new StockfishProtocol();
 // Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts
 let multiPv = 3;             // number of candidate lines (UCI MultiPV), 1–5
 let showEngineSettings = false;
+let showEngineArrows = true; // show engine line arrows on board (default on)
+let arrowAllLines = true;    // draw arrows for all PV lines; false = top line only
+let showPlayedArrow = true;  // draw arrow for the next move actually played in game
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 let pendingLines: EvalLine[] = [];
 
@@ -744,18 +747,44 @@ function advanceBatch(): void {
 
 // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts makeShapesFromUci
 // autoShapes is the programmatic layer — does not affect user-drawn shapes.
-// Blue = engine best move; Red = threat (opponent's best response, keyboard 'x').
+// Brush colors match Lichess: paleBlue = top engine line, paleRed = secondary lines,
+// green = played move, red = threat.
 function syncArrow(): void {
   if (!cgInstance) return;
   const shapes: DrawShape[] = [];
-  if (engineEnabled && currentEval.best) {
-    const uci = currentEval.best;
-    shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleBlue' });
+
+  if (engineEnabled && showEngineArrows) {
+    // Top engine line — paleBlue (matches Lichess)
+    if (currentEval.best) {
+      const uci = currentEval.best;
+      shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleBlue' });
+    }
+    // Secondary PV lines — paleRed (matches Lichess), only when arrowAllLines is on
+    if (arrowAllLines) {
+      for (const line of currentEval.lines ?? []) {
+        if (line.best) {
+          const uci = line.best;
+          shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleRed' });
+        }
+      }
+    }
   }
+
+  // Played move arrow — green (matches Lichess), shown regardless of engine state
+  if (showPlayedArrow) {
+    const nextNode = ctrl.node.children[0];
+    if (nextNode?.move?.uci) {
+      const uci = nextNode.move.uci;
+      shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'green' });
+    }
+  }
+
+  // Threat arrow — red (opponent best response, keyboard 'x')
   if (engineEnabled && threatMode && threatEval.best) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'red' });
   }
+
   cgInstance.set({ drawable: { autoShapes: shapes } });
 }
 
@@ -1532,6 +1561,45 @@ function renderEngineSettings(): VNode | null {
         },
       }),
       h('span.ceval-settings__val', String(analysisDepth)),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-arrows' } }, 'Arrows'),
+      h('input#ceval-arrows', {
+        attrs: { type: 'checkbox', checked: showEngineArrows },
+        on: {
+          change: (e: Event) => {
+            showEngineArrows = (e.target as HTMLInputElement).checked;
+            syncArrow();
+            redraw();
+          },
+        },
+      }),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-arrow-lines' } }, 'All lines'),
+      h('input#ceval-arrow-lines', {
+        attrs: { type: 'checkbox', checked: arrowAllLines },
+        on: {
+          change: (e: Event) => {
+            arrowAllLines = (e.target as HTMLInputElement).checked;
+            syncArrow();
+            redraw();
+          },
+        },
+      }),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-played-arrow' } }, 'Played'),
+      h('input#ceval-played-arrow', {
+        attrs: { type: 'checkbox', checked: showPlayedArrow },
+        on: {
+          change: (e: Event) => {
+            showPlayedArrow = (e.target as HTMLInputElement).checked;
+            syncArrow();
+            redraw();
+          },
+        },
+      }),
     ]),
   ]);
 }
