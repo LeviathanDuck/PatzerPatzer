@@ -174,25 +174,29 @@ interface PositionEval {
 // --- Win-chances conversion ---
 // Adapted from lichess-org/lila: ui/lib/src/ceval/winningChances.ts
 //
+// ── Sign convention (critical) ──────────────────────────────────────────────
+// Stockfish reports cp from the SIDE-TO-MOVE's perspective (UCI standard).
+// When black is to move (odd ply), a positive cp means black is winning.
+// We must negate odd-ply scores to get a consistently WHITE-perspective value,
+// matching how Lichess stores ceval.cp in its tree nodes.
+// This normalization happens in parseEngineLine and is guarded by evalNodePly.
+//
 // ── Exact Lichess parity ────────────────────────────────────────────────────
 // • Sigmoid formula and multiplier −0.00368208 (lila PR #11148)
 // • cp clamped to [−1000, 1000] before the sigmoid
 // • Mate converted to cp equivalent: (21 − min(10, |mate|)) × 100
 // • povDiff formula: loss = (moverPrevWc − moverNodeWc) / 2
 // • Classification thresholds: 0.025 / 0.06 / 0.14
+// • Best-move short-circuit: if played UCI equals parent engine best, no label
 //
 // ── Intentional divergence ──────────────────────────────────────────────────
-// • Mover perspective: Lichess practice mode uses root.bottomColor() (fixed
-//   player POV for the whole game). We use node.ply % 2 to identify the
-//   actual mover at each node. This is correct for general analysis where we
-//   want to label each player's own mistakes, not shifts from one player's POV.
+// • Mover perspective: Lichess practice mode uses a fixed bottomColor() (one
+//   player's POV). We use node.ply % 2 to identify each move's actual mover,
+//   so both players' mistakes are labelled correctly in post-game analysis.
 //
 // ── Known approximations ────────────────────────────────────────────────────
-// • No "played best move" short-circuit: Lichess suppresses labels when the
-//   played UCI equals the engine's best from the parent position. We rely on
-//   the 0.025 threshold to naturally absorb near-zero shifts.
 // • No tablebase / threefold / 50-move-rule overrides: Lichess sets cp=0 for
-//   drawn positions regardless of engine output. We use raw engine cp.
+//   drawn positions. We use raw engine cp.
 
 const WIN_CHANCE_MULTIPLIER = -0.00368208; // https://github.com/lichess-org/lila/pull/11148
 
@@ -241,9 +245,15 @@ let batchDone      = 0;
 let batchAnalyzing = false;
 let batchState: BatchState = 'idle';
 
-let analysisDepth    = 12;
+let analysisDepth    = 15; // Lichess commentable() requires depth >= 15 for reliable labels
 let analysisRunning  = false;
 let analysisComplete = false;
+
+// Threat mode: evaluates the opponent's best response from the current position.
+// Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode + keyboard.ts 'x'
+let threatMode   = false;
+let evalIsThreat = false; // true while engine is working on the threat position
+let threatEval: PositionEval = {};
 
 /**
  * Parse a single UCI output line into currentEval.
@@ -266,53 +276,61 @@ function parseEngineLine(line: string): void {
         break;
       }
     }
+    // Route info into threat or normal eval
+    const ev = evalIsThreat ? threatEval : currentEval;
     if (score !== undefined) {
-      if (isMate) {
-        currentEval.mate = score;
-        currentEval.cp = undefined;
-      } else {
-        currentEval.cp = score;
-        currentEval.mate = undefined;
-      }
+      // Normalize to white's perspective: Stockfish reports from the SIDE-TO-MOVE's perspective.
+      // At odd plies (black to move) the raw score is from black's POV — negate for white's POV.
+      // Threat evals are skipped: we only use their .best UCI, not the score.
+      // Mirrors the normalization Lichess applies when storing ceval.cp in tree nodes.
+      const s = (!evalIsThreat && evalNodePly % 2 === 1) ? -score : score;
+      if (isMate) { ev.mate = s; ev.cp = undefined; }
+      else        { ev.cp = s;   ev.mate = undefined; }
     }
-    if (best) currentEval.best = best;
-    if (score !== undefined || best) {
-      if (!batchAnalyzing) {
-        console.log('[eval]', { ...currentEval });
-        syncArrow();
-        redraw();
-      }
-    }
-  } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
-    currentEval.best = parts[1];
-    const stored: PositionEval = { ...currentEval };
-    const parentEval = evalCache.get(evalParentNodeId);
-    // Raw cp delta (kept for reference)
-    if (parentEval?.cp !== undefined && stored.cp !== undefined) {
-      stored.delta = stored.cp - parentEval.cp;
-    }
-    // Win-chance shift from mover's perspective.
-    // Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
-    // povDiff(moverColor, nodeEval, prevEval) = (moverNodeWc - moverPrevWc) / 2
-    // loss = -povDiff = (moverPrevWc - moverNodeWc) / 2  [positive = worse for mover]
-    if (parentEval) {
-      const nodeWc   = evalWinChances(stored);
-      const parentWc = evalWinChances(parentEval);
-      if (nodeWc !== undefined && parentWc !== undefined) {
-        const whiteToMove   = evalNodePly % 2 === 1;
-        const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
-        const moverParentWc = whiteToMove ? parentWc : -parentWc;
-        stored.loss = (moverParentWc - moverNodeWc) / 2;
-      }
-    }
-    evalCache.set(evalNodeId, stored);
-    currentEval = stored;
-    console.log('[eval cache]', evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
-    if (batchAnalyzing) {
-      advanceBatch(); // drives the queue; skips syncArrow/redraw until done
-    } else {
+    if (best) ev.best = best;
+    if ((score !== undefined || best) && !batchAnalyzing) {
       syncArrow();
       redraw();
+    }
+  } else if (parts[0] === 'bestmove' && parts[1] && parts[1] !== '(none)') {
+    if (evalIsThreat) {
+      // Threat eval complete — store best move and redraw
+      threatEval.best = parts[1];
+      evalIsThreat = false;
+      syncArrow();
+      redraw();
+    } else {
+      currentEval.best = parts[1];
+      const stored: PositionEval = { ...currentEval };
+      const parentEval = evalCache.get(evalParentNodeId);
+      // Raw cp delta (kept for reference)
+      if (parentEval?.cp !== undefined && stored.cp !== undefined) {
+        stored.delta = stored.cp - parentEval.cp;
+      }
+      // Win-chance shift from mover's perspective.
+      // Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
+      // povDiff(moverColor, nodeEval, prevEval) = (moverNodeWc - moverPrevWc) / 2
+      // loss = -povDiff = (moverPrevWc - moverNodeWc) / 2  [positive = worse for mover]
+      if (parentEval) {
+        const nodeWc   = evalWinChances(stored);
+        const parentWc = evalWinChances(parentEval);
+        if (nodeWc !== undefined && parentWc !== undefined) {
+          const whiteToMove   = evalNodePly % 2 === 1;
+          const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
+          const moverParentWc = whiteToMove ? parentWc : -parentWc;
+          stored.loss = (moverParentWc - moverNodeWc) / 2;
+        }
+      }
+      evalCache.set(evalNodeId, stored);
+      currentEval = stored;
+      console.log('[eval cache]', evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
+      if (batchAnalyzing) {
+        advanceBatch(); // drives the queue; skips syncArrow/redraw until done
+      } else {
+        syncArrow();
+        redraw();
+        if (threatMode) evalThreatPosition(); // chain threat eval after normal eval
+      }
     }
   }
 }
@@ -327,14 +345,50 @@ protocol.onMessage(line => {
   }
 });
 
+// Flip the active color in a FEN string (null-move trick for threat analysis).
+// Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts threatMode position setup.
+// En passant square is cleared since it becomes invalid after a null move.
+function flipFenColor(fen: string): string {
+  const parts = fen.split(' ');
+  if (parts.length >= 2) parts[1] = parts[1] === 'w' ? 'b' : 'w';
+  if (parts.length >= 4) parts[3] = '-'; // clear en passant
+  return parts.join(' ');
+}
+
+function evalThreatPosition(): void {
+  if (!engineEnabled || !engineReady || batchAnalyzing) return;
+  threatEval   = {};
+  evalIsThreat = true;
+  protocol.stop();
+  protocol.setPosition(flipFenColor(ctrl.node.fen));
+  protocol.go(analysisDepth);
+}
+
+// Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode (keyboard 'x')
+function toggleThreatMode(): void {
+  threatMode = !threatMode;
+  if (threatMode) {
+    evalThreatPosition();
+  } else {
+    if (evalIsThreat) { protocol.stop(); evalIsThreat = false; }
+    threatEval = {};
+    syncArrow();
+    redraw();
+  }
+}
+
 function evalCurrentPosition(): void {
   if (batchAnalyzing) return; // batch owns the engine; ignore interactive requests
   if (!engineEnabled || !engineReady) return;
+  // Abort any in-flight threat eval — it belongs to the previous position
+  if (evalIsThreat) { protocol.stop(); evalIsThreat = false; }
+  threatEval = {};
   const cached = evalCache.get(ctrl.node.id);
   if (cached) {
     currentEval = { ...cached };
     syncArrow();
     redraw();
+    if (threatMode) evalThreatPosition(); // threat eval chains after cache hit too
     return;
   }
   evalNodeId = ctrl.node.id;
@@ -398,16 +452,17 @@ function advanceBatch(): void {
 
 // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts makeShapesFromUci
 // autoShapes is the programmatic layer — does not affect user-drawn shapes.
+// Blue = engine best move; Red = threat (opponent's best response, keyboard 'x').
 function syncArrow(): void {
   if (!cgInstance) return;
   const shapes: DrawShape[] = [];
   if (engineEnabled && currentEval.best) {
     const uci = currentEval.best;
-    shapes.push({
-      orig: uci.slice(0, 2) as Key,
-      dest: uci.slice(2, 4) as Key,
-      brush: 'paleBlue',
-    });
+    shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleBlue' });
+  }
+  if (engineEnabled && threatMode && threatEval.best) {
+    const uci = threatEval.best;
+    shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'red' });
   }
   cgInstance.set({ drawable: { autoShapes: shapes } });
 }
@@ -426,8 +481,10 @@ function toggleEngine(): void {
     }
   } else {
     protocol.stop();
-    currentEval = {};
-    syncArrow(); // clear arrow when engine turns off
+    currentEval  = {};
+    evalIsThreat = false;
+    threatEval   = {};
+    syncArrow(); // clear arrows when engine turns off
   }
   redraw();
 }
@@ -462,6 +519,25 @@ function next(): void {
 function prev(): void {
   if (ctrl.path === '') return;
   ctrl.setPath(pathInit(ctrl.path));
+  syncBoard();
+  evalCurrentPosition();
+  void saveGamesToIdb();
+  redraw();
+}
+
+// Mirrors lichess-org/lila: ui/analyse/src/control.ts first / last
+function first(): void {
+  ctrl.setPath('');
+  syncBoard();
+  evalCurrentPosition();
+  void saveGamesToIdb();
+  redraw();
+}
+
+function last(): void {
+  // Path to the final mainline node = all non-root node IDs concatenated
+  const path = ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, '');
+  ctrl.setPath(path);
   syncBoard();
   evalCurrentPosition();
   void saveGamesToIdb();
@@ -556,6 +632,7 @@ function renderMoveList(): VNode {
   let path = '';
   for (let i = 1; i < ctrl.mainline.length; i++) {
     const node = ctrl.mainline[i]!;
+    const parentNode = ctrl.mainline[i - 1]!;
     path += node.id;
     const nodePath = path; // capture for closure
     const isWhite = node.ply % 2 === 1;
@@ -563,7 +640,11 @@ function renderMoveList(): VNode {
       moves.push(h('span.move-num', `${Math.ceil(node.ply / 2)}.`));
     }
     const cached = evalCache.get(node.id);
-    const label = cached?.loss !== undefined ? classifyLoss(cached.loss) : null;
+    const parentCached = evalCache.get(parentNode.id);
+    // Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts makeComment
+    // If the played move equals the engine's best from the parent position, suppress the label.
+    const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
+    const label = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
     moves.push(h('span.move', {
       class: { active: nodePath === ctrl.path },
       on: { click: () => { ctrl.setPath(nodePath); syncBoard(); evalCurrentPosition(); void saveGamesToIdb(); redraw(); } },
@@ -1121,11 +1202,16 @@ function view(route: Route): VNode {
 // --- Keyboard navigation ---
 // Adapted from lichess-org/lila: ui/analyse/src/keyboard.ts
 
+// Keyboard navigation — mirrors lichess-org/lila: ui/analyse/src/keyboard.ts
+// Left/Right: prev/next move; Up/Down: jump to start/end; X: toggle threat mode
 document.addEventListener('keydown', (e: KeyboardEvent) => {
   const tag = (e.target as HTMLElement).tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-  if (e.key === 'ArrowRight') next();
-  else if (e.key === 'ArrowLeft') prev();
+  if (e.key === 'ArrowRight')      next();
+  else if (e.key === 'ArrowLeft')  prev();
+  else if (e.key === 'ArrowUp')   { e.preventDefault(); first(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); last(); }
+  else if (e.key === 'x' || e.key === 'X') flip();
 });
 
 // --- Bootstrap ---
