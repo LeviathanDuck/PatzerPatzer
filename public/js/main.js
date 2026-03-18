@@ -5652,37 +5652,27 @@ function syncBoard() {
     turnColor: node.ply % 2 === 0 ? "white" : "black"
   });
 }
-function next() {
-  const child = ctrl.node.children[0];
-  if (!child) return;
-  ctrl.setPath(ctrl.path + child.id);
-  syncBoard();
-  evalCurrentPosition();
-  void saveGamesToIdb();
-  redraw();
-}
-function prev() {
-  if (ctrl.path === "") return;
-  ctrl.setPath(pathInit(ctrl.path));
-  syncBoard();
-  evalCurrentPosition();
-  void saveGamesToIdb();
-  redraw();
-}
-function first() {
-  ctrl.setPath("");
-  syncBoard();
-  evalCurrentPosition();
-  void saveGamesToIdb();
-  redraw();
-}
-function last() {
-  const path = ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, "");
+function navigate(path) {
   ctrl.setPath(path);
   syncBoard();
   evalCurrentPosition();
   void saveGamesToIdb();
   redraw();
+}
+function next() {
+  const child = ctrl.node.children[0];
+  if (!child) return;
+  navigate(ctrl.path + child.id);
+}
+function prev() {
+  if (ctrl.path === "") return;
+  navigate(pathInit(ctrl.path));
+}
+function first() {
+  navigate("");
+}
+function last() {
+  navigate(ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, ""));
 }
 function activeSection(route) {
   switch (route.name) {
@@ -5768,13 +5758,7 @@ function renderMoveList() {
     const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
     moves.push(h("span.move", {
       class: { active: nodePath === ctrl.path },
-      on: { click: () => {
-        ctrl.setPath(nodePath);
-        syncBoard();
-        evalCurrentPosition();
-        void saveGamesToIdb();
-        redraw();
-      } }
+      on: { click: () => navigate(nodePath) }
     }, label ? `${node.san} ${label}` : node.san ?? ""));
   }
   return h("div.move-list", moves);
@@ -5864,13 +5848,7 @@ function renderEvalGraph() {
     const isCurrent = pt.path === ctrl.path;
     svgNodes.push(h("rect", {
       attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: "transparent" },
-      on: { click: () => {
-        ctrl.setPath(capturePath);
-        syncBoard();
-        evalCurrentPosition();
-        void saveGamesToIdb();
-        redraw();
-      } }
+      on: { click: () => navigate(capturePath) }
     }));
     svgNodes.push(h("circle", { attrs: {
       cx: pt.x,
@@ -5890,11 +5868,27 @@ function renderEvalGraph() {
     } }, svgNodes)
   ]);
 }
+function formatScore(ev) {
+  if (ev.mate !== void 0) {
+    return ev.mate > 0 ? `#${ev.mate}` : `#${ev.mate}`;
+  }
+  if (ev.cp !== void 0) {
+    const e = Math.max(Math.min(Math.round(ev.cp / 10) / 10, 99), -99);
+    return (e > 0 ? "+" : "") + e.toFixed(1);
+  }
+  return "\u2026";
+}
 function renderEval() {
-  if (!engineEnabled) return h("div.eval-display");
-  const score = currentEval.mate !== void 0 ? `Mate in ${Math.abs(currentEval.mate)}` : currentEval.cp !== void 0 ? `Eval: ${currentEval.cp >= 0 ? "+" : ""}${(currentEval.cp / 100).toFixed(2)}` : "Evaluating\u2026";
-  const best = currentEval.best ? ` | Best: ${currentEval.best}` : "";
-  return h("div.eval-display", score + best);
+  if (!engineEnabled) return h("div.ceval-box.ceval-box--off");
+  const score = formatScore(currentEval);
+  const isPositive = currentEval.cp !== void 0 ? currentEval.cp > 0 : currentEval.mate !== void 0 ? currentEval.mate > 0 : null;
+  const computing = !currentEval.cp && currentEval.mate === void 0 && engineReady;
+  return h("div.ceval-box", [
+    h("span.ceval__score", {
+      class: { "ceval__score--white": isPositive === true, "ceval__score--black": isPositive === false }
+    }, computing ? "\u2026" : score),
+    currentEval.best ? h("span.ceval__best", `Best: ${currentEval.best}`) : engineReady ? h("span.ceval__info", batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}\u2026` : "") : h("span.ceval__info", "Loading engine\u2026")
+  ]);
 }
 var PUZZLE_CANDIDATE_MIN_LOSS = 0.14;
 var puzzleCandidates = [];
@@ -5998,12 +5992,7 @@ function renderPuzzleCandidates() {
       h("button.game-list__row", {
         class: { active: isActive },
         attrs: { style: "flex:1" },
-        on: { click: () => {
-          ctrl.setPath(c.path);
-          syncBoard();
-          void saveGamesToIdb();
-          redraw();
-        } }
+        on: { click: () => navigate(c.path) }
       }, [
         h("span", { attrs: { style: "font-weight:600;margin-right:8px" } }, heading),
         h("span", { attrs: { style: "color:#f88;margin-right:8px" } }, lossText),
