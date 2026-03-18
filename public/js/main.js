@@ -5565,6 +5565,9 @@ var showEngineSettings = false;
 var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
+var arrowDebounceTimer = null;
+var arrowSuppressUntil = 0;
+var ARROW_SETTLE_MS = 500;
 var pendingLines = [];
 var batchQueue = [];
 var batchDone = 0;
@@ -5617,7 +5620,7 @@ function parseEngineLine(line) {
       if (best) ev.best = best;
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if ((score !== void 0 || best) && !batchAnalyzing) {
-        syncArrow();
+        syncArrowDebounced();
         redraw();
       }
     } else if (!evalIsThreat && score !== void 0) {
@@ -5667,7 +5670,7 @@ function parseEngineLine(line) {
       if (batchAnalyzing) {
         advanceBatch();
       } else {
-        syncArrow();
+        syncArrowDebounced();
         redraw();
         if (threatMode) evalThreatPosition();
       }
@@ -5721,6 +5724,7 @@ function evalCurrentPosition() {
   }
   currentEval = cached ? { ...cached } : {};
   pendingLines = [];
+  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   syncArrow();
   evalNodeId = ctrl.node.id;
   evalNodePly = ctrl.node.ply;
@@ -5818,8 +5822,7 @@ function advanceBatch() {
     evalCurrentPosition();
   }
 }
-function syncArrow() {
-  if (!cgInstance) return;
+function buildArrowShapes() {
   const shapes = [];
   if (engineEnabled && showEngineArrows) {
     if (currentEval.best) {
@@ -5827,11 +5830,20 @@ function syncArrow() {
       shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
     }
     if (arrowAllLines) {
+      const topWc = evalWinChances(currentEval) ?? 0;
       for (const line of currentEval.lines ?? []) {
-        if (line.best) {
-          const uci = line.best;
-          shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleRed" });
-        }
+        if (!line.best) continue;
+        const lineWc = evalWinChances(line) ?? 0;
+        const shift = Math.abs(topWc - lineWc) / 2;
+        if (shift >= 0.2) continue;
+        const lineWidth2 = Math.max(2, Math.round(12 - shift * 50));
+        const uci = line.best;
+        shapes.push({
+          orig: uci.slice(0, 2),
+          dest: uci.slice(2, 4),
+          brush: "paleGrey",
+          modifiers: { lineWidth: lineWidth2 }
+        });
       }
     }
   }
@@ -5846,7 +5858,37 @@ function syncArrow() {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
   }
-  cgInstance.set({ drawable: { autoShapes: shapes } });
+  return shapes;
+}
+function syncArrow() {
+  if (!cgInstance) return;
+  if (arrowDebounceTimer !== null) {
+    clearTimeout(arrowDebounceTimer);
+    arrowDebounceTimer = null;
+  }
+  arrowSuppressUntil = 0;
+  cgInstance.set({ drawable: { autoShapes: buildArrowShapes() } });
+}
+function syncArrowDebounced() {
+  if (!cgInstance) return;
+  const now = Date.now();
+  if (now < arrowSuppressUntil) {
+    if (arrowDebounceTimer === null) {
+      arrowDebounceTimer = setTimeout(() => {
+        arrowDebounceTimer = null;
+        arrowSuppressUntil = 0;
+        cgInstance?.set({ drawable: { autoShapes: buildArrowShapes() } });
+      }, arrowSuppressUntil - now);
+    }
+    return;
+  }
+  if (arrowDebounceTimer !== null) {
+    clearTimeout(arrowDebounceTimer);
+  }
+  arrowDebounceTimer = setTimeout(() => {
+    arrowDebounceTimer = null;
+    cgInstance?.set({ drawable: { autoShapes: buildArrowShapes() } });
+  }, 150);
 }
 function toggleEngine() {
   engineEnabled = !engineEnabled;

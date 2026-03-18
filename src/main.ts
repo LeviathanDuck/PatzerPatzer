@@ -380,6 +380,12 @@ let showEngineSettings = false;
 let showEngineArrows = true; // show engine line arrows on board (default on)
 let arrowAllLines = true;    // draw arrows for all PV lines; false = top line only
 let showPlayedArrow = true;  // draw arrow for the next move actually played in game
+/** Debounce timer for arrow updates during live engine search — avoids flickering. */
+let arrowDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+/** Arrows are suppressed until this timestamp to give the engine a settling window. */
+let arrowSuppressUntil = 0;
+/** Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts — Lichess uses 500 ms delay. */
+const ARROW_SETTLE_MS = 500;
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 let pendingLines: EvalLine[] = [];
 
@@ -465,7 +471,7 @@ function parseEngineLine(line: string): void {
       if (best) ev.best = best;
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if ((score !== undefined || best) && !batchAnalyzing) {
-        syncArrow();
+        syncArrowDebounced();
         redraw();
       }
     } else if (!evalIsThreat && score !== undefined) {
@@ -520,7 +526,7 @@ function parseEngineLine(line: string): void {
       if (batchAnalyzing) {
         advanceBatch(); // drives the queue; skips syncArrow/redraw until done
       } else {
-        syncArrow();
+        syncArrowDebounced(); // bestmove finalizes — debounce cancels and draws immediately
         redraw();
         if (threatMode) evalThreatPosition(); // chain threat eval after normal eval
       }
@@ -594,10 +600,11 @@ function evalCurrentPosition(): void {
     return;
   }
   // Cache miss or insufficient lines — start the engine.
-  // Show whatever cached data exists immediately as a placeholder while it runs.
+  // Show whatever cached data exists immediately; suppress arrow flicker for ARROW_SETTLE_MS.
   currentEval  = cached ? { ...cached } : {};
   pendingLines = [];
-  syncArrow();
+  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
+  syncArrow(); // clear stale arrows from previous position immediately
   evalNodeId       = ctrl.node.id;
   evalNodePly      = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
@@ -745,12 +752,12 @@ function advanceBatch(): void {
   }
 }
 
-// Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts makeShapesFromUci
+// Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts makeShapesFromUci + compute
 // autoShapes is the programmatic layer — does not affect user-drawn shapes.
-// Brush colors match Lichess: paleBlue = top engine line, paleRed = secondary lines,
-// green = played move, red = threat.
-function syncArrow(): void {
-  if (!cgInstance) return;
+// Brush colors match Lichess exactly:
+//   paleBlue = top engine line, paleGrey (scaled lineWidth) = secondary lines,
+//   green = played move, red = threat.
+function buildArrowShapes(): DrawShape[] {
   const shapes: DrawShape[] = [];
 
   if (engineEnabled && showEngineArrows) {
@@ -759,13 +766,23 @@ function syncArrow(): void {
       const uci = currentEval.best;
       shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleBlue' });
     }
-    // Secondary PV lines — paleRed (matches Lichess), only when arrowAllLines is on
+    // Secondary PV lines — paleGrey with lineWidth scaled by win% diff (matches Lichess)
+    // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts compute()
     if (arrowAllLines) {
+      const topWc = evalWinChances(currentEval) ?? 0;
       for (const line of currentEval.lines ?? []) {
-        if (line.best) {
-          const uci = line.best;
-          shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleRed' });
-        }
+        if (!line.best) continue;
+        const lineWc = evalWinChances(line) ?? 0;
+        const shift = Math.abs(topWc - lineWc) / 2; // povDiff equivalent
+        if (shift >= 0.2) continue; // too weak — Lichess skips these
+        const lineWidth = Math.max(2, Math.round(12 - shift * 50));
+        const uci = line.best;
+        shapes.push({
+          orig: uci.slice(0, 2) as Key,
+          dest: uci.slice(2, 4) as Key,
+          brush: 'paleGrey',
+          modifiers: { lineWidth },
+        });
       }
     }
   }
@@ -785,7 +802,44 @@ function syncArrow(): void {
     shapes.push({ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'red' });
   }
 
-  cgInstance.set({ drawable: { autoShapes: shapes } });
+  return shapes;
+}
+
+/**
+ * Apply arrow shapes immediately (navigation, cache hits, engine off).
+ * Called directly when we don't need the settling delay.
+ */
+function syncArrow(): void {
+  if (!cgInstance) return;
+  if (arrowDebounceTimer !== null) { clearTimeout(arrowDebounceTimer); arrowDebounceTimer = null; }
+  arrowSuppressUntil = 0;
+  cgInstance.set({ drawable: { autoShapes: buildArrowShapes() } });
+}
+
+/**
+ * Apply arrow shapes after a settling delay — used during live engine search
+ * to avoid flickering as the engine changes its mind on each depth iteration.
+ * Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts (ARROW_SETTLE_MS).
+ */
+function syncArrowDebounced(): void {
+  if (!cgInstance) return;
+  const now = Date.now();
+  if (now < arrowSuppressUntil) {
+    // Still in the initial suppression window — schedule one deferred apply
+    if (arrowDebounceTimer === null) {
+      arrowDebounceTimer = setTimeout(() => {
+        arrowDebounceTimer = null;
+        arrowSuppressUntil = 0;
+        cgInstance?.set({ drawable: { autoShapes: buildArrowShapes() } });
+      }, arrowSuppressUntil - now);
+    }
+    return;
+  }
+  if (arrowDebounceTimer !== null) { clearTimeout(arrowDebounceTimer); }
+  arrowDebounceTimer = setTimeout(() => {
+    arrowDebounceTimer = null;
+    cgInstance?.set({ drawable: { autoShapes: buildArrowShapes() } });
+  }, 150); // 150 ms debounce — smooths out rapid depth updates
 }
 
 // Adapted from lichess-org/lila: ui/lib/src/ceval/ctrl.ts toggle
