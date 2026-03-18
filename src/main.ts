@@ -254,7 +254,19 @@ let batchState: BatchState = 'idle';
 
 let analysisDepth    = 18; // Lichess commentable() requires depth >= 15; 18 matches practice mode default
 let analysisRunning  = false;
+let pendingBatchOnReady = false; // queued batch start — fires on next readyok
 let analysisComplete = false;
+const analyzedGameIds    = new Set<string>(); // games that have completed a full batch analysis
+const missedTacticGameIds = new Set<string>(); // games where the user missed a significant tactic
+
+// Win-chance swing threshold for missed-tactic detection.
+// Mirrors lichess-org/lila: ui/analyse/src/nodeFinder.ts evalSwings (0.10).
+// Not lowered below Lichess's level — we want clear missed wins, not borderline moves.
+const MISSED_TACTIC_THRESHOLD = 0.10;
+
+// Ply cutoff for phase gating. Beyond this we're likely in endgame / time scramble territory.
+// Only opening + middlegame misses are flagged (approx first 30 moves).
+const MISSED_TACTIC_MAX_PLY = 60;
 
 // Threat mode: evaluates the opponent's best response from the current position.
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode + keyboard.ts 'x'
@@ -345,7 +357,12 @@ function parseEngineLine(line: string): void {
 protocol.onMessage(line => {
   if (line.trim() === 'readyok') {
     engineReady = true;
-    evalCurrentPosition();
+    if (pendingBatchOnReady) {
+      pendingBatchOnReady = false;
+      startBatchAnalysis();
+    } else {
+      evalCurrentPosition();
+    }
     redraw(); // update button label: Loading → On
   } else {
     parseEngineLine(line);
@@ -408,6 +425,24 @@ function evalCurrentPosition(): void {
   protocol.go(analysisDepth);
 }
 
+/**
+ * Enable the engine if needed, then start batch analysis.
+ * If the engine is mid-init (enabled but not yet ready), queues the batch
+ * via pendingBatchOnReady so it fires automatically on readyok.
+ */
+function startBatchWhenReady(): void {
+  if (!engineEnabled) {
+    pendingBatchOnReady = true;
+    toggleEngine(); // sets engineEnabled, inits or resumes engine
+    return;
+  }
+  if (!engineReady) {
+    pendingBatchOnReady = true; // readyok will trigger startBatchAnalysis
+    return;
+  }
+  startBatchAnalysis();
+}
+
 function startBatchAnalysis(): void {
   if (!engineEnabled || !engineReady || batchAnalyzing) return;
 
@@ -442,6 +477,64 @@ function evalBatchItem(item: BatchItem): void {
   protocol.go(analysisDepth);
 }
 
+/**
+ * Determine which color the importing user played in a given game.
+ * Matches white/black names against the known import usernames (case-insensitive).
+ * Returns null if unknown (e.g. PGN paste with no username on record).
+ */
+function getUserColor(game: ImportedGame): 'white' | 'black' | null {
+  const knownNames = [chesscomUsername, lichessUsername]
+    .map(n => n.trim().toLowerCase())
+    .filter(Boolean);
+  if (knownNames.length === 0) return null;
+  if (game.white && knownNames.includes(game.white.toLowerCase())) return 'white';
+  if (game.black && knownNames.includes(game.black.toLowerCase())) return 'black';
+  return null;
+}
+
+/**
+ * Scan the analyzed mainline for significant missed wins by the user.
+ * Mirrors the evalSwings logic in lichess-org/lila: ui/analyse/src/nodeFinder.ts,
+ * with a ply-based phase gate to exclude endgame / time-scramble positions.
+ *
+ * Triggers on:
+ *   1. Win-chance loss > MISSED_TACTIC_THRESHOLD for user's color, within MISSED_TACTIC_MAX_PLY
+ *   2. Missed forced mate ≤ 3 (phase-agnostic — a forced mate is always a real miss)
+ *
+ * userColor null = check both colors (PGN paste / unknown importer).
+ */
+function detectMissedTactics(userColor: 'white' | 'black' | null): boolean {
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node   = ctrl.mainline[i]!;
+    const parent = ctrl.mainline[i - 1]!;
+
+    const isWhiteMove = node.ply % 2 === 1;
+    const isUserMove  = userColor === null
+      || (userColor === 'white' && isWhiteMove)
+      || (userColor === 'black' && !isWhiteMove);
+    if (!isUserMove) continue;
+
+    const nodeEval   = evalCache.get(node.id);
+    const parentEval = evalCache.get(parent.id);
+    // Require both evals and a known engine best from the parent position
+    if (!nodeEval || !parentEval || !parentEval.best) continue;
+
+    // Condition 2 (checked first — phase-agnostic):
+    // User had a forced mate in ≤ 3 available but didn't play it.
+    // Mirrors: prev.eval.mate && !curr.eval.mate && Math.abs(prev.eval.mate) <= 3
+    const userParentMate = isWhiteMove ? parentEval.mate : (parentEval.mate !== undefined ? -parentEval.mate : undefined);
+    if (userParentMate !== undefined && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
+
+    // Phase gate: only opening + middlegame for the swing condition
+    if (node.ply >= MISSED_TACTIC_MAX_PLY) continue;
+
+    // Condition 1: significant win-chance loss for the user (Lichess evalSwings threshold)
+    // nodeEval.loss is already the mover's perspective win-chance drop (positive = worse for mover)
+    if (nodeEval.loss !== undefined && nodeEval.loss > MISSED_TACTIC_THRESHOLD) return true;
+  }
+  return false;
+}
+
 function advanceBatch(): void {
   batchDone++;
   redraw();
@@ -452,6 +545,12 @@ function advanceBatch(): void {
     batchState       = 'complete';
     analysisRunning  = false;
     analysisComplete = true;
+    if (selectedGameId) {
+      analyzedGameIds.add(selectedGameId);
+      const game = importedGames.find(g => g.id === selectedGameId);
+      const userColor = game ? getUserColor(game) : null;
+      if (detectMissedTactics(userColor)) missedTacticGameIds.add(selectedGameId);
+    }
     syncArrow(); // restore arrow for current board position
     redraw();
   }
@@ -957,7 +1056,6 @@ function renderMoveList(): VNode {
 // Adapted from lichess-org/lila: ui/analyse/src/view/ (evaluation bar)
 
 function evalPct(): number {
-  if (!engineEnabled) return 50;
   if (currentEval.mate !== undefined) return currentEval.mate > 0 ? 100 : 0;
   if (currentEval.cp !== undefined) {
     const pct = 50 + currentEval.cp / 20;
@@ -991,20 +1089,25 @@ function renderEvalGraph(): VNode {
     ]);
   }
 
-  interface Pt { x: number; y: number; path: string; }
+  interface Pt { x: number; y: number; path: string; label: MoveLabel | null; }
 
   const pts: (Pt | null)[] = [];
   let path = '';
   for (let i = 1; i <= n; i++) {
-    const node = mainline[i]!;
+    const node   = mainline[i]!;
+    const parent = mainline[i - 1]!;
     path += node.id;
-    const cached = evalCache.get(node.id);
+    const cached       = evalCache.get(node.id);
+    const parentCached = evalCache.get(parent.id);
     const wc = cached !== undefined ? evalWinChances(cached) : undefined;
     if (wc !== undefined) {
+      const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
+      const label = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
       pts.push({
         x: ((i - 1) / (n - 1)) * GRAPH_W,
         y: ((1 - wc) / 2) * GRAPH_H, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
         path,
+        label,
       });
     } else {
       pts.push(null);
@@ -1067,11 +1170,17 @@ function renderEvalGraph(): VNode {
       on: { click: () => navigate(capturePath) },
     }));
 
-    // Visible dot
+    // Visible dot — colored by move classification, current position overrides to green
+    const dotColor = isCurrent ? '#4a8'
+      : pt.label === 'blunder'     ? '#f66'
+      : pt.label === 'mistake'     ? '#f84'
+      : pt.label === 'inaccuracy'  ? '#fa4'
+      : '#888';
+    const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
     svgNodes.push(h('circle', { attrs: {
       cx: pt.x, cy: pt.y,
-      r: isCurrent ? 3.5 : 2,
-      fill: isCurrent ? '#4a8' : '#888',
+      r: dotR,
+      fill: dotColor,
       stroke: isCurrent ? '#fff' : 'none',
       'stroke-width': 1,
     } }));
@@ -1192,7 +1301,7 @@ function extractPuzzleCandidates(): PuzzleCandidate[] {
 const DEPTH_OPTIONS = [8, 10, 12, 15, 18];
 
 function renderAnalysisControls(): VNode {
-  const canRun  = engineEnabled && engineReady && !batchAnalyzing;
+  const canRun  = !batchAnalyzing && ctrl.mainline.length > 1;
   const hasGame = ctrl.mainline.length > 1;
 
   const statusText = analysisRunning
@@ -1217,7 +1326,7 @@ function renderAnalysisControls(): VNode {
     h('div.pgn-import__row', [
       h('button', {
         attrs: { disabled: !canRun },
-        on: { click: startBatchAnalysis },
+        on: { click: startBatchWhenReady },
       }, 'Analyze All'),
       h('button', {
         attrs: { disabled: !hasGame || batchAnalyzing },
@@ -1233,7 +1342,7 @@ function renderAnalysisControls(): VNode {
             analysisRunning  = false;
             analysisComplete = false;
             syncArrow();
-            startBatchAnalysis();
+            startBatchWhenReady();
           },
         },
       }, 'Re-analyze'),
@@ -1591,10 +1700,16 @@ function renderGameList(): VNode {
       const label = (game.white && game.black)
         ? `${game.white} vs ${game.black}${game.result ? ' · ' + game.result : ''}${game.date ? ' · ' + game.date.slice(0, 10) : ''}`
         : game.id;
+      const isAnalyzed     = analyzedGameIds.has(game.id);
+      const hasMissedTactic = missedTacticGameIds.has(game.id);
       return h('li', h('button.game-list__row', {
         class: { active: game.id === selectedGameId },
         on: { click: () => { selectedGameId = game.id; loadGame(game.pgn); } },
-      }, label));
+      }, [
+        isAnalyzed    ? h('span', { attrs: { style: 'color:#4a8;margin-right:4px;font-size:0.8em', title: 'Analyzed' } }, '✓') : null,
+        hasMissedTactic ? h('span', { attrs: { style: 'color:#f84;margin-right:6px;font-size:0.85em;font-weight:700', title: 'Missed tactic in opening/middlegame' } }, '!') : null,
+        label,
+      ]));
     })),
   ]);
 }
@@ -1618,7 +1733,10 @@ function routeContent(route: Route): VNode {
           ),
         ]),
         renderAnalysisControls(),
-        h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
+        h('div.analyse__board-wrap', [
+          ...(engineEnabled ? [renderEvalBar()] : []),
+          h('div.analyse__board', [renderBoard()]),
+        ]),
         renderEvalGraph(),
         renderAnalysisSummary(),
         renderMoveList(),
