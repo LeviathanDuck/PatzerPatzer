@@ -483,6 +483,34 @@ body {
   border-top: 1px solid #2a2a2a;
 }
 
+.eval-graph {
+  width: 100%;
+  max-width: 600px;
+}
+.eval-graph svg {
+  display: block;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #111;
+  cursor: default;
+}
+.eval-graph rect[fill=transparent] {
+  cursor: pointer;
+}
+.eval-graph circle {
+  cursor: pointer;
+}
+.eval-graph__empty {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 0.8rem;
+  background: #111;
+  border-radius: 3px;
+}
+
 .analyse {
   display: flex;
   flex-direction: column;

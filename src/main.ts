@@ -245,7 +245,7 @@ let batchDone      = 0;
 let batchAnalyzing = false;
 let batchState: BatchState = 'idle';
 
-let analysisDepth    = 15; // Lichess commentable() requires depth >= 15 for reliable labels
+let analysisDepth    = 18; // Lichess commentable() requires depth >= 15; 18 matches practice mode default
 let analysisRunning  = false;
 let analysisComplete = false;
 
@@ -670,6 +670,120 @@ function renderEvalBar(): VNode {
   const pct = evalPct();
   return h('div.eval-bar', [
     h('div.eval-bar__fill', { attrs: { style: `height: ${pct}%` } }),
+  ]);
+}
+
+// --- Evaluation graph ---
+// Adapted from lichess-org/lila: ui/chart/src/acpl.ts (concept)
+// Pure SVG, no charting library. X = move index, Y = white-perspective win chances.
+// Data source: evalCache (same normalized white-perspective values used for labels).
+
+const GRAPH_W = 600;
+const GRAPH_H = 80;
+
+function renderEvalGraph(): VNode {
+  const mainline = ctrl.mainline;
+  const n = mainline.length - 1; // non-root move count
+
+  if (n < 2) {
+    return h('div.eval-graph', [
+      h('div.eval-graph__empty', n === 0 ? 'No moves to graph.' : 'Analyze game to see graph.'),
+    ]);
+  }
+
+  interface Pt { x: number; y: number; path: string; }
+
+  const pts: (Pt | null)[] = [];
+  let path = '';
+  for (let i = 1; i <= n; i++) {
+    const node = mainline[i]!;
+    path += node.id;
+    const cached = evalCache.get(node.id);
+    const wc = cached !== undefined ? evalWinChances(cached) : undefined;
+    if (wc !== undefined) {
+      pts.push({
+        x: ((i - 1) / (n - 1)) * GRAPH_W,
+        y: ((1 - wc) / 2) * GRAPH_H, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
+        path,
+      });
+    } else {
+      pts.push(null);
+    }
+  }
+
+  const valid = pts.filter((p): p is Pt => p !== null);
+
+  if (valid.length < 2) {
+    return h('div.eval-graph', [
+      h('div.eval-graph__empty', 'Analyze game to see graph.'),
+    ]);
+  }
+
+  const cy = GRAPH_H / 2;
+  const svgNodes: VNode[] = [];
+
+  // Background: upper half = white territory, lower half = black territory
+  svgNodes.push(h('rect', { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy, fill: 'rgba(235,225,180,0.07)' } }));
+  svgNodes.push(h('rect', { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy, fill: 'rgba(0,0,0,0.2)' } }));
+
+  // Filled polygon: eval trace closed at the center line
+  const polyPts = [
+    `${valid[0]!.x},${cy}`,
+    ...valid.map(p => `${p.x},${p.y}`),
+    `${valid[valid.length - 1]!.x},${cy}`,
+  ].join(' ');
+  svgNodes.push(h('polygon', { attrs: { points: polyPts, fill: 'rgba(160,160,160,0.1)', stroke: 'none' } }));
+
+  // Center line (eval = 0)
+  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#444', 'stroke-width': 1 } }));
+
+  // Eval trace
+  svgNodes.push(h('polyline', { attrs: {
+    points: valid.map(p => `${p.x},${p.y}`).join(' '),
+    fill: 'none',
+    stroke: '#888',
+    'stroke-width': 1.5,
+    'stroke-linejoin': 'round',
+    'stroke-linecap': 'round',
+  } }));
+
+  // Vertical bar at current move (drawn before dots so dots render on top)
+  const curPt = valid.find(p => p.path === ctrl.path);
+  if (curPt) {
+    svgNodes.push(h('line', { attrs: {
+      x1: curPt.x, y1: 0, x2: curPt.x, y2: GRAPH_H,
+      stroke: '#4a8', 'stroke-width': 1, opacity: '0.55',
+    } }));
+  }
+
+  // Click strips (wider target than the dot) + dots
+  for (const pt of valid) {
+    const capturePath = pt.path;
+    const isCurrent = pt.path === ctrl.path;
+
+    // Invisible wide strip for easier clicking
+    svgNodes.push(h('rect', {
+      attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: 'transparent' },
+      on: { click: () => { ctrl.setPath(capturePath); syncBoard(); evalCurrentPosition(); void saveGamesToIdb(); redraw(); } },
+    }));
+
+    // Visible dot
+    svgNodes.push(h('circle', { attrs: {
+      cx: pt.x, cy: pt.y,
+      r: isCurrent ? 3.5 : 2,
+      fill: isCurrent ? '#4a8' : '#888',
+      stroke: isCurrent ? '#fff' : 'none',
+      'stroke-width': 1,
+    } }));
+  }
+
+  return h('div.eval-graph', [
+    h('svg', { attrs: {
+      viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
+      width: '100%',
+      height: GRAPH_H,
+      preserveAspectRatio: 'none',
+    } }, svgNodes),
   ]);
 }
 
@@ -1177,6 +1291,7 @@ function routeContent(route: Route): VNode {
         ]),
         renderAnalysisControls(),
         h('div.analyse__board-wrap', [renderEvalBar(), h('div.analyse__board', [renderBoard()])]),
+        renderEvalGraph(),
         renderMoveList(),
         renderPuzzleCandidates(),
         renderImportFilters(),

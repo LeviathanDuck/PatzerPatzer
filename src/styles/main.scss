@@ -149,6 +149,39 @@ body {
   li + li { border-top: 1px solid #2a2a2a; }
 }
 
+.eval-graph {
+  width: 100%;
+  max-width: 600px;
+
+  svg {
+    display: block;
+    border-radius: 3px;
+    overflow: hidden;
+    background: #111;
+    cursor: default;
+  }
+
+  // Click-target strips inherit pointer cursor
+  rect[fill='transparent'] {
+    cursor: pointer;
+  }
+
+  circle {
+    cursor: pointer;
+  }
+
+  &__empty {
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    font-size: 0.8rem;
+    background: #111;
+    border-radius: 3px;
+  }
+}
+
 .analyse {
   display: flex;
   flex-direction: column;
