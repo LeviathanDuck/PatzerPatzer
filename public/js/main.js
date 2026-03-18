@@ -5448,9 +5448,12 @@ var batchQueue = [];
 var batchDone = 0;
 var batchAnalyzing = false;
 var batchState = "idle";
-var analysisDepth = 12;
+var analysisDepth = 15;
 var analysisRunning = false;
 var analysisComplete = false;
+var threatMode = false;
+var evalIsThreat = false;
+var threatEval = {};
 function parseEngineLine(line) {
   const parts = line.trim().split(/\s+/);
   if (parts[0] === "info") {
@@ -5467,48 +5470,55 @@ function parseEngineLine(line) {
         break;
       }
     }
+    const ev = evalIsThreat ? threatEval : currentEval;
     if (score !== void 0) {
+      const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
       if (isMate) {
-        currentEval.mate = score;
-        currentEval.cp = void 0;
+        ev.mate = s;
+        ev.cp = void 0;
       } else {
-        currentEval.cp = score;
-        currentEval.mate = void 0;
+        ev.cp = s;
+        ev.mate = void 0;
       }
     }
-    if (best) currentEval.best = best;
-    if (score !== void 0 || best) {
-      if (!batchAnalyzing) {
-        console.log("[eval]", { ...currentEval });
-        syncArrow();
-        redraw();
-      }
-    }
-  } else if (parts[0] === "bestmove" && parts[1] && parts[1] !== "(none)") {
-    currentEval.best = parts[1];
-    const stored = { ...currentEval };
-    const parentEval = evalCache.get(evalParentNodeId);
-    if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
-      stored.delta = stored.cp - parentEval.cp;
-    }
-    if (parentEval) {
-      const nodeWc = evalWinChances(stored);
-      const parentWc = evalWinChances(parentEval);
-      if (nodeWc !== void 0 && parentWc !== void 0) {
-        const whiteToMove = evalNodePly % 2 === 1;
-        const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
-        const moverParentWc = whiteToMove ? parentWc : -parentWc;
-        stored.loss = (moverParentWc - moverNodeWc) / 2;
-      }
-    }
-    evalCache.set(evalNodeId, stored);
-    currentEval = stored;
-    console.log("[eval cache]", evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
-    if (batchAnalyzing) {
-      advanceBatch();
-    } else {
+    if (best) ev.best = best;
+    if ((score !== void 0 || best) && !batchAnalyzing) {
       syncArrow();
       redraw();
+    }
+  } else if (parts[0] === "bestmove" && parts[1] && parts[1] !== "(none)") {
+    if (evalIsThreat) {
+      threatEval.best = parts[1];
+      evalIsThreat = false;
+      syncArrow();
+      redraw();
+    } else {
+      currentEval.best = parts[1];
+      const stored = { ...currentEval };
+      const parentEval = evalCache.get(evalParentNodeId);
+      if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
+        stored.delta = stored.cp - parentEval.cp;
+      }
+      if (parentEval) {
+        const nodeWc = evalWinChances(stored);
+        const parentWc = evalWinChances(parentEval);
+        if (nodeWc !== void 0 && parentWc !== void 0) {
+          const whiteToMove = evalNodePly % 2 === 1;
+          const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
+          const moverParentWc = whiteToMove ? parentWc : -parentWc;
+          stored.loss = (moverParentWc - moverNodeWc) / 2;
+        }
+      }
+      evalCache.set(evalNodeId, stored);
+      currentEval = stored;
+      console.log("[eval cache]", evalNodeId, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
+      if (batchAnalyzing) {
+        advanceBatch();
+      } else {
+        syncArrow();
+        redraw();
+        if (threatMode) evalThreatPosition();
+      }
     }
   }
 }
@@ -5521,14 +5531,34 @@ protocol.onMessage((line) => {
     parseEngineLine(line);
   }
 });
+function flipFenColor(fen) {
+  const parts = fen.split(" ");
+  if (parts.length >= 2) parts[1] = parts[1] === "w" ? "b" : "w";
+  if (parts.length >= 4) parts[3] = "-";
+  return parts.join(" ");
+}
+function evalThreatPosition() {
+  if (!engineEnabled || !engineReady || batchAnalyzing) return;
+  threatEval = {};
+  evalIsThreat = true;
+  protocol.stop();
+  protocol.setPosition(flipFenColor(ctrl.node.fen));
+  protocol.go(analysisDepth);
+}
 function evalCurrentPosition() {
   if (batchAnalyzing) return;
   if (!engineEnabled || !engineReady) return;
+  if (evalIsThreat) {
+    protocol.stop();
+    evalIsThreat = false;
+  }
+  threatEval = {};
   const cached = evalCache.get(ctrl.node.id);
   if (cached) {
     currentEval = { ...cached };
     syncArrow();
     redraw();
+    if (threatMode) evalThreatPosition();
     return;
   }
   evalNodeId = ctrl.node.id;
@@ -5587,11 +5617,11 @@ function syncArrow() {
   const shapes = [];
   if (engineEnabled && currentEval.best) {
     const uci = currentEval.best;
-    shapes.push({
-      orig: uci.slice(0, 2),
-      dest: uci.slice(2, 4),
-      brush: "paleBlue"
-    });
+    shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
+  }
+  if (engineEnabled && threatMode && threatEval.best) {
+    const uci = threatEval.best;
+    shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
   }
   cgInstance.set({ drawable: { autoShapes: shapes } });
 }
@@ -5607,6 +5637,8 @@ function toggleEngine() {
   } else {
     protocol.stop();
     currentEval = {};
+    evalIsThreat = false;
+    threatEval = {};
     syncArrow();
   }
   redraw();
@@ -5632,6 +5664,21 @@ function next() {
 function prev() {
   if (ctrl.path === "") return;
   ctrl.setPath(pathInit(ctrl.path));
+  syncBoard();
+  evalCurrentPosition();
+  void saveGamesToIdb();
+  redraw();
+}
+function first() {
+  ctrl.setPath("");
+  syncBoard();
+  evalCurrentPosition();
+  void saveGamesToIdb();
+  redraw();
+}
+function last() {
+  const path = ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, "");
+  ctrl.setPath(path);
   syncBoard();
   evalCurrentPosition();
   void saveGamesToIdb();
@@ -5708,6 +5755,7 @@ function renderMoveList() {
   let path = "";
   for (let i = 1; i < ctrl.mainline.length; i++) {
     const node = ctrl.mainline[i];
+    const parentNode2 = ctrl.mainline[i - 1];
     path += node.id;
     const nodePath = path;
     const isWhite = node.ply % 2 === 1;
@@ -5715,7 +5763,9 @@ function renderMoveList() {
       moves.push(h("span.move-num", `${Math.ceil(node.ply / 2)}.`));
     }
     const cached = evalCache.get(node.id);
-    const label = cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
+    const parentCached = evalCache.get(parentNode2.id);
+    const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
+    const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
     moves.push(h("span.move", {
       class: { active: nodePath === ctrl.path },
       on: { click: () => {
@@ -6201,6 +6251,13 @@ document.addEventListener("keydown", (e) => {
   if (tag === "INPUT" || tag === "TEXTAREA") return;
   if (e.key === "ArrowRight") next();
   else if (e.key === "ArrowLeft") prev();
+  else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    first();
+  } else if (e.key === "ArrowDown") {
+    e.preventDefault();
+    last();
+  } else if (e.key === "x" || e.key === "X") flip();
 });
 var app = document.getElementById("app");
 var currentRoute = current();
