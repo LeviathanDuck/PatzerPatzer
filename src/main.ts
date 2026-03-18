@@ -2,12 +2,19 @@ import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { uciToMove } from '@lichess-org/chessground/util';
+import type { NormalMove, Role } from 'chessops';
+import { Chess } from 'chessops/chess';
+import { scalachessCharPair } from 'chessops/compat';
+import { makeFen, parseFen } from 'chessops/fen';
+import { makeSan, makeSanAndPlay } from 'chessops/san';
+import { makeSquare, makeUci, parseSquare, parseUci } from 'chessops/util';
 import { init, classModule, attributesModule, eventListenersModule, h, type VNode } from 'snabbdom';
 import { AnalyseCtrl } from './analyse/ctrl';
 import { StockfishProtocol } from './ceval/protocol';
 import { current, onChange, type Route } from './router';
-import { pathInit } from './tree/ops';
+import { addNode, pathInit } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
+import type { TreeNode } from './tree/types';
 
 console.log('Patzer Pro');
 
@@ -494,13 +501,97 @@ function toggleEngine(): void {
 // Board state is updated directly via cgInstance.set() — never via Snabbdom re-render.
 // The cg-wrap element is keyed so Snabbdom always reuses it rather than recreating it.
 
+/**
+ * Compute legal destinations for the current position.
+ * Returns a Map<square, dest[]> suitable for Chessground movable.dests.
+ * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts makeCgOpts (dests computation)
+ */
+function computeDests(fen: string): Map<string, string[]> {
+  const setup = parseFen(fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const dests = new Map<string, string[]>();
+  for (const [from, tos] of pos.allDests()) {
+    const toKeys: string[] = [];
+    for (const to of tos) toKeys.push(makeSquare(to));
+    if (toKeys.length > 0) dests.set(makeSquare(from), toKeys);
+  }
+  return dests;
+}
+
+/**
+ * Convert a UCI move string to readable SAN given the position FEN.
+ * Falls back to the raw UCI string if conversion fails for any reason.
+ * Mirrors the SAN derivation used in lichess-org/lila: ui/lib/src/ceval/util.ts
+ */
+function uciToSan(fen: string, uci: string): string {
+  try {
+    const move = parseUci(uci);
+    if (!move) return uci;
+    const setup = parseFen(fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    return makeSan(pos, move);
+  } catch {
+    return uci;
+  }
+}
+
+/**
+ * Handle a legal move played on the board.
+ * If the move already exists as a child: navigate to it.
+ * Otherwise: create a new variation node, add to tree, navigate.
+ * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts addNodeLocally + addNode
+ */
+function onUserMove(orig: string, dest: string): void {
+  // Check existing children first — follow the tree if this move is already there
+  const existingChild = ctrl.node.children.find(c => c.uci === orig + dest || c.uci?.startsWith(orig + dest));
+  if (existingChild) {
+    navigate(ctrl.path + existingChild.id);
+    return;
+  }
+
+  // Build a new variation node from the current FEN
+  const setup = parseFen(ctrl.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const fromSq = parseSquare(orig);
+  const toSq = parseSquare(dest);
+  if (fromSq === undefined || toSq === undefined) return;
+
+  // Auto-promote to queen when a pawn reaches the back rank
+  let promotion: Role | undefined;
+  const piece = pos.board.get(fromSq);
+  if (piece?.role === 'pawn') {
+    if ((pos.turn === 'white' && toSq >= 56) || (pos.turn === 'black' && toSq < 8)) {
+      promotion = 'queen';
+    }
+  }
+
+  const move: NormalMove = { from: fromSq, to: toSq, promotion };
+  const san = makeSanAndPlay(pos, move); // mutates pos to post-move state
+  const newNode: TreeNode = {
+    id: scalachessCharPair(move),
+    ply: ctrl.node.ply + 1,
+    san,
+    uci: makeUci(move),
+    fen: makeFen(pos.toSetup()),
+    children: [],
+  };
+
+  addNode(ctrl.root, ctrl.path, newNode);
+  navigate(ctrl.path + newNode.id);
+}
+
 function syncBoard(): void {
   if (!cgInstance) return;
   const node = ctrl.node;
+  const dests = computeDests(node.fen);
   cgInstance.set({
     fen: node.fen,
     lastMove: uciToMove(node.uci),
     turnColor: node.ply % 2 === 0 ? 'white' : 'black',
+    movable: {
+      color: node.ply % 2 === 0 ? 'white' : 'black',
+      dests,
+    },
   });
 }
 
@@ -578,19 +669,30 @@ function flip(): void {
   redraw();
 }
 
-// Adapted from lichess-org/lila: ui/analyse/src/ground.ts render
+// Adapted from lichess-org/lila: ui/analyse/src/ground.ts render + makeConfig
 function renderBoard(): VNode {
   return h('div.cg-wrap', {
     key: 'board',
     hook: {
       insert: vnode => {
+        const node = ctrl.node;
+        const dests = computeDests(node.fen);
         cgInstance = makeChessground(vnode.elm as HTMLElement, {
           orientation,
           viewOnly: false,
           drawable: { enabled: true },
-          fen: ctrl.node.fen,
-          lastMove: uciToMove(ctrl.node.uci),
-          turnColor: ctrl.node.ply % 2 === 0 ? 'white' : 'black',
+          fen: node.fen,
+          lastMove: uciToMove(node.uci),
+          turnColor: node.ply % 2 === 0 ? 'white' : 'black',
+          movable: {
+            free: false,
+            color: node.ply % 2 === 0 ? 'white' : 'black',
+            dests,
+            showDests: true,
+          },
+          events: {
+            move: onUserMove,
+          },
         });
       },
       destroy: () => {
@@ -800,7 +902,10 @@ function renderMoveList(): VNode {
     moves.push(h('span.move', {
       class: { active: nodePath === ctrl.path },
       on: { click: () => navigate(nodePath) },
-    }, label ? `${node.san} ${label}` : (node.san ?? '')));
+    }, label ? [
+      node.san ?? '',
+      h('span', { attrs: { style: `margin-left:3px;font-size:0.75em;color:${label === 'blunder' ? '#f66' : label === 'mistake' ? '#f84' : '#fa4'}` } }, label),
+    ] : (node.san ?? '')));
   }
   return h('div.move-list', moves);
 }
@@ -974,7 +1079,7 @@ function renderEval(): VNode {
       class: { 'ceval__score--white': isPositive === true, 'ceval__score--black': isPositive === false },
     }, computing ? '…' : score),
     currentEval.best
-      ? h('span.ceval__best', `Best: ${currentEval.best}`)
+      ? h('span.ceval__best', `Best: ${uciToSan(ctrl.node.fen, currentEval.best)}`)
       : engineReady
         ? h('span.ceval__info', batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}…` : '')
         : h('span.ceval__info', 'Loading engine…'),
@@ -1128,7 +1233,7 @@ function renderPuzzleCandidates(): VNode {
       }, [
         h('span', { attrs: { style: 'font-weight:600;margin-right:8px' } }, heading),
         h('span', { attrs: { style: 'color:#f88;margin-right:8px' } }, lossText),
-        h('span', { attrs: { style: 'color:#888;font-size:0.8rem' } }, `best: ${c.bestMove}`),
+        h('span', { attrs: { style: 'color:#888;font-size:0.8rem' } }, `best: ${uciToSan(c.fen, c.bestMove)}`),
       ]),
       h('button', {
         attrs: {
