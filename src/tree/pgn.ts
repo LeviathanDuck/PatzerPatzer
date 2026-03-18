@@ -6,7 +6,7 @@ import type { Position } from 'chessops/chess';
 import { scalachessCharPair } from 'chessops/compat';
 import { makeFen } from 'chessops/fen';
 import type { ChildNode, PgnNodeData } from 'chessops/pgn';
-import { parsePgn, startingPosition } from 'chessops/pgn';
+import { parseComment, parsePgn, startingPosition } from 'chessops/pgn';
 import { makeSanAndPlay, parseSan } from 'chessops/san';
 
 import type { Glyph, TreeNode } from './types';
@@ -48,12 +48,17 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
     .map(n => NAG_GLYPHS[n])
     .filter((g): g is Glyph => g !== undefined);
 
-  // PGN comments (inline { ... } text)
-  const comments = (pgnNode.data.comments ?? []).map((text, i) => ({
-    id: String(i),
-    by: 'pgn',
-    text,
-  }));
+  // Parse comments: extract %clk clock time and strip annotation tags from display text.
+  // Adapted from lichess-org/lila: ui/analyse/src/pgnImport.ts readNode
+  let clockCentis: number | undefined;
+  const comments = (pgnNode.data.comments ?? []).map((raw, i) => {
+    const parsed = parseComment(raw);
+    if (parsed.clock !== undefined && clockCentis === undefined) {
+      // chessops returns seconds; store as centiseconds to match Lichess Clock type
+      clockCentis = Math.round(parsed.clock * 100);
+    }
+    return { id: String(i), by: 'pgn' as const, text: parsed.text };
+  }).filter(c => c.text.trim().length > 0);
 
   return {
     id: scalachessCharPair(move), // 2-char id, same scheme as Lichess
@@ -62,8 +67,9 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
     uci: makeUci(move),
     fen: makeFen(pos.toSetup()), // FEN after the move
     children,
-    ...(glyphs.length   ? { glyphs }   : {}),
-    ...(comments.length ? { comments } : {}),
+    ...(glyphs.length              ? { glyphs }              : {}),
+    ...(comments.length            ? { comments }            : {}),
+    ...(clockCentis !== undefined  ? { clock: clockCentis }  : {}),
   };
 }
 
