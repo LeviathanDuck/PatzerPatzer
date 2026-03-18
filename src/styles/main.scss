@@ -173,12 +173,12 @@ header {
     height: 16px;
     opacity: 0.7;
 
-    &.pawn   { background-image: url('/piece/mono/P.svg'); }
-    &.bishop { background-image: url('/piece/mono/B.svg'); }
-    &.knight { background-image: url('/piece/mono/N.svg'); }
-    &.rook   { background-image: url('/piece/mono/R.svg'); }
-    &.queen  { background-image: url('/piece/mono/Q.svg'); }
-    &.king   { background-image: url('/piece/mono/K.svg'); }
+    &.pawn   { background-image: url('../piece/mono/P.svg'); }
+    &.bishop { background-image: url('../piece/mono/B.svg'); }
+    &.knight { background-image: url('../piece/mono/N.svg'); }
+    &.rook   { background-image: url('../piece/mono/R.svg'); }
+    &.queen  { background-image: url('../piece/mono/Q.svg'); }
+    &.king   { background-image: url('../piece/mono/K.svg'); }
   }
 
   score {
