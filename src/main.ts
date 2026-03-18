@@ -726,8 +726,13 @@ function advanceBatch(): void {
       if (detectMissedTactics(userColor)) missedTacticGameIds.add(selectedGameId);
     }
     void saveAnalysisToIdb('complete');
-    syncArrow(); // restore arrow for current board position
-    redraw();
+    // Re-evaluate the current node interactively with the configured multiPv so PV
+    // lines come back after batch. Batch always uses MultiPV=1 for efficiency, so
+    // we drop the current node's cache entry and let evalCurrentPosition re-run it.
+    evalCache.delete(ctrl.node.id);
+    currentEval  = {};
+    pendingLines = [];
+    evalCurrentPosition();
   }
 }
 
