@@ -1147,36 +1147,72 @@ function renderMaterialPieces(diff: MaterialDiff, color: 'white' | 'black', scor
   ]);
 }
 
+/**
+ * Format centiseconds as M:SS or H:MM:SS, matching Lichess clockContent.
+ * Adapted from lichess-org/lila: ui/analyse/src/view/clocks.ts
+ */
+function formatClock(centis: number): string {
+  const totalSecs = Math.floor(centis / 100);
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  const pad = (n: number) => n < 10 ? '0' + n : String(n);
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/**
+ * Walk the nodeList to find the most recent clock for each color.
+ * node.clock stores the time remaining AFTER the move at that node.
+ * White moves are at odd plies, black moves at even plies (ply 1 = white's first).
+ * Adapted from lichess-org/lila: ui/analyse/src/view/clocks.ts renderClocks
+ */
+function getClocksAtPath(): { white: number | undefined; black: number | undefined } {
+  const nodes = ctrl.nodeList;
+  let white: number | undefined;
+  let black: number | undefined;
+  // Walk from most recent backwards so we get the closest available clock
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (n.clock === undefined) continue;
+    // ply 1 = white moved, ply 2 = black moved, etc.
+    if (n.ply % 2 === 1 && white === undefined) white = n.clock;
+    if (n.ply % 2 === 0 && n.ply > 0 && black === undefined) black = n.clock;
+    if (white !== undefined && black !== undefined) break;
+  }
+  return { white, black };
+}
+
 // Adapted from lichess-org/lila: ui/analyse/src/view/components.ts renderPlayerStrips
-// Renders name + result for the player above and below the board.
-// Top = opponent (from orientation's perspective), bottom = current player.
+// Layout: [result] [color-dot] [name] [material] ... [clock]
+// Result badge on left, clock on right — matching Lichess analyse__player_strip.
 function renderPlayerStrips(): [VNode, VNode] {
   const game = importedGames.find(g => g.id === selectedGameId);
   const whiteName = game?.white ?? 'White';
   const blackName = game?.black ?? 'Black';
   const result    = game?.result ?? '*';
 
-  const diff  = getMaterialDiff(ctrl.node.fen);
-  const score = getMaterialScore(diff); // positive = white ahead
+  const diff   = getMaterialDiff(ctrl.node.fen);
+  const score  = getMaterialScore(diff);
+  const clocks = getClocksAtPath();
 
-  // Per-player result badge
   const whiteResult = result === '1-0' ? '1' : result === '0-1' ? '0' : result === '1/2-1/2' ? '½' : null;
   const blackResult = result === '0-1' ? '1' : result === '1-0' ? '0' : result === '1/2-1/2' ? '½' : null;
 
   const strip = (color: 'white' | 'black'): VNode => {
-    const name        = color === 'white' ? whiteName : blackName;
-    const badge       = color === 'white' ? whiteResult : blackResult;
-    const winner      = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
-    const matScore    = color === 'white' ? score : -score;
+    const name     = color === 'white' ? whiteName : blackName;
+    const badge    = color === 'white' ? whiteResult : blackResult;
+    const winner   = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
+    const matScore = color === 'white' ? score : -score;
+    const centis   = color === 'white' ? clocks.white : clocks.black;
     return h('div.analyse__player_strip', [
+      badge ? h('span.player-strip__result', { class: { 'player-strip__result--winner': winner } }, badge) : null,
       h('span.player-strip__color-icon', { class: { 'player-strip__color-icon--white': color === 'white', 'player-strip__color-icon--black': color === 'black' } }),
       h('span.player-strip__name', name),
       renderMaterialPieces(diff, color, matScore > 0 ? matScore : 0),
-      badge ? h('span.player-strip__result', { class: { 'player-strip__result--winner': winner } }, badge) : null,
+      centis !== undefined ? h('div.analyse__clock', formatClock(centis)) : null,
     ]);
   };
 
-  // When orientation is white: top = black, bottom = white. Inverted when flipped.
   const topColor    = orientation === 'white' ? 'black' : 'white';
   const bottomColor = orientation === 'white' ? 'white' : 'black';
   return [strip(topColor), strip(bottomColor)];

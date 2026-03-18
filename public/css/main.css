@@ -459,10 +459,23 @@ header nav {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 2px;
+  padding: 3px 2px;
   min-height: 26px;
   font-size: 0.85rem;
   color: #ccc;
+  width: 100%;
+}
+
+.analyse__clock {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #aaa;
+  white-space: nowrap;
+  padding: 1px 5px;
+  background: #1e1e1e;
+  border-radius: 3px;
 }
 
 .player-strip__color-icon {

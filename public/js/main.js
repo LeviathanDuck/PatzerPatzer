@@ -5317,6 +5317,60 @@ var startingPosition = (headers) => {
   else
     return Result.ok(defaultPosition(rules));
 };
+function parseCommentShapeColor(str) {
+  switch (str) {
+    case "G":
+      return "green";
+    case "R":
+      return "red";
+    case "Y":
+      return "yellow";
+    case "B":
+      return "blue";
+    default:
+      return;
+  }
+}
+var parseCommentShape = (str) => {
+  const color = parseCommentShapeColor(str.slice(0, 1));
+  const from = parseSquare(str.slice(1, 3));
+  const to = parseSquare(str.slice(3, 5));
+  if (!color || !defined(from))
+    return;
+  if (str.length === 3)
+    return { color, from, to: from };
+  if (str.length === 5 && defined(to))
+    return { color, from, to };
+  return;
+};
+var parseComment = (comment) => {
+  let emt, clock, evaluation;
+  const shapes = [];
+  const text = comment.replace(/\s?\[%(emt|clk)\s(\d{1,5}):(\d{1,2}):(\d{1,2}(?:\.\d{0,3})?)\]\s?/g, (_, annotation, hours, minutes, seconds) => {
+    const value = parseInt(hours, 10) * 3600 + parseInt(minutes, 10) * 60 + parseFloat(seconds);
+    if (annotation === "emt")
+      emt = value;
+    else if (annotation === "clk")
+      clock = value;
+    return "  ";
+  }).replace(/\s?\[%(?:csl|cal)\s([RGYB][a-h][1-8](?:[a-h][1-8])?(?:,[RGYB][a-h][1-8](?:[a-h][1-8])?)*)\]\s?/g, (_, arrows) => {
+    for (const arrow of arrows.split(",")) {
+      shapes.push(parseCommentShape(arrow));
+    }
+    return "  ";
+  }).replace(/\s?\[%eval\s(?:#([+-]?\d{1,5})|([+-]?(?:\d{1,5}|\d{0,5}\.\d{1,2})))(?:,(\d{1,5}))?\]\s?/g, (_, mate, pawns, d) => {
+    const depth = d && parseInt(d, 10);
+    evaluation = mate ? { mate: parseInt(mate, 10), depth } : { pawns: parseFloat(pawns), depth };
+    return "  ";
+  }).trim();
+  return {
+    text,
+    shapes,
+    emt,
+    clock,
+    evaluation
+  };
+};
 
 // src/tree/pgn.ts
 var NAG_GLYPHS = {
@@ -5333,11 +5387,14 @@ function buildNode(pgnNode, pos, ply) {
   const san = makeSanAndPlay(pos, move3);
   const children = pgnNode.children.map((child) => buildNode(child, pos.clone(), ply + 1)).filter((n) => n !== void 0);
   const glyphs = (pgnNode.data.nags ?? []).map((n) => NAG_GLYPHS[n]).filter((g) => g !== void 0);
-  const comments = (pgnNode.data.comments ?? []).map((text, i) => ({
-    id: String(i),
-    by: "pgn",
-    text
-  }));
+  let clockCentis;
+  const comments = (pgnNode.data.comments ?? []).map((raw, i) => {
+    const parsed = parseComment(raw);
+    if (parsed.clock !== void 0 && clockCentis === void 0) {
+      clockCentis = Math.round(parsed.clock * 100);
+    }
+    return { id: String(i), by: "pgn", text: parsed.text };
+  }).filter((c) => c.text.trim().length > 0);
   return {
     id: scalachessCharPair(move3),
     // 2-char id, same scheme as Lichess
@@ -5348,7 +5405,8 @@ function buildNode(pgnNode, pos, ply) {
     // FEN after the move
     children,
     ...glyphs.length ? { glyphs } : {},
-    ...comments.length ? { comments } : {}
+    ...comments.length ? { comments } : {},
+    ...clockCentis !== void 0 ? { clock: clockCentis } : {}
   };
 }
 function pgnToTree(pgn) {
@@ -6129,6 +6187,27 @@ function renderMaterialPieces(diff2, color, score) {
     score > 0 ? h("score", "+" + score) : null
   ]);
 }
+function formatClock(centis) {
+  const totalSecs = Math.floor(centis / 100);
+  const h2 = Math.floor(totalSecs / 3600);
+  const m = Math.floor(totalSecs % 3600 / 60);
+  const s = totalSecs % 60;
+  const pad = (n) => n < 10 ? "0" + n : String(n);
+  return h2 > 0 ? `${h2}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+function getClocksAtPath() {
+  const nodes = ctrl.nodeList;
+  let white;
+  let black;
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (n.clock === void 0) continue;
+    if (n.ply % 2 === 1 && white === void 0) white = n.clock;
+    if (n.ply % 2 === 0 && n.ply > 0 && black === void 0) black = n.clock;
+    if (white !== void 0 && black !== void 0) break;
+  }
+  return { white, black };
+}
 function renderPlayerStrips() {
   const game = importedGames.find((g) => g.id === selectedGameId);
   const whiteName = game?.white ?? "White";
@@ -6136,6 +6215,7 @@ function renderPlayerStrips() {
   const result = game?.result ?? "*";
   const diff2 = getMaterialDiff(ctrl.node.fen);
   const score = getMaterialScore(diff2);
+  const clocks = getClocksAtPath();
   const whiteResult = result === "1-0" ? "1" : result === "0-1" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
   const blackResult = result === "0-1" ? "1" : result === "1-0" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
   const strip = (color) => {
@@ -6143,11 +6223,13 @@ function renderPlayerStrips() {
     const badge = color === "white" ? whiteResult : blackResult;
     const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
     const matScore = color === "white" ? score : -score;
+    const centis = color === "white" ? clocks.white : clocks.black;
     return h("div.analyse__player_strip", [
+      badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null,
       h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
       h("span.player-strip__name", name),
       renderMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
-      badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null
+      centis !== void 0 ? h("div.analyse__clock", formatClock(centis)) : null
     ]);
   };
   const topColor = orientation === "white" ? "black" : "white";
