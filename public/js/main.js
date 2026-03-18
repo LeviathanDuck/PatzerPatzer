@@ -5319,11 +5319,25 @@ var startingPosition = (headers) => {
 };
 
 // src/tree/pgn.ts
+var NAG_GLYPHS = {
+  1: { id: 1, name: "Good move", symbol: "!" },
+  2: { id: 2, name: "Mistake", symbol: "?" },
+  3: { id: 3, name: "Brilliant move", symbol: "!!" },
+  4: { id: 4, name: "Blunder", symbol: "??" },
+  5: { id: 5, name: "Speculative move", symbol: "!?" },
+  6: { id: 6, name: "Dubious move", symbol: "?!" }
+};
 function buildNode(pgnNode, pos, ply) {
   const move3 = parseSan(pos, pgnNode.data.san);
   if (!move3) return void 0;
   const san = makeSanAndPlay(pos, move3);
   const children = pgnNode.children.map((child) => buildNode(child, pos.clone(), ply + 1)).filter((n) => n !== void 0);
+  const glyphs = (pgnNode.data.nags ?? []).map((n) => NAG_GLYPHS[n]).filter((g) => g !== void 0);
+  const comments = (pgnNode.data.comments ?? []).map((text, i) => ({
+    id: String(i),
+    by: "pgn",
+    text
+  }));
   return {
     id: scalachessCharPair(move3),
     // 2-char id, same scheme as Lichess
@@ -5332,7 +5346,9 @@ function buildNode(pgnNode, pos, ply) {
     uci: makeUci(move3),
     fen: makeFen(pos.toSetup()),
     // FEN after the move
-    children
+    children,
+    ...glyphs.length ? { glyphs } : {},
+    ...comments.length ? { comments } : {}
   };
 }
 function pgnToTree(pgn) {
@@ -6076,20 +6092,61 @@ function flip() {
   cgInstance?.set({ orientation });
   redraw();
 }
+var ROLE_ORDER = ["queen", "rook", "bishop", "knight", "pawn"];
+var ROLE_POINTS = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
+function getMaterialDiff(fen) {
+  const diff2 = {
+    white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+    black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 }
+  };
+  const fenBoard = fen.split(" ")[0];
+  const charToRole2 = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
+  for (const ch of fenBoard) {
+    const lower = ch.toLowerCase();
+    const role = charToRole2[lower];
+    if (!role) continue;
+    const color = ch === lower ? "black" : "white";
+    const opp = color === "white" ? "black" : "white";
+    if (diff2[opp][role] > 0) diff2[opp][role]--;
+    else diff2[color][role]++;
+  }
+  return diff2;
+}
+function getMaterialScore(diff2) {
+  return ROLE_ORDER.reduce((sum, role) => sum + (diff2.white[role] - diff2.black[role]) * ROLE_POINTS[role], 0);
+}
+function renderMaterialPieces(diff2, color, score) {
+  const groups = [];
+  for (const role of ROLE_ORDER) {
+    const count = diff2[color][role];
+    if (count <= 0) continue;
+    const pieces = [];
+    for (let i = 0; i < count; i++) pieces.push(h("mpiece." + role));
+    groups.push(h("div", pieces));
+  }
+  return h("div.material", [
+    ...groups,
+    score > 0 ? h("score", "+" + score) : null
+  ]);
+}
 function renderPlayerStrips() {
   const game = importedGames.find((g) => g.id === selectedGameId);
   const whiteName = game?.white ?? "White";
   const blackName = game?.black ?? "Black";
   const result = game?.result ?? "*";
+  const diff2 = getMaterialDiff(ctrl.node.fen);
+  const score = getMaterialScore(diff2);
   const whiteResult = result === "1-0" ? "1" : result === "0-1" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
   const blackResult = result === "0-1" ? "1" : result === "1-0" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
   const strip = (color) => {
     const name = color === "white" ? whiteName : blackName;
     const badge = color === "white" ? whiteResult : blackResult;
     const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
+    const matScore = color === "white" ? score : -score;
     return h("div.analyse__player_strip", [
       h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
       h("span.player-strip__name", name),
+      renderMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
       badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null
     ]);
   };
@@ -6243,17 +6300,29 @@ function renderAnalysisSummary() {
     playerCol(blackName, summary.black, "black")
   ]);
 }
+var GLYPH_COLORS = {
+  "??": "#f66",
+  "?": "#f84",
+  "?!": "#fa4",
+  "!!": "#5af",
+  "!": "#8cf",
+  "!?": "#aaa"
+};
 function renderMoveSpan(node, path, parent) {
   const cached = evalCache.get(node.id);
   const parentCached = evalCache.get(parent.id);
+  const pgnGlyph = node.glyphs?.[0];
   const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-  const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
+  const computedLabel = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
+  const computedSymbol = computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
+  const symbol = pgnGlyph?.symbol ?? computedSymbol;
+  const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
   return h("span.move", {
     class: { active: path === ctrl.path },
     on: { click: () => navigate(path) }
-  }, label ? [
+  }, symbol ? [
     node.san ?? "",
-    h("span", { attrs: { style: `margin-left:2px;color:${label === "blunder" ? "#f66" : label === "mistake" ? "#f84" : "#fa4"}` } }, label === "blunder" ? "??" : label === "mistake" ? "?" : "?!")
+    h("span.move__glyph", { attrs: { style: `color:${color}` } }, symbol)
   ] : node.san ?? "");
 }
 function renderNodeLine(node, path, parent, needsMoveNum) {

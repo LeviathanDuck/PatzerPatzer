@@ -1095,6 +1095,58 @@ function flip(): void {
   redraw();
 }
 
+// --- Material difference ---
+// Adapted from lichess-org/lila: ui/lib/src/game/material.ts
+
+type MaterialDiffSide = Record<Role, number>;
+interface MaterialDiff { white: MaterialDiffSide; black: MaterialDiffSide; }
+
+const ROLE_ORDER: Role[] = ['queen', 'rook', 'bishop', 'knight', 'pawn'];
+const ROLE_POINTS: Record<string, number> = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
+
+function getMaterialDiff(fen: string): MaterialDiff {
+  const diff: MaterialDiff = {
+    white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+    black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+  };
+  const fenBoard = fen.split(' ')[0];
+  const charToRole: Record<string, Role> = { p:'pawn', n:'knight', b:'bishop', r:'rook', q:'queen', k:'king' };
+  for (const ch of fenBoard) {
+    const lower = ch.toLowerCase();
+    const role = charToRole[lower];
+    if (!role) continue;
+    const color: 'white' | 'black' = ch === lower ? 'black' : 'white';
+    const opp = color === 'white' ? 'black' : 'white';
+    if (diff[opp][role] > 0) diff[opp][role]--;
+    else diff[color][role]++;
+  }
+  return diff;
+}
+
+function getMaterialScore(diff: MaterialDiff): number {
+  return ROLE_ORDER.reduce((sum, role) => sum + (diff.white[role] - diff.black[role]) * ROLE_POINTS[role], 0);
+}
+
+/**
+ * Renders captured pieces for one side as overlapping mono piece icons.
+ * Adapted from lichess-org/lila: ui/lib/src/game/view/material.ts renderMaterialDiff
+ * Uses mono SVG piece images (public/piece/mono/) — no .cg-wrap scope needed.
+ */
+function renderMaterialPieces(diff: MaterialDiff, color: 'white' | 'black', score: number): VNode {
+  const groups: VNode[] = [];
+  for (const role of ROLE_ORDER) {
+    const count = diff[color][role];
+    if (count <= 0) continue;
+    const pieces: VNode[] = [];
+    for (let i = 0; i < count; i++) pieces.push(h('mpiece.' + role));
+    groups.push(h('div', pieces));
+  }
+  return h('div.material', [
+    ...groups,
+    score > 0 ? h('score', '+' + score) : null,
+  ]);
+}
+
 // Adapted from lichess-org/lila: ui/analyse/src/view/components.ts renderPlayerStrips
 // Renders name + result for the player above and below the board.
 // Top = opponent (from orientation's perspective), bottom = current player.
@@ -1104,17 +1156,22 @@ function renderPlayerStrips(): [VNode, VNode] {
   const blackName = game?.black ?? 'Black';
   const result    = game?.result ?? '*';
 
+  const diff  = getMaterialDiff(ctrl.node.fen);
+  const score = getMaterialScore(diff); // positive = white ahead
+
   // Per-player result badge
   const whiteResult = result === '1-0' ? '1' : result === '0-1' ? '0' : result === '1/2-1/2' ? '½' : null;
   const blackResult = result === '0-1' ? '1' : result === '1-0' ? '0' : result === '1/2-1/2' ? '½' : null;
 
   const strip = (color: 'white' | 'black'): VNode => {
-    const name   = color === 'white' ? whiteName : blackName;
-    const badge  = color === 'white' ? whiteResult : blackResult;
-    const winner = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
+    const name        = color === 'white' ? whiteName : blackName;
+    const badge       = color === 'white' ? whiteResult : blackResult;
+    const winner      = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
+    const matScore    = color === 'white' ? score : -score;
     return h('div.analyse__player_strip', [
       h('span.player-strip__color-icon', { class: { 'player-strip__color-icon--white': color === 'white', 'player-strip__color-icon--black': color === 'black' } }),
       h('span.player-strip__name', name),
+      renderMaterialPieces(diff, color, matScore > 0 ? matScore : 0),
       badge ? h('span.player-strip__result', { class: { 'player-strip__result--winner': winner } }, badge) : null,
     ]);
   };
@@ -1355,18 +1412,32 @@ function renderAnalysisSummary(): VNode {
 // After a variation block, the mainline black move shows an explicit "N…" index.
 
 /** One clickable move span, with eval label if applicable. */
+// Glyph symbol → CSS color, matching Lichess move annotation colors
+const GLYPH_COLORS: Record<string, string> = {
+  '??': '#f66', '?': '#f84', '?!': '#fa4',
+  '!!': '#5af', '!': '#8cf', '!?': '#aaa',
+};
+
 function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode): VNode {
   const cached       = evalCache.get(node.id);
   const parentCached = evalCache.get(parent.id);
-  // Mirrors lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts makeComment
+
+  // PGN glyphs take priority; fall back to engine-computed label if no glyph present.
+  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode
+  const pgnGlyph = node.glyphs?.[0];
   const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
-  const label = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
+  const computedLabel = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
+  const computedSymbol = computedLabel === 'blunder' ? '??' : computedLabel === 'mistake' ? '?' : computedLabel === 'inaccuracy' ? '?!' : null;
+
+  const symbol = pgnGlyph?.symbol ?? computedSymbol;
+  const color  = symbol ? (GLYPH_COLORS[symbol] ?? '#aaa') : undefined;
+
   return h('span.move', {
     class: { active: path === ctrl.path },
     on: { click: () => navigate(path) },
-  }, label ? [
+  }, symbol ? [
     node.san ?? '',
-    h('span', { attrs: { style: `margin-left:2px;color:${label === 'blunder' ? '#f66' : label === 'mistake' ? '#f84' : '#fa4'}` } }, label === 'blunder' ? '??' : label === 'mistake' ? '?' : '?!'),
+    h('span.move__glyph', { attrs: { style: `color:${color}` } }, symbol),
   ] : (node.san ?? ''));
 }
 

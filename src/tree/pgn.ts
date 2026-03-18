@@ -9,7 +9,18 @@ import type { ChildNode, PgnNodeData } from 'chessops/pgn';
 import { parsePgn, startingPosition } from 'chessops/pgn';
 import { makeSanAndPlay, parseSan } from 'chessops/san';
 
-import type { TreeNode } from './types';
+import type { Glyph, TreeNode } from './types';
+
+// Standard NAG (Numeric Annotation Glyph) → Glyph mapping.
+// Adapted from lichess-org/lila: modules/tree/src/main/TreeBuilder.scala glyphs()
+const NAG_GLYPHS: Record<number, Glyph> = {
+  1:  { id: 1, name: 'Good move',        symbol: '!'  },
+  2:  { id: 2, name: 'Mistake',          symbol: '?'  },
+  3:  { id: 3, name: 'Brilliant move',   symbol: '!!' },
+  4:  { id: 4, name: 'Blunder',          symbol: '??' },
+  5:  { id: 5, name: 'Speculative move', symbol: '!?' },
+  6:  { id: 6, name: 'Dubious move',     symbol: '?!' },
+};
 
 /**
  * Recursively build a TreeNode from a PGN child node.
@@ -32,6 +43,18 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
     .map(child => buildNode(child, pos.clone(), ply + 1))
     .filter((n): n is TreeNode => n !== undefined);
 
+  // Map NAG codes to Glyph objects; ignore unrecognised NAGs
+  const glyphs = (pgnNode.data.nags ?? [])
+    .map(n => NAG_GLYPHS[n])
+    .filter((g): g is Glyph => g !== undefined);
+
+  // PGN comments (inline { ... } text)
+  const comments = (pgnNode.data.comments ?? []).map((text, i) => ({
+    id: String(i),
+    by: 'pgn',
+    text,
+  }));
+
   return {
     id: scalachessCharPair(move), // 2-char id, same scheme as Lichess
     ply,
@@ -39,6 +62,8 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
     uci: makeUci(move),
     fen: makeFen(pos.toSetup()), // FEN after the move
     children,
+    ...(glyphs.length   ? { glyphs }   : {}),
+    ...(comments.length ? { comments } : {}),
   };
 }
 
