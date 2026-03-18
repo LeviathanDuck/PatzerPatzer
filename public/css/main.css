@@ -488,6 +488,49 @@ header nav {
   font-weight: 500;
 }
 
+.material {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+.material div {
+  display: inline-block;
+  margin-inline-start: 10px;
+}
+.material mpiece {
+  margin-inline-start: -10px;
+  background-size: cover;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+.material mpiece.pawn {
+  background-image: url("/piece/mono/P.svg");
+}
+.material mpiece.bishop {
+  background-image: url("/piece/mono/B.svg");
+}
+.material mpiece.knight {
+  background-image: url("/piece/mono/N.svg");
+}
+.material mpiece.rook {
+  background-image: url("/piece/mono/R.svg");
+}
+.material mpiece.queen {
+  background-image: url("/piece/mono/Q.svg");
+}
+.material mpiece.king {
+  background-image: url("/piece/mono/K.svg");
+}
+.material score {
+  font-size: 0.75rem;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+  margin-top: -2px;
+  margin-inline-start: 2px;
+}
+
 .player-strip__result {
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
@@ -515,6 +558,12 @@ header nav {
 .move-list .move-num {
   color: #888;
   font-size: 0.8rem;
+  user-select: none;
+}
+.move-list .move__glyph {
+  margin-left: 1px;
+  font-size: 0.8em;
+  font-weight: 700;
   user-select: none;
 }
 .move-list .move {
