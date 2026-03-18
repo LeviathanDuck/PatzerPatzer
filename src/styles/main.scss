@@ -395,6 +395,25 @@ header {
   &:hover { background: #2a2a2a; color: #e8e8e8; }
 }
 
+// PV board preview — mini board shown when hovering a PV move.
+// Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvBoard
+.pv-board {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.pv-board-square {
+  width: 192px;
+  height: 192px;
+
+  .cg-wrap {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: unset;
+  }
+}
+
 .ceval__score {
   font-size: 1.15rem;
   font-weight: 700;

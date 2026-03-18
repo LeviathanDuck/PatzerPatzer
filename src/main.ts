@@ -377,6 +377,8 @@ const protocol = new StockfishProtocol();
 // Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts
 let multiPv = 3;             // number of candidate lines (UCI MultiPV), 1–5
 let showEngineSettings = false;
+/** PV board preview — set when hovering a pv-san span; cleared on mouseleave. */
+let pvBoard: { fen: string; uci: string } | null = null;
 let showEngineArrows = true; // show engine line arrows on board (default on)
 let arrowAllLines = true;    // draw arrows for all PV lines; false = top line only
 let showPlayedArrow = true;  // draw arrow for the next move actually played in game
@@ -1736,11 +1738,15 @@ function renderPvMoves(fen: string, moves: string[]): VNode[] {
       } else if (i === 0) {
         vnodes.push(h('span.pv-num', `${pos.fullmoves}…`));
       }
-      const move = parseUci(moves[i]!);
+      const uci = moves[i]!;
+      const move = parseUci(uci);
       if (!move) break;
       const san = makeSanAndPlay(pos, move);
       if (san === '--') break;
-      vnodes.push(h('span.pv-san', san));
+      // Store FEN + UCI on each move so hover can preview the resulting position.
+      // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvMoves
+      const boardFen = makeFen(pos.toSetup());
+      vnodes.push(h('span.pv-san', { key: `${i}|${uci}`, attrs: { 'data-board': `${boardFen}|${uci}` } }, san));
     }
     return vnodes;
   } catch {
@@ -1784,7 +1790,65 @@ function renderPvBox(): VNode | null {
   }
 
   if (rows.length === 0) return null;
-  return h('div.pv_box', rows);
+
+  // Attach hover listeners imperatively to avoid per-move re-registration overhead.
+  // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs hook
+  return h('div.pv_box', {
+    hook: {
+      insert: (vnode) => {
+        const el = vnode.elm as HTMLElement;
+        el.addEventListener('mouseover', (e: MouseEvent) => {
+          const dataBoard = (e.target as HTMLElement).dataset.board;
+          if (!dataBoard) return;
+          const sep = dataBoard.indexOf('|');
+          const newFen = dataBoard.slice(0, sep);
+          const newUci = dataBoard.slice(sep + 1);
+          if (pvBoard?.fen === newFen && pvBoard?.uci === newUci) return;
+          pvBoard = { fen: newFen, uci: newUci };
+          redraw();
+        });
+        el.addEventListener('mouseleave', () => {
+          if (!pvBoard) return;
+          pvBoard = null;
+          redraw();
+        });
+      },
+    },
+  }, [...rows, renderPvBoard()]);
+}
+
+/**
+ * Mini Chessground board that previews the position reached by a hovered PV move.
+ * Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvBoard
+ */
+function renderPvBoard(): VNode | null {
+  if (!pvBoard) return null;
+  const { fen, uci } = pvBoard;
+  const cgConfig = {
+    fen,
+    lastMove: uciToMove(uci),
+    orientation,
+    coordinates: false,
+    viewOnly: true,
+    drawable: { enabled: false, visible: false },
+  };
+  return h('div.pv-board', [
+    h('div.pv-board-square', [
+      h('div.cg-wrap', {
+        hook: {
+          insert: (vnode) => {
+            (vnode.elm as any)._cg = makeChessground(vnode.elm as HTMLElement, cgConfig);
+          },
+          update: (_old, vnode) => {
+            (vnode.elm as any)._cg?.set(cgConfig);
+          },
+          destroy: (vnode) => {
+            (vnode.elm as any)._cg?.destroy();
+          },
+        },
+      }),
+    ]),
+  ]);
 }
 
 /**
