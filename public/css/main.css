@@ -412,6 +412,49 @@ header nav {
   flex-direction: column;
 }
 
+.analyse__board-inner {
+  position: relative;
+  flex: 1;
+}
+
+.promotion-wrap {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  aspect-ratio: unset !important;
+}
+
+#promotion-choice {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+#promotion-choice square {
+  position: absolute;
+  width: 12.5%;
+  height: 12.5%;
+  background: #222;
+  border: 1px solid #555;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+#promotion-choice square:hover {
+  background: #3a3a3a;
+}
+#promotion-choice piece {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+}
+
 .analyse__player_strip {
   display: flex;
   align-items: center;

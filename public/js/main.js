@@ -5946,13 +5946,20 @@ function onUserMove(orig, dest) {
   const fromSq = parseSquare(orig);
   const toSq = parseSquare(dest);
   if (fromSq === void 0 || toSq === void 0) return;
-  let promotion;
   const piece = pos.board.get(fromSq);
-  if (piece?.role === "pawn") {
-    if (pos.turn === "white" && toSq >= 56 || pos.turn === "black" && toSq < 8) {
-      promotion = "queen";
-    }
+  if (piece?.role === "pawn" && (pos.turn === "white" && toSq >= 56 || pos.turn === "black" && toSq < 8)) {
+    pendingPromotion = { orig, dest, color: pos.turn };
+    redraw();
+    return;
   }
+  completeMove(orig, dest);
+}
+function completeMove(orig, dest, promotion) {
+  const setup = parseFen(ctrl.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const fromSq = parseSquare(orig);
+  const toSq = parseSquare(dest);
+  if (fromSq === void 0 || toSq === void 0) return;
   const move3 = { from: fromSq, to: toSq, promotion };
   const san = makeSanAndPlay(pos, move3);
   const newNode = {
@@ -5965,6 +5972,38 @@ function onUserMove(orig, dest) {
   };
   addNode(ctrl.root, ctrl.path, newNode);
   navigate(ctrl.path + newNode.id);
+}
+function completePromotion(role) {
+  if (!pendingPromotion) return;
+  const { orig, dest } = pendingPromotion;
+  pendingPromotion = null;
+  completeMove(orig, dest, role);
+}
+var PROMOTION_ROLES = ["queen", "knight", "rook", "bishop"];
+function renderPromotionDialog() {
+  if (!pendingPromotion) return null;
+  const { dest, color } = pendingPromotion;
+  const [file] = key2pos(dest);
+  const left = orientation === "white" ? file * 12.5 : (7 - file) * 12.5;
+  const vertical = color === orientation ? "top" : "bottom";
+  return h("div.cg-wrap.promotion-wrap", {
+    on: { click: () => {
+      pendingPromotion = null;
+      syncBoard();
+      redraw();
+    } }
+  }, [
+    h("div#promotion-choice." + vertical, {}, PROMOTION_ROLES.map((role, i) => {
+      const top = (color === orientation ? i : 7 - i) * 12.5;
+      return h("square", {
+        attrs: { style: `top:${top}%;left:${left}%` },
+        on: { click: (e) => {
+          e.stopPropagation();
+          completePromotion(role);
+        } }
+      }, [h(`piece.${role}.${color}`)]);
+    }))
+  ]);
 }
 function syncBoard() {
   if (!cgInstance) return;
@@ -6031,6 +6070,7 @@ function renderNav(route) {
 }
 var cgInstance;
 var orientation = "white";
+var pendingPromotion = null;
 function flip() {
   orientation = orientation === "white" ? "black" : "white";
   cgInstance?.set({ orientation });
@@ -6928,7 +6968,7 @@ function routeContent(route) {
           ...engineEnabled ? [renderEvalBar()] : [],
           (() => {
             const [topStrip, bottomStrip] = renderPlayerStrips();
-            return h("div.analyse__board", [topStrip, renderBoard(), bottomStrip]);
+            return h("div.analyse__board", [topStrip, h("div.analyse__board-inner", [renderBoard(), renderPromotionDialog()]), bottomStrip]);
           })()
         ]),
         renderEvalGraph(),
