@@ -65,7 +65,9 @@ function loadGame(pgn: string | null): void {
   analysisComplete = false;
   syncBoard();
   syncArrow();
-  evalCurrentPosition();
+  // Restore persisted analysis from IndexedDB; falls back to live eval if nothing stored
+  if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId);
+  else evalCurrentPosition();
   redraw();
 }
 
@@ -80,16 +82,45 @@ interface StoredGames {
   path?: string;
 }
 
+// --- Stored analysis schema ---
+// Persists per-game mainline engine analysis to IndexedDB so results survive refresh.
+// Keyed by gameId in the 'analysis-library' store.
+
+const ANALYSIS_VERSION = 1;
+
+type AnalysisStatus = 'idle' | 'partial' | 'complete';
+
+interface StoredNodeEntry {
+  nodeId: string;
+  path:   string;
+  fen:    string;
+  cp?:    number;
+  mate?:  number;
+  best?:  string;
+  loss?:  number;
+  delta?: number;
+}
+
+interface StoredAnalysis {
+  gameId:          string;
+  analysisVersion: number;
+  analysisDepth:   number;
+  status:          AnalysisStatus;
+  updatedAt:       number;           // Date.now()
+  nodes:           Record<string, StoredNodeEntry>; // keyed by nodeId
+}
+
 let _idb: IDBDatabase | undefined;
 
 function openGameDb(): Promise<IDBDatabase> {
   if (_idb) return Promise.resolve(_idb);
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('patzer-pro', 2);
+    const req = indexedDB.open('patzer-pro', 3);
     req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
       const db = (e.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('game-library'))   db.createObjectStore('game-library');
-      if (!db.objectStoreNames.contains('puzzle-library')) db.createObjectStore('puzzle-library');
+      if (!db.objectStoreNames.contains('game-library'))     db.createObjectStore('game-library');
+      if (!db.objectStoreNames.contains('puzzle-library'))   db.createObjectStore('puzzle-library');
+      if (!db.objectStoreNames.contains('analysis-library')) db.createObjectStore('analysis-library');
     };
     req.onsuccess    = () => { _idb = req.result; resolve(_idb); };
     req.onerror      = () => reject(req.error);
@@ -159,6 +190,102 @@ async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
     console.warn('[idb] load failed', e);
     return undefined;
   }
+}
+
+async function saveAnalysisToIdb(status: AnalysisStatus): Promise<void> {
+  if (!selectedGameId) return;
+  try {
+    const db = await openGameDb();
+    const nodes: Record<string, StoredNodeEntry> = {};
+    let path = '';
+    for (let i = 1; i < ctrl.mainline.length; i++) {
+      const node = ctrl.mainline[i]!;
+      path += node.id;
+      const ev = evalCache.get(node.id);
+      if (ev) {
+        const entry: StoredNodeEntry = { nodeId: node.id, path, fen: node.fen };
+        if (ev.cp    !== undefined) entry.cp    = ev.cp;
+        if (ev.mate  !== undefined) entry.mate  = ev.mate;
+        if (ev.best  !== undefined) entry.best  = ev.best;
+        if (ev.loss  !== undefined) entry.loss  = ev.loss;
+        if (ev.delta !== undefined) entry.delta = ev.delta;
+        nodes[node.id] = entry;
+      }
+    }
+    const record: StoredAnalysis = {
+      gameId:          selectedGameId,
+      analysisVersion: ANALYSIS_VERSION,
+      analysisDepth:   analysisDepth,
+      status,
+      updatedAt:       Date.now(),
+      nodes,
+    };
+    const tx = db.transaction('analysis-library', 'readwrite');
+    tx.objectStore('analysis-library').put(record, selectedGameId);
+  } catch (e) {
+    console.warn('[idb] analysis save failed', e);
+  }
+}
+
+async function loadAnalysisFromIdb(gameId: string): Promise<StoredAnalysis | undefined> {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('analysis-library', 'readonly')
+        .objectStore('analysis-library').get(gameId);
+      req.onsuccess = () => resolve(req.result as StoredAnalysis | undefined);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[idb] analysis load failed', e);
+    return undefined;
+  }
+}
+
+async function clearAnalysisFromIdb(gameId: string): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('analysis-library', 'readwrite');
+    tx.objectStore('analysis-library').delete(gameId);
+  } catch (e) {
+    console.warn('[idb] analysis clear failed', e);
+  }
+}
+
+/**
+ * Load stored analysis for a game into evalCache and restore completion state.
+ * Called when a game is loaded (page load or game switch).
+ * Mirrors the IndexedDB restore pattern in lichess-org/lila: ui/analyse/src/idbTree.ts
+ */
+async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
+  const stored = await loadAnalysisFromIdb(gameId);
+  if (!stored) return;
+  // Stale data: version or depth changed — discard
+  if (stored.analysisVersion !== ANALYSIS_VERSION) return;
+  if (stored.analysisDepth !== analysisDepth) return;
+  // Repopulate evalCache from stored node entries
+  for (const entry of Object.values(stored.nodes)) {
+    const ev: PositionEval = {};
+    if (entry.cp    !== undefined) ev.cp    = entry.cp;
+    if (entry.mate  !== undefined) ev.mate  = entry.mate;
+    if (entry.best  !== undefined) ev.best  = entry.best;
+    if (entry.loss  !== undefined) ev.loss  = entry.loss;
+    if (entry.delta !== undefined) ev.delta = entry.delta;
+    evalCache.set(entry.nodeId, ev);
+  }
+  if (stored.status === 'complete') {
+    analyzedGameIds.add(gameId);
+    analysisComplete = true;
+    batchState       = 'complete';
+    const game = importedGames.find(g => g.id === gameId);
+    const userColor = game ? getUserColor(game) : null;
+    if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
+  }
+  // Sync display to the restored eval for the current node
+  const restoredEval = evalCache.get(ctrl.node.id);
+  if (restoredEval) currentEval = { ...restoredEval };
+  syncArrow();
+  redraw();
 }
 
 // --- Engine ---
@@ -537,6 +664,7 @@ function detectMissedTactics(userColor: 'white' | 'black' | null): boolean {
 
 function advanceBatch(): void {
   batchDone++;
+  void saveAnalysisToIdb('partial');
   redraw();
   if (batchDone < batchQueue.length) {
     evalBatchItem(batchQueue[batchDone]!);
@@ -551,6 +679,7 @@ function advanceBatch(): void {
       const userColor = game ? getUserColor(game) : null;
       if (detectMissedTactics(userColor)) missedTacticGameIds.add(selectedGameId);
     }
+    void saveAnalysisToIdb('complete');
     syncArrow(); // restore arrow for current board position
     redraw();
   }
@@ -1332,6 +1461,11 @@ function renderAnalysisControls(): VNode {
         attrs: { disabled: !hasGame || batchAnalyzing },
         on: {
           click: () => {
+            if (selectedGameId) {
+              void clearAnalysisFromIdb(selectedGameId);
+              analyzedGameIds.delete(selectedGameId);
+              missedTacticGameIds.delete(selectedGameId);
+            }
             evalCache.clear();
             currentEval = {};
             puzzleCandidates = [];
@@ -1812,4 +1946,6 @@ void loadGamesFromIdb().then(stored => {
   syncBoard();
   syncArrow();
   redraw();
+  // Restore persisted engine analysis for this game
+  void loadAndRestoreAnalysis(toLoad.id);
 });
