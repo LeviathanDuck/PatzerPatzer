@@ -5847,16 +5847,21 @@ function buildArrowShapes() {
       }
     }
   }
-  if (showPlayedArrow) {
-    const nextNode = ctrl.node.children[0];
-    if (nextNode?.move?.uci) {
-      const uci = nextNode.move.uci;
-      shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "green" });
-    }
-  }
   if (engineEnabled && threatMode && threatEval.best) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
+  }
+  if (showPlayedArrow) {
+    const nextNode = ctrl.node.children[0];
+    if (nextNode?.uci) {
+      const uci = nextNode.uci;
+      shapes.push({
+        orig: uci.slice(0, 2),
+        dest: uci.slice(2, 4),
+        brush: "red",
+        modifiers: { lineWidth: 9 }
+      });
+    }
   }
   return shapes;
 }
@@ -6041,7 +6046,13 @@ function renderBoard() {
         cgInstance = Chessground(vnode3.elm, {
           orientation,
           viewOnly: false,
-          drawable: { enabled: true },
+          drawable: {
+            enabled: true,
+            brushes: {
+              // Boost paleBlue opacity from default 0.4 → 0.65 for a bolder engine line
+              paleBlue: { key: "pb", color: "#003088", opacity: 0.65, lineWidth: 15 }
+            }
+          },
           fen: node.fen,
           lastMove: uciToMove(node.uci),
           turnColor: node.ply % 2 === 0 ? "white" : "black",
