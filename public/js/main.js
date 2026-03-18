@@ -5740,6 +5740,100 @@ function classifyLoss(loss) {
   if (loss >= LOSS_THRESHOLDS.inaccuracy) return "inaccuracy";
   return null;
 }
+function moveAccuracyFromDiff(diff2) {
+  if (diff2 < 0) return 100;
+  const raw = 103.1668100711649 * Math.exp(-0.04354415386753951 * diff2) + -3.166924740191411;
+  return Math.max(0, Math.min(100, raw + 1));
+}
+function aggregateAccuracy(accs) {
+  const n = accs.length;
+  if (n < 2) return null;
+  const window2 = Math.max(2, Math.min(8, Math.floor(n / 10)));
+  const weights = [];
+  for (let s = 0; s + window2 <= n; s++) {
+    const slice = accs.slice(s, s + window2);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length;
+    weights.push(Math.max(0.5, Math.min(12, Math.sqrt(variance))));
+  }
+  const pairLen = weights.length;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (let i = 0; i < pairLen; i++) {
+    weightedSum += accs[i] * weights[i];
+    totalWeight += weights[i];
+  }
+  const weightedMean = totalWeight > 0 ? weightedSum / totalWeight : 0;
+  const harmonicMean = n / accs.reduce((acc, a) => acc + 1 / Math.max(a, 1e-3), 0);
+  return Math.max(0, Math.min(100, (weightedMean + harmonicMean) / 2));
+}
+function computeAnalysisSummary() {
+  if (evalCache.size === 0) return null;
+  const whiteAccs = [];
+  const blackAccs = [];
+  let wBlunders = 0, wMistakes = 0, wInaccuracies = 0;
+  let bBlunders = 0, bMistakes = 0, bInaccuracies = 0;
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node = ctrl.mainline[i];
+    const parent = ctrl.mainline[i - 1];
+    const nodeEval = evalCache.get(node.id);
+    const parentEval = evalCache.get(parent.id);
+    if (!nodeEval || !parentEval) continue;
+    const nodeWc = evalWinChances(nodeEval);
+    const parentWc = evalWinChances(parentEval);
+    if (nodeWc === void 0 || parentWc === void 0) continue;
+    const nodeWp = (nodeWc + 1) / 2 * 100;
+    const parentWp = (parentWc + 1) / 2 * 100;
+    const isWhiteMove = node.ply % 2 === 1;
+    const diff2 = isWhiteMove ? parentWp - nodeWp : nodeWp - parentWp;
+    const acc = moveAccuracyFromDiff(diff2);
+    if (isWhiteMove) {
+      whiteAccs.push(acc);
+    } else {
+      blackAccs.push(acc);
+    }
+    const playedBest = node.uci !== void 0 && node.uci === parentEval.best;
+    const label = !playedBest && nodeEval.loss !== void 0 ? classifyLoss(nodeEval.loss) : null;
+    if (isWhiteMove) {
+      if (label === "blunder") wBlunders++;
+      else if (label === "mistake") wMistakes++;
+      else if (label === "inaccuracy") wInaccuracies++;
+    } else {
+      if (label === "blunder") bBlunders++;
+      else if (label === "mistake") bMistakes++;
+      else if (label === "inaccuracy") bInaccuracies++;
+    }
+  }
+  if (whiteAccs.length === 0 && blackAccs.length === 0) return null;
+  return {
+    white: { accuracy: aggregateAccuracy(whiteAccs), blunders: wBlunders, mistakes: wMistakes, inaccuracies: wInaccuracies },
+    black: { accuracy: aggregateAccuracy(blackAccs), blunders: bBlunders, mistakes: bMistakes, inaccuracies: bInaccuracies }
+  };
+}
+function renderAnalysisSummary() {
+  if (!analysisComplete && evalCache.size < 4) return h("div");
+  const summary = computeAnalysisSummary();
+  if (!summary) return h("div");
+  const game = importedGames.find((g) => g.id === selectedGameId);
+  const whiteName = game?.white ?? "White";
+  const blackName = game?.black ?? "Black";
+  function playerCol(name, data) {
+    const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : "\u2014";
+    const breakdown = [];
+    if (data.blunders > 0) breakdown.push(h("span.summary__blunder", `${data.blunders} blunder${data.blunders !== 1 ? "s" : ""}`));
+    if (data.mistakes > 0) breakdown.push(h("span.summary__mistake", `${data.mistakes} mistake${data.mistakes !== 1 ? "s" : ""}`));
+    if (data.inaccuracies > 0) breakdown.push(h("span.summary__inaccuracy", `${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? "ies" : "y"}`));
+    return h("div.summary__col", [
+      h("div.summary__name", name),
+      h("div.summary__accuracy", accText),
+      breakdown.length > 0 ? h("div.summary__breakdown", breakdown) : h("div.summary__breakdown", "\u2014")
+    ]);
+  }
+  return h("div.analysis-summary", [
+    playerCol(whiteName, summary.white),
+    playerCol(blackName, summary.black)
+  ]);
+}
 function renderMoveList() {
   const moves = [];
   let path = "";
@@ -6308,6 +6402,7 @@ function routeContent(route) {
         renderAnalysisControls(),
         h("div.analyse__board-wrap", [renderEvalBar(), h("div.analyse__board", [renderBoard()])]),
         renderEvalGraph(),
+        renderAnalysisSummary(),
         renderMoveList(),
         renderPuzzleCandidates(),
         renderImportFilters(),

@@ -223,6 +223,63 @@ body {
   }
 }
 
+.analysis-summary {
+  display: flex;
+  gap: 0;
+  width: 100%;
+  max-width: 600px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.summary__col {
+  flex: 1;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  & + & {
+    border-left: 1px solid #333;
+  }
+}
+
+.summary__name {
+  font-size: 0.8rem;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary__accuracy {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #e8e8e8;
+}
+
+.summary__breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.summary__blunder {
+  color: #f66;
+}
+
+.summary__mistake {
+  color: #f84;
+}
+
+.summary__inaccuracy {
+  color: #fa4;
+}
+
 .analyse {
   display: flex;
   flex-direction: column;
