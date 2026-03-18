@@ -579,19 +579,25 @@ function evalCurrentPosition(): void {
   if (evalIsThreat) { protocol.stop(); evalIsThreat = false; }
   threatEval = {};
   const cached = evalCache.get(ctrl.node.id);
-  if (cached) {
+  // Use cache only when it already has enough PV lines for the current multiPv setting.
+  // Batch analysis stores single-line evals (no .lines), so those always fall through
+  // to a live engine search — matching Lichess's startCeval which always runs the engine.
+  const cachedHasLines = (cached?.lines?.length ?? 0) >= multiPv - 1;
+  if (cached && cachedHasLines) {
     currentEval = { ...cached };
     syncArrow();
     redraw();
-    if (threatMode) evalThreatPosition(); // threat eval chains after cache hit too
+    if (threatMode) evalThreatPosition();
     return;
   }
-  evalNodeId = ctrl.node.id;
-  evalNodePly = ctrl.node.ply;
+  // Cache miss or insufficient lines — start the engine.
+  // Show whatever cached data exists immediately as a placeholder while it runs.
+  currentEval  = cached ? { ...cached } : {};
+  pendingLines = [];
+  syncArrow();
+  evalNodeId       = ctrl.node.id;
+  evalNodePly      = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
-  currentEval  = {}; // reset for new position
-  pendingLines = []; // clear any stale secondary lines
-  syncArrow();       // clear stale arrow immediately
   protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(analysisDepth, multiPv);
@@ -2047,9 +2053,35 @@ function routeContent(route: Route): VNode {
   }
 }
 
+/**
+ * Dev utility: wipe all IndexedDB stores and reset in-memory state to defaults.
+ * Reloads the page so the app boots clean.
+ */
+async function resetAllData(): Promise<void> {
+  if (!confirm('Reset all data? This clears imported games, analysis, and puzzles.')) return;
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library'], 'readwrite');
+    tx.objectStore('game-library').clear();
+    tx.objectStore('puzzle-library').clear();
+    tx.objectStore('analysis-library').clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror    = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('[reset] IDB clear failed', e);
+  }
+  window.location.reload();
+}
+
 function view(route: Route): VNode {
   return h('div#shell', [
-    h('header', [h('span', 'Patzer Pro'), renderNav(route)]),
+    h('header', [
+      h('span', 'Patzer Pro'),
+      renderNav(route),
+      h('button.dev-reset', { on: { click: () => void resetAllData() } }, 'Reset Data'),
+    ]),
     h('main', [routeContent(route)]),
   ]);
 }
