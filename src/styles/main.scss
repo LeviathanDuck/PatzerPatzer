@@ -66,6 +66,55 @@ header {
 
 .analyse__board {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+// Adapted from lichess-org/lila: ui/analyse/src/view/components.ts renderPlayerStrips
+.analyse__player_strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  min-height: 26px;
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+.player-strip__color-icon {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+
+  &--white {
+    background: #e8e8e8;
+    border: 1px solid #999;
+  }
+
+  &--black {
+    background: #222;
+    border: 1px solid #777;
+  }
+}
+
+.player-strip__name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.player-strip__result {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: #666;
+  font-weight: 600;
+
+  &--winner {
+    color: #e8e8e8;
+  }
 }
 
 .cg-wrap {
