@@ -1827,9 +1827,72 @@ function renderPvBox(): VNode | null {
           pvBoard = null;
           redraw();
         });
+        // Click a PV move → load that position into the main analysis board.
+        // Collects all UCIs in the row up to (and including) the clicked span,
+        // then walks the tree from ctrl.node — following existing children or
+        // creating new variation nodes as needed.
+        // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts pointerdown handler
+        el.addEventListener('click', (e: MouseEvent) => {
+          const sanSpan = (e.target as HTMLElement).closest<HTMLElement>('span.pv-san');
+          if (!sanSpan) return;
+          e.preventDefault();
+          const pvRow = sanSpan.closest<HTMLElement>('div.pv');
+          if (!pvRow) return;
+          const allSans = Array.from(pvRow.querySelectorAll<HTMLElement>('span.pv-san'));
+          const clickedIdx = allSans.indexOf(sanSpan);
+          if (clickedIdx < 0) return;
+          const ucis: string[] = [];
+          for (let i = 0; i <= clickedIdx; i++) {
+            const db = allSans[i]!.dataset.board;
+            if (!db) break;
+            ucis.push(db.slice(db.indexOf('|') + 1));
+          }
+          if (ucis.length > 0) playPvUciList(ucis);
+        });
       },
     },
   }, rows);
+}
+
+/**
+ * Walk from the current node through a UCI sequence, following existing
+ * tree children when possible and creating new variation nodes otherwise.
+ * Navigates to the resulting position using the standard pipeline.
+ * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts playUciList / playUci
+ */
+function playPvUciList(ucis: string[]): void {
+  let path = ctrl.path;
+  let node = ctrl.node;
+  for (const uci of ucis) {
+    const existing = node.children.find(c => c.uci === uci);
+    if (existing) {
+      path += existing.id;
+      node = existing;
+      continue;
+    }
+    const move = parseUci(uci);
+    if (!move) break;
+    try {
+      const setup = parseFen(node.fen).unwrap();
+      const pos = Chess.fromSetup(setup).unwrap();
+      const san = makeSanAndPlay(pos, move);
+      if (san === '--') break;
+      const newNode: TreeNode = {
+        id: scalachessCharPair(move),
+        ply: node.ply + 1,
+        san,
+        uci: makeUci(move),
+        fen: makeFen(pos.toSetup()),
+        children: [],
+      };
+      addNode(ctrl.root, path, newNode);
+      path += newNode.id;
+      node = newNode;
+    } catch {
+      break;
+    }
+  }
+  navigate(path);
 }
 
 /**
