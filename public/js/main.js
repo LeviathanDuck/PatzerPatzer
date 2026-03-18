@@ -6036,6 +6036,27 @@ function flip() {
   cgInstance?.set({ orientation });
   redraw();
 }
+function renderPlayerStrips() {
+  const game = importedGames.find((g) => g.id === selectedGameId);
+  const whiteName = game?.white ?? "White";
+  const blackName = game?.black ?? "Black";
+  const result = game?.result ?? "*";
+  const whiteResult = result === "1-0" ? "1" : result === "0-1" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
+  const blackResult = result === "0-1" ? "1" : result === "1-0" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
+  const strip = (color) => {
+    const name = color === "white" ? whiteName : blackName;
+    const badge = color === "white" ? whiteResult : blackResult;
+    const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
+    return h("div.analyse__player_strip", [
+      h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
+      h("span.player-strip__name", name),
+      badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null
+    ]);
+  };
+  const topColor = orientation === "white" ? "black" : "white";
+  const bottomColor = orientation === "white" ? "white" : "black";
+  return [strip(topColor), strip(bottomColor)];
+}
 function renderBoard() {
   return h("div.cg-wrap", {
     key: "board",
@@ -6905,7 +6926,10 @@ function routeContent(route) {
         renderAnalysisControls(),
         h("div.analyse__board-wrap", [
           ...engineEnabled ? [renderEvalBar()] : [],
-          h("div.analyse__board", [renderBoard()])
+          (() => {
+            const [topStrip, bottomStrip] = renderPlayerStrips();
+            return h("div.analyse__board", [topStrip, renderBoard(), bottomStrip]);
+          })()
         ]),
         renderEvalGraph(),
         renderAnalysisSummary(),

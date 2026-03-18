@@ -1044,6 +1044,36 @@ function flip(): void {
   redraw();
 }
 
+// Adapted from lichess-org/lila: ui/analyse/src/view/components.ts renderPlayerStrips
+// Renders name + result for the player above and below the board.
+// Top = opponent (from orientation's perspective), bottom = current player.
+function renderPlayerStrips(): [VNode, VNode] {
+  const game = importedGames.find(g => g.id === selectedGameId);
+  const whiteName = game?.white ?? 'White';
+  const blackName = game?.black ?? 'Black';
+  const result    = game?.result ?? '*';
+
+  // Per-player result badge
+  const whiteResult = result === '1-0' ? '1' : result === '0-1' ? '0' : result === '1/2-1/2' ? '½' : null;
+  const blackResult = result === '0-1' ? '1' : result === '1-0' ? '0' : result === '1/2-1/2' ? '½' : null;
+
+  const strip = (color: 'white' | 'black'): VNode => {
+    const name   = color === 'white' ? whiteName : blackName;
+    const badge  = color === 'white' ? whiteResult : blackResult;
+    const winner = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
+    return h('div.analyse__player_strip', [
+      h('span.player-strip__color-icon', { class: { 'player-strip__color-icon--white': color === 'white', 'player-strip__color-icon--black': color === 'black' } }),
+      h('span.player-strip__name', name),
+      badge ? h('span.player-strip__result', { class: { 'player-strip__result--winner': winner } }, badge) : null,
+    ]);
+  };
+
+  // When orientation is white: top = black, bottom = white. Inverted when flipped.
+  const topColor    = orientation === 'white' ? 'black' : 'white';
+  const bottomColor = orientation === 'white' ? 'white' : 'black';
+  return [strip(topColor), strip(bottomColor)];
+}
+
 // Adapted from lichess-org/lila: ui/analyse/src/ground.ts render + makeConfig
 function renderBoard(): VNode {
   return h('div.cg-wrap', {
@@ -2169,7 +2199,10 @@ function routeContent(route: Route): VNode {
         renderAnalysisControls(),
         h('div.analyse__board-wrap', [
           ...(engineEnabled ? [renderEvalBar()] : []),
-          h('div.analyse__board', [renderBoard()]),
+          (() => {
+            const [topStrip, bottomStrip] = renderPlayerStrips();
+            return h('div.analyse__board', [topStrip, renderBoard(), bottomStrip]);
+          })(),
         ]),
         renderEvalGraph(),
         renderAnalysisSummary(),
