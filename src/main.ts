@@ -1700,28 +1700,11 @@ function formatScore(ev: PositionEval): string {
   return '…';
 }
 
-function renderEval(): VNode {
+function renderEval(): VNode | null {
+  // When engine is off, keep an invisible placeholder to avoid layout shift.
+  // When engine is on, the score is shown inside renderPvBox() — no separate box needed.
   if (!engineEnabled) return h('div.ceval-box.ceval-box--off');
-
-  const score = formatScore(currentEval);
-  const isPositive = currentEval.cp !== undefined
-    ? currentEval.cp > 0
-    : currentEval.mate !== undefined
-      ? currentEval.mate > 0
-      : null;
-
-  const computing = !currentEval.cp && currentEval.mate === undefined && engineReady;
-
-  return h('div.ceval-box', [
-    h('span.ceval__score', {
-      class: { 'ceval__score--white': isPositive === true, 'ceval__score--black': isPositive === false },
-    }, computing ? '…' : score),
-    currentEval.best
-      ? h('span.ceval__best', uciToSan(ctrl.node.fen, currentEval.best))
-      : engineReady
-        ? h('span.ceval__info', batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}…` : '')
-        : h('span.ceval__info', 'Loading engine…'),
-  ]);
+  return null;
 }
 
 /**
@@ -1757,41 +1740,45 @@ function renderPvMoves(fen: string, moves: string[]): VNode[] {
 }
 
 /**
- * Render the PV lines box below the eval bar.
- * When MultiPV > 1: shows score + moves for each line.
- * When MultiPV = 1: shows just the primary move sequence (no score — already shown above).
+ * Render the PV lines box — score + move sequence for every candidate line.
+ * Score is always shown so the box is self-contained (renderEval no longer
+ * renders a separate score widget when the engine is on).
  * Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs + renderPv
  */
 function renderPvBox(): VNode | null {
   if (!engineEnabled) return null;
   const primaryMoves = currentEval.moves ?? [];
   const secondaryLines = currentEval.lines ?? [];
-  if (primaryMoves.length === 0 && secondaryLines.length === 0) return null;
 
   const fen = ctrl.node.fen;
 
-  function pvRow(ev: EvalLine | PositionEval, showScore: boolean): VNode {
+  function pvRow(ev: EvalLine | PositionEval): VNode {
     const score = formatScore(ev);
     const isPositive = ev.cp !== undefined ? ev.cp > 0 : ev.mate !== undefined ? ev.mate > 0 : null;
     const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
     return h('div.pv', [
-      showScore
-        ? h('strong', {
-            class: { 'pv__score--white': isPositive === true, 'pv__score--black': isPositive === false },
-          }, score)
-        : null,
+      h('strong', {
+        class: { 'pv__score--white': isPositive === true, 'pv__score--black': isPositive === false },
+      }, score),
       ...pvNodes,
     ]);
   }
 
-  const showScore = multiPv > 1;
   const rows: VNode[] = [];
-  if (primaryMoves.length > 0) rows.push(pvRow(currentEval, showScore));
+  if (primaryMoves.length > 0) rows.push(pvRow(currentEval));
   for (const line of secondaryLines) {
-    if (line.moves?.length) rows.push(pvRow(line, showScore));
+    if (line.moves?.length) rows.push(pvRow(line));
   }
 
-  if (rows.length === 0) return null;
+  // Show a single status row while the engine is loading/computing
+  if (rows.length === 0) {
+    const statusText = !engineReady
+      ? 'Loading engine…'
+      : batchAnalyzing
+        ? `Analyzing ${batchDone}/${batchQueue.length}…`
+        : '…';
+    return h('div.pv_box', [h('div.pv', [h('span.ceval__info', statusText)])]);
+  }
 
   // Attach hover listeners imperatively to avoid per-move re-registration overhead.
   // mousemove updates the floating overlay position directly (no redraw) for smoothness.
