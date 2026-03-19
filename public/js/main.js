@@ -6529,13 +6529,14 @@ function renderMoveSpan(node, path, parent) {
   const computedSymbol = computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
   const symbol = pgnGlyph?.symbol ?? computedSymbol;
   const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
+  const mate = cached?.mate;
+  const inner = [node.san ?? ""];
+  if (symbol) inner.push(h("span.move__glyph", { attrs: { style: `color:${color}` } }, symbol));
+  if (mate !== void 0) inner.push(h("span.move__mate", `+M${Math.abs(mate)}`));
   return h("span.move", {
     class: { active: path === ctrl.path },
     on: { click: () => navigate(path) }
-  }, symbol ? [
-    node.san ?? "",
-    h("span.move__glyph", { attrs: { style: `color:${color}` } }, symbol)
-  ] : node.san ?? "");
+  }, inner.length === 1 ? inner[0] : inner);
 }
 function renderNodeSiblings(nodes, parentPath, parent, needsMoveNum) {
   if (nodes.length === 0) return [];
@@ -6601,7 +6602,8 @@ function renderEvalGraph() {
         y: (1 - wc) / 2 * GRAPH_H,
         // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
         path,
-        label
+        label,
+        hasMate: cached?.mate !== void 0
       });
     } else {
       pts.push(null);
@@ -6651,7 +6653,7 @@ function renderEvalGraph() {
       attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: "transparent" },
       on: { click: () => navigate(capturePath) }
     }));
-    const dotColor = isCurrent ? "#4a8" : pt.label === "blunder" ? "#f66" : pt.label === "mistake" ? "#f84" : pt.label === "inaccuracy" ? "#fa4" : "#888";
+    const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "#c084fc" : pt.label === "blunder" ? "#f66" : pt.label === "mistake" ? "#f84" : pt.label === "inaccuracy" ? "#fa4" : "#888";
     const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
     svgNodes.push(h("circle", { attrs: {
       cx: pt.x,

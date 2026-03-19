@@ -242,6 +242,16 @@ header {
     user-select: none;
   }
 
+  // Forced-mate distance marker: "+M2", "+M6", etc.
+  // Purple, compact — distinct from classification glyphs but similar prominence.
+  .move__mate {
+    margin-left: 2px;
+    font-size: 0.75em;
+    font-weight: 600;
+    color: #c084fc;
+    user-select: none;
+  }
+
   .move {
     padding: 1px 4px;
     border-radius: 3px;
