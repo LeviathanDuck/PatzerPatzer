@@ -144,7 +144,7 @@ applyBoardZoom(boardZoom);
 // Theme name is stored in localStorage and applied as data-board on <body>.
 // CSS in main.scss maps data-board → cg-board background-image.
 const BOARD_THEME_KEY = 'boardTheme';
-const BOARD_THEME_DEFAULT = 'brown';
+const BOARD_THEME_DEFAULT = 'green';
 // Featured 2D themes — adapted from BOARD_UI_REFERENCE.md section 2.
 const BOARD_THEMES_FEATURED = [
   'brown', 'wood4', 'maple', 'horsey', 'blue', 'blue2', 'blue3',
@@ -164,7 +164,7 @@ applyBoardTheme(boardTheme);
 // Sets 12 CSS custom properties (---white-pawn etc.) on <body> so SCSS rules
 // in main.scss pick them up instead of the hardcoded chessground.cburnett.css data URIs.
 const PIECE_SET_KEY = 'pieceSet';
-const PIECE_SET_DEFAULT = 'cburnett';
+const PIECE_SET_DEFAULT = 'staunty';
 const PIECE_SETS_FEATURED = [
   'cburnett', 'merida', 'alpha', 'companion', 'kosal', 'caliente',
   'rhosgfx', 'maestro', 'fresca', 'cardinal', 'gioco', 'staunty',

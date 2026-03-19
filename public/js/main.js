@@ -5538,7 +5538,7 @@ function applyBoardZoom(zoom) {
 }
 applyBoardZoom(boardZoom);
 var BOARD_THEME_KEY = "boardTheme";
-var BOARD_THEME_DEFAULT = "brown";
+var BOARD_THEME_DEFAULT = "green";
 var BOARD_THEMES_FEATURED = [
   "brown",
   "wood4",
@@ -5564,7 +5564,7 @@ function applyBoardTheme(name) {
 }
 applyBoardTheme(boardTheme);
 var PIECE_SET_KEY = "pieceSet";
-var PIECE_SET_DEFAULT = "cburnett";
+var PIECE_SET_DEFAULT = "staunty";
 var PIECE_SETS_FEATURED = [
   "cburnett",
   "merida",
