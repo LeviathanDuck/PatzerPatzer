@@ -797,10 +797,18 @@ body.resizing {
 
 .player-strip__name {
   flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 500;
+}
+
+.player-strip__rating {
+  flex-shrink: 0;
+  font-size: 0.78em;
+  color: #666;
+  white-space: nowrap;
 }
 
 // Material imbalance — adapted from lichess-org/lila: ui/lib/css/component/_material.scss
@@ -1316,6 +1324,9 @@ body[data-board='newspaper'] cg-board::before {
   &__row {
     flex: 1;
     min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
     text-align: left;
     background: none;
     border: none;
@@ -1326,6 +1337,62 @@ body[data-board='newspaper'] cg-board::before {
 
     &:hover { background: #2a2a2a; }
     &.active { background: #1e3a1e; color: #6f6; }
+  }
+}
+
+// Compact game row fields — shared by header panel list and underboard game list.
+// Each button using renderCompactGameRow() renders these children.
+.grl {
+  &__result {
+    font-size: 0.6em;
+    flex-shrink: 0;
+    line-height: 1;
+
+    &--win     { color: #4a8; }
+    &--loss    { color: #f66; }
+    &--draw    { color: #888; }
+    &--unknown { color: #3a3a3a; }
+  }
+
+  &__opponent {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__date {
+    flex-shrink: 0;
+    font-size: 0.75em;
+    color: #555;
+  }
+
+  &__tc {
+    flex-shrink: 0;
+    font-size: 0.8em;
+    color: #555;
+    line-height: 1;
+
+    &[data-icon]::before {
+      font-family: 'lichess';
+      content: attr(data-icon);
+    }
+  }
+
+  &__badges {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  &__badge {
+    font-size: 0.7em;
+    font-weight: 700;
+
+    &.--ok   { color: #4a8; }
+    &.--warn { color: #f84; }
   }
 }
 
@@ -1947,6 +2014,17 @@ body[data-board='newspaper'] cg-board::before {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  &__rating-th {
+    white-space: nowrap;
+  }
+
+  &__rating {
+    color: #666;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
 
   &__date {
