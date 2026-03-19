@@ -10,6 +10,7 @@ const routes: { pattern: string[]; name: string }[] = [
   { pattern: ['puzzles'], name: 'puzzles' },
   { pattern: ['openings'], name: 'openings' },
   { pattern: ['stats'], name: 'stats' },
+  { pattern: ['games'], name: 'games' },
   { pattern: [], name: 'home' },
 ];
 

@@ -4368,6 +4368,7 @@ var routes = [
   { pattern: ["puzzles"], name: "puzzles" },
   { pattern: ["openings"], name: "openings" },
   { pattern: ["stats"], name: "stats" },
+  { pattern: ["games"], name: "games" },
   { pattern: [], name: "home" }
 ];
 function parse(hash2) {
@@ -5471,6 +5472,24 @@ function pgnToTree(pgn) {
 // src/main.ts
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
+function timeClassFromTimeControl(tc) {
+  if (!tc || tc === "-") return void 0;
+  const secs = parseInt(tc, 10);
+  if (isNaN(secs)) return void 0;
+  if (secs < 180) return "ultrabullet";
+  if (secs < 600) return "bullet";
+  if (secs < 1800) return "blitz";
+  if (secs <= 10800) return "rapid";
+  return "classical";
+}
+function gameResult(game) {
+  const color = getUserColor(game);
+  if (!game.result) return null;
+  if (game.result.includes("1/2")) return "draw";
+  if (!color) return null;
+  if (color === "white") return game.result === "1-0" ? "win" : "loss";
+  return game.result === "0-1" ? "win" : "loss";
+}
 var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
 var ZOOM_DEFAULT = 85;
 var ZOOM_KEY = "boardZoom";
@@ -6394,12 +6413,15 @@ function activeSection(route) {
       return "openings";
     case "stats":
       return "stats";
+    case "games":
+      return "games";
     default:
       return "";
   }
 }
 var navLinks = [
   { label: "Analysis", href: "#/analysis", section: "analysis" },
+  { label: "Games", href: "#/games", section: "games" },
   { label: "Puzzles", href: "#/puzzles", section: "puzzles" },
   { label: "Openings", href: "#/openings", section: "openings" },
   { label: "Stats", href: "#/stats", section: "stats" }
@@ -7881,7 +7903,11 @@ async function fetchChesscomGames(username, rated, speeds) {
       white: raw.white?.username ?? void 0,
       black: raw.black?.username ?? void 0,
       result: normalizeChesscomResult(raw.white?.result ?? "", raw.black?.result ?? ""),
-      date: parsePgnHeader(pgn, "Date")?.replace(/\./g, "-")
+      date: parsePgnHeader(pgn, "Date")?.replace(/\./g, "-"),
+      timeClass: raw.time_class,
+      opening: parsePgnHeader(pgn, "Opening"),
+      eco: parsePgnHeader(pgn, "ECO"),
+      source: "chesscom"
     });
   }
   return result;
@@ -7938,7 +7964,11 @@ async function fetchLichessGames(username, rated, speeds) {
       white: parsePgnHeader(pgn, "White"),
       black: parsePgnHeader(pgn, "Black"),
       result: parsePgnHeader(pgn, "Result"),
-      date
+      date,
+      timeClass: timeClassFromTimeControl(parsePgnHeader(pgn, "TimeControl")),
+      opening: parsePgnHeader(pgn, "Opening"),
+      eco: parsePgnHeader(pgn, "ECO"),
+      source: "lichess"
     });
   }
   return result;
@@ -7984,7 +8014,10 @@ function importPgn() {
       white: parsePgnHeader(raw, "White"),
       black: parsePgnHeader(raw, "Black"),
       result: parsePgnHeader(raw, "Result"),
-      date: parsePgnHeader(raw, "Date")?.replace(/\./g, "-")
+      date: parsePgnHeader(raw, "Date")?.replace(/\./g, "-"),
+      timeClass: timeClassFromTimeControl(parsePgnHeader(raw, "TimeControl")),
+      opening: parsePgnHeader(raw, "Opening"),
+      eco: parsePgnHeader(raw, "ECO")
     };
     importedGames = [...importedGames, game];
     selectedGameId = game.id;
@@ -8019,6 +8052,196 @@ function renderGameList() {
       ]));
     }))
   ]);
+}
+var gamesFilterResults = /* @__PURE__ */ new Set();
+var gamesFilterSpeeds = /* @__PURE__ */ new Set();
+var gamesFilterOpponent = "";
+var gamesSortField = "date";
+var gamesSortDir = "desc";
+function toggleGamesSort(field) {
+  if (gamesSortField === field) {
+    gamesSortDir = gamesSortDir === "desc" ? "asc" : "desc";
+  } else {
+    gamesSortField = field;
+    gamesSortDir = "desc";
+  }
+  redraw();
+}
+function gamesFilterActive() {
+  return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 || gamesFilterOpponent.trim() !== "";
+}
+function clearGamesFilters() {
+  gamesFilterResults = /* @__PURE__ */ new Set();
+  gamesFilterSpeeds = /* @__PURE__ */ new Set();
+  gamesFilterOpponent = "";
+  redraw();
+}
+function filteredGames() {
+  let list = [...importedGames];
+  if (gamesFilterResults.size > 0) {
+    list = list.filter((g) => {
+      const r = gameResult(g);
+      return r !== null && gamesFilterResults.has(r);
+    });
+  }
+  if (gamesFilterSpeeds.size > 0) {
+    list = list.filter((g) => g.timeClass && gamesFilterSpeeds.has(g.timeClass));
+  }
+  if (gamesFilterOpponent.trim()) {
+    const q = gamesFilterOpponent.trim().toLowerCase();
+    list = list.filter((g) => {
+      const opp = opponentName(g)?.toLowerCase() ?? "";
+      return opp.includes(q);
+    });
+  }
+  list.sort((a, b) => {
+    let cmp = 0;
+    if (gamesSortField === "date") {
+      cmp = (a.date ?? "").localeCompare(b.date ?? "");
+    } else if (gamesSortField === "opponent") {
+      cmp = (opponentName(a) ?? "").localeCompare(opponentName(b) ?? "");
+    } else if (gamesSortField === "timeClass") {
+      cmp = (a.timeClass ?? "").localeCompare(b.timeClass ?? "");
+    } else if (gamesSortField === "result") {
+      const ord = (g) => {
+        const r = gameResult(g);
+        return r === "win" ? 0 : r === "draw" ? 1 : r === "loss" ? 2 : 3;
+      };
+      cmp = ord(a) - ord(b);
+    }
+    return gamesSortDir === "desc" ? -cmp : cmp;
+  });
+  return list;
+}
+function opponentName(game) {
+  const color = getUserColor(game);
+  if (color === "white") return game.black;
+  if (color === "black") return game.white;
+  return game.white && game.black ? `${game.white} vs ${game.black}` : void 0;
+}
+function renderResultIcon(r) {
+  if (r === "win") return h("span.games-view__result.--win", { attrs: { title: "Win" } }, "\u25CF");
+  if (r === "loss") return h("span.games-view__result.--loss", { attrs: { title: "Loss" } }, "\u25CF");
+  if (r === "draw") return h("span.games-view__result.--draw", { attrs: { title: "Draw" } }, "\u25CF");
+  return h("span.games-view__result", "\u2013");
+}
+function renderSortTh(label, field) {
+  const active = gamesSortField === field;
+  const arrow = active ? gamesSortDir === "desc" ? " \u2193" : " \u2191" : "";
+  return h("th", {
+    class: { "games-view__th--active": active },
+    on: { click: () => toggleGamesSort(field) }
+  }, label + arrow);
+}
+var SPEED_ICONS = {
+  ultrabullet: "\uE059",
+  bullet: "\uE032",
+  blitz: "\uE008",
+  rapid: "\uE002",
+  classical: "\uE007"
+  // licon.Turtle
+};
+function renderGamesView() {
+  const games = filteredGames();
+  const filterBar = h("div.games-view__controls", [
+    // Result filter
+    h("div.games-view__filter-group", [
+      h("span.games-view__filter-label", "Result"),
+      ...["win", "loss", "draw"].map(
+        (r) => h("button.games-view__pill", {
+          class: { active: gamesFilterResults.has(r) },
+          on: { click: () => {
+            const s = new Set(gamesFilterResults);
+            s.has(r) ? s.delete(r) : s.add(r);
+            gamesFilterResults = s;
+            redraw();
+          } }
+        }, r.charAt(0).toUpperCase() + r.slice(1))
+      )
+    ]),
+    // Time class filter
+    h("div.games-view__filter-group", [
+      h("span.games-view__filter-label", "Time"),
+      ...["bullet", "blitz", "rapid"].map(
+        (tc) => h("button.games-view__pill", {
+          class: { active: gamesFilterSpeeds.has(tc) },
+          attrs: { "data-icon": SPEED_ICONS[tc] ?? "" },
+          on: { click: () => {
+            const s = new Set(gamesFilterSpeeds);
+            s.has(tc) ? s.delete(tc) : s.add(tc);
+            gamesFilterSpeeds = s;
+            redraw();
+          } }
+        }, tc.charAt(0).toUpperCase() + tc.slice(1))
+      )
+    ]),
+    // Opponent search
+    h("div.games-view__filter-group", [
+      h("span.games-view__filter-label", "Opponent"),
+      h("input.games-view__search", {
+        attrs: { type: "search", placeholder: "Name\u2026", value: gamesFilterOpponent },
+        on: { input: (e) => {
+          gamesFilterOpponent = e.target.value;
+          redraw();
+        } }
+      })
+    ]),
+    // Summary + clear
+    h("div.games-view__filter-group.--right", [
+      h("span.games-view__summary", `${games.length} of ${importedGames.length} game${importedGames.length === 1 ? "" : "s"}`),
+      gamesFilterActive() ? h("button.games-view__clear", { on: { click: clearGamesFilters } }, "Clear filters") : null
+    ])
+  ]);
+  if (importedGames.length === 0) {
+    return h("div.games-view", [
+      filterBar,
+      h("div.games-view__empty", [
+        h("p", "No games imported yet."),
+        h("p.games-view__empty-hint", "Use the search bar above to import from Chess.com or Lichess.")
+      ])
+    ]);
+  }
+  const table = h("div.games-view__table-wrap", [
+    h("table.games-view__table", [
+      h("thead", h("tr", [
+        renderSortTh("Result", "result"),
+        renderSortTh("Opponent", "opponent"),
+        renderSortTh("Date", "date"),
+        renderSortTh("Time", "timeClass"),
+        h("th", "Opening")
+      ])),
+      h(
+        "tbody",
+        games.length > 0 ? games.map((game) => {
+          const r = gameResult(game);
+          const opp = opponentName(game) ?? "\u2013";
+          const date = game.date ? game.date.slice(0, 10) : "\u2013";
+          const tc = game.timeClass ?? "\u2013";
+          const tcIcon = game.timeClass ? SPEED_ICONS[game.timeClass] : void 0;
+          const opening = game.opening ? game.eco ? `${game.eco} ${game.opening}` : game.opening : "\u2013";
+          return h("tr.games-view__row", {
+            class: { active: game.id === selectedGameId },
+            on: { click: () => {
+              selectedGameId = game.id;
+              loadGame(game.pgn);
+              window.location.hash = "#/analysis";
+            } }
+          }, [
+            h("td", renderResultIcon(r)),
+            h("td.games-view__opponent", opp),
+            h("td.games-view__date", date),
+            h(
+              "td.games-view__tc",
+              tcIcon ? h("span", { attrs: { "data-icon": tcIcon, style: `font-family:lichess;margin-right:4px` } }) : null,
+              tc.charAt(0).toUpperCase() + tc.slice(1)
+            ),
+            h("td.games-view__opening", h("span", { attrs: { title: opening } }, opening))
+          ]);
+        }) : [h("tr", h("td", { attrs: { colspan: "5" } }, h("div.games-view__empty", "No games match current filters.")))]
+      )
+    ])
+  ]);
+  return h("div.games-view", [filterBar, table]);
 }
 function routeContent(route) {
   switch (route.name) {
@@ -8073,6 +8296,8 @@ function routeContent(route) {
         ]),
         renderKeyboardHelp()
       ]);
+    case "games":
+      return renderGamesView();
     case "puzzles":
       return h("h1", "Puzzles Page");
     case "openings":
