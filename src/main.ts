@@ -1054,6 +1054,12 @@ function completeMove(orig: string, dest: string, promotion?: Role): void {
     children: [],
   };
   addNode(ctrl.root, ctrl.path, newNode);
+  // Debug: verify insertion — log every new variation node as per task 11.12 requirement
+  console.log('[variation] inserted', {
+    id: newNode.id, ply: newNode.ply, san: newNode.san, uci: newNode.uci,
+    parentPath: ctrl.path, newPath: ctrl.path + newNode.id,
+    parentChildCount: (ctrl.node.children.length),
+  });
   navigate(ctrl.path + newNode.id);
 }
 
@@ -1582,51 +1588,59 @@ function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode): VNode
 }
 
 /**
- * Recursively render a node and its full continuation.
+ * Render a list of sibling nodes from the move tree.
+ * nodes[0] is the mainline child at this level; nodes[1+] are side variations.
  *
- * needsMoveNum — caller sets true at the start of a variation or after any
- * inline variation block so that a black move gets an explicit "N…" prefix.
+ * Structure (matches Lichess inline view ordering):
+ *   1. Mainline child's move
+ *   2. Side variation blocks in parens (appear AFTER the mainline move)
+ *   3. Recurse into mainline child's continuation
  *
- * Mirrors the rendering logic of lichess-org/lila:
- *   ui/analyse/src/treeView/inlineView.ts renderNodes / moveNode
+ * This ensures variations appear after the mainline move at the branch point,
+ * e.g. "2. Nf3 Nc6 ( 2… d6 ) 3. Bb5 …" — not before Nc6.
+ *
+ * Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts renderNodes / lines
  */
-function renderNodeLine(node: TreeNode, path: TreePath, parent: TreeNode, needsMoveNum: boolean): VNode[] {
+function renderNodeSiblings(
+  nodes: TreeNode[],
+  parentPath: TreePath,
+  parent: TreeNode,
+  needsMoveNum: boolean,
+): VNode[] {
+  if (nodes.length === 0) return [];
+  const [main, ...variations] = nodes;
+  const mainPath = parentPath + main.id;
   const out: VNode[] = [];
 
-  // Move index: always before white's move; before black's if explicitly requested
-  if (needsMoveNum || node.ply % 2 === 1) {
-    const n = Math.ceil(node.ply / 2);
-    out.push(h('span.move-num', node.ply % 2 === 1 ? `${n}.` : `${n}…`));
+  // 1. Move number — always before white (odd ply); before black only when requested
+  if (needsMoveNum || main.ply % 2 === 1) {
+    const n = Math.ceil(main.ply / 2);
+    out.push(h('span.move-num', main.ply % 2 === 1 ? `${n}.` : `${n}…`));
   }
 
-  out.push(renderMoveSpan(node, path, parent));
+  // 2. Mainline move span
+  out.push(renderMoveSpan(main, mainPath, parent));
 
-  const [mainChild, ...varChildren] = node.children;
-
-  // Inline variation blocks: children[1+] at this position
-  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts lines()
-  for (const varChild of varChildren) {
-    const varPath = path + varChild.id;
-    const varContent = renderNodeLine(varChild, varPath, node, true);
-    out.push(h('span', {
-      attrs: { style: 'color:#666;font-size:0.9em;margin:0 2px' },
-    }, ['( ', ...varContent, ' )']));
+  // 3. Side variation blocks — rendered AFTER the mainline move at this branch point.
+  //    Each variation is its own subtree rendered recursively inside parens.
+  //    Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts lines()
+  for (const variant of variations) {
+    const varContent = renderNodeSiblings([variant], parentPath, parent, true);
+    out.push(h('span.variation', ['( ', ...varContent, ' )']));
   }
 
-  // Mainline continuation: after any variation block a black move needs "N…"
-  if (mainChild) {
-    const mainPath = path + mainChild.id;
-    const contNeedsNum = varChildren.length > 0 && mainChild.ply % 2 === 0;
-    out.push(...renderNodeLine(mainChild, mainPath, node, contNeedsNum));
-  }
+  // 4. Continue into mainline child's children.
+  //    After showing variations, a black continuation needs an explicit "N…" prefix.
+  const hasVariations = variations.length > 0;
+  const firstCont = main.children[0];
+  const contNeedsNum = hasVariations && firstCont !== undefined && firstCont.ply % 2 === 0;
+  out.push(...renderNodeSiblings(main.children, mainPath, main, contNeedsNum));
 
   return out;
 }
 
 function renderMoveList(): VNode {
-  const firstChild = ctrl.root.children[0];
-  if (!firstChild) return h('div.move-list');
-  return h('div.move-list', renderNodeLine(firstChild, firstChild.id, ctrl.root, true));
+  return h('div.move-list', renderNodeSiblings(ctrl.root.children, '', ctrl.root, true));
 }
 
 // --- Eval bar ---
