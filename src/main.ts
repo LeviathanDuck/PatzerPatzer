@@ -1760,6 +1760,30 @@ function renderEvalBar(): VNode {
 const GRAPH_W = 600;
 const GRAPH_H = 80;
 
+// Count major and minor pieces (r,n,b,q,R,N,B,Q) in a FEN board string.
+// Mirrors scalachess Divider.scala majorsAndMinors logic.
+function countMajorsMinors(fen: string): number {
+  const board = fen.split(' ')[0]!;
+  let count = 0;
+  for (const ch of board) if ('rnbqRNBQ'.includes(ch)) count++;
+  return count;
+}
+
+// Detect game phase transition plies from the mainline.
+// middleIdx: first ply where majors+minors ≤ 10 (opening → middlegame)
+// endIdx:    first ply where majors+minors ≤ 6  (middlegame → endgame)
+// Adapted from lichess-org/lila: modules/tree/src/main/Divider.scala
+function detectPhases(mainline: TreeNode[], n: number): { middleIdx?: number; endIdx?: number } {
+  let middleIdx: number | undefined;
+  let endIdx: number | undefined;
+  for (let i = 1; i <= n; i++) {
+    const mm = countMajorsMinors(mainline[i]!.fen);
+    if (middleIdx === undefined && mm <= 10) middleIdx = i;
+    if (endIdx === undefined && mm <= 6) { endIdx = i; break; }
+  }
+  return { middleIdx, endIdx };
+}
+
 function renderEvalGraph(): VNode {
   const mainline = ctrl.mainline;
   const n = mainline.length - 1; // non-root move count
@@ -1867,6 +1891,28 @@ function renderEvalGraph(): VNode {
       fill: dotColor,
       stroke: isCurrent ? '#fff' : 'none',
       'stroke-width': 1,
+    } }));
+  }
+
+  // Phase dividers — mirrors lichess-org/lila: ui/chart/src/division.ts
+  const { middleIdx, endIdx } = detectPhases(mainline, n);
+  interface DivLine { label: string; idx: number; }
+  const divLines: DivLine[] = [];
+  if (middleIdx !== undefined) {
+    if (middleIdx > 1) divLines.push({ label: 'Opening', idx: 1 });
+    divLines.push({ label: 'Middlegame', idx: middleIdx });
+  }
+  if (endIdx !== undefined) {
+    if (endIdx > 1 && middleIdx === undefined) divLines.push({ label: 'Middlegame', idx: 0 });
+    divLines.push({ label: 'Endgame', idx: endIdx });
+  }
+
+  for (const div of divLines) {
+    if (div.idx === 0) continue; // "Middlegame at 0" — label only, no line
+    const dx = ((div.idx - 1) / (n - 1)) * GRAPH_W;
+    svgNodes.push(h('line', { attrs: {
+      x1: dx, y1: 0, x2: dx, y2: GRAPH_H,
+      stroke: '#555', 'stroke-width': 1, 'stroke-dasharray': '3 3', opacity: '0.7',
     } }));
   }
 
