@@ -5497,6 +5497,30 @@ function gameResult(game) {
   if (color === "white") return game.result === "1-0" ? "win" : "loss";
   return game.result === "0-1" ? "win" : "loss";
 }
+function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
+  const result = gameResult(game);
+  const userColor = getUserColor(game);
+  const opponent = userColor === "white" ? game.black ?? game.id : userColor === "black" ? game.white ?? game.id : game.white && game.black ? `${game.white} vs ${game.black}` : game.id;
+  const date = game.date ? game.date.slice(0, 10) : null;
+  const tcIconMap = {
+    ultrabullet: "\uE032",
+    bullet: "\uE032",
+    blitz: "\uE008",
+    rapid: "\uE002"
+  };
+  const tcIcon = game.timeClass ? tcIconMap[game.timeClass] ?? null : null;
+  const resultCls = result === "win" ? "grl__result--win" : result === "loss" ? "grl__result--loss" : result === "draw" ? "grl__result--draw" : "grl__result--unknown";
+  return [
+    h("span.grl__result." + resultCls, "\u25CF"),
+    h("span.grl__opponent", opponent),
+    date ? h("span.grl__date", date) : null,
+    tcIcon ? h("span.grl__tc", { attrs: { "data-icon": tcIcon, title: game.timeClass } }) : null,
+    isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
+      isAnalyzed ? h("span.grl__badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
+      hasMissedTactic ? h("span.grl__badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null
+    ]) : null
+  ];
+}
 var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
 var ZOOM_DEFAULT = 85;
 var ZOOM_KEY = "boardZoom";
@@ -5652,6 +5676,13 @@ function loadGame(pgn) {
   batchState = "idle";
   analysisRunning = false;
   analysisComplete = false;
+  if (selectedGameId) {
+    const loadedGame = importedGames.find((g) => g.id === selectedGameId);
+    if (loadedGame) {
+      const userColor = getUserColor(loadedGame);
+      if (userColor) orientation = userColor;
+    }
+  }
   syncBoard();
   syncArrow();
   if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId);
@@ -6126,7 +6157,7 @@ function evalBatchItem(item) {
   protocol.go(reviewDepth);
 }
 function getUserColor(game) {
-  const knownNames = [chesscomUsername, lichessUsername].map((n) => n.trim().toLowerCase()).filter(Boolean);
+  const knownNames = [game.importedUsername, chesscomUsername, lichessUsername].map((n) => n?.trim().toLowerCase()).filter((n) => !!n);
   if (knownNames.length === 0) return null;
   if (game.white && knownNames.includes(game.white.toLowerCase())) return "white";
   if (game.black && knownNames.includes(game.black.toLowerCase())) return "black";
@@ -6556,7 +6587,6 @@ function renderHeader(route) {
     importedGames.length > 0 ? h("div.header__panel-section", [
       h("div.header__panel-label", `${importedGames.length} game${importedGames.length === 1 ? "" : "s"} imported`),
       h("div.header__games-list", importedGames.map((game) => {
-        const label = game.white && game.black ? `${game.white} vs ${game.black}${game.result ? " \xB7 " + game.result : ""}${game.date ? " \xB7 " + game.date.slice(0, 10) : ""}` : game.id;
         const isAnalyzed = analyzedGameIds.has(game.id);
         const hasMissedTactic = missedTacticGameIds.has(game.id);
         const srcUrl = gameSourceUrl(game);
@@ -6569,11 +6599,7 @@ function renderHeader(route) {
               showImportPanel = false;
               redraw();
             } }
-          }, [
-            isAnalyzed ? h("span.header__game-badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
-            hasMissedTactic ? h("span.header__game-badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null,
-            h("span", label)
-          ]),
+          }, renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
           srcUrl ? h("a.game-ext-link", {
             attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" },
             on: { click: (e) => e.stopPropagation() }
@@ -6858,6 +6884,8 @@ function renderPlayerStrips() {
   const game = importedGames.find((g) => g.id === selectedGameId);
   const whiteName = game?.white ?? "White";
   const blackName = game?.black ?? "Black";
+  const whiteRating = game?.whiteRating;
+  const blackRating = game?.blackRating;
   const result = game?.result ?? "*";
   const diff2 = getMaterialDiff(ctrl.node.fen);
   const score = getMaterialScore(diff2);
@@ -6866,6 +6894,7 @@ function renderPlayerStrips() {
   const blackResult = result === "0-1" ? "1" : result === "1-0" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
   const strip = (color) => {
     const name = color === "white" ? whiteName : blackName;
+    const rating = color === "white" ? whiteRating : blackRating;
     const badge = color === "white" ? whiteResult : blackResult;
     const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
     const matScore = color === "white" ? score : -score;
@@ -6874,6 +6903,7 @@ function renderPlayerStrips() {
       badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null,
       h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
       h("span.player-strip__name", name),
+      rating !== void 0 ? h("span.player-strip__rating", `(${rating})`) : null,
       renderMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
       centis !== void 0 ? h("div.analyse__clock", formatClock(centis)) : null
     ]);
@@ -7936,7 +7966,11 @@ async function fetchChesscomGames(username, rated, speeds) {
       timeClass: raw.time_class,
       opening: parsePgnHeader(pgn, "Opening"),
       eco: parsePgnHeader(pgn, "ECO"),
-      source: "chesscom"
+      source: "chesscom",
+      // API field is a number; fall back to PGN header if absent
+      whiteRating: parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, "WhiteElo")),
+      blackRating: parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, "BlackElo")),
+      importedUsername: username.toLowerCase()
     });
   }
   return result;
@@ -7997,7 +8031,10 @@ async function fetchLichessGames(username, rated, speeds) {
       timeClass: timeClassFromTimeControl(parsePgnHeader(pgn, "TimeControl")),
       opening: parsePgnHeader(pgn, "Opening"),
       eco: parsePgnHeader(pgn, "ECO"),
-      source: "lichess"
+      source: "lichess",
+      whiteRating: parseRating(parsePgnHeader(pgn, "WhiteElo")),
+      blackRating: parseRating(parsePgnHeader(pgn, "BlackElo")),
+      importedUsername: username.toLowerCase()
     });
   }
   return result;
@@ -8032,6 +8069,12 @@ var gameIdCounter = 0;
 function parsePgnHeader(pgn, tag) {
   return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
 }
+function parseRating(s) {
+  if (typeof s === "number") return s > 0 ? s : void 0;
+  if (!s) return void 0;
+  const n = parseInt(s, 10);
+  return isNaN(n) || n <= 0 ? void 0 : n;
+}
 function importPgn() {
   const raw = pgnInput.trim();
   if (!raw) return;
@@ -8046,7 +8089,10 @@ function importPgn() {
       date: parsePgnHeader(raw, "Date")?.replace(/\./g, "-"),
       timeClass: timeClassFromTimeControl(parsePgnHeader(raw, "TimeControl")),
       opening: parsePgnHeader(raw, "Opening"),
-      eco: parsePgnHeader(raw, "ECO")
+      eco: parsePgnHeader(raw, "ECO"),
+      whiteRating: parseRating(parsePgnHeader(raw, "WhiteElo")),
+      blackRating: parseRating(parsePgnHeader(raw, "BlackElo"))
+      // importedUsername not set: PGN paste has no reliable importing-user identity
     };
     importedGames = [...importedGames, game];
     selectedGameId = game.id;
@@ -8065,7 +8111,6 @@ function renderGameList() {
   return h("div.game-list", [
     h("div.game-list__header", `${importedGames.length} imported game${importedGames.length === 1 ? "" : "s"}`),
     h("ul", importedGames.map((game) => {
-      const label = game.white && game.black ? `${game.white} vs ${game.black}${game.result ? " \xB7 " + game.result : ""}${game.date ? " \xB7 " + game.date.slice(0, 10) : ""}` : game.id;
       const isAnalyzed = analyzedGameIds.has(game.id);
       const hasMissedTactic = missedTacticGameIds.has(game.id);
       const srcUrl2 = gameSourceUrl(game);
@@ -8076,11 +8121,7 @@ function renderGameList() {
             selectedGameId = game.id;
             loadGame(game.pgn);
           } }
-        }, [
-          isAnalyzed ? h("span", { attrs: { style: "color:#4a8;margin-right:4px;font-size:0.8em", title: "Analyzed" } }, "\u2713") : null,
-          hasMissedTactic ? h("span", { attrs: { style: "color:#f84;margin-right:6px;font-size:0.85em;font-weight:700", title: "Missed tactic in opening/middlegame" } }, "!") : null,
-          label
-        ]),
+        }, renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
         srcUrl2 ? h("a.game-ext-link", {
           attrs: { href: srcUrl2, target: "_blank", rel: "noopener", title: "View on source platform" }
         }) : null
@@ -8264,6 +8305,7 @@ function renderGamesView() {
       h("thead", h("tr", [
         renderSortTh("Result", "result"),
         renderSortTh("Opponent", "opponent"),
+        h("th.games-view__rating-th", "Rating"),
         renderSortTh("Date", "date"),
         renderSortTh("Time", "timeClass"),
         h("th", "Opening"),
@@ -8285,6 +8327,18 @@ function renderGamesView() {
           const hasMissed = missedTacticGameIds.has(game.id);
           const accEntry = analyzedGameAccuracy.get(game.id);
           const userColor = getUserColor(game);
+          const oppRating = userColor === "white" ? game.blackRating : userColor === "black" ? game.whiteRating : void 0;
+          const ratingText = (() => {
+            if (oppRating !== void 0) return String(oppRating);
+            if (!userColor && (game.whiteRating !== void 0 || game.blackRating !== void 0)) {
+              const parts = [];
+              if (game.whiteRating !== void 0) parts.push(`W:${game.whiteRating}`);
+              if (game.blackRating !== void 0) parts.push(`B:${game.blackRating}`);
+              return parts.join(" ");
+            }
+            return null;
+          })();
+          const ratingCell = h("td.games-view__rating", ratingText ?? "\u2013");
           let accuracyText = null;
           if (isAnalyzed && accEntry) {
             if (userColor === "white" && accEntry.white !== null) {
@@ -8328,6 +8382,7 @@ function renderGamesView() {
           }, [
             h("td", renderResultIcon(r)),
             h("td.games-view__opponent", opp),
+            ratingCell,
             h("td.games-view__date", date),
             h(
               "td.games-view__tc",
@@ -8342,7 +8397,7 @@ function renderGamesView() {
               on: { click: (e) => e.stopPropagation() }
             }) : null)
           ]);
-        }) : [h("tr", h("td", { attrs: { colspan: "8" } }, h("div.games-view__empty", "No games match current filters.")))]
+        }) : [h("tr", h("td", { attrs: { colspan: "9" } }, h("div.games-view__empty", "No games match current filters.")))]
       )
     ])
   ]);
