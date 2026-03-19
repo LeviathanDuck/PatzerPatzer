@@ -1577,14 +1577,19 @@ function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode): VNode
 
   const symbol = pgnGlyph?.symbol ?? computedSymbol;
   const color  = symbol ? (GLYPH_COLORS[symbol] ?? '#aaa') : undefined;
+  const mate   = cached?.mate;
+
+  // Build children: SAN text, optional classification glyph, optional mate marker.
+  // Mate marker shows the forced-mate distance as "+M2", "+M6", etc.
+  // Mirrors annotation prominence of lichess-org/lila: ui/analyse/src/view/components.ts
+  const inner: (VNode | string)[] = [node.san ?? ''];
+  if (symbol) inner.push(h('span.move__glyph', { attrs: { style: `color:${color}` } }, symbol));
+  if (mate !== undefined) inner.push(h('span.move__mate', `+M${Math.abs(mate)}`));
 
   return h('span.move', {
     class: { active: path === ctrl.path },
     on: { click: () => navigate(path) },
-  }, symbol ? [
-    node.san ?? '',
-    h('span.move__glyph', { attrs: { style: `color:${color}` } }, symbol),
-  ] : (node.san ?? ''));
+  }, inner.length === 1 ? inner[0]! : inner);
 }
 
 /**
@@ -1680,7 +1685,7 @@ function renderEvalGraph(): VNode {
     ]);
   }
 
-  interface Pt { x: number; y: number; path: string; label: MoveLabel | null; }
+  interface Pt { x: number; y: number; path: string; label: MoveLabel | null; hasMate: boolean; }
 
   const pts: (Pt | null)[] = [];
   let path = '';
@@ -1699,6 +1704,7 @@ function renderEvalGraph(): VNode {
         y: ((1 - wc) / 2) * GRAPH_H, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
         path,
         label,
+        hasMate: cached?.mate !== undefined,
       });
     } else {
       pts.push(null);
@@ -1761,11 +1767,13 @@ function renderEvalGraph(): VNode {
       on: { click: () => navigate(capturePath) },
     }));
 
-    // Visible dot — colored by move classification, current position overrides to green
-    const dotColor = isCurrent ? '#4a8'
-      : pt.label === 'blunder'     ? '#f66'
-      : pt.label === 'mistake'     ? '#f84'
-      : pt.label === 'inaccuracy'  ? '#fa4'
+    // Visible dot — current position overrides to green; mate opportunity → purple;
+    // otherwise colored by move classification.
+    const dotColor = isCurrent         ? '#4a8'
+      : pt.hasMate                     ? '#c084fc'
+      : pt.label === 'blunder'         ? '#f66'
+      : pt.label === 'mistake'         ? '#f84'
+      : pt.label === 'inaccuracy'      ? '#fa4'
       : '#888';
     const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
     svgNodes.push(h('circle', { attrs: {
