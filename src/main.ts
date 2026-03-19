@@ -91,17 +91,76 @@ const PIECE_VARS: [string, string][] = [
   ['---black-pawn',   'bP'], ['---black-knight', 'bN'], ['---black-bishop', 'bB'],
   ['---black-rook',   'bR'], ['---black-queen',  'bQ'], ['---black-king',   'bK'],
 ];
+// Sets with webp-only assets (no .svg files). Adapted from lichess-org/lila: ui/dasher/src/piece.ts pieceVarRules()
+const PIECE_WEBP_SETS = new Set(['monarchy']);
 let pieceSet: string = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
 
 function applyPieceSet(name: string): void {
+  const ext = PIECE_WEBP_SETS.has(name) ? 'webp' : 'svg';
   for (const [cssVar, file] of PIECE_VARS) {
-    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.svg)`);
+    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.${ext})`);
   }
   document.body.dataset.pieceSet = name;
   pieceSet = name;
   localStorage.setItem(PIECE_SET_KEY, name);
 }
 applyPieceSet(pieceSet);
+
+// --- Board filters ---
+// Adapted from lichess-org/lila: ui/dasher/src/board.ts BoardCtrl.setVar / propSliders()
+// CSS vars are applied to body and consumed by cg-board::before { filter: ... } in main.scss.
+const FILTER_DEFAULTS: Record<string, number> = {
+  'board-brightness': 100,
+  'board-contrast':   100,
+  'board-hue':        0,
+};
+const FILTER_LS_PREFIX = 'boardFilter.';
+const boardFilters: Record<string, number> = {};
+for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
+  const stored = localStorage.getItem(FILTER_LS_PREFIX + prop);
+  boardFilters[prop] = stored !== null ? parseInt(stored, 10) : def;
+}
+
+function filtersAtDefault(): boolean {
+  return Object.entries(FILTER_DEFAULTS).every(([p, def]) => boardFilters[p] === def);
+}
+
+function setFilter(prop: string, value: number): void {
+  boardFilters[prop] = value;
+  document.body.style.setProperty(`---${prop}`, value.toString());
+  localStorage.setItem(FILTER_LS_PREFIX + prop, value.toString());
+  document.body.classList.toggle('simple-board', filtersAtDefault());
+}
+
+function resetFilters(): void {
+  for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) setFilter(prop, def);
+}
+
+// Apply persisted filter values on startup
+for (const [prop, value] of Object.entries(boardFilters)) {
+  document.body.style.setProperty(`---${prop}`, value.toString());
+}
+document.body.classList.toggle('simple-board', filtersAtDefault());
+
+// --- Board settings UI helpers ---
+// Thumbnail URL for board theme picker tiles.
+// Adapted from lichess-org/lila: ui/dasher/css/_board.scss tile background-image pattern.
+const BOARD_THEME_EXT: Record<string, string> = {
+  brown: 'png', horsey: 'jpg', blue: 'png', green: 'png', purple: 'png', 'purple-diag': 'png',
+  wood4: 'jpg', maple: 'jpg', blue2: 'jpg', blue3: 'jpg', marble: 'jpg', olive: 'jpg', grey: 'jpg', metal: 'jpg',
+  newspaper: 'svg',
+};
+
+function boardThumbnailUrl(name: string): string {
+  if (name === 'newspaper') return '/images/board/svg/newspaper.svg';
+  return `/images/board/${name}.thumbnail.${BOARD_THEME_EXT[name]}`;
+}
+
+// Preview URL for piece set picker tiles — wN.webp preferred, falls back to .svg.
+// Adapted from lichess-org/lila: ui/dasher/src/piece.ts pieceImage()
+function piecePreviewUrl(name: string): string {
+  return PIECE_WEBP_SETS.has(name) ? `/piece/${name}/wN.webp` : `/piece/${name}/wN.svg`;
+}
 
 let importedGames: ImportedGame[] = [];
 let selectedGameId: string | null = null;
@@ -505,9 +564,8 @@ let reviewDepth    = 16;
 let analysisDepth  = 30;
 let analysisRunning  = false;
 let showExportMenu   = false; // inline annotated/plain prompt for PGN export
-let showGlobalMenu      = false; // global settings menu open/closed
-let showBoardThemeMenu  = false; // board theme submenu open/closed
-let showPieceSetMenu    = false; // piece set submenu open/closed
+let showGlobalMenu    = false; // global settings menu open/closed
+let showBoardSettings = false; // board settings panel open/closed
 
 // --- Header import panel state ---
 // Unified platform/username input — single search bar with nested filters.
@@ -1478,10 +1536,74 @@ function renderHeader(route: Route): VNode {
  * Adapted from Lichess header menu patterns.
  */
 function closeGlobalMenu(): void {
-  showGlobalMenu     = false;
-  showBoardThemeMenu = false;
-  showPieceSetMenu   = false;
+  showGlobalMenu    = false;
+  showBoardSettings = false;
   redraw();
+}
+
+// Slider row for a board filter property.
+// Adapted from lichess-org/lila: ui/dasher/src/board.ts BoardCtrl.propSlider()
+function renderFilterSlider(
+  prop: string, label: string, min: number, max: number, step: number,
+  fmt?: (v: number) => string,
+): VNode {
+  const value = boardFilters[prop];
+  return h('div.board-settings__slider-row', [
+    h('label', label),
+    h('input', {
+      attrs: { type: 'range', min, max, step, value },
+      on: {
+        input: (e: Event) => {
+          setFilter(prop, parseInt((e.target as HTMLInputElement).value, 10));
+          redraw();
+        },
+      },
+    }),
+    h('span.board-settings__slider-val', fmt ? fmt(value) : `${value}%`),
+  ]);
+}
+
+// Board settings panel — theme tiles, piece tiles, filter sliders.
+// Adapted from lichess-org/lila: ui/dasher/src/board.ts + piece.ts render()
+function renderBoardSettings(): VNode {
+  return h('div.board-settings', [
+
+    // Sliders
+    renderFilterSlider('board-brightness', 'Brightness', 20, 140, 1),
+    renderFilterSlider('board-contrast',   'Contrast',   40, 200, 2),
+    renderFilterSlider('board-hue',        'Hue',         0, 100, 1, v => `±${Math.round(v * 3.6)}°`),
+    filtersAtDefault() ? null : h('button.board-settings__reset', {
+      on: { click: () => { resetFilters(); redraw(); } },
+    }, 'Reset'),
+
+    // Board theme tile grid
+    h('div.board-settings__label', 'Board'),
+    h('div.board-settings__theme-grid',
+      BOARD_THEMES_FEATURED.map(name =>
+        h('button.board-settings__theme-tile', {
+          class: { active: boardTheme === name },
+          attrs: { title: name },
+          on: { click: () => { applyBoardTheme(name); redraw(); } },
+        }, [
+          h('span', { style: { backgroundImage: `url(${boardThumbnailUrl(name)})` } }),
+        ]),
+      ),
+    ),
+
+    // Piece set tile grid
+    h('div.board-settings__label', 'Pieces'),
+    h('div.board-settings__piece-grid',
+      PIECE_SETS_FEATURED.map(name =>
+        h('button.board-settings__piece-tile', {
+          class: { active: pieceSet === name },
+          attrs: { title: name },
+          on: { click: () => { applyPieceSet(name); redraw(); } },
+        }, [
+          h('piece', { style: { backgroundImage: `url(${piecePreviewUrl(name)})` } }),
+        ]),
+      ),
+    ),
+  ]);
 }
 
 function renderGlobalMenu(): VNode {
@@ -1491,9 +1613,8 @@ function renderGlobalMenu(): VNode {
       class: { active: showGlobalMenu },
       attrs: { title: 'Settings' },
       on: { click: () => {
-        showGlobalMenu     = !showGlobalMenu;
-        showBoardThemeMenu = false;
-        showPieceSetMenu   = false;
+        showGlobalMenu    = !showGlobalMenu;
+        showBoardSettings = false;
         redraw();
       }},
     }, '⚙'),
@@ -1504,7 +1625,9 @@ function renderGlobalMenu(): VNode {
     }) : null,
 
     // Dropdown panel
-    showGlobalMenu ? h('div.global-menu__dropdown', [
+    showGlobalMenu ? h('div.global-menu__dropdown', {
+      class: { 'board-open': showBoardSettings },
+    }, [
 
       h('button.global-menu__item', {
         on: { click: () => { console.log('TODO: clear local cache'); } },
@@ -1518,39 +1641,15 @@ function renderGlobalMenu(): VNode {
         on: { click: () => { closeGlobalMenu(); downloadPgn(false); } },
       }, 'Export PGN from Current Board'),
 
-      // Board Theme — opens inline submenu
+      // Board Settings — expands inline tile grids + sliders
       h('div.global-menu__item.global-menu__item--has-sub', {
-        on: { click: () => { showBoardThemeMenu = !showBoardThemeMenu; showPieceSetMenu = false; redraw(); } },
+        on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },
       }, [
-        h('span', 'Board Theme'),
-        h('span.global-menu__arrow', showBoardThemeMenu ? '▾' : '›'),
+        h('span', 'Board Settings'),
+        h('span.global-menu__arrow', showBoardSettings ? '▾' : '›'),
       ]),
 
-      showBoardThemeMenu ? h('div.global-menu__submenu',
-        BOARD_THEMES_FEATURED.map(name =>
-          h('button.global-menu__item', {
-            class: { 'global-menu__item--active': boardTheme === name },
-            on: { click: () => { applyBoardTheme(name); closeGlobalMenu(); redraw(); } },
-          }, name),
-        ),
-      ) : null,
-
-      // Piece Set — opens inline submenu
-      h('div.global-menu__item.global-menu__item--has-sub', {
-        on: { click: () => { showPieceSetMenu = !showPieceSetMenu; showBoardThemeMenu = false; redraw(); } },
-      }, [
-        h('span', 'Piece Set'),
-        h('span.global-menu__arrow', showPieceSetMenu ? '▾' : '›'),
-      ]),
-
-      showPieceSetMenu ? h('div.global-menu__submenu',
-        PIECE_SETS_FEATURED.map(name =>
-          h('button.global-menu__item', {
-            class: { 'global-menu__item--active': pieceSet === name },
-            on: { click: () => { applyPieceSet(name); closeGlobalMenu(); redraw(); } },
-          }, name),
-        ),
-      ) : null,
+      showBoardSettings ? renderBoardSettings() : null,
 
     ]) : null,
   ]);

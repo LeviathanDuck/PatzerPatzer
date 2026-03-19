@@ -839,39 +839,185 @@ body.resizing {
 .cg-wrap piece.king.black   { background-image: var(---black-king); }
 
 // ─── Board Themes ──────────────────────────────────────────────────────────────
-// Adapted from lichess-org/lila: ui/lib/css/theme/board/_boards.scss
-// Applied via data-board attribute on <body>; see applyBoardTheme() in main.ts.
-// Overrides the SVG embedded background from chessground.brown.css.
+// Adapted from lichess-org/lila: ui/lib/css/theme/board/_board-2d.scss
+// Board image goes on cg-board::before so CSS filters don't affect pieces.
+// Filters are applied to ::before; pieces sit above it in the stacking order.
+
+// cg-board::before: base styles for the board image + filter layer.
+// Adapted from lichess-org/lila: ui/lib/css/theme/board/_chessground.scss
+cg-board::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+// Board filters via CSS custom properties set by setFilter() in main.ts.
+body:not(.simple-board) cg-board::before {
+  filter:
+    brightness(calc(var(---board-brightness) / 100))
+    contrast(calc(var(---board-contrast) / 100))
+    hue-rotate(calc(var(---board-hue) * 3.6deg));
+}
 
 $board-themes-png: 'brown', 'horsey', 'blue', 'green', 'purple', 'purple-diag';
 $board-themes-jpg: 'wood4', 'maple', 'blue2', 'blue3', 'marble', 'olive', 'grey', 'metal';
 
 @each $name in $board-themes-png {
-  body[data-board='#{$name}'] cg-board {
+  body[data-board='#{$name}'] cg-board::before {
     background-image: url('/images/board/#{$name}.png');
-    background-size: cover;
   }
 }
 
 @each $name in $board-themes-jpg {
-  body[data-board='#{$name}'] cg-board {
+  body[data-board='#{$name}'] cg-board::before {
     background-image: url('/images/board/#{$name}.jpg');
-    background-size: cover;
   }
 }
 
-body[data-board='newspaper'] cg-board {
+body[data-board='newspaper'] cg-board::before {
   background-image: url('/images/board/svg/newspaper.svg');
-  background-size: cover;
 }
 
-// Active theme indicator in the Board Theme submenu
-.global-menu__item--active {
-  color: #e8e8e8;
-  font-weight: 600;
+// ─── Board Settings Panel ──────────────────────────────────────────────────────
+// Adapted from lichess-org/lila: ui/dasher/css/_board.scss + _piece.scss
+// Rendered by renderBoardSettings() in main.ts, inside the global settings menu.
 
-  &::before {
-    content: '✓ ';
+// Widen the dropdown when board settings panel is open
+.global-menu__dropdown.board-open {
+  width: 264px;
+  max-height: 85vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.board-settings {
+  padding: 8px 10px 12px;
+  border-top: 1px solid #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  // Section label (Board / Pieces)
+  &__label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #666;
+    margin: 10px 0 5px;
+
+    &:first-of-type { margin-top: 2px; }
+  }
+
+  // Slider rows — label + range input + value readout
+  &__slider-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 38px;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+
+    label {
+      font-size: 0.78rem;
+      color: #aaa;
+      white-space: nowrap;
+    }
+
+    input[type='range'] {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      cursor: pointer;
+      accent-color: #6a9;
+    }
+  }
+
+  &__slider-val {
+    font-size: 0.72rem;
+    color: #888;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  // Reset button — only rendered when filters are non-default
+  &__reset {
+    align-self: flex-end;
+    margin-top: 2px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    background: transparent;
+    border: 1px solid #444;
+    border-radius: 3px;
+    color: #888;
+    cursor: pointer;
+
+    &:hover { border-color: #666; color: #ccc; }
+  }
+
+  // Board theme tile grid — 64×32px thumbnails, 4 per row.
+  // Adapted from lichess-org/lila: ui/dasher/css/_board.scss .list span
+  &__theme-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+
+  &__theme-tile {
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    background: transparent;
+    line-height: 0;
+
+    span {
+      display: block;
+      width: 58px;
+      height: 29px;
+      background-size: cover;
+      background-position: center;
+      border-radius: 1px;
+    }
+
+    &:hover { border-color: #777; }
+    &.active { border-color: #6a9; }
+  }
+
+  // Piece set tile grid — wN preview on dark background, 4 per row.
+  // Adapted from lichess-org/lila: ui/dasher/css/_piece.scss .no-square
+  &__piece-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    background: #1a1a1a;
+    padding: 3px;
+    border-radius: 3px;
+  }
+
+  &__piece-tile {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    background: transparent;
+
+    piece {
+      position: absolute;
+      inset: 4px;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+      pointer-events: none;
+    }
+
+    &:hover { background: rgba(255, 255, 255, 0.08); }
+    &.active { border-color: #6a9; }
   }
 }
 
