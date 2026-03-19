@@ -51,6 +51,17 @@ function timeClassFromTimeControl(tc: string | undefined): string | undefined {
   return 'classical';
 }
 
+// Returns the source platform URL for a game, extracted from PGN headers.
+// Chess.com PGNs include [Link "https://www.chess.com/game/live/..."]
+// Lichess PGNs include [Site "https://lichess.org/..."]
+function gameSourceUrl(game: ImportedGame): string | undefined {
+  const link = parsePgnHeader(game.pgn, 'Link');
+  if (link?.startsWith('http')) return link;
+  const site = parsePgnHeader(game.pgn, 'Site');
+  if (site?.startsWith('https://lichess.org/')) return site;
+  return undefined;
+}
+
 // Derive win/loss/draw relative to user for a given game.
 // Returns null when user color cannot be determined.
 function gameResult(game: ImportedGame): 'win' | 'loss' | 'draw' | null {
@@ -1466,18 +1477,25 @@ function renderHeader(route: Route): VNode {
           : game.id;
         const isAnalyzed      = analyzedGameIds.has(game.id);
         const hasMissedTactic = missedTacticGameIds.has(game.id);
-        return h('button.header__game-row', {
-          class: { active: game.id === selectedGameId },
-          on: { click: () => {
-            selectedGameId = game.id;
-            loadGame(game.pgn);
-            showImportPanel = false;
-            redraw();
-          }},
-        }, [
-          isAnalyzed      ? h('span.header__game-badge.--ok',     { attrs: { title: 'Analyzed' } },          '✓') : null,
-          hasMissedTactic ? h('span.header__game-badge.--warn',   { attrs: { title: 'Missed tactic' } },     '!') : null,
-          h('span', label),
+        const srcUrl = gameSourceUrl(game);
+        return h('div.header__game-item', [
+          h('button.header__game-row', {
+            class: { active: game.id === selectedGameId },
+            on: { click: () => {
+              selectedGameId = game.id;
+              loadGame(game.pgn);
+              showImportPanel = false;
+              redraw();
+            }},
+          }, [
+            isAnalyzed      ? h('span.header__game-badge.--ok',   { attrs: { title: 'Analyzed' } },      '✓') : null,
+            hasMissedTactic ? h('span.header__game-badge.--warn', { attrs: { title: 'Missed tactic' } }, '!') : null,
+            h('span', label),
+          ]),
+          srcUrl ? h('a.game-ext-link', {
+            attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+            on: { click: (e: Event) => e.stopPropagation() },
+          }) : null,
         ]);
       })),
     ]) : null,
@@ -3500,14 +3518,20 @@ function renderGameList(): VNode {
         : game.id;
       const isAnalyzed     = analyzedGameIds.has(game.id);
       const hasMissedTactic = missedTacticGameIds.has(game.id);
-      return h('li', h('button.game-list__row', {
-        class: { active: game.id === selectedGameId },
-        on: { click: () => { selectedGameId = game.id; loadGame(game.pgn); } },
-      }, [
-        isAnalyzed    ? h('span', { attrs: { style: 'color:#4a8;margin-right:4px;font-size:0.8em', title: 'Analyzed' } }, '✓') : null,
-        hasMissedTactic ? h('span', { attrs: { style: 'color:#f84;margin-right:6px;font-size:0.85em;font-weight:700', title: 'Missed tactic in opening/middlegame' } }, '!') : null,
-        label,
-      ]));
+      const srcUrl2 = gameSourceUrl(game);
+      return h('li', [
+        h('button.game-list__row', {
+          class: { active: game.id === selectedGameId },
+          on: { click: () => { selectedGameId = game.id; loadGame(game.pgn); } },
+        }, [
+          isAnalyzed    ? h('span', { attrs: { style: 'color:#4a8;margin-right:4px;font-size:0.8em', title: 'Analyzed' } }, '✓') : null,
+          hasMissedTactic ? h('span', { attrs: { style: 'color:#f84;margin-right:6px;font-size:0.85em;font-weight:700', title: 'Missed tactic in opening/middlegame' } }, '!') : null,
+          label,
+        ]),
+        srcUrl2 ? h('a.game-ext-link', {
+          attrs: { href: srcUrl2, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+        }) : null,
+      ]);
     })),
   ]);
 }
@@ -3696,6 +3720,7 @@ function renderGamesView(): VNode {
         renderSortTh('Date',      'date'),
         renderSortTh('Time',      'timeClass'),
         h('th', 'Opening'),
+        h('th'),
       ])),
       h('tbody', games.length > 0
         ? games.map(game => {
@@ -3705,6 +3730,7 @@ function renderGamesView(): VNode {
             const tc   = game.timeClass ?? '–';
             const tcIcon = game.timeClass ? SPEED_ICONS[game.timeClass] : undefined;
             const opening = game.opening ? (game.eco ? `${game.eco} ${game.opening}` : game.opening) : '–';
+            const srcUrl3 = gameSourceUrl(game);
             return h('tr.games-view__row', {
               class: { active: game.id === selectedGameId },
               on: { click: () => {
@@ -3721,9 +3747,13 @@ function renderGamesView(): VNode {
                 : null,
                 tc.charAt(0).toUpperCase() + tc.slice(1)),
               h('td.games-view__opening', h('span', { attrs: { title: opening } }, opening)),
+              h('td.games-view__link-cell', srcUrl3 ? h('a.game-ext-link', {
+                attrs: { href: srcUrl3, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+                on: { click: (e: Event) => e.stopPropagation() },
+              }) : null),
             ]);
           })
-        : [h('tr', h('td', { attrs: { colspan: '5' } }, h('div.games-view__empty', 'No games match current filters.')))]
+        : [h('tr', h('td', { attrs: { colspan: '6' } }, h('div.games-view__empty', 'No games match current filters.')))]
       ),
     ]),
   ]);
