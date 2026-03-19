@@ -26,28 +26,45 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-// Copy Stockfish engine files to public/stockfish/
-// stockfish@16 provides both single-threaded and multi-threaded NNUE builds.
-// The multi-threaded build (stockfish-nnue-16.js) requires SharedArrayBuffer,
-// which requires COOP+COEP headers — served via server.mjs in dev.
-fs.mkdirSync('public/stockfish', { recursive: true });
-const sfAssets = [
-  // Single-threaded fallback (works without special headers)
-  ['node_modules/stockfish/src/stockfish-nnue-16-single.js',   'public/stockfish/stockfish-nnue-16-single.js'],
-  ['node_modules/stockfish/src/stockfish-nnue-16-single.wasm', 'public/stockfish/stockfish-nnue-16-single.wasm'],
-  // Multi-threaded build (used when SharedArrayBuffer is available)
-  ['node_modules/stockfish/src/stockfish-nnue-16.js',          'public/stockfish/stockfish-nnue-16.js'],
-  ['node_modules/stockfish/src/stockfish-nnue-16.wasm',        'public/stockfish/stockfish-nnue-16.wasm'],
-  // Shared NNUE weights file
-  ['node_modules/stockfish/src/nn-5af11540bbfe.nnue',          'public/stockfish/nn-5af11540bbfe.nnue'],
+// Copy @lichess-org/stockfish-web engine files to public/stockfish-web/.
+// sf_18_smallnet is Stockfish 18 with a 15 MB NNUE — the same build Lichess
+// uses for analysis. Runs in the main thread via dynamic import(); Emscripten
+// handles its own pthreads internally using SharedArrayBuffer.
+// Requires COOP+COEP headers — use `pnpm serve` (server.mjs).
+// Adapted from lichess-org/lila: ui/lib/src/ceval/engines/engines.ts asset config.
+fs.mkdirSync('public/stockfish-web', { recursive: true });
+const sfWebAssets = [
+  ['node_modules/@lichess-org/stockfish-web/sf_18_smallnet.js',   'public/stockfish-web/sf_18_smallnet.js'],
+  ['node_modules/@lichess-org/stockfish-web/sf_18_smallnet.wasm', 'public/stockfish-web/sf_18_smallnet.wasm'],
 ];
-for (const [src, dst] of sfAssets) {
+for (const [src, dst] of sfWebAssets) {
   if (fs.existsSync(src)) {
     fs.copyFileSync(src, dst);
     console.log(' ', dst);
   } else {
     console.warn('  WARNING: missing', src);
   }
+}
+
+// Download the NNUE evaluation network if not already present.
+// nn-4ca89e4b3abf.nnue is the smallnet weights file for sf_18_smallnet.
+// Source: https://tests.stockfishchess.org/nns (official Stockfish NNUE repository)
+// ~15 MB download — only happens once; subsequent builds skip it.
+const nnueDst = 'public/stockfish-web/nn-4ca89e4b3abf.nnue';
+if (!fs.existsSync(nnueDst)) {
+  console.log('  Downloading NNUE weights (~15 MB)...');
+  const nnueUrl = 'https://tests.stockfishchess.org/api/nn/nn-4ca89e4b3abf.nnue';
+  const resp = await fetch(nnueUrl);
+  if (resp.ok) {
+    const buf = await resp.arrayBuffer();
+    fs.writeFileSync(nnueDst, Buffer.from(buf));
+    console.log(' ', nnueDst);
+  } else {
+    console.warn('  WARNING: NNUE download failed', resp.status, nnueUrl);
+    console.warn('  Engine will not evaluate without NNUE. Re-run `pnpm build` to retry.');
+  }
+} else {
+  console.log('  public/stockfish-web/nn-4ca89e4b3abf.nnue (cached)');
 }
 
 // Compile SCSS + prepend Chessground CSS
