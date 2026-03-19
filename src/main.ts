@@ -911,14 +911,13 @@ function toggleEngine(): void {
   if (engineEnabled) {
     if (!engineInitialized) {
       engineInitialized = true;
-      // Use the multi-threaded build when SharedArrayBuffer is available (requires
-      // COOP+COEP headers — serve via `pnpm serve` / server.mjs, not file://).
-      // Falls back to single-threaded if headers are absent.
-      // Mirrors lichess-org/lila: ui/lib/src/ceval/util.ts sharedWasmMemory check.
-      const sfFile = typeof SharedArrayBuffer !== 'undefined'
-        ? 'stockfish/stockfish-nnue-16.js'
-        : 'stockfish/stockfish-nnue-16-single.js';
-      protocol.init(sfFile);
+      // Single-threaded Stockfish loaded as a Web Worker.
+      // The multi-threaded build (stockfish-nnue-16.js) from the stockfish npm
+      // package cannot be loaded via new Worker() directly — it uses Emscripten
+      // pthreads which causes infinite sub-worker recursion in that context.
+      // True multi-threading requires @lichess-org/stockfish-web (different API).
+      // The large Hash configured in protocol.ts still provides a speedup.
+      protocol.init('stockfish/stockfish-nnue-16-single.js');
       // evalCurrentPosition() will be called once readyok arrives
     } else if (engineReady) {
       evalCurrentPosition();
