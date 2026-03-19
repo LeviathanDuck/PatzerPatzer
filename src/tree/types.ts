@@ -78,3 +78,15 @@ export interface TreeNode extends TreeNodeBase {
   id: TreeNodeId;
   children: TreeNode[];
 }
+
+// A position where the user missed a strong engine move.
+// Extracted from batch analysis; persisted in the puzzle-library IDB store.
+export interface PuzzleCandidate {
+  gameId:   string | null; // source game
+  path:     string;        // TreePath to the mistake node
+  fen:      string;        // FEN of the position BEFORE the mistake (puzzle start)
+  bestMove: string;        // engine best move from that position (puzzle solution)
+  san:      string;        // the mistake move that was played
+  loss:     number;        // win-chance shift from mover's perspective
+  ply:      number;        // ply of the mistake node (for move-number display)
+}

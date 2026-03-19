@@ -1,0 +1,423 @@
+// Evaluation display: eval bar, eval graph, analysis summary.
+// Adapted from lichess-org/lila: ui/analyse/src/view/ and ui/chart/src/acpl.ts
+
+import { h, type VNode } from 'snabbdom';
+import { classifyLoss, evalWinChances, type MoveLabel } from '../engine/winchances';
+import type { TreeNode } from '../tree/types';
+
+// Local structural type for evalCache entries — matches PositionEval shape.
+// Using a structural type keeps this module free of the PositionEval declaration
+// until that type is extracted to its own module.
+interface EvalEntry {
+  cp?:    number;
+  mate?:  number;
+  best?:  string;
+  loss?:  number;
+  delta?: number;
+}
+type EvalCache = ReadonlyMap<string, EvalEntry>;
+
+// --- Score formatting ---
+// Adapted from lichess-org/lila: ui/lib/src/ceval/util.ts renderEval
+// Score is always from white's perspective (positive = white winning).
+
+/** Format centipawns as +0.8 / -1.2 / #3 / #-3. Matches Lichess renderEval util. */
+export function formatScore(ev: { cp?: number; mate?: number }): string {
+  if (ev.mate !== undefined) {
+    return ev.mate > 0 ? `#${ev.mate}` : `#${ev.mate}`;
+  }
+  if (ev.cp !== undefined) {
+    // Round to 1 decimal, cap at ±99 — mirrors lichess-org/lila: ui/lib/src/ceval/util.ts
+    const e = Math.max(Math.min(Math.round(ev.cp / 10) / 10, 99), -99);
+    return (e > 0 ? '+' : '') + e.toFixed(1);
+  }
+  return '…';
+}
+
+// --- Analysis accuracy summary ---
+// Adapted from lichess-org/lila: modules/analyse/src/main/AccuracyPercent.scala
+//
+// Per-move accuracy uses the exponential decay curve fit to win-percent loss.
+// Game accuracy = (volatility-weighted mean + harmonic mean) / 2.
+// Both formulas match Lichess exactly — see AccuracyPercent.scala for derivation.
+
+export interface PlayerSummary {
+  accuracy:     number | null;
+  blunders:     number;
+  mistakes:     number;
+  inaccuracies: number;
+}
+
+export interface AnalysisSummary {
+  white: PlayerSummary;
+  black: PlayerSummary;
+}
+
+/**
+ * Per-move accuracy from a win-percent diff (mover's perspective).
+ * diff > 0 = mover lost advantage; diff < 0 = mover improved.
+ * Matches lichess-org/lila: modules/analyse/src/main/AccuracyPercent.scala fromWinPercentDiff
+ */
+function moveAccuracyFromDiff(diff: number): number {
+  if (diff < 0) return 100; // improvement → perfect
+  const raw = 103.1668100711649 * Math.exp(-0.04354415386753951 * diff) + -3.166924740191411;
+  return Math.max(0, Math.min(100, raw + 1));
+}
+
+/**
+ * Aggregate per-move accuracy into a game accuracy figure.
+ * Matches lichess-org/lila: modules/analyse/src/main/AccuracyPercent.scala gameAccuracy.
+ * window = max(2, min(8, floor(n/10)));  weights = stdDev per sliding window, clamped [0.5, 12].
+ * Result = (volatility-weighted mean + harmonic mean) / 2, clamped [0, 100].
+ */
+function aggregateAccuracy(accs: number[]): number | null {
+  const n = accs.length;
+  if (n < 2) return null;
+
+  const window = Math.max(2, Math.min(8, Math.floor(n / 10)));
+
+  // Sliding window std devs — moves.sliding(window) in Lichess produces n-window+1 entries.
+  const weights: number[] = [];
+  for (let s = 0; s + window <= n; s++) {
+    const slice = accs.slice(s, s + window);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length;
+    weights.push(Math.max(0.5, Math.min(12, Math.sqrt(variance))));
+  }
+
+  // Lichess zip truncates to the shorter sequence (n - window + 1 pairs)
+  const pairLen = weights.length;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (let i = 0; i < pairLen; i++) {
+    weightedSum += accs[i]! * weights[i]!;
+    totalWeight += weights[i]!;
+  }
+  const weightedMean = totalWeight > 0 ? weightedSum / totalWeight : 0;
+
+  // Harmonic mean uses all n moves (Lichess: moves.size / moves.map(1/a).sum)
+  const harmonicMean = n / accs.reduce((acc, a) => acc + 1 / Math.max(a, 0.001), 0);
+
+  return Math.max(0, Math.min(100, (weightedMean + harmonicMean) / 2));
+}
+
+export function computeAnalysisSummary(
+  mainline:  TreeNode[],
+  evalCache: EvalCache,
+): AnalysisSummary | null {
+  if (evalCache.size === 0) return null;
+
+  const whiteAccs: number[] = [];
+  const blackAccs: number[] = [];
+  let wBlunders = 0, wMistakes = 0, wInaccuracies = 0;
+  let bBlunders = 0, bMistakes = 0, bInaccuracies = 0;
+
+  let path = '';
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i]!;
+    path += node.id;
+    const parentPath = path.slice(0, -2);
+
+    const nodeEval   = evalCache.get(path);
+    const parentEval = evalCache.get(parentPath);
+    if (!nodeEval || !parentEval) continue;
+
+    const nodeWc   = evalWinChances(nodeEval);
+    const parentWc = evalWinChances(parentEval);
+    if (nodeWc === undefined || parentWc === undefined) continue;
+
+    // Convert win-chance [-1,1] → win-percent [0,100] (white perspective)
+    const nodeWp   = (nodeWc   + 1) / 2 * 100;
+    const parentWp = (parentWc + 1) / 2 * 100;
+
+    const isWhiteMove = node.ply % 2 === 1;
+
+    // diff = mover's advantage before move - mover's advantage after move
+    // White: loses advantage when nodeWp < parentWp → diff = parentWp - nodeWp
+    // Black: loses advantage when nodeWp > parentWp → diff = nodeWp - parentWp
+    // Matches lichess-org/lila: AccuracyPercent.scala color.fold((prev,next),(next,prev))
+    const diff = isWhiteMove ? (parentWp - nodeWp) : (nodeWp - parentWp);
+    const acc  = moveAccuracyFromDiff(diff);
+
+    if (isWhiteMove) {
+      whiteAccs.push(acc);
+    } else {
+      blackAccs.push(acc);
+    }
+
+    // Count move labels using the same best-move-played short-circuit as renderMoveList
+    const playedBest = node.uci !== undefined && node.uci === parentEval.best;
+    const label = (!playedBest && nodeEval.loss !== undefined) ? classifyLoss(nodeEval.loss) : null;
+    if (isWhiteMove) {
+      if (label === 'blunder') wBlunders++;
+      else if (label === 'mistake') wMistakes++;
+      else if (label === 'inaccuracy') wInaccuracies++;
+    } else {
+      if (label === 'blunder') bBlunders++;
+      else if (label === 'mistake') bMistakes++;
+      else if (label === 'inaccuracy') bInaccuracies++;
+    }
+  }
+
+  if (whiteAccs.length === 0 && blackAccs.length === 0) return null;
+
+  return {
+    white: { accuracy: aggregateAccuracy(whiteAccs), blunders: wBlunders, mistakes: wMistakes, inaccuracies: wInaccuracies },
+    black: { accuracy: aggregateAccuracy(blackAccs), blunders: bBlunders, mistakes: bMistakes, inaccuracies: bInaccuracies },
+  };
+}
+
+export function renderAnalysisSummary(
+  analysisComplete: boolean,
+  evalCache:        EvalCache,
+  mainline:         TreeNode[],
+  whiteName:        string,
+  blackName:        string,
+): VNode {
+  // Only show once there's enough eval data to be meaningful
+  if (!analysisComplete && evalCache.size < 4) return h('div');
+
+  const summary = computeAnalysisSummary(mainline, evalCache);
+  if (!summary) return h('div');
+
+  function playerCol(name: string, data: PlayerSummary, color: 'white' | 'black'): VNode {
+    const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : '—';
+    const breakdown: VNode[] = [];
+    if (data.blunders     > 0) breakdown.push(h('span.summary__blunder',    `${data.blunders} blunder${data.blunders !== 1 ? 's' : ''}`));
+    if (data.mistakes     > 0) breakdown.push(h('span.summary__mistake',    `${data.mistakes} mistake${data.mistakes !== 1 ? 's' : ''}`));
+    if (data.inaccuracies > 0) breakdown.push(h('span.summary__inaccuracy', `${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? 'ies' : 'y'}`));
+    return h('div.summary__col', [
+      h('div.summary__name', [
+        h('span.summary__color-icon', { class: { 'summary__color-icon--white': color === 'white', 'summary__color-icon--black': color === 'black' } }),
+        name,
+      ]),
+      h('div.summary__accuracy', accText),
+      breakdown.length > 0 ? h('div.summary__breakdown', breakdown) : h('div.summary__breakdown', '—'),
+    ]);
+  }
+
+  return h('div.analysis-summary', [
+    playerCol(whiteName, summary.white, 'white'),
+    playerCol(blackName, summary.black, 'black'),
+  ]);
+}
+
+// --- Eval bar ---
+// Adapted from lichess-org/lila: ui/analyse/src/view/ (evaluation bar)
+
+function evalPct(currentEval: { cp?: number; mate?: number }): number {
+  if (currentEval.mate !== undefined) return currentEval.mate > 0 ? 100 : 0;
+  if (currentEval.cp !== undefined) {
+    const pct = 50 + currentEval.cp / 20;
+    return Math.max(0, Math.min(100, pct));
+  }
+  return 50;
+}
+
+// Tick marks are static — same 8 positions every render.
+// Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderGauge
+const EVAL_BAR_TICKS: VNode[] = [...Array(8).keys()].map(i =>
+  h(i === 3 ? 'div.eval-bar__tick.zero' : 'div.eval-bar__tick', {
+    attrs: { style: `height: ${(i + 1) * 12.5}%` },
+  }),
+);
+
+// Always rendered so the gauge grid column stays occupied; hidden when engine is off.
+// Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge { display: none }
+// which is toggled by the gauge-on class on the parent.
+export function renderEvalBar(
+  engineEnabled: boolean,
+  currentEval:   { cp?: number; mate?: number },
+): VNode {
+  if (!engineEnabled) return h('div.eval-bar.eval-bar--off');
+
+  const pct = evalPct(currentEval);
+  // Clamp the score label position so it stays visible near the edges.
+  const scorePct = Math.max(8, Math.min(92, pct));
+  const hasScore = currentEval.cp !== undefined || currentEval.mate !== undefined;
+  const score    = hasScore ? formatScore(currentEval) : '';
+
+  return h('div.eval-bar', [
+    h('div.eval-bar__fill', { attrs: { style: `height: ${pct}%` } }),
+    score ? h('div.eval-bar__score', { attrs: { style: `bottom: ${scorePct}%` } }, score) : null,
+    ...EVAL_BAR_TICKS,
+  ]);
+}
+
+// --- Evaluation graph ---
+// Adapted from lichess-org/lila: ui/chart/src/acpl.ts (concept)
+// Pure SVG, no charting library. X = move index, Y = white-perspective win chances.
+// Data source: evalCache (same normalized white-perspective values used for labels).
+
+const GRAPH_W = 600;
+const GRAPH_H = 80;
+
+// Count major and minor pieces (r,n,b,q,R,N,B,Q) in a FEN board string.
+// Mirrors scalachess Divider.scala majorsAndMinors logic.
+function countMajorsMinors(fen: string): number {
+  const board = fen.split(' ')[0]!;
+  let count = 0;
+  for (const ch of board) if ('rnbqRNBQ'.includes(ch)) count++;
+  return count;
+}
+
+// Detect game phase transition plies from the mainline.
+// middleIdx: first ply where majors+minors ≤ 10 (opening → middlegame)
+// endIdx:    first ply where majors+minors ≤ 6  (middlegame → endgame)
+// Adapted from lichess-org/lila: modules/tree/src/main/Divider.scala
+function detectPhases(mainline: TreeNode[], n: number): { middleIdx?: number; endIdx?: number } {
+  let middleIdx: number | undefined;
+  let endIdx: number | undefined;
+  for (let i = 1; i <= n; i++) {
+    const mm = countMajorsMinors(mainline[i]!.fen);
+    if (middleIdx === undefined && mm <= 10) middleIdx = i;
+    if (endIdx === undefined && mm <= 6) { endIdx = i; break; }
+  }
+  return { middleIdx, endIdx };
+}
+
+export function renderEvalGraph(
+  mainline:    TreeNode[],
+  currentPath: string,
+  evalCache:   EvalCache,
+  navigate:    (p: string) => void,
+): VNode {
+  const n = mainline.length - 1; // non-root move count
+
+  if (n < 2) {
+    return h('div.eval-graph', [
+      h('div.eval-graph__empty', n === 0 ? 'No moves to graph.' : 'Analyze game to see graph.'),
+    ]);
+  }
+
+  interface Pt { x: number; y: number; path: string; label: MoveLabel | null; hasMate: boolean; }
+
+  const pts: (Pt | null)[] = [];
+  let path = '';
+  for (let i = 1; i <= n; i++) {
+    const node = mainline[i]!;
+    path += node.id;
+    const parentPath   = path.slice(0, -2);
+    const cached       = evalCache.get(path);
+    const parentCached = evalCache.get(parentPath);
+    const wc = cached !== undefined ? evalWinChances(cached) : undefined;
+    if (wc !== undefined) {
+      const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
+      const label = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
+      pts.push({
+        x: ((i - 1) / (n - 1)) * GRAPH_W,
+        y: ((1 - wc) / 2) * GRAPH_H, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
+        path,
+        label,
+        hasMate: cached?.mate !== undefined,
+      });
+    } else {
+      pts.push(null);
+    }
+  }
+
+  const valid = pts.filter((p): p is Pt => p !== null);
+
+  if (valid.length < 2) {
+    return h('div.eval-graph', [
+      h('div.eval-graph__empty', 'Analyze game to see graph.'),
+    ]);
+  }
+
+  const cy = GRAPH_H / 2;
+  const svgNodes: VNode[] = [];
+
+  // Background: upper half = white territory, lower half = black territory
+  svgNodes.push(h('rect', { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy, fill: 'rgba(235,225,180,0.07)' } }));
+  svgNodes.push(h('rect', { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy, fill: 'rgba(0,0,0,0.2)' } }));
+
+  // Filled polygon: eval trace closed at the center line
+  const polyPts = [
+    `${valid[0]!.x},${cy}`,
+    ...valid.map(p => `${p.x},${p.y}`),
+    `${valid[valid.length - 1]!.x},${cy}`,
+  ].join(' ');
+  svgNodes.push(h('polygon', { attrs: { points: polyPts, fill: 'rgba(160,160,160,0.1)', stroke: 'none' } }));
+
+  // Center line (eval = 0)
+  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#444', 'stroke-width': 1 } }));
+
+  // Eval trace
+  svgNodes.push(h('polyline', { attrs: {
+    points: valid.map(p => `${p.x},${p.y}`).join(' '),
+    fill: 'none',
+    stroke: '#888',
+    'stroke-width': 1.5,
+    'stroke-linejoin': 'round',
+    'stroke-linecap': 'round',
+  } }));
+
+  // Vertical bar at current move (drawn before dots so dots render on top)
+  const curPt = valid.find(p => p.path === currentPath);
+  if (curPt) {
+    svgNodes.push(h('line', { attrs: {
+      x1: curPt.x, y1: 0, x2: curPt.x, y2: GRAPH_H,
+      stroke: '#4a8', 'stroke-width': 1, opacity: '0.55',
+    } }));
+  }
+
+  // Click strips (wider target than the dot) + dots
+  for (const pt of valid) {
+    const capturePath = pt.path;
+    const isCurrent = pt.path === currentPath;
+
+    // Invisible wide strip for easier clicking
+    svgNodes.push(h('rect', {
+      attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: 'transparent' },
+      on: { click: () => navigate(capturePath) },
+    }));
+
+    // Visible dot — current position overrides to green; mate opportunity → purple;
+    // otherwise colored by move classification.
+    const dotColor = isCurrent         ? '#4a8'
+      : pt.hasMate                     ? '#c084fc'
+      : pt.label === 'blunder'         ? '#f66'
+      : pt.label === 'mistake'         ? '#f84'
+      : pt.label === 'inaccuracy'      ? '#fa4'
+      : '#888';
+    const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
+    svgNodes.push(h('circle', { attrs: {
+      cx: pt.x, cy: pt.y,
+      r: dotR,
+      fill: dotColor,
+      stroke: isCurrent ? '#fff' : 'none',
+      'stroke-width': 1,
+    } }));
+  }
+
+  // Phase dividers — mirrors lichess-org/lila: ui/chart/src/division.ts
+  const { middleIdx, endIdx } = detectPhases(mainline, n);
+  interface DivLine { label: string; idx: number; }
+  const divLines: DivLine[] = [];
+  if (middleIdx !== undefined) {
+    if (middleIdx > 1) divLines.push({ label: 'Opening', idx: 1 });
+    divLines.push({ label: 'Middlegame', idx: middleIdx });
+  }
+  if (endIdx !== undefined) {
+    if (endIdx > 1 && middleIdx === undefined) divLines.push({ label: 'Middlegame', idx: 0 });
+    divLines.push({ label: 'Endgame', idx: endIdx });
+  }
+
+  for (const div of divLines) {
+    if (div.idx === 0) continue; // "Middlegame at 0" — label only, no line
+    const dx = ((div.idx - 1) / (n - 1)) * GRAPH_W;
+    svgNodes.push(h('line', { attrs: {
+      x1: dx, y1: 0, x2: dx, y2: GRAPH_H,
+      stroke: '#555', 'stroke-width': 1, 'stroke-dasharray': '3 3', opacity: '0.7',
+    } }));
+  }
+
+  return h('div.eval-graph', [
+    h('svg', { attrs: {
+      viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
+      width: '100%',
+      height: GRAPH_H,
+      preserveAspectRatio: 'none',
+    } }, svgNodes),
+  ]);
+}
