@@ -462,7 +462,7 @@ header nav {
 
 .analyse {
   display: grid;
-  grid-template-columns: minmax(0, 600px) 34px minmax(240px, 380px);
+  grid-template-columns: min(100vw - 32px - 34px - 240px, 600px) 34px minmax(240px, 380px);
   grid-template-areas: "board  gauge  tools" "under  .      controls";
   align-items: start;
   padding: 24px 16px;
