@@ -36,6 +36,10 @@ export interface ImportedGame {
   opening?: string;
   eco?: string;
   source?: 'chesscom' | 'lichess';
+  whiteRating?: number;
+  blackRating?: number;
+  // Username of the player who triggered the import (lowercased). Absent for PGN paste.
+  importedUsername?: string;
 }
 
 // Adapted from chessigma-game-history-reference.md time class thresholds.
@@ -71,6 +75,42 @@ function gameResult(game: ImportedGame): 'win' | 'loss' | 'draw' | null {
   if (!color) return null;
   if (color === 'white') return game.result === '1-0' ? 'win' : 'loss';
   return game.result === '0-1' ? 'win' : 'loss';
+}
+
+// Shared structured row children for compact game lists (header panel + underboard).
+// Fields: result dot · opponent name (flex 1, truncated) · date · time class icon · badges.
+function renderCompactGameRow(game: ImportedGame, isAnalyzed: boolean, hasMissedTactic: boolean): (VNode | null)[] {
+  const result    = gameResult(game);
+  const userColor = getUserColor(game);
+  const opponent  = userColor === 'white' ? (game.black ?? game.id)
+    : userColor === 'black' ? (game.white ?? game.id)
+    : (game.white && game.black ? `${game.white} vs ${game.black}` : game.id);
+
+  const date = game.date ? game.date.slice(0, 10) : null;
+
+  const tcIconMap: Record<string, string> = {
+    ultrabullet: '\ue032',
+    bullet:      '\ue032',
+    blitz:       '\ue008',
+    rapid:       '\ue002',
+  };
+  const tcIcon = game.timeClass ? (tcIconMap[game.timeClass] ?? null) : null;
+
+  const resultCls = result === 'win'  ? 'grl__result--win'
+    : result === 'loss' ? 'grl__result--loss'
+    : result === 'draw' ? 'grl__result--draw'
+    : 'grl__result--unknown';
+
+  return [
+    h('span.grl__result.' + resultCls, '●'),
+    h('span.grl__opponent', opponent),
+    date ? h('span.grl__date', date) : null,
+    tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, title: game.timeClass } }) : null,
+    (isAnalyzed || hasMissedTactic) ? h('span.grl__badges', [
+      isAnalyzed      ? h('span.grl__badge.--ok',   { attrs: { title: 'Analyzed' } },      '✓') : null,
+      hasMissedTactic ? h('span.grl__badge.--warn', { attrs: { title: 'Missed tactic' } }, '!') : null,
+    ]) : null,
+  ];
 }
 
 const SAMPLE_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
@@ -229,6 +269,15 @@ function loadGame(pgn: string | null): void {
   batchState       = 'idle';
   analysisRunning  = false;
   analysisComplete = false;
+  // Default orientation to the importing user's perspective when determinable.
+  // Leaves orientation unchanged if user side cannot be determined (PGN paste, unknown username).
+  if (selectedGameId) {
+    const loadedGame = importedGames.find(g => g.id === selectedGameId);
+    if (loadedGame) {
+      const userColor = getUserColor(loadedGame);
+      if (userColor) orientation = userColor;
+    }
+  }
   syncBoard();
   syncArrow();
   // Restore persisted analysis from IndexedDB; falls back to live eval if nothing stored
@@ -937,9 +986,11 @@ function evalBatchItem(item: BatchItem): void {
  * Returns null if unknown (e.g. PGN paste with no username on record).
  */
 function getUserColor(game: ImportedGame): 'white' | 'black' | null {
-  const knownNames = [chesscomUsername, lichessUsername]
-    .map(n => n.trim().toLowerCase())
-    .filter(Boolean);
+  // Prefer importedUsername stored at import time (reliable after IDB restore).
+  // Fall back to current input values for games imported before this field existed.
+  const knownNames = [game.importedUsername, chesscomUsername, lichessUsername]
+    .map(n => n?.trim().toLowerCase())
+    .filter((n): n is string => !!n);
   if (knownNames.length === 0) return null;
   if (game.white && knownNames.includes(game.white.toLowerCase())) return 'white';
   if (game.black && knownNames.includes(game.black.toLowerCase())) return 'black';
@@ -1486,9 +1537,6 @@ function renderHeader(route: Route): VNode {
     importedGames.length > 0 ? h('div.header__panel-section', [
       h('div.header__panel-label', `${importedGames.length} game${importedGames.length === 1 ? '' : 's'} imported`),
       h('div.header__games-list', importedGames.map(game => {
-        const label = (game.white && game.black)
-          ? `${game.white} vs ${game.black}${game.result ? ' · ' + game.result : ''}${game.date ? ' · ' + game.date.slice(0, 10) : ''}`
-          : game.id;
         const isAnalyzed      = analyzedGameIds.has(game.id);
         const hasMissedTactic = missedTacticGameIds.has(game.id);
         const srcUrl = gameSourceUrl(game);
@@ -1501,11 +1549,7 @@ function renderHeader(route: Route): VNode {
               showImportPanel = false;
               redraw();
             }},
-          }, [
-            isAnalyzed      ? h('span.header__game-badge.--ok',   { attrs: { title: 'Analyzed' } },      '✓') : null,
-            hasMissedTactic ? h('span.header__game-badge.--warn', { attrs: { title: 'Missed tactic' } }, '!') : null,
-            h('span', label),
-          ]),
+          }, renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
           srcUrl ? h('a.game-ext-link', {
             attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
             on: { click: (e: Event) => e.stopPropagation() },
@@ -1833,9 +1877,11 @@ function getClocksAtPath(): { white: number | undefined; black: number | undefin
 // Result badge on left, clock on right — matching Lichess analyse__player_strip.
 function renderPlayerStrips(): [VNode, VNode] {
   const game = importedGames.find(g => g.id === selectedGameId);
-  const whiteName = game?.white ?? 'White';
-  const blackName = game?.black ?? 'Black';
-  const result    = game?.result ?? '*';
+  const whiteName   = game?.white ?? 'White';
+  const blackName   = game?.black ?? 'Black';
+  const whiteRating = game?.whiteRating;
+  const blackRating = game?.blackRating;
+  const result      = game?.result ?? '*';
 
   const diff   = getMaterialDiff(ctrl.node.fen);
   const score  = getMaterialScore(diff);
@@ -1846,6 +1892,7 @@ function renderPlayerStrips(): [VNode, VNode] {
 
   const strip = (color: 'white' | 'black'): VNode => {
     const name     = color === 'white' ? whiteName : blackName;
+    const rating   = color === 'white' ? whiteRating : blackRating;
     const badge    = color === 'white' ? whiteResult : blackResult;
     const winner   = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
     const matScore = color === 'white' ? score : -score;
@@ -1854,6 +1901,7 @@ function renderPlayerStrips(): [VNode, VNode] {
       badge ? h('span.player-strip__result', { class: { 'player-strip__result--winner': winner } }, badge) : null,
       h('span.player-strip__color-icon', { class: { 'player-strip__color-icon--white': color === 'white', 'player-strip__color-icon--black': color === 'black' } }),
       h('span.player-strip__name', name),
+      rating !== undefined ? h('span.player-strip__rating', `(${rating})`) : null,
       renderMaterialPieces(diff, color, matScore > 0 ? matScore : 0),
       centis !== undefined ? h('div.analyse__clock', formatClock(centis)) : null,
     ]);
@@ -3319,16 +3367,20 @@ async function fetchChesscomGames(username: string, rated: boolean, speeds: Set<
       continue;
     }
     result.push({
-      id:        `game-${++gameIdCounter}`,
+      id:               `game-${++gameIdCounter}`,
       pgn,
-      white:     raw.white?.username ?? undefined,
-      black:     raw.black?.username ?? undefined,
-      result:    normalizeChesscomResult(raw.white?.result ?? '', raw.black?.result ?? ''),
-      date:      parsePgnHeader(pgn, 'Date')?.replace(/\./g, '-'),
-      timeClass: raw.time_class as string | undefined,
-      opening:   parsePgnHeader(pgn, 'Opening'),
-      eco:       parsePgnHeader(pgn, 'ECO'),
-      source:    'chesscom',
+      white:            raw.white?.username ?? undefined,
+      black:            raw.black?.username ?? undefined,
+      result:           normalizeChesscomResult(raw.white?.result ?? '', raw.black?.result ?? ''),
+      date:             parsePgnHeader(pgn, 'Date')?.replace(/\./g, '-'),
+      timeClass:        raw.time_class as string | undefined,
+      opening:          parsePgnHeader(pgn, 'Opening'),
+      eco:              parsePgnHeader(pgn, 'ECO'),
+      source:           'chesscom',
+      // API field is a number; fall back to PGN header if absent
+      whiteRating:      parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, 'WhiteElo')),
+      blackRating:      parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, 'BlackElo')),
+      importedUsername: username.toLowerCase(),
     });
   }
   return result;
@@ -3409,16 +3461,19 @@ async function fetchLichessGames(username: string, rated: boolean, speeds: Set<I
     // Lichess uses UTCDate; fall back to Date if absent
     const date = (parsePgnHeader(pgn, 'UTCDate') ?? parsePgnHeader(pgn, 'Date'))?.replace(/\./g, '-');
     result.push({
-      id:        `game-${++gameIdCounter}`,
+      id:               `game-${++gameIdCounter}`,
       pgn,
-      white:     parsePgnHeader(pgn, 'White'),
-      black:     parsePgnHeader(pgn, 'Black'),
-      result:    parsePgnHeader(pgn, 'Result'),
+      white:            parsePgnHeader(pgn, 'White'),
+      black:            parsePgnHeader(pgn, 'Black'),
+      result:           parsePgnHeader(pgn, 'Result'),
       date,
-      timeClass: timeClassFromTimeControl(parsePgnHeader(pgn, 'TimeControl')),
-      opening:   parsePgnHeader(pgn, 'Opening'),
-      eco:       parsePgnHeader(pgn, 'ECO'),
-      source:    'lichess',
+      timeClass:        timeClassFromTimeControl(parsePgnHeader(pgn, 'TimeControl')),
+      opening:          parsePgnHeader(pgn, 'Opening'),
+      eco:              parsePgnHeader(pgn, 'ECO'),
+      source:           'lichess',
+      whiteRating:      parseRating(parsePgnHeader(pgn, 'WhiteElo')),
+      blackRating:      parseRating(parsePgnHeader(pgn, 'BlackElo')),
+      importedUsername: username.toLowerCase(),
     });
   }
   return result;
@@ -3476,21 +3531,32 @@ function parsePgnHeader(pgn: string, tag: string): string | undefined {
   return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
 }
 
+// Parse a PGN ELO string (e.g. "1456") into a number. Returns undefined if absent, zero, or non-numeric.
+function parseRating(s: string | number | undefined): number | undefined {
+  if (typeof s === 'number') return s > 0 ? s : undefined;
+  if (!s) return undefined;
+  const n = parseInt(s, 10);
+  return isNaN(n) || n <= 0 ? undefined : n;
+}
+
 function importPgn(): void {
   const raw = pgnInput.trim();
   if (!raw) return;
   try {
     pgnToTree(raw); // validate — throws on bad PGN
     const game: ImportedGame = {
-      id:        `game-${++gameIdCounter}`,
-      pgn:       raw,
-      white:     parsePgnHeader(raw, 'White'),
-      black:     parsePgnHeader(raw, 'Black'),
-      result:    parsePgnHeader(raw, 'Result'),
-      date:      parsePgnHeader(raw, 'Date')?.replace(/\./g, '-'),
-      timeClass: timeClassFromTimeControl(parsePgnHeader(raw, 'TimeControl')),
-      opening:   parsePgnHeader(raw, 'Opening'),
-      eco:       parsePgnHeader(raw, 'ECO'),
+      id:          `game-${++gameIdCounter}`,
+      pgn:         raw,
+      white:       parsePgnHeader(raw, 'White'),
+      black:       parsePgnHeader(raw, 'Black'),
+      result:      parsePgnHeader(raw, 'Result'),
+      date:        parsePgnHeader(raw, 'Date')?.replace(/\./g, '-'),
+      timeClass:   timeClassFromTimeControl(parsePgnHeader(raw, 'TimeControl')),
+      opening:     parsePgnHeader(raw, 'Opening'),
+      eco:         parsePgnHeader(raw, 'ECO'),
+      whiteRating: parseRating(parsePgnHeader(raw, 'WhiteElo')),
+      blackRating: parseRating(parsePgnHeader(raw, 'BlackElo')),
+      // importedUsername not set: PGN paste has no reliable importing-user identity
     };
     importedGames = [...importedGames, game];
     selectedGameId = game.id;
@@ -3527,21 +3593,14 @@ function renderGameList(): VNode {
   return h('div.game-list', [
     h('div.game-list__header', `${importedGames.length} imported game${importedGames.length === 1 ? '' : 's'}`),
     h('ul', importedGames.map(game => {
-      const label = (game.white && game.black)
-        ? `${game.white} vs ${game.black}${game.result ? ' · ' + game.result : ''}${game.date ? ' · ' + game.date.slice(0, 10) : ''}`
-        : game.id;
-      const isAnalyzed     = analyzedGameIds.has(game.id);
+      const isAnalyzed      = analyzedGameIds.has(game.id);
       const hasMissedTactic = missedTacticGameIds.has(game.id);
       const srcUrl2 = gameSourceUrl(game);
       return h('li', [
         h('button.game-list__row', {
           class: { active: game.id === selectedGameId },
           on: { click: () => { selectedGameId = game.id; loadGame(game.pgn); } },
-        }, [
-          isAnalyzed    ? h('span', { attrs: { style: 'color:#4a8;margin-right:4px;font-size:0.8em', title: 'Analyzed' } }, '✓') : null,
-          hasMissedTactic ? h('span', { attrs: { style: 'color:#f84;margin-right:6px;font-size:0.85em;font-weight:700', title: 'Missed tactic in opening/middlegame' } }, '!') : null,
-          label,
-        ]),
+        }, renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
         srcUrl2 ? h('a.game-ext-link', {
           attrs: { href: srcUrl2, target: '_blank', rel: 'noopener', title: 'View on source platform' },
         }) : null,
@@ -3751,6 +3810,7 @@ function renderGamesView(): VNode {
       h('thead', h('tr', [
         renderSortTh('Result',    'result'),
         renderSortTh('Opponent',  'opponent'),
+        h('th.games-view__rating-th', 'Rating'),
         renderSortTh('Date',      'date'),
         renderSortTh('Time',      'timeClass'),
         h('th', 'Opening'),
@@ -3776,6 +3836,23 @@ function renderGamesView(): VNode {
             // both sides if user identity cannot be determined from import usernames.
             const accEntry   = analyzedGameAccuracy.get(game.id);
             const userColor  = getUserColor(game);
+
+            // Rating cell: opponent's rating only.
+            // When user side is known, show the other side's rating.
+            // When unknown, show both with W/B labels as fallback.
+            const oppRating = userColor === 'white' ? game.blackRating : userColor === 'black' ? game.whiteRating : undefined;
+            const ratingText = (() => {
+              if (oppRating !== undefined) return String(oppRating);
+              if (!userColor && (game.whiteRating !== undefined || game.blackRating !== undefined)) {
+                const parts: string[] = [];
+                if (game.whiteRating !== undefined) parts.push(`W:${game.whiteRating}`);
+                if (game.blackRating !== undefined) parts.push(`B:${game.blackRating}`);
+                return parts.join(' ');
+              }
+              return null;
+            })();
+            const ratingCell = h('td.games-view__rating', ratingText ?? '–');
+
             let accuracyText: string | null = null;
             if (isAnalyzed && accEntry) {
               if (userColor === 'white' && accEntry.white !== null) {
@@ -3832,6 +3909,7 @@ function renderGamesView(): VNode {
             }, [
               h('td', renderResultIcon(r)),
               h('td.games-view__opponent', opp),
+              ratingCell,
               h('td.games-view__date', date),
               h('td.games-view__tc', tcIcon
                 ? h('span', { attrs: { 'data-icon': tcIcon, style: `font-family:lichess;margin-right:4px` } })
@@ -3846,7 +3924,7 @@ function renderGamesView(): VNode {
               }) : null),
             ]);
           })
-        : [h('tr', h('td', { attrs: { colspan: '8' } }, h('div.games-view__empty', 'No games match current filters.')))]
+        : [h('tr', h('td', { attrs: { colspan: '9' } }, h('div.games-view__empty', 'No games match current filters.')))]
       ),
     ]),
   ]);
