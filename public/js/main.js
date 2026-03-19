@@ -4311,6 +4311,10 @@ var StockfishProtocol = class {
       this.engineName = parts.slice(2).join(" ");
     } else if (parts[0] === "uciok") {
       this.send("setoption name UCI_AnalyseMode value true");
+      const cores = navigator.hardwareConcurrency ?? 2;
+      const threads = Math.max(1, cores - 1);
+      this.send(`setoption name Threads value ${threads}`);
+      this.send("setoption name Hash value 256");
       this.send("ucinewgame");
       this.send("isready");
     }
@@ -6018,7 +6022,8 @@ function toggleEngine() {
   if (engineEnabled) {
     if (!engineInitialized) {
       engineInitialized = true;
-      protocol.init("stockfish/stockfish-nnue-16-single.js");
+      const sfFile = typeof SharedArrayBuffer !== "undefined" ? "stockfish/stockfish-nnue-16.js" : "stockfish/stockfish-nnue-16-single.js";
+      protocol.init(sfFile);
     } else if (engineReady) {
       evalCurrentPosition();
     }

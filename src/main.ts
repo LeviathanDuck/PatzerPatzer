@@ -911,8 +911,14 @@ function toggleEngine(): void {
   if (engineEnabled) {
     if (!engineInitialized) {
       engineInitialized = true;
-      // Relative URL resolves against the page (public/index.html) → public/stockfish/...
-      protocol.init('stockfish/stockfish-nnue-16-single.js');
+      // Use the multi-threaded build when SharedArrayBuffer is available (requires
+      // COOP+COEP headers — serve via `pnpm serve` / server.mjs, not file://).
+      // Falls back to single-threaded if headers are absent.
+      // Mirrors lichess-org/lila: ui/lib/src/ceval/util.ts sharedWasmMemory check.
+      const sfFile = typeof SharedArrayBuffer !== 'undefined'
+        ? 'stockfish/stockfish-nnue-16.js'
+        : 'stockfish/stockfish-nnue-16-single.js';
+      protocol.init(sfFile);
       // evalCurrentPosition() will be called once readyok arrives
     } else if (engineReady) {
       evalCurrentPosition();
