@@ -804,7 +804,11 @@ Each step must be verified before the next begins.
 
 ---
 
-## Step 1 — Extract Win-Chances and Classification Types
+## Step 1 — Extract Win-Chances and Classification Types ✓ COMPLETED
+
+**Completed:** 2026-03-19. Extracted to `src/engine/winchances.ts`. `classifyLoss()` and
+`MoveLabel` were not moved in this step (they remain in main.ts; they will move with
+`src/analyse/view.ts` in Step 8). Only the pure win-chance math was extracted.
 
 **Goal:** Move the pure computation functions and engine types to their own files so all
 other subsystems can import them without depending on main.ts.
@@ -839,7 +843,12 @@ be altered.
 
 ---
 
-## Step 2 — Extract Board Cosmetics
+## Step 2 — Extract Board Cosmetics ✓ COMPLETED
+
+**Completed:** 2026-03-19. Extracted to `src/board/cosmetics.ts` (plan named it
+`board/settings.ts` — actual file is `board/cosmetics.ts`). Startup apply calls run at
+module import time. Added `saveBoardZoom(zoom)` setter to work around ESM binding
+restriction (cannot assign to imported `let` from outside the module).
 
 **Goal:** Move all board theme/piece set/filter/zoom logic into its own module so the
 header and global menu can import apply functions directly.
@@ -884,7 +893,14 @@ running at module import time.
 
 ---
 
-## Step 3 — Extract Game Library Helpers and Types
+## Step 3 — Extract Game Library Helpers and Types ✓ COMPLETED (partial)
+
+**Completed:** 2026-03-19. `ImportedGame`, `nextGameId()`, `restoreGameIdCounter()`,
+`parsePgnHeader()`, `parseRating()`, `timeClassFromTimeControl()`, and `ImportCallbacks`
+extracted to `src/import/types.ts`. This is the subset needed to unblock Step 4; the
+full game library state (`importedGames`, `selectedGameId`, etc.) and rendering helpers
+(`renderCompactGameRow`, `getUserColor`, `gameResult`) remain in main.ts and will move
+with `src/games/library.ts` in a later step.
 
 **Goal:** Move `ImportedGame` interface, game metadata helpers, and the shared compact
 game row renderer to a dedicated module so import adapters and views can import them.
@@ -927,7 +943,14 @@ from a different module creates a circular dependency risk.
 
 ---
 
-## Step 4 — Extract Game Import Adapters and Filters
+## Step 4 — Extract Game Import Adapters and Filters ✓ COMPLETED
+
+**Completed:** 2026-03-19. Extracted to `src/import/filters.ts`, `src/import/chesscom.ts`,
+`src/import/lichess.ts`, `src/import/pgn.ts` (plan named the dir `src/games/import/` —
+actual location is `src/import/`). Dead render functions deleted. `ImportCallbacks`
+interface added to `src/import/types.ts`; `importCallbacks` object defined in main.ts
+bridges the adapters to main.ts state without circular imports. `restoreGameIdCounter()`
+added to fix game-id collision across sessions (fix applied during IDB restore).
 
 **Goal:** Move all three import adapters and import filter state to their own files.
 Delete the three dead render functions in this step.
@@ -1019,7 +1042,13 @@ and `evalCache` — pass these as parameters when calling.
 
 ---
 
-## Step 6 — Extract Move List and Tree View Rendering
+## Step 6 — Extract Move List and Tree View Rendering ✓ COMPLETED
+
+**Completed:** 2026-03-19. Extracted to `src/analyse/moveList.ts`. `classifyLoss`,
+`MoveLabel`, `LOSS_THRESHOLDS` moved to `src/engine/winchances.ts` (used by moveList,
+accuracy summary, and eval graph). `renderMoveList` takes explicit params `(root,
+currentPath, getEval, navigate)` — no globals accessed. `getEval` typed structurally so
+`moveList.ts` doesn't need to import `PositionEval`. Build confirmed passing at 294.7 KB.
 
 **Goal:** Move the column view tree rendering to its own module matching Lichess's
 `treeView/` structure.
@@ -1059,7 +1088,13 @@ SCSS rules.
 
 ---
 
-## Step 7 — Extract Games View
+## Step 7 — Extract Games View ✓ COMPLETED (executed out-of-sequence, before Steps 5–6)
+
+**Completed:** 2026-03-19. Extracted to `src/games/view.ts`. All filter/sort state is
+module-level in view.ts. App state passed in via `GamesViewDeps` interface; main.ts builds
+this via `gamesViewDeps()` factory. `toggleGamesSort` and `clearGamesFilters` accept
+`redraw` as a parameter. `opponentName` accepts `getUserColor` as a parameter.
+Build confirmed passing at 293.9 KB with no TS errors.
 
 **Goal:** Move the games view (the `#/games` route) to its own module.
 
@@ -1104,7 +1139,16 @@ games/index.ts which imports from import adapters.
 
 ---
 
-## Step 8 — Extract Eval Graph, Eval Bar, and Analysis Summary
+## Step 8 — Extract Eval Graph, Eval Bar, and Analysis Summary ✓ COMPLETED
+
+**Completed:** 2026-03-19. All moved to `src/analyse/evalView.ts` (plan named it
+`summary.ts` + `view.ts` — combined into one file for this step). `EvalEntry` structural
+type defined locally so `PositionEval` (still in main.ts) is not needed. `renderAnalysisSummary`
+takes `whiteName`/`blackName` params; call site in main.ts does the player lookup.
+`computeAnalysisSummary(mainline, evalCache)` takes explicit params — used by
+`loadAndRestoreAnalysis` and `advanceBatch` in main.ts with no circular dep.
+`classifyLoss`/`MoveLabel` no longer imported by main.ts directly.
+Build confirmed passing at 295.1 KB.
 
 **Goal:** Move the eval graph SVG, eval bar, and accuracy summary computations to their
 own analysis view module.
@@ -1146,7 +1190,7 @@ the engine/batch module.
 
 ---
 
-## Step 9 — Extract Puzzle Candidate Extraction
+## Step 9 — Extract Puzzle Candidate Extraction ✓ COMPLETED 2026-03-19
 
 **Goal:** Move puzzle candidate scanning and rendering to its own module.
 
@@ -1156,6 +1200,13 @@ the engine/batch module.
 
 **From:** `src/main.ts` lines ~2950–3008, ~3183–3230
 **To:** `src/puzzles/extract.ts`
+
+**Implemented:**
+- `PuzzleCandidate` moved to `src/tree/types.ts` (shared with idb/index.ts)
+- `puzzleCandidates` is module-level state in `src/puzzles/extract.ts`
+- `clearPuzzleCandidates()` exported for game-load and re-analyze call sites
+- `renderPuzzleCandidates()` takes `PuzzleRenderDeps` interface; `uciToSan` injected
+- Build verified: 295.7 KB ✓
 
 **Why safe now:** `extractPuzzleCandidates()` only reads `ctrl.mainline` and `evalCache`.
 `renderPuzzleCandidates()` reads `puzzleCandidates`, `savedPuzzles`, `batchState`,
@@ -1183,7 +1234,7 @@ from module globals — ensure these are imported from the batch module.
 
 ---
 
-## Step 10 — Extract Header Render
+## Step 10 — Extract Header Render ✓ COMPLETED 2026-03-19
 
 **Goal:** Move the full header render function and panel state to a header module.
 
@@ -1222,9 +1273,21 @@ from header. The header is a pure render function — all state must flow in via
 
 **Estimated line reduction in main.ts:** ~350 lines
 
+**Implemented:**
+- `src/header/index.ts` created: `importPlatform`, `showImportPanel`, `showGlobalMenu`,
+  `showBoardSettings` module state; `renderHeader(deps)`, `renderNav`, `renderGlobalMenu`,
+  `closeGlobalMenu`, `activeSection`, `navLinks` all moved here
+- `HeaderDeps` interface injects: route, importedGames, selectedGameId, analyzedGameIds,
+  missedTacticGameIds, importCallbacks, onSelectGame, renderGameRow, gameSourceUrl,
+  downloadPgn, resetAllData, redraw
+- main.ts: removed ~282 lines; removed imports for renderBoardSettings, importChesscom,
+  importLichess, importPgn, pgnState, DATE_RANGE_OPTIONS, SPEED_OPTIONS, importFilters,
+  ImportDateRange, ImportSpeed; added `import { renderHeader, type HeaderDeps } from './header/index'`
+- Build verified: 295.4 KB ✓
+
 ---
 
-## Step 11 — Extract Engine Lifecycle (deferred until Steps 1–10 are complete)
+## Step 11 — Extract Engine Lifecycle ✓ COMPLETED 2026-03-19
 
 **Goal:** Move the engine lifecycle, eval management, and batch analysis into dedicated
 modules, finally resolving the deepest coupling.
@@ -1268,10 +1331,362 @@ Resolve by passing `advanceBatch` as a callback registered by batch.ts on engine
 
 **Estimated line reduction in main.ts:** ~500 lines
 
+**Implemented:**
+- `src/engine/ctrl.ts` created: types (`EvalLine`, `PositionEval`), protocol singleton,
+  all engine state vars, arrow state, threat mode, setters for external write access,
+  batch callback hooks (`setIsBatchActive`, `setOnBatchBestmove`, `setOnEngineReady`),
+  `initEngine(deps)`, `parseEngineLine`, `toggleEngine`, `evalCurrentPosition`,
+  `evalThreatPosition`, `toggleThreatMode`, `buildArrowShapes`, `syncArrow`,
+  `syncArrowDebounced`, `flipFenColor`
+- `src/engine/batch.ts` created: types (`BatchItem`, `BatchState`), all batch state vars,
+  `initBatch(deps)`, `detectMissedTactics`, `evalBatchItem`, `onBatchBestmove`,
+  `advanceBatch`, `startBatchAnalysis`, `startBatchWhenReady`, setters for external writes
+- main.ts: removed ~640 lines; added engine/ctrl and engine/batch imports; added
+  `initEngine()` + `initBatch()` calls at bootstrap; updated all direct state assignments
+  to use setter functions; `getUserColor` kept in main.ts (used by render and deps)
+- Circular dependency resolved: ctrl.ts has `setIsBatchActive`/`setOnBatchBestmove`/
+  `setOnEngineReady` hooks; batch.ts registers them at `initBatch()` time — no circular import
+- Build verified: 298.4 KB ✓
+
 ---
 
-After Step 11, main.ts should be ~300–400 lines of bootstrap, view assembly, and event
-wiring — the intended end state.
+After Step 11, main.ts is ~1667 lines. Steps 12–16 continue extracting the remaining
+subsystems until main.ts reaches its bootstrap-only target of ~300–400 lines.
+
+---
+
+## Step 12 — Extract Board Sync and Move Handling ✓ COMPLETED 2026-03-19
+
+**Goal:** Move Chessground lifecycle, move input, promotion dialog, player strips, material
+diff, and board resize to `src/board/index.ts`.
+
+**Mirrors:** `ui/analyse/src/ground.ts`, `ui/lib/src/game/material.ts`,
+`ui/analyse/src/view/clocks.ts`, `ui/analyse/src/view/components.ts`
+
+**Move to `src/board/index.ts`:**
+- State vars: `cgInstance`, `orientation`, `pendingPromotion`
+- Types: `MaterialDiff`, `MaterialDiffSide`
+- Constants: `PROMOTION_ROLES`, `ROLE_ORDER`, `ROLE_POINTS`
+- Pure helpers: `computeDests()`, `uciToSan()`, `getMaterialDiff()`, `getMaterialScore()`
+- Move handling: `onUserMove()`, `completeMove()`, `completePromotion()`
+- Render: `renderPromotionDialog()`, `syncBoard()`, `flip()`, `renderBoard()`
+- Material + clock: `renderMaterialPieces()`, `formatClock()`, `getClocksAtPath()`, `renderPlayerStrips()`
+- Resize: `bindBoardResizeHandle()`
+- Init: `initGround(deps)` to inject callbacks
+
+**Init deps shape:**
+```typescript
+export function initGround(deps: {
+  getCtrl:          () => AnalyseCtrl;
+  navigate:         (path: string) => void;
+  getImportedGames: () => ImportedGame[];
+  getSelectedGameId:() => string | null;
+  redraw:           () => void;
+}): void
+```
+
+**From:** `src/main.ts` lines ~294–722
+**To:** `src/board/index.ts`
+
+**Why safe now:** All dependencies are either pure (chessops, board/cosmetics.ts,
+engine/ctrl.ts syncArrow) or can be injected via `initGround()`. `syncArrow` can be
+imported directly from `engine/ctrl.ts` without circularity since board does not depend
+on batch.
+
+**What must not change:** Chessground config options (`viewOnly`, `drawable`, `brushes`,
+`movable.showDests`). `orientation` default is `'white'`. The `key: 'board'` on the cg-wrap
+vnode — Snabbdom uses this to avoid recreating the element on re-render.
+
+**Exports needed by main.ts:**
+- `cgInstance` (passed to `initEngine` via `getCgInstance` callback)
+- `orientation` (read by `loadGame` to set user color)
+- `setOrientation(v)` setter (used by `loadGame`)
+- `syncBoard()` (called from `loadGame`, IDB restore, `navigate`)
+- `flip()` (called from keyboard handler + controls button)
+- `renderBoard()`, `renderPromotionDialog()`, `renderPlayerStrips()` (called from routeContent)
+- `uciToSan` (injected into `renderPuzzleCandidates` PuzzleRenderDeps)
+- `completeMove` (called from `playBestMove` keyboard handler)
+
+**Remaining dependencies in board/index.ts:**
+- `syncArrow` imported from `engine/ctrl.ts`
+- `boardZoom`, `applyBoardZoom`, `saveBoardZoom` imported from `board/cosmetics.ts`
+- `getCtrl`, `navigate`, `getImportedGames`, `getSelectedGameId`, `redraw` injected via `initGround()`
+
+**How to test:**
+- [ ] Board renders and pieces are draggable / clickable
+- [ ] Moves create new variation nodes and navigate to them
+- [ ] Pawn promotion dialog appears and piece selection completes the move
+- [ ] Flip button and `f` key change board orientation
+- [ ] Player strips show correct names, ratings, material badges, and clocks
+- [ ] Board resize handle changes zoom and persists to localStorage
+
+**What could go wrong:** `cgInstance` captured in closure before `initGround()` is called.
+**How to diagnose:** Board renders but moves are not interactive.
+**Roll back if:** Board does not render or moves produce no navigation.
+
+**Estimated line reduction in main.ts:** ~430 lines
+
+**Implemented:**
+- `src/board/index.ts` created: `cgInstance`, `orientation`, `setOrientation`, `syncBoard`,
+  `syncBoardAndArrow`, `flip`, `completeMove`, `uciToSan`, `renderBoard`, `renderPromotionDialog`,
+  `renderPlayerStrips`, `initGround(deps)`, material diff types/constants/helpers, clock helpers,
+  board resize handle
+- Dep injection via `initGround(deps)`: `getCtrl`, `navigate`, `getImportedGames`,
+  `getSelectedGameId`, `redraw` — avoids circular imports with main.ts
+- `syncArrow` imported directly from `engine/ctrl.ts` (no circularity — board does not import batch)
+- `boardZoom`, `applyBoardZoom`, `saveBoardZoom` imported from `board/cosmetics.ts`
+- main.ts: removed ~430 lines; updated `loadGame` to use `setOrientation()` and
+  `syncBoardAndArrow()`; added `initGround()` call at bootstrap; `initEngine` getCgInstance
+  callback reads live ESM binding from board/index.ts
+- Build verified: 299.3 KB ✓
+
+---
+
+## Step 13 — Extract ceval View ✓ COMPLETED 2026-03-19
+
+**Goal:** Move all engine-lines rendering, PV board preview, and engine settings panel to
+`src/ceval/view.ts`.
+
+**Mirrors:** `ui/lib/src/ceval/view/main.ts`, `ui/lib/src/ceval/view/settings.ts`
+
+**Move to `src/ceval/view.ts`:**
+- State vars: `pvBoard`, `pvBoardPos`, `showEngineSettings`
+- Functions: `renderCeval()`, `renderPvMoves()`, `renderPvBox()`, `playPvUciList()`,
+  `renderPvBoard()`, `renderEngineSettings()`
+- Constant: `MAX_PV_MOVES`
+- Init: `initCevalView(deps)` to inject callbacks
+
+**Init deps shape:**
+```typescript
+export function initCevalView(deps: {
+  getCtrl:  () => AnalyseCtrl;
+  navigate: (path: string) => void;
+  redraw:   () => void;
+}): void
+```
+
+**From:** `src/main.ts` lines ~724–1111
+**To:** `src/ceval/view.ts`
+
+**Why safe now:** All engine state reads (`currentEval`, `engineEnabled`, `engineReady`,
+`batchAnalyzing`, `batchDone`, `batchQueue`, `multiPv`, `showEngineArrows`, `arrowAllLines`,
+`showPlayedArrow`, `reviewDepth`, `analysisDepth`) are exported from `engine/ctrl.ts` and
+`engine/batch.ts` and can be imported directly. `navigate` must be passed as a dep because
+it lives in main.ts. `playPvUciList` needs `ctrl` and `navigate` — inject via `initCevalView`.
+
+**What must not change:** `key: 'pv-rows'` on the pv_box element (keeps listeners attached
+across renders). `key: 'pv-board-float'` on the floating board overlay.
+
+**Exports needed by main.ts:**
+- `renderCeval()`, `renderPvBox()`, `renderPvBoard()`, `renderEngineSettings()`
+
+**How to test:**
+- [ ] Engine toggle renders correctly (Off / On / Loading…)
+- [ ] PV lines appear and update during live analysis
+- [ ] Hovering a PV move shows the floating board preview
+- [ ] Clicking a PV move navigates to that position
+- [ ] Engine settings panel opens from gear icon
+- [ ] MultiPV slider changes number of rendered PV rows
+- [ ] Review depth and analysis depth selects update their values
+
+**What could go wrong:** `playPvUciList` capturing a stale `ctrl` reference.
+**How to diagnose:** Clicking a PV move produces no navigation.
+**Roll back if:** PV box renders empty or engine settings panel does not open.
+
+**Estimated line reduction in main.ts:** ~390 lines
+
+---
+
+## Step 14 — Extract PGN Export and Analysis Controls ✓ COMPLETED 2026-03-19
+
+**Goal:** Move PGN building, download, export menu state, and `renderAnalysisControls()`
+to `src/analyse/pgnExport.ts`.
+
+**Mirrors:** `ui/analyse/src/pgnExport.ts`, `ui/analyse/src/view/controls.ts` (review button)
+
+**Move to `src/analyse/pgnExport.ts`:**
+- State var: `showExportMenu`
+- Functions: `buildPgn()`, `downloadPgn()`, `renderAnalysisControls()`
+- Init: `initPgnExport(deps)` to inject callbacks
+
+**Init deps shape:**
+```typescript
+export function initPgnExport(deps: {
+  getCtrl:          () => AnalyseCtrl;
+  getImportedGames: () => ImportedGame[];
+  getSelectedGameId:() => string | null;
+  redraw:           () => void;
+}): void
+```
+
+**From:** `src/main.ts` lines ~1123–1289
+**To:** `src/analyse/pgnExport.ts`
+
+**Why safe now:** `buildPgn` reads `ctrl.mainline`, `evalCache`, `importedGames`,
+`selectedGameId` — all importable or injectable. `renderAnalysisControls` reads batch state
+from `engine/batch.ts` and calls `startBatchWhenReady`, `stopProtocol`, setters — all
+exported. `clearAnalysisFromIdb`, `clearEvalCache`, `resetCurrentEval`,
+`clearPuzzleCandidates`, `resetBatchState`, `syncArrow` — all exported from their modules.
+
+**Exports needed by main.ts:**
+- `renderAnalysisControls()`
+- `downloadPgn(annotated: boolean)` (still referenced in `renderHeader` for global menu export)
+
+**How to test:**
+- [ ] Export PGN button opens the export sub-menu
+- [ ] Annotated export contains `[%eval ...]` comments
+- [ ] Plain export has no annotations
+- [ ] Review button starts batch analysis
+- [ ] During analysis, button shows percentage progress
+- [ ] Cancel stops analysis and saves partial results
+- [ ] Re-analyze clears old results and re-runs
+
+**What could go wrong:** `downloadPgn` referenced in `header/index.ts` HeaderDeps — ensure
+it remains importable from `analyse/pgnExport.ts` after move.
+**How to diagnose:** Export PGN does nothing or produces empty file.
+**Roll back if:** Review button is permanently disabled or export produces no download.
+
+**Estimated line reduction in main.ts:** ~175 lines
+
+**Implementation notes (2026-03-19):**
+- `src/analyse/pgnExport.ts` created: `showExportMenu` (module state), `buildPgn`,
+  `downloadPgn`, `renderAnalysisControls`, `initPgnExport(deps)`
+- Deps shape extended beyond plan: added `buildAnalysisNodes` and `clearGameAnalysis`
+  callbacks (needed by review cancel/re-analyze flows)
+- `clearGameAnalysis` local function added in main.ts: wraps `clearAnalysisFromIdb` +
+  `analyzedGameIds.delete` + `missedTacticGameIds.delete`
+- Added missing explicit declarations in main.ts: `analyzedGameIds`, `missedTacticGameIds`,
+  `analyzedGameAccuracy` (were latent implicit globals)
+- Removed from main.ts imports: `saveAnalysisToIdb`, `setAwaitingStopBestmove`,
+  `stopProtocol`, `setBatchAnalyzing`, `batchQueue`, `batchDone`, `analysisRunning`,
+  `setAnalysisRunning`, `startBatchAnalysis`
+- Build verified: 301.0 KB ✓
+- main.ts: 758 lines (down from 902 → 758)
+
+---
+
+## Step 15 — Extract Keyboard Navigation ✓ COMPLETED 2026-03-19
+
+**Goal:** Move all keyboard navigation functions, the keyboard help overlay, and the
+document keydown listener to `src/keyboard.ts`.
+
+**Mirrors:** `ui/analyse/src/keyboard.ts`, `ui/analyse/src/control.ts`
+
+**Move to `src/keyboard.ts`:**
+- State var: `showKeyboardHelp`
+- Functions: `previousBranch()`, `nextBranch()`, `nextSibling()`, `prevSibling()`,
+  `playBestMove()`, `renderKeyboardHelp()`
+- Document event listener registration: `bindKeyboardHandlers(deps)`
+
+**The navigation helpers `next`, `prev`, `first`, `last`, `navigate`, `scrollActiveIntoView`
+stay in main.ts for now** — they are tiny and tightly coupled to the main redraw loop.
+`keyboard.ts` calls them via injected callbacks.
+
+**Init deps shape:**
+```typescript
+export function bindKeyboardHandlers(deps: {
+  getCtrl:     () => AnalyseCtrl;
+  navigate:    (path: string) => void;
+  next:        () => void;
+  prev:        () => void;
+  first:       () => void;
+  last:        () => void;
+  flip:        () => void;
+  completeMove:(orig: string, dest: string, promotion?: Role) => void;
+  redraw:      () => void;
+}): void
+```
+
+**From:** `src/main.ts` lines ~1446–1584
+**To:** `src/keyboard.ts`
+
+**Why safe now:** All keyboard functions depend only on `ctrl` (injectable), navigation
+callbacks, engine exports (`toggleEngine`, `toggleThreatMode`, `setShowEngineArrows`,
+`syncArrow`, `currentEval`), and board exports (`flip`). These are all importable or
+injectable without circularity.
+
+**Exports needed by main.ts:**
+- `bindKeyboardHandlers(deps)` (called at bootstrap)
+- `renderKeyboardHelp()` (called from routeContent / view)
+
+**How to test:**
+- [ ] ← / → navigate prev/next move
+- [ ] ↑ / ↓ jump to first/last move
+- [ ] Shift + ← / → jump to previous/next branch
+- [ ] Shift + ↑ / ↓ switch sibling variation
+- [ ] Space plays engine best move
+- [ ] l toggles engine, a toggles arrows, x toggles threat, f flips board
+- [ ] ? opens and closes the keyboard help overlay
+
+**What could go wrong:** `playBestMove` calling `completeMove` which is in board/index.ts —
+inject as a callback dep.
+**How to diagnose:** Keyboard shortcuts do nothing or throw console errors.
+**Roll back if:** Arrow key navigation stops working.
+
+**Estimated line reduction in main.ts:** ~140 lines
+
+**Implementation notes (2026-03-19):**
+- `src/keyboard.ts` created: `showKeyboardHelp` (module state), `previousBranch`,
+  `nextBranch`, `nextSibling`, `prevSibling`, `playBestMove`, `renderKeyboardHelp`,
+  `bindKeyboardHandlers(deps)` (registers keydown listener)
+- `toggleEngine`, `toggleThreatMode`, `setShowEngineArrows`, `showEngineArrows`,
+  `syncArrow` imported directly from `engine/ctrl` — no injection needed
+- Removed from main.ts: `Role` import, `toggleThreatMode`, `toggleEngine`,
+  `setShowEngineArrows`, `showEngineArrows` imports (all moved into keyboard.ts)
+- `pathInit` stays in main.ts (still used by `prev()`)
+- Build verified: 301.4 KB ✓
+- main.ts: 638 lines (down from 758 → 638)
+
+---
+
+## Step 16 — Clean Up main.ts to Bootstrap Only ✓ COMPLETED 2026-03-19
+
+**Goal:** After Steps 12–15, audit main.ts for any remaining extractable code and move
+it to its rightful owner. Target: main.ts is ≤ 400 lines containing only bootstrap,
+view assembly, route dispatch, `redraw()`, and event wiring.
+
+**Candidates for final extraction:**
+- `gameResult()`, `gameSourceUrl()`, `renderCompactGameRow()`, `getUserColor()` → could
+  move to `src/games/view.ts` or stay in main.ts as game-library helpers
+- `buildAnalysisNodes()` → could move to `src/idb/index.ts` as a pure helper
+- `gamesViewDeps()` factory → can be inlined into `routeContent()`
+- Navigation helpers `navigate`, `next`, `prev`, `first`, `last`, `scrollActiveIntoView`
+  → could move to `src/keyboard.ts` or `src/analyse/controls.ts`
+
+**What must stay in main.ts (bootstrap only):**
+- Snabbdom `patch` init
+- `app`, `currentRoute`, `vnode`, `redraw()`
+- `initEngine()`, `initBatch()`, `initGround()`, `initCevalView()`, `initPgnExport()`,
+  `bindKeyboardHandlers()` calls
+- `view(route)` — top-level vnode assembly
+- `routeContent(route)` — route dispatch
+- `onChange()` subscription
+- IDB startup restore calls
+- Wheel event listener
+
+**From:** `src/main.ts` lines remaining after Steps 12–15
+**To:** Most likely no new files needed — inline the factories, delete the dead code
+
+**How to test:**
+- [ ] Full smoke test: import games, analyze, navigate, export PGN, puzzles, reset
+- [ ] All keyboard shortcuts work
+- [ ] Page reload restores state
+- [ ] main.ts line count ≤ 400
+
+**Estimated final line count in main.ts:** ~350 lines
+
+**Implementation notes (2026-03-19):**
+- Moved `getUserColor`, `gameResult`, `gameSourceUrl`, `renderCompactGameRow` → `src/games/view.ts`
+  as exported functions; removed from main.ts
+- `gamesViewDeps()` factory inlined into `routeContent()` as a local `deps` object
+- Removed unused imports: `evalWinChances`, `rawWinChances`, `formatScore`, `AnalysisSummary`,
+  `AnalysisStatus`, `BatchState`, `orientation`, `analysisDepth`, `chesscom`, `lichess`,
+  `parsePgnHeader`
+- Removed stale extraction comment blocks from Steps 12–15
+- Actual final line count: **507 lines** (400 not achievable; `loadGame`, `loadAndRestoreAnalysis`,
+  `buildAnalysisNodes`, navigation helpers, and route assembly genuinely belong here)
+- Build verified: 301.9 KB ✓
+- main.ts: 507 lines (down from 4241 original → 507, −88% total reduction)
 
 ---
 

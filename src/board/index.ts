@@ -1,0 +1,454 @@
+// Board sync, move handling, Chessground lifecycle, player strips, and resize.
+// Mirrors lichess-org/lila: ui/analyse/src/ground.ts, ui/lib/src/game/material.ts,
+// ui/analyse/src/view/clocks.ts, ui/analyse/src/view/components.ts
+
+import { Chessground as makeChessground } from '@lichess-org/chessground';
+import type { Api as CgApi } from '@lichess-org/chessground/api';
+import { key2pos, uciToMove } from '@lichess-org/chessground/util';
+import type { NormalMove, Role } from 'chessops';
+import { Chess, normalizeMove } from 'chessops/chess';
+import { chessgroundDests, scalachessCharPair } from 'chessops/compat';
+import { makeFen, parseFen } from 'chessops/fen';
+import { makeSan, makeSanAndPlay } from 'chessops/san';
+import { makeSquare, makeUci, parseSquare, parseUci } from 'chessops/util';
+import { h, type VNode } from 'snabbdom';
+import type { AnalyseCtrl } from '../analyse/ctrl';
+import { boardZoom, applyBoardZoom, saveBoardZoom } from './cosmetics';
+import { syncArrow } from '../engine/ctrl';
+import type { ImportedGame } from '../import/types';
+import { addNode } from '../tree/ops';
+import type { TreeNode } from '../tree/types';
+
+// --- Injected deps ---
+
+let _getCtrl:           () => AnalyseCtrl   = () => { throw new Error('ground not initialised'); };
+let _navigate:          (path: string) => void = () => {};
+let _getImportedGames:  () => ImportedGame[] = () => [];
+let _getSelectedGameId: () => string | null  = () => null;
+let _redraw:            () => void           = () => {};
+
+export function initGround(deps: {
+  getCtrl:          () => AnalyseCtrl;
+  navigate:         (path: string) => void;
+  getImportedGames: () => ImportedGame[];
+  getSelectedGameId:() => string | null;
+  redraw:           () => void;
+}): void {
+  _getCtrl           = deps.getCtrl;
+  _navigate          = deps.navigate;
+  _getImportedGames  = deps.getImportedGames;
+  _getSelectedGameId = deps.getSelectedGameId;
+  _redraw            = deps.redraw;
+}
+
+// --- Board state ---
+
+export let cgInstance:  CgApi | undefined = undefined;
+export let orientation: 'white' | 'black' = 'white';
+
+/** Pending pawn promotion — set when a pawn reaches the back rank, cleared after piece selection. */
+let pendingPromotion: { orig: string; dest: string; color: 'white' | 'black' } | null = null;
+
+export function setOrientation(v: 'white' | 'black'): void { orientation = v; }
+
+// --- Board sync ---
+// Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts showGround / makeCgOpts
+// Board state is updated directly via cgInstance.set() — never via Snabbdom re-render.
+// The cg-wrap element is keyed so Snabbdom always reuses it rather than recreating it.
+
+/**
+ * Compute legal destinations for the current position.
+ * Returns a Map<square, dest[]> suitable for Chessground movable.dests.
+ * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts makeCgOpts (dests computation)
+ */
+export function computeDests(fen: string): Map<string, string[]> {
+  const setup = parseFen(fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  // chessgroundDests handles the chess960→standard castling square translation:
+  // it adds g1/c1/g8/c8 destinations alongside the internal rook squares so
+  // Chessground can display castling as king-to-final-square.
+  // Adapted from lichess-org/lila: ui/lib/src/game/ground.ts
+  return chessgroundDests(pos) as Map<string, string[]>;
+}
+
+/**
+ * Convert a UCI move string to readable SAN given the position FEN.
+ * Falls back to the raw UCI string if conversion fails for any reason.
+ * Mirrors the SAN derivation used in lichess-org/lila: ui/lib/src/ceval/util.ts
+ */
+export function uciToSan(fen: string, uci: string): string {
+  try {
+    const move = parseUci(uci);
+    if (!move) return uci;
+    const setup = parseFen(fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    return makeSan(pos, move);
+  } catch {
+    return uci;
+  }
+}
+
+/**
+ * Handle a legal move played on the board.
+ * If the move already exists as a child: navigate to it.
+ * Otherwise: create a new variation node, add to tree, navigate.
+ * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts addNodeLocally + addNode
+ */
+export function onUserMove(orig: string, dest: string): void {
+  const ctrl = _getCtrl();
+  const setup = parseFen(ctrl.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const fromSq = parseSquare(orig);
+  const toSq   = parseSquare(dest);
+  if (fromSq === undefined || toSq === undefined) return;
+
+  // Normalize castling: Chessground sends king-to-final-square (e1g1),
+  // but tree UCIs are stored as king-to-rook-square (e1h1 — chessops internal).
+  // normalizeMove converts standard→chess960 so the lookup matches imported moves.
+  // Adapted from lichess-org/lila: ui/lib/src/game/ground.ts
+  const normMove = normalizeMove(pos, { from: fromSq, to: toSq });
+  const normUci  = makeUci(normMove);
+
+  // Check existing children first — follow the tree if this move is already there
+  const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
+  if (existingChild) {
+    _navigate(ctrl.path + existingChild.id);
+    return;
+  }
+
+  // Detect pawn promotion — show dialog instead of auto-queening
+  const piece = pos.board.get(fromSq);
+  if (piece?.role === 'pawn' && ((pos.turn === 'white' && toSq >= 56) || (pos.turn === 'black' && toSq < 8))) {
+    pendingPromotion = { orig, dest, color: pos.turn };
+    _redraw();
+    return;
+  }
+
+  completeMove(orig, dest);
+}
+
+/**
+ * Finalise a move (with optional promotion role) and add it to the tree.
+ * Adapted from lichess-org/lila: ui/analyse/src/ctrl.ts addNodeLocally
+ */
+export function completeMove(orig: string, dest: string, promotion?: Role): void {
+  const ctrl = _getCtrl();
+  const setup = parseFen(ctrl.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const fromSq = parseSquare(orig);
+  const toSq = parseSquare(dest);
+  if (fromSq === undefined || toSq === undefined) return;
+  // normalizeMove converts king-to-final-square (g1/c1) back to king-to-rook-square
+  // for chessops's internal castling representation (Chess960 style internally).
+  // Required because chessgroundDests exposes g1/c1 as destinations.
+  // Adapted from lichess-org/lila: ui/lib/src/game/ground.ts
+  const move: NormalMove = normalizeMove(pos, { from: fromSq, to: toSq, promotion }) as NormalMove;
+  const san = makeSanAndPlay(pos, move);
+  const newNode: TreeNode = {
+    id: scalachessCharPair(move),
+    ply: ctrl.node.ply + 1,
+    san,
+    uci: makeUci(move),
+    fen: makeFen(pos.toSetup()),
+    children: [],
+  };
+  addNode(ctrl.root, ctrl.path, newNode);
+  console.log('[variation] inserted', {
+    id: newNode.id, ply: newNode.ply, san: newNode.san, uci: newNode.uci,
+    parentPath: ctrl.path, newPath: ctrl.path + newNode.id,
+    parentChildCount: (ctrl.node.children.length),
+  });
+  _navigate(ctrl.path + newNode.id);
+}
+
+/**
+ * Called when the user selects a piece in the promotion dialog.
+ * Adapted from lichess-org/lila: ui/lib/src/game/promotion.ts PromotionCtrl.finish
+ */
+export function completePromotion(role: Role): void {
+  if (!pendingPromotion) return;
+  const { orig, dest } = pendingPromotion;
+  pendingPromotion = null;
+  completeMove(orig, dest, role);
+}
+
+const PROMOTION_ROLES: Role[] = ['queen', 'knight', 'rook', 'bishop'];
+
+/**
+ * Renders the promotion piece-choice dialog overlaid on the board.
+ * Positions itself at the destination column, stacking from the back rank.
+ * Adapted from lichess-org/lila: ui/lib/src/game/promotion.ts renderPromotion
+ */
+export function renderPromotionDialog(): VNode | null {
+  if (!pendingPromotion) return null;
+  const { dest, color } = pendingPromotion;
+  const [file] = key2pos(dest as Key);
+  // Column left% — same formula as Lichess
+  const left = orientation === 'white' ? file * 12.5 : (7 - file) * 12.5;
+  const vertical = color === orientation ? 'top' : 'bottom';
+
+  // Wrap in .cg-wrap so Chessground's piece background-image CSS rules cascade in
+  return h('div.cg-wrap.promotion-wrap', {
+    on: { click: () => { pendingPromotion = null; syncBoard(); _redraw(); } },
+  }, [
+    h('div#promotion-choice.' + vertical, {}, PROMOTION_ROLES.map((role, i) => {
+      const top = (color === orientation ? i : 7 - i) * 12.5;
+      return h('square', {
+        attrs: { style: `top:${top}%;left:${left}%` },
+        on: { click: (e: Event) => { e.stopPropagation(); completePromotion(role); } },
+      }, [h(`piece.${role}.${color}`)]);
+    })),
+  ]);
+}
+
+export function syncBoard(): void {
+  if (!cgInstance) return;
+  const ctrl = _getCtrl();
+  const node = ctrl.node;
+  const dests = computeDests(node.fen);
+  cgInstance.set({
+    fen: node.fen,
+    lastMove: uciToMove(node.uci),
+    turnColor: node.ply % 2 === 0 ? 'white' : 'black',
+    movable: {
+      color: node.ply % 2 === 0 ? 'white' : 'black',
+      dests,
+    },
+  });
+}
+
+// Adapted from lichess-org/lila: ui/analyse/src/ctrl.ts (flip)
+export function flip(): void {
+  orientation = orientation === 'white' ? 'black' : 'white';
+  cgInstance?.set({ orientation });
+  _redraw();
+}
+
+// --- Material difference ---
+// Adapted from lichess-org/lila: ui/lib/src/game/material.ts
+
+type MaterialDiffSide = Record<Role, number>;
+interface MaterialDiff { white: MaterialDiffSide; black: MaterialDiffSide; }
+
+const ROLE_ORDER: Role[] = ['queen', 'rook', 'bishop', 'knight', 'pawn'];
+const ROLE_POINTS: Record<string, number> = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
+
+function getMaterialDiff(fen: string): MaterialDiff {
+  const diff: MaterialDiff = {
+    white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+    black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+  };
+  const fenBoard = fen.split(' ')[0];
+  const charToRole: Record<string, Role> = { p:'pawn', n:'knight', b:'bishop', r:'rook', q:'queen', k:'king' };
+  for (const ch of fenBoard) {
+    const lower = ch.toLowerCase();
+    const role = charToRole[lower];
+    if (!role) continue;
+    const color: 'white' | 'black' = ch === lower ? 'black' : 'white';
+    const opp = color === 'white' ? 'black' : 'white';
+    if (diff[opp][role] > 0) diff[opp][role]--;
+    else diff[color][role]++;
+  }
+  return diff;
+}
+
+function getMaterialScore(diff: MaterialDiff): number {
+  return ROLE_ORDER.reduce((sum, role) => sum + (diff.white[role] - diff.black[role]) * ROLE_POINTS[role], 0);
+}
+
+/**
+ * Renders captured pieces for one side as overlapping mono piece icons.
+ * Adapted from lichess-org/lila: ui/lib/src/game/view/material.ts renderMaterialDiff
+ * Uses mono SVG piece images (public/piece/mono/) — no .cg-wrap scope needed.
+ */
+function renderMaterialPieces(diff: MaterialDiff, color: 'white' | 'black', score: number): VNode {
+  const groups: VNode[] = [];
+  for (const role of ROLE_ORDER) {
+    const count = diff[color][role];
+    if (count <= 0) continue;
+    const pieces: VNode[] = [];
+    for (let i = 0; i < count; i++) pieces.push(h('mpiece.' + role));
+    groups.push(h('div', pieces));
+  }
+  return h('div.material', [
+    ...groups,
+    score > 0 ? h('score', '+' + score) : null,
+  ]);
+}
+
+/**
+ * Format centiseconds as M:SS or H:MM:SS, matching Lichess clockContent.
+ * Adapted from lichess-org/lila: ui/analyse/src/view/clocks.ts
+ */
+function formatClock(centis: number): string {
+  const totalSecs = Math.floor(centis / 100);
+  const hh = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  const pad = (n: number) => n < 10 ? '0' + n : String(n);
+  return hh > 0 ? `${hh}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/**
+ * Walk the nodeList to find the most recent clock for each color.
+ * node.clock stores the time remaining AFTER the move at that node.
+ * White moves are at odd plies, black moves at even plies (ply 1 = white's first).
+ * Adapted from lichess-org/lila: ui/analyse/src/view/clocks.ts renderClocks
+ */
+function getClocksAtPath(): { white: number | undefined; black: number | undefined } {
+  const nodes = _getCtrl().nodeList;
+  let white: number | undefined;
+  let black: number | undefined;
+  // Walk from most recent backwards so we get the closest available clock
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (n.clock === undefined) continue;
+    // ply 1 = white moved, ply 2 = black moved, etc.
+    if (n.ply % 2 === 1 && white === undefined) white = n.clock;
+    if (n.ply % 2 === 0 && n.ply > 0 && black === undefined) black = n.clock;
+    if (white !== undefined && black !== undefined) break;
+  }
+  return { white, black };
+}
+
+// Adapted from lichess-org/lila: ui/analyse/src/view/components.ts renderPlayerStrips
+// Layout: [result] [color-dot] [name] [material] ... [clock]
+// Result badge on left, clock on right — matching Lichess analyse__player_strip.
+export function renderPlayerStrips(): [VNode, VNode] {
+  const ctrl = _getCtrl();
+  const selectedGameId = _getSelectedGameId();
+  const importedGames  = _getImportedGames();
+  const game = importedGames.find(g => g.id === selectedGameId);
+  const whiteName   = game?.white ?? 'White';
+  const blackName   = game?.black ?? 'Black';
+  const whiteRating = game?.whiteRating;
+  const blackRating = game?.blackRating;
+  const result      = game?.result ?? '*';
+
+  const diff   = getMaterialDiff(ctrl.node.fen);
+  const score  = getMaterialScore(diff);
+  const clocks = getClocksAtPath();
+
+  const whiteResult = result === '1-0' ? '1' : result === '0-1' ? '0' : result === '1/2-1/2' ? '½' : null;
+  const blackResult = result === '0-1' ? '1' : result === '1-0' ? '0' : result === '1/2-1/2' ? '½' : null;
+
+  const strip = (color: 'white' | 'black'): VNode => {
+    const name     = color === 'white' ? whiteName : blackName;
+    const rating   = color === 'white' ? whiteRating : blackRating;
+    const badge    = color === 'white' ? whiteResult : blackResult;
+    const winner   = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
+    const matScore = color === 'white' ? score : -score;
+    const centis   = color === 'white' ? clocks.white : clocks.black;
+    return h('div.analyse__player_strip', [
+      badge ? h('span.player-strip__result', { class: { 'player-strip__result--winner': winner } }, badge) : null,
+      h('span.player-strip__color-icon', { class: { 'player-strip__color-icon--white': color === 'white', 'player-strip__color-icon--black': color === 'black' } }),
+      h('span.player-strip__name', rating !== undefined ? `${name} (${rating})` : name),
+      renderMaterialPieces(diff, color, matScore > 0 ? matScore : 0),
+      centis !== undefined ? h('div.analyse__clock', formatClock(centis)) : null,
+    ]);
+  };
+
+  const topColor    = orientation === 'white' ? 'black' : 'white';
+  const bottomColor = orientation === 'white' ? 'white' : 'black';
+  return [strip(topColor), strip(bottomColor)];
+}
+
+// --- Board resize handle ---
+// Adapted from lichess-org/lila: ui/lib/src/chessgroundResize.ts
+// Appended directly to the cg-wrap container so it sits inside the board bounds.
+function bindBoardResizeHandle(container: HTMLElement): void {
+  const el = document.createElement('cg-resize');
+  container.appendChild(el);
+
+  type MouchEvent = Event & Partial<MouseEvent & TouchEvent>;
+  const eventPos = (e: MouchEvent): [number, number] | undefined => {
+    if (e.clientX !== undefined) return [e.clientX, e.clientY!];
+    if (e.targetTouches?.[0]) return [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
+    return undefined;
+  };
+
+  const startResize = (start: MouchEvent) => {
+    start.preventDefault();
+    const startPos = eventPos(start)!;
+    const initialZoom = boardZoom;
+    let zoom = initialZoom;
+
+    // Debounced localStorage save — mirrors Lichess debounced XHR post.
+    let saveTimer: ReturnType<typeof setTimeout> | undefined;
+    const saveZoom = () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => saveBoardZoom(zoom), 700);
+    };
+
+    const mousemoveEvent = (start as TouchEvent).targetTouches ? 'touchmove' : 'mousemove';
+    const mouseupEvent   = (start as TouchEvent).targetTouches ? 'touchend'  : 'mouseup';
+
+    const resize = (move: MouchEvent) => {
+      const pos = eventPos(move)!;
+      const delta = pos[0] - startPos[0] + pos[1] - startPos[1];
+      zoom = Math.round(Math.min(100, Math.max(0, initialZoom + delta / 10)));
+      applyBoardZoom(zoom);
+      saveZoom();
+    };
+
+    document.body.classList.add('resizing');
+    document.addEventListener(mousemoveEvent, resize as EventListener);
+    document.addEventListener(mouseupEvent, () => {
+      document.removeEventListener(mousemoveEvent, resize as EventListener);
+      document.body.classList.remove('resizing');
+    }, { once: true });
+  };
+
+  el.addEventListener('mousedown',  startResize as EventListener, { passive: false });
+  el.addEventListener('touchstart', startResize as EventListener, { passive: false });
+}
+
+// Adapted from lichess-org/lila: ui/analyse/src/ground.ts render + makeConfig
+export function renderBoard(): VNode {
+  return h('div.cg-wrap', {
+    key: 'board',
+    hook: {
+      insert: vnode => {
+        const ctrl = _getCtrl();
+        const node = ctrl.node;
+        const dests = computeDests(node.fen);
+        cgInstance = makeChessground(vnode.elm as HTMLElement, {
+          orientation,
+          viewOnly: false,
+          drawable: {
+            enabled: true,
+            brushes: {
+              // Boost paleBlue opacity from default 0.4 → 0.65 for a bolder engine line
+              paleBlue: { key: 'pb', color: '#003088', opacity: 0.65, lineWidth: 15 },
+            },
+          },
+          fen: node.fen,
+          lastMove: uciToMove(node.uci),
+          turnColor: node.ply % 2 === 0 ? 'white' : 'black',
+          movable: {
+            free: false,
+            color: node.ply % 2 === 0 ? 'white' : 'black',
+            dests,
+            showDests: true,
+          },
+          events: {
+            move: onUserMove,
+          },
+        });
+        // Attach resize handle after Chessground is initialized.
+        // Adapted from lichess-org/lila: ui/lib/src/chessgroundResize.ts resizeHandle()
+        bindBoardResizeHandle(vnode.elm as HTMLElement);
+      },
+      destroy: () => {
+        cgInstance?.destroy();
+        cgInstance = undefined;
+      },
+    },
+  });
+}
+
+// Re-sync board and arrow after a game load or IDB restore.
+export function syncBoardAndArrow(): void {
+  syncBoard();
+  syncArrow();
+}

@@ -95,6 +95,26 @@ Claude must NOT:
 - Do not invent hidden dependencies between modules.
 - Prefer explicit parameters and return values over reaching into unrelated module state.
 
+### When building new features
+
+Before writing any code for a new tool or UI feature, find the equivalent in Lichess
+and mirror its module structure. Lichess consistently separates each tool into:
+
+- `ctrl.ts` — controller: state, logic, event handling, side effects
+- `view.ts` — rendering: pure Snabbdom `h()` functions, no state mutation
+- `config.ts` / `types.ts` — shared types and constants (if substantial)
+
+**Examples:**
+
+| Feature to build | Lichess reference | Create in this project |
+|---|---|---|
+| Puzzle tool | `ui/puzzle/src/ctrl.ts` + `view.ts` | `src/puzzles/ctrl.ts` + `view.ts` |
+| Opening trainer | `ui/learn/src/` | `src/openings/ctrl.ts` + `view.ts` |
+| Stats dashboard | `ui/dasher/src/` | `src/stats/ctrl.ts` + `view.ts` |
+
+New modules always go in the appropriate subsystem directory. Never add new feature
+code to `main.ts` — it is bootstrap and orchestration only.
+
 
 ## Terminology Clarification Rule
 
@@ -683,8 +703,17 @@ If Lichess code is tightly coupled:
 ## File Discipline Rule
 
 Claude must:
-- only modify listed files
-- not create new files unless instructed 
+- only modify files relevant to the current task
+- not create new files unless one of the following applies:
+  - the task explicitly requires a new module
+  - the code clearly belongs in a new subsystem file (following Lichess module structure)
+  - a new `ctrl.ts` or `view.ts` is needed for a new tool being built
+
+Claude must NOT create new files to:
+- split code that belongs together
+- add abstraction layers not present in Lichess
+- work around the 1–3 file limit by creating throwaway helpers
+
 ---
 
 ## Performance Rules

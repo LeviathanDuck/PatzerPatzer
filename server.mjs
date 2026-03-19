@@ -51,8 +51,12 @@ http.createServer((req, res) => {
   }
 
   if (!fs.existsSync(filePath)) {
-    res.writeHead(404);
-    res.end('Not found: ' + url);
+    // SPA fallback — serve index.html for unknown paths so that
+    // a hard refresh on any hash route still loads the app.
+    const index = path.join(PUBLIC, 'index.html');
+    res.setHeader('Content-Type', MIME['.html']);
+    res.writeHead(200);
+    fs.createReadStream(index).pipe(res);
     return;
   }
 
