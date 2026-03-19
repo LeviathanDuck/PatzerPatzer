@@ -141,12 +141,20 @@ body {
 // under: below board (graph, review, import); controls: below tools (nav buttons)
 .analyse {
   display: grid;
-  // Board column width: available space × board-scale, capped at 600px.
-  // Available space = 100vw - padding(32px) - gauge(34px) - tools-min(240px).
-  // ---board-scale driven by ---zoom (0–100) via drag handle or default 85.
-  // Adapted from lichess-org/lila: ui/analyse/css/_layout.scss ---col2-uniboard-width
+  // Board column width: min(max-width-path, max-height-path) — mirrors Lichess's
+  // $col2-uniboard-width = min($col2-uniboard-max-width, $col2-uniboard-max-height) * board-scale.
+  // Width path:  available horizontal space × board-scale
+  //   = (100vw - padding(32px) - gauge(34px) - tools-min(240px)) × board-scale
+  // Height path: available vertical space × board-scale
+  //   = (100vh - header(~50px) - grid-top-padding(24px) - margin(~6px)) × board-scale
+  //   ≈ (100vh - 5rem) × board-scale
+  // No hard pixel cap — board grows with viewport like Lichess.
+  // Adapted from lichess-org/lila: ui/lib/css/abstract/_uniboard.scss $col2-uniboard-width
   grid-template-columns:
-    min(calc((100vw - 32px - 34px - 240px) * var(---board-scale)), 600px)
+    min(
+      calc((100vw - 32px - 34px - 240px) * var(---board-scale)),
+      calc((100vh - 5rem) * var(---board-scale))
+    )
     34px
     minmax(240px, 380px);
   grid-template-areas:
