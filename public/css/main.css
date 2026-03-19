@@ -767,17 +767,87 @@ header nav {
   margin-inline: -1px 1px;
 }
 
-.tview2-inline {
-  padding: 7px 3px 7px 7px;
+.tview2-column {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
 }
-.tview2-inline move {
-  border-radius: 3px;
-  margin-inline-end: 2px;
+.tview2-column > index {
+  flex: 0 0 13%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-inline-end: 6px;
+  border-inline-end: 1px solid #222;
+  background: #141414;
+  color: #666;
+  font-size: 0.82em;
+  line-height: 1.75em;
+  user-select: none;
+}
+.tview2-column > move {
+  flex: 0 0 43.5%;
+  box-sizing: border-box;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.3em 0 0.5em;
+  font-size: 1.185em;
+  line-height: 1.75em;
+  border-radius: 0;
+  margin-inline-end: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tview2-column > move.empty {
+  pointer-events: none;
+  color: #444;
+}
+.tview2-column > interrupt {
+  flex: 0 0 100%;
+  background: #141414;
+  border-top: 1px solid #222;
+  border-bottom: 1px solid #222;
+}
+.tview2-column > interrupt lines {
+  display: block;
+  padding: 3px 4px 3px 8px;
+}
+.tview2-column > interrupt line {
+  display: block;
+  padding-inline-start: 7px;
+  position: relative;
+}
+.tview2-column > interrupt line > branch {
+  border-inline-start: 2px solid rgba(255, 255, 255, 0.12);
+  margin-inline-start: -9px;
+  position: absolute;
+  width: 8px;
+  height: 100%;
+}
+.tview2-column > interrupt line > branch::after {
+  margin-top: 0.8em;
+  content: " ";
+  border-top: 2px solid rgba(255, 255, 255, 0.12);
+  position: absolute;
+  width: 7px;
+}
+.tview2-column > interrupt move {
   font-size: 13px;
-  font-weight: bold;
 }
-.tview2-inline move index {
-  padding-inline-end: 0.2em;
+
+.btn-review {
+  min-width: 90px;
+  text-align: center;
+}
+.btn-review--complete {
+  background: #2a6644;
+  color: #fff;
+  border-color: #2a6644;
+}
+.btn-review--complete:hover {
+  background: #338855;
 }
 
 .pgn-import {

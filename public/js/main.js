@@ -6616,7 +6616,7 @@ function renderMoveSpan(node, path, parent, showIndex) {
     on: { click: () => navigate(path) }
   }, inner);
 }
-function renderNodeSiblings(nodes, parentPath, parent, needsMoveNum) {
+function renderInlineNodes(nodes, parentPath, parent, needsMoveNum) {
   if (nodes.length === 0) return [];
   const [main, ...variations] = nodes;
   const mainPath = parentPath + main.id;
@@ -6624,17 +6624,38 @@ function renderNodeSiblings(nodes, parentPath, parent, needsMoveNum) {
   const showIndex = needsMoveNum || main.ply % 2 === 1;
   out.push(renderMoveSpan(main, mainPath, parent, showIndex));
   for (const variant of variations) {
-    const varContent = renderNodeSiblings([variant], parentPath, parent, true);
-    out.push(h("inline", varContent));
+    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true)));
   }
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
   const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
-  out.push(...renderNodeSiblings(main.children, mainPath, main, contNeedsNum));
+  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum));
   return out;
 }
+function renderColumnNodes(nodes, parentPath, parent, out) {
+  if (nodes.length === 0) return;
+  const [main, ...variations] = nodes;
+  const mainPath = parentPath + main.id;
+  const isWhite = main.ply % 2 === 1;
+  if (isWhite) out.push(h("index", String(Math.ceil(main.ply / 2))));
+  out.push(renderMoveSpan(main, mainPath, parent, false));
+  if (variations.length > 0) {
+    if (isWhite) out.push(h("move.empty", "\u2026"));
+    const varLines = variations.map(
+      (v) => h("line", renderInlineNodes([v], parentPath, parent, true))
+    );
+    out.push(h("interrupt", [h("lines", varLines)]));
+    if (isWhite && main.children.length > 0) {
+      out.push(h("index", String(Math.ceil(main.ply / 2))));
+      out.push(h("move.empty", "\u2026"));
+    }
+  }
+  renderColumnNodes(main.children, mainPath, main, out);
+}
 function renderMoveList() {
-  return h("div.tview2.tview2-inline", renderNodeSiblings(ctrl.root.children, "", ctrl.root, true));
+  const nodes = [];
+  renderColumnNodes(ctrl.root.children, "", ctrl.root, nodes);
+  return h("div.tview2.tview2-column", nodes);
 }
 function evalPct() {
   if (currentEval.mate !== void 0) return currentEval.mate > 0 ? 100 : 0;
@@ -7202,55 +7223,53 @@ function downloadPgn(annotated) {
   redraw();
 }
 function renderAnalysisControls() {
-  const canRun = !batchAnalyzing && ctrl.mainline.length > 1;
   const hasGame = ctrl.mainline.length > 1;
-  const statusText = analysisRunning ? `Reviewing\u2026 ${batchDone} / ${batchQueue.length}` : analysisComplete ? `Review complete (${batchDone} positions)` : "Idle";
+  let reviewLabel;
+  if (batchAnalyzing) {
+    const pct = batchQueue.length > 0 ? Math.round(batchDone / batchQueue.length * 100) : 0;
+    reviewLabel = `${pct}%`;
+  } else if (analysisComplete) {
+    reviewLabel = "Re-analyze";
+  } else {
+    reviewLabel = "Review";
+  }
+  const reviewClick = () => {
+    if (batchAnalyzing) {
+      awaitingStopBestmove = true;
+      protocol.stop();
+      batchAnalyzing = false;
+      batchState = "idle";
+      analysisRunning = false;
+      void saveAnalysisToIdb("partial");
+      redraw();
+      return;
+    }
+    if (analysisComplete) {
+      if (selectedGameId) {
+        void clearAnalysisFromIdb(selectedGameId);
+        analyzedGameIds.delete(selectedGameId);
+        missedTacticGameIds.delete(selectedGameId);
+      }
+      evalCache.clear();
+      currentEval = {};
+      puzzleCandidates = [];
+      batchQueue = [];
+      batchDone = 0;
+      batchAnalyzing = false;
+      batchState = "idle";
+      analysisRunning = false;
+      analysisComplete = false;
+      syncArrow();
+    }
+    startBatchWhenReady();
+  };
   return h("div.pgn-import", [
     h("div.pgn-import__row", [
-      h("span", { attrs: { style: "font-size:0.8rem;color:#888" } }, statusText)
-    ]),
-    h("div.pgn-import__row", [
-      h("button", {
-        attrs: { disabled: !canRun },
-        on: { click: startBatchWhenReady }
-      }, "Review"),
-      h("button", {
-        attrs: { disabled: !hasGame || batchAnalyzing },
-        on: {
-          click: () => {
-            if (selectedGameId) {
-              void clearAnalysisFromIdb(selectedGameId);
-              analyzedGameIds.delete(selectedGameId);
-              missedTacticGameIds.delete(selectedGameId);
-            }
-            evalCache.clear();
-            currentEval = {};
-            puzzleCandidates = [];
-            batchQueue = [];
-            batchDone = 0;
-            batchAnalyzing = false;
-            batchState = "idle";
-            analysisRunning = false;
-            analysisComplete = false;
-            syncArrow();
-            startBatchWhenReady();
-          }
-        }
-      }, "Re-review"),
-      h("button", {
-        attrs: { disabled: batchAnalyzing },
-        on: {
-          click: () => {
-            evalCache.clear();
-            currentEval = {};
-            puzzleCandidates = [];
-            analysisRunning = false;
-            analysisComplete = false;
-            syncArrow();
-            redraw();
-          }
-        }
-      }, "Clear Eval Cache"),
+      h("button.btn-review", {
+        class: { "btn-review--complete": analysisComplete },
+        attrs: { disabled: !hasGame },
+        on: { click: reviewClick }
+      }, reviewLabel),
       h("button", {
         attrs: { disabled: ctrl.mainline.length <= 1 },
         on: {

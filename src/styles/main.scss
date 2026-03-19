@@ -499,20 +499,109 @@ header {
   }
 }
 
-// tview2-inline — additional sizing/weight for the inline (non-column) view.
-// Mirrors lichess-org/lila: .tview2-inline { padding; move { font-size: 13px; font-weight: bold; } }
-.tview2-inline {
-  padding: 7px 3px 7px 7px;
+// Column view — index(13%) | white move(43.5%) | black move(43.5%) per row.
+// Adapted from lichess-org/lila: ui/lib/css/tree/_tree.scss .tview2-column
+.tview2-column {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
 
-  move {
-    border-radius: 3px;
-    margin-inline-end: 2px;
-    font-size: 13px;
-    font-weight: bold;
+  // Move number column — left 13% of each row.
+  // box-sizing: border-box ensures padding is included within the 13% flex-basis.
+  // Without it, content-box adds padding on top, blowing the 13%+43.5%+43.5%=100% budget.
+  > index {
+    flex: 0 0 13%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-inline-end: 6px;
+    border-inline-end: 1px solid #222;
+    background: #141414;
+    color: #666;
+    font-size: 0.82em;
+    line-height: 1.75em;
+    user-select: none;
+  }
 
-    index {
-      padding-inline-end: 0.2em;
+  // Each half-move — 43.5% width.
+  // box-sizing: border-box — same reason as index: padding must be inside the percentage.
+  // white-space: nowrap + overflow: hidden — Lichess %nowrap-hidden, clips SAN within cell.
+  // font-size: 1.185em — matches Lichess .tview2-column > move font-size.
+  // Mirrors lichess-org/lila: .tview2-column > move { flex: 0 0 43.5%; }
+  > move {
+    flex: 0 0 43.5%;
+    box-sizing: border-box;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 0.3em 0 0.5em;
+    font-size: 1.185em;
+    line-height: 1.75em;
+    border-radius: 0;
+    margin-inline-end: 0;
+    white-space: nowrap;
+    overflow: hidden;
+
+    &.empty {
+      pointer-events: none;
+      color: #444;
     }
+  }
+
+  // Full-width variation block.
+  // Mirrors lichess-org/lila: .tview2-column > interrupt { flex: 0 0 100%; }
+  > interrupt {
+    flex: 0 0 100%;
+    background: #141414;
+    border-top: 1px solid #222;
+    border-bottom: 1px solid #222;
+
+    lines {
+      display: block;
+      padding: 3px 4px 3px 8px;
+    }
+
+    line {
+      display: block;
+      padding-inline-start: 7px;
+      position: relative;
+
+      // Branch connector bar on the left.
+      > branch {
+        border-inline-start: 2px solid rgba(255, 255, 255, 0.12);
+        margin-inline-start: -9px;
+        position: absolute;
+        width: 8px;
+        height: 100%;
+
+        &::after {
+          margin-top: 0.8em;
+          content: ' ';
+          border-top: 2px solid rgba(255, 255, 255, 0.12);
+          position: absolute;
+          width: 7px;
+        }
+      }
+    }
+
+    move {
+      font-size: 13px;
+    }
+  }
+}
+
+// Review button — fixed width so label changes (Review / 47% / Re-analyze) don't shift layout.
+.btn-review {
+  min-width: 90px;
+  text-align: center;
+
+  &--complete {
+    background: #2a6644;
+    color: #fff;
+    border-color: #2a6644;
+
+    &:hover { background: #338855; }
   }
 }
 
