@@ -434,6 +434,8 @@ let batchState: BatchState = 'idle';
 let analysisDepth    = 22; // Lichess cloud analysis depth; matches [%eval] annotation quality
 let analysisRunning  = false;
 let showExportMenu   = false; // inline annotated/plain prompt for PGN export
+let showGlobalMenu      = false; // global settings menu open/closed
+let showBoardThemeMenu  = false; // board theme submenu open/closed
 let pendingBatchOnReady = false; // queued batch start — fires on next readyok
 let analysisComplete = false;
 const analyzedGameIds    = new Set<string>(); // games that have completed a full batch analysis
@@ -1187,6 +1189,74 @@ function renderNav(route: Route): VNode {
   return h('nav', navLinks.map(({ label, href, section }) =>
     h('a', { attrs: { href }, class: { active: active === section } }, label)
   ));
+}
+
+/**
+ * Global settings menu in the header — separate from engine / analysis controls.
+ * Contains app-wide actions: cache management, PGN export, board theme, etc.
+ * Adapted from Lichess header menu patterns.
+ */
+function closeGlobalMenu(): void {
+  showGlobalMenu     = false;
+  showBoardThemeMenu = false;
+  redraw();
+}
+
+function renderGlobalMenu(): VNode {
+  return h('div.global-menu', [
+    // Trigger button
+    h('button.global-menu__trigger', {
+      class: { active: showGlobalMenu },
+      attrs: { title: 'Settings' },
+      on: { click: () => {
+        showGlobalMenu     = !showGlobalMenu;
+        showBoardThemeMenu = false;
+        redraw();
+      }},
+    }, '⚙'),
+
+    // Backdrop — transparent overlay that closes menu on outside click
+    showGlobalMenu ? h('div.global-menu__backdrop', {
+      on: { click: closeGlobalMenu },
+    }) : null,
+
+    // Dropdown panel
+    showGlobalMenu ? h('div.global-menu__dropdown', [
+
+      h('button.global-menu__item', {
+        on: { click: () => { console.log('TODO: clear local cache'); } },
+      }, 'Clear Local Cache'),
+
+      h('button.global-menu__item', {
+        on: { click: () => { console.log('TODO: game review settings'); } },
+      }, 'Game Review'),
+
+      h('button.global-menu__item', {
+        on: { click: () => { closeGlobalMenu(); downloadPgn(false); } },
+      }, 'Export PGN from Current Board'),
+
+      // Board Theme — opens inline submenu
+      h('div.global-menu__item.global-menu__item--has-sub', {
+        on: { click: () => { showBoardThemeMenu = !showBoardThemeMenu; redraw(); } },
+      }, [
+        h('span', 'Board Theme'),
+        h('span.global-menu__arrow', showBoardThemeMenu ? '▾' : '›'),
+      ]),
+
+      showBoardThemeMenu ? h('div.global-menu__submenu', [
+        h('button.global-menu__item', {
+          on: { click: () => { console.log('TODO: theme Brown'); } },
+        }, 'Brown'),
+        h('button.global-menu__item', {
+          on: { click: () => { console.log('TODO: theme Blue'); } },
+        }, 'Blue'),
+        h('button.global-menu__item', {
+          on: { click: () => { console.log('TODO: theme Green'); } },
+        }, 'Green'),
+      ]) : null,
+
+    ]) : null,
+  ]);
 }
 
 // --- Board ---
@@ -2795,6 +2865,7 @@ function view(route: Route): VNode {
       h('span', 'Patzer Pro'),
       renderNav(route),
       h('button.dev-reset', { on: { click: () => void resetAllData() } }, 'Reset Data'),
+      renderGlobalMenu(),
     ]),
     h('main', [routeContent(route)]),
     renderPvBoard(),
