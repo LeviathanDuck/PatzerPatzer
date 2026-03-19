@@ -7332,25 +7332,30 @@ function renderPvMoves(fen, moves) {
   try {
     const setup = parseFen(fen).unwrap();
     const pos = Chess.fromSetup(setup).unwrap();
-    const vnodes = [];
+    const first2 = [];
+    const rest = [];
+    let firstMoveDone = false;
     for (let i = 0; i < Math.min(moves.length, MAX_PV_MOVES); i++) {
-      if (pos.turn === "white") {
-        vnodes.push(h("span.pv-num", `${pos.fullmoves}.`));
-      } else if (i === 0) {
-        vnodes.push(h("span.pv-num", `${pos.fullmoves}\u2026`));
-      }
+      const numNode = pos.turn === "white" ? h("span.pv-num", `${pos.fullmoves}.`) : i === 0 ? h("span.pv-num", `${pos.fullmoves}\u2026`) : null;
       const uci = moves[i];
       const move3 = parseUci(uci);
       if (!move3) break;
       const san = makeSanAndPlay(pos, move3);
       if (san === "--") break;
       const boardFen = makeFen(pos.toSetup());
-      const cls = i === 0 ? "span.pv-san.pv-san--first" : "span.pv-san";
-      vnodes.push(h(cls, { key: `${i}|${uci}`, attrs: { "data-board": `${boardFen}|${uci}` } }, san));
+      const sanNode = h("span.pv-san", { key: `${i}|${uci}`, attrs: { "data-board": `${boardFen}|${uci}` } }, san);
+      if (!firstMoveDone) {
+        if (numNode) first2.push(numNode);
+        first2.push(sanNode);
+        firstMoveDone = true;
+      } else {
+        if (numNode) rest.push(numNode);
+        rest.push(sanNode);
+      }
     }
-    return vnodes;
+    return { first: first2, rest };
   } catch {
-    return [];
+    return { first: [], rest: [] };
   }
 }
 function renderPvBox() {
@@ -7367,12 +7372,13 @@ function renderPvBox() {
     }
     const score = formatScore(ev);
     const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
-    const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
+    const { first: first2, rest } = ev.moves ? renderPvMoves(fen, ev.moves) : { first: [], rest: [] };
     const children = [];
     children.push(h("strong", {
       class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
     }, score));
-    children.push(...pvNodes);
+    if (first2.length > 0) children.push(h("span.pv-first", first2));
+    if (rest.length > 0) children.push(h("span.pv-cont", rest));
     return h("div.pv.pv--nowrap", children);
   }
   const slots = [...Array(multiPv).keys()].map((i) => pvRowForSlot(i));

@@ -1458,14 +1458,29 @@ body[data-board='newspaper'] cg-board::before {
   border-radius: 2px;
 
   &:hover { color: #e8e8e8; background: #2a2a2a; padding: 0 1px; }
+}
 
-  // First move in each PV line — visually distinct for quick scanning across rows.
-  &--first {
+// First move wrapper — eval | [first move] | continuation
+// Visually primary: bold, bright, clearly separated from the rest.
+.pv-first {
+  margin-inline-start: 4px;
+  margin-inline-end: 8px;
+
+  .pv-num { color: #888; }
+  .pv-san {
     color: #e8e8e8;
     font-weight: 700;
-    font-size: 0.9rem;
-    margin-inline-end: 6px;
+    font-size: 0.92rem;
   }
+}
+
+// Continuation wrapper — visually secondary, muted.
+.pv-cont {
+  color: #666;
+
+  .pv-num { color: #444; }
+  .pv-san { color: #666; }
+  .pv-san:hover { color: #e8e8e8; }
 }
 
 // Floating PV board preview — fixed overlay near mouse cursor when hovering a PV move.

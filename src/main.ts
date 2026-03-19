@@ -2534,18 +2534,18 @@ function renderCeval(): VNode {
  * Render a PV move sequence as SAN spans with move-number prefixes.
  * Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvMoves
  */
-function renderPvMoves(fen: string, moves: string[]): VNode[] {
+function renderPvMoves(fen: string, moves: string[]): { first: VNode[]; rest: VNode[] } {
   const MAX_PV_MOVES = 12;
   try {
     const setup = parseFen(fen).unwrap();
     const pos = Chess.fromSetup(setup).unwrap();
-    const vnodes: VNode[] = [];
+    const first: VNode[] = [];
+    const rest: VNode[] = [];
+    let firstMoveDone = false;
     for (let i = 0; i < Math.min(moves.length, MAX_PV_MOVES); i++) {
-      if (pos.turn === 'white') {
-        vnodes.push(h('span.pv-num', `${pos.fullmoves}.`));
-      } else if (i === 0) {
-        vnodes.push(h('span.pv-num', `${pos.fullmoves}…`));
-      }
+      const numNode = (pos.turn === 'white')
+        ? h('span.pv-num', `${pos.fullmoves}.`)
+        : (i === 0 ? h('span.pv-num', `${pos.fullmoves}…`) : null);
       const uci = moves[i]!;
       const move = parseUci(uci);
       if (!move) break;
@@ -2554,12 +2554,19 @@ function renderPvMoves(fen: string, moves: string[]): VNode[] {
       // Store FEN + UCI on each move so hover can preview the resulting position.
       // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvMoves
       const boardFen = makeFen(pos.toSetup());
-      const cls = i === 0 ? 'span.pv-san.pv-san--first' : 'span.pv-san';
-      vnodes.push(h(cls, { key: `${i}|${uci}`, attrs: { 'data-board': `${boardFen}|${uci}` } }, san));
+      const sanNode = h('span.pv-san', { key: `${i}|${uci}`, attrs: { 'data-board': `${boardFen}|${uci}` } }, san);
+      if (!firstMoveDone) {
+        if (numNode) first.push(numNode);
+        first.push(sanNode);
+        firstMoveDone = true;
+      } else {
+        if (numNode) rest.push(numNode);
+        rest.push(sanNode);
+      }
     }
-    return vnodes;
+    return { first, rest };
   } catch {
-    return [];
+    return { first: [], rest: [] };
   }
 }
 
@@ -2599,13 +2606,14 @@ function renderPvBox(): VNode | null {
 
     const score = formatScore(ev);
     const isPositive = ev.cp !== undefined ? ev.cp > 0 : ev.mate !== undefined ? ev.mate > 0 : null;
-    const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
+    const { first, rest } = ev.moves ? renderPvMoves(fen, ev.moves) : { first: [], rest: [] };
 
-    const children: (VNode | string)[] = [];
+    const children: (VNode | null)[] = [];
     children.push(h('strong', {
       class: { 'pv__score--white': isPositive === true, 'pv__score--black': isPositive === false },
     }, score));
-    children.push(...pvNodes);
+    if (first.length > 0) children.push(h('span.pv-first', first));
+    if (rest.length  > 0) children.push(h('span.pv-cont',  rest));
 
     // div.pv.pv--nowrap: single-line truncated row, 2em height, matching Lichess row structure.
     // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPv → div.pv.pv--nowrap
