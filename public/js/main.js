@@ -5472,6 +5472,17 @@ function pgnToTree(pgn) {
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
 var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
+var ZOOM_DEFAULT = 85;
+var ZOOM_KEY = "boardZoom";
+var boardZoom = (() => {
+  const stored = localStorage.getItem(ZOOM_KEY);
+  const n = stored !== null ? parseInt(stored, 10) : NaN;
+  return !isNaN(n) && n >= 0 && n <= 100 ? n : ZOOM_DEFAULT;
+})();
+function applyBoardZoom(zoom) {
+  document.body.style.setProperty("---zoom", String(zoom));
+}
+applyBoardZoom(boardZoom);
 var importedGames = [];
 var selectedGameId = null;
 var selectedGamePgn = null;
@@ -6436,6 +6447,44 @@ function renderPlayerStrips() {
   const bottomColor = orientation === "white" ? "white" : "black";
   return [strip(topColor), strip(bottomColor)];
 }
+function bindBoardResizeHandle(container) {
+  const el = document.createElement("cg-resize");
+  container.appendChild(el);
+  const eventPos = (e) => {
+    if (e.clientX !== void 0) return [e.clientX, e.clientY];
+    if (e.targetTouches?.[0]) return [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
+    return void 0;
+  };
+  const startResize = (start4) => {
+    start4.preventDefault();
+    const startPos = eventPos(start4);
+    const initialZoom = boardZoom;
+    let zoom = initialZoom;
+    let saveTimer;
+    const saveZoom = () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => localStorage.setItem(ZOOM_KEY, String(zoom)), 700);
+    };
+    const mousemoveEvent = start4.targetTouches ? "touchmove" : "mousemove";
+    const mouseupEvent = start4.targetTouches ? "touchend" : "mouseup";
+    const resize = (move3) => {
+      const pos = eventPos(move3);
+      const delta = pos[0] - startPos[0] + pos[1] - startPos[1];
+      zoom = Math.round(Math.min(100, Math.max(0, initialZoom + delta / 10)));
+      boardZoom = zoom;
+      applyBoardZoom(zoom);
+      saveZoom();
+    };
+    document.body.classList.add("resizing");
+    document.addEventListener(mousemoveEvent, resize);
+    document.addEventListener(mouseupEvent, () => {
+      document.removeEventListener(mousemoveEvent, resize);
+      document.body.classList.remove("resizing");
+    }, { once: true });
+  };
+  el.addEventListener("mousedown", startResize, { passive: false });
+  el.addEventListener("touchstart", startResize, { passive: false });
+}
 function renderBoard() {
   return h("div.cg-wrap", {
     key: "board",
@@ -6466,6 +6515,7 @@ function renderBoard() {
             move: onUserMove
           }
         });
+        bindBoardResizeHandle(vnode3.elm);
       },
       destroy: () => {
         cgInstance?.destroy();
