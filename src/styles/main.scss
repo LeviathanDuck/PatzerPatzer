@@ -806,9 +806,8 @@ body.resizing {
 
 .player-strip__rating {
   flex-shrink: 0;
-  font-size: 0.78em;
-  color: #666;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 // Material imbalance — adapted from lichess-org/lila: ui/lib/css/component/_material.scss
