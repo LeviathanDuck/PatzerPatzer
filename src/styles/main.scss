@@ -49,18 +49,59 @@ header {
   gap: 6px;
 }
 
+// Adapted from lichess-org/lila: ui/lib/css/ceval/_eval-gauge.scss
 .eval-bar {
-  width: 20px;
+  width: 26px;
   flex-shrink: 0;
   background: #333;
   display: flex;
   flex-direction: column-reverse; // 0% at bottom, 100% at top
   align-self: stretch;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5) inset;
 
+  // White territory fill — grows from the bottom
   &__fill {
-    background: #e8e8e8;
+    background: #c8c8c8;
     width: 100%;
-    transition: height 0.1s;
+    transition: height 0.3s;
+  }
+
+  // Tick marks at 12.5% intervals from the top (height = position from top).
+  // Adapted from lichess-org/lila: ui/lib/css/ceval/_eval-gauge.scss tick
+  &__tick {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    opacity: 0.35;
+    border-bottom: 1px solid #888;
+    pointer-events: none;
+
+    // Center tick (50%) — more prominent, marks equal position
+    // Adapted from lichess-org/lila: ui/lib/css/ceval/_eval-gauge.scss tick.zero
+    &.zero {
+      opacity: 0.7;
+      border-bottom: 2px solid #aaa;
+    }
+  }
+
+  // Eval score label positioned at the fill boundary.
+  // White text + shadow stays readable over both the dark and light halves.
+  &__score {
+    position: absolute;
+    left: 0;
+    right: 0;
+    font-size: 8px;
+    font-weight: 700;
+    color: #fff;
+    text-align: center;
+    pointer-events: none;
+    line-height: 1;
+    transform: translateY(-2px);
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 0.9);
+    z-index: 1;
   }
 }
 

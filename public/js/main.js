@@ -6569,10 +6569,20 @@ function evalPct() {
   }
   return 50;
 }
+var EVAL_BAR_TICKS = [...Array(8).keys()].map(
+  (i) => h(i === 3 ? "div.eval-bar__tick.zero" : "div.eval-bar__tick", {
+    attrs: { style: `height: ${(i + 1) * 12.5}%` }
+  })
+);
 function renderEvalBar() {
   const pct = evalPct();
+  const scorePct = Math.max(8, Math.min(92, pct));
+  const hasScore = currentEval.cp !== void 0 || currentEval.mate !== void 0;
+  const score = hasScore ? formatScore(currentEval) : "";
   return h("div.eval-bar", [
-    h("div.eval-bar__fill", { attrs: { style: `height: ${pct}%` } })
+    h("div.eval-bar__fill", { attrs: { style: `height: ${pct}%` } }),
+    score ? h("div.eval-bar__score", { attrs: { style: `bottom: ${scorePct}%` } }, score) : null,
+    ...EVAL_BAR_TICKS
   ]);
 }
 var GRAPH_W = 600;
