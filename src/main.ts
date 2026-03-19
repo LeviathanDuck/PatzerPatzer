@@ -107,7 +107,7 @@ interface StoredAnalysis {
   analysisDepth:   number;
   status:          AnalysisStatus;
   updatedAt:       number;           // Date.now()
-  nodes:           Record<string, StoredNodeEntry>; // keyed by nodeId
+  nodes:           Record<string, StoredNodeEntry>; // keyed by path
 }
 
 let _idb: IDBDatabase | undefined;
@@ -201,7 +201,7 @@ async function saveAnalysisToIdb(status: AnalysisStatus): Promise<void> {
     for (let i = 1; i < ctrl.mainline.length; i++) {
       const node = ctrl.mainline[i]!;
       path += node.id;
-      const ev = evalCache.get(node.id);
+      const ev = evalCache.get(path);
       if (ev) {
         const entry: StoredNodeEntry = { nodeId: node.id, path, fen: node.fen };
         if (ev.cp    !== undefined) entry.cp    = ev.cp;
@@ -209,7 +209,7 @@ async function saveAnalysisToIdb(status: AnalysisStatus): Promise<void> {
         if (ev.best  !== undefined) entry.best  = ev.best;
         if (ev.loss  !== undefined) entry.loss  = ev.loss;
         if (ev.delta !== undefined) entry.delta = ev.delta;
-        nodes[node.id] = entry;
+        nodes[path] = entry;  // keyed by path, not node id
       }
     }
     const record: StoredAnalysis = {
@@ -271,7 +271,7 @@ async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
     if (entry.best  !== undefined) ev.best  = entry.best;
     if (entry.loss  !== undefined) ev.loss  = entry.loss;
     if (entry.delta !== undefined) ev.delta = entry.delta;
-    evalCache.set(entry.nodeId, ev);
+    evalCache.set(entry.path, ev);
   }
   if (stored.status === 'complete') {
     analyzedGameIds.add(gameId);
@@ -282,7 +282,7 @@ async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
     if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
   }
   // Sync display to the restored eval for the current node
-  const restoredEval = evalCache.get(ctrl.node.id);
+  const restoredEval = evalCache.get(ctrl.path);
   if (restoredEval) currentEval = { ...restoredEval };
   syncArrow();
   redraw();
@@ -368,9 +368,10 @@ let engineReady = false;
 let engineInitialized = false;
 let currentEval: PositionEval = {};
 const evalCache = new Map<string, PositionEval>();
-let evalNodeId = '';
-let evalNodePly = 0;
-let evalParentNodeId = '';
+let evalNodeId   = '';   // 2-char node id — for logging only
+let evalNodePath = '';   // full tree path — used as evalCache key
+let evalNodePly  = 0;
+let evalParentPath = ''; // parent's full path — used as evalCache key
 /** True between sending 'go' and receiving the corresponding 'bestmove'. */
 let engineSearchActive = false;
 /**
@@ -414,10 +415,11 @@ let pendingLines: EvalLine[] = [];
 // When batchAnalyzing is true the batch owns the engine; evalCurrentPosition() yields.
 
 interface BatchItem {
-  nodeId:       string;
-  nodePly:      number;
-  parentNodeId: string;
-  fen:          string;
+  nodeId:     string;   // 2-char node id — for logging
+  nodePly:    number;
+  nodePath:   string;   // full path — evalCache key
+  parentPath: string;   // parent's full path — evalCache key
+  fen:        string;
 }
 
 type BatchState = 'idle' | 'analyzing' | 'complete';
@@ -525,7 +527,12 @@ function parseEngineLine(line: string): void {
       return;
     }
     engineSearchActive = false;
-    if (!parts[1] || parts[1] === '(none)') return; // no legal move (checkmate/stalemate)
+    if (!parts[1] || parts[1] === '(none)') {
+      // Terminal position (checkmate/stalemate) — advance batch or service pending eval.
+      if (batchAnalyzing) advanceBatch();
+      else if (pendingEval) evalCurrentPosition();
+      return;
+    }
     if (evalIsThreat) {
       // Threat eval complete — store best move and redraw
       threatEval.best = parts[1];
@@ -536,28 +543,34 @@ function parseEngineLine(line: string): void {
       currentEval.best = parts[1];
       const stored: PositionEval = { ...currentEval }; // includes .lines set by secondary info handler
       pendingLines = [];
-      const parentEval = evalCache.get(evalParentNodeId);
-      // Raw cp delta (kept for reference)
-      if (parentEval?.cp !== undefined && stored.cp !== undefined) {
-        stored.delta = stored.cp - parentEval.cp;
-      }
-      // Win-chance shift from mover's perspective.
-      // Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
-      // povDiff(moverColor, nodeEval, prevEval) = (moverNodeWc - moverPrevWc) / 2
-      // loss = -povDiff = (moverPrevWc - moverNodeWc) / 2  [positive = worse for mover]
-      if (parentEval) {
-        const nodeWc   = evalWinChances(stored);
-        const parentWc = evalWinChances(parentEval);
-        if (nodeWc !== undefined && parentWc !== undefined) {
-          const whiteToMove   = evalNodePly % 2 === 1;
-          const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
-          const moverParentWc = whiteToMove ? parentWc : -parentWc;
-          stored.loss = (moverParentWc - moverNodeWc) / 2;
+      // Only store in cache and compute loss when we have a valid score.
+      // An entry with best but no cp/mate is incomplete and must not pollute the cache.
+      if (stored.cp !== undefined || stored.mate !== undefined) {
+        const parentEval = evalCache.get(evalParentPath);
+        // Raw cp delta (kept for reference)
+        if (parentEval?.cp !== undefined && stored.cp !== undefined) {
+          stored.delta = stored.cp - parentEval.cp;
         }
+        // Win-chance shift from mover's perspective.
+        // Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
+        // povDiff(moverColor, nodeEval, prevEval) = (moverNodeWc - moverPrevWc) / 2
+        // loss = -povDiff = (moverPrevWc - moverNodeWc) / 2  [positive = worse for mover]
+        if (parentEval) {
+          const nodeWc   = evalWinChances(stored);
+          const parentWc = evalWinChances(parentEval);
+          if (nodeWc !== undefined && parentWc !== undefined) {
+            const whiteToMove   = evalNodePly % 2 === 1;
+            const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
+            const moverParentWc = whiteToMove ? parentWc : -parentWc;
+            stored.loss = (moverParentWc - moverNodeWc) / 2;
+          }
+        }
+        evalCache.set(evalNodePath, stored);
+        console.log('[eval cache] path:', evalNodePath, 'ply:', evalNodePly, 'best:', stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
+      } else {
+        console.log('[eval cache] skip (no score) — path:', evalNodePath, 'ply:', evalNodePly, 'best:', stored.best);
       }
-      evalCache.set(evalNodeId, stored);
       currentEval = stored;
-      console.log('[eval cache]', evalNodeId, 'ply:', evalNodePly, 'best:', stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
       if (batchAnalyzing) {
         advanceBatch(); // drives the queue; skips syncArrow/redraw until done
       } else {
@@ -585,6 +598,10 @@ protocol.onMessage(line => {
     }
     redraw(); // update button label: Loading → On
   } else {
+    // DIAG: log every line that arrives during live (non-batch) eval
+    if (!batchAnalyzing && (line.startsWith('info') || line.startsWith('bestmove'))) {
+      console.log('[live-diag]', line.slice(0, 120));
+    }
     parseEngineLine(line);
   }
 });
@@ -628,7 +645,7 @@ function evalCurrentPosition(): void {
   // Mark awaitingStopBestmove so the stale bestmove is discarded correctly.
   if (evalIsThreat) { awaitingStopBestmove = true; protocol.stop(); evalIsThreat = false; }
   threatEval = {};
-  const cached = evalCache.get(ctrl.node.id);
+  const cached = evalCache.get(ctrl.path);
   // Use cache only when it already has enough PV lines for the current multiPv setting.
   // Batch analysis stores single-line evals (no .lines), so those always fall through
   // to a live engine search — matching Lichess's startCeval which always runs the engine.
@@ -659,8 +676,10 @@ function evalCurrentPosition(): void {
   pendingEval        = false;
   engineSearchActive = true;
   evalNodeId         = ctrl.node.id;
+  evalNodePath       = ctrl.path;
   evalNodePly        = ctrl.node.ply;
-  evalParentNodeId   = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
+  evalParentPath     = ctrl.path.length >= 2 ? ctrl.path.slice(0, -2) : '';
+  console.log('[live-diag] starting live eval — path:', evalNodePath, 'ply:', evalNodePly, 'multiPv:', multiPv);
   protocol.setPosition(ctrl.node.fen);
   protocol.go(analysisDepth, multiPv);
 }
@@ -686,14 +705,18 @@ function startBatchWhenReady(): void {
 function startBatchAnalysis(): void {
   if (!engineEnabled || !engineReady || batchAnalyzing) return;
 
-  // Build queue: mainline nodes excluding root and already-cached positions
+  // Build queue: mainline nodes excluding already-cached positions.
+  // Paths are accumulated incrementally — unique even when node IDs repeat.
   const queue: BatchItem[] = [];
-  let parentId = '';
-  for (const node of ctrl.mainline) {
-    if (!evalCache.has(node.id)) {
-      queue.push({ nodeId: node.id, nodePly: node.ply, parentNodeId: parentId, fen: node.fen });
+  let path = '';
+  let prevPath = '';
+  for (let i = 0; i < ctrl.mainline.length; i++) {
+    const node = ctrl.mainline[i]!;
+    prevPath = path;
+    if (i > 0) path += node.id;
+    if (!evalCache.has(path)) {
+      queue.push({ nodeId: node.id, nodePly: node.ply, nodePath: path, parentPath: prevPath, fen: node.fen });
     }
-    parentId = node.id;
   }
 
   batchQueue       = queue;
@@ -711,12 +734,13 @@ function evalBatchItem(item: BatchItem): void {
   const wasActive      = engineSearchActive;
   awaitingStopBestmove = wasActive; // discard stale bestmove if one is in flight
   engineSearchActive   = true;
-  evalNodeId       = item.nodeId;
-  evalNodePly      = item.nodePly;
-  evalParentNodeId = item.parentNodeId;
-  currentEval      = {};
-  pendingLines     = [];
-  console.log('[batch]', batchDone + 1, '/', batchQueue.length, 'nodeId:', item.nodeId, 'ply:', item.nodePly, 'awaiting:', wasActive);
+  evalNodeId     = item.nodeId;
+  evalNodePath   = item.nodePath;
+  evalNodePly    = item.nodePly;
+  evalParentPath = item.parentPath;
+  currentEval    = {};
+  pendingLines   = [];
+  console.log('[batch]', batchDone + 1, '/', batchQueue.length, 'nodeId:', item.nodeId, 'path:', item.nodePath, 'ply:', item.nodePly, 'awaiting:', wasActive);
   if (wasActive) protocol.stop(); // only interrupt if a search was actually running
   protocol.setPosition(item.fen);
   protocol.go(analysisDepth); // always MultiPV=1 for batch efficiency
@@ -749,9 +773,10 @@ function getUserColor(game: ImportedGame): 'white' | 'black' | null {
  * userColor null = check both colors (PGN paste / unknown importer).
  */
 function detectMissedTactics(userColor: 'white' | 'black' | null): boolean {
+  let path = '';
   for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node   = ctrl.mainline[i]!;
-    const parent = ctrl.mainline[i - 1]!;
+    const node = ctrl.mainline[i]!;
+    path += node.id;
 
     const isWhiteMove = node.ply % 2 === 1;
     const isUserMove  = userColor === null
@@ -759,8 +784,9 @@ function detectMissedTactics(userColor: 'white' | 'black' | null): boolean {
       || (userColor === 'black' && !isWhiteMove);
     if (!isUserMove) continue;
 
-    const nodeEval   = evalCache.get(node.id);
-    const parentEval = evalCache.get(parent.id);
+    const parentPath = path.slice(0, -2);
+    const nodeEval   = evalCache.get(path);
+    const parentEval = evalCache.get(parentPath);
     // Require both evals and a known engine best from the parent position
     if (!nodeEval || !parentEval || !parentEval.best) continue;
 
@@ -801,7 +827,7 @@ function advanceBatch(): void {
     // Re-evaluate the current node interactively with the configured multiPv so PV
     // lines come back after batch. Batch always uses MultiPV=1 for efficiency, so
     // we drop the current node's cache entry and let evalCurrentPosition re-run it.
-    evalCache.delete(ctrl.node.id);
+    evalCache.delete(ctrl.path);
     currentEval  = {};
     pendingLines = [];
     evalCurrentPosition();
@@ -1427,12 +1453,14 @@ function computeAnalysisSummary(): AnalysisSummary | null {
   let wBlunders = 0, wMistakes = 0, wInaccuracies = 0;
   let bBlunders = 0, bMistakes = 0, bInaccuracies = 0;
 
+  let path = '';
   for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node   = ctrl.mainline[i]!;
-    const parent = ctrl.mainline[i - 1]!;
+    const node = ctrl.mainline[i]!;
+    path += node.id;
+    const parentPath = path.slice(0, -2);
 
-    const nodeEval   = evalCache.get(node.id);
-    const parentEval = evalCache.get(parent.id);
+    const nodeEval   = evalCache.get(path);
+    const parentEval = evalCache.get(parentPath);
     if (!nodeEval || !parentEval) continue;
 
     const nodeWc   = evalWinChances(nodeEval);
@@ -1529,8 +1557,8 @@ const GLYPH_COLORS: Record<string, string> = {
 };
 
 function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode): VNode {
-  const cached       = evalCache.get(node.id);
-  const parentCached = evalCache.get(parent.id);
+  const cached       = evalCache.get(path);
+  const parentCached = evalCache.get(pathInit(path));
 
   // PGN glyphs take priority; fall back to engine-computed label if no glyph present.
   // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode
@@ -1641,11 +1669,11 @@ function renderEvalGraph(): VNode {
   const pts: (Pt | null)[] = [];
   let path = '';
   for (let i = 1; i <= n; i++) {
-    const node   = mainline[i]!;
-    const parent = mainline[i - 1]!;
+    const node = mainline[i]!;
     path += node.id;
-    const cached       = evalCache.get(node.id);
-    const parentCached = evalCache.get(parent.id);
+    const parentPath   = path.slice(0, -2);
+    const cached       = evalCache.get(path);
+    const parentCached = evalCache.get(parentPath);
     const wc = cached !== undefined ? evalWinChances(cached) : undefined;
     if (wc !== undefined) {
       const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
@@ -1838,13 +1866,14 @@ function renderPvBox(): VNode | null {
       : batchAnalyzing
         ? `Analyzing ${batchDone}/${batchQueue.length}…`
         : '…';
-    return h('div.pv_box', [h('div.pv', [h('span.ceval__info', statusText)])]);
+    return h('div.pv_box', { key: 'pv-status' }, [h('div.pv', [h('span.ceval__info', statusText)])]);
   }
 
   // Attach hover listeners imperatively to avoid per-move re-registration overhead.
   // mousemove updates the floating overlay position directly (no redraw) for smoothness.
   // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs hook
   return h('div.pv_box', {
+    key: 'pv-rows',
     hook: {
       insert: (vnode) => {
         const el = vnode.elm as HTMLElement;
@@ -2100,8 +2129,8 @@ function extractPuzzleCandidates(): PuzzleCandidate[] {
     const parent = ctrl.mainline[i - 1]!;
     path += node.id;
 
-    const nodeEval   = evalCache.get(node.id);
-    const parentEval = evalCache.get(parent.id);
+    const nodeEval   = evalCache.get(path);
+    const parentEval = evalCache.get(path.slice(0, -2));
 
     // Require: evaluated loss above threshold + engine best move from parent position
     if (
@@ -2149,8 +2178,10 @@ function buildPgn(annotated: boolean): string {
   const nodes = ctrl.mainline.slice(1); // skip root node (no move)
   const parts: string[] = [];
   let needsMoveNum = true;
+  let pgnPath = ''; // accumulated path for path-keyed evalCache lookups
 
   for (const node of nodes) {
+    pgnPath += node.id;
     const isWhite = node.ply % 2 === 1;
     const moveNum = Math.ceil(node.ply / 2);
 
@@ -2164,7 +2195,7 @@ function buildPgn(annotated: boolean): string {
     // Annotation comment — Lichess format: { [%eval X.XX] [%clk h:mm:ss] }
     if (annotated) {
       const commentParts: string[] = [];
-      const ev = evalCache.get(node.id);
+      const ev = evalCache.get(pgnPath);
       if (ev) {
         if (ev.mate !== undefined) {
           commentParts.push(`[%eval #${ev.mate}]`);
