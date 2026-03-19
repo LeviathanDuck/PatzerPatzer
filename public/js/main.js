@@ -5483,6 +5483,32 @@ function applyBoardZoom(zoom) {
   document.body.style.setProperty("---zoom", String(zoom));
 }
 applyBoardZoom(boardZoom);
+var BOARD_THEME_KEY = "boardTheme";
+var BOARD_THEME_DEFAULT = "brown";
+var BOARD_THEMES_FEATURED = [
+  "brown",
+  "wood4",
+  "maple",
+  "horsey",
+  "blue",
+  "blue2",
+  "blue3",
+  "green",
+  "marble",
+  "olive",
+  "grey",
+  "metal",
+  "newspaper",
+  "purple",
+  "purple-diag"
+];
+var boardTheme = localStorage.getItem(BOARD_THEME_KEY) ?? BOARD_THEME_DEFAULT;
+function applyBoardTheme(name) {
+  document.body.dataset.board = name;
+  boardTheme = name;
+  localStorage.setItem(BOARD_THEME_KEY, name);
+}
+applyBoardTheme(boardTheme);
 var importedGames = [];
 var selectedGameId = null;
 var selectedGamePgn = null;
@@ -6539,23 +6565,19 @@ function renderGlobalMenu() {
         h("span", "Board Theme"),
         h("span.global-menu__arrow", showBoardThemeMenu ? "\u25BE" : "\u203A")
       ]),
-      showBoardThemeMenu ? h("div.global-menu__submenu", [
-        h("button.global-menu__item", {
-          on: { click: () => {
-            console.log("TODO: theme Brown");
-          } }
-        }, "Brown"),
-        h("button.global-menu__item", {
-          on: { click: () => {
-            console.log("TODO: theme Blue");
-          } }
-        }, "Blue"),
-        h("button.global-menu__item", {
-          on: { click: () => {
-            console.log("TODO: theme Green");
-          } }
-        }, "Green")
-      ]) : null
+      showBoardThemeMenu ? h(
+        "div.global-menu__submenu",
+        BOARD_THEMES_FEATURED.map(
+          (name) => h("button.global-menu__item", {
+            class: { "global-menu__item--active": boardTheme === name },
+            on: { click: () => {
+              applyBoardTheme(name);
+              closeGlobalMenu();
+              redraw();
+            } }
+          }, name)
+        )
+      ) : null
     ]) : null
   ]);
 }

@@ -54,6 +54,26 @@ function applyBoardZoom(zoom: number): void {
 // Apply immediately so the first render uses the persisted zoom.
 applyBoardZoom(boardZoom);
 
+// --- Board theme ---
+// Adapted from lichess-org/lila: ui/dasher/src/board.ts applyBoardTheme()
+// Theme name is stored in localStorage and applied as data-board on <body>.
+// CSS in main.scss maps data-board → cg-board background-image.
+const BOARD_THEME_KEY = 'boardTheme';
+const BOARD_THEME_DEFAULT = 'brown';
+// Featured 2D themes — adapted from BOARD_UI_REFERENCE.md section 2.
+const BOARD_THEMES_FEATURED = [
+  'brown', 'wood4', 'maple', 'horsey', 'blue', 'blue2', 'blue3',
+  'green', 'marble', 'olive', 'grey', 'metal', 'newspaper', 'purple', 'purple-diag',
+] as const;
+let boardTheme: string = localStorage.getItem(BOARD_THEME_KEY) ?? BOARD_THEME_DEFAULT;
+
+function applyBoardTheme(name: string): void {
+  document.body.dataset.board = name;
+  boardTheme = name;
+  localStorage.setItem(BOARD_THEME_KEY, name);
+}
+applyBoardTheme(boardTheme);
+
 let importedGames: ImportedGame[] = [];
 let selectedGameId: string | null = null;
 let selectedGamePgn: string | null = null;
@@ -1474,17 +1494,14 @@ function renderGlobalMenu(): VNode {
         h('span.global-menu__arrow', showBoardThemeMenu ? '▾' : '›'),
       ]),
 
-      showBoardThemeMenu ? h('div.global-menu__submenu', [
-        h('button.global-menu__item', {
-          on: { click: () => { console.log('TODO: theme Brown'); } },
-        }, 'Brown'),
-        h('button.global-menu__item', {
-          on: { click: () => { console.log('TODO: theme Blue'); } },
-        }, 'Blue'),
-        h('button.global-menu__item', {
-          on: { click: () => { console.log('TODO: theme Green'); } },
-        }, 'Green'),
-      ]) : null,
+      showBoardThemeMenu ? h('div.global-menu__submenu',
+        BOARD_THEMES_FEATURED.map(name =>
+          h('button.global-menu__item', {
+            class: { 'global-menu__item--active': boardTheme === name },
+            on: { click: () => { applyBoardTheme(name); closeGlobalMenu(); redraw(); } },
+          }, name),
+        ),
+      ) : null,
 
     ]) : null,
   ]);
