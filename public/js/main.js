@@ -5654,6 +5654,7 @@ var batchAnalyzing = false;
 var batchState = "idle";
 var analysisDepth = 22;
 var analysisRunning = false;
+var showExportMenu = false;
 var pendingBatchOnReady = false;
 var analysisComplete = false;
 var analyzedGameIds = /* @__PURE__ */ new Set();
@@ -6878,6 +6879,79 @@ function extractPuzzleCandidates() {
   console.log("[puzzles] extracted", candidates.length, "candidates", candidates);
   return candidates;
 }
+function buildPgn(annotated) {
+  const game = importedGames.find((g) => g.id === selectedGameId);
+  const headers = [
+    ["Event", "?"],
+    ["Site", "PatzerPro"],
+    ["Date", game?.date ?? "????.??.??"],
+    ["White", game?.white ?? "?"],
+    ["Black", game?.black ?? "?"],
+    ["Result", game?.result ?? "*"]
+  ];
+  if (annotated) headers.push(["Annotator", "PatzerPro"]);
+  const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join("\n");
+  const nodes = ctrl.mainline.slice(1);
+  const parts = [];
+  let needsMoveNum = true;
+  for (const node of nodes) {
+    const isWhite = node.ply % 2 === 1;
+    const moveNum = Math.ceil(node.ply / 2);
+    if (isWhite || needsMoveNum) {
+      parts.push(isWhite ? `${moveNum}.` : `${moveNum}...`);
+    }
+    parts.push(node.san ?? "?");
+    if (annotated) {
+      const commentParts = [];
+      const ev = evalCache.get(node.id);
+      if (ev) {
+        if (ev.mate !== void 0) {
+          commentParts.push(`[%eval #${ev.mate}]`);
+        } else if (ev.cp !== void 0) {
+          const pawns = (ev.cp / 100).toFixed(2);
+          commentParts.push(`[%eval ${pawns}]`);
+        }
+      }
+      if (node.clock !== void 0) {
+        const total = Math.round(node.clock / 100);
+        const h2 = Math.floor(total / 3600);
+        const m = Math.floor(total % 3600 / 60);
+        const s = total % 60;
+        commentParts.push(`[%clk ${h2}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}]`);
+      }
+      if (commentParts.length > 0) {
+        parts.push(`{ ${commentParts.join(" ")} }`);
+        needsMoveNum = isWhite;
+      } else {
+        needsMoveNum = false;
+      }
+    } else {
+      needsMoveNum = false;
+    }
+  }
+  parts.push(game?.result ?? "*");
+  return `${headerStr}
+
+${parts.join(" ")}
+`;
+}
+function downloadPgn(annotated) {
+  const pgn = buildPgn(annotated);
+  const game = importedGames.find((g) => g.id === selectedGameId);
+  const w = (game?.white ?? "White").replace(/\s+/g, "_");
+  const b = (game?.black ?? "Black").replace(/\s+/g, "_");
+  const suffix = annotated ? "_annotated" : "";
+  const filename = `${w}_vs_${b}${suffix}.pgn`;
+  const blob = new Blob([pgn], { type: "application/x-chess-pgn" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  showExportMenu = false;
+  redraw();
+}
 function renderAnalysisControls() {
   const canRun = !batchAnalyzing && ctrl.mainline.length > 1;
   const hasGame = ctrl.mainline.length > 1;
@@ -6927,8 +7001,29 @@ function renderAnalysisControls() {
             redraw();
           }
         }
-      }, "Clear Eval Cache")
-    ])
+      }, "Clear Eval Cache"),
+      h("button", {
+        attrs: { disabled: ctrl.mainline.length <= 1 },
+        on: {
+          click: () => {
+            showExportMenu = !showExportMenu;
+            redraw();
+          }
+        }
+      }, "Export PGN")
+    ]),
+    showExportMenu ? h("div.pgn-import__row", [
+      h("span", { attrs: { style: "font-size:0.8rem;color:#888;margin-right:6px" } }, "Export as:"),
+      h("button", { on: { click: () => downloadPgn(true) } }, "Annotated"),
+      h("button", { on: { click: () => downloadPgn(false) } }, "Plain"),
+      h("button", {
+        attrs: { style: "color:#888" },
+        on: { click: () => {
+          showExportMenu = false;
+          redraw();
+        } }
+      }, "Cancel")
+    ]) : null
   ]);
 }
 function renderPuzzleCandidates() {
