@@ -3100,7 +3100,7 @@ function renderPuzzleCandidates(): VNode {
 // Adapted from docs/reference/ImportControls/index.jsx
 // Shared filters applied to both Chess.com and Lichess username imports.
 
-type ImportSpeed     = 'all' | 'bullet' | 'blitz' | 'rapid' | 'classical';
+type ImportSpeed     = 'all' | 'bullet' | 'blitz' | 'rapid';
 type ImportDateRange = '24h' | '1week' | '1month' | '3months' | '1year' | 'all' | 'custom';
 
 // Default date range matches the reference implementation: DEFAULT_FILTERS.dateRange = '1month'
@@ -3112,11 +3112,10 @@ let importFilterCustomFrom = '';
 let importFilterCustomTo   = '';
 
 const SPEED_OPTIONS: { value: ImportSpeed; label: string }[] = [
-  { value: 'all',       label: 'All'       },
-  { value: 'bullet',    label: 'Bullet'    },
-  { value: 'blitz',     label: 'Blitz'     },
-  { value: 'rapid',     label: 'Rapid'     },
-  { value: 'classical', label: 'Classical' },
+  { value: 'all',    label: 'All'    },
+  { value: 'bullet', label: 'Bullet' },
+  { value: 'blitz',  label: 'Blitz'  },
+  { value: 'rapid',  label: 'Rapid'  },
 ];
 
 // Adapted from docs/reference/ImportControls/index.jsx DATE_RANGES
