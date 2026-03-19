@@ -1,7 +1,8 @@
 # Patzer Pro — Architecture Reference
 
-Date: 2026-03-19 (updated — post-audit refactor edition)
-Based on: full read of src/main.ts (4241 lines), all supporting files, Lichess reference source
+Date: 2026-03-19 (updated — Steps 1/2/3/4/7 complete)
+Based on: full read of src/main.ts (4241 lines original; ~3061 lines after Steps 1/2/3/4/7),
+all supporting files, Lichess reference source
 
 This document describes the system in two states: current reality and the intended target after
 the refactor described in REFACTOR_PLAN.md. All current-state claims are grounded in actual code.
@@ -14,17 +15,47 @@ the refactor described in REFACTOR_PLAN.md. All current-state claims are grounde
 
 ```
 src/
-  main.ts              — ALL application logic: 4241 lines, 15 identifiable subsystems
+  main.ts              — ~3061 lines (reduced from 4241): bootstrap, route dispatch,
+                         game library state, IDB persistence, engine, board sync, nav,
+                         analysis rendering, import panel render, header/shell render.
+                         Remaining subsystems: B, C, D, E, F, G, H, I, J, K, N, O.
   router.ts            — hash router: 47 lines, exports Route, current(), onChange()
-  tree/
-    types.ts           — TreeNode, TreePath, EvalScore, MoveClassification, PuzzleCandidate
-    ops.ts             — tree traversal and mutation (addNode, childById, nodeAtPath, etc.)
-    pgn.ts             — PGN → TreeNode tree builder (uses chessops)
+
+  engine/
+    winchances.ts      — ✓ EXTRACTED (Step 1): rawWinChances(), evalWinChances(),
+                         WIN_CHANCE_MULTIPLIER, WinChancesEval interface
+
+  board/
+    cosmetics.ts       — ✓ EXTRACTED (Step 2): zoom/theme/piece set/filters, apply
+                         functions, renderBoardSettings(), renderFilterSlider(),
+                         saveBoardZoom(). Boot side-effects run at import time.
+
+  import/
+    types.ts           — ✓ EXTRACTED (Step 3/4): ImportedGame interface, nextGameId(),
+                         restoreGameIdCounter(), parsePgnHeader(), parseRating(),
+                         timeClassFromTimeControl(), ImportCallbacks interface
+    filters.ts         — ✓ EXTRACTED (Step 4): importFilters state object, ImportSpeed,
+                         ImportDateRange, filterGamesByDate()
+    chesscom.ts        — ✓ EXTRACTED (Step 4): chesscom state, fetchChesscomGames(),
+                         importChesscom()
+    lichess.ts         — ✓ EXTRACTED (Step 4): lichess state, fetchLichessGames(),
+                         importLichess()
+    pgn.ts             — ✓ EXTRACTED (Step 4): pgnState, importPgn()
+
+  games/
+    view.ts            — ✓ EXTRACTED (Step 7, run early): renderGamesView(),
+                         renderGameList(), all filter/sort state, GamesViewDeps interface.
+                         Main.ts provides deps via gamesViewDeps() factory.
+
   analyse/
     ctrl.ts            — AnalyseCtrl: cursor-only (path, node, nodeList, mainline)
   ceval/
     protocol.ts        — StockfishProtocol: UCI wrapper, runs on MAIN THREAD (182 lines)
     worker.ts          — stub: 17 lines, posts { type: 'ready' }, does nothing else
+  tree/
+    types.ts           — TreeNode, TreePath, EvalScore, MoveClassification, PuzzleCandidate
+    ops.ts             — tree traversal and mutation (addNode, childById, nodeAtPath, etc.)
+    pgn.ts             — PGN → TreeNode tree builder (uses chessops)
   styles/
     main.scss          — all CSS: ~1800+ lines
 ```
@@ -527,25 +558,30 @@ DOMContentLoaded
 
 ## Part 4: Module Ownership Table
 
-### 4.1 Current ownership (all in main.ts)
+### 4.1 Current ownership (as of 2026-03-19, after Steps 1/2/3/4/7)
 
-| Concern | Current location | Lines |
+| Concern | Current location | Notes |
 |---|---|---|
-| Board cosmetics | main.ts §A | ~124 |
-| Game metadata helpers | main.ts §B | ~150 |
-| IDB persistence | main.ts §C | ~143 |
-| Engine lifecycle | main.ts §D | ~121 |
-| Live eval logic | main.ts §E | ~346 |
-| Batch review logic | main.ts §F | ~277 |
-| Board sync + Chessground init | main.ts §G | ~344 |
-| Navigation | main.ts §H | ~150 |
-| App shell + header | main.ts §I | ~369 |
-| Analysis rendering | main.ts §J | ~884 |
-| Puzzle extraction | main.ts §K | ~194 |
-| Game import | main.ts §L | ~549 |
-| Games table view | main.ts §M | ~199 |
-| Keyboard navigation | main.ts §N | ~150 |
-| Bootstrap + route dispatch | main.ts §O | ~90 |
+| Win-chance math | `src/engine/winchances.ts` | ✓ extracted Step 1 |
+| Board cosmetics | `src/board/cosmetics.ts` | ✓ extracted Step 2 |
+| ImportedGame type + helpers | `src/import/types.ts` | ✓ extracted Step 3 (partial) |
+| Import filters state | `src/import/filters.ts` | ✓ extracted Step 4 |
+| Chess.com import adapter | `src/import/chesscom.ts` | ✓ extracted Step 4 |
+| Lichess import adapter | `src/import/lichess.ts` | ✓ extracted Step 4 |
+| PGN paste import | `src/import/pgn.ts` | ✓ extracted Step 4 |
+| Games table view | `src/games/view.ts` | ✓ extracted Step 7 (early) |
+| Game metadata helpers | main.ts §B (partial) | remaining: getUserColor, gameResult, renderCompactGameRow |
+| IDB persistence | main.ts §C | pending Step 5 |
+| Engine lifecycle | main.ts §D | pending Step 11 |
+| Live eval logic | main.ts §E | pending Step 11 |
+| Batch review logic | main.ts §F | pending Step 11 |
+| Board sync + Chessground init | main.ts §G | pending future step |
+| Navigation | main.ts §H | pending future step |
+| App shell + header | main.ts §I | pending Step 10 |
+| Analysis rendering | main.ts §J | pending Steps 6/8 |
+| Puzzle extraction | main.ts §K | pending Step 9 |
+| Keyboard navigation | main.ts §N | pending future step |
+| Bootstrap + route dispatch | main.ts §O | stays in main.ts (core) |
 
 ### 4.2 Target ownership (after extraction)
 
