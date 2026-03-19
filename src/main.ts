@@ -431,10 +431,10 @@ let batchDone      = 0;
 let batchAnalyzing = false;
 let batchState: BatchState = 'idle';
 
-// Review = full-game batch pass; fixed depth, persisted, source of truth for graph/labels.
-const reviewDepth    = 18;
-// Analysis = live board engine; transient, user-adjustable, does NOT overwrite Review data.
-let liveDepth        = 18;
+// Review = full-game batch pass; persisted, source of truth for graph/labels.
+let reviewDepth    = 16;
+// Analysis = live board engine; transient, does NOT overwrite Review data.
+let analysisDepth  = 30;
 let analysisRunning  = false;
 let showExportMenu   = false; // inline annotated/plain prompt for PGN export
 let showGlobalMenu      = false; // global settings menu open/closed
@@ -626,7 +626,7 @@ function evalThreatPosition(): void {
   evalIsThreat = true;
   protocol.stop();
   protocol.setPosition(flipFenColor(ctrl.node.fen));
-  protocol.go(liveDepth); // always 1 line — only the best move arrow is needed
+  protocol.go(analysisDepth); // always 1 line — only the best move arrow is needed
 }
 
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode (keyboard 'x')
@@ -685,7 +685,7 @@ function evalCurrentPosition(): void {
   evalParentPath     = ctrl.path.length >= 2 ? ctrl.path.slice(0, -2) : '';
   console.log('[live-diag] starting live eval — path:', evalNodePath, 'ply:', evalNodePly, 'multiPv:', multiPv);
   protocol.setPosition(ctrl.node.fen);
-  protocol.go(liveDepth, multiPv);
+  protocol.go(analysisDepth, multiPv);
 }
 
 /**
@@ -2195,17 +2195,30 @@ function renderEngineSettings(): VNode | null {
       h('span.ceval-settings__val', `${multiPv} / 5`),
     ]),
     h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-depth' } }, 'Analysis depth'),
-      h('input#ceval-depth', {
-        attrs: { type: 'range', min: 8, max: 26, step: 1, value: liveDepth },
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-review-depth' } }, 'Review depth'),
+      h('select#ceval-review-depth', {
         on: {
-          input: (e: Event) => {
-            liveDepth = parseInt((e.target as HTMLInputElement).value);
+          change: (e: Event) => {
+            reviewDepth = parseInt((e.target as HTMLSelectElement).value);
             redraw();
           },
         },
-      }),
-      h('span.ceval-settings__val', String(liveDepth)),
+      }, [12, 14, 16, 18, 20].map(d =>
+        h('option', { attrs: { value: d, selected: d === reviewDepth } }, String(d))
+      )),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-analysis-depth' } }, 'Analysis depth'),
+      h('select#ceval-analysis-depth', {
+        on: {
+          change: (e: Event) => {
+            analysisDepth = parseInt((e.target as HTMLSelectElement).value);
+            redraw();
+          },
+        },
+      }, [18, 20, 24, 30].map(d =>
+        h('option', { attrs: { value: d, selected: d === analysisDepth } }, String(d))
+      )),
     ]),
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-arrows' } }, 'Arrows'),
