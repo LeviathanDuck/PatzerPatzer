@@ -1627,14 +1627,17 @@ function renderAnalysisSummary(): VNode {
 // Each variation is wrapped in parens: ( 1...c5 2. Nf3 )
 // After a variation block, the mainline black move shows an explicit "N…" index.
 
-/** One clickable move span, with eval label if applicable. */
+/** One clickable move element, with eval label if applicable.
+ * Adapted from lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode
+ * Uses custom element names (move, index, san, glyph, eval) matching Lichess's tview2 structure.
+ */
 // Glyph symbol → CSS color, matching Lichess move annotation colors
 const GLYPH_COLORS: Record<string, string> = {
   '??': '#f66', '?': '#f84', '?!': '#fa4',
   '!!': '#5af', '!': '#8cf', '!?': '#aaa',
 };
 
-function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode): VNode {
+function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode, showIndex: boolean): VNode {
   const cached       = evalCache.get(path);
   const parentCached = evalCache.get(pathInit(path));
 
@@ -1649,17 +1652,22 @@ function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode): VNode
   const color  = symbol ? (GLYPH_COLORS[symbol] ?? '#aaa') : undefined;
   const mate   = cached?.mate;
 
-  // Build children: SAN text, optional classification glyph, optional mate marker.
-  // Mate marker shows the forced-mate distance as "+M2", "+M6", etc.
-  // Mirrors annotation prominence of lichess-org/lila: ui/analyse/src/view/components.ts
-  const inner: (VNode | string)[] = [node.san ?? ''];
-  if (symbol) inner.push(h('span.move__glyph', { attrs: { style: `color:${color}` } }, symbol));
-  if (mate !== undefined) inner.push(h('span.move__mate', `+M${Math.abs(mate)}`));
+  // Build children matching Lichess tview2: index? + san + glyph? + eval?
+  // Mirrors lichess-org/lila: ui/analyse/src/view/components.ts renderMoveNodes + renderIndex
+  const inner: VNode[] = [];
+  if (showIndex) {
+    const n = Math.ceil(node.ply / 2);
+    inner.push(h('index', node.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
+  }
+  inner.push(h('san', node.san ?? ''));
+  if (symbol) inner.push(h('glyph', { attrs: { style: `color:${color}` } }, symbol));
+  if (mate !== undefined) inner.push(h('eval', `+M${Math.abs(mate)}`));
 
-  return h('span.move', {
+  return h('move', {
     class: { active: path === ctrl.path },
+    attrs: { p: path },
     on: { click: () => navigate(path) },
-  }, inner.length === 1 ? inner[0]! : inner);
+  }, inner);
 }
 
 /**
@@ -1687,25 +1695,22 @@ function renderNodeSiblings(
   const mainPath = parentPath + main.id;
   const out: VNode[] = [];
 
-  // 1. Move number — always before white (odd ply); before black only when requested
-  if (needsMoveNum || main.ply % 2 === 1) {
-    const n = Math.ceil(main.ply / 2);
-    out.push(h('span.move-num', main.ply % 2 === 1 ? `${n}.` : `${n}…`));
-  }
+  // Move number lives inside the move element (Lichess tview2 pattern).
+  // Show index before white (odd ply) always; before black only when requested.
+  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode withIndex logic
+  const showIndex = needsMoveNum || main.ply % 2 === 1;
+  out.push(renderMoveSpan(main, mainPath, parent, showIndex));
 
-  // 2. Mainline move span
-  out.push(renderMoveSpan(main, mainPath, parent));
-
-  // 3. Side variation blocks — rendered AFTER the mainline move at this branch point.
-  //    Each variation is its own subtree rendered recursively inside parens.
-  //    Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts lines()
+  // Side variation blocks — rendered AFTER the mainline move at this branch point.
+  // Wrapped in inline element; CSS ::before/::after add the parentheses automatically.
+  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts sidelineNodes → inline
   for (const variant of variations) {
     const varContent = renderNodeSiblings([variant], parentPath, parent, true);
-    out.push(h('span.variation', ['( ', ...varContent, ' )']));
+    out.push(h('inline', varContent));
   }
 
-  // 4. Continue into mainline child's children.
-  //    After showing variations, a black continuation needs an explicit "N…" prefix.
+  // Continue into mainline child's children.
+  // After showing variations, a black continuation needs an explicit "N…" prefix.
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
   const contNeedsNum = hasVariations && firstCont !== undefined && firstCont.ply % 2 === 0;
@@ -1715,7 +1720,9 @@ function renderNodeSiblings(
 }
 
 function renderMoveList(): VNode {
-  return h('div.move-list', renderNodeSiblings(ctrl.root.children, '', ctrl.root, true));
+  // div.tview2.tview2-inline mirrors Lichess renderInlineView container class.
+  // Adapted from lichess-org/lila: ui/analyse/src/treeView/inlineView.ts renderInlineView
+  return h('div.tview2.tview2-inline', renderNodeSiblings(ctrl.root.children, '', ctrl.root, true));
 }
 
 // --- Eval bar ---

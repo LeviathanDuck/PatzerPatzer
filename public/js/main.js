@@ -5881,7 +5881,7 @@ function evalCurrentPosition() {
   }
   threatEval = {};
   const cached = evalCache.get(ctrl.path);
-  const cachedHasLines = (cached?.lines?.length ?? 0) >= multiPv - 1;
+  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
   if (cached && cachedHasLines) {
     currentEval = { ...cached };
     syncArrow();
@@ -6592,7 +6592,7 @@ var GLYPH_COLORS = {
   "!": "#8cf",
   "!?": "#aaa"
 };
-function renderMoveSpan(node, path, parent) {
+function renderMoveSpan(node, path, parent, showIndex) {
   const cached = evalCache.get(path);
   const parentCached = evalCache.get(pathInit(path));
   const pgnGlyph = node.glyphs?.[0];
@@ -6602,27 +6602,30 @@ function renderMoveSpan(node, path, parent) {
   const symbol = pgnGlyph?.symbol ?? computedSymbol;
   const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
   const mate = cached?.mate;
-  const inner = [node.san ?? ""];
-  if (symbol) inner.push(h("span.move__glyph", { attrs: { style: `color:${color}` } }, symbol));
-  if (mate !== void 0) inner.push(h("span.move__mate", `+M${Math.abs(mate)}`));
-  return h("span.move", {
+  const inner = [];
+  if (showIndex) {
+    const n = Math.ceil(node.ply / 2);
+    inner.push(h("index", node.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
+  }
+  inner.push(h("san", node.san ?? ""));
+  if (symbol) inner.push(h("glyph", { attrs: { style: `color:${color}` } }, symbol));
+  if (mate !== void 0) inner.push(h("eval", `+M${Math.abs(mate)}`));
+  return h("move", {
     class: { active: path === ctrl.path },
+    attrs: { p: path },
     on: { click: () => navigate(path) }
-  }, inner.length === 1 ? inner[0] : inner);
+  }, inner);
 }
 function renderNodeSiblings(nodes, parentPath, parent, needsMoveNum) {
   if (nodes.length === 0) return [];
   const [main, ...variations] = nodes;
   const mainPath = parentPath + main.id;
   const out = [];
-  if (needsMoveNum || main.ply % 2 === 1) {
-    const n = Math.ceil(main.ply / 2);
-    out.push(h("span.move-num", main.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
-  }
-  out.push(renderMoveSpan(main, mainPath, parent));
+  const showIndex = needsMoveNum || main.ply % 2 === 1;
+  out.push(renderMoveSpan(main, mainPath, parent, showIndex));
   for (const variant of variations) {
     const varContent = renderNodeSiblings([variant], parentPath, parent, true);
-    out.push(h("span.variation", ["( ", ...varContent, " )"]));
+    out.push(h("inline", varContent));
   }
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
@@ -6631,7 +6634,7 @@ function renderNodeSiblings(nodes, parentPath, parent, needsMoveNum) {
   return out;
 }
 function renderMoveList() {
-  return h("div.move-list", renderNodeSiblings(ctrl.root.children, "", ctrl.root, true));
+  return h("div.tview2.tview2-inline", renderNodeSiblings(ctrl.root.children, "", ctrl.root, true));
 }
 function evalPct() {
   if (currentEval.mate !== void 0) return currentEval.mate > 0 ? 100 : 0;
@@ -6882,11 +6885,9 @@ function renderPvBox() {
     const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
     const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
     const children = [];
-    if (multiPv > 1) {
-      children.push(h("strong", {
-        class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
-      }, score));
-    }
+    children.push(h("strong", {
+      class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
+    }, score));
     children.push(...pvNodes);
     return h("div.pv.pv--nowrap", children);
   }

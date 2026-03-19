@@ -706,49 +706,78 @@ header nav {
   aspect-ratio: 1/1;
 }
 
-.move-list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 4px;
-  font-size: 0.95rem;
-  line-height: 1.6;
+.tview2 {
+  white-space: normal;
 }
-.move-list .move-num {
+.tview2 move {
+  display: inline-block;
+  padding: 0.25em 0.17em;
+  cursor: pointer;
+  color: #ccc;
+}
+.tview2 move.active {
+  background: #2a6644;
+  color: #fff;
+}
+.tview2 move.active index, .tview2 move.active eval {
+  color: #fff;
+}
+.tview2 move:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #eee;
+}
+.tview2 move index {
+  font-size: 90%;
   color: #888;
-  font-size: 0.8rem;
+  padding-inline-end: 0.15em;
+}
+.tview2 move glyph {
+  margin-inline-start: 0.08em;
+  vertical-align: bottom;
+  font-size: 0.85em;
   user-select: none;
 }
-.move-list .move__glyph {
-  margin-left: 1px;
-  font-size: 0.8em;
-  font-weight: 700;
-  user-select: none;
-}
-.move-list .move__mate {
-  margin-left: 2px;
+.tview2 move eval {
+  margin-inline-start: 0.3em;
   font-size: 0.75em;
-  font-weight: 600;
   color: #c084fc;
   user-select: none;
 }
-.move-list .move {
-  padding: 1px 4px;
-  border-radius: 3px;
-  cursor: pointer;
-}
-.move-list .move:hover {
-  background: #333;
-}
-.move-list .move.active {
-  background: #4a8;
-  color: #000;
-  font-weight: 600;
-}
-.move-list .variation {
-  color: #888;
+.tview2 inline {
+  display: inline;
+  font-style: italic;
   font-size: 0.9em;
-  margin: 0 2px;
+  opacity: 0.8;
+}
+.tview2 inline move {
+  margin-inline-start: 0;
+}
+.tview2 inline::before {
+  content: "(";
+  vertical-align: 0.7em;
+  opacity: 0.7;
+  font-size: 1.1em;
+  margin-inline: 2px -2px;
+}
+.tview2 inline::after {
+  content: ")";
+  vertical-align: 0.7em;
+  opacity: 0.7;
+  font-size: 1.1em;
+  margin-inline: -1px 1px;
+}
+
+.tview2-inline {
+  padding: 7px 3px 7px 7px;
+}
+.tview2-inline move {
+  border-radius: 3px;
+  margin-inline-end: 2px;
+  font-size: 13px;
+  font-weight: bold;
+}
+.tview2-inline move index {
+  padding-inline-end: 0.2em;
 }
 
 .pgn-import {
