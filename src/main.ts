@@ -1353,9 +1353,10 @@ function renderHeader(route: Route): VNode {
       // Time control group
       h('div.header__panel-label', 'Time control'),
       h('div.header__panel-row', [
-        ...SPEED_OPTIONS.map(({ value, label }) =>
+        ...SPEED_OPTIONS.map(({ value, label, icon }) =>
           h('button.header__pill', {
             class: { active: importFilterSpeed === value },
+            attrs: icon ? { 'data-icon': icon } : {},
             on: { click: () => { importFilterSpeed = value; redraw(); } },
           }, label)
         ),
@@ -3111,11 +3112,12 @@ let importFilterDateRange: ImportDateRange = '1month';
 let importFilterCustomFrom = '';
 let importFilterCustomTo   = '';
 
-const SPEED_OPTIONS: { value: ImportSpeed; label: string }[] = [
+// Icons adapted from lichess-org/lila: ui/lib/src/game/perfIcons.ts + ui/lib/src/licon.ts
+const SPEED_OPTIONS: { value: ImportSpeed; label: string; icon?: string }[] = [
   { value: 'all',    label: 'All'    },
-  { value: 'bullet', label: 'Bullet' },
-  { value: 'blitz',  label: 'Blitz'  },
-  { value: 'rapid',  label: 'Rapid'  },
+  { value: 'bullet', label: 'Bullet', icon: '\ue032' }, // licon.Bullet
+  { value: 'blitz',  label: 'Blitz',  icon: '\ue008' }, // licon.FlameBlitz
+  { value: 'rapid',  label: 'Rapid',  icon: '\ue002' }, // licon.Rabbit
 ];
 
 // Adapted from docs/reference/ImportControls/index.jsx DATE_RANGES
@@ -3173,9 +3175,12 @@ function renderImportFilters(): VNode {
         'Rated only',
       ]),
       h('span', { attrs: { style: 'color:#888;font-size:0.8rem;margin-left:8px' } }, 'Speed:'),
-      ...SPEED_OPTIONS.map(({ value, label }) =>
+      ...SPEED_OPTIONS.map(({ value, label, icon }) =>
         h('button', {
-          attrs: { style: importFilterSpeed === value ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE },
+          attrs: {
+            style: importFilterSpeed === value ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE,
+            ...(icon ? { 'data-icon': icon } : {}),
+          },
           on: { click: () => { importFilterSpeed = value; redraw(); } },
         }, label)
       ),
