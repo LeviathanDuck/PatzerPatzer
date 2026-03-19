@@ -429,6 +429,7 @@ let batchState: BatchState = 'idle';
 
 let analysisDepth    = 22; // Lichess cloud analysis depth; matches [%eval] annotation quality
 let analysisRunning  = false;
+let showExportMenu   = false; // inline annotated/plain prompt for PGN export
 let pendingBatchOnReady = false; // queued batch start — fires on next readyok
 let analysisComplete = false;
 const analyzedGameIds    = new Set<string>(); // games that have completed a full batch analysis
@@ -2115,6 +2116,97 @@ function extractPuzzleCandidates(): PuzzleCandidate[] {
   return candidates;
 }
 
+/**
+ * Build a PGN string from the current move tree.
+ * annotated=true adds { [%eval X.XX] [%clk h:mm:ss] } comments after each
+ * move — exact same format Lichess uses in exported PGNs.
+ * Adapted from lichess-org/lila: modules/analyse/src/main/Annotator.scala
+ * and modules/tree/src/main/Info.scala pgnComment
+ */
+function buildPgn(annotated: boolean): string {
+  const game = importedGames.find(g => g.id === selectedGameId);
+
+  const headers: [string, string][] = [
+    ['Event',  '?'],
+    ['Site',   'PatzerPro'],
+    ['Date',   game?.date ?? '????.??.??'],
+    ['White',  game?.white ?? '?'],
+    ['Black',  game?.black ?? '?'],
+    ['Result', game?.result ?? '*'],
+  ];
+  if (annotated) headers.push(['Annotator', 'PatzerPro']);
+  const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join('\n');
+
+  const nodes = ctrl.mainline.slice(1); // skip root node (no move)
+  const parts: string[] = [];
+  let needsMoveNum = true;
+
+  for (const node of nodes) {
+    const isWhite = node.ply % 2 === 1;
+    const moveNum = Math.ceil(node.ply / 2);
+
+    // Move number token
+    if (isWhite || needsMoveNum) {
+      parts.push(isWhite ? `${moveNum}.` : `${moveNum}...`);
+    }
+
+    parts.push(node.san ?? '?');
+
+    // Annotation comment — Lichess format: { [%eval X.XX] [%clk h:mm:ss] }
+    if (annotated) {
+      const commentParts: string[] = [];
+      const ev = evalCache.get(node.id);
+      if (ev) {
+        if (ev.mate !== undefined) {
+          commentParts.push(`[%eval #${ev.mate}]`);
+        } else if (ev.cp !== undefined) {
+          // cp is white's perspective; divide by 100 and format to 2 dp
+          const pawns = (ev.cp / 100).toFixed(2);
+          commentParts.push(`[%eval ${pawns}]`);
+        }
+      }
+      if (node.clock !== undefined) {
+        // centiseconds → h:mm:ss
+        const total = Math.round(node.clock / 100);
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+        commentParts.push(`[%clk ${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`);
+      }
+      if (commentParts.length > 0) {
+        parts.push(`{ ${commentParts.join(' ')} }`);
+        needsMoveNum = isWhite; // black needs "N..." after a white move comment
+      } else {
+        needsMoveNum = false;
+      }
+    } else {
+      needsMoveNum = false;
+    }
+  }
+
+  parts.push(game?.result ?? '*');
+  return `${headerStr}\n\n${parts.join(' ')}\n`;
+}
+
+function downloadPgn(annotated: boolean): void {
+  const pgn  = buildPgn(annotated);
+  const game = importedGames.find(g => g.id === selectedGameId);
+  const w    = (game?.white ?? 'White').replace(/\s+/g, '_');
+  const b    = (game?.black ?? 'Black').replace(/\s+/g, '_');
+  const suffix = annotated ? '_annotated' : '';
+  const filename = `${w}_vs_${b}${suffix}.pgn`;
+
+  const blob = new Blob([pgn], { type: 'application/x-chess-pgn' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  showExportMenu = false;
+  redraw();
+}
+
 function renderAnalysisControls(): VNode {
   const canRun  = !batchAnalyzing && ctrl.mainline.length > 1;
   const hasGame = ctrl.mainline.length > 1;
@@ -2171,7 +2263,25 @@ function renderAnalysisControls(): VNode {
           },
         },
       }, 'Clear Eval Cache'),
+      h('button', {
+        attrs: { disabled: ctrl.mainline.length <= 1 },
+        on: {
+          click: () => {
+            showExportMenu = !showExportMenu;
+            redraw();
+          },
+        },
+      }, 'Export PGN'),
     ]),
+    showExportMenu ? h('div.pgn-import__row', [
+      h('span', { attrs: { style: 'font-size:0.8rem;color:#888;margin-right:6px' } }, 'Export as:'),
+      h('button', { on: { click: () => downloadPgn(true) } }, 'Annotated'),
+      h('button', { on: { click: () => downloadPgn(false) } }, 'Plain'),
+      h('button', {
+        attrs: { style: 'color:#888' },
+        on: { click: () => { showExportMenu = false; redraw(); } },
+      }, 'Cancel'),
+    ]) : null,
   ]);
 }
 
