@@ -460,13 +460,56 @@ header nav {
   color: #bbb;
 }
 
+body {
+  ---zoom: 85;
+  ---board-scale: calc((var(---zoom) / 100) * 0.75 + 0.25);
+}
+
 .analyse {
   display: grid;
-  grid-template-columns: min(100vw - 32px - 34px - 240px, 600px) 34px minmax(240px, 380px);
+  grid-template-columns: min((100vw - 32px - 34px - 240px) * var(---board-scale), 600px) 34px minmax(240px, 380px);
   grid-template-areas: "board  gauge  tools" "under  .      controls";
   align-items: start;
   padding: 24px 16px;
   gap: 0 0;
+}
+
+cg-resize {
+  display: block;
+  position: absolute;
+  right: -9px;
+  bottom: -9px;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  z-index: 100;
+}
+cg-resize::before, cg-resize::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 255, 255, 0.5);
+  height: 1px;
+}
+cg-resize::before {
+  width: 5px;
+  transform: translate(7px, 8px) rotate(-45deg);
+}
+cg-resize::after {
+  width: 12px;
+  transform: translate(1px, 6px) rotate(-45deg);
+}
+cg-resize:hover {
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+}
+.resizing cg-resize {
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+body.resizing {
+  user-select: none;
+  cursor: nwse-resize;
 }
 
 .eval-bar {

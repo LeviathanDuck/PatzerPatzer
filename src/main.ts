@@ -35,6 +35,25 @@ export interface ImportedGame {
 }
 
 const SAMPLE_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
+
+// --- Board zoom (manual resize) ---
+// Mirrors lichess-org/lila: ui/lib/src/chessgroundResize.ts ---zoom CSS custom property.
+// zoom: 0–100, default 85. Stored in localStorage, applied to body as ---zoom.
+// CSS formula: ---board-scale = (---zoom / 100) * 0.75 + 0.25 (same as Lichess).
+const ZOOM_DEFAULT = 85;
+const ZOOM_KEY = 'boardZoom';
+let boardZoom: number = (() => {
+  const stored = localStorage.getItem(ZOOM_KEY);
+  const n = stored !== null ? parseInt(stored, 10) : NaN;
+  return !isNaN(n) && n >= 0 && n <= 100 ? n : ZOOM_DEFAULT;
+})();
+
+function applyBoardZoom(zoom: number): void {
+  document.body.style.setProperty('---zoom', String(zoom));
+}
+// Apply immediately so the first render uses the persisted zoom.
+applyBoardZoom(boardZoom);
+
 let importedGames: ImportedGame[] = [];
 let selectedGameId: string | null = null;
 let selectedGamePgn: string | null = null;
@@ -1396,6 +1415,57 @@ function renderPlayerStrips(): [VNode, VNode] {
   return [strip(topColor), strip(bottomColor)];
 }
 
+// --- Board resize handle ---
+// Adapted from lichess-org/lila: ui/lib/src/chessgroundResize.ts
+// Appended directly to the cg-wrap container so it sits inside the board bounds.
+function bindBoardResizeHandle(container: HTMLElement): void {
+  const el = document.createElement('cg-resize');
+  container.appendChild(el);
+
+  type MouchEvent = Event & Partial<MouseEvent & TouchEvent>;
+  const eventPos = (e: MouchEvent): [number, number] | undefined => {
+    if (e.clientX !== undefined) return [e.clientX, e.clientY!];
+    if (e.targetTouches?.[0]) return [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
+    return undefined;
+  };
+
+  const startResize = (start: MouchEvent) => {
+    start.preventDefault();
+    const startPos = eventPos(start)!;
+    const initialZoom = boardZoom;
+    let zoom = initialZoom;
+
+    // Debounced localStorage save — mirrors Lichess debounced XHR post.
+    let saveTimer: ReturnType<typeof setTimeout> | undefined;
+    const saveZoom = () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => localStorage.setItem(ZOOM_KEY, String(zoom)), 700);
+    };
+
+    const mousemoveEvent = (start as TouchEvent).targetTouches ? 'touchmove' : 'mousemove';
+    const mouseupEvent   = (start as TouchEvent).targetTouches ? 'touchend'  : 'mouseup';
+
+    const resize = (move: MouchEvent) => {
+      const pos = eventPos(move)!;
+      const delta = pos[0] - startPos[0] + pos[1] - startPos[1];
+      zoom = Math.round(Math.min(100, Math.max(0, initialZoom + delta / 10)));
+      boardZoom = zoom;
+      applyBoardZoom(zoom);
+      saveZoom();
+    };
+
+    document.body.classList.add('resizing');
+    document.addEventListener(mousemoveEvent, resize as EventListener);
+    document.addEventListener(mouseupEvent, () => {
+      document.removeEventListener(mousemoveEvent, resize as EventListener);
+      document.body.classList.remove('resizing');
+    }, { once: true });
+  };
+
+  el.addEventListener('mousedown',  startResize as EventListener, { passive: false });
+  el.addEventListener('touchstart', startResize as EventListener, { passive: false });
+}
+
 // Adapted from lichess-org/lila: ui/analyse/src/ground.ts render + makeConfig
 function renderBoard(): VNode {
   return h('div.cg-wrap', {
@@ -1427,6 +1497,9 @@ function renderBoard(): VNode {
             move: onUserMove,
           },
         });
+        // Attach resize handle after Chessground is initialized.
+        // Adapted from lichess-org/lila: ui/lib/src/chessgroundResize.ts resizeHandle()
+        bindBoardResizeHandle(vnode.elm as HTMLElement);
       },
       destroy: () => {
         cgInstance?.destroy();
