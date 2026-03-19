@@ -5482,6 +5482,13 @@ function timeClassFromTimeControl(tc) {
   if (secs <= 10800) return "rapid";
   return "classical";
 }
+function gameSourceUrl(game) {
+  const link = parsePgnHeader(game.pgn, "Link");
+  if (link?.startsWith("http")) return link;
+  const site = parsePgnHeader(game.pgn, "Site");
+  if (site?.startsWith("https://lichess.org/")) return site;
+  return void 0;
+}
 function gameResult(game) {
   const color = getUserColor(game);
   if (!game.result) return null;
@@ -6543,18 +6550,25 @@ function renderHeader(route) {
         const label = game.white && game.black ? `${game.white} vs ${game.black}${game.result ? " \xB7 " + game.result : ""}${game.date ? " \xB7 " + game.date.slice(0, 10) : ""}` : game.id;
         const isAnalyzed = analyzedGameIds.has(game.id);
         const hasMissedTactic = missedTacticGameIds.has(game.id);
-        return h("button.header__game-row", {
-          class: { active: game.id === selectedGameId },
-          on: { click: () => {
-            selectedGameId = game.id;
-            loadGame(game.pgn);
-            showImportPanel = false;
-            redraw();
-          } }
-        }, [
-          isAnalyzed ? h("span.header__game-badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
-          hasMissedTactic ? h("span.header__game-badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null,
-          h("span", label)
+        const srcUrl = gameSourceUrl(game);
+        return h("div.header__game-item", [
+          h("button.header__game-row", {
+            class: { active: game.id === selectedGameId },
+            on: { click: () => {
+              selectedGameId = game.id;
+              loadGame(game.pgn);
+              showImportPanel = false;
+              redraw();
+            } }
+          }, [
+            isAnalyzed ? h("span.header__game-badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
+            hasMissedTactic ? h("span.header__game-badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null,
+            h("span", label)
+          ]),
+          srcUrl ? h("a.game-ext-link", {
+            attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" },
+            on: { click: (e) => e.stopPropagation() }
+          }) : null
         ]);
       }))
     ]) : null
@@ -8045,17 +8059,23 @@ function renderGameList() {
       const label = game.white && game.black ? `${game.white} vs ${game.black}${game.result ? " \xB7 " + game.result : ""}${game.date ? " \xB7 " + game.date.slice(0, 10) : ""}` : game.id;
       const isAnalyzed = analyzedGameIds.has(game.id);
       const hasMissedTactic = missedTacticGameIds.has(game.id);
-      return h("li", h("button.game-list__row", {
-        class: { active: game.id === selectedGameId },
-        on: { click: () => {
-          selectedGameId = game.id;
-          loadGame(game.pgn);
-        } }
-      }, [
-        isAnalyzed ? h("span", { attrs: { style: "color:#4a8;margin-right:4px;font-size:0.8em", title: "Analyzed" } }, "\u2713") : null,
-        hasMissedTactic ? h("span", { attrs: { style: "color:#f84;margin-right:6px;font-size:0.85em;font-weight:700", title: "Missed tactic in opening/middlegame" } }, "!") : null,
-        label
-      ]));
+      const srcUrl2 = gameSourceUrl(game);
+      return h("li", [
+        h("button.game-list__row", {
+          class: { active: game.id === selectedGameId },
+          on: { click: () => {
+            selectedGameId = game.id;
+            loadGame(game.pgn);
+          } }
+        }, [
+          isAnalyzed ? h("span", { attrs: { style: "color:#4a8;margin-right:4px;font-size:0.8em", title: "Analyzed" } }, "\u2713") : null,
+          hasMissedTactic ? h("span", { attrs: { style: "color:#f84;margin-right:6px;font-size:0.85em;font-weight:700", title: "Missed tactic in opening/middlegame" } }, "!") : null,
+          label
+        ]),
+        srcUrl2 ? h("a.game-ext-link", {
+          attrs: { href: srcUrl2, target: "_blank", rel: "noopener", title: "View on source platform" }
+        }) : null
+      ]);
     }))
   ]);
 }
@@ -8214,7 +8234,8 @@ function renderGamesView() {
         renderSortTh("Opponent", "opponent"),
         renderSortTh("Date", "date"),
         renderSortTh("Time", "timeClass"),
-        h("th", "Opening")
+        h("th", "Opening"),
+        h("th")
       ])),
       h(
         "tbody",
@@ -8225,6 +8246,7 @@ function renderGamesView() {
           const tc = game.timeClass ?? "\u2013";
           const tcIcon = game.timeClass ? SPEED_ICONS[game.timeClass] : void 0;
           const opening = game.opening ? game.eco ? `${game.eco} ${game.opening}` : game.opening : "\u2013";
+          const srcUrl3 = gameSourceUrl(game);
           return h("tr.games-view__row", {
             class: { active: game.id === selectedGameId },
             on: { click: () => {
@@ -8241,9 +8263,13 @@ function renderGamesView() {
               tcIcon ? h("span", { attrs: { "data-icon": tcIcon, style: `font-family:lichess;margin-right:4px` } }) : null,
               tc.charAt(0).toUpperCase() + tc.slice(1)
             ),
-            h("td.games-view__opening", h("span", { attrs: { title: opening } }, opening))
+            h("td.games-view__opening", h("span", { attrs: { title: opening } }, opening)),
+            h("td.games-view__link-cell", srcUrl3 ? h("a.game-ext-link", {
+              attrs: { href: srcUrl3, target: "_blank", rel: "noopener", title: "View on source platform" },
+              on: { click: (e) => e.stopPropagation() }
+            }) : null)
           ]);
-        }) : [h("tr", h("td", { attrs: { colspan: "5" } }, h("div.games-view__empty", "No games match current filters.")))]
+        }) : [h("tr", h("td", { attrs: { colspan: "6" } }, h("div.games-view__empty", "No games match current filters.")))]
       )
     ])
   ]);

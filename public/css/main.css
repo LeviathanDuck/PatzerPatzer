@@ -696,11 +696,16 @@ body {
   margin: 0 -14px;
   padding: 0 0 2px;
 }
+.header__game-item {
+  display: flex;
+  align-items: center;
+}
 .header__game-row {
   display: flex;
   align-items: center;
   gap: 5px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 6px 14px;
   background: transparent;
   color: #aaa;
@@ -1546,9 +1551,16 @@ body[data-board=newspaper] cg-board::before {
   border-radius: 4px;
   overflow: hidden;
 }
+.game-list li {
+  display: flex;
+  align-items: center;
+}
+.game-list li + li {
+  border-top: 1px solid #2a2a2a;
+}
 .game-list__row {
-  display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   text-align: left;
   background: none;
   border: none;
@@ -1564,8 +1576,28 @@ body[data-board=newspaper] cg-board::before {
   background: #1e3a1e;
   color: #6f6;
 }
-.game-list li + li {
-  border-top: 1px solid #2a2a2a;
+
+.game-ext-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  color: #3a3a3a;
+  text-decoration: none;
+  border-radius: 3px;
+  transition: color 0.1s, background 0.1s;
+}
+.game-ext-link::before {
+  font-family: "lichess";
+  content: "\e00f";
+  font-size: 0.8rem;
+  line-height: 1;
+}
+.game-ext-link:hover {
+  color: #888;
+  background: #2a2a2a;
 }
 
 .ceval {
@@ -2149,6 +2181,11 @@ body[data-board=newspaper] cg-board::before {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.games-view__link-cell {
+  width: 32px;
+  text-align: center;
+  padding: 4px !important;
 }
 .games-view__empty {
   padding: 48px 0;
