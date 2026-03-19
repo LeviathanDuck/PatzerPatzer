@@ -2187,6 +2187,43 @@ body[data-board=newspaper] cg-board::before {
   text-align: center;
   padding: 4px !important;
 }
+.games-view__review-th {
+  white-space: nowrap;
+}
+.games-view__review-cell {
+  white-space: nowrap;
+  text-align: center;
+  padding: 4px 8px !important;
+}
+.games-view__reviewed {
+  color: #4c8;
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-right: 2px;
+  cursor: default;
+}
+.games-view__missed {
+  color: #f84;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: default;
+}
+.games-view__review-btn {
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  background: #1a1a1a;
+  color: #888;
+  border: 1px solid #333;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+.games-view__review-btn:hover {
+  background: #222;
+  color: #ccc;
+  border-color: #555;
+}
 .games-view__empty {
   padding: 48px 0;
   text-align: center;

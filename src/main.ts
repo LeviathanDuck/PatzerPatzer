@@ -3546,6 +3546,7 @@ type GamesSortField    = 'date' | 'result' | 'opponent' | 'timeClass';
 let gamesFilterResults: Set<GamesResultFilter> = new Set(); // empty = all
 let gamesFilterSpeeds:  Set<string>            = new Set(); // empty = all
 let gamesFilterOpponent = '';
+let gamesFilterColor:   '' | 'white' | 'black' = '';
 let gamesSortField: GamesSortField = 'date';
 let gamesSortDir:   'asc' | 'desc' = 'desc';
 
@@ -3560,13 +3561,15 @@ function toggleGamesSort(field: GamesSortField): void {
 }
 
 function gamesFilterActive(): boolean {
-  return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 || gamesFilterOpponent.trim() !== '';
+  return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 ||
+    gamesFilterOpponent.trim() !== '' || gamesFilterColor !== '';
 }
 
 function clearGamesFilters(): void {
   gamesFilterResults  = new Set();
   gamesFilterSpeeds   = new Set();
   gamesFilterOpponent = '';
+  gamesFilterColor    = '';
   redraw();
 }
 
@@ -3590,6 +3593,10 @@ function filteredGames(): ImportedGame[] {
       const opp = opponentName(g)?.toLowerCase() ?? '';
       return opp.includes(q);
     });
+  }
+
+  if (gamesFilterColor) {
+    list = list.filter(g => getUserColor(g) === gamesFilterColor);
   }
 
   // Sort
@@ -3684,6 +3691,19 @@ function renderGamesView(): VNode {
       ),
     ]),
 
+    // Color filter (playing as)
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Color'),
+      h('button.games-view__pill', {
+        class: { active: gamesFilterColor === 'white' },
+        on: { click: () => { gamesFilterColor = gamesFilterColor === 'white' ? '' : 'white'; redraw(); } },
+      }, 'White'),
+      h('button.games-view__pill', {
+        class: { active: gamesFilterColor === 'black' },
+        on: { click: () => { gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black'; redraw(); } },
+      }, 'Black'),
+    ]),
+
     // Opponent search
     h('div.games-view__filter-group', [
       h('span.games-view__filter-label', 'Opponent'),
@@ -3720,6 +3740,7 @@ function renderGamesView(): VNode {
         renderSortTh('Date',      'date'),
         renderSortTh('Time',      'timeClass'),
         h('th', 'Opening'),
+        h('th.games-view__review-th', 'Review'),
         h('th'),
       ])),
       h('tbody', games.length > 0
@@ -3730,7 +3751,32 @@ function renderGamesView(): VNode {
             const tc   = game.timeClass ?? '–';
             const tcIcon = game.timeClass ? SPEED_ICONS[game.timeClass] : undefined;
             const opening = game.opening ? (game.eco ? `${game.eco} ${game.opening}` : game.opening) : '–';
-            const srcUrl3 = gameSourceUrl(game);
+            const srcUrl3    = gameSourceUrl(game);
+            const isAnalyzed = analyzedGameIds.has(game.id);
+            const hasMissed  = missedTacticGameIds.has(game.id);
+
+            // Review status cell:
+            // - Analyzed: green checkmark (+ "!" if missed tactic detected)
+            // - Not analyzed: "Review" button — loads game into Analysis and starts batch.
+            //   NOTE: background review is not supported. Loading is required first.
+            const reviewCell = isAnalyzed
+              ? h('td.games-view__review-cell', [
+                  h('span.games-view__reviewed', { attrs: { title: 'Reviewed' } }, '✓'),
+                  hasMissed ? h('span.games-view__missed', { attrs: { title: 'Missed tactic detected' } }, '!') : null,
+                ])
+              : h('td.games-view__review-cell', [
+                  h('button.games-view__review-btn', {
+                    on: { click: (e: Event) => {
+                      e.stopPropagation();
+                      selectedGameId = game.id;
+                      loadGame(game.pgn);
+                      window.location.hash = '#/analysis';
+                      startBatchWhenReady();
+                    }},
+                    attrs: { title: 'Load into Analysis and start review' },
+                  }, 'Review'),
+                ]);
+
             return h('tr.games-view__row', {
               class: { active: game.id === selectedGameId },
               on: { click: () => {
@@ -3747,13 +3793,14 @@ function renderGamesView(): VNode {
                 : null,
                 tc.charAt(0).toUpperCase() + tc.slice(1)),
               h('td.games-view__opening', h('span', { attrs: { title: opening } }, opening)),
+              reviewCell,
               h('td.games-view__link-cell', srcUrl3 ? h('a.game-ext-link', {
                 attrs: { href: srcUrl3, target: '_blank', rel: 'noopener', title: 'View on source platform' },
                 on: { click: (e: Event) => e.stopPropagation() },
               }) : null),
             ]);
           })
-        : [h('tr', h('td', { attrs: { colspan: '6' } }, h('div.games-view__empty', 'No games match current filters.')))]
+        : [h('tr', h('td', { attrs: { colspan: '7' } }, h('div.games-view__empty', 'No games match current filters.')))]
       ),
     ]),
   ]);

@@ -1979,6 +1979,50 @@ body[data-board='newspaper'] cg-board::before {
     padding: 4px !important;
   }
 
+  // ── Review status column ─────────────────────────────────────────────────
+  &__review-th {
+    white-space: nowrap;
+  }
+
+  &__review-cell {
+    white-space: nowrap;
+    text-align: center;
+    padding: 4px 8px !important;
+  }
+
+  // Analyzed checkmark
+  &__reviewed {
+    color: #4c8;
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-right: 2px;
+    cursor: default;
+  }
+
+  // Missed tactic badge (shown alongside checkmark)
+  &__missed {
+    color: #f84;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: default;
+  }
+
+  // Review trigger button — loads game + starts batch
+  // NOTE: does not run in background; navigates to Analysis first
+  &__review-btn {
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    background: #1a1a1a;
+    color: #888;
+    border: 1px solid #333;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover { background: #222; color: #ccc; border-color: #555; }
+  }
+
   // ── Empty state ─────────────────────────────────────────────────────────
   &__empty {
     padding: 48px 0;
