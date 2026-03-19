@@ -133,7 +133,14 @@ header {
 // under: below board (graph, review, import); controls: below tools (nav buttons)
 .analyse {
   display: grid;
-  grid-template-columns: minmax(0, 600px) 34px minmax(240px, 380px);
+  // Board column: explicit computed width mirrors Lichess's ---col2-uniboard-width pattern.
+  // min(available-space, max-board-size): 100vw minus padding (2×16px) minus gauge (34px) minus
+  // tools column minimum (240px) = available space for the board, capped at 600px.
+  // Adapted from lichess-org/lila: ui/analyse/css/_layout.scss ---col2-uniboard-width
+  grid-template-columns:
+    min(calc(100vw - 32px - 34px - 240px), 600px)
+    34px
+    minmax(240px, 380px);
   grid-template-areas:
     'board  gauge  tools'
     'under  .      controls';
