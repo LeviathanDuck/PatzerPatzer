@@ -86,7 +86,7 @@ interface StoredGames {
 // Persists per-game mainline engine analysis to IndexedDB so results survive refresh.
 // Keyed by gameId in the 'analysis-library' store.
 
-const ANALYSIS_VERSION = 1;
+const ANALYSIS_VERSION = 2; // bumped: evalCache/IDB nodes now keyed by path (was node.id)
 
 type AnalysisStatus = 'idle' | 'partial' | 'complete';
 
@@ -263,8 +263,10 @@ async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
   // Stale data: version or depth changed — discard
   if (stored.analysisVersion !== ANALYSIS_VERSION) return;
   if (stored.analysisDepth !== analysisDepth) return;
-  // Repopulate evalCache from stored node entries
+  // Repopulate evalCache from stored node entries.
+  // Guard: pre-migration records (ANALYSIS_VERSION < 2) lack entry.path — skip them.
   for (const entry of Object.values(stored.nodes)) {
+    if (!entry.path) continue; // backward safety: old node.id-keyed record
     const ev: PositionEval = {};
     if (entry.cp    !== undefined) ev.cp    = entry.cp;
     if (entry.mate  !== undefined) ev.mate  = entry.mate;

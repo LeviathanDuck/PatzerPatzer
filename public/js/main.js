@@ -5497,7 +5497,7 @@ function loadGame(pgn) {
   else evalCurrentPosition();
   redraw();
 }
-var ANALYSIS_VERSION = 1;
+var ANALYSIS_VERSION = 2;
 var _idb;
 function openGameDb() {
   if (_idb) return Promise.resolve(_idb);
@@ -5633,6 +5633,7 @@ async function loadAndRestoreAnalysis(gameId) {
   if (stored.analysisVersion !== ANALYSIS_VERSION) return;
   if (stored.analysisDepth !== analysisDepth) return;
   for (const entry of Object.values(stored.nodes)) {
+    if (!entry.path) continue;
     const ev = {};
     if (entry.cp !== void 0) ev.cp = entry.cp;
     if (entry.mate !== void 0) ev.mate = entry.mate;
