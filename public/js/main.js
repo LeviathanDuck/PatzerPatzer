@@ -5509,6 +5509,51 @@ function applyBoardTheme(name) {
   localStorage.setItem(BOARD_THEME_KEY, name);
 }
 applyBoardTheme(boardTheme);
+var PIECE_SET_KEY = "pieceSet";
+var PIECE_SET_DEFAULT = "cburnett";
+var PIECE_SETS_FEATURED = [
+  "cburnett",
+  "merida",
+  "alpha",
+  "companion",
+  "kosal",
+  "caliente",
+  "rhosgfx",
+  "maestro",
+  "fresca",
+  "cardinal",
+  "gioco",
+  "staunty",
+  "monarchy",
+  "dubrovny",
+  "mpchess",
+  "horsey",
+  "anarcandy"
+];
+var PIECE_VARS = [
+  ["---white-pawn", "wP"],
+  ["---white-knight", "wN"],
+  ["---white-bishop", "wB"],
+  ["---white-rook", "wR"],
+  ["---white-queen", "wQ"],
+  ["---white-king", "wK"],
+  ["---black-pawn", "bP"],
+  ["---black-knight", "bN"],
+  ["---black-bishop", "bB"],
+  ["---black-rook", "bR"],
+  ["---black-queen", "bQ"],
+  ["---black-king", "bK"]
+];
+var pieceSet = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
+function applyPieceSet(name) {
+  for (const [cssVar, file] of PIECE_VARS) {
+    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.svg)`);
+  }
+  document.body.dataset.pieceSet = name;
+  pieceSet = name;
+  localStorage.setItem(PIECE_SET_KEY, name);
+}
+applyPieceSet(pieceSet);
 var importedGames = [];
 var selectedGameId = null;
 var selectedGamePgn = null;
@@ -5740,6 +5785,7 @@ var analysisRunning = false;
 var showExportMenu = false;
 var showGlobalMenu = false;
 var showBoardThemeMenu = false;
+var showPieceSetMenu = false;
 var importPlatform = "chesscom";
 var showImportPanel = false;
 var pendingBatchOnReady = false;
@@ -6519,6 +6565,7 @@ function renderHeader(route) {
 function closeGlobalMenu() {
   showGlobalMenu = false;
   showBoardThemeMenu = false;
+  showPieceSetMenu = false;
   redraw();
 }
 function renderGlobalMenu() {
@@ -6530,6 +6577,7 @@ function renderGlobalMenu() {
       on: { click: () => {
         showGlobalMenu = !showGlobalMenu;
         showBoardThemeMenu = false;
+        showPieceSetMenu = false;
         redraw();
       } }
     }, "\u2699"),
@@ -6559,6 +6607,7 @@ function renderGlobalMenu() {
       h("div.global-menu__item.global-menu__item--has-sub", {
         on: { click: () => {
           showBoardThemeMenu = !showBoardThemeMenu;
+          showPieceSetMenu = false;
           redraw();
         } }
       }, [
@@ -6572,6 +6621,30 @@ function renderGlobalMenu() {
             class: { "global-menu__item--active": boardTheme === name },
             on: { click: () => {
               applyBoardTheme(name);
+              closeGlobalMenu();
+              redraw();
+            } }
+          }, name)
+        )
+      ) : null,
+      // Piece Set — opens inline submenu
+      h("div.global-menu__item.global-menu__item--has-sub", {
+        on: { click: () => {
+          showPieceSetMenu = !showPieceSetMenu;
+          showBoardThemeMenu = false;
+          redraw();
+        } }
+      }, [
+        h("span", "Piece Set"),
+        h("span.global-menu__arrow", showPieceSetMenu ? "\u25BE" : "\u203A")
+      ]),
+      showPieceSetMenu ? h(
+        "div.global-menu__submenu",
+        PIECE_SETS_FEATURED.map(
+          (name) => h("button.global-menu__item", {
+            class: { "global-menu__item--active": pieceSet === name },
+            on: { click: () => {
+              applyPieceSet(name);
               closeGlobalMenu();
               redraw();
             } }

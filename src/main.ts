@@ -74,6 +74,35 @@ function applyBoardTheme(name: string): void {
 }
 applyBoardTheme(boardTheme);
 
+// --- Piece set ---
+// Adapted from lichess-org/lila: ui/dasher/src/piece.ts applyPieceSet()
+// Sets 12 CSS custom properties (---white-pawn etc.) on <body> so SCSS rules
+// in main.scss pick them up instead of the hardcoded chessground.cburnett.css data URIs.
+const PIECE_SET_KEY = 'pieceSet';
+const PIECE_SET_DEFAULT = 'cburnett';
+const PIECE_SETS_FEATURED = [
+  'cburnett', 'merida', 'alpha', 'companion', 'kosal', 'caliente',
+  'rhosgfx', 'maestro', 'fresca', 'cardinal', 'gioco', 'staunty',
+  'monarchy', 'dubrovny', 'mpchess', 'horsey', 'anarcandy',
+] as const;
+const PIECE_VARS: [string, string][] = [
+  ['---white-pawn',   'wP'], ['---white-knight', 'wN'], ['---white-bishop', 'wB'],
+  ['---white-rook',   'wR'], ['---white-queen',  'wQ'], ['---white-king',   'wK'],
+  ['---black-pawn',   'bP'], ['---black-knight', 'bN'], ['---black-bishop', 'bB'],
+  ['---black-rook',   'bR'], ['---black-queen',  'bQ'], ['---black-king',   'bK'],
+];
+let pieceSet: string = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
+
+function applyPieceSet(name: string): void {
+  for (const [cssVar, file] of PIECE_VARS) {
+    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.svg)`);
+  }
+  document.body.dataset.pieceSet = name;
+  pieceSet = name;
+  localStorage.setItem(PIECE_SET_KEY, name);
+}
+applyPieceSet(pieceSet);
+
 let importedGames: ImportedGame[] = [];
 let selectedGameId: string | null = null;
 let selectedGamePgn: string | null = null;
@@ -478,6 +507,7 @@ let analysisRunning  = false;
 let showExportMenu   = false; // inline annotated/plain prompt for PGN export
 let showGlobalMenu      = false; // global settings menu open/closed
 let showBoardThemeMenu  = false; // board theme submenu open/closed
+let showPieceSetMenu    = false; // piece set submenu open/closed
 
 // --- Header import panel state ---
 // Unified platform/username input — single search bar with nested filters.
@@ -1450,6 +1480,7 @@ function renderHeader(route: Route): VNode {
 function closeGlobalMenu(): void {
   showGlobalMenu     = false;
   showBoardThemeMenu = false;
+  showPieceSetMenu   = false;
   redraw();
 }
 
@@ -1462,6 +1493,7 @@ function renderGlobalMenu(): VNode {
       on: { click: () => {
         showGlobalMenu     = !showGlobalMenu;
         showBoardThemeMenu = false;
+        showPieceSetMenu   = false;
         redraw();
       }},
     }, '⚙'),
@@ -1488,7 +1520,7 @@ function renderGlobalMenu(): VNode {
 
       // Board Theme — opens inline submenu
       h('div.global-menu__item.global-menu__item--has-sub', {
-        on: { click: () => { showBoardThemeMenu = !showBoardThemeMenu; redraw(); } },
+        on: { click: () => { showBoardThemeMenu = !showBoardThemeMenu; showPieceSetMenu = false; redraw(); } },
       }, [
         h('span', 'Board Theme'),
         h('span.global-menu__arrow', showBoardThemeMenu ? '▾' : '›'),
@@ -1499,6 +1531,23 @@ function renderGlobalMenu(): VNode {
           h('button.global-menu__item', {
             class: { 'global-menu__item--active': boardTheme === name },
             on: { click: () => { applyBoardTheme(name); closeGlobalMenu(); redraw(); } },
+          }, name),
+        ),
+      ) : null,
+
+      // Piece Set — opens inline submenu
+      h('div.global-menu__item.global-menu__item--has-sub', {
+        on: { click: () => { showPieceSetMenu = !showPieceSetMenu; showBoardThemeMenu = false; redraw(); } },
+      }, [
+        h('span', 'Piece Set'),
+        h('span.global-menu__arrow', showPieceSetMenu ? '▾' : '›'),
+      ]),
+
+      showPieceSetMenu ? h('div.global-menu__submenu',
+        PIECE_SETS_FEATURED.map(name =>
+          h('button.global-menu__item', {
+            class: { 'global-menu__item--active': pieceSet === name },
+            on: { click: () => { applyPieceSet(name); closeGlobalMenu(); redraw(); } },
           }, name),
         ),
       ) : null,

@@ -818,6 +818,26 @@ body.resizing {
   }
 }
 
+// ─── Piece Sets ────────────────────────────────────────────────────────────────
+// Adapted from lichess-org/lila: ui/lib/css/theme/_pieces.scss
+// Overrides the hardcoded base64 data URIs in chessground.cburnett.css.
+// applyPieceSet() in main.ts sets these CSS vars on <body> at runtime.
+// Same selector specificity as chessground.cburnett.css; wins because this
+// stylesheet is appended after it in public/css/main.css.
+
+.cg-wrap piece.pawn.white   { background-image: var(---white-pawn); }
+.cg-wrap piece.knight.white { background-image: var(---white-knight); }
+.cg-wrap piece.bishop.white { background-image: var(---white-bishop); }
+.cg-wrap piece.rook.white   { background-image: var(---white-rook); }
+.cg-wrap piece.queen.white  { background-image: var(---white-queen); }
+.cg-wrap piece.king.white   { background-image: var(---white-king); }
+.cg-wrap piece.pawn.black   { background-image: var(---black-pawn); }
+.cg-wrap piece.knight.black { background-image: var(---black-knight); }
+.cg-wrap piece.bishop.black { background-image: var(---black-bishop); }
+.cg-wrap piece.rook.black   { background-image: var(---black-rook); }
+.cg-wrap piece.queen.black  { background-image: var(---black-queen); }
+.cg-wrap piece.king.black   { background-image: var(---black-king); }
+
 // ─── Board Themes ──────────────────────────────────────────────────────────────
 // Adapted from lichess-org/lila: ui/lib/css/theme/board/_boards.scss
 // Applied via data-board attribute on <body>; see applyBoardTheme() in main.ts.
