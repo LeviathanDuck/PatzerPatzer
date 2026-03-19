@@ -460,24 +460,29 @@ header nav {
   color: #bbb;
 }
 
-.analyse__board-wrap {
-  display: flex;
-  flex-direction: row;
-  width: 100%;
-  max-width: 600px;
-  gap: 6px;
+.analyse {
+  display: grid;
+  grid-template-columns: minmax(0, 600px) 34px minmax(240px, 380px);
+  grid-template-areas: "board  gauge  tools" "under  .      controls";
+  align-items: start;
+  padding: 24px 16px;
+  gap: 0 0;
 }
 
 .eval-bar {
+  grid-area: gauge;
   width: 26px;
-  flex-shrink: 0;
+  align-self: stretch;
   background: #333;
   display: flex;
   flex-direction: column-reverse;
-  align-self: stretch;
   position: relative;
   overflow: hidden;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.5) inset;
+}
+.eval-bar--off {
+  background: transparent;
+  box-shadow: none;
 }
 .eval-bar__fill {
   background: #c8c8c8;
@@ -513,9 +518,45 @@ header nav {
 }
 
 .analyse__board {
-  flex: 1;
+  grid-area: board;
   display: flex;
   flex-direction: column;
+}
+
+.analyse__tools {
+  grid-area: tools;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  min-height: 0;
+  overflow: hidden;
+  align-self: stretch;
+}
+
+.analyse__moves {
+  flex: 2 1 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  padding: 8px;
+}
+
+.analyse__controls {
+  grid-area: controls;
+  align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.analyse__underboard {
+  grid-area: under;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  min-width: 0;
 }
 
 .analyse__board-inner {
@@ -670,7 +711,6 @@ header nav {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 4px;
-  max-width: 600px;
   font-size: 0.95rem;
   line-height: 1.6;
 }
@@ -779,48 +819,106 @@ header nav {
   border-top: 1px solid #2a2a2a;
 }
 
-.ceval-box {
+.ceval {
+  display: flex;
+  align-items: stretch;
+  column-gap: 6px;
+  padding-top: 3px;
+  background: #111;
+  position: relative;
+  min-height: 44px;
+}
+.ceval .cmn-toggle {
+  flex: 0 0 40px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  max-width: 600px;
-  padding: 6px 10px;
-  background: #111;
-  border-radius: 4px 4px 0 0;
-  min-height: 34px;
-  box-sizing: border-box;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #888;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-inline-start: 6px;
 }
-.ceval-box--off {
-  visibility: hidden;
-  border-radius: 4px;
+.ceval .cmn-toggle.active {
+  color: #6f6;
+}
+.ceval .cmn-toggle:hover {
+  color: #ccc;
+}
+.ceval pearl {
+  display: block;
+  flex: 1 0 auto;
+  line-height: 38px;
+  font-size: 1.6em;
+  text-align: center;
+  font-weight: bold;
+  color: #e8e8e8;
+  font-variant-numeric: tabular-nums;
+}
+.ceval .engine {
+  flex: 2 1 auto;
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 3px;
+  color: #888;
+  overflow: hidden;
+  white-space: nowrap;
+  align-self: center;
+}
+.ceval .engine .info {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ceval .settings-gear {
+  color: #888;
+  font-size: 16px;
+  padding: 0 8px;
+  margin-inline-end: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  align-self: center;
+}
+.ceval .settings-gear:hover {
+  color: #ccc;
+}
+.ceval .settings-gear.active {
+  color: #fff;
+  background: #2a6644;
+  border-radius: 3px;
 }
 
 .pv_box {
   width: 100%;
-  max-width: 600px;
   background: #111;
-  border-radius: 0 0 4px 4px;
-  padding: 4px 10px 6px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  font-size: 13px;
+  position: relative;
 }
 
 .pv {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 3px;
   font-size: 0.82rem;
-  line-height: 1.5;
   color: #aaa;
 }
+.pv--nowrap {
+  display: block;
+  height: 2em;
+  line-height: 2em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px solid #222;
+  padding-inline-end: 6px;
+}
 .pv strong {
+  display: inline-block;
+  width: 34px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
-  min-width: 42px;
-  color: #ccc;
   font-size: 0.85rem;
 }
 .pv__score--white {
@@ -829,21 +927,26 @@ header nav {
 .pv__score--black {
   color: #8fb8d4;
 }
+.pv--empty {
+  color: transparent;
+}
 
 .pv-num {
   color: #555;
   font-size: 0.78rem;
+  margin-inline-start: 4px;
   user-select: none;
 }
 
 .pv-san {
   cursor: pointer;
-  padding: 0 1px;
+  margin-inline-start: 4px;
   border-radius: 2px;
 }
 .pv-san:hover {
-  background: #2a2a2a;
   color: #e8e8e8;
+  background: #2a2a2a;
+  padding: 0 1px;
 }
 
 .pv-board-float {
@@ -1027,14 +1130,6 @@ header nav {
 
 .summary__inaccuracy {
   color: #fa4;
-}
-
-.analyse {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 24px 16px;
-  gap: 16px;
 }
 
 .keyboard-help {

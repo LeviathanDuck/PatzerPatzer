@@ -653,7 +653,7 @@ function evalCurrentPosition(): void {
   // Use cache only when it already has enough PV lines for the current multiPv setting.
   // Batch analysis stores single-line evals (no .lines), so those always fall through
   // to a live engine search — matching Lichess's startCeval which always runs the engine.
-  const cachedHasLines = (cached?.lines?.length ?? 0) >= multiPv - 1;
+  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
   if (cached && cachedHasLines) {
     currentEval = { ...cached };
     syncArrow();
@@ -2067,14 +2067,10 @@ function renderPvBox(): VNode | null {
     const isPositive = ev.cp !== undefined ? ev.cp > 0 : ev.mate !== undefined ? ev.mate > 0 : null;
     const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
 
-    // Per-row score shown only when multiPv > 1 — for single-line, pearl shows it.
-    // Mirrors lichess-org/lila: if (multiPv > 1) children.push(strong(score))
     const children: (VNode | string)[] = [];
-    if (multiPv > 1) {
-      children.push(h('strong', {
-        class: { 'pv__score--white': isPositive === true, 'pv__score--black': isPositive === false },
-      }, score));
-    }
+    children.push(h('strong', {
+      class: { 'pv__score--white': isPositive === true, 'pv__score--black': isPositive === false },
+    }, score));
     children.push(...pvNodes);
 
     // div.pv.pv--nowrap: single-line truncated row, 2em height, matching Lichess row structure.

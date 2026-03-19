@@ -5594,7 +5594,7 @@ async function saveAnalysisToIdb(status) {
     const record = {
       gameId: selectedGameId,
       analysisVersion: ANALYSIS_VERSION,
-      analysisDepth,
+      analysisDepth: reviewDepth,
       status,
       updatedAt: Date.now(),
       nodes
@@ -5631,7 +5631,7 @@ async function loadAndRestoreAnalysis(gameId) {
   const stored = await loadAnalysisFromIdb(gameId);
   if (!stored) return;
   if (stored.analysisVersion !== ANALYSIS_VERSION) return;
-  if (stored.analysisDepth !== analysisDepth) return;
+  if (stored.analysisDepth !== reviewDepth) return;
   for (const entry of Object.values(stored.nodes)) {
     if (!entry.path) continue;
     const ev = {};
@@ -5697,7 +5697,8 @@ var batchQueue = [];
 var batchDone = 0;
 var batchAnalyzing = false;
 var batchState = "idle";
-var analysisDepth = 22;
+var reviewDepth = 16;
+var analysisDepth = 30;
 var analysisRunning = false;
 var showExportMenu = false;
 var showGlobalMenu = false;
@@ -5790,28 +5791,28 @@ function parseEngineLine(line) {
       currentEval.best = parts[1];
       const stored = { ...currentEval };
       pendingLines = [];
-      if (stored.cp !== void 0 || stored.mate !== void 0) {
-        const parentEval = evalCache.get(evalParentPath);
-        if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
-          stored.delta = stored.cp - parentEval.cp;
-        }
-        if (parentEval) {
-          const nodeWc = evalWinChances(stored);
-          const parentWc = evalWinChances(parentEval);
-          if (nodeWc !== void 0 && parentWc !== void 0) {
-            const whiteToMove = evalNodePly % 2 === 1;
-            const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
-            const moverParentWc = whiteToMove ? parentWc : -parentWc;
-            stored.loss = (moverParentWc - moverNodeWc) / 2;
-          }
-        }
-        evalCache.set(evalNodePath, stored);
-        console.log("[eval cache] path:", evalNodePath, "ply:", evalNodePly, "best:", stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
-      } else {
-        console.log("[eval cache] skip (no score) \u2014 path:", evalNodePath, "ply:", evalNodePly, "best:", stored.best);
-      }
       currentEval = stored;
       if (batchAnalyzing) {
+        if (stored.cp !== void 0 || stored.mate !== void 0) {
+          const parentEval = evalCache.get(evalParentPath);
+          if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
+            stored.delta = stored.cp - parentEval.cp;
+          }
+          if (parentEval) {
+            const nodeWc = evalWinChances(stored);
+            const parentWc = evalWinChances(parentEval);
+            if (nodeWc !== void 0 && parentWc !== void 0) {
+              const whiteToMove = evalNodePly % 2 === 1;
+              const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
+              const moverParentWc = whiteToMove ? parentWc : -parentWc;
+              stored.loss = (moverParentWc - moverNodeWc) / 2;
+            }
+          }
+          evalCache.set(evalNodePath, stored);
+          console.log("[review cache] path:", evalNodePath, "ply:", evalNodePly, "best:", stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
+        } else {
+          console.log("[review cache] skip (no score) \u2014 path:", evalNodePath, "ply:", evalNodePly);
+        }
         advanceBatch();
       } else {
         syncArrowDebounced();
@@ -5954,7 +5955,7 @@ function evalBatchItem(item) {
   console.log("[batch]", batchDone + 1, "/", batchQueue.length, "nodeId:", item.nodeId, "path:", item.nodePath, "ply:", item.nodePly, "awaiting:", wasActive);
   if (wasActive) protocol.stop();
   protocol.setPosition(item.fen);
-  protocol.go(analysisDepth);
+  protocol.go(reviewDepth);
 }
 function getUserColor(game) {
   const knownNames = [chesscomUsername, lichessUsername].map((n) => n.trim().toLowerCase()).filter(Boolean);
@@ -6646,6 +6647,7 @@ var EVAL_BAR_TICKS = [...Array(8).keys()].map(
   })
 );
 function renderEvalBar() {
+  if (!engineEnabled) return h("div.eval-bar.eval-bar--off");
   const pct = evalPct();
   const scorePct = Math.max(8, Math.min(92, pct));
   const hasScore = currentEval.cp !== void 0 || currentEval.mate !== void 0;
@@ -6658,6 +6660,25 @@ function renderEvalBar() {
 }
 var GRAPH_W = 600;
 var GRAPH_H = 80;
+function countMajorsMinors(fen) {
+  const board = fen.split(" ")[0];
+  let count = 0;
+  for (const ch of board) if ("rnbqRNBQ".includes(ch)) count++;
+  return count;
+}
+function detectPhases(mainline, n) {
+  let middleIdx;
+  let endIdx;
+  for (let i = 1; i <= n; i++) {
+    const mm = countMajorsMinors(mainline[i].fen);
+    if (middleIdx === void 0 && mm <= 10) middleIdx = i;
+    if (endIdx === void 0 && mm <= 6) {
+      endIdx = i;
+      break;
+    }
+  }
+  return { middleIdx, endIdx };
+}
 function renderEvalGraph() {
   const mainline = ctrl.mainline;
   const n = mainline.length - 1;
@@ -6745,6 +6766,30 @@ function renderEvalGraph() {
       "stroke-width": 1
     } }));
   }
+  const { middleIdx, endIdx } = detectPhases(mainline, n);
+  const divLines = [];
+  if (middleIdx !== void 0) {
+    if (middleIdx > 1) divLines.push({ label: "Opening", idx: 1 });
+    divLines.push({ label: "Middlegame", idx: middleIdx });
+  }
+  if (endIdx !== void 0) {
+    if (endIdx > 1 && middleIdx === void 0) divLines.push({ label: "Middlegame", idx: 0 });
+    divLines.push({ label: "Endgame", idx: endIdx });
+  }
+  for (const div of divLines) {
+    if (div.idx === 0) continue;
+    const dx = (div.idx - 1) / (n - 1) * GRAPH_W;
+    svgNodes.push(h("line", { attrs: {
+      x1: dx,
+      y1: 0,
+      x2: dx,
+      y2: GRAPH_H,
+      stroke: "#555",
+      "stroke-width": 1,
+      "stroke-dasharray": "3 3",
+      opacity: "0.7"
+    } }));
+  }
   return h("div.eval-graph", [
     h("svg", { attrs: {
       viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
@@ -6764,9 +6809,37 @@ function formatScore(ev) {
   }
   return "\u2026";
 }
-function renderEval() {
-  if (!engineEnabled) return h("div.ceval-box.ceval-box--off");
-  return null;
+function renderCeval() {
+  const hasEval = currentEval.cp !== void 0 || currentEval.mate !== void 0;
+  const pearlStr = engineEnabled ? hasEval ? formatScore(currentEval) : engineReady ? "\u2026" : "" : "";
+  const engineLabel = protocol.engineName ?? "Stockfish 18";
+  const statusText = !engineEnabled ? "Local analysis" : !engineReady ? "Loading\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "Engine on";
+  return h("div.ceval", { class: { enabled: engineEnabled } }, [
+    // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
+    h("button.cmn-toggle", {
+      class: { active: engineEnabled },
+      attrs: { title: "Toggle analysis engine (L)" },
+      on: { click: toggleEngine }
+    }, engineEnabled ? "On" : "Off"),
+    // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
+    // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element
+    h("pearl", pearlStr),
+    // Engine name + status info (flex: 2 1 auto, small text)
+    h("div.engine", [
+      engineLabel,
+      h("span.info", statusText)
+    ]),
+    // Settings gear — mirrors button.settings-gear positioning
+    h("button.settings-gear", {
+      class: { active: showEngineSettings },
+      attrs: { title: "Engine settings" },
+      on: { click: (e) => {
+        e.stopPropagation();
+        showEngineSettings = !showEngineSettings;
+        redraw();
+      } }
+    }, "\u2699")
+  ]);
 }
 function renderPvMoves(fen, moves) {
   const MAX_PV_MOVES = 12;
@@ -6795,29 +6868,29 @@ function renderPvMoves(fen, moves) {
 }
 function renderPvBox() {
   if (!engineEnabled) return null;
-  const primaryMoves = currentEval.moves ?? [];
-  const secondaryLines = currentEval.lines ?? [];
   const fen = ctrl.node.fen;
-  function pvRow(ev) {
+  function pvRowForSlot(slotIdx) {
+    const ev = slotIdx === 0 ? currentEval.cp !== void 0 || currentEval.mate !== void 0 || currentEval.moves?.length ? currentEval : void 0 : currentEval.lines?.[slotIdx - 1];
+    if (!ev) {
+      if (slotIdx === 0) {
+        const statusText = !engineReady ? "Loading engine\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "\u2026";
+        return h("div.pv.pv--nowrap", [h("span.ceval__info", statusText)]);
+      }
+      return h("div.pv.pv--nowrap.pv--empty");
+    }
     const score = formatScore(ev);
     const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
     const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
-    return h("div.pv", [
-      h("strong", {
+    const children = [];
+    if (multiPv > 1) {
+      children.push(h("strong", {
         class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
-      }, score),
-      ...pvNodes
-    ]);
+      }, score));
+    }
+    children.push(...pvNodes);
+    return h("div.pv.pv--nowrap", children);
   }
-  const rows = [];
-  if (primaryMoves.length > 0) rows.push(pvRow(currentEval));
-  for (const line of secondaryLines) {
-    if (line.moves?.length) rows.push(pvRow(line));
-  }
-  if (rows.length === 0) {
-    const statusText = !engineReady ? "Loading engine\u2026" : batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}\u2026` : "\u2026";
-    return h("div.pv_box", { key: "pv-status" }, [h("div.pv", [h("span.ceval__info", statusText)])]);
-  }
+  const slots = [...Array(multiPv).keys()].map((i) => pvRowForSlot(i));
   return h("div.pv_box", {
     key: "pv-rows",
     hook: {
@@ -6853,9 +6926,9 @@ function renderPvBox() {
           const sanSpan = e.target.closest("span.pv-san");
           if (!sanSpan) return;
           e.preventDefault();
-          const pvRow2 = sanSpan.closest("div.pv");
-          if (!pvRow2) return;
-          const allSans = Array.from(pvRow2.querySelectorAll("span.pv-san"));
+          const pvRow = sanSpan.closest("div.pv");
+          if (!pvRow) return;
+          const allSans = Array.from(pvRow.querySelectorAll("span.pv-san"));
           const clickedIdx = allSans.indexOf(sanSpan);
           if (clickedIdx < 0) return;
           const ucis = [];
@@ -6868,7 +6941,7 @@ function renderPvBox() {
         });
       }
     }
-  }, rows);
+  }, slots);
 }
 function playPvUciList(ucis) {
   let path = ctrl.path;
@@ -6959,17 +7032,30 @@ function renderEngineSettings() {
       h("span.ceval-settings__val", `${multiPv} / 5`)
     ]),
     h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-depth" } }, "Depth"),
-      h("input#ceval-depth", {
-        attrs: { type: "range", min: 8, max: 26, step: 1, value: analysisDepth },
+      h("label.ceval-settings__label", { attrs: { for: "ceval-review-depth" } }, "Review depth"),
+      h("select#ceval-review-depth", {
         on: {
-          input: (e) => {
+          change: (e) => {
+            reviewDepth = parseInt(e.target.value);
+            redraw();
+          }
+        }
+      }, [12, 14, 16, 18, 20].map(
+        (d) => h("option", { attrs: { value: d, selected: d === reviewDepth } }, String(d))
+      ))
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-analysis-depth" } }, "Analysis depth"),
+      h("select#ceval-analysis-depth", {
+        on: {
+          change: (e) => {
             analysisDepth = parseInt(e.target.value);
             redraw();
           }
         }
-      }),
-      h("span.ceval-settings__val", String(analysisDepth))
+      }, [18, 20, 24, 30].map(
+        (d) => h("option", { attrs: { value: d, selected: d === analysisDepth } }, String(d))
+      ))
     ]),
     h("div.ceval-settings__row", [
       h("label.ceval-settings__label", { attrs: { for: "ceval-arrows" } }, "Arrows"),
@@ -7117,7 +7203,7 @@ function downloadPgn(annotated) {
 function renderAnalysisControls() {
   const canRun = !batchAnalyzing && ctrl.mainline.length > 1;
   const hasGame = ctrl.mainline.length > 1;
-  const statusText = analysisRunning ? `Analyzing\u2026 ${batchDone} / ${batchQueue.length}` : analysisComplete ? `Analysis complete (${batchDone} positions)` : "Idle";
+  const statusText = analysisRunning ? `Reviewing\u2026 ${batchDone} / ${batchQueue.length}` : analysisComplete ? `Review complete (${batchDone} positions)` : "Idle";
   return h("div.pgn-import", [
     h("div.pgn-import__row", [
       h("span", { attrs: { style: "font-size:0.8rem;color:#888" } }, statusText)
@@ -7126,7 +7212,7 @@ function renderAnalysisControls() {
       h("button", {
         attrs: { disabled: !canRun },
         on: { click: startBatchWhenReady }
-      }, "Analyze All"),
+      }, "Review"),
       h("button", {
         attrs: { disabled: !hasGame || batchAnalyzing },
         on: {
@@ -7149,7 +7235,7 @@ function renderAnalysisControls() {
             startBatchWhenReady();
           }
         }
-      }, "Re-analyze"),
+      }, "Re-review"),
       h("button", {
         attrs: { disabled: batchAnalyzing },
         on: {
@@ -7515,45 +7601,56 @@ function routeContent(route) {
       return h("h1", `Analysis Game: ${route.params["id"]}`);
     case "analysis":
       return h("div.analyse", [
-        h("h1", "Analysis Page"),
-        renderEval(),
-        renderPvBox(),
-        renderEngineSettings(),
-        h("div.controls", [
+        // Board — left column (grid-area: board)
+        // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__board.main-board
+        (() => {
+          const [topStrip, bottomStrip] = renderPlayerStrips();
+          return h("div.analyse__board.main-board", [
+            topStrip,
+            h("div.analyse__board-inner", [renderBoard(), renderPromotionDialog()]),
+            bottomStrip
+          ]);
+        })(),
+        // Eval gauge — between board and tools (grid-area: gauge)
+        // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge grid-area
+        renderEvalBar(),
+        // Tools — right column (grid-area: tools)
+        // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__tools
+        h("div.analyse__tools", [
+          // Engine header: toggle + pearl + engine-name/status + settings gear
+          // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderCeval()
+          renderCeval(),
+          // Engine settings panel — sits directly below header, above PV lines
+          // Mirrors lichess-org/lila: renderCevalSettings() position
+          renderEngineSettings(),
+          // PV lines — below header (and settings when open)
+          renderPvBox(),
+          // Move list with internal scroll — mirrors div.analyse__moves.areplay
+          h("div.analyse__moves", [renderMoveList()]),
+          renderAnalysisSummary(),
+          renderPuzzleCandidates()
+        ]),
+        // Controls — below tools (grid-area: controls)
+        // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
+        // Controls — navigation only; engine toggle + settings moved to renderCeval() header
+        // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls (jump buttons)
+        h("div.analyse__controls", [
           h("button", { on: { click: prev }, attrs: { disabled: ctrl.path === "" } }, "\u2190 Prev"),
-          h("button", { on: { click: flip } }, "Flip Board"),
-          h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192"),
-          h(
-            "button",
-            { on: { click: toggleEngine }, class: { active: engineEnabled } },
-            engineEnabled ? engineReady ? "Engine: On" : "Engine: Loading\u2026" : "Engine: Off"
-          ),
-          h("button", {
-            class: { active: showEngineSettings },
-            attrs: { title: "Engine settings" },
-            on: { click: () => {
-              showEngineSettings = !showEngineSettings;
-              redraw();
-            } }
-          }, "\u2699")
+          h("button", { on: { click: flip } }, "Flip"),
+          h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192")
         ]),
-        renderAnalysisControls(),
-        h("div.analyse__board-wrap", [
-          ...engineEnabled ? [renderEvalBar()] : [],
-          (() => {
-            const [topStrip, bottomStrip] = renderPlayerStrips();
-            return h("div.analyse__board", [topStrip, h("div.analyse__board-inner", [renderBoard(), renderPromotionDialog()]), bottomStrip]);
-          })()
+        // Underboard — below board (grid-area: under)
+        // Unique to this app; adapted to underboard position from Lichess layout pattern.
+        // Contains: eval graph, review controls, import sections, game list.
+        h("div.analyse__underboard", [
+          renderEvalGraph(),
+          renderAnalysisControls(),
+          renderImportFilters(),
+          renderChesscomImport(),
+          renderLichessImport(),
+          renderPgnImport(),
+          renderGameList()
         ]),
-        renderEvalGraph(),
-        renderAnalysisSummary(),
-        renderMoveList(),
-        renderPuzzleCandidates(),
-        renderImportFilters(),
-        renderChesscomImport(),
-        renderLichessImport(),
-        renderPgnImport(),
-        renderGameList(),
         renderKeyboardHelp()
       ]);
     case "puzzles":
