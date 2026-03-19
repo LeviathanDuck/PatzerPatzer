@@ -5635,6 +5635,7 @@ var evalNodePly = 0;
 var evalParentNodeId = "";
 var engineSearchActive = false;
 var awaitingStopBestmove = false;
+var pendingEval = false;
 var protocol = new StockfishProtocol();
 var multiPv = 3;
 var showEngineSettings = false;
@@ -5759,7 +5760,11 @@ function parseEngineLine(line) {
       } else {
         syncArrowDebounced();
         redraw();
-        if (threatMode) evalThreatPosition();
+        if (pendingEval) {
+          evalCurrentPosition();
+        } else if (threatMode) {
+          evalThreatPosition();
+        }
       }
     }
   }
@@ -5810,6 +5815,7 @@ function evalCurrentPosition() {
   if (batchAnalyzing) return;
   if (!engineEnabled || !engineReady) return;
   if (evalIsThreat) {
+    awaitingStopBestmove = true;
     protocol.stop();
     evalIsThreat = false;
   }
@@ -5827,13 +5833,16 @@ function evalCurrentPosition() {
   pendingLines = [];
   arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   syncArrow();
-  const wasActive = engineSearchActive;
-  awaitingStopBestmove = wasActive;
+  if (engineSearchActive) {
+    pendingEval = true;
+    redraw();
+    return;
+  }
+  pendingEval = false;
   engineSearchActive = true;
   evalNodeId = ctrl.node.id;
   evalNodePly = ctrl.node.ply;
   evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? "";
-  if (wasActive) protocol.stop();
   protocol.setPosition(ctrl.node.fen);
   protocol.go(analysisDepth, multiPv);
 }
@@ -7077,7 +7086,10 @@ function renderChesscomImport() {
   return h("div.pgn-import", [
     h("div.pgn-import__row", [
       h("input", {
-        attrs: { placeholder: "Chess.com username", type: "text", disabled: chesscomLoading },
+        attrs: { placeholder: "Chess.com username", type: "text", disabled: chesscomLoading, value: "LeviathanDuck" },
+        hook: { insert: (vnode3) => {
+          chesscomUsername = vnode3.elm.value;
+        } },
         on: { input: (e) => {
           chesscomUsername = e.target.value;
         } }
@@ -7153,7 +7165,10 @@ function renderLichessImport() {
   return h("div.pgn-import", [
     h("div.pgn-import__row", [
       h("input", {
-        attrs: { placeholder: "Lichess username", type: "text", disabled: lichessLoading },
+        attrs: { placeholder: "Lichess username", type: "text", disabled: lichessLoading, value: "Leviathan_Duck" },
+        hook: { insert: (vnode3) => {
+          lichessUsername = vnode3.elm.value;
+        } },
         on: { input: (e) => {
           lichessUsername = e.target.value;
         } }
