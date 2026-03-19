@@ -27,11 +27,18 @@ await esbuild.build({
 });
 
 // Copy Stockfish engine files to public/stockfish/
-// stockfish@16 provides single-threaded NNUE build under src/stockfish-nnue-16-single.*
+// stockfish@16 provides both single-threaded and multi-threaded NNUE builds.
+// The multi-threaded build (stockfish-nnue-16.js) requires SharedArrayBuffer,
+// which requires COOP+COEP headers — served via server.mjs in dev.
 fs.mkdirSync('public/stockfish', { recursive: true });
 const sfAssets = [
+  // Single-threaded fallback (works without special headers)
   ['node_modules/stockfish/src/stockfish-nnue-16-single.js',   'public/stockfish/stockfish-nnue-16-single.js'],
   ['node_modules/stockfish/src/stockfish-nnue-16-single.wasm', 'public/stockfish/stockfish-nnue-16-single.wasm'],
+  // Multi-threaded build (used when SharedArrayBuffer is available)
+  ['node_modules/stockfish/src/stockfish-nnue-16.js',          'public/stockfish/stockfish-nnue-16.js'],
+  ['node_modules/stockfish/src/stockfish-nnue-16.wasm',        'public/stockfish/stockfish-nnue-16.wasm'],
+  // Shared NNUE weights file
   ['node_modules/stockfish/src/nn-5af11540bbfe.nnue',          'public/stockfish/nn-5af11540bbfe.nnue'],
 ];
 for (const [src, dst] of sfAssets) {

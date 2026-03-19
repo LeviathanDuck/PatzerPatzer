@@ -79,6 +79,18 @@ export class StockfishProtocol {
       // Analysis mode: disable contempt, enable Chess960 notation.
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts connected/received
       this.send('setoption name UCI_AnalyseMode value true');
+
+      // Use all available cores minus one (keep one free for the UI thread).
+      // Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts recommendedThreads.
+      // Falls back to 1 if hardwareConcurrency is unavailable.
+      const cores   = navigator.hardwareConcurrency ?? 2;
+      const threads = Math.max(1, cores - 1);
+      this.send(`setoption name Threads value ${threads}`);
+
+      // 256 MB hash table — large enough to avoid evictions at depth 22.
+      // Lichess default is 16 MB; 256 MB is appropriate for a single-user dev machine.
+      this.send('setoption name Hash value 256');
+
       this.send('ucinewgame');
       this.send('isready');
     }
