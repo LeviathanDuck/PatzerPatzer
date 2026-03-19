@@ -1738,7 +1738,12 @@ const EVAL_BAR_TICKS: VNode[] = [...Array(8).keys()].map(i =>
   }),
 );
 
+// Always rendered so the gauge grid column stays occupied; hidden when engine is off.
+// Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge { display: none }
+// which is toggled by the gauge-on class on the parent.
 function renderEvalBar(): VNode {
+  if (!engineEnabled) return h('div.eval-bar.eval-bar--off');
+
   const pct = evalPct();
   // Clamp the score label position so it stays visible near the edges.
   const scorePct = Math.max(8, Math.min(92, pct));
@@ -2853,13 +2858,38 @@ function routeContent(route: Route): VNode {
       return h('h1', `Analysis Game: ${route.params['id']}`);
     case 'analysis':
       return h('div.analyse', [
-        h('h1', 'Analysis Page'),
-        renderEval(),
-        renderPvBox(),
-        renderEngineSettings(),
-        h('div.controls', [
+        // Board — left column (grid-area: board)
+        // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__board.main-board
+        (() => {
+          const [topStrip, bottomStrip] = renderPlayerStrips();
+          return h('div.analyse__board.main-board', [
+            topStrip,
+            h('div.analyse__board-inner', [renderBoard(), renderPromotionDialog()]),
+            bottomStrip,
+          ]);
+        })(),
+
+        // Eval gauge — between board and tools (grid-area: gauge)
+        // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge grid-area
+        renderEvalBar(),
+
+        // Tools — right column (grid-area: tools)
+        // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__tools
+        h('div.analyse__tools', [
+          renderEval(),
+          renderPvBox(),
+          renderEngineSettings(),
+          // Move list with internal scroll — mirrors div.analyse__moves.areplay
+          h('div.analyse__moves', [renderMoveList()]),
+          renderAnalysisSummary(),
+          renderPuzzleCandidates(),
+        ]),
+
+        // Controls — below tools (grid-area: controls)
+        // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
+        h('div.analyse__controls', [
           h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
-          h('button', { on: { click: flip } }, 'Flip Board'),
+          h('button', { on: { click: flip } }, 'Flip'),
           h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
           h('button', { on: { click: toggleEngine }, class: { active: engineEnabled } },
             engineEnabled ? (engineReady ? 'Analysis: On' : 'Analysis: Loading…') : 'Analysis: Off'
@@ -2870,23 +2900,20 @@ function routeContent(route: Route): VNode {
             on: { click: () => { showEngineSettings = !showEngineSettings; redraw(); } },
           }, '⚙'),
         ]),
-        renderAnalysisControls(),
-        h('div.analyse__board-wrap', [
-          ...(engineEnabled ? [renderEvalBar()] : []),
-          (() => {
-            const [topStrip, bottomStrip] = renderPlayerStrips();
-            return h('div.analyse__board', [topStrip, h('div.analyse__board-inner', [renderBoard(), renderPromotionDialog()]), bottomStrip]);
-          })(),
+
+        // Underboard — below board (grid-area: under)
+        // Unique to this app; adapted to underboard position from Lichess layout pattern.
+        // Contains: eval graph, review controls, import sections, game list.
+        h('div.analyse__underboard', [
+          renderEvalGraph(),
+          renderAnalysisControls(),
+          renderImportFilters(),
+          renderChesscomImport(),
+          renderLichessImport(),
+          renderPgnImport(),
+          renderGameList(),
         ]),
-        renderEvalGraph(),
-        renderAnalysisSummary(),
-        renderMoveList(),
-        renderPuzzleCandidates(),
-        renderImportFilters(),
-        renderChesscomImport(),
-        renderLichessImport(),
-        renderPgnImport(),
-        renderGameList(),
+
         renderKeyboardHelp(),
       ]);
     case 'puzzles':  return h('h1', 'Puzzles Page');
