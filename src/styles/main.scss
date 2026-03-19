@@ -130,7 +130,9 @@ header {
   display: flex;
   flex-direction: row;
   width: 100%;
-  max-width: 600px;
+  // max-width accommodates board (600px) + gap (6px) + eval bar (26px)
+  // so the board always gets its full 600px whether the eval bar is present or not.
+  max-width: 632px;
   gap: 6px;
 }
 
@@ -191,7 +193,9 @@ header {
 }
 
 .analyse__board {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 600px;
   display: flex;
   flex-direction: column;
 }
