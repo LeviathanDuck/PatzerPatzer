@@ -5510,9 +5510,13 @@ function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
   };
   const tcIcon = game.timeClass ? tcIconMap[game.timeClass] ?? null : null;
   const resultCls = result === "win" ? "grl__result--win" : result === "loss" ? "grl__result--loss" : result === "draw" ? "grl__result--draw" : "grl__result--unknown";
+  const oppColor = userColor === "white" ? "black" : userColor === "black" ? "white" : null;
+  const oppChip = oppColor ? h("span.color-chip.--" + oppColor) : null;
+  const oppRating = userColor === "white" ? game.blackRating : userColor === "black" ? game.whiteRating : void 0;
+  const oppLabel = oppRating !== void 0 ? `${opponent} (${oppRating})` : opponent;
   return [
     h("span.grl__result." + resultCls, "\u25CF"),
-    h("span.grl__opponent", opponent),
+    h("span.grl__opponent", [oppLabel, oppChip]),
     date ? h("span.grl__date", date) : null,
     tcIcon ? h("span.grl__tc", { attrs: { "data-icon": tcIcon, title: game.timeClass } }) : null,
     isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
@@ -6902,8 +6906,7 @@ function renderPlayerStrips() {
     return h("div.analyse__player_strip", [
       badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null,
       h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
-      h("span.player-strip__name", name),
-      rating !== void 0 ? h("span.player-strip__rating", `(${rating})`) : null,
+      h("span.player-strip__name", rating !== void 0 ? `${name} (${rating})` : name),
       renderMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
       centis !== void 0 ? h("div.analyse__clock", formatClock(centis)) : null
     ]);
@@ -8381,7 +8384,10 @@ function renderGamesView() {
             } }
           }, [
             h("td", renderResultIcon(r)),
-            h("td.games-view__opponent", opp),
+            h("td.games-view__opponent", [
+              opp,
+              userColor ? h("span.color-chip.--" + (userColor === "white" ? "black" : "white")) : null
+            ]),
             ratingCell,
             h("td.games-view__date", date),
             h(
