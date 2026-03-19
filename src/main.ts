@@ -1671,20 +1671,11 @@ function renderMoveSpan(node: TreeNode, path: TreePath, parent: TreeNode, showIn
 }
 
 /**
- * Render a list of sibling nodes from the move tree.
- * nodes[0] is the mainline child at this level; nodes[1+] are side variations.
- *
- * Structure (matches Lichess inline view ordering):
- *   1. Mainline child's move
- *   2. Side variation blocks in parens (appear AFTER the mainline move)
- *   3. Recurse into mainline child's continuation
- *
- * This ensures variations appear after the mainline move at the branch point,
- * e.g. "2. Nf3 Nc6 ( 2… d6 ) 3. Bb5 …" — not before Nc6.
- *
- * Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts renderNodes / lines
+ * Inline helper: renders a variation line as a flat sequence of moves with
+ * embedded move numbers. Used inside column-view interrupt blocks.
+ * Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts sidelineNodes
  */
-function renderNodeSiblings(
+function renderInlineNodes(
   nodes: TreeNode[],
   parentPath: TreePath,
   parent: TreeNode,
@@ -1695,34 +1686,79 @@ function renderNodeSiblings(
   const mainPath = parentPath + main.id;
   const out: VNode[] = [];
 
-  // Move number lives inside the move element (Lichess tview2 pattern).
-  // Show index before white (odd ply) always; before black only when requested.
-  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode withIndex logic
   const showIndex = needsMoveNum || main.ply % 2 === 1;
   out.push(renderMoveSpan(main, mainPath, parent, showIndex));
 
-  // Side variation blocks — rendered AFTER the mainline move at this branch point.
-  // Wrapped in inline element; CSS ::before/::after add the parentheses automatically.
-  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts sidelineNodes → inline
   for (const variant of variations) {
-    const varContent = renderNodeSiblings([variant], parentPath, parent, true);
-    out.push(h('inline', varContent));
+    out.push(h('inline', renderInlineNodes([variant], parentPath, parent, true)));
   }
 
-  // Continue into mainline child's children.
-  // After showing variations, a black continuation needs an explicit "N…" prefix.
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
   const contNeedsNum = hasVariations && firstCont !== undefined && firstCont.ply % 2 === 0;
-  out.push(...renderNodeSiblings(main.children, mainPath, main, contNeedsNum));
+  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum));
 
   return out;
 }
 
+/**
+ * Render the move tree into the flat sequence of flex children expected by
+ * div.tview2.tview2-column.
+ *
+ * Column layout — each row is: index(13%) | white move(43.5%) | black move(43.5%)
+ * index is a top-level flex child (not inside move).
+ * Variations appear as full-width interrupt > lines > line blocks.
+ *
+ * Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts ColumnView.renderNodes
+ */
+function renderColumnNodes(
+  nodes: TreeNode[],
+  parentPath: TreePath,
+  parent: TreeNode,
+  out: VNode[],
+): void {
+  if (nodes.length === 0) return;
+  const [main, ...variations] = nodes;
+  const mainPath = parentPath + main.id;
+  const isWhite = main.ply % 2 === 1;
+
+  // index element before white's move — direct flex child at 13% width.
+  // Mirrors lichess-org/lila: columnView.ts isWhite && renderIndex(child.ply, false)
+  if (isWhite) out.push(h('index', String(Math.ceil(main.ply / 2))));
+
+  // The move — no embedded index for column view.
+  out.push(renderMoveSpan(main, mainPath, parent, false));
+
+  // Variations — emit as full-width interrupt block.
+  // Mirrors lichess-org/lila: columnView.ts interrupt > lines > line structure
+  if (variations.length > 0) {
+    // Fill the unused black slot with an empty placeholder so the interrupt
+    // starts on a new row. Mirrors columnView.ts isWhite && emptyMove().
+    if (isWhite) out.push(h('move.empty', '\u2026'));
+
+    const varLines = variations.map(v =>
+      h('line', renderInlineNodes([v], parentPath, parent, true)),
+    );
+    out.push(h('interrupt', [h('lines', varLines)]));
+
+    // After the interrupt re-anchor the next mainline move.
+    // If white just varied, the next move is black's — emit index + empty white.
+    // Mirrors columnView.ts isWhite && child.children.length > 0 re-anchor.
+    if (isWhite && main.children.length > 0) {
+      out.push(h('index', String(Math.ceil(main.ply / 2))));
+      out.push(h('move.empty', '\u2026'));
+    }
+  }
+
+  renderColumnNodes(main.children, mainPath, main, out);
+}
+
 function renderMoveList(): VNode {
-  // div.tview2.tview2-inline mirrors Lichess renderInlineView container class.
-  // Adapted from lichess-org/lila: ui/analyse/src/treeView/inlineView.ts renderInlineView
-  return h('div.tview2.tview2-inline', renderNodeSiblings(ctrl.root.children, '', ctrl.root, true));
+  // div.tview2.tview2-column: flex-wrap grid, index | white | black per row.
+  // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts renderColumnView
+  const nodes: VNode[] = [];
+  renderColumnNodes(ctrl.root.children, '', ctrl.root, nodes);
+  return h('div.tview2.tview2-column', nodes);
 }
 
 // --- Eval bar ---
@@ -2481,61 +2517,63 @@ function downloadPgn(annotated: boolean): void {
 }
 
 function renderAnalysisControls(): VNode {
-  const canRun  = !batchAnalyzing && ctrl.mainline.length > 1;
   const hasGame = ctrl.mainline.length > 1;
 
-  const statusText = analysisRunning
-    ? `Reviewing… ${batchDone} / ${batchQueue.length}`
-    : analysisComplete
-      ? `Review complete (${batchDone} positions)`
-      : 'Idle';
+  // Single review button — label and behavior change based on state.
+  // Mirrors Lichess's single-action pattern for engine/analysis controls.
+  let reviewLabel: string;
+  if (batchAnalyzing) {
+    // Show percentage progress during review.
+    const pct = batchQueue.length > 0
+      ? Math.round((batchDone / batchQueue.length) * 100)
+      : 0;
+    reviewLabel = `${pct}%`;
+  } else if (analysisComplete) {
+    reviewLabel = 'Re-analyze';
+  } else {
+    reviewLabel = 'Review';
+  }
+
+  const reviewClick = () => {
+    if (batchAnalyzing) {
+      // Stop the in-progress review cleanly — preserve partial evalCache.
+      awaitingStopBestmove = true;
+      protocol.stop();
+      batchAnalyzing  = false;
+      batchState      = 'idle';
+      analysisRunning = false;
+      void saveAnalysisToIdb('partial');
+      redraw();
+      return;
+    }
+    if (analysisComplete) {
+      // Re-analyze: clear old data and start fresh.
+      if (selectedGameId) {
+        void clearAnalysisFromIdb(selectedGameId);
+        analyzedGameIds.delete(selectedGameId);
+        missedTacticGameIds.delete(selectedGameId);
+      }
+      evalCache.clear();
+      currentEval      = {};
+      puzzleCandidates = [];
+      batchQueue       = [];
+      batchDone        = 0;
+      batchAnalyzing   = false;
+      batchState       = 'idle';
+      analysisRunning  = false;
+      analysisComplete = false;
+      syncArrow();
+    }
+    startBatchWhenReady();
+  };
 
   return h('div.pgn-import', [
     h('div.pgn-import__row', [
-      h('span', { attrs: { style: 'font-size:0.8rem;color:#888' } }, statusText),
-    ]),
-    h('div.pgn-import__row', [
-      h('button', {
-        attrs: { disabled: !canRun },
-        on: { click: startBatchWhenReady },
-      }, 'Review'),
-      h('button', {
-        attrs: { disabled: !hasGame || batchAnalyzing },
-        on: {
-          click: () => {
-            if (selectedGameId) {
-              void clearAnalysisFromIdb(selectedGameId);
-              analyzedGameIds.delete(selectedGameId);
-              missedTacticGameIds.delete(selectedGameId);
-            }
-            evalCache.clear();
-            currentEval = {};
-            puzzleCandidates = [];
-            batchQueue       = [];
-            batchDone        = 0;
-            batchAnalyzing   = false;
-            batchState       = 'idle';
-            analysisRunning  = false;
-            analysisComplete = false;
-            syncArrow();
-            startBatchWhenReady();
-          },
-        },
-      }, 'Re-review'),
-      h('button', {
-        attrs: { disabled: batchAnalyzing },
-        on: {
-          click: () => {
-            evalCache.clear();
-            currentEval = {};
-            puzzleCandidates = [];
-            analysisRunning  = false;
-            analysisComplete = false;
-            syncArrow();
-            redraw();
-          },
-        },
-      }, 'Clear Eval Cache'),
+      h('button.btn-review', {
+        class: { 'btn-review--complete': analysisComplete },
+        attrs: { disabled: !hasGame },
+        on: { click: reviewClick },
+      }, reviewLabel),
       h('button', {
         attrs: { disabled: ctrl.mainline.length <= 1 },
         on: {
