@@ -5544,16 +5544,69 @@ var PIECE_VARS = [
   ["---black-queen", "bQ"],
   ["---black-king", "bK"]
 ];
+var PIECE_WEBP_SETS = /* @__PURE__ */ new Set(["monarchy"]);
 var pieceSet = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
 function applyPieceSet(name) {
+  const ext = PIECE_WEBP_SETS.has(name) ? "webp" : "svg";
   for (const [cssVar, file] of PIECE_VARS) {
-    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.svg)`);
+    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.${ext})`);
   }
   document.body.dataset.pieceSet = name;
   pieceSet = name;
   localStorage.setItem(PIECE_SET_KEY, name);
 }
 applyPieceSet(pieceSet);
+var FILTER_DEFAULTS = {
+  "board-brightness": 100,
+  "board-contrast": 100,
+  "board-hue": 0
+};
+var FILTER_LS_PREFIX = "boardFilter.";
+var boardFilters = {};
+for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
+  const stored = localStorage.getItem(FILTER_LS_PREFIX + prop);
+  boardFilters[prop] = stored !== null ? parseInt(stored, 10) : def;
+}
+function filtersAtDefault() {
+  return Object.entries(FILTER_DEFAULTS).every(([p, def]) => boardFilters[p] === def);
+}
+function setFilter(prop, value) {
+  boardFilters[prop] = value;
+  document.body.style.setProperty(`---${prop}`, value.toString());
+  localStorage.setItem(FILTER_LS_PREFIX + prop, value.toString());
+  document.body.classList.toggle("simple-board", filtersAtDefault());
+}
+function resetFilters() {
+  for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) setFilter(prop, def);
+}
+for (const [prop, value] of Object.entries(boardFilters)) {
+  document.body.style.setProperty(`---${prop}`, value.toString());
+}
+document.body.classList.toggle("simple-board", filtersAtDefault());
+var BOARD_THEME_EXT = {
+  brown: "png",
+  horsey: "jpg",
+  blue: "png",
+  green: "png",
+  purple: "png",
+  "purple-diag": "png",
+  wood4: "jpg",
+  maple: "jpg",
+  blue2: "jpg",
+  blue3: "jpg",
+  marble: "jpg",
+  olive: "jpg",
+  grey: "jpg",
+  metal: "jpg",
+  newspaper: "svg"
+};
+function boardThumbnailUrl(name) {
+  if (name === "newspaper") return "/images/board/svg/newspaper.svg";
+  return `/images/board/${name}.thumbnail.${BOARD_THEME_EXT[name]}`;
+}
+function piecePreviewUrl(name) {
+  return PIECE_WEBP_SETS.has(name) ? `/piece/${name}/wN.webp` : `/piece/${name}/wN.svg`;
+}
 var importedGames = [];
 var selectedGameId = null;
 var selectedGamePgn = null;
@@ -5784,8 +5837,7 @@ var analysisDepth = 30;
 var analysisRunning = false;
 var showExportMenu = false;
 var showGlobalMenu = false;
-var showBoardThemeMenu = false;
-var showPieceSetMenu = false;
+var showBoardSettings = false;
 var importPlatform = "chesscom";
 var showImportPanel = false;
 var pendingBatchOnReady = false;
@@ -6564,9 +6616,72 @@ function renderHeader(route) {
 }
 function closeGlobalMenu() {
   showGlobalMenu = false;
-  showBoardThemeMenu = false;
-  showPieceSetMenu = false;
+  showBoardSettings = false;
   redraw();
+}
+function renderFilterSlider(prop, label, min, max, step2, fmt) {
+  const value = boardFilters[prop];
+  return h("div.board-settings__slider-row", [
+    h("label", label),
+    h("input", {
+      attrs: { type: "range", min, max, step: step2, value },
+      on: {
+        input: (e) => {
+          setFilter(prop, parseInt(e.target.value, 10));
+          redraw();
+        }
+      }
+    }),
+    h("span.board-settings__slider-val", fmt ? fmt(value) : `${value}%`)
+  ]);
+}
+function renderBoardSettings() {
+  return h("div.board-settings", [
+    // Sliders
+    renderFilterSlider("board-brightness", "Brightness", 20, 140, 1),
+    renderFilterSlider("board-contrast", "Contrast", 40, 200, 2),
+    renderFilterSlider("board-hue", "Hue", 0, 100, 1, (v) => `\xB1${Math.round(v * 3.6)}\xB0`),
+    filtersAtDefault() ? null : h("button.board-settings__reset", {
+      on: { click: () => {
+        resetFilters();
+        redraw();
+      } }
+    }, "Reset"),
+    // Board theme tile grid
+    h("div.board-settings__label", "Board"),
+    h(
+      "div.board-settings__theme-grid",
+      BOARD_THEMES_FEATURED.map(
+        (name) => h("button.board-settings__theme-tile", {
+          class: { active: boardTheme === name },
+          attrs: { title: name },
+          on: { click: () => {
+            applyBoardTheme(name);
+            redraw();
+          } }
+        }, [
+          h("span", { style: { backgroundImage: `url(${boardThumbnailUrl(name)})` } })
+        ])
+      )
+    ),
+    // Piece set tile grid
+    h("div.board-settings__label", "Pieces"),
+    h(
+      "div.board-settings__piece-grid",
+      PIECE_SETS_FEATURED.map(
+        (name) => h("button.board-settings__piece-tile", {
+          class: { active: pieceSet === name },
+          attrs: { title: name },
+          on: { click: () => {
+            applyPieceSet(name);
+            redraw();
+          } }
+        }, [
+          h("piece", { style: { backgroundImage: `url(${piecePreviewUrl(name)})` } })
+        ])
+      )
+    )
+  ]);
 }
 function renderGlobalMenu() {
   return h("div.global-menu", [
@@ -6576,8 +6691,7 @@ function renderGlobalMenu() {
       attrs: { title: "Settings" },
       on: { click: () => {
         showGlobalMenu = !showGlobalMenu;
-        showBoardThemeMenu = false;
-        showPieceSetMenu = false;
+        showBoardSettings = false;
         redraw();
       } }
     }, "\u2699"),
@@ -6586,7 +6700,9 @@ function renderGlobalMenu() {
       on: { click: closeGlobalMenu }
     }) : null,
     // Dropdown panel
-    showGlobalMenu ? h("div.global-menu__dropdown", [
+    showGlobalMenu ? h("div.global-menu__dropdown", {
+      class: { "board-open": showBoardSettings }
+    }, [
       h("button.global-menu__item", {
         on: { click: () => {
           console.log("TODO: clear local cache");
@@ -6603,54 +6719,17 @@ function renderGlobalMenu() {
           downloadPgn(false);
         } }
       }, "Export PGN from Current Board"),
-      // Board Theme — opens inline submenu
+      // Board Settings — expands inline tile grids + sliders
       h("div.global-menu__item.global-menu__item--has-sub", {
         on: { click: () => {
-          showBoardThemeMenu = !showBoardThemeMenu;
-          showPieceSetMenu = false;
+          showBoardSettings = !showBoardSettings;
           redraw();
         } }
       }, [
-        h("span", "Board Theme"),
-        h("span.global-menu__arrow", showBoardThemeMenu ? "\u25BE" : "\u203A")
+        h("span", "Board Settings"),
+        h("span.global-menu__arrow", showBoardSettings ? "\u25BE" : "\u203A")
       ]),
-      showBoardThemeMenu ? h(
-        "div.global-menu__submenu",
-        BOARD_THEMES_FEATURED.map(
-          (name) => h("button.global-menu__item", {
-            class: { "global-menu__item--active": boardTheme === name },
-            on: { click: () => {
-              applyBoardTheme(name);
-              closeGlobalMenu();
-              redraw();
-            } }
-          }, name)
-        )
-      ) : null,
-      // Piece Set — opens inline submenu
-      h("div.global-menu__item.global-menu__item--has-sub", {
-        on: { click: () => {
-          showPieceSetMenu = !showPieceSetMenu;
-          showBoardThemeMenu = false;
-          redraw();
-        } }
-      }, [
-        h("span", "Piece Set"),
-        h("span.global-menu__arrow", showPieceSetMenu ? "\u25BE" : "\u203A")
-      ]),
-      showPieceSetMenu ? h(
-        "div.global-menu__submenu",
-        PIECE_SETS_FEATURED.map(
-          (name) => h("button.global-menu__item", {
-            class: { "global-menu__item--active": pieceSet === name },
-            on: { click: () => {
-              applyPieceSet(name);
-              closeGlobalMenu();
-              redraw();
-            } }
-          }, name)
-        )
-      ) : null
+      showBoardSettings ? renderBoardSettings() : null
     ]) : null
   ]);
 }
