@@ -126,27 +126,41 @@ header {
   }
 }
 
-.analyse__board-wrap {
-  display: flex;
-  flex-direction: row;
-  width: 100%;
-  // max-width accommodates board (600px) + gap (6px) + eval bar (26px)
-  // so the board always gets its full 600px whether the eval bar is present or not.
-  max-width: 632px;
-  gap: 6px;
+// Two-column analysis page layout.
+// Mirrors lichess-org/lila: ui/analyse/css/_layout.scss grid-template-areas
+//   'board gauge tools' / 'under . controls'
+// board: left column (square board); gauge: eval bar; tools: right column (engine + moves)
+// under: below board (graph, review, import); controls: below tools (nav buttons)
+.analyse {
+  display: grid;
+  grid-template-columns: minmax(0, 600px) 34px minmax(240px, 380px);
+  grid-template-areas:
+    'board  gauge  tools'
+    'under  .      controls';
+  align-items: start;
+  padding: 24px 16px;
+  gap: 0 0;
 }
 
 // Adapted from lichess-org/lila: ui/lib/css/ceval/_eval-gauge.scss
+// grid-area: gauge mirrors Lichess layout — sits in the spacer column between board and tools.
 .eval-bar {
+  grid-area: gauge;
   width: 26px;
-  flex-shrink: 0;
+  align-self: stretch; // match board height in the grid row
   background: #333;
   display: flex;
   flex-direction: column-reverse; // 0% at bottom, 100% at top
-  align-self: stretch;
   position: relative;
   overflow: hidden;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.5) inset;
+
+  // Hidden placeholder when engine is off — occupies the gauge column without rendering content.
+  // Mirrors lichess-org/lila: .eval-gauge { display: none } toggled by gauge-on class.
+  &--off {
+    background: transparent;
+    box-shadow: none;
+  }
 
   // White territory fill — grows from the bottom
   &__fill {
@@ -192,12 +206,55 @@ header {
   }
 }
 
+// Mirrors lichess-org/lila: ui/analyse/css/_layout.scss grid-area: board
 .analyse__board {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 600px;
+  grid-area: board;
   display: flex;
   flex-direction: column;
+}
+
+// Tools column — right side of the grid.
+// Mirrors lichess-org/lila: ui/analyse/css/_tools.scss .analyse__tools (flex column, scroll inside)
+.analyse__tools {
+  grid-area: tools;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  min-height: 0;
+  overflow: hidden;
+  align-self: stretch; // match board height
+}
+
+// Move list scroll container inside tools.
+// Mirrors lichess-org/lila: ui/analyse/css/_tools.scss .analyse__moves (flex: 2 1 0, overflow-y: auto)
+.analyse__moves {
+  flex: 2 1 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  padding: 8px;
+}
+
+// Navigation controls below tools.
+// Mirrors lichess-org/lila: ui/analyse/css/_layout.scss grid-area: controls
+.analyse__controls {
+  grid-area: controls;
+  align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+// Content below the board (eval graph, review controls, import sections).
+// Unique to this app; placed in grid-area: under matching Lichess underboard position.
+.analyse__underboard {
+  grid-area: under;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  min-width: 0;
 }
 
 // Inner wrapper provides the relative positioning context for the promotion overlay
@@ -355,7 +412,6 @@ header {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 4px;
-  max-width: 600px;
   font-size: 0.95rem;
   line-height: 1.6;
 
@@ -742,13 +798,7 @@ header {
   color: #fa4;
 }
 
-.analyse {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 24px 16px;
-  gap: 16px;
-}
+// .analyse grid is defined above near .analyse__board-wrap replacement.
 
 // Keyboard help modal — mirrors lichess-org/lila: ui/analyse/src/keyboard.ts view
 .keyboard-help {
