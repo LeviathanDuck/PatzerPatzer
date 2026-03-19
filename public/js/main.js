@@ -5810,6 +5810,10 @@ async function loadAndRestoreAnalysis(gameId) {
     const game = importedGames.find((g) => g.id === gameId);
     const userColor = game ? getUserColor(game) : null;
     if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
+    const restoredSummary = computeAnalysisSummary();
+    if (restoredSummary) {
+      analyzedGameAccuracy.set(gameId, { white: restoredSummary.white.accuracy, black: restoredSummary.black.accuracy });
+    }
   }
   const restoredEval = evalCache.get(ctrl.path);
   if (restoredEval) currentEval = { ...restoredEval };
@@ -5870,6 +5874,7 @@ var pendingBatchOnReady = false;
 var analysisComplete = false;
 var analyzedGameIds = /* @__PURE__ */ new Set();
 var missedTacticGameIds = /* @__PURE__ */ new Set();
+var analyzedGameAccuracy = /* @__PURE__ */ new Map();
 var MISSED_TACTIC_THRESHOLD = 0.1;
 var MISSED_TACTIC_MAX_PLY = 60;
 var threatMode = false;
@@ -6162,6 +6167,10 @@ function advanceBatch() {
       const game = importedGames.find((g) => g.id === selectedGameId);
       const userColor = game ? getUserColor(game) : null;
       if (detectMissedTactics(userColor)) missedTacticGameIds.add(selectedGameId);
+      const liveSummary = computeAnalysisSummary();
+      if (liveSummary) {
+        analyzedGameAccuracy.set(selectedGameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });
+      }
     }
     void saveAnalysisToIdb("complete");
     evalCache.delete(ctrl.path);
@@ -8259,6 +8268,7 @@ function renderGamesView() {
         renderSortTh("Time", "timeClass"),
         h("th", "Opening"),
         h("th.games-view__review-th", "Review"),
+        h("th.games-view__puzzles-th", "Puzzles"),
         h("th")
       ])),
       h(
@@ -8273,9 +8283,24 @@ function renderGamesView() {
           const srcUrl3 = gameSourceUrl(game);
           const isAnalyzed = analyzedGameIds.has(game.id);
           const hasMissed = missedTacticGameIds.has(game.id);
+          const accEntry = analyzedGameAccuracy.get(game.id);
+          const userColor = getUserColor(game);
+          let accuracyText = null;
+          if (isAnalyzed && accEntry) {
+            if (userColor === "white" && accEntry.white !== null) {
+              accuracyText = `${Math.round(accEntry.white)}%`;
+            } else if (userColor === "black" && accEntry.black !== null) {
+              accuracyText = `${Math.round(accEntry.black)}%`;
+            } else if (!userColor) {
+              const w = accEntry.white !== null ? `W:${Math.round(accEntry.white)}%` : null;
+              const b = accEntry.black !== null ? `B:${Math.round(accEntry.black)}%` : null;
+              accuracyText = [w, b].filter(Boolean).join(" ") || null;
+            }
+          }
           const reviewCell = isAnalyzed ? h("td.games-view__review-cell", [
             h("span.games-view__reviewed", { attrs: { title: "Reviewed" } }, "\u2713"),
-            hasMissed ? h("span.games-view__missed", { attrs: { title: "Missed tactic detected" } }, "!") : null
+            hasMissed ? h("span.games-view__missed", { attrs: { title: "Missed tactic detected" } }, "!") : null,
+            accuracyText ? h("span.games-view__accuracy", { attrs: { title: "Your accuracy" } }, accuracyText) : null
           ]) : h("td.games-view__review-cell", [
             h("button.games-view__review-btn", {
               on: { click: (e) => {
@@ -8288,6 +8313,11 @@ function renderGamesView() {
               attrs: { title: "Load into Analysis and start review" }
             }, "Review")
           ]);
+          const puzzleCount = savedPuzzles.filter((p) => p.gameId === game.id).length;
+          const puzzleCell = h(
+            "td.games-view__puzzles-cell",
+            puzzleCount > 0 ? h("span.games-view__puzzle-count", { attrs: { title: `${puzzleCount} saved puzzle${puzzleCount !== 1 ? "s" : ""}` } }, String(puzzleCount)) : h("span.games-view__puzzle-none", "\u2013")
+          );
           return h("tr.games-view__row", {
             class: { active: game.id === selectedGameId },
             on: { click: () => {
@@ -8306,12 +8336,13 @@ function renderGamesView() {
             ),
             h("td.games-view__opening", h("span", { attrs: { title: opening } }, opening)),
             reviewCell,
+            puzzleCell,
             h("td.games-view__link-cell", srcUrl3 ? h("a.game-ext-link", {
               attrs: { href: srcUrl3, target: "_blank", rel: "noopener", title: "View on source platform" },
               on: { click: (e) => e.stopPropagation() }
             }) : null)
           ]);
-        }) : [h("tr", h("td", { attrs: { colspan: "7" } }, h("div.games-view__empty", "No games match current filters.")))]
+        }) : [h("tr", h("td", { attrs: { colspan: "8" } }, h("div.games-view__empty", "No games match current filters.")))]
       )
     ])
   ]);
