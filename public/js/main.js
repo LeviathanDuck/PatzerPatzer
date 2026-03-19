@@ -6022,8 +6022,7 @@ function toggleEngine() {
   if (engineEnabled) {
     if (!engineInitialized) {
       engineInitialized = true;
-      const sfFile = typeof SharedArrayBuffer !== "undefined" ? "stockfish/stockfish-nnue-16.js" : "stockfish/stockfish-nnue-16-single.js";
-      protocol.init(sfFile);
+      protocol.init("stockfish/stockfish-nnue-16-single.js");
     } else if (engineReady) {
       evalCurrentPosition();
     }
