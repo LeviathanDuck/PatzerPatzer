@@ -376,9 +376,17 @@ let engineSearchActive = false;
 /**
  * True when we sent 'stop' while a search was in flight and expect one stale
  * 'bestmove' to arrive before the real result for the new position.
- * Set in evalBatchItem / evalCurrentPosition whenever a previous search was active.
+ * Set in evalBatchItem when interrupting a batch search, or when stopping a
+ * threat eval. evalCurrentPosition no longer sends stop — it queues instead.
  */
 let awaitingStopBestmove = false;
+/**
+ * User navigated to a new position while the engine was busy.
+ * When the current search's bestmove arrives, evalCurrentPosition() is called
+ * automatically so every position is evaluated to full depth before the next.
+ * Mirrors the "don't interrupt, queue" pattern from Lichess's ceval ctrl.
+ */
+let pendingEval = false;
 const protocol = new StockfishProtocol();
 
 // --- Engine settings ---
@@ -554,7 +562,12 @@ function parseEngineLine(line: string): void {
       } else {
         syncArrowDebounced(); // bestmove finalizes — debounce cancels and draws immediately
         redraw();
-        if (threatMode) evalThreatPosition(); // chain threat eval after normal eval
+        if (pendingEval) {
+          // User navigated while this search was running — evaluate their current position now.
+          evalCurrentPosition();
+        } else if (threatMode) {
+          evalThreatPosition(); // chain threat eval after normal eval
+        }
       }
     }
   }
@@ -610,8 +623,9 @@ function toggleThreatMode(): void {
 function evalCurrentPosition(): void {
   if (batchAnalyzing) return; // batch owns the engine; ignore interactive requests
   if (!engineEnabled || !engineReady) return;
-  // Abort any in-flight threat eval — it belongs to the previous position
-  if (evalIsThreat) { protocol.stop(); evalIsThreat = false; }
+  // Abort any in-flight threat eval — secondary, belongs to previous position.
+  // Mark awaitingStopBestmove so the stale bestmove is discarded correctly.
+  if (evalIsThreat) { awaitingStopBestmove = true; protocol.stop(); evalIsThreat = false; }
   threatEval = {};
   const cached = evalCache.get(ctrl.node.id);
   // Use cache only when it already has enough PV lines for the current multiPv setting.
@@ -625,19 +639,27 @@ function evalCurrentPosition(): void {
     if (threatMode) evalThreatPosition();
     return;
   }
-  // Cache miss or insufficient lines — start the engine.
+  // Cache miss or insufficient lines — need the engine.
   // Show whatever cached data exists immediately; suppress arrow flicker for ARROW_SETTLE_MS.
   currentEval  = cached ? { ...cached } : {};
   pendingLines = [];
   arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   syncArrow(); // clear stale arrows from previous position immediately
-  const wasActive      = engineSearchActive;
-  awaitingStopBestmove = wasActive; // discard stale bestmove if one is in flight
-  engineSearchActive   = true;
-  evalNodeId       = ctrl.node.id;
-  evalNodePly      = ctrl.node.ply;
-  evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
-  if (wasActive) protocol.stop(); // only interrupt if a search was actually running
+
+  if (engineSearchActive) {
+    // Don't interrupt the running search — it must complete to full depth.
+    // When its bestmove arrives the handler will call evalCurrentPosition()
+    // again for whatever position the user is on at that point.
+    pendingEval = true;
+    redraw();
+    return;
+  }
+
+  pendingEval        = false;
+  engineSearchActive = true;
+  evalNodeId         = ctrl.node.id;
+  evalNodePly        = ctrl.node.ply;
+  evalParentNodeId   = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? '';
   protocol.setPosition(ctrl.node.fen);
   protocol.go(analysisDepth, multiPv);
 }
@@ -2330,7 +2352,8 @@ function renderChesscomImport(): VNode {
   return h('div.pgn-import', [
     h('div.pgn-import__row', [
       h('input', {
-        attrs: { placeholder: 'Chess.com username', type: 'text', disabled: chesscomLoading },
+        attrs: { placeholder: 'Chess.com username', type: 'text', disabled: chesscomLoading, value: 'LeviathanDuck' },
+        hook: { insert: (vnode: VNode) => { chesscomUsername = (vnode.elm as HTMLInputElement).value; } },
         on: { input: (e: Event) => { chesscomUsername = (e.target as HTMLInputElement).value; } },
       }),
       h('button', {
@@ -2415,7 +2438,8 @@ function renderLichessImport(): VNode {
   return h('div.pgn-import', [
     h('div.pgn-import__row', [
       h('input', {
-        attrs: { placeholder: 'Lichess username', type: 'text', disabled: lichessLoading },
+        attrs: { placeholder: 'Lichess username', type: 'text', disabled: lichessLoading, value: 'Leviathan_Duck' },
+        hook: { insert: (vnode: VNode) => { lichessUsername = (vnode.elm as HTMLInputElement).value; } },
         on: { input: (e: Event) => { lichessUsername = (e.target as HTMLInputElement).value; } },
       }),
       h('button', {
