@@ -592,6 +592,11 @@ header nav {
   color: #000;
   font-weight: 600;
 }
+.move-list .variation {
+  color: #888;
+  font-size: 0.9em;
+  margin: 0 2px;
+}
 
 .pgn-import {
   width: 100%;

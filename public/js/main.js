@@ -6158,6 +6158,15 @@ function completeMove(orig, dest, promotion) {
     children: []
   };
   addNode(ctrl.root, ctrl.path, newNode);
+  console.log("[variation] inserted", {
+    id: newNode.id,
+    ply: newNode.ply,
+    san: newNode.san,
+    uci: newNode.uci,
+    parentPath: ctrl.path,
+    newPath: ctrl.path + newNode.id,
+    parentChildCount: ctrl.node.children.length
+  });
   navigate(ctrl.path + newNode.id);
 }
 function completePromotion(role) {
@@ -6528,32 +6537,28 @@ function renderMoveSpan(node, path, parent) {
     h("span.move__glyph", { attrs: { style: `color:${color}` } }, symbol)
   ] : node.san ?? "");
 }
-function renderNodeLine(node, path, parent, needsMoveNum) {
+function renderNodeSiblings(nodes, parentPath, parent, needsMoveNum) {
+  if (nodes.length === 0) return [];
+  const [main, ...variations] = nodes;
+  const mainPath = parentPath + main.id;
   const out = [];
-  if (needsMoveNum || node.ply % 2 === 1) {
-    const n = Math.ceil(node.ply / 2);
-    out.push(h("span.move-num", node.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
+  if (needsMoveNum || main.ply % 2 === 1) {
+    const n = Math.ceil(main.ply / 2);
+    out.push(h("span.move-num", main.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
   }
-  out.push(renderMoveSpan(node, path, parent));
-  const [mainChild, ...varChildren] = node.children;
-  for (const varChild of varChildren) {
-    const varPath = path + varChild.id;
-    const varContent = renderNodeLine(varChild, varPath, node, true);
-    out.push(h("span", {
-      attrs: { style: "color:#666;font-size:0.9em;margin:0 2px" }
-    }, ["( ", ...varContent, " )"]));
+  out.push(renderMoveSpan(main, mainPath, parent));
+  for (const variant of variations) {
+    const varContent = renderNodeSiblings([variant], parentPath, parent, true);
+    out.push(h("span.variation", ["( ", ...varContent, " )"]));
   }
-  if (mainChild) {
-    const mainPath = path + mainChild.id;
-    const contNeedsNum = varChildren.length > 0 && mainChild.ply % 2 === 0;
-    out.push(...renderNodeLine(mainChild, mainPath, node, contNeedsNum));
-  }
+  const hasVariations = variations.length > 0;
+  const firstCont = main.children[0];
+  const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
+  out.push(...renderNodeSiblings(main.children, mainPath, main, contNeedsNum));
   return out;
 }
 function renderMoveList() {
-  const firstChild = ctrl.root.children[0];
-  if (!firstChild) return h("div.move-list");
-  return h("div.move-list", renderNodeLine(firstChild, firstChild.id, ctrl.root, true));
+  return h("div.move-list", renderNodeSiblings(ctrl.root.children, "", ctrl.root, true));
 }
 function evalPct() {
   if (currentEval.mate !== void 0) return currentEval.mate > 0 ? 100 : 0;

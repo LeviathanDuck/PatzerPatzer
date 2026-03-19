@@ -257,6 +257,14 @@ header {
       font-weight: 600;
     }
   }
+
+  // Side variation block: dimmed, slightly smaller, inline parens
+  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts .inline style
+  .variation {
+    color: #888;
+    font-size: 0.9em;
+    margin: 0 2px;
+  }
 }
 
 .pgn-import {
