@@ -542,7 +542,7 @@ body {
   top: calc(100% + 6px);
   left: 0;
   min-width: 340px;
-  max-width: 460px;
+  max-width: 480px;
   background: #181818;
   border: 1px solid #333;
   border-radius: 8px;
@@ -567,9 +567,8 @@ body {
   font-size: 0.7rem;
   font-weight: 600;
   color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
+  flex-shrink: 0;
+  margin-right: 2px;
 }
 .header__panel-label.--mt {
   margin-top: 14px;
@@ -581,7 +580,7 @@ body {
   flex-wrap: wrap;
 }
 .header__panel-row + .header__panel-row {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .header__panel-row.--mt {
   margin-top: 10px;
@@ -617,6 +616,7 @@ body {
   font-size: 0.75rem;
   color: #555;
   margin-right: 2px;
+  flex-shrink: 0;
 }
 .header__panel-btn {
   padding: 4px 12px;
@@ -636,12 +636,12 @@ body {
   color: #f84;
 }
 .header__pill {
-  padding: 3px 9px;
+  padding: 6px 16px;
   background: #222;
   color: #888;
   border: 1px solid #333;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
 }

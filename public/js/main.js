@@ -7779,8 +7779,7 @@ var SPEED_OPTIONS = [
   { value: "all", label: "All" },
   { value: "bullet", label: "Bullet" },
   { value: "blitz", label: "Blitz" },
-  { value: "rapid", label: "Rapid" },
-  { value: "classical", label: "Classical" }
+  { value: "rapid", label: "Rapid" }
 ];
 var DATE_RANGE_OPTIONS = [
   { value: "24h", label: "24h" },
