@@ -2208,6 +2208,31 @@ body[data-board=newspaper] cg-board::before {
   font-size: 0.85rem;
   cursor: default;
 }
+.games-view__accuracy {
+  font-size: 0.75rem;
+  color: #8c8;
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+.games-view__puzzles-th {
+  white-space: nowrap;
+}
+.games-view__puzzles-cell {
+  text-align: center;
+  padding: 4px 8px !important;
+}
+.games-view__puzzle-count {
+  font-size: 0.8rem;
+  color: #88c;
+  font-weight: 600;
+  cursor: default;
+}
+.games-view__puzzle-none {
+  color: #3a3a3a;
+  font-size: 0.8rem;
+  cursor: default;
+}
 .games-view__review-btn {
   padding: 2px 8px;
   font-size: 0.75rem;
