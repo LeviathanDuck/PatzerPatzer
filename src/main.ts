@@ -1660,10 +1660,25 @@ function evalPct(): number {
   return 50;
 }
 
+// Tick marks are static — same 8 positions every render.
+// Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderGauge
+const EVAL_BAR_TICKS: VNode[] = [...Array(8).keys()].map(i =>
+  h(i === 3 ? 'div.eval-bar__tick.zero' : 'div.eval-bar__tick', {
+    attrs: { style: `height: ${(i + 1) * 12.5}%` },
+  }),
+);
+
 function renderEvalBar(): VNode {
   const pct = evalPct();
+  // Clamp the score label position so it stays visible near the edges.
+  const scorePct = Math.max(8, Math.min(92, pct));
+  const hasScore = currentEval.cp !== undefined || currentEval.mate !== undefined;
+  const score    = hasScore ? formatScore(currentEval) : '';
+
   return h('div.eval-bar', [
     h('div.eval-bar__fill', { attrs: { style: `height: ${pct}%` } }),
+    score ? h('div.eval-bar__score', { attrs: { style: `bottom: ${scorePct}%` } }, score) : null,
+    ...EVAL_BAR_TICKS,
   ]);
 }
 
