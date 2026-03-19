@@ -818,6 +818,43 @@ body.resizing {
   }
 }
 
+// ─── Board Themes ──────────────────────────────────────────────────────────────
+// Adapted from lichess-org/lila: ui/lib/css/theme/board/_boards.scss
+// Applied via data-board attribute on <body>; see applyBoardTheme() in main.ts.
+// Overrides the SVG embedded background from chessground.brown.css.
+
+$board-themes-png: 'brown', 'horsey', 'blue', 'green', 'purple', 'purple-diag';
+$board-themes-jpg: 'wood4', 'maple', 'blue2', 'blue3', 'marble', 'olive', 'grey', 'metal';
+
+@each $name in $board-themes-png {
+  body[data-board='#{$name}'] cg-board {
+    background-image: url('/images/board/#{$name}.png');
+    background-size: cover;
+  }
+}
+
+@each $name in $board-themes-jpg {
+  body[data-board='#{$name}'] cg-board {
+    background-image: url('/images/board/#{$name}.jpg');
+    background-size: cover;
+  }
+}
+
+body[data-board='newspaper'] cg-board {
+  background-image: url('/images/board/svg/newspaper.svg');
+  background-size: cover;
+}
+
+// Active theme indicator in the Board Theme submenu
+.global-menu__item--active {
+  color: #e8e8e8;
+  font-weight: 600;
+
+  &::before {
+    content: '✓ ';
+  }
+}
+
 .cg-wrap {
   width: 100%;
   aspect-ratio: 1 / 1;
