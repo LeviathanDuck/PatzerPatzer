@@ -5714,6 +5714,8 @@ var analysisRunning = false;
 var showExportMenu = false;
 var showGlobalMenu = false;
 var showBoardThemeMenu = false;
+var importPlatform = "chesscom";
+var showImportPanel = false;
 var pendingBatchOnReady = false;
 var analysisComplete = false;
 var analyzedGameIds = /* @__PURE__ */ new Set();
@@ -6280,9 +6282,213 @@ var navLinks = [
 ];
 function renderNav(route) {
   const active = activeSection(route);
-  return h("nav", navLinks.map(
+  return h("nav.header__nav", navLinks.map(
     ({ label, href, section }) => h("a", { attrs: { href }, class: { active: active === section } }, label)
   ));
+}
+function renderHeader(route) {
+  const loading = importPlatform === "chesscom" ? chesscomLoading : lichessLoading;
+  const error = importPlatform === "chesscom" ? chesscomError : lichessError;
+  const username = importPlatform === "chesscom" ? chesscomUsername : lichessUsername;
+  const doImport = () => importPlatform === "chesscom" ? void importChesscom() : void importLichess();
+  const hasActiveFilters = importFilterSpeed !== "all" || importFilterDateRange !== "1month" || !importFilterRated;
+  const panel = showImportPanel ? h("div.header__panel", [
+    // Filters section — grouped by type, vertical layout
+    // Adapted from docs/reference/ImportControls/index.jsx (TIME_CONTROLS + DATE_RANGES)
+    h("div.header__panel-section", [
+      // Time control group
+      h("div.header__panel-label", "Time control"),
+      h("div.header__panel-row", [
+        ...SPEED_OPTIONS.map(
+          ({ value, label }) => h("button.header__pill", {
+            class: { active: importFilterSpeed === value },
+            on: { click: () => {
+              importFilterSpeed = value;
+              redraw();
+            } }
+          }, label)
+        )
+      ]),
+      // Period group
+      h("div.header__panel-label.--mt", "Period"),
+      h("div.header__panel-row", [
+        ...DATE_RANGE_OPTIONS.map(
+          ({ value, label }) => h("button.header__pill", {
+            class: { active: importFilterDateRange === value },
+            on: { click: () => {
+              importFilterDateRange = value;
+              redraw();
+            } }
+          }, label)
+        )
+      ]),
+      // Custom date inputs — only visible when 'custom' is selected
+      // Adapted from docs/reference/ImportControls/index.jsx custom date block
+      importFilterDateRange === "custom" ? h("div.header__panel-row.--mt", [
+        h("span.header__panel-hint", "From"),
+        h("input.header__date-input", {
+          attrs: { type: "date", value: importFilterCustomFrom },
+          on: { change: (e) => {
+            importFilterCustomFrom = e.target.value;
+            redraw();
+          } }
+        }),
+        h("span.header__panel-hint", "To"),
+        h("input.header__date-input", {
+          attrs: { type: "date", value: importFilterCustomTo },
+          on: { change: (e) => {
+            importFilterCustomTo = e.target.value;
+            redraw();
+          } }
+        })
+      ]) : null,
+      // Rated toggle
+      h("div.header__panel-row.--mt", [
+        h("label.header__panel-check", [
+          h("input", {
+            attrs: { type: "checkbox", checked: importFilterRated },
+            on: { change: (e) => {
+              importFilterRated = e.target.checked;
+              redraw();
+            } }
+          }),
+          "Rated only"
+        ])
+      ])
+    ]),
+    h("div.header__panel-divider"),
+    // PGN paste section
+    h("div.header__panel-section", [
+      h("div.header__panel-label", "Paste PGN"),
+      h("textarea.header__pgn-input", {
+        key: pgnKey,
+        attrs: { placeholder: "Paste a PGN here\u2026", rows: 3, spellcheck: false },
+        on: { input: (e) => {
+          pgnInput = e.target.value;
+        } }
+      }),
+      h("div.header__panel-row", [
+        h("button.header__panel-btn", {
+          on: { click: () => {
+            importPgn();
+            if (!pgnError) {
+              showImportPanel = false;
+            }
+            redraw();
+          } }
+        }, "Import PGN"),
+        pgnError ? h("span.header__panel-error", pgnError) : null
+      ])
+    ]),
+    // Game list section — only when games are loaded
+    importedGames.length > 0 ? h("div.header__panel-section", [
+      h("div.header__panel-label", `${importedGames.length} game${importedGames.length === 1 ? "" : "s"} imported`),
+      h("div.header__games-list", importedGames.map((game) => {
+        const label = game.white && game.black ? `${game.white} vs ${game.black}${game.result ? " \xB7 " + game.result : ""}${game.date ? " \xB7 " + game.date.slice(0, 10) : ""}` : game.id;
+        const isAnalyzed = analyzedGameIds.has(game.id);
+        const hasMissedTactic = missedTacticGameIds.has(game.id);
+        return h("button.header__game-row", {
+          class: { active: game.id === selectedGameId },
+          on: { click: () => {
+            selectedGameId = game.id;
+            loadGame(game.pgn);
+            showImportPanel = false;
+            redraw();
+          } }
+        }, [
+          isAnalyzed ? h("span.header__game-badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
+          hasMissedTactic ? h("span.header__game-badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null,
+          h("span", label)
+        ]);
+      }))
+    ]) : null
+  ]) : null;
+  const backdrop = showImportPanel ? h("div.header__backdrop", {
+    on: { click: () => {
+      showImportPanel = false;
+      redraw();
+    } }
+  }) : null;
+  return h("header.header", [
+    // Brand
+    h("a.header__brand", { attrs: { href: "#/" } }, "Patzer Pro"),
+    // Search area — contains the bar + floating panel
+    h("div.header__search", { key: "header-search" }, [
+      // Visible bar row
+      h("div.header__bar", [
+        // Platform toggle
+        h("div.header__platforms", [
+          h("button.header__platform", {
+            class: { active: importPlatform === "chesscom" },
+            on: { click: () => {
+              importPlatform = "chesscom";
+              redraw();
+            } }
+          }, "Chess.com"),
+          h("button.header__platform", {
+            class: { active: importPlatform === "lichess" },
+            on: { click: () => {
+              importPlatform = "lichess";
+              redraw();
+            } }
+          }, "Lichess")
+        ]),
+        // Username input — keyed by platform so it re-renders with the correct stored value on switch
+        h("input.header__input", {
+          key: `input-${importPlatform}`,
+          attrs: {
+            type: "text",
+            placeholder: importPlatform === "chesscom" ? "Chess.com username" : "Lichess username",
+            value: username,
+            disabled: loading,
+            autocomplete: "off",
+            spellcheck: false
+          },
+          on: {
+            input: (e) => {
+              const v = e.target.value;
+              if (importPlatform === "chesscom") chesscomUsername = v;
+              else lichessUsername = v;
+            },
+            keydown: (e) => {
+              if (e.key === "Enter" && username.trim() && !loading) doImport();
+            }
+          }
+        }),
+        // Import button
+        h("button.header__import", {
+          attrs: { disabled: loading || !username.trim() },
+          on: { click: doImport }
+        }, loading ? "Importing\u2026" : "Import"),
+        // Status: game count or error
+        importedGames.length > 0 && !error ? h(
+          "span.header__count",
+          { on: { click: () => {
+            showImportPanel = !showImportPanel;
+            redraw();
+          } } },
+          `${importedGames.length} games`
+        ) : null,
+        error ? h("span.header__error", { attrs: { title: error } }, "\u26A0") : null,
+        // Panel toggle — dot appears when non-default filters are active
+        h("button.header__toggle", {
+          class: { active: showImportPanel, "header__toggle--filtered": hasActiveFilters && !showImportPanel },
+          attrs: { title: "Filters & games" },
+          on: { click: () => {
+            showImportPanel = !showImportPanel;
+            redraw();
+          } }
+        }, showImportPanel ? "\u25B4" : "\u25BE")
+      ]),
+      panel,
+      backdrop
+    ]),
+    // Tool navigation
+    renderNav(route),
+    // Dev + settings
+    h("button.dev-reset", { on: { click: () => void resetAllData() } }, "Reset"),
+    renderGlobalMenu()
+  ]);
 }
 function closeGlobalMenu() {
   showGlobalMenu = false;
@@ -6933,7 +7139,8 @@ function renderPvMoves(fen, moves) {
       const san = makeSanAndPlay(pos, move3);
       if (san === "--") break;
       const boardFen = makeFen(pos.toSetup());
-      vnodes.push(h("span.pv-san", { key: `${i}|${uci}`, attrs: { "data-board": `${boardFen}|${uci}` } }, san));
+      const cls = i === 0 ? "span.pv-san.pv-san--first" : "span.pv-san";
+      vnodes.push(h(cls, { key: `${i}|${uci}`, attrs: { "data-board": `${boardFen}|${uci}` } }, san));
     }
     return vnodes;
   } catch {
@@ -7391,6 +7598,9 @@ function renderPuzzleCandidates() {
 }
 var importFilterRated = true;
 var importFilterSpeed = "all";
+var importFilterDateRange = "1month";
+var importFilterCustomFrom = "";
+var importFilterCustomTo = "";
 var SPEED_OPTIONS = [
   { value: "all", label: "All" },
   { value: "bullet", label: "Bullet" },
@@ -7398,35 +7608,54 @@ var SPEED_OPTIONS = [
   { value: "rapid", label: "Rapid" },
   { value: "classical", label: "Classical" }
 ];
-var FILTER_PILL_BASE = "background:#1a1a1a;color:#888;border:1px solid #333;border-radius:3px;padding:2px 7px;font-size:0.8rem;cursor:pointer";
-var FILTER_PILL_ACTIVE = "background:#1e3a1e;color:#6f6;border:1px solid #3a7a3a;border-radius:3px;padding:2px 7px;font-size:0.8rem;cursor:pointer";
-function renderImportFilters() {
-  return h("div.pgn-import", [
-    h("div.pgn-import__row", [
-      h("label", { attrs: { style: "display:flex;align-items:center;gap:5px;font-size:0.85rem;cursor:pointer;user-select:none" } }, [
-        h("input", {
-          attrs: { type: "checkbox", checked: importFilterRated },
-          on: { change: (e) => {
-            importFilterRated = e.target.checked;
-            redraw();
-          } }
-        }),
-        "Rated only"
-      ]),
-      h("span", { attrs: { style: "color:#888;font-size:0.8rem;margin-left:8px" } }, "Speed:"),
-      ...SPEED_OPTIONS.map(
-        ({ value, label }) => h("button", {
-          attrs: { style: importFilterSpeed === value ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE },
-          on: { click: () => {
-            importFilterSpeed = value;
-            redraw();
-          } }
-        }, label)
-      )
-    ])
-  ]);
+var DATE_RANGE_OPTIONS = [
+  { value: "24h", label: "24h" },
+  { value: "1week", label: "1 wk" },
+  { value: "1month", label: "1 mo" },
+  { value: "3months", label: "3 mo" },
+  { value: "1year", label: "1 yr" },
+  { value: "all", label: "All" },
+  { value: "custom", label: "Custom" }
+];
+function filterGamesByDate(games) {
+  if (importFilterDateRange === "all") return games;
+  if (importFilterDateRange === "custom") {
+    return games.filter((g) => {
+      const d = g.date?.slice(0, 10);
+      if (!d) return true;
+      if (importFilterCustomFrom && d < importFilterCustomFrom) return false;
+      if (importFilterCustomTo && d > importFilterCustomTo) return false;
+      return true;
+    });
+  }
+  const now = /* @__PURE__ */ new Date();
+  let cutoff;
+  switch (importFilterDateRange) {
+    case "24h":
+      cutoff = new Date(now.getTime() - 864e5);
+      break;
+    case "1week":
+      cutoff = new Date(now.getTime() - 7 * 864e5);
+      break;
+    case "1month":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 1);
+      break;
+    case "3months":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 3);
+      break;
+    case "1year":
+      cutoff = new Date(now);
+      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      break;
+    default:
+      return games;
+  }
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
 }
-var chesscomUsername = "";
+var chesscomUsername = "LeviathanDuck";
 var chesscomLoading = false;
 var chesscomError = null;
 var CHESSCOM_BASE = "https://api.chess.com/pub/player";
@@ -7479,9 +7708,9 @@ async function importChesscom() {
   chesscomError = null;
   redraw();
   try {
-    const games = await fetchChesscomGames(name, importFilterRated, importFilterSpeed);
+    const games = filterGamesByDate(await fetchChesscomGames(name, importFilterRated, importFilterSpeed));
     if (games.length === 0) {
-      chesscomError = "No recent rated games found.";
+      chesscomError = "No games found matching current filters.";
     } else {
       importedGames = [...importedGames, ...games];
       selectedGameId = games[0].id;
@@ -7495,29 +7724,7 @@ async function importChesscom() {
     redraw();
   }
 }
-function renderChesscomImport() {
-  return h("div.pgn-import", [
-    h("div.pgn-import__row", [
-      h("input", {
-        attrs: { placeholder: "Chess.com username", type: "text", disabled: chesscomLoading, value: "LeviathanDuck" },
-        hook: { insert: (vnode3) => {
-          chesscomUsername = vnode3.elm.value;
-        } },
-        on: { input: (e) => {
-          chesscomUsername = e.target.value;
-        } }
-      }),
-      h("button", {
-        attrs: { disabled: chesscomLoading || !chesscomUsername.trim() },
-        on: { click: () => {
-          void importChesscom();
-        } }
-      }, chesscomLoading ? "Importing\u2026" : "Import Chess.com")
-    ]),
-    chesscomError ? h("span.pgn-import__error", chesscomError) : h("span")
-  ]);
-}
-var lichessUsername = "";
+var lichessUsername = "Leviathan_Duck";
 var lichessLoading = false;
 var lichessError = null;
 async function fetchLichessGames(username, rated, speed) {
@@ -7558,9 +7765,9 @@ async function importLichess() {
   lichessError = null;
   redraw();
   try {
-    const games = await fetchLichessGames(name, importFilterRated, importFilterSpeed);
+    const games = filterGamesByDate(await fetchLichessGames(name, importFilterRated, importFilterSpeed));
     if (games.length === 0) {
-      lichessError = "No recent rated games found.";
+      lichessError = "No games found matching current filters.";
     } else {
       importedGames = [...importedGames, ...games];
       selectedGameId = games[0].id;
@@ -7573,28 +7780,6 @@ async function importLichess() {
     lichessLoading = false;
     redraw();
   }
-}
-function renderLichessImport() {
-  return h("div.pgn-import", [
-    h("div.pgn-import__row", [
-      h("input", {
-        attrs: { placeholder: "Lichess username", type: "text", disabled: lichessLoading, value: "Leviathan_Duck" },
-        hook: { insert: (vnode3) => {
-          lichessUsername = vnode3.elm.value;
-        } },
-        on: { input: (e) => {
-          lichessUsername = e.target.value;
-        } }
-      }),
-      h("button", {
-        attrs: { disabled: lichessLoading || !lichessUsername.trim() },
-        on: { click: () => {
-          void importLichess();
-        } }
-      }, lichessLoading ? "Importing\u2026" : "Import Lichess")
-    ]),
-    lichessError ? h("span.pgn-import__error", lichessError) : h("span")
-  ]);
 }
 var pgnInput = "";
 var pgnError = null;
@@ -7627,21 +7812,6 @@ function importPgn() {
     pgnError = "Invalid PGN \u2014 could not parse.";
     redraw();
   }
-}
-function renderPgnImport() {
-  return h("div.pgn-import", [
-    h("textarea.pgn-import__input", {
-      key: pgnKey,
-      attrs: { placeholder: "Paste PGN here\u2026", rows: 4 },
-      on: { input: (e) => {
-        pgnInput = e.target.value;
-      } }
-    }),
-    h("div.pgn-import__row", [
-      h("button", { on: { click: importPgn } }, "Import PGN"),
-      pgnError ? h("span.pgn-import__error", pgnError) : h("span")
-    ])
-  ]);
 }
 function renderGameList() {
   if (importedGames.length === 0) return h("div");
@@ -7710,15 +7880,10 @@ function routeContent(route) {
           h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192")
         ]),
         // Underboard — below board (grid-area: under)
-        // Unique to this app; adapted to underboard position from Lichess layout pattern.
-        // Contains: eval graph, review controls, import sections, game list.
+        // Import controls moved to header panel; game list appears here and in the header.
         h("div.analyse__underboard", [
           renderEvalGraph(),
           renderAnalysisControls(),
-          renderImportFilters(),
-          renderChesscomImport(),
-          renderLichessImport(),
-          renderPgnImport(),
           renderGameList()
         ]),
         renderKeyboardHelp()
@@ -7752,12 +7917,7 @@ async function resetAllData() {
 }
 function view(route) {
   return h("div#shell", [
-    h("header", [
-      h("span", "Patzer Pro"),
-      renderNav(route),
-      h("button.dev-reset", { on: { click: () => void resetAllData() } }, "Reset Data"),
-      renderGlobalMenu()
-    ]),
+    renderHeader(route),
     h("main", [routeContent(route)]),
     renderPvBoard()
   ]);

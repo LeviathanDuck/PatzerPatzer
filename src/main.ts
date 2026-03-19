@@ -458,6 +458,12 @@ let analysisRunning  = false;
 let showExportMenu   = false; // inline annotated/plain prompt for PGN export
 let showGlobalMenu      = false; // global settings menu open/closed
 let showBoardThemeMenu  = false; // board theme submenu open/closed
+
+// --- Header import panel state ---
+// Unified platform/username input — single search bar with nested filters.
+type ImportPlatform = 'chesscom' | 'lichess';
+let importPlatform: ImportPlatform = 'chesscom';
+let showImportPanel = false; // dropdown panel open/closed
 let pendingBatchOnReady = false; // queued batch start — fires on next readyok
 let analysisComplete = false;
 const analyzedGameIds    = new Set<string>(); // games that have completed a full batch analysis
@@ -1205,9 +1211,215 @@ const navLinks: { label: string; href: string; section: string }[] = [
 
 function renderNav(route: Route): VNode {
   const active = activeSection(route);
-  return h('nav', navLinks.map(({ label, href, section }) =>
+  return h('nav.header__nav', navLinks.map(({ label, href, section }) =>
     h('a', { attrs: { href }, class: { active: active === section } }, label)
   ));
+}
+
+/**
+ * Global app header — unified search bar with nested import panel.
+ * The search bar is the primary import control: platform toggle → username → Import.
+ * Filters, PGN paste, and the game list live inside a dropdown panel below the bar.
+ */
+function renderHeader(route: Route): VNode {
+  const loading = importPlatform === 'chesscom' ? chesscomLoading : lichessLoading;
+  const error   = importPlatform === 'chesscom' ? chesscomError   : lichessError;
+  const username = importPlatform === 'chesscom' ? chesscomUsername : lichessUsername;
+
+  const doImport = () => importPlatform === 'chesscom' ? void importChesscom() : void importLichess();
+
+  // Active-filters indicator — true when any filter differs from its default value.
+  // Mirrors the reference TopNav.jsx hasActiveFilters pattern.
+  const hasActiveFilters =
+    importFilterSpeed     !== 'all'    ||
+    importFilterDateRange !== '1month' ||
+    !importFilterRated;
+
+  // --- Search panel dropdown ---
+  const panel = showImportPanel ? h('div.header__panel', [
+
+    // Filters section — grouped by type, vertical layout
+    // Adapted from docs/reference/ImportControls/index.jsx (TIME_CONTROLS + DATE_RANGES)
+    h('div.header__panel-section', [
+
+      // Time control group
+      h('div.header__panel-label', 'Time control'),
+      h('div.header__panel-row', [
+        ...SPEED_OPTIONS.map(({ value, label }) =>
+          h('button.header__pill', {
+            class: { active: importFilterSpeed === value },
+            on: { click: () => { importFilterSpeed = value; redraw(); } },
+          }, label)
+        ),
+      ]),
+
+      // Period group
+      h('div.header__panel-label.--mt', 'Period'),
+      h('div.header__panel-row', [
+        ...DATE_RANGE_OPTIONS.map(({ value, label }) =>
+          h('button.header__pill', {
+            class: { active: importFilterDateRange === value },
+            on: { click: () => { importFilterDateRange = value as ImportDateRange; redraw(); } },
+          }, label)
+        ),
+      ]),
+
+      // Custom date inputs — only visible when 'custom' is selected
+      // Adapted from docs/reference/ImportControls/index.jsx custom date block
+      importFilterDateRange === 'custom' ? h('div.header__panel-row.--mt', [
+        h('span.header__panel-hint', 'From'),
+        h('input.header__date-input', {
+          attrs: { type: 'date', value: importFilterCustomFrom },
+          on: { change: (e: Event) => { importFilterCustomFrom = (e.target as HTMLInputElement).value; redraw(); } },
+        }),
+        h('span.header__panel-hint', 'To'),
+        h('input.header__date-input', {
+          attrs: { type: 'date', value: importFilterCustomTo },
+          on: { change: (e: Event) => { importFilterCustomTo = (e.target as HTMLInputElement).value; redraw(); } },
+        }),
+      ]) : null,
+
+      // Rated toggle
+      h('div.header__panel-row.--mt', [
+        h('label.header__panel-check', [
+          h('input', {
+            attrs: { type: 'checkbox', checked: importFilterRated },
+            on: { change: (e: Event) => { importFilterRated = (e.target as HTMLInputElement).checked; redraw(); } },
+          }),
+          'Rated only',
+        ]),
+      ]),
+    ]),
+
+    h('div.header__panel-divider'),
+
+    // PGN paste section
+    h('div.header__panel-section', [
+      h('div.header__panel-label', 'Paste PGN'),
+      h('textarea.header__pgn-input', {
+        key: pgnKey,
+        attrs: { placeholder: 'Paste a PGN here…', rows: 3, spellcheck: false },
+        on: { input: (e: Event) => { pgnInput = (e.target as HTMLTextAreaElement).value; } },
+      }),
+      h('div.header__panel-row', [
+        h('button.header__panel-btn', {
+          on: { click: () => { importPgn(); if (!pgnError) { showImportPanel = false; } redraw(); } },
+        }, 'Import PGN'),
+        pgnError ? h('span.header__panel-error', pgnError) : null,
+      ]),
+    ]),
+
+    // Game list section — only when games are loaded
+    importedGames.length > 0 ? h('div.header__panel-section', [
+      h('div.header__panel-label', `${importedGames.length} game${importedGames.length === 1 ? '' : 's'} imported`),
+      h('div.header__games-list', importedGames.map(game => {
+        const label = (game.white && game.black)
+          ? `${game.white} vs ${game.black}${game.result ? ' · ' + game.result : ''}${game.date ? ' · ' + game.date.slice(0, 10) : ''}`
+          : game.id;
+        const isAnalyzed      = analyzedGameIds.has(game.id);
+        const hasMissedTactic = missedTacticGameIds.has(game.id);
+        return h('button.header__game-row', {
+          class: { active: game.id === selectedGameId },
+          on: { click: () => {
+            selectedGameId = game.id;
+            loadGame(game.pgn);
+            showImportPanel = false;
+            redraw();
+          }},
+        }, [
+          isAnalyzed      ? h('span.header__game-badge.--ok',     { attrs: { title: 'Analyzed' } },          '✓') : null,
+          hasMissedTactic ? h('span.header__game-badge.--warn',   { attrs: { title: 'Missed tactic' } },     '!') : null,
+          h('span', label),
+        ]);
+      })),
+    ]) : null,
+
+  ]) : null;
+
+  // Transparent backdrop — closes panel on outside click
+  const backdrop = showImportPanel ? h('div.header__backdrop', {
+    on: { click: () => { showImportPanel = false; redraw(); } },
+  }) : null;
+
+  return h('header.header', [
+    // Brand
+    h('a.header__brand', { attrs: { href: '#/' } }, 'Patzer Pro'),
+
+    // Search area — contains the bar + floating panel
+    h('div.header__search', { key: 'header-search' }, [
+
+      // Visible bar row
+      h('div.header__bar', [
+
+        // Platform toggle
+        h('div.header__platforms', [
+          h('button.header__platform', {
+            class: { active: importPlatform === 'chesscom' },
+            on: { click: () => { importPlatform = 'chesscom'; redraw(); } },
+          }, 'Chess.com'),
+          h('button.header__platform', {
+            class: { active: importPlatform === 'lichess' },
+            on: { click: () => { importPlatform = 'lichess'; redraw(); } },
+          }, 'Lichess'),
+        ]),
+
+        // Username input — keyed by platform so it re-renders with the correct stored value on switch
+        h('input.header__input', {
+          key: `input-${importPlatform}`,
+          attrs: {
+            type: 'text',
+            placeholder: importPlatform === 'chesscom' ? 'Chess.com username' : 'Lichess username',
+            value: username,
+            disabled: loading,
+            autocomplete: 'off',
+            spellcheck: false,
+          },
+          on: {
+            input: (e: Event) => {
+              const v = (e.target as HTMLInputElement).value;
+              if (importPlatform === 'chesscom') chesscomUsername = v;
+              else lichessUsername = v;
+            },
+            keydown: (e: KeyboardEvent) => {
+              if (e.key === 'Enter' && username.trim() && !loading) doImport();
+            },
+          },
+        }),
+
+        // Import button
+        h('button.header__import', {
+          attrs: { disabled: loading || !username.trim() },
+          on: { click: doImport },
+        }, loading ? 'Importing…' : 'Import'),
+
+        // Status: game count or error
+        importedGames.length > 0 && !error
+          ? h('span.header__count', { on: { click: () => { showImportPanel = !showImportPanel; redraw(); } } },
+              `${importedGames.length} games`)
+          : null,
+        error
+          ? h('span.header__error', { attrs: { title: error } }, '⚠')
+          : null,
+
+        // Panel toggle — dot appears when non-default filters are active
+        h('button.header__toggle', {
+          class: { active: showImportPanel, 'header__toggle--filtered': hasActiveFilters && !showImportPanel },
+          attrs: { title: 'Filters & games' },
+          on: { click: () => { showImportPanel = !showImportPanel; redraw(); } },
+        }, showImportPanel ? '▴' : '▾'),
+      ]),
+
+      panel,
+      backdrop,
+    ]),
+
+    // Tool navigation
+    renderNav(route),
+
+    // Dev + settings
+    h('button.dev-reset', { on: { click: () => void resetAllData() } }, 'Reset'),
+    renderGlobalMenu(),
+  ]);
 }
 
 /**
@@ -2137,7 +2349,8 @@ function renderPvMoves(fen: string, moves: string[]): VNode[] {
       // Store FEN + UCI on each move so hover can preview the resulting position.
       // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvMoves
       const boardFen = makeFen(pos.toSetup());
-      vnodes.push(h('span.pv-san', { key: `${i}|${uci}`, attrs: { 'data-board': `${boardFen}|${uci}` } }, san));
+      const cls = i === 0 ? 'span.pv-san.pv-san--first' : 'span.pv-san';
+      vnodes.push(h(cls, { key: `${i}|${uci}`, attrs: { 'data-board': `${boardFen}|${uci}` } }, san));
     }
     return vnodes;
   } catch {
@@ -2722,10 +2935,16 @@ function renderPuzzleCandidates(): VNode {
 // Adapted from docs/reference/ImportControls/index.jsx
 // Shared filters applied to both Chess.com and Lichess username imports.
 
-type ImportSpeed = 'all' | 'bullet' | 'blitz' | 'rapid' | 'classical';
+type ImportSpeed     = 'all' | 'bullet' | 'blitz' | 'rapid' | 'classical';
+type ImportDateRange = '24h' | '1week' | '1month' | '3months' | '1year' | 'all' | 'custom';
 
-let importFilterRated = true;
-let importFilterSpeed: ImportSpeed = 'all';
+// Default date range matches the reference implementation: DEFAULT_FILTERS.dateRange = '1month'
+// Adapted from docs/reference/GameLibraryContext.jsx DEFAULT_FILTERS
+let importFilterRated:     boolean         = true;
+let importFilterSpeed:     ImportSpeed     = 'all';
+let importFilterDateRange: ImportDateRange = '1month';
+let importFilterCustomFrom = '';
+let importFilterCustomTo   = '';
 
 const SPEED_OPTIONS: { value: ImportSpeed; label: string }[] = [
   { value: 'all',       label: 'All'       },
@@ -2734,6 +2953,47 @@ const SPEED_OPTIONS: { value: ImportSpeed; label: string }[] = [
   { value: 'rapid',     label: 'Rapid'     },
   { value: 'classical', label: 'Classical' },
 ];
+
+// Adapted from docs/reference/ImportControls/index.jsx DATE_RANGES
+const DATE_RANGE_OPTIONS: { value: ImportDateRange; label: string }[] = [
+  { value: '24h',     label: '24h'    },
+  { value: '1week',   label: '1 wk'   },
+  { value: '1month',  label: '1 mo'   },
+  { value: '3months', label: '3 mo'   },
+  { value: '1year',   label: '1 yr'   },
+  { value: 'all',     label: 'All'    },
+  { value: 'custom',  label: 'Custom' },
+];
+
+/**
+ * Filter a game list by the current date range selection.
+ * Applied post-fetch so the API call itself is unchanged.
+ * Adapted from docs/reference/GameLibraryContext.jsx importGames filter logic.
+ */
+function filterGamesByDate(games: ImportedGame[]): ImportedGame[] {
+  if (importFilterDateRange === 'all') return games;
+  if (importFilterDateRange === 'custom') {
+    return games.filter(g => {
+      const d = g.date?.slice(0, 10);
+      if (!d) return true;
+      if (importFilterCustomFrom && d < importFilterCustomFrom) return false;
+      if (importFilterCustomTo   && d > importFilterCustomTo)   return false;
+      return true;
+    });
+  }
+  const now = new Date();
+  let cutoff: Date;
+  switch (importFilterDateRange) {
+    case '24h':     cutoff = new Date(now.getTime() - 86_400_000);          break;
+    case '1week':   cutoff = new Date(now.getTime() - 7 * 86_400_000);      break;
+    case '1month':  cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 1);          break;
+    case '3months': cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 3);          break;
+    case '1year':   cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1);    break;
+    default: return games;
+  }
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return games.filter(g => !g.date || g.date.slice(0, 10) >= cutoffStr);
+}
 
 const FILTER_PILL_BASE  = 'background:#1a1a1a;color:#888;border:1px solid #333;border-radius:3px;padding:2px 7px;font-size:0.8rem;cursor:pointer';
 const FILTER_PILL_ACTIVE = 'background:#1e3a1e;color:#6f6;border:1px solid #3a7a3a;border-radius:3px;padding:2px 7px;font-size:0.8rem;cursor:pointer';
@@ -2763,7 +3023,7 @@ function renderImportFilters(): VNode {
 // Adapted from docs/reference/api/chesscom.js
 // Fetches the most recent month of rated standard games for a given username.
 
-let chesscomUsername = '';
+let chesscomUsername = 'LeviathanDuck';
 let chesscomLoading = false;
 let chesscomError: string | null = null;
 
@@ -2825,9 +3085,9 @@ async function importChesscom(): Promise<void> {
   chesscomError = null;
   redraw();
   try {
-    const games = await fetchChesscomGames(name, importFilterRated, importFilterSpeed);
+    const games = filterGamesByDate(await fetchChesscomGames(name, importFilterRated, importFilterSpeed));
     if (games.length === 0) {
-      chesscomError = 'No recent rated games found.';
+      chesscomError = 'No games found matching current filters.';
     } else {
       importedGames = [...importedGames, ...games];
       selectedGameId = games[0]!.id;
@@ -2864,7 +3124,7 @@ function renderChesscomImport(): VNode {
 // Returns multi-game PGN text when Accept: application/x-chess-pgn is sent.
 // Lichess uses UTCDate rather than Date in PGN headers.
 
-let lichessUsername = '';
+let lichessUsername = 'Leviathan_Duck';
 let lichessLoading = false;
 let lichessError: string | null = null;
 
@@ -2911,9 +3171,9 @@ async function importLichess(): Promise<void> {
   lichessError = null;
   redraw();
   try {
-    const games = await fetchLichessGames(name, importFilterRated, importFilterSpeed);
+    const games = filterGamesByDate(await fetchLichessGames(name, importFilterRated, importFilterSpeed));
     if (games.length === 0) {
-      lichessError = 'No recent rated games found.';
+      lichessError = 'No games found matching current filters.';
     } else {
       importedGames = [...importedGames, ...games];
       selectedGameId = games[0]!.id;
@@ -3072,15 +3332,10 @@ function routeContent(route: Route): VNode {
         ]),
 
         // Underboard — below board (grid-area: under)
-        // Unique to this app; adapted to underboard position from Lichess layout pattern.
-        // Contains: eval graph, review controls, import sections, game list.
+        // Import controls moved to header panel; game list appears here and in the header.
         h('div.analyse__underboard', [
           renderEvalGraph(),
           renderAnalysisControls(),
-          renderImportFilters(),
-          renderChesscomImport(),
-          renderLichessImport(),
-          renderPgnImport(),
           renderGameList(),
         ]),
 
@@ -3117,12 +3372,7 @@ async function resetAllData(): Promise<void> {
 
 function view(route: Route): VNode {
   return h('div#shell', [
-    h('header', [
-      h('span', 'Patzer Pro'),
-      renderNav(route),
-      h('button.dev-reset', { on: { click: () => void resetAllData() } }, 'Reset Data'),
-      renderGlobalMenu(),
-    ]),
+    renderHeader(route),
     h('main', [routeContent(route)]),
     renderPvBoard(),
   ]);
