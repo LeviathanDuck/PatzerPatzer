@@ -1,3 +1,7 @@
 .DS_Store
 
 
+
+# NNUE weight files — large binaries, downloaded by `pnpm build`
+public/stockfish-web/*.nnue
+public/stockfish/*.nnue
