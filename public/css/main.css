@@ -895,7 +895,6 @@ body.resizing {
 
 .pgn-import {
   width: 100%;
-  max-width: 600px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -924,7 +923,6 @@ body.resizing {
 
 .game-list {
   width: 100%;
-  max-width: 600px;
 }
 .game-list__header {
   font-size: 0.8rem;
@@ -1174,7 +1172,6 @@ body.resizing {
 
 .eval-graph {
   width: 100%;
-  max-width: 600px;
 }
 .eval-graph svg {
   display: block;
