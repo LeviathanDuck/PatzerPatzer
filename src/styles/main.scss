@@ -16,15 +16,362 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-header {
+// ─── Header ───────────────────────────────────────────────────────────────────
+// Unified search bar as the import control,
+// with a floating dropdown panel containing filters, PGN paste, and game list.
+
+.header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
+  gap: 10px;
+  padding: 0 16px;
+  height: 52px;
   background: #111;
   border-bottom: 1px solid #222;
+  position: relative; // panel z-index context
 
-  nav { flex: 1; }
+  &__brand {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #e8e8e8;
+    text-decoration: none;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+    flex-shrink: 0;
+  }
+
+  // Search area — flex:1 so it fills available space; position:relative anchors the panel
+  &__search {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  // The visible input row
+  &__bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    height: 34px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  // Platform toggle pills inside the bar
+  &__platforms {
+    display: flex;
+    flex-shrink: 0;
+    border-right: 1px solid #333;
+  }
+
+  &__platform {
+    padding: 0 10px;
+    height: 34px;
+    background: transparent;
+    color: #888;
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover { color: #ccc; background: #222; }
+    &.active { color: #e8e8e8; background: #222; }
+  }
+
+  // Username input
+  &__input {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    padding: 0 10px;
+    background: transparent;
+    color: #e8e8e8;
+    border: none;
+    outline: none;
+    font-size: 0.875rem;
+
+    &::placeholder { color: #555; }
+    &:disabled { opacity: 0.5; }
+  }
+
+  // Import button (inside the bar)
+  &__import {
+    flex-shrink: 0;
+    height: 34px;
+    padding: 0 14px;
+    background: #2a4a2a;
+    color: #8f8;
+    border: none;
+    border-left: 1px solid #333;
+    border-radius: 0;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background 0.1s;
+
+    &:hover:not(:disabled) { background: #335533; }
+    &:disabled { opacity: 0.45; cursor: default; }
+  }
+
+  // Game count badge — clickable, opens panel
+  &__count {
+    flex-shrink: 0;
+    padding: 0 8px;
+    font-size: 0.75rem;
+    color: #6a9;
+    cursor: pointer;
+    white-space: nowrap;
+    border-left: 1px solid #2a2a2a;
+    height: 34px;
+    display: flex;
+    align-items: center;
+
+    &:hover { color: #8fc; }
+  }
+
+  // Error indicator
+  &__error {
+    flex-shrink: 0;
+    padding: 0 8px;
+    font-size: 0.85rem;
+    color: #f84;
+    cursor: help;
+    height: 34px;
+    display: flex;
+    align-items: center;
+  }
+
+  // Panel open/close toggle (▾ / ▴)
+  &__toggle {
+    flex-shrink: 0;
+    width: 28px;
+    height: 34px;
+    background: transparent;
+    color: #666;
+    border: none;
+    border-left: 1px solid #2a2a2a;
+    cursor: pointer;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.1s;
+
+    &:hover, &.active { color: #aaa; }
+
+    // Active-filters dot — mirrors reference TopNav.jsx hasActiveFilters indicator
+    &--filtered {
+      color: #6a9;
+
+      &::after {
+        content: '';
+        display: block;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #6a9;
+        position: absolute;
+        top: 6px;
+        right: 4px;
+      }
+    }
+  }
+
+  // Tool navigation links
+  &__nav {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+
+    a {
+      padding: 6px 10px;
+      color: #888;
+      text-decoration: none;
+      font-size: 0.82rem;
+      border-radius: 4px;
+      white-space: nowrap;
+      transition: color 0.1s, background 0.1s;
+
+      &:hover { color: #ccc; background: #1a1a1a; }
+      &.active { color: #e8e8e8; }
+    }
+  }
+
+  // ── Dropdown panel ──────────────────────────────────────────────────────────
+  &__panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 340px;
+    max-width: 460px;
+    background: #181818;
+    border: 1px solid #333;
+    border-radius: 8px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7);
+    z-index: 200;
+    padding: 4px 0;
+  }
+
+  &__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+  }
+
+  &__panel-section {
+    padding: 10px 14px;
+  }
+
+  &__panel-divider {
+    height: 1px;
+    background: #252525;
+    margin: 0;
+  }
+
+  &__panel-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+
+    &.--mt { margin-top: 14px; }
+  }
+
+  &__panel-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+
+    & + & { margin-top: 6px; }
+    &.--mt { margin-top: 10px; }
+  }
+
+  &__date-input {
+    height: 26px;
+    padding: 0 6px;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #ccc;
+    font-size: 0.78rem;
+    outline: none;
+    cursor: pointer;
+
+    &:focus { border-color: #555; }
+    &::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+  }
+
+  &__panel-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: #aaa;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  &__panel-hint {
+    font-size: 0.75rem;
+    color: #555;
+    margin-right: 2px;
+  }
+
+  &__panel-btn {
+    padding: 4px 12px;
+    background: #222;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+
+    &:hover { background: #2a2a2a; color: #e8e8e8; }
+  }
+
+  &__panel-error {
+    font-size: 0.78rem;
+    color: #f84;
+  }
+
+  // Filter pills (speed)
+  &__pill {
+    padding: 3px 9px;
+    background: #222;
+    color: #888;
+    border: 1px solid #333;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover { background: #2a2a2a; color: #ccc; }
+    &.active { background: #1e3a1e; color: #6f6; border-color: #3a7a3a; }
+  }
+
+  // PGN paste textarea
+  &__pgn-input {
+    width: 100%;
+    background: #111;
+    color: #ccc;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 0.78rem;
+    font-family: monospace;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+    margin-bottom: 6px;
+
+    &::placeholder { color: #444; }
+    &:focus { border-color: #555; }
+  }
+
+  // ── Game list ───────────────────────────────────────────────────────────────
+  &__games-list {
+    max-height: 240px;
+    overflow-y: auto;
+    margin: 0 -14px; // bleed to panel edges
+    padding: 0 0 2px;
+  }
+
+  &__game-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    padding: 6px 14px;
+    background: transparent;
+    color: #aaa;
+    border: none;
+    border-radius: 0;
+    text-align: left;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.1s;
+
+    &:hover { background: #222; color: #e8e8e8; }
+    &.active { background: #1a2a1a; color: #8f8; }
+  }
+
+  &__game-badge {
+    font-size: 0.75em;
+    font-weight: 700;
+    flex-shrink: 0;
+
+    &.--ok   { color: #4a8; }
+    &.--warn { color: #f84; }
+  }
 }
 
 .dev-reset {
@@ -881,6 +1228,14 @@ body.resizing {
   border-radius: 2px;
 
   &:hover { color: #e8e8e8; background: #2a2a2a; padding: 0 1px; }
+
+  // First move in each PV line — visually distinct for quick scanning across rows.
+  &--first {
+    color: #e8e8e8;
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-inline-end: 6px;
+  }
 }
 
 // Floating PV board preview — fixed overlay near mouse cursor when hovering a PV move.
