@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "node build.mjs",
+    "serve": "node server.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
