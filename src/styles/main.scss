@@ -407,59 +407,112 @@ header {
   aspect-ratio: 1 / 1;
 }
 
-.move-list {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 4px;
-  font-size: 0.95rem;
-  line-height: 1.6;
+// Move list — tview2 inline layout.
+// Adapted from lichess-org/lila: ui/lib/css/tree/_tree.scss
+// Uses Lichess custom element names: move, index, san, glyph, eval, inline.
 
-  .move-num {
-    color: #888;
-    font-size: 0.8rem;
-    user-select: none;
-  }
+.tview2 {
+  white-space: normal;
 
-  .move__glyph {
-    margin-left: 1px;
-    font-size: 0.8em;
-    font-weight: 700;
-    user-select: none;
-  }
-
-  // Forced-mate distance marker: "+M2", "+M6", etc.
-  // Purple, compact — distinct from classification glyphs but similar prominence.
-  .move__mate {
-    margin-left: 2px;
-    font-size: 0.75em;
-    font-weight: 600;
-    color: #c084fc;
-    user-select: none;
-  }
-
-  .move {
-    padding: 1px 4px;
-    border-radius: 3px;
+  // move — one clickable half-move unit.
+  // Mirrors lichess-org/lila: .tview2 move { display: inline-block; padding; font-size; }
+  move {
+    display: inline-block;
+    padding: 0.25em 0.17em;
     cursor: pointer;
-
-    &:hover {
-      background: #333;
-    }
+    color: #ccc;
 
     &.active {
-      background: #4a8;
-      color: #000;
-      font-weight: 600;
+      background: #2a6644;
+      color: #fff;
+
+      index, eval {
+        color: #fff;
+      }
+    }
+
+    &:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.08);
+      color: #eee;
+    }
+
+    // Move number prefix inside the move element.
+    // Mirrors lichess-org/lila: .tview2 move index { font-size: 90%; color: dim; }
+    index {
+      font-size: 90%;
+      color: #888;
+      padding-inline-end: 0.15em;
+    }
+
+    // SAN text — inherits font from move element.
+    san {
+      // display: inline (default for unknown elements)
+    }
+
+    // Annotation glyph: "??", "?", "?!", "!", etc.
+    // Mirrors lichess-org/lila: .tview2 glyph { margin-inline-start: 0.08em; }
+    glyph {
+      margin-inline-start: 0.08em;
+      vertical-align: bottom;
+      font-size: 0.85em;
+      user-select: none;
+    }
+
+    // Eval annotation: engine score or forced-mate distance (+M2).
+    // Mirrors lichess-org/lila: .tview2 eval { font-size: 0.8em; color: dim; }
+    eval {
+      margin-inline-start: 0.3em;
+      font-size: 0.75em;
+      color: #c084fc;
+      user-select: none;
     }
   }
 
-  // Side variation block: dimmed, slightly smaller, inline parens
-  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts .inline style
-  .variation {
-    color: #888;
+  // Inline variation — short sideline in parentheses.
+  // Parens are added via CSS ::before / ::after, not as text nodes.
+  // Mirrors lichess-org/lila: .tview2 inline { display: inline; font-style: italic; }
+  inline {
+    display: inline;
+    font-style: italic;
     font-size: 0.9em;
-    margin: 0 2px;
+    opacity: 0.8;
+
+    move {
+      margin-inline-start: 0;
+    }
+
+    &::before {
+      content: '(';
+      vertical-align: 0.7em;
+      opacity: 0.7;
+      font-size: 1.1em;
+      margin-inline: 2px -2px;
+    }
+
+    &::after {
+      content: ')';
+      vertical-align: 0.7em;
+      opacity: 0.7;
+      font-size: 1.1em;
+      margin-inline: -1px 1px;
+    }
+  }
+}
+
+// tview2-inline — additional sizing/weight for the inline (non-column) view.
+// Mirrors lichess-org/lila: .tview2-inline { padding; move { font-size: 13px; font-weight: bold; } }
+.tview2-inline {
+  padding: 7px 3px 7px 7px;
+
+  move {
+    border-radius: 3px;
+    margin-inline-end: 2px;
+    font-size: 13px;
+    font-weight: bold;
+
+    index {
+      padding-inline-end: 0.2em;
+    }
   }
 }
 
