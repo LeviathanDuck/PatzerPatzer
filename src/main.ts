@@ -911,13 +911,17 @@ function toggleEngine(): void {
   if (engineEnabled) {
     if (!engineInitialized) {
       engineInitialized = true;
-      // Single-threaded Stockfish loaded as a Web Worker.
-      // The multi-threaded build (stockfish-nnue-16.js) from the stockfish npm
-      // package cannot be loaded via new Worker() directly — it uses Emscripten
-      // pthreads which causes infinite sub-worker recursion in that context.
-      // True multi-threading requires @lichess-org/stockfish-web (different API).
-      // The large Hash configured in protocol.ts still provides a speedup.
-      protocol.init('stockfish/stockfish-nnue-16-single.js');
+      // Load Stockfish 18 (smallnet) via @lichess-org/stockfish-web.
+      // Runs in the main thread — Emscripten manages its own pthreads internally
+      // via SharedArrayBuffer, giving true multi-core analysis.
+      // Requires COOP+COEP headers — use `pnpm serve` (server.mjs), not file://.
+      // Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts
+      void protocol.init('/stockfish-web').catch((err: unknown) => {
+        console.error('[engine] failed to load:', err);
+        engineEnabled     = false;
+        engineInitialized = false;
+        redraw();
+      });
       // evalCurrentPosition() will be called once readyok arrives
     } else if (engineReady) {
       evalCurrentPosition();
