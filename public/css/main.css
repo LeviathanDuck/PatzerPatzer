@@ -1941,3 +1941,204 @@ body[data-board=newspaper] cg-board::before {
 .keyboard-help__close:hover {
   color: #e8e8e8;
 }
+
+.games-view {
+  padding: 16px 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.games-view__controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: #181818;
+  border: 1px solid #282828;
+  border-radius: 6px;
+}
+.games-view__filter-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.games-view__filter-group.--right {
+  margin-left: auto;
+  gap: 10px;
+}
+.games-view__filter-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.games-view__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: #222;
+  color: #888;
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.games-view__pill:hover {
+  background: #2a2a2a;
+  color: #ccc;
+}
+.games-view__pill.active {
+  background: #1e3a1e;
+  color: #6f6;
+  border-color: #3a7a3a;
+}
+.games-view__pill[data-icon]::before {
+  font-family: "lichess";
+  content: attr(data-icon);
+  font-size: 0.9em;
+  line-height: 1;
+}
+.games-view__search {
+  height: 26px;
+  padding: 0 8px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 0.8rem;
+  outline: none;
+  width: 130px;
+}
+.games-view__search:focus {
+  border-color: #555;
+}
+.games-view__search::placeholder {
+  color: #444;
+}
+.games-view__search::-webkit-search-cancel-button {
+  display: none;
+}
+.games-view__summary {
+  font-size: 0.78rem;
+  color: #555;
+  white-space: nowrap;
+}
+.games-view__clear {
+  padding: 3px 10px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+.games-view__clear:hover {
+  color: #ccc;
+  border-color: #555;
+}
+.games-view__table-wrap {
+  overflow-x: auto;
+}
+.games-view__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.games-view__table thead tr {
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+}
+.games-view__table th {
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.games-view__table th:hover {
+  color: #999;
+}
+.games-view__table--active {
+  color: #aaa !important;
+}
+.games-view__th--active {
+  color: #aaa !important;
+}
+.games-view__row {
+  border-bottom: 1px solid #222;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.games-view__row td {
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+.games-view__row:hover {
+  background: #1e1e1e;
+}
+.games-view__row.active {
+  background: #1a2a1a;
+}
+.games-view__result {
+  font-size: 0.65rem;
+}
+.games-view__result.--win {
+  color: #4c8;
+}
+.games-view__result.--loss {
+  color: #e44;
+}
+.games-view__result.--draw {
+  color: #aa6;
+}
+.games-view__opponent {
+  color: #ccc;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.games-view__date {
+  color: #666;
+  white-space: nowrap;
+}
+.games-view__tc {
+  color: #888;
+  white-space: nowrap;
+}
+.games-view__tc [data-icon]::before {
+  font-family: "lichess";
+  content: attr(data-icon);
+  font-size: 0.9em;
+}
+.games-view__opening {
+  color: #666;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.games-view__empty {
+  padding: 48px 0;
+  text-align: center;
+  color: #555;
+}
+.games-view__empty p {
+  margin: 4px 0;
+}
+.games-view__empty-hint {
+  font-size: 0.82rem;
+  color: #444;
+}

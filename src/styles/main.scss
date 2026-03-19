@@ -1730,3 +1730,207 @@ body[data-board='newspaper'] cg-board::before {
     &:hover { color: #e8e8e8; }
   }
 }
+
+// ─── Games view ──────────────────────────────────────────────────────────────
+// Inspired by external reference-game-history-reference.md game history table.
+
+.games-view {
+  padding: 16px 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+
+  // ── Controls bar ────────────────────────────────────────────────────────
+  &__controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: #181818;
+    border: 1px solid #282828;
+    border-radius: 6px;
+  }
+
+  &__filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+
+    &.--right {
+      margin-left: auto;
+      gap: 10px;
+    }
+  }
+
+  &__filter-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  &__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: #222;
+    color: #888;
+    border: 1px solid #333;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover  { background: #2a2a2a; color: #ccc; }
+    &.active { background: #1e3a1e; color: #6f6; border-color: #3a7a3a; }
+
+    &[data-icon]::before {
+      font-family: 'lichess';
+      content: attr(data-icon);
+      font-size: 0.9em;
+      line-height: 1;
+    }
+  }
+
+  &__search {
+    height: 26px;
+    padding: 0 8px;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #ccc;
+    font-size: 0.8rem;
+    outline: none;
+    width: 130px;
+
+    &:focus { border-color: #555; }
+    &::placeholder { color: #444; }
+    // suppress webkit search cancel button
+    &::-webkit-search-cancel-button { display: none; }
+  }
+
+  &__summary {
+    font-size: 0.78rem;
+    color: #555;
+    white-space: nowrap;
+  }
+
+  &__clear {
+    padding: 3px 10px;
+    background: transparent;
+    color: #888;
+    border: 1px solid #333;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: color 0.1s, border-color 0.1s;
+
+    &:hover { color: #ccc; border-color: #555; }
+  }
+
+  // ── Table ───────────────────────────────────────────────────────────────
+  &__table-wrap {
+    overflow-x: auto;
+  }
+
+  &__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+
+    thead tr {
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    th {
+      padding: 8px 10px;
+      text-align: left;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+
+      &:hover { color: #999; }
+    }
+
+    &--active { color: #aaa !important; }
+  }
+
+  &__th--active { color: #aaa !important; }
+
+  &__row {
+    border-bottom: 1px solid #222;
+    cursor: pointer;
+    transition: background 0.08s;
+
+    td { padding: 8px 10px; vertical-align: middle; }
+
+    &:hover  { background: #1e1e1e; }
+    &.active { background: #1a2a1a; }
+  }
+
+  // ── Result icon ─────────────────────────────────────────────────────────
+  &__result {
+    font-size: 0.65rem;
+
+    &.--win  { color: #4c8; }
+    &.--loss { color: #e44; }
+    &.--draw { color: #aa6; }
+  }
+
+  &__opponent {
+    color: #ccc;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__date {
+    color: #666;
+    white-space: nowrap;
+  }
+
+  &__tc {
+    color: #888;
+    white-space: nowrap;
+
+    [data-icon]::before {
+      font-family: 'lichess';
+      content: attr(data-icon);
+      font-size: 0.9em;
+    }
+  }
+
+  &__opening {
+    color: #666;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // ── Empty state ─────────────────────────────────────────────────────────
+  &__empty {
+    padding: 48px 0;
+    text-align: center;
+    color: #555;
+
+    p { margin: 4px 0; }
+  }
+
+  &__empty-hint {
+    font-size: 0.82rem;
+    color: #444;
+  }
+}
