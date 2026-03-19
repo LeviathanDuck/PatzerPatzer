@@ -2050,28 +2050,36 @@ function renderPvBox(): VNode | null {
         : currentEval.lines?.[slotIdx - 1];
 
     if (!ev) {
-      // Empty placeholder — holds height so the panel doesn't jump as lines arrive.
+      // Empty placeholder — fixed 2em height so panel never jumps as lines arrive.
+      // Mirrors lichess-org/lila: renderPv with undefined pv → empty div.pv.pv--nowrap
       if (slotIdx === 0) {
-        // Status text in first slot while waiting for the engine.
         const statusText = !engineReady
           ? 'Loading engine…'
           : batchAnalyzing
             ? `Reviewing ${batchDone}/${batchQueue.length}…`
             : '…';
-        return h('div.pv', [h('span.ceval__info', statusText)]);
+        return h('div.pv.pv--nowrap', [h('span.ceval__info', statusText)]);
       }
-      return h('div.pv.pv--empty'); // empty row, no content — holds height only
+      return h('div.pv.pv--nowrap.pv--empty');
     }
 
     const score = formatScore(ev);
     const isPositive = ev.cp !== undefined ? ev.cp > 0 : ev.mate !== undefined ? ev.mate > 0 : null;
     const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
-    return h('div.pv', [
-      h('strong', {
+
+    // Per-row score shown only when multiPv > 1 — for single-line, pearl shows it.
+    // Mirrors lichess-org/lila: if (multiPv > 1) children.push(strong(score))
+    const children: (VNode | string)[] = [];
+    if (multiPv > 1) {
+      children.push(h('strong', {
         class: { 'pv__score--white': isPositive === true, 'pv__score--black': isPositive === false },
-      }, score),
-      ...pvNodes,
-    ]);
+      }, score));
+    }
+    children.push(...pvNodes);
+
+    // div.pv.pv--nowrap: single-line truncated row, 2em height, matching Lichess row structure.
+    // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPv → div.pv.pv--nowrap
+    return h('div.pv.pv--nowrap', children);
   }
 
   // Always render exactly multiPv slots regardless of how many have data.
