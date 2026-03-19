@@ -1060,12 +1060,6 @@ body.resizing {
   font-weight: 500;
 }
 
-.player-strip__rating {
-  flex-shrink: 0;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
 .material {
   display: flex;
   align-items: center;
@@ -1641,6 +1635,24 @@ body[data-board=newspaper] cg-board::before {
 }
 .grl__badge.--warn {
   color: #f84;
+}
+
+.color-chip {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-left: 5px;
+  flex-shrink: 0;
+}
+.color-chip.--white {
+  background: #d8d8d8;
+  border: 1px solid #888;
+}
+.color-chip.--black {
+  background: #333;
+  border: 1px solid #666;
 }
 
 .game-ext-link {

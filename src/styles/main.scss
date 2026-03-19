@@ -804,11 +804,6 @@ body.resizing {
   font-weight: 500;
 }
 
-.player-strip__rating {
-  flex-shrink: 0;
-  white-space: nowrap;
-  font-weight: 500;
-}
 
 // Material imbalance — adapted from lichess-org/lila: ui/lib/css/component/_material.scss
 // Uses mono SVG piece files (public/piece/mono/) matching Lichess exactly.
@@ -1397,6 +1392,28 @@ body[data-board='newspaper'] cg-board::before {
 
 // External link icon — shared across header game list, underboard game list, games view table.
 // Uses the Lichess ExternalArrow glyph (\ue00f) from the lichess icon font.
+// Opponent color chip — shared across Games tab and compact game lists.
+// Indicates the color the opponent played: --white or --black modifier.
+.color-chip {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-left: 5px;
+  flex-shrink: 0;
+
+  &.--white {
+    background: #d8d8d8;
+    border: 1px solid #888;
+  }
+
+  &.--black {
+    background: #333;
+    border: 1px solid #666;
+  }
+}
+
 .game-ext-link {
   display: inline-flex;
   align-items: center;
