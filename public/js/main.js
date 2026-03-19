@@ -6061,7 +6061,7 @@ function toggleEngine() {
   if (engineEnabled) {
     if (!engineInitialized) {
       engineInitialized = true;
-      void protocol.init("stockfish-web").catch((err) => {
+      void protocol.init("/stockfish-web").catch((err) => {
         console.error("[engine] failed to load:", err);
         engineEnabled = false;
         engineInitialized = false;
