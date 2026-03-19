@@ -1475,7 +1475,7 @@ function renderHeader(route: Route): VNode {
         h('input.header__input', {
           key: `input-${importPlatform}`,
           attrs: {
-            type: 'text',
+            type: 'search',
             placeholder: importPlatform === 'chesscom' ? 'Chess.com username' : 'Lichess username',
             value: username,
             disabled: loading,
@@ -1585,7 +1585,7 @@ function renderBoardSettings(): VNode {
           attrs: { title: name },
           on: { click: () => { applyBoardTheme(name); redraw(); } },
         }, [
-          h('span', { style: { backgroundImage: `url(${boardThumbnailUrl(name)})` } }),
+          h('span', { attrs: { style: `background-image: url(${boardThumbnailUrl(name)})` } }),
         ]),
       ),
     ),
@@ -1599,7 +1599,7 @@ function renderBoardSettings(): VNode {
           attrs: { title: name },
           on: { click: () => { applyPieceSet(name); redraw(); } },
         }, [
-          h('piece', { style: { backgroundImage: `url(${piecePreviewUrl(name)})` } }),
+          h('piece', { attrs: { style: `background-image: url(${piecePreviewUrl(name)})` } }),
         ]),
       ),
     ),
