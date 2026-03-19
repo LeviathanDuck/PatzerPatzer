@@ -2703,7 +2703,7 @@ function renderPuzzleCandidates(): VNode {
     ]);
   });
 
-  return h('div.game-list', { attrs: { style: 'max-width:600px' } }, [
+  return h('div.game-list', [
     h('div.pgn-import__row', { attrs: { style: 'margin-bottom:6px' } }, [
       h('button', {
         attrs: { disabled: !canExtract },
