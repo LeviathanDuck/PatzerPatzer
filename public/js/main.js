@@ -6415,20 +6415,29 @@ function renderHeader(route) {
   const error = importPlatform === "chesscom" ? chesscomError : lichessError;
   const username = importPlatform === "chesscom" ? chesscomUsername : lichessUsername;
   const doImport = () => importPlatform === "chesscom" ? void importChesscom() : void importLichess();
-  const hasActiveFilters = importFilterSpeed !== "all" || importFilterDateRange !== "1month" || !importFilterRated;
+  const hasActiveFilters = importFilterSpeeds.size > 0 || importFilterDateRange !== "1month" || !importFilterRated;
   const panel = showImportPanel ? h("div.header__panel", [
     // Filters section — grouped by type, vertical layout
     // Adapted from docs/reference/ImportControls/index.jsx (TIME_CONTROLS + DATE_RANGES)
     h("div.header__panel-section", [
-      // Time control group
+      // Time control group — multi-select; empty set = all speeds
       h("div.header__panel-label", "Time control"),
       h("div.header__panel-row", [
+        h("button.header__pill", {
+          class: { active: importFilterSpeeds.size === 0 },
+          on: { click: () => {
+            importFilterSpeeds = /* @__PURE__ */ new Set();
+            redraw();
+          } }
+        }, "All"),
         ...SPEED_OPTIONS.map(
           ({ value, label, icon }) => h("button.header__pill", {
-            class: { active: importFilterSpeed === value },
-            attrs: icon ? { "data-icon": icon } : {},
+            class: { active: importFilterSpeeds.has(value) },
+            attrs: { "data-icon": icon },
             on: { click: () => {
-              importFilterSpeed = value;
+              const s = new Set(importFilterSpeeds);
+              s.has(value) ? s.delete(value) : s.add(value);
+              importFilterSpeeds = s;
               redraw();
             } }
           }, label)
@@ -7772,12 +7781,11 @@ function renderPuzzleCandidates() {
   ]);
 }
 var importFilterRated = true;
-var importFilterSpeed = "all";
+var importFilterSpeeds = /* @__PURE__ */ new Set();
 var importFilterDateRange = "1month";
 var importFilterCustomFrom = "";
 var importFilterCustomTo = "";
 var SPEED_OPTIONS = [
-  { value: "all", label: "All" },
   { value: "bullet", label: "Bullet", icon: "\uE032" },
   // licon.Bullet
   { value: "blitz", label: "Blitz", icon: "\uE008" },
@@ -7841,7 +7849,7 @@ function normalizeChesscomResult(whiteResult, blackResult) {
   if (blackResult === "win") return "0-1";
   return "1/2-1/2";
 }
-async function fetchChesscomGames(username, rated, speed) {
+async function fetchChesscomGames(username, rated, speeds) {
   const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
   if (!archivesRes.ok) {
     throw new Error(archivesRes.status === 404 ? "Chess.com: user not found" : `Chess.com API error ${archivesRes.status}`);
@@ -7859,7 +7867,7 @@ async function fetchChesscomGames(username, rated, speed) {
     const raw = rawGames[i];
     if (raw.rules !== "chess" || raw.time_class === "daily") continue;
     if (rated && !raw.rated) continue;
-    if (speed !== "all" && raw.time_class !== speed) continue;
+    if (speeds.size > 0 && !speeds.has(raw.time_class)) continue;
     const pgn = raw.pgn ?? "";
     if (!pgn) continue;
     try {
@@ -7885,7 +7893,7 @@ async function importChesscom() {
   chesscomError = null;
   redraw();
   try {
-    const games = filterGamesByDate(await fetchChesscomGames(name, importFilterRated, importFilterSpeed));
+    const games = filterGamesByDate(await fetchChesscomGames(name, importFilterRated, importFilterSpeeds));
     if (games.length === 0) {
       chesscomError = "No games found matching current filters.";
     } else {
@@ -7904,10 +7912,10 @@ async function importChesscom() {
 var lichessUsername = "Leviathan_Duck";
 var lichessLoading = false;
 var lichessError = null;
-async function fetchLichessGames(username, rated, speed) {
+async function fetchLichessGames(username, rated, speeds) {
   const params = new URLSearchParams({ max: "30" });
   if (rated) params.set("rated", "true");
-  if (speed !== "all") params.set("perfType", speed);
+  if (speeds.size > 0) params.set("perfType", [...speeds].join(","));
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
   const res = await fetch(url, { headers: { "Accept": "application/x-chess-pgn" } });
   if (!res.ok) {
@@ -7942,7 +7950,7 @@ async function importLichess() {
   lichessError = null;
   redraw();
   try {
-    const games = filterGamesByDate(await fetchLichessGames(name, importFilterRated, importFilterSpeed));
+    const games = filterGamesByDate(await fetchLichessGames(name, importFilterRated, importFilterSpeeds));
     if (games.length === 0) {
       lichessError = "No games found matching current filters.";
     } else {

@@ -1339,7 +1339,7 @@ function renderHeader(route: Route): VNode {
   // Active-filters indicator — true when any filter differs from its default value.
   // Mirrors the reference TopNav.jsx hasActiveFilters pattern.
   const hasActiveFilters =
-    importFilterSpeed     !== 'all'    ||
+    importFilterSpeeds.size > 0 ||
     importFilterDateRange !== '1month' ||
     !importFilterRated;
 
@@ -1350,14 +1350,23 @@ function renderHeader(route: Route): VNode {
     // Adapted from docs/reference/ImportControls/index.jsx (TIME_CONTROLS + DATE_RANGES)
     h('div.header__panel-section', [
 
-      // Time control group
+      // Time control group — multi-select; empty set = all speeds
       h('div.header__panel-label', 'Time control'),
       h('div.header__panel-row', [
+        h('button.header__pill', {
+          class: { active: importFilterSpeeds.size === 0 },
+          on: { click: () => { importFilterSpeeds = new Set(); redraw(); } },
+        }, 'All'),
         ...SPEED_OPTIONS.map(({ value, label, icon }) =>
           h('button.header__pill', {
-            class: { active: importFilterSpeed === value },
-            attrs: icon ? { 'data-icon': icon } : {},
-            on: { click: () => { importFilterSpeed = value; redraw(); } },
+            class: { active: importFilterSpeeds.has(value) },
+            attrs: { 'data-icon': icon },
+            on: { click: () => {
+              const s = new Set(importFilterSpeeds);
+              s.has(value) ? s.delete(value) : s.add(value);
+              importFilterSpeeds = s;
+              redraw();
+            }},
           }, label)
         ),
       ]),
@@ -3101,20 +3110,19 @@ function renderPuzzleCandidates(): VNode {
 // Adapted from docs/reference/ImportControls/index.jsx
 // Shared filters applied to both Chess.com and Lichess username imports.
 
-type ImportSpeed     = 'all' | 'bullet' | 'blitz' | 'rapid';
+type ImportSpeed     = 'bullet' | 'blitz' | 'rapid';
 type ImportDateRange = '24h' | '1week' | '1month' | '3months' | '1year' | 'all' | 'custom';
 
 // Default date range matches the reference implementation: DEFAULT_FILTERS.dateRange = '1month'
 // Adapted from docs/reference/GameLibraryContext.jsx DEFAULT_FILTERS
-let importFilterRated:     boolean         = true;
-let importFilterSpeed:     ImportSpeed     = 'all';
-let importFilterDateRange: ImportDateRange = '1month';
+let importFilterRated:     boolean              = true;
+let importFilterSpeeds:    Set<ImportSpeed>     = new Set(); // empty = all speeds
+let importFilterDateRange: ImportDateRange      = '1month';
 let importFilterCustomFrom = '';
 let importFilterCustomTo   = '';
 
 // Icons adapted from lichess-org/lila: ui/lib/src/game/perfIcons.ts + ui/lib/src/licon.ts
-const SPEED_OPTIONS: { value: ImportSpeed; label: string; icon?: string }[] = [
-  { value: 'all',    label: 'All'    },
+const SPEED_OPTIONS: { value: ImportSpeed; label: string; icon: string }[] = [
   { value: 'bullet', label: 'Bullet', icon: '\ue032' }, // licon.Bullet
   { value: 'blitz',  label: 'Blitz',  icon: '\ue008' }, // licon.FlameBlitz
   { value: 'rapid',  label: 'Rapid',  icon: '\ue002' }, // licon.Rabbit
@@ -3178,10 +3186,15 @@ function renderImportFilters(): VNode {
       ...SPEED_OPTIONS.map(({ value, label, icon }) =>
         h('button', {
           attrs: {
-            style: importFilterSpeed === value ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE,
-            ...(icon ? { 'data-icon': icon } : {}),
+            style: importFilterSpeeds.has(value) ? FILTER_PILL_ACTIVE : FILTER_PILL_BASE,
+            'data-icon': icon,
           },
-          on: { click: () => { importFilterSpeed = value; redraw(); } },
+          on: { click: () => {
+            const s = new Set(importFilterSpeeds);
+            s.has(value) ? s.delete(value) : s.add(value);
+            importFilterSpeeds = s;
+            redraw();
+          }},
         }, label)
       ),
     ]),
@@ -3204,7 +3217,7 @@ function normalizeChesscomResult(whiteResult: string, blackResult: string): stri
   return '1/2-1/2';
 }
 
-async function fetchChesscomGames(username: string, rated: boolean, speed: ImportSpeed): Promise<ImportedGame[]> {
+async function fetchChesscomGames(username: string, rated: boolean, speeds: Set<ImportSpeed>): Promise<ImportedGame[]> {
   // 1. Fetch archive list (one URL per month the player has games)
   const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
   if (!archivesRes.ok) {
@@ -3227,7 +3240,7 @@ async function fetchChesscomGames(username: string, rated: boolean, speed: Impor
     const raw = rawGames[i];
     if (raw.rules !== 'chess' || raw.time_class === 'daily') continue;
     if (rated && !raw.rated) continue;
-    if (speed !== 'all' && raw.time_class !== speed) continue;
+    if (speeds.size > 0 && !speeds.has(raw.time_class as ImportSpeed)) continue;
     const pgn: string = raw.pgn ?? '';
     if (!pgn) continue;
     try {
@@ -3254,7 +3267,7 @@ async function importChesscom(): Promise<void> {
   chesscomError = null;
   redraw();
   try {
-    const games = filterGamesByDate(await fetchChesscomGames(name, importFilterRated, importFilterSpeed));
+    const games = filterGamesByDate(await fetchChesscomGames(name, importFilterRated, importFilterSpeeds));
     if (games.length === 0) {
       chesscomError = 'No games found matching current filters.';
     } else {
@@ -3297,10 +3310,10 @@ let lichessUsername = 'Leviathan_Duck';
 let lichessLoading = false;
 let lichessError: string | null = null;
 
-async function fetchLichessGames(username: string, rated: boolean, speed: ImportSpeed): Promise<ImportedGame[]> {
+async function fetchLichessGames(username: string, rated: boolean, speeds: Set<ImportSpeed>): Promise<ImportedGame[]> {
   const params = new URLSearchParams({ max: '30' });
   if (rated) params.set('rated', 'true');
-  if (speed !== 'all') params.set('perfType', speed);
+  if (speeds.size > 0) params.set('perfType', [...speeds].join(','));
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
   const res = await fetch(url, { headers: { 'Accept': 'application/x-chess-pgn' } });
   if (!res.ok) {
@@ -3340,7 +3353,7 @@ async function importLichess(): Promise<void> {
   lichessError = null;
   redraw();
   try {
-    const games = filterGamesByDate(await fetchLichessGames(name, importFilterRated, importFilterSpeed));
+    const games = filterGamesByDate(await fetchLichessGames(name, importFilterRated, importFilterSpeeds));
     if (games.length === 0) {
       lichessError = 'No games found matching current filters.';
     } else {
