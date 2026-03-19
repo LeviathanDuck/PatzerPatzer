@@ -215,7 +215,7 @@ async function saveAnalysisToIdb(status: AnalysisStatus): Promise<void> {
     const record: StoredAnalysis = {
       gameId:          selectedGameId,
       analysisVersion: ANALYSIS_VERSION,
-      analysisDepth:   analysisDepth,
+      analysisDepth:   reviewDepth,
       status,
       updatedAt:       Date.now(),
       nodes,
@@ -262,7 +262,7 @@ async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
   if (!stored) return;
   // Stale data: version or depth changed — discard
   if (stored.analysisVersion !== ANALYSIS_VERSION) return;
-  if (stored.analysisDepth !== analysisDepth) return;
+  if (stored.analysisDepth !== reviewDepth) return;
   // Repopulate evalCache from stored node entries.
   // Guard: pre-migration records (ANALYSIS_VERSION < 2) lack entry.path — skip them.
   for (const entry of Object.values(stored.nodes)) {
@@ -431,7 +431,10 @@ let batchDone      = 0;
 let batchAnalyzing = false;
 let batchState: BatchState = 'idle';
 
-let analysisDepth    = 22; // Lichess cloud analysis depth; matches [%eval] annotation quality
+// Review = full-game batch pass; fixed depth, persisted, source of truth for graph/labels.
+const reviewDepth    = 18;
+// Analysis = live board engine; transient, user-adjustable, does NOT overwrite Review data.
+let liveDepth        = 18;
 let analysisRunning  = false;
 let showExportMenu   = false; // inline annotated/plain prompt for PGN export
 let showGlobalMenu      = false; // global settings menu open/closed
@@ -547,35 +550,32 @@ function parseEngineLine(line: string): void {
       currentEval.best = parts[1];
       const stored: PositionEval = { ...currentEval }; // includes .lines set by secondary info handler
       pendingLines = [];
-      // Only store in cache and compute loss when we have a valid score.
-      // An entry with best but no cp/mate is incomplete and must not pollute the cache.
-      if (stored.cp !== undefined || stored.mate !== undefined) {
-        const parentEval = evalCache.get(evalParentPath);
-        // Raw cp delta (kept for reference)
-        if (parentEval?.cp !== undefined && stored.cp !== undefined) {
-          stored.delta = stored.cp - parentEval.cp;
-        }
-        // Win-chance shift from mover's perspective.
-        // Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
-        // povDiff(moverColor, nodeEval, prevEval) = (moverNodeWc - moverPrevWc) / 2
-        // loss = -povDiff = (moverPrevWc - moverNodeWc) / 2  [positive = worse for mover]
-        if (parentEval) {
-          const nodeWc   = evalWinChances(stored);
-          const parentWc = evalWinChances(parentEval);
-          if (nodeWc !== undefined && parentWc !== undefined) {
-            const whiteToMove   = evalNodePly % 2 === 1;
-            const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
-            const moverParentWc = whiteToMove ? parentWc : -parentWc;
-            stored.loss = (moverParentWc - moverNodeWc) / 2;
-          }
-        }
-        evalCache.set(evalNodePath, stored);
-        console.log('[eval cache] path:', evalNodePath, 'ply:', evalNodePly, 'best:', stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
-      } else {
-        console.log('[eval cache] skip (no score) — path:', evalNodePath, 'ply:', evalNodePly, 'best:', stored.best);
-      }
       currentEval = stored;
       if (batchAnalyzing) {
+        // Review (batch) — persist to evalCache as the durable source of truth.
+        // Compute loss/delta using the parent's Review eval.
+        if (stored.cp !== undefined || stored.mate !== undefined) {
+          const parentEval = evalCache.get(evalParentPath);
+          if (parentEval?.cp !== undefined && stored.cp !== undefined) {
+            stored.delta = stored.cp - parentEval.cp;
+          }
+          // Win-chance shift from mover's perspective.
+          // Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
+          if (parentEval) {
+            const nodeWc   = evalWinChances(stored);
+            const parentWc = evalWinChances(parentEval);
+            if (nodeWc !== undefined && parentWc !== undefined) {
+              const whiteToMove   = evalNodePly % 2 === 1;
+              const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
+              const moverParentWc = whiteToMove ? parentWc : -parentWc;
+              stored.loss = (moverParentWc - moverNodeWc) / 2;
+            }
+          }
+          evalCache.set(evalNodePath, stored);
+          console.log('[review cache] path:', evalNodePath, 'ply:', evalNodePly, 'best:', stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
+        } else {
+          console.log('[review cache] skip (no score) — path:', evalNodePath, 'ply:', evalNodePly);
+        }
         advanceBatch(); // drives the queue; skips syncArrow/redraw until done
       } else {
         syncArrowDebounced(); // bestmove finalizes — debounce cancels and draws immediately
@@ -626,7 +626,7 @@ function evalThreatPosition(): void {
   evalIsThreat = true;
   protocol.stop();
   protocol.setPosition(flipFenColor(ctrl.node.fen));
-  protocol.go(analysisDepth); // always 1 line — only the best move arrow is needed
+  protocol.go(liveDepth); // always 1 line — only the best move arrow is needed
 }
 
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode (keyboard 'x')
@@ -685,7 +685,7 @@ function evalCurrentPosition(): void {
   evalParentPath     = ctrl.path.length >= 2 ? ctrl.path.slice(0, -2) : '';
   console.log('[live-diag] starting live eval — path:', evalNodePath, 'ply:', evalNodePly, 'multiPv:', multiPv);
   protocol.setPosition(ctrl.node.fen);
-  protocol.go(analysisDepth, multiPv);
+  protocol.go(liveDepth, multiPv);
 }
 
 /**
@@ -747,7 +747,7 @@ function evalBatchItem(item: BatchItem): void {
   console.log('[batch]', batchDone + 1, '/', batchQueue.length, 'nodeId:', item.nodeId, 'path:', item.nodePath, 'ply:', item.nodePly, 'awaiting:', wasActive);
   if (wasActive) protocol.stop(); // only interrupt if a search was actually running
   protocol.setPosition(item.fen);
-  protocol.go(analysisDepth); // always MultiPV=1 for batch efficiency
+  protocol.go(reviewDepth); // always MultiPV=1 for batch efficiency; fixed depth = Review quality
 }
 
 /**
@@ -2195,17 +2195,17 @@ function renderEngineSettings(): VNode | null {
       h('span.ceval-settings__val', `${multiPv} / 5`),
     ]),
     h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-depth' } }, 'Depth'),
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-depth' } }, 'Analysis depth'),
       h('input#ceval-depth', {
-        attrs: { type: 'range', min: 8, max: 26, step: 1, value: analysisDepth },
+        attrs: { type: 'range', min: 8, max: 26, step: 1, value: liveDepth },
         on: {
           input: (e: Event) => {
-            analysisDepth = parseInt((e.target as HTMLInputElement).value);
+            liveDepth = parseInt((e.target as HTMLInputElement).value);
             redraw();
           },
         },
       }),
-      h('span.ceval-settings__val', String(analysisDepth)),
+      h('span.ceval-settings__val', String(liveDepth)),
     ]),
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-arrows' } }, 'Arrows'),
@@ -2407,9 +2407,9 @@ function renderAnalysisControls(): VNode {
   const hasGame = ctrl.mainline.length > 1;
 
   const statusText = analysisRunning
-    ? `Analyzing… ${batchDone} / ${batchQueue.length}`
+    ? `Reviewing… ${batchDone} / ${batchQueue.length}`
     : analysisComplete
-      ? `Analysis complete (${batchDone} positions)`
+      ? `Review complete (${batchDone} positions)`
       : 'Idle';
 
   return h('div.pgn-import', [
@@ -2420,7 +2420,7 @@ function renderAnalysisControls(): VNode {
       h('button', {
         attrs: { disabled: !canRun },
         on: { click: startBatchWhenReady },
-      }, 'Analyze All'),
+      }, 'Review'),
       h('button', {
         attrs: { disabled: !hasGame || batchAnalyzing },
         on: {
@@ -2443,7 +2443,7 @@ function renderAnalysisControls(): VNode {
             startBatchWhenReady();
           },
         },
-      }, 'Re-analyze'),
+      }, 'Re-review'),
       h('button', {
         attrs: { disabled: batchAnalyzing },
         on: {
@@ -2849,7 +2849,7 @@ function routeContent(route: Route): VNode {
           h('button', { on: { click: flip } }, 'Flip Board'),
           h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
           h('button', { on: { click: toggleEngine }, class: { active: engineEnabled } },
-            engineEnabled ? (engineReady ? 'Engine: On' : 'Engine: Loading…') : 'Engine: Off'
+            engineEnabled ? (engineReady ? 'Analysis: On' : 'Analysis: Loading…') : 'Analysis: Off'
           ),
           h('button', {
             class: { active: showEngineSettings },
