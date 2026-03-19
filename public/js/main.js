@@ -4248,24 +4248,62 @@ var AnalyseCtrl = class {
 };
 
 // src/ceval/protocol.ts
+function sharedWasmMemory(lo, hi = 32767) {
+  let shrink = 4;
+  for (; ; ) {
+    try {
+      return new WebAssembly.Memory({ shared: true, initial: lo, maximum: hi });
+    } catch (e) {
+      if (hi <= lo || !(e instanceof RangeError)) throw e;
+      hi = Math.max(lo, Math.ceil(hi - hi / shrink));
+      shrink = shrink === 4 ? 3 : 4;
+    }
+  }
+}
 var StockfishProtocol = class {
   constructor() {
-    __publicField(this, "worker");
+    __publicField(this, "module");
     __publicField(this, "onLine");
     /** Human-readable engine name received from the "id name" response. */
     __publicField(this, "engineName");
   }
   /**
-   * Spin up the worker and begin the UCI handshake.
-   * workerUrl points to the Stockfish JS file served as a static asset.
-   * Mirrors lichess-org/lila: ui/lib/src/ceval/engines/simpleEngine.ts (start)
+   * Load Stockfish 18 (smallnet) from baseUrl and begin the UCI handshake.
+   * baseUrl is the URL prefix where sf_18_smallnet.{js,wasm} and the NNUE
+   * file are served (e.g. "/stockfish-web").
+   *
+   * Uses dynamic import() — esbuild leaves variable-string imports as-is and
+   * does not try to bundle them, so the engine JS is loaded at runtime only.
+   *
+   * Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts boot()
    */
-  init(workerUrl) {
-    this.worker = new Worker(workerUrl);
-    this.worker.addEventListener("message", (e) => this.received(e.data));
-    this.worker.addEventListener("error", (e) => {
-      console.error("[ceval] worker error \u2014 url:", workerUrl, "| message:", e.message || "(none)", "| file:", e.filename || "(none)", "| line:", e.lineno);
+  async init(baseUrl) {
+    const scriptUrl = `${baseUrl}/sf_18_smallnet.js`;
+    const { default: makeModule } = await import(scriptUrl);
+    const wasmMemory = sharedWasmMemory(1536);
+    this.module = await makeModule({
+      wasmMemory,
+      // Tell Emscripten where to find the .wasm and any other assets it needs.
+      locateFile: (file) => `${baseUrl}/${file}`,
+      // Emscripten passes this URL to the pthreads workers it spawns, so each
+      // thread can load the same Stockfish module.
+      mainScriptUrlOrBlob: scriptUrl
     });
+    this.module.listen = (line) => this.received(line);
+    this.module.onError = (msg) => {
+      console.error("[ceval] engine error:", msg);
+    };
+    const nnueName = this.module.getRecommendedNnue(0);
+    if (nnueName) {
+      console.log("[ceval] loading NNUE:", nnueName);
+      const resp = await fetch(`${baseUrl}/${nnueName}`);
+      if (resp.ok) {
+        this.module.setNnueBuffer(new Uint8Array(await resp.arrayBuffer()), 0);
+        console.log("[ceval] NNUE loaded");
+      } else {
+        console.warn("[ceval] NNUE fetch failed:", resp.status, nnueName);
+      }
+    }
     this.send("uci");
   }
   /** Register a callback that fires for every raw UCI line from the engine. */
@@ -4281,7 +4319,7 @@ var StockfishProtocol = class {
   }
   /**
    * Start a fixed-depth search on the current position.
-   * multiPv controls how many candidate lines the engine returns (UCI MultiPV option).
+   * multiPv controls how many candidate lines the engine returns.
    * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
    */
   go(depth, multiPv2 = 1) {
@@ -4292,14 +4330,13 @@ var StockfishProtocol = class {
   stop() {
     this.send("stop");
   }
-  /** Shut down the engine and terminate the worker. */
+  /** Shut down the engine. */
   destroy() {
     this.send("quit");
-    this.worker?.terminate();
-    this.worker = void 0;
+    this.module = void 0;
   }
   send(cmd) {
-    this.worker?.postMessage(cmd);
+    this.module?.uci(cmd);
   }
   /**
    * Handle a raw UCI line from the engine.
@@ -4311,9 +4348,11 @@ var StockfishProtocol = class {
       this.engineName = parts.slice(2).join(" ");
     } else if (parts[0] === "uciok") {
       this.send("setoption name UCI_AnalyseMode value true");
+      this.send("setoption name Analysis Contempt value Off");
       const cores = navigator.hardwareConcurrency ?? 2;
       const threads = Math.max(1, cores - 1);
       this.send(`setoption name Threads value ${threads}`);
+      console.log(`[ceval] Stockfish 18 \u2014 ${threads} threads`);
       this.send("setoption name Hash value 256");
       this.send("ucinewgame");
       this.send("isready");
@@ -6022,7 +6061,12 @@ function toggleEngine() {
   if (engineEnabled) {
     if (!engineInitialized) {
       engineInitialized = true;
-      protocol.init("stockfish/stockfish-nnue-16-single.js");
+      void protocol.init("stockfish-web").catch((err) => {
+        console.error("[engine] failed to load:", err);
+        engineEnabled = false;
+        engineInitialized = false;
+        redraw();
+      });
     } else if (engineReady) {
       evalCurrentPosition();
     }
