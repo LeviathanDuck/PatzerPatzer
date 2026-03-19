@@ -5700,6 +5700,8 @@ var batchState = "idle";
 var analysisDepth = 22;
 var analysisRunning = false;
 var showExportMenu = false;
+var showGlobalMenu = false;
+var showBoardThemeMenu = false;
 var pendingBatchOnReady = false;
 var analysisComplete = false;
 var analyzedGameIds = /* @__PURE__ */ new Set();
@@ -6269,6 +6271,75 @@ function renderNav(route) {
   return h("nav", navLinks.map(
     ({ label, href, section }) => h("a", { attrs: { href }, class: { active: active === section } }, label)
   ));
+}
+function closeGlobalMenu() {
+  showGlobalMenu = false;
+  showBoardThemeMenu = false;
+  redraw();
+}
+function renderGlobalMenu() {
+  return h("div.global-menu", [
+    // Trigger button
+    h("button.global-menu__trigger", {
+      class: { active: showGlobalMenu },
+      attrs: { title: "Settings" },
+      on: { click: () => {
+        showGlobalMenu = !showGlobalMenu;
+        showBoardThemeMenu = false;
+        redraw();
+      } }
+    }, "\u2699"),
+    // Backdrop — transparent overlay that closes menu on outside click
+    showGlobalMenu ? h("div.global-menu__backdrop", {
+      on: { click: closeGlobalMenu }
+    }) : null,
+    // Dropdown panel
+    showGlobalMenu ? h("div.global-menu__dropdown", [
+      h("button.global-menu__item", {
+        on: { click: () => {
+          console.log("TODO: clear local cache");
+        } }
+      }, "Clear Local Cache"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          console.log("TODO: game review settings");
+        } }
+      }, "Game Review"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          closeGlobalMenu();
+          downloadPgn(false);
+        } }
+      }, "Export PGN from Current Board"),
+      // Board Theme — opens inline submenu
+      h("div.global-menu__item.global-menu__item--has-sub", {
+        on: { click: () => {
+          showBoardThemeMenu = !showBoardThemeMenu;
+          redraw();
+        } }
+      }, [
+        h("span", "Board Theme"),
+        h("span.global-menu__arrow", showBoardThemeMenu ? "\u25BE" : "\u203A")
+      ]),
+      showBoardThemeMenu ? h("div.global-menu__submenu", [
+        h("button.global-menu__item", {
+          on: { click: () => {
+            console.log("TODO: theme Brown");
+          } }
+        }, "Brown"),
+        h("button.global-menu__item", {
+          on: { click: () => {
+            console.log("TODO: theme Blue");
+          } }
+        }, "Blue"),
+        h("button.global-menu__item", {
+          on: { click: () => {
+            console.log("TODO: theme Green");
+          } }
+        }, "Green")
+      ]) : null
+    ]) : null
+  ]);
 }
 var cgInstance;
 var orientation = "white";
@@ -7517,7 +7588,8 @@ function view(route) {
     h("header", [
       h("span", "Patzer Pro"),
       renderNav(route),
-      h("button.dev-reset", { on: { click: () => void resetAllData() } }, "Reset Data")
+      h("button.dev-reset", { on: { click: () => void resetAllData() } }, "Reset Data"),
+      renderGlobalMenu()
     ]),
     h("main", [routeContent(route)]),
     renderPvBoard()
