@@ -6561,7 +6561,7 @@ function renderHeader(route) {
         h("input.header__input", {
           key: `input-${importPlatform}`,
           attrs: {
-            type: "text",
+            type: "search",
             placeholder: importPlatform === "chesscom" ? "Chess.com username" : "Lichess username",
             value: username,
             disabled: loading,
@@ -6660,7 +6660,7 @@ function renderBoardSettings() {
             redraw();
           } }
         }, [
-          h("span", { style: { backgroundImage: `url(${boardThumbnailUrl(name)})` } })
+          h("span", { attrs: { style: `background-image: url(${boardThumbnailUrl(name)})` } })
         ])
       )
     ),
@@ -6677,7 +6677,7 @@ function renderBoardSettings() {
             redraw();
           } }
         }, [
-          h("piece", { style: { backgroundImage: `url(${piecePreviewUrl(name)})` } })
+          h("piece", { attrs: { style: `background-image: url(${piecePreviewUrl(name)})` } })
         ])
       )
     )

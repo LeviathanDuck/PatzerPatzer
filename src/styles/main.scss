@@ -40,11 +40,12 @@ body {
     flex-shrink: 0;
   }
 
-  // Search area — flex:1 so it fills available space; position:relative anchors the panel
+  // Search area — grows to fill header but capped so it doesn't span the full width
   &__search {
     position: relative;
     flex: 1;
     min-width: 0;
+    max-width: 546px;
   }
 
   // The visible input row
@@ -97,6 +98,12 @@ body {
 
     &::placeholder { color: #555; }
     &:disabled { opacity: 0.5; }
+
+    // Suppress browser-injected autofill/credentials buttons and native search clear button
+    &::-webkit-credentials-auto-fill-button,
+    &::-webkit-contacts-auto-fill-button,
+    &::-webkit-search-cancel-button,
+    &::-webkit-search-decoration { display: none; }
   }
 
   // Import button (inside the bar)

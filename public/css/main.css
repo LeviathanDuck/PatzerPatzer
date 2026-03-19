@@ -379,6 +379,7 @@ body {
   position: relative;
   flex: 1;
   min-width: 0;
+  max-width: 546px;
 }
 .header__bar {
   display: flex;
@@ -432,6 +433,9 @@ body {
 }
 .header__input:disabled {
   opacity: 0.5;
+}
+.header__input::-webkit-credentials-auto-fill-button, .header__input::-webkit-contacts-auto-fill-button, .header__input::-webkit-search-cancel-button, .header__input::-webkit-search-decoration {
+  display: none;
 }
 .header__import {
   flex-shrink: 0;
