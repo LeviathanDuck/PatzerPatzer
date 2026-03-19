@@ -8082,6 +8082,7 @@ function renderGameList() {
 var gamesFilterResults = /* @__PURE__ */ new Set();
 var gamesFilterSpeeds = /* @__PURE__ */ new Set();
 var gamesFilterOpponent = "";
+var gamesFilterColor = "";
 var gamesSortField = "date";
 var gamesSortDir = "desc";
 function toggleGamesSort(field) {
@@ -8094,12 +8095,13 @@ function toggleGamesSort(field) {
   redraw();
 }
 function gamesFilterActive() {
-  return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 || gamesFilterOpponent.trim() !== "";
+  return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 || gamesFilterOpponent.trim() !== "" || gamesFilterColor !== "";
 }
 function clearGamesFilters() {
   gamesFilterResults = /* @__PURE__ */ new Set();
   gamesFilterSpeeds = /* @__PURE__ */ new Set();
   gamesFilterOpponent = "";
+  gamesFilterColor = "";
   redraw();
 }
 function filteredGames() {
@@ -8119,6 +8121,9 @@ function filteredGames() {
       const opp = opponentName(g)?.toLowerCase() ?? "";
       return opp.includes(q);
     });
+  }
+  if (gamesFilterColor) {
+    list = list.filter((g) => getUserColor(g) === gamesFilterColor);
   }
   list.sort((a, b) => {
     let cmp = 0;
@@ -8201,6 +8206,24 @@ function renderGamesView() {
         }, tc.charAt(0).toUpperCase() + tc.slice(1))
       )
     ]),
+    // Color filter (playing as)
+    h("div.games-view__filter-group", [
+      h("span.games-view__filter-label", "Color"),
+      h("button.games-view__pill", {
+        class: { active: gamesFilterColor === "white" },
+        on: { click: () => {
+          gamesFilterColor = gamesFilterColor === "white" ? "" : "white";
+          redraw();
+        } }
+      }, "White"),
+      h("button.games-view__pill", {
+        class: { active: gamesFilterColor === "black" },
+        on: { click: () => {
+          gamesFilterColor = gamesFilterColor === "black" ? "" : "black";
+          redraw();
+        } }
+      }, "Black")
+    ]),
     // Opponent search
     h("div.games-view__filter-group", [
       h("span.games-view__filter-label", "Opponent"),
@@ -8235,6 +8258,7 @@ function renderGamesView() {
         renderSortTh("Date", "date"),
         renderSortTh("Time", "timeClass"),
         h("th", "Opening"),
+        h("th.games-view__review-th", "Review"),
         h("th")
       ])),
       h(
@@ -8247,6 +8271,23 @@ function renderGamesView() {
           const tcIcon = game.timeClass ? SPEED_ICONS[game.timeClass] : void 0;
           const opening = game.opening ? game.eco ? `${game.eco} ${game.opening}` : game.opening : "\u2013";
           const srcUrl3 = gameSourceUrl(game);
+          const isAnalyzed = analyzedGameIds.has(game.id);
+          const hasMissed = missedTacticGameIds.has(game.id);
+          const reviewCell = isAnalyzed ? h("td.games-view__review-cell", [
+            h("span.games-view__reviewed", { attrs: { title: "Reviewed" } }, "\u2713"),
+            hasMissed ? h("span.games-view__missed", { attrs: { title: "Missed tactic detected" } }, "!") : null
+          ]) : h("td.games-view__review-cell", [
+            h("button.games-view__review-btn", {
+              on: { click: (e) => {
+                e.stopPropagation();
+                selectedGameId = game.id;
+                loadGame(game.pgn);
+                window.location.hash = "#/analysis";
+                startBatchWhenReady();
+              } },
+              attrs: { title: "Load into Analysis and start review" }
+            }, "Review")
+          ]);
           return h("tr.games-view__row", {
             class: { active: game.id === selectedGameId },
             on: { click: () => {
@@ -8264,12 +8305,13 @@ function renderGamesView() {
               tc.charAt(0).toUpperCase() + tc.slice(1)
             ),
             h("td.games-view__opening", h("span", { attrs: { title: opening } }, opening)),
+            reviewCell,
             h("td.games-view__link-cell", srcUrl3 ? h("a.game-ext-link", {
               attrs: { href: srcUrl3, target: "_blank", rel: "noopener", title: "View on source platform" },
               on: { click: (e) => e.stopPropagation() }
             }) : null)
           ]);
-        }) : [h("tr", h("td", { attrs: { colspan: "6" } }, h("div.games-view__empty", "No games match current filters.")))]
+        }) : [h("tr", h("td", { attrs: { colspan: "7" } }, h("div.games-view__empty", "No games match current filters.")))]
       )
     ])
   ]);
