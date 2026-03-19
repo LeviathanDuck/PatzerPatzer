@@ -72,6 +72,29 @@ Claude must NOT:
 - introduce new architecture patterns
 - replace Lichess patterns with abstractions
 
+## File-structure and extraction rules
+
+- Do not add new feature code to `src/main.ts` by default.
+- Treat `src/main.ts` as orchestration/bootstrap code only.
+- Before implementing a new feature, identify which subsystem owns it.
+- If a clear subsystem exists, implement there.
+- If no subsystem exists and the feature is substantial, create a new module rather than expanding `main.ts`.
+- Separate “extract code” tasks from “change behavior” tasks.
+- When extracting, move one coherent subsystem at a time and verify behavior remains unchanged.
+- Update `docs/REFACTOR_PLAN.md` whenever a subsystem is extracted or ownership changes.
+
+### Preferred subsystem boundaries
+- `src/engine/` → live analysis, review pipeline, UCI parsing, PV state
+- `src/games/` → game import, Games tab, game-row rendering, filtering
+- `src/board/` → board settings, orientation, theme, piece/filter UI
+- `src/persistence/` or `src/idb.ts` → IndexedDB and serialization
+- `src/analysis/` → move list, eval graph, summary, engine lines rendering
+
+### Constraints
+- Do not combine extraction + redesign + styling overhaul in one task.
+- Do not invent hidden dependencies between modules.
+- Prefer explicit parameters and return values over reaching into unrelated module state.
+
 
 ## Terminology Clarification Rule
 
