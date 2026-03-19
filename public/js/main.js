@@ -5580,7 +5580,7 @@ async function saveAnalysisToIdb(status) {
     for (let i = 1; i < ctrl.mainline.length; i++) {
       const node = ctrl.mainline[i];
       path += node.id;
-      const ev = evalCache.get(node.id);
+      const ev = evalCache.get(path);
       if (ev) {
         const entry = { nodeId: node.id, path, fen: node.fen };
         if (ev.cp !== void 0) entry.cp = ev.cp;
@@ -5588,7 +5588,7 @@ async function saveAnalysisToIdb(status) {
         if (ev.best !== void 0) entry.best = ev.best;
         if (ev.loss !== void 0) entry.loss = ev.loss;
         if (ev.delta !== void 0) entry.delta = ev.delta;
-        nodes[node.id] = entry;
+        nodes[path] = entry;
       }
     }
     const record = {
@@ -5639,7 +5639,7 @@ async function loadAndRestoreAnalysis(gameId) {
     if (entry.best !== void 0) ev.best = entry.best;
     if (entry.loss !== void 0) ev.loss = entry.loss;
     if (entry.delta !== void 0) ev.delta = entry.delta;
-    evalCache.set(entry.nodeId, ev);
+    evalCache.set(entry.path, ev);
   }
   if (stored.status === "complete") {
     analyzedGameIds.add(gameId);
@@ -5649,7 +5649,7 @@ async function loadAndRestoreAnalysis(gameId) {
     const userColor = game ? getUserColor(game) : null;
     if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
   }
-  const restoredEval = evalCache.get(ctrl.node.id);
+  const restoredEval = evalCache.get(ctrl.path);
   if (restoredEval) currentEval = { ...restoredEval };
   syncArrow();
   redraw();
@@ -5674,8 +5674,9 @@ var engineInitialized = false;
 var currentEval = {};
 var evalCache = /* @__PURE__ */ new Map();
 var evalNodeId = "";
+var evalNodePath = "";
 var evalNodePly = 0;
-var evalParentNodeId = "";
+var evalParentPath = "";
 var engineSearchActive = false;
 var awaitingStopBestmove = false;
 var pendingEval = false;
@@ -5772,7 +5773,11 @@ function parseEngineLine(line) {
       return;
     }
     engineSearchActive = false;
-    if (!parts[1] || parts[1] === "(none)") return;
+    if (!parts[1] || parts[1] === "(none)") {
+      if (batchAnalyzing) advanceBatch();
+      else if (pendingEval) evalCurrentPosition();
+      return;
+    }
     if (evalIsThreat) {
       threatEval.best = parts[1];
       evalIsThreat = false;
@@ -5782,23 +5787,27 @@ function parseEngineLine(line) {
       currentEval.best = parts[1];
       const stored = { ...currentEval };
       pendingLines = [];
-      const parentEval = evalCache.get(evalParentNodeId);
-      if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
-        stored.delta = stored.cp - parentEval.cp;
-      }
-      if (parentEval) {
-        const nodeWc = evalWinChances(stored);
-        const parentWc = evalWinChances(parentEval);
-        if (nodeWc !== void 0 && parentWc !== void 0) {
-          const whiteToMove = evalNodePly % 2 === 1;
-          const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
-          const moverParentWc = whiteToMove ? parentWc : -parentWc;
-          stored.loss = (moverParentWc - moverNodeWc) / 2;
+      if (stored.cp !== void 0 || stored.mate !== void 0) {
+        const parentEval = evalCache.get(evalParentPath);
+        if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
+          stored.delta = stored.cp - parentEval.cp;
         }
+        if (parentEval) {
+          const nodeWc = evalWinChances(stored);
+          const parentWc = evalWinChances(parentEval);
+          if (nodeWc !== void 0 && parentWc !== void 0) {
+            const whiteToMove = evalNodePly % 2 === 1;
+            const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
+            const moverParentWc = whiteToMove ? parentWc : -parentWc;
+            stored.loss = (moverParentWc - moverNodeWc) / 2;
+          }
+        }
+        evalCache.set(evalNodePath, stored);
+        console.log("[eval cache] path:", evalNodePath, "ply:", evalNodePly, "best:", stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
+      } else {
+        console.log("[eval cache] skip (no score) \u2014 path:", evalNodePath, "ply:", evalNodePly, "best:", stored.best);
       }
-      evalCache.set(evalNodeId, stored);
       currentEval = stored;
-      console.log("[eval cache]", evalNodeId, "ply:", evalNodePly, "best:", stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
       if (batchAnalyzing) {
         advanceBatch();
       } else {
@@ -5824,6 +5833,9 @@ protocol.onMessage((line) => {
     }
     redraw();
   } else {
+    if (!batchAnalyzing && (line.startsWith("info") || line.startsWith("bestmove"))) {
+      console.log("[live-diag]", line.slice(0, 120));
+    }
     parseEngineLine(line);
   }
 });
@@ -5864,7 +5876,7 @@ function evalCurrentPosition() {
     evalIsThreat = false;
   }
   threatEval = {};
-  const cached = evalCache.get(ctrl.node.id);
+  const cached = evalCache.get(ctrl.path);
   const cachedHasLines = (cached?.lines?.length ?? 0) >= multiPv - 1;
   if (cached && cachedHasLines) {
     currentEval = { ...cached };
@@ -5885,8 +5897,10 @@ function evalCurrentPosition() {
   pendingEval = false;
   engineSearchActive = true;
   evalNodeId = ctrl.node.id;
+  evalNodePath = ctrl.path;
   evalNodePly = ctrl.node.ply;
-  evalParentNodeId = ctrl.nodeList[ctrl.nodeList.length - 2]?.id ?? "";
+  evalParentPath = ctrl.path.length >= 2 ? ctrl.path.slice(0, -2) : "";
+  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv);
   protocol.setPosition(ctrl.node.fen);
   protocol.go(analysisDepth, multiPv);
 }
@@ -5905,12 +5919,15 @@ function startBatchWhenReady() {
 function startBatchAnalysis() {
   if (!engineEnabled || !engineReady || batchAnalyzing) return;
   const queue = [];
-  let parentId = "";
-  for (const node of ctrl.mainline) {
-    if (!evalCache.has(node.id)) {
-      queue.push({ nodeId: node.id, nodePly: node.ply, parentNodeId: parentId, fen: node.fen });
+  let path = "";
+  let prevPath = "";
+  for (let i = 0; i < ctrl.mainline.length; i++) {
+    const node = ctrl.mainline[i];
+    prevPath = path;
+    if (i > 0) path += node.id;
+    if (!evalCache.has(path)) {
+      queue.push({ nodeId: node.id, nodePly: node.ply, nodePath: path, parentPath: prevPath, fen: node.fen });
     }
-    parentId = node.id;
   }
   batchQueue = queue;
   batchDone = 0;
@@ -5926,11 +5943,12 @@ function evalBatchItem(item) {
   awaitingStopBestmove = wasActive;
   engineSearchActive = true;
   evalNodeId = item.nodeId;
+  evalNodePath = item.nodePath;
   evalNodePly = item.nodePly;
-  evalParentNodeId = item.parentNodeId;
+  evalParentPath = item.parentPath;
   currentEval = {};
   pendingLines = [];
-  console.log("[batch]", batchDone + 1, "/", batchQueue.length, "nodeId:", item.nodeId, "ply:", item.nodePly, "awaiting:", wasActive);
+  console.log("[batch]", batchDone + 1, "/", batchQueue.length, "nodeId:", item.nodeId, "path:", item.nodePath, "ply:", item.nodePly, "awaiting:", wasActive);
   if (wasActive) protocol.stop();
   protocol.setPosition(item.fen);
   protocol.go(analysisDepth);
@@ -5943,14 +5961,16 @@ function getUserColor(game) {
   return null;
 }
 function detectMissedTactics(userColor) {
+  let path = "";
   for (let i = 1; i < ctrl.mainline.length; i++) {
     const node = ctrl.mainline[i];
-    const parent = ctrl.mainline[i - 1];
+    path += node.id;
     const isWhiteMove = node.ply % 2 === 1;
     const isUserMove = userColor === null || userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
     if (!isUserMove) continue;
-    const nodeEval = evalCache.get(node.id);
-    const parentEval = evalCache.get(parent.id);
+    const parentPath = path.slice(0, -2);
+    const nodeEval = evalCache.get(path);
+    const parentEval = evalCache.get(parentPath);
     if (!nodeEval || !parentEval || !parentEval.best) continue;
     const userParentMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
     if (userParentMate !== void 0 && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
@@ -5977,7 +5997,7 @@ function advanceBatch() {
       if (detectMissedTactics(userColor)) missedTacticGameIds.add(selectedGameId);
     }
     void saveAnalysisToIdb("complete");
-    evalCache.delete(ctrl.node.id);
+    evalCache.delete(ctrl.path);
     currentEval = {};
     pendingLines = [];
     evalCurrentPosition();
@@ -6416,11 +6436,13 @@ function computeAnalysisSummary() {
   const blackAccs = [];
   let wBlunders = 0, wMistakes = 0, wInaccuracies = 0;
   let bBlunders = 0, bMistakes = 0, bInaccuracies = 0;
+  let path = "";
   for (let i = 1; i < ctrl.mainline.length; i++) {
     const node = ctrl.mainline[i];
-    const parent = ctrl.mainline[i - 1];
-    const nodeEval = evalCache.get(node.id);
-    const parentEval = evalCache.get(parent.id);
+    path += node.id;
+    const parentPath = path.slice(0, -2);
+    const nodeEval = evalCache.get(path);
+    const parentEval = evalCache.get(parentPath);
     if (!nodeEval || !parentEval) continue;
     const nodeWc = evalWinChances(nodeEval);
     const parentWc = evalWinChances(parentEval);
@@ -6489,8 +6511,8 @@ var GLYPH_COLORS = {
   "!?": "#aaa"
 };
 function renderMoveSpan(node, path, parent) {
-  const cached = evalCache.get(node.id);
-  const parentCached = evalCache.get(parent.id);
+  const cached = evalCache.get(path);
+  const parentCached = evalCache.get(pathInit(path));
   const pgnGlyph = node.glyphs?.[0];
   const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
   const computedLabel = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
@@ -6560,10 +6582,10 @@ function renderEvalGraph() {
   let path = "";
   for (let i = 1; i <= n; i++) {
     const node = mainline[i];
-    const parent = mainline[i - 1];
     path += node.id;
-    const cached = evalCache.get(node.id);
-    const parentCached = evalCache.get(parent.id);
+    const parentPath = path.slice(0, -2);
+    const cached = evalCache.get(path);
+    const parentCached = evalCache.get(parentPath);
     const wc = cached !== void 0 ? evalWinChances(cached) : void 0;
     if (wc !== void 0) {
       const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
@@ -6705,9 +6727,10 @@ function renderPvBox() {
   }
   if (rows.length === 0) {
     const statusText = !engineReady ? "Loading engine\u2026" : batchAnalyzing ? `Analyzing ${batchDone}/${batchQueue.length}\u2026` : "\u2026";
-    return h("div.pv_box", [h("div.pv", [h("span.ceval__info", statusText)])]);
+    return h("div.pv_box", { key: "pv-status" }, [h("div.pv", [h("span.ceval__info", statusText)])]);
   }
   return h("div.pv_box", {
+    key: "pv-rows",
     hook: {
       insert: (vnode3) => {
         const el = vnode3.elm;
@@ -6909,8 +6932,8 @@ function extractPuzzleCandidates() {
     const node = ctrl.mainline[i];
     const parent = ctrl.mainline[i - 1];
     path += node.id;
-    const nodeEval = evalCache.get(node.id);
-    const parentEval = evalCache.get(parent.id);
+    const nodeEval = evalCache.get(path);
+    const parentEval = evalCache.get(path.slice(0, -2));
     if (nodeEval?.loss !== void 0 && nodeEval.loss >= PUZZLE_CANDIDATE_MIN_LOSS && parentEval?.best) {
       candidates.push({
         gameId: selectedGameId,
@@ -6942,7 +6965,9 @@ function buildPgn(annotated) {
   const nodes = ctrl.mainline.slice(1);
   const parts = [];
   let needsMoveNum = true;
+  let pgnPath = "";
   for (const node of nodes) {
+    pgnPath += node.id;
     const isWhite = node.ply % 2 === 1;
     const moveNum = Math.ceil(node.ply / 2);
     if (isWhite || needsMoveNum) {
@@ -6951,7 +6976,7 @@ function buildPgn(annotated) {
     parts.push(node.san ?? "?");
     if (annotated) {
       const commentParts = [];
-      const ev = evalCache.get(node.id);
+      const ev = evalCache.get(pgnPath);
       if (ev) {
         if (ev.mate !== void 0) {
           commentParts.push(`[%eval #${ev.mate}]`);
