@@ -467,7 +467,7 @@ body {
 
 .analyse {
   display: grid;
-  grid-template-columns: min((100vw - 32px - 34px - 240px) * var(---board-scale), 600px) 34px minmax(240px, 380px);
+  grid-template-columns: min((100vw - 32px - 34px - 240px) * var(---board-scale), (100vh - 5rem) * var(---board-scale)) 34px minmax(240px, 380px);
   grid-template-areas: "board  gauge  tools" "under  .      controls";
   align-items: start;
   padding: 24px 16px;
