@@ -532,32 +532,89 @@ header {
   li + li { border-top: 1px solid #2a2a2a; }
 }
 
-.ceval-box {
+// Engine header — toggle | pearl (eval) | engine name/status | settings gear
+// Adapted from lichess-org/lila: ui/lib/css/ceval/_ctrl.scss .ceval
+.ceval {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  max-width: 600px;
-  padding: 6px 10px;
+  align-items: stretch;
+  column-gap: 6px;
+  padding-top: 3px; // space for optional progress bar at top
   background: #111;
-  border-radius: 4px 4px 0 0;
-  min-height: 34px;
-  box-sizing: border-box;
+  position: relative;
+  min-height: 44px;
 
-  &--off {
-    // Keep space to avoid layout shift when engine is toggled
-    visibility: hidden;
-    border-radius: 4px;
+  // Toggle button (left, fixed width) — mirrors .cmn-toggle flex: 0 0 40px
+  .cmn-toggle {
+    flex: 0 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #888;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    margin-inline-start: 6px;
+
+    &.active { color: #6f6; }
+    &:hover   { color: #ccc; }
+  }
+
+  // Large eval number — mirrors pearl { flex: 1 0 auto; font-size: 1.6em; font-weight: bold }
+  pearl {
+    display: block;
+    flex: 1 0 auto;
+    line-height: 38px;
+    font-size: 1.6em;
+    text-align: center;
+    font-weight: bold;
+    color: #e8e8e8;
+    font-variant-numeric: tabular-nums;
+  }
+
+  // Engine name + status info — mirrors .engine { flex: 2 1 auto; font-size: 12px }
+  .engine {
+    flex: 2 1 auto;
+    font-size: 12px;
+    line-height: 16px;
+    margin-top: 3px;
+    color: #888;
+    overflow: hidden;
+    white-space: nowrap;
+    align-self: center;
+
+    .info {
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  // Settings gear — mirrors button.settings-gear { padding: 0 6px; color: $c-font-dim }
+  .settings-gear {
+    color: #888;
+    font-size: 16px;
+    padding: 0 8px;
+    margin-inline-end: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    align-self: center;
+
+    &:hover        { color: #ccc; }
+    &.active       { color: #fff; background: #2a6644; border-radius: 3px; }
   }
 }
 
-// PV lines box — rendered below the eval bar
+// PV lines box — rendered below the engine header
 // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs
 .pv_box {
   width: 100%;
-  max-width: 600px;
   background: #111;
-  border-radius: 0 0 4px 4px;
+  border-top: 1px solid #222;
   padding: 4px 10px 6px;
   box-sizing: border-box;
   display: flex;
@@ -583,6 +640,10 @@ header {
 
   &__score--white { color: #d4d4a0; }
   &__score--black { color: #8fb8d4; }
+
+  // Empty slot placeholder — holds height so the panel doesn't jump as lines arrive.
+  // Mirrors Lichess renderPv with undefined pv: renders a row with no content.
+  &--empty { min-height: 1.5em; }
 }
 
 .pv-num {

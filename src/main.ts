@@ -1949,11 +1949,52 @@ function formatScore(ev: PositionEval): string {
   return '…';
 }
 
-function renderEval(): VNode | null {
-  // When engine is off, keep an invisible placeholder to avoid layout shift.
-  // When engine is on, the score is shown inside renderPvBox() — no separate box needed.
-  if (!engineEnabled) return h('div.ceval-box.ceval-box--off');
-  return null;
+/**
+ * Engine header — toggle, large eval (pearl), engine name/status, settings gear.
+ * Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderCeval()
+ * Layout: div.ceval flex row: .cmn-toggle | pearl | div.engine | button.settings-gear
+ * CSS reference: ui/lib/css/ceval/_ctrl.scss
+ */
+function renderCeval(): VNode {
+  const hasEval  = currentEval.cp !== undefined || currentEval.mate !== undefined;
+  const pearlStr = engineEnabled
+    ? (hasEval ? formatScore(currentEval) : (engineReady ? '…' : ''))
+    : '';
+
+  const engineLabel = protocol.engineName ?? 'Stockfish 18';
+  const statusText  = !engineEnabled
+    ? 'Local analysis'
+    : !engineReady
+      ? 'Loading…'
+      : batchAnalyzing
+        ? `Reviewing ${batchDone}/${batchQueue.length}…`
+        : 'Engine on';
+
+  return h('div.ceval', { class: { enabled: engineEnabled } }, [
+    // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
+    h('button.cmn-toggle', {
+      class: { active: engineEnabled },
+      attrs: { title: 'Toggle analysis engine (L)' },
+      on: { click: toggleEngine },
+    }, engineEnabled ? 'On' : 'Off'),
+
+    // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
+    // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element
+    h('pearl', pearlStr),
+
+    // Engine name + status info (flex: 2 1 auto, small text)
+    h('div.engine', [
+      engineLabel,
+      h('span.info', statusText),
+    ]),
+
+    // Settings gear — mirrors button.settings-gear positioning
+    h('button.settings-gear', {
+      class: { active: showEngineSettings },
+      attrs: { title: 'Engine settings' },
+      on: { click: (e: Event) => { e.stopPropagation(); showEngineSettings = !showEngineSettings; redraw(); } },
+    }, '⚙'),
+  ]);
 }
 
 /**
@@ -1989,19 +2030,39 @@ function renderPvMoves(fen: string, moves: string[]): VNode[] {
 }
 
 /**
- * Render the PV lines box — score + move sequence for every candidate line.
- * Score is always shown so the box is self-contained (renderEval no longer
- * renders a separate score widget when the engine is on).
+ * Render the PV lines box — always exactly multiPv slots, populated as data arrives.
+ * Empty slots render as placeholders so the panel height stays stable.
+ * Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs — key line:
+ *   [...Array(multiPv).keys()].map(i => renderPv(threat, multiPv, pvs[i], pos))
  * Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs + renderPv
  */
 function renderPvBox(): VNode | null {
   if (!engineEnabled) return null;
-  const primaryMoves = currentEval.moves ?? [];
-  const secondaryLines = currentEval.lines ?? [];
 
   const fen = ctrl.node.fen;
 
-  function pvRow(ev: EvalLine | PositionEval): VNode {
+  function pvRowForSlot(slotIdx: number): VNode {
+    // Slot 0 = primary line (currentEval); slots 1+ = secondary lines (currentEval.lines[i-1])
+    const ev: PositionEval | EvalLine | undefined =
+      slotIdx === 0
+        ? (currentEval.cp !== undefined || currentEval.mate !== undefined || currentEval.moves?.length
+            ? currentEval : undefined)
+        : currentEval.lines?.[slotIdx - 1];
+
+    if (!ev) {
+      // Empty placeholder — holds height so the panel doesn't jump as lines arrive.
+      if (slotIdx === 0) {
+        // Status text in first slot while waiting for the engine.
+        const statusText = !engineReady
+          ? 'Loading engine…'
+          : batchAnalyzing
+            ? `Reviewing ${batchDone}/${batchQueue.length}…`
+            : '…';
+        return h('div.pv', [h('span.ceval__info', statusText)]);
+      }
+      return h('div.pv.pv--empty'); // empty row, no content — holds height only
+    }
+
     const score = formatScore(ev);
     const isPositive = ev.cp !== undefined ? ev.cp > 0 : ev.mate !== undefined ? ev.mate > 0 : null;
     const pvNodes = ev.moves ? renderPvMoves(fen, ev.moves) : [];
@@ -2013,24 +2074,12 @@ function renderPvBox(): VNode | null {
     ]);
   }
 
-  const rows: VNode[] = [];
-  if (primaryMoves.length > 0) rows.push(pvRow(currentEval));
-  for (const line of secondaryLines) {
-    if (line.moves?.length) rows.push(pvRow(line));
-  }
+  // Always render exactly multiPv slots regardless of how many have data.
+  const slots = [...Array(multiPv).keys()].map(i => pvRowForSlot(i));
 
-  // Show a single status row while the engine is loading/computing
-  if (rows.length === 0) {
-    const statusText = !engineReady
-      ? 'Loading engine…'
-      : batchAnalyzing
-        ? `Analyzing ${batchDone}/${batchQueue.length}…`
-        : '…';
-    return h('div.pv_box', { key: 'pv-status' }, [h('div.pv', [h('span.ceval__info', statusText)])]);
-  }
-
-  // Attach hover listeners imperatively to avoid per-move re-registration overhead.
-  // mousemove updates the floating overlay position directly (no redraw) for smoothness.
+  // Attach hover/click listeners once on insert via event delegation.
+  // Stable key 'pv-rows' ensures the element is not recreated between renders —
+  // listeners stay attached and new slots are patched in place.
   // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs hook
   return h('div.pv_box', {
     key: 'pv-rows',
@@ -2088,7 +2137,7 @@ function renderPvBox(): VNode | null {
         });
       },
     },
-  }, rows);
+  }, slots);
 }
 
 /**
@@ -2876,9 +2925,14 @@ function routeContent(route: Route): VNode {
         // Tools — right column (grid-area: tools)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__tools
         h('div.analyse__tools', [
-          renderEval(),
-          renderPvBox(),
+          // Engine header: toggle + pearl + engine-name/status + settings gear
+          // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderCeval()
+          renderCeval(),
+          // Engine settings panel — sits directly below header, above PV lines
+          // Mirrors lichess-org/lila: renderCevalSettings() position
           renderEngineSettings(),
+          // PV lines — below header (and settings when open)
+          renderPvBox(),
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves', [renderMoveList()]),
           renderAnalysisSummary(),
@@ -2887,18 +2941,12 @@ function routeContent(route: Route): VNode {
 
         // Controls — below tools (grid-area: controls)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
+        // Controls — navigation only; engine toggle + settings moved to renderCeval() header
+        // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls (jump buttons)
         h('div.analyse__controls', [
           h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
           h('button', { on: { click: flip } }, 'Flip'),
           h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
-          h('button', { on: { click: toggleEngine }, class: { active: engineEnabled } },
-            engineEnabled ? (engineReady ? 'Analysis: On' : 'Analysis: Loading…') : 'Analysis: Off'
-          ),
-          h('button', {
-            class: { active: showEngineSettings },
-            attrs: { title: 'Engine settings' },
-            on: { click: () => { showEngineSettings = !showEngineSettings; redraw(); } },
-          }, '⚙'),
         ]),
 
         // Underboard — below board (grid-area: under)
