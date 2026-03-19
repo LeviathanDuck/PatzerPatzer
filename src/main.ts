@@ -448,6 +448,11 @@ async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
     const game = importedGames.find(g => g.id === gameId);
     const userColor = game ? getUserColor(game) : null;
     if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
+    // Capture accuracy while evalCache is populated for this game.
+    const restoredSummary = computeAnalysisSummary();
+    if (restoredSummary) {
+      analyzedGameAccuracy.set(gameId, { white: restoredSummary.white.accuracy, black: restoredSummary.black.accuracy });
+    }
   }
   // Sync display to the restored eval for the current node
   const restoredEval = evalCache.get(ctrl.path);
@@ -615,6 +620,10 @@ let pendingBatchOnReady = false; // queued batch start — fires on next readyok
 let analysisComplete = false;
 const analyzedGameIds    = new Set<string>(); // games that have completed a full batch analysis
 const missedTacticGameIds = new Set<string>(); // games where the user missed a significant tactic
+// Per-game accuracy captured the moment analysis completes (live or restored from IDB).
+// Keyed by gameId. Accuracy is NOT stored in IDB — only available when evalCache is populated.
+// Sessions that didn't load a game's analysis will show null for that game.
+const analyzedGameAccuracy = new Map<string, { white: number | null; black: number | null }>();
 
 // Win-chance swing threshold for missed-tactic detection.
 // Mirrors lichess-org/lila: ui/analyse/src/nodeFinder.ts evalSwings (0.10).
@@ -998,6 +1007,11 @@ function advanceBatch(): void {
       const game = importedGames.find(g => g.id === selectedGameId);
       const userColor = game ? getUserColor(game) : null;
       if (detectMissedTactics(userColor)) missedTacticGameIds.add(selectedGameId);
+      // Capture accuracy while evalCache is hot for this game.
+      const liveSummary = computeAnalysisSummary();
+      if (liveSummary) {
+        analyzedGameAccuracy.set(selectedGameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });
+      }
     }
     void saveAnalysisToIdb('complete');
     // Re-evaluate the current node interactively with the configured multiPv so PV
@@ -3741,6 +3755,7 @@ function renderGamesView(): VNode {
         renderSortTh('Time',      'timeClass'),
         h('th', 'Opening'),
         h('th.games-view__review-th', 'Review'),
+        h('th.games-view__puzzles-th', 'Puzzles'),
         h('th'),
       ])),
       h('tbody', games.length > 0
@@ -3755,14 +3770,35 @@ function renderGamesView(): VNode {
             const isAnalyzed = analyzedGameIds.has(game.id);
             const hasMissed  = missedTacticGameIds.has(game.id);
 
+            // User accuracy: read from analyzedGameAccuracy map (populated at analysis-complete time).
+            // Only available for games analyzed in this session or whose analysis was restored from IDB.
+            // getUserColor() determines which side the importing user played; falls back to showing
+            // both sides if user identity cannot be determined from import usernames.
+            const accEntry   = analyzedGameAccuracy.get(game.id);
+            const userColor  = getUserColor(game);
+            let accuracyText: string | null = null;
+            if (isAnalyzed && accEntry) {
+              if (userColor === 'white' && accEntry.white !== null) {
+                accuracyText = `${Math.round(accEntry.white)}%`;
+              } else if (userColor === 'black' && accEntry.black !== null) {
+                accuracyText = `${Math.round(accEntry.black)}%`;
+              } else if (!userColor) {
+                // User side unknown — show both if available
+                const w = accEntry.white !== null ? `W:${Math.round(accEntry.white)}%` : null;
+                const b = accEntry.black !== null ? `B:${Math.round(accEntry.black)}%` : null;
+                accuracyText = [w, b].filter(Boolean).join(' ') || null;
+              }
+            }
+
             // Review status cell:
-            // - Analyzed: green checkmark (+ "!" if missed tactic detected)
-            // - Not analyzed: "Review" button — loads game into Analysis and starts batch.
-            //   NOTE: background review is not supported. Loading is required first.
+            // - Analyzed: ✓ icon + optional "!" + accuracy if available
+            // - Not analyzed: "Review" button (loads game, navigates to Analysis, starts batch)
+            //   Background/bulk review is NOT supported; loading is required.
             const reviewCell = isAnalyzed
               ? h('td.games-view__review-cell', [
                   h('span.games-view__reviewed', { attrs: { title: 'Reviewed' } }, '✓'),
                   hasMissed ? h('span.games-view__missed', { attrs: { title: 'Missed tactic detected' } }, '!') : null,
+                  accuracyText ? h('span.games-view__accuracy', { attrs: { title: 'Your accuracy' } }, accuracyText) : null,
                 ])
               : h('td.games-view__review-cell', [
                   h('button.games-view__review-btn', {
@@ -3776,6 +3812,15 @@ function renderGamesView(): VNode {
                     attrs: { title: 'Load into Analysis and start review' },
                   }, 'Review'),
                 ]);
+
+            // Puzzle status: real data from savedPuzzles (persisted in IDB).
+            // puzzleCandidates is transient (current game only) and is NOT shown here.
+            const puzzleCount = savedPuzzles.filter(p => p.gameId === game.id).length;
+            const puzzleCell  = h('td.games-view__puzzles-cell',
+              puzzleCount > 0
+                ? h('span.games-view__puzzle-count', { attrs: { title: `${puzzleCount} saved puzzle${puzzleCount !== 1 ? 's' : ''}` } }, String(puzzleCount))
+                : h('span.games-view__puzzle-none', '–')
+            );
 
             return h('tr.games-view__row', {
               class: { active: game.id === selectedGameId },
@@ -3794,13 +3839,14 @@ function renderGamesView(): VNode {
                 tc.charAt(0).toUpperCase() + tc.slice(1)),
               h('td.games-view__opening', h('span', { attrs: { title: opening } }, opening)),
               reviewCell,
+              puzzleCell,
               h('td.games-view__link-cell', srcUrl3 ? h('a.game-ext-link', {
                 attrs: { href: srcUrl3, target: '_blank', rel: 'noopener', title: 'View on source platform' },
                 on: { click: (e: Event) => e.stopPropagation() },
               }) : null),
             ]);
           })
-        : [h('tr', h('td', { attrs: { colspan: '7' } }, h('div.games-view__empty', 'No games match current filters.')))]
+        : [h('tr', h('td', { attrs: { colspan: '8' } }, h('div.games-view__empty', 'No games match current filters.')))]
       ),
     ]),
   ]);

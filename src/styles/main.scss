@@ -2007,6 +2007,42 @@ body[data-board='newspaper'] cg-board::before {
     cursor: default;
   }
 
+  // User accuracy — shown next to ✓ for analyzed games.
+  // Only available when analysis was run in this session or restored from IDB.
+  // Falls back to W:/B: labels if user side is unknown.
+  &__accuracy {
+    font-size: 0.75rem;
+    color: #8c8;
+    margin-left: 5px;
+    font-variant-numeric: tabular-nums;
+    cursor: default;
+  }
+
+  // Puzzle Status column
+  &__puzzles-th {
+    white-space: nowrap;
+  }
+
+  &__puzzles-cell {
+    text-align: center;
+    padding: 4px 8px !important;
+  }
+
+  // Saved puzzle count badge
+  &__puzzle-count {
+    font-size: 0.8rem;
+    color: #88c;
+    font-weight: 600;
+    cursor: default;
+  }
+
+  // No puzzles saved for this game
+  &__puzzle-none {
+    color: #3a3a3a;
+    font-size: 0.8rem;
+    cursor: default;
+  }
+
   // Review trigger button — loads game + starts batch
   // NOTE: does not run in background; navigates to Analysis first
   &__review-btn {
