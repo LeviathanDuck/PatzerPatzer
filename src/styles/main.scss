@@ -611,53 +611,67 @@ header {
 
 // PV lines box — rendered below the engine header
 // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvs
+// PV lines container — no padding/gap; rows carry their own height and borders.
+// Adapted from lichess-org/lila: ui/lib/css/ceval/_pv.scss .pv_box
 .pv_box {
   width: 100%;
   background: #111;
-  border-top: 1px solid #222;
-  padding: 4px 10px 6px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  font-size: 13px;
+  position: relative;
 }
 
+// Single PV row — fixed 2em height, single line, truncated with ellipsis.
+// Adapted from lichess-org/lila: ui/lib/css/ceval/_pv.scss .pv.pv--nowrap
 .pv {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 3px;
   font-size: 0.82rem;
-  line-height: 1.5;
   color: #aaa;
 
+  // Nowrap row: exactly one line, ellipsis if too long.
+  // Mirrors .pv--nowrap { display: block; height: 2em; white-space: nowrap; overflow: hidden }
+  &--nowrap {
+    display: block;
+    height: 2em;
+    line-height: 2em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-top: 1px solid #222;
+    padding-inline-end: 6px;
+  }
+
+  // Per-row eval score — fixed width so moves align across all rows.
+  // Mirrors lichess-org/lila: .pv strong { display: inline-block; width: 34px; text-align: center }
   strong {
+    display: inline-block;
+    width: 34px;
+    text-align: center;
     font-variant-numeric: tabular-nums;
-    min-width: 42px;
-    color: #ccc;
     font-size: 0.85rem;
   }
 
   &__score--white { color: #d4d4a0; }
   &__score--black { color: #8fb8d4; }
 
-  // Empty slot placeholder — holds height so the panel doesn't jump as lines arrive.
-  // Mirrors Lichess renderPv with undefined pv: renders a row with no content.
-  &--empty { min-height: 1.5em; }
+  // Empty placeholder row — same height as a real row, no content.
+  &--empty { color: transparent; }
 }
 
+// Move-number prefix spans (e.g. "11." or "11…")
 .pv-num {
   color: #555;
   font-size: 0.78rem;
+  margin-inline-start: 4px;
   user-select: none;
 }
 
+// SAN move spans — hoverable, clickable
+// Adapted from lichess-org/lila: ui/lib/css/ceval/_pv.scss .pv span (margin-inline-start: 4px)
 .pv-san {
   cursor: pointer;
-  padding: 0 1px;
+  margin-inline-start: 4px;
   border-radius: 2px;
 
-  &:hover { background: #2a2a2a; color: #e8e8e8; }
+  &:hover { color: #e8e8e8; background: #2a2a2a; padding: 0 1px; }
 }
 
 // Floating PV board preview — fixed overlay near mouse cursor when hovering a PV move.
