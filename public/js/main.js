@@ -6424,8 +6424,9 @@ function renderHeader(route) {
       h("div.header__panel-label", "Time control"),
       h("div.header__panel-row", [
         ...SPEED_OPTIONS.map(
-          ({ value, label }) => h("button.header__pill", {
+          ({ value, label, icon }) => h("button.header__pill", {
             class: { active: importFilterSpeed === value },
+            attrs: icon ? { "data-icon": icon } : {},
             on: { click: () => {
               importFilterSpeed = value;
               redraw();
@@ -7777,9 +7778,12 @@ var importFilterCustomFrom = "";
 var importFilterCustomTo = "";
 var SPEED_OPTIONS = [
   { value: "all", label: "All" },
-  { value: "bullet", label: "Bullet" },
-  { value: "blitz", label: "Blitz" },
-  { value: "rapid", label: "Rapid" }
+  { value: "bullet", label: "Bullet", icon: "\uE032" },
+  // licon.Bullet
+  { value: "blitz", label: "Blitz", icon: "\uE008" },
+  // licon.FlameBlitz
+  { value: "rapid", label: "Rapid", icon: "\uE002" }
+  // licon.Rabbit
 ];
 var DATE_RANGE_OPTIONS = [
   { value: "24h", label: "24h" },
