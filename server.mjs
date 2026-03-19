@@ -20,7 +20,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC    = path.join(__dirname, 'public');
-const PORT      = parseInt(process.argv[2] ?? '3000', 10);
+const PORT      = parseInt(process.argv[2] ?? '3001', 10);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
