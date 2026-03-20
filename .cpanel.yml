@@ -1,12 +1,4 @@
 ---
 deployment:
   tasks:
-    - /bin/bash -c '
-        DEPLOYPATH=/home1/leftcoc0/public_html/patzerpro &&
-        echo "$DEPLOYPATH" | grep -q "patzerpro" || { echo "ABORT: path does not contain patzerpro"; exit 1; } &&
-        [ -d "$DEPLOYPATH" ] || { echo "ABORT: target directory does not exist — refusing to deploy"; exit 1; } &&
-        rsync -a --delete
-          --exclude=".git"
-          /home1/leftcoc0/repositories/patzerpatzer/public/
-          "$DEPLOYPATH/"
-      '
+    - /bin/bash -c 'DEPLOYPATH=/home1/leftcoc0/public_html/patzerpro && [ "$DEPLOYPATH" = "/home1/leftcoc0/public_html/patzerpro" ] || { echo "ABORT: deploy path mismatch"; exit 1; } && [ -d "/home1/leftcoc0/repositories/patzerpatzer/public" ] || { echo "ABORT: source directory missing"; exit 1; } && [ -d "$DEPLOYPATH" ] || { echo "ABORT: destination directory missing"; exit 1; } && rsync -a --delete --exclude=".git" /home1/leftcoc0/repositories/patzerpatzer/public/ "$DEPLOYPATH/"'
