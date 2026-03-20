@@ -1731,7 +1731,7 @@ function setSavedPuzzles(puzzles) {
   savedPuzzles = puzzles;
 }
 var _idb;
-function openGameDb2() {
+function openGameDb() {
   if (_idb) return Promise.resolve(_idb);
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("patzer-pro", 3);
@@ -1750,7 +1750,7 @@ function openGameDb2() {
 }
 async function saveGamesToIdb(games, selectedId, path) {
   try {
-    const db = await openGameDb2();
+    const db = await openGameDb();
     const tx = db.transaction("game-library", "readwrite");
     tx.objectStore("game-library").put(
       { games, selectedId, path },
@@ -1762,7 +1762,7 @@ async function saveGamesToIdb(games, selectedId, path) {
 }
 async function loadGamesFromIdb() {
   try {
-    const db = await openGameDb2();
+    const db = await openGameDb();
     return new Promise((resolve, reject) => {
       const req = db.transaction("game-library", "readonly").objectStore("game-library").get("imported-games");
       req.onsuccess = () => resolve(req.result);
@@ -1775,7 +1775,7 @@ async function loadGamesFromIdb() {
 }
 async function saveAnalysisToIdb(status, gameId, nodes, depth) {
   try {
-    const db = await openGameDb2();
+    const db = await openGameDb();
     const record = {
       gameId,
       analysisVersion: ANALYSIS_VERSION,
@@ -1792,7 +1792,7 @@ async function saveAnalysisToIdb(status, gameId, nodes, depth) {
 }
 async function loadAnalysisFromIdb(gameId) {
   try {
-    const db = await openGameDb2();
+    const db = await openGameDb();
     return new Promise((resolve, reject) => {
       const req = db.transaction("analysis-library", "readonly").objectStore("analysis-library").get(gameId);
       req.onsuccess = () => resolve(req.result);
@@ -1805,16 +1805,31 @@ async function loadAnalysisFromIdb(gameId) {
 }
 async function clearAnalysisFromIdb(gameId) {
   try {
-    const db = await openGameDb2();
+    const db = await openGameDb();
     const tx = db.transaction("analysis-library", "readwrite");
     tx.objectStore("analysis-library").delete(gameId);
   } catch (e) {
     console.warn("[idb] analysis clear failed", e);
   }
 }
+async function clearAllIdbData() {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction(["game-library", "puzzle-library", "analysis-library"], "readwrite");
+    tx.objectStore("game-library").clear();
+    tx.objectStore("puzzle-library").clear();
+    tx.objectStore("analysis-library").clear();
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn("[idb] clearAllIdbData failed", e);
+  }
+}
 async function savePuzzlesToIdb() {
   try {
-    const db = await openGameDb2();
+    const db = await openGameDb();
     const tx = db.transaction("puzzle-library", "readwrite");
     tx.objectStore("puzzle-library").put(savedPuzzles, "saved-puzzles");
   } catch (e) {
@@ -1823,7 +1838,7 @@ async function savePuzzlesToIdb() {
 }
 async function loadPuzzlesFromIdb() {
   try {
-    const db = await openGameDb2();
+    const db = await openGameDb();
     return new Promise((resolve, reject) => {
       const req = db.transaction("puzzle-library", "readonly").objectStore("puzzle-library").get("saved-puzzles");
       req.onsuccess = () => resolve(req.result ?? []);
@@ -8736,6 +8751,8 @@ function onChange2(fn) {
 // src/main.ts
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
+var PUBLIC_SOURCE_URL = "https://github.com/LeviathanDuck/PatzerPatzer";
+var PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
 var importCallbacks = {
   addGames(games, first2) {
     importedGames = [...importedGames, ...games];
@@ -8962,19 +8979,7 @@ function routeContent(route) {
 }
 async function resetAllData() {
   if (!confirm("Clear all local Patzer Pro data? This removes imported games, saved analysis, puzzles, and local board/settings preferences from this browser.")) return;
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction(["game-library", "puzzle-library", "analysis-library"], "readwrite");
-    tx.objectStore("game-library").clear();
-    tx.objectStore("puzzle-library").clear();
-    tx.objectStore("analysis-library").clear();
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch (e) {
-    console.warn("[reset] IDB clear failed", e);
-  }
+  await clearAllIdbData();
   clearBoardLocalData();
   window.location.reload();
 }
@@ -8998,6 +9003,25 @@ function view(route) {
       redraw
     }),
     h("main", [routeContent(route)]),
+    h("footer.app-legal", [
+      h("span", "Patzer Pro source is available under AGPL-3.0-or-later."),
+      h("span", "No warranty."),
+      h("a", {
+        attrs: {
+          href: PUBLIC_SOURCE_URL,
+          target: "_blank",
+          rel: "noopener noreferrer"
+        }
+      }, "Source Code"),
+      h("span.app-legal__sep", "\u2022"),
+      h("a", {
+        attrs: {
+          href: PUBLIC_LICENSE_URL,
+          target: "_blank",
+          rel: "noopener noreferrer"
+        }
+      }, "License")
+    ]),
     renderPvBoard()
   ]);
 }

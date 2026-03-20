@@ -27,11 +27,20 @@ Why now:
 - a non-zero typecheck gate provides no regression protection
 - fixing the errors makes the gate meaningful for all subsequent work
 
+### 3. Fix the broken clear-local-data reset path
+
+Current state:
+- `resetAllData()` in `src/main.ts` calls `openGameDb()` without importing it
+
+User impact:
+- the advertised “clear local data” recovery path is not currently trustworthy
+- users have less reliable recovery when local state becomes confusing or corrupted
+
 ---
 
 ## Priority 1 — Make the analysis board and review loop reliable
 
-### 2. Fix engine update reliability on navigation and variation changes
+### 4. Fix engine update reliability on navigation and variation changes
 
 Current state:
 - live engine analysis is not yet fully trustworthy across:
@@ -44,7 +53,7 @@ User impact:
 - the board can show stale or missing engine lines when the user is actively reviewing a game
 - this weakens the review experience and blocks downstream puzzle logic
 
-### 3. Fix saved-analysis restore and active-game scoping
+### 5. Fix saved-analysis restore and active-game scoping
 
 Current state:
 - review results and persisted restore flow still need stronger active-game protection
@@ -54,7 +63,7 @@ User impact:
 - analysis can become untrustworthy when switching games quickly
 - puzzle tooling later will depend on this data being correct
 
-### 4. Fix engine stop bookkeeping
+### 6. Fix engine stop bookkeeping
 
 Current state:
 - `awaitingStopBestmove` in `src/engine/ctrl.ts` is still a single boolean
@@ -62,11 +71,20 @@ Current state:
 User impact:
 - rapid stop/start sequences can still mis-handle stale `bestmove` output
 
+### 7. Fix played-arrow semantics in side variations
+
+Current state:
+- the “played move” arrow still assumes the current node is on the original game line
+
+User impact:
+- arrows can communicate the wrong thing while the user explores side lines
+- this makes move exploration less trustworthy in exactly the workflow the app is built for
+
 ---
 
 ## Priority 2 — Finish the remaining analysis/review ownership seams
 
-### 5. Formalize game and analysis ownership
+### 8. Formalize game and analysis ownership
 
 Current state:
 - game library state is still owned by `src/main.ts`
@@ -75,7 +93,7 @@ Current state:
 Why now:
 - this is one of the last structural gaps that can still create confusing bugs in review flow
 
-### 6. Persist engine settings and review context cleanly
+### 9. Persist engine settings and review context cleanly
 
 Current state:
 - `reviewDepth`, `analysisDepth`, and `multiPv` still reset on reload
@@ -87,7 +105,7 @@ Why now:
 
 ## Priority 3 — Build the next layer of review functionality
 
-### 7. Implement a local per-game “Learn From Mistakes” style review flow
+### 10. Implement a local per-game “Learn From Mistakes” style review flow
 
 Current state:
 - the app can review a game and extract puzzle candidates
@@ -101,7 +119,7 @@ Why now:
 
 ## Priority 4 — Tighten board-review behavior details
 
-### 8. Improve graph, arrows, and move-list review behavior
+### 11. Improve graph, arrows, and move-list review behavior
 
 Current state:
 - several analysis-board behaviors still need tightening for review quality:
@@ -114,7 +132,16 @@ Why now:
 - these are high-value improvements once engine correctness is reliable
 - they improve the actual quality of game review without jumping ahead to full puzzle mode
 
-### 9. Make small UI improvements that support review clarity
+### 12. Implement the honest minimum route surface
+
+Current state:
+- `analysis-game` and `puzzles` are still route-level placeholders
+
+Why now:
+- route honesty matters once the core analysis path is reliable
+- the app should not advertise route-level workflows it cannot yet complete
+
+### 13. Make small UI improvements that support review clarity
 
 Scope examples:
 - game list readability

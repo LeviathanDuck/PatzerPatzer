@@ -35,7 +35,7 @@ Server:
 - `npm run serve`
   - serves `public/` locally with the headers required for the engine
 - `npm run typecheck`
-  - intended to run TypeScript validation, but currently needs to be wired to a real project config
+  - runs `tsc --noEmit` against the project config and currently fails with known repo-wide type errors
 
 ## Development
 
@@ -62,6 +62,17 @@ Then open:
 ```text
 http://localhost:3001
 ```
+
+## License and source availability
+
+Patzer Pro is distributed under the GNU Affero General Public License v3.0 or later.
+
+- License text: [LICENSE](/Users/leftcoast/Development/PatzerPatzer/LICENSE)
+- Public source repository: [github.com/LeviathanDuck/PatzerPatzer](https://github.com/LeviathanDuck/PatzerPatzer)
+- Compliance tracking: [docs/AGPL_COMPLIANCE_CHECKLIST.md](/Users/leftcoast/Development/PatzerPatzer/docs/AGPL_COMPLIANCE_CHECKLIST.md)
+
+The deployed app should expose a visible source-code link for network users. This repo tracks the
+remaining compliance gaps in the checklist above.
 
 ## Active docs
 
@@ -100,4 +111,4 @@ Still incomplete:
 - saved puzzles route
 - puzzle play workflow
 - engine worker path
-- trustworthy typecheck script
+- clean typecheck baseline
