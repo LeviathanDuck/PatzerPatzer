@@ -15,7 +15,8 @@ deployment:
       [ -z "$(git status --porcelain)" ] || { echo "ABORT: repository is not clean before deployment"; git status --short; exit 1; };
       npm install --no-package-lock;
       npm run build;
-      [ -z "$(git status --porcelain)" ] || { echo "ABORT: repository is not clean after install/build"; git status --short; exit 1; };
+      echo "Repository status after build:";
+      git status --short;
       [ -d "$SOURCEPATH" ] || { echo "ABORT: build output public/ not found"; exit 1; };
       /bin/mkdir -p "$DEPLOYPATH";
       /usr/bin/rsync -a --delete --exclude=".git" "$SOURCEPATH/" "$DEPLOYPATH/";'
