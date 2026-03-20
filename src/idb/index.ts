@@ -148,6 +148,28 @@ export async function clearAnalysisFromIdb(gameId: string): Promise<void> {
   }
 }
 
+// --- Full reset ---
+
+/**
+ * Clear all Patzer Pro IndexedDB data in a single transaction.
+ * Called by the "Clear Local Data" action. Leaves the DB schema intact.
+ */
+export async function clearAllIdbData(): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library'], 'readwrite');
+    tx.objectStore('game-library').clear();
+    tx.objectStore('puzzle-library').clear();
+    tx.objectStore('analysis-library').clear();
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror    = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('[idb] clearAllIdbData failed', e);
+  }
+}
+
 // --- Puzzles ---
 
 async function savePuzzlesToIdb(): Promise<void> {
