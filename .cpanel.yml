@@ -3,8 +3,12 @@ deployment:
     - >-
       /bin/bash -c 'set -e;
       DEPLOYPATH="/home1/leftcoc0/public_html/patzerpro";
-      SOURCEPATH="$PWD/public";
+      SOURCEPATH="$PWD/dist";
       [ "$DEPLOYPATH" = "/home1/leftcoc0/public_html/patzerpro" ] || { echo "ABORT: deploy path mismatch"; exit 1; };
-      [ -d "$SOURCEPATH" ] || { echo "ABORT: source directory not found"; exit 1; };
+      command -v npm >/dev/null 2>&1 || { echo "ABORT: npm not available"; exit 1; };
+      cd "$PWD";
+      npm install;
+      npm run build;
+      [ -d "$SOURCEPATH" ] || { echo "ABORT: build output dist/ not found"; exit 1; };
       /bin/mkdir -p "$DEPLOYPATH";
       /usr/bin/rsync -a --delete --exclude=".git" "$SOURCEPATH/" "$DEPLOYPATH/";'
