@@ -87,6 +87,15 @@ for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
   boardFilters[prop] = stored !== null ? parseInt(stored, 10) : def;
 }
 
+export function clearBoardLocalData(): void {
+  localStorage.removeItem(ZOOM_KEY);
+  localStorage.removeItem(BOARD_THEME_KEY);
+  localStorage.removeItem(PIECE_SET_KEY);
+  for (const prop of Object.keys(FILTER_DEFAULTS)) {
+    localStorage.removeItem(FILTER_LS_PREFIX + prop);
+  }
+}
+
 export function filtersAtDefault(): boolean {
   return Object.entries(FILTER_DEFAULTS).every(([p, def]) => boardFilters[p] === def);
 }

@@ -77,7 +77,7 @@ function closeGlobalMenu(redraw: () => void): void {
 }
 
 function renderGlobalMenu(deps: HeaderDeps): VNode {
-  const { downloadPgn, redraw } = deps;
+  const { downloadPgn, resetAllData, redraw } = deps;
   return h('div.global-menu', [
     h('button.global-menu__trigger', {
       class: { active: showGlobalMenu },
@@ -97,8 +97,11 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       class: { 'board-open': showBoardSettings },
     }, [
       h('button.global-menu__item', {
-        on: { click: () => { console.log('TODO: clear local cache'); } },
-      }, 'Clear Local Cache'),
+        on: { click: () => {
+          closeGlobalMenu(redraw);
+          void resetAllData();
+        } },
+      }, 'Clear Local Data'),
 
       h('button.global-menu__item', {
         on: { click: () => { console.log('TODO: game review settings'); } },
@@ -318,8 +321,6 @@ export function renderHeader(deps: HeaderDeps): VNode {
     ]),
 
     renderNav(route),
-
-    h('button.dev-reset', { on: { click: () => void resetAllData() } }, 'Reset'),
     renderGlobalMenu(deps),
   ]);
 }
