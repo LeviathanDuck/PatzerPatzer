@@ -1,0 +1,11 @@
+---
+deployment:
+  tasks:
+    - /bin/bash -c '
+        DEPLOYPATH=/home1/leftcoc0/public_html/patzerpro &&
+        echo "$DEPLOYPATH" | grep -q "patzerpro" || { echo "ABORT: path safety check failed — does not contain patzerpro"; exit 1; } &&
+        rsync -a --delete
+          --exclude=".git"
+          /home1/leftcoc0/repositories/patzerpatzer/public/
+          "$DEPLOYPATH/"
+      '
