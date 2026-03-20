@@ -251,6 +251,13 @@ If a task expands beyond the smallest safe step, stop and explain why.
 
 ## Required pre-implementation output
 
+Before starting any coding, implementation, refactor, or code-review task in this thread, first ask the user this coordination question in chat: is Claude Code currently running, and if so reply with the exact Claude Code prompt; otherwise reply `ready`.
+
+Treat `ready` as the non-conflicting path for docs-only work or when Claude Code is not currently running.
+
+Do not begin repo work until the user has either pasted the Claude Code prompt or replied `ready`.
+Use that answer to avoid overlapping file ownership, conflicting edits, or duplicated investigation.
+
 Before coding, provide:
 
 1. what part of the current codebase is relevant
