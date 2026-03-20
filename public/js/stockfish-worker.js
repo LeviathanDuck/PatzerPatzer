@@ -1,3 +1,4 @@
+"use strict";
 (() => {
   // src/ceval/worker.ts
   self.onmessage = (_e) => {
