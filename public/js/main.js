@@ -715,6 +715,219 @@ var AnalyseCtrl = class {
   }
 };
 
+// src/board/cosmetics.ts
+var ZOOM_DEFAULT = 85;
+var ZOOM_KEY = "boardZoom";
+var boardZoom = (() => {
+  const stored = localStorage.getItem(ZOOM_KEY);
+  const n = stored !== null ? parseInt(stored, 10) : NaN;
+  return !isNaN(n) && n >= 0 && n <= 100 ? n : ZOOM_DEFAULT;
+})();
+function applyBoardZoom(zoom) {
+  document.body.style.setProperty("---zoom", String(zoom));
+}
+function saveBoardZoom(zoom) {
+  boardZoom = zoom;
+  localStorage.setItem(ZOOM_KEY, String(zoom));
+}
+var BOARD_THEME_KEY = "boardTheme";
+var BOARD_THEME_DEFAULT = "green";
+var BOARD_THEMES_FEATURED = [
+  "brown",
+  "wood4",
+  "maple",
+  "horsey",
+  "blue",
+  "blue2",
+  "blue3",
+  "green",
+  "marble",
+  "olive",
+  "grey",
+  "metal",
+  "newspaper",
+  "purple",
+  "purple-diag"
+];
+var boardTheme = localStorage.getItem(BOARD_THEME_KEY) ?? BOARD_THEME_DEFAULT;
+function applyBoardTheme(name) {
+  document.body.dataset.board = name;
+  boardTheme = name;
+  localStorage.setItem(BOARD_THEME_KEY, name);
+}
+var PIECE_SET_KEY = "pieceSet";
+var PIECE_SET_DEFAULT = "staunty";
+var PIECE_SETS_FEATURED = [
+  "cburnett",
+  "merida",
+  "alpha",
+  "companion",
+  "kosal",
+  "caliente",
+  "rhosgfx",
+  "maestro",
+  "fresca",
+  "cardinal",
+  "gioco",
+  "staunty",
+  "monarchy",
+  "dubrovny",
+  "mpchess",
+  "horsey",
+  "anarcandy"
+];
+var PIECE_VARS = [
+  ["---white-pawn", "wP"],
+  ["---white-knight", "wN"],
+  ["---white-bishop", "wB"],
+  ["---white-rook", "wR"],
+  ["---white-queen", "wQ"],
+  ["---white-king", "wK"],
+  ["---black-pawn", "bP"],
+  ["---black-knight", "bN"],
+  ["---black-bishop", "bB"],
+  ["---black-rook", "bR"],
+  ["---black-queen", "bQ"],
+  ["---black-king", "bK"]
+];
+var PIECE_WEBP_SETS = /* @__PURE__ */ new Set(["monarchy"]);
+var pieceSet = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
+function applyPieceSet(name) {
+  const ext = PIECE_WEBP_SETS.has(name) ? "webp" : "svg";
+  for (const [cssVar, file] of PIECE_VARS) {
+    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.${ext})`);
+  }
+  document.body.dataset.pieceSet = name;
+  pieceSet = name;
+  localStorage.setItem(PIECE_SET_KEY, name);
+}
+var FILTER_DEFAULTS = {
+  "board-brightness": 100,
+  "board-contrast": 100,
+  "board-hue": 0
+};
+var FILTER_LS_PREFIX = "boardFilter.";
+var boardFilters = {};
+for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
+  const stored = localStorage.getItem(FILTER_LS_PREFIX + prop);
+  boardFilters[prop] = stored !== null ? parseInt(stored, 10) : def;
+}
+function clearBoardLocalData() {
+  localStorage.removeItem(ZOOM_KEY);
+  localStorage.removeItem(BOARD_THEME_KEY);
+  localStorage.removeItem(PIECE_SET_KEY);
+  for (const prop of Object.keys(FILTER_DEFAULTS)) {
+    localStorage.removeItem(FILTER_LS_PREFIX + prop);
+  }
+}
+function filtersAtDefault() {
+  return Object.entries(FILTER_DEFAULTS).every(([p, def]) => boardFilters[p] === def);
+}
+function setFilter(prop, value) {
+  boardFilters[prop] = value;
+  document.body.style.setProperty(`---${prop}`, value.toString());
+  localStorage.setItem(FILTER_LS_PREFIX + prop, value.toString());
+  document.body.classList.toggle("simple-board", filtersAtDefault());
+}
+function resetFilters() {
+  for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) setFilter(prop, def);
+}
+var BOARD_THEME_EXT = {
+  brown: "png",
+  horsey: "jpg",
+  blue: "png",
+  green: "png",
+  purple: "png",
+  "purple-diag": "png",
+  wood4: "jpg",
+  maple: "jpg",
+  blue2: "jpg",
+  blue3: "jpg",
+  marble: "jpg",
+  olive: "jpg",
+  grey: "jpg",
+  metal: "jpg",
+  newspaper: "svg"
+};
+function boardThumbnailUrl(name) {
+  if (name === "newspaper") return "/images/board/svg/newspaper.svg";
+  return `/images/board/${name}.thumbnail.${BOARD_THEME_EXT[name]}`;
+}
+function piecePreviewUrl(name) {
+  return PIECE_WEBP_SETS.has(name) ? `/piece/${name}/wN.webp` : `/piece/${name}/wN.svg`;
+}
+function renderFilterSlider(prop, label, min, max, step2, redraw2, fmt) {
+  const value = boardFilters[prop];
+  return h("div.board-settings__slider-row", [
+    h("label", label),
+    h("input", {
+      attrs: { type: "range", min, max, step: step2, value },
+      on: {
+        input: (e) => {
+          setFilter(prop, parseInt(e.target.value, 10));
+          redraw2();
+        }
+      }
+    }),
+    h("span.board-settings__slider-val", fmt ? fmt(value) : `${value}%`)
+  ]);
+}
+function renderBoardSettings(redraw2) {
+  return h("div.board-settings", [
+    // Sliders
+    renderFilterSlider("board-brightness", "Brightness", 20, 140, 1, redraw2),
+    renderFilterSlider("board-contrast", "Contrast", 40, 200, 2, redraw2),
+    renderFilterSlider("board-hue", "Hue", 0, 100, 1, redraw2, (v) => `\xB1${Math.round(v * 3.6)}\xB0`),
+    filtersAtDefault() ? null : h("button.board-settings__reset", {
+      on: { click: () => {
+        resetFilters();
+        redraw2();
+      } }
+    }, "Reset"),
+    // Board theme tile grid
+    h("div.board-settings__label", "Board"),
+    h(
+      "div.board-settings__theme-grid",
+      BOARD_THEMES_FEATURED.map(
+        (name) => h("button.board-settings__theme-tile", {
+          class: { active: boardTheme === name },
+          attrs: { title: name },
+          on: { click: () => {
+            applyBoardTheme(name);
+            redraw2();
+          } }
+        }, [
+          h("span", { attrs: { style: `background-image: url(${boardThumbnailUrl(name)})` } })
+        ])
+      )
+    ),
+    // Piece set tile grid
+    h("div.board-settings__label", "Pieces"),
+    h(
+      "div.board-settings__piece-grid",
+      PIECE_SETS_FEATURED.map(
+        (name) => h("button.board-settings__piece-tile", {
+          class: { active: pieceSet === name },
+          attrs: { title: name },
+          on: { click: () => {
+            applyPieceSet(name);
+            redraw2();
+          } }
+        }, [
+          h("piece", { attrs: { style: `background-image: url(${piecePreviewUrl(name)})` } })
+        ])
+      )
+    )
+  ]);
+}
+applyBoardZoom(boardZoom);
+applyBoardTheme(boardTheme);
+applyPieceSet(pieceSet);
+for (const [prop, value] of Object.entries(boardFilters)) {
+  document.body.style.setProperty(`---${prop}`, value.toString());
+}
+document.body.classList.toggle("simple-board", filtersAtDefault());
+
 // src/ceval/protocol.ts
 function sharedWasmMemory(lo, hi = 32767) {
   let shrink = 4;
@@ -5370,211 +5583,6 @@ var parseSan = (pos, san) => {
   };
 };
 
-// src/board/cosmetics.ts
-var ZOOM_DEFAULT = 85;
-var ZOOM_KEY = "boardZoom";
-var boardZoom = (() => {
-  const stored = localStorage.getItem(ZOOM_KEY);
-  const n = stored !== null ? parseInt(stored, 10) : NaN;
-  return !isNaN(n) && n >= 0 && n <= 100 ? n : ZOOM_DEFAULT;
-})();
-function applyBoardZoom(zoom) {
-  document.body.style.setProperty("---zoom", String(zoom));
-}
-function saveBoardZoom(zoom) {
-  boardZoom = zoom;
-  localStorage.setItem(ZOOM_KEY, String(zoom));
-}
-var BOARD_THEME_KEY = "boardTheme";
-var BOARD_THEME_DEFAULT = "green";
-var BOARD_THEMES_FEATURED = [
-  "brown",
-  "wood4",
-  "maple",
-  "horsey",
-  "blue",
-  "blue2",
-  "blue3",
-  "green",
-  "marble",
-  "olive",
-  "grey",
-  "metal",
-  "newspaper",
-  "purple",
-  "purple-diag"
-];
-var boardTheme = localStorage.getItem(BOARD_THEME_KEY) ?? BOARD_THEME_DEFAULT;
-function applyBoardTheme(name) {
-  document.body.dataset.board = name;
-  boardTheme = name;
-  localStorage.setItem(BOARD_THEME_KEY, name);
-}
-var PIECE_SET_KEY = "pieceSet";
-var PIECE_SET_DEFAULT = "staunty";
-var PIECE_SETS_FEATURED = [
-  "cburnett",
-  "merida",
-  "alpha",
-  "companion",
-  "kosal",
-  "caliente",
-  "rhosgfx",
-  "maestro",
-  "fresca",
-  "cardinal",
-  "gioco",
-  "staunty",
-  "monarchy",
-  "dubrovny",
-  "mpchess",
-  "horsey",
-  "anarcandy"
-];
-var PIECE_VARS = [
-  ["---white-pawn", "wP"],
-  ["---white-knight", "wN"],
-  ["---white-bishop", "wB"],
-  ["---white-rook", "wR"],
-  ["---white-queen", "wQ"],
-  ["---white-king", "wK"],
-  ["---black-pawn", "bP"],
-  ["---black-knight", "bN"],
-  ["---black-bishop", "bB"],
-  ["---black-rook", "bR"],
-  ["---black-queen", "bQ"],
-  ["---black-king", "bK"]
-];
-var PIECE_WEBP_SETS = /* @__PURE__ */ new Set(["monarchy"]);
-var pieceSet = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
-function applyPieceSet(name) {
-  const ext = PIECE_WEBP_SETS.has(name) ? "webp" : "svg";
-  for (const [cssVar, file] of PIECE_VARS) {
-    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.${ext})`);
-  }
-  document.body.dataset.pieceSet = name;
-  pieceSet = name;
-  localStorage.setItem(PIECE_SET_KEY, name);
-}
-var FILTER_DEFAULTS = {
-  "board-brightness": 100,
-  "board-contrast": 100,
-  "board-hue": 0
-};
-var FILTER_LS_PREFIX = "boardFilter.";
-var boardFilters = {};
-for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
-  const stored = localStorage.getItem(FILTER_LS_PREFIX + prop);
-  boardFilters[prop] = stored !== null ? parseInt(stored, 10) : def;
-}
-function filtersAtDefault() {
-  return Object.entries(FILTER_DEFAULTS).every(([p, def]) => boardFilters[p] === def);
-}
-function setFilter(prop, value) {
-  boardFilters[prop] = value;
-  document.body.style.setProperty(`---${prop}`, value.toString());
-  localStorage.setItem(FILTER_LS_PREFIX + prop, value.toString());
-  document.body.classList.toggle("simple-board", filtersAtDefault());
-}
-function resetFilters() {
-  for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) setFilter(prop, def);
-}
-var BOARD_THEME_EXT = {
-  brown: "png",
-  horsey: "jpg",
-  blue: "png",
-  green: "png",
-  purple: "png",
-  "purple-diag": "png",
-  wood4: "jpg",
-  maple: "jpg",
-  blue2: "jpg",
-  blue3: "jpg",
-  marble: "jpg",
-  olive: "jpg",
-  grey: "jpg",
-  metal: "jpg",
-  newspaper: "svg"
-};
-function boardThumbnailUrl(name) {
-  if (name === "newspaper") return "/images/board/svg/newspaper.svg";
-  return `/images/board/${name}.thumbnail.${BOARD_THEME_EXT[name]}`;
-}
-function piecePreviewUrl(name) {
-  return PIECE_WEBP_SETS.has(name) ? `/piece/${name}/wN.webp` : `/piece/${name}/wN.svg`;
-}
-function renderFilterSlider(prop, label, min, max, step2, redraw2, fmt) {
-  const value = boardFilters[prop];
-  return h("div.board-settings__slider-row", [
-    h("label", label),
-    h("input", {
-      attrs: { type: "range", min, max, step: step2, value },
-      on: {
-        input: (e) => {
-          setFilter(prop, parseInt(e.target.value, 10));
-          redraw2();
-        }
-      }
-    }),
-    h("span.board-settings__slider-val", fmt ? fmt(value) : `${value}%`)
-  ]);
-}
-function renderBoardSettings(redraw2) {
-  return h("div.board-settings", [
-    // Sliders
-    renderFilterSlider("board-brightness", "Brightness", 20, 140, 1, redraw2),
-    renderFilterSlider("board-contrast", "Contrast", 40, 200, 2, redraw2),
-    renderFilterSlider("board-hue", "Hue", 0, 100, 1, redraw2, (v) => `\xB1${Math.round(v * 3.6)}\xB0`),
-    filtersAtDefault() ? null : h("button.board-settings__reset", {
-      on: { click: () => {
-        resetFilters();
-        redraw2();
-      } }
-    }, "Reset"),
-    // Board theme tile grid
-    h("div.board-settings__label", "Board"),
-    h(
-      "div.board-settings__theme-grid",
-      BOARD_THEMES_FEATURED.map(
-        (name) => h("button.board-settings__theme-tile", {
-          class: { active: boardTheme === name },
-          attrs: { title: name },
-          on: { click: () => {
-            applyBoardTheme(name);
-            redraw2();
-          } }
-        }, [
-          h("span", { attrs: { style: `background-image: url(${boardThumbnailUrl(name)})` } })
-        ])
-      )
-    ),
-    // Piece set tile grid
-    h("div.board-settings__label", "Pieces"),
-    h(
-      "div.board-settings__piece-grid",
-      PIECE_SETS_FEATURED.map(
-        (name) => h("button.board-settings__piece-tile", {
-          class: { active: pieceSet === name },
-          attrs: { title: name },
-          on: { click: () => {
-            applyPieceSet(name);
-            redraw2();
-          } }
-        }, [
-          h("piece", { attrs: { style: `background-image: url(${piecePreviewUrl(name)})` } })
-        ])
-      )
-    )
-  ]);
-}
-applyBoardZoom(boardZoom);
-applyBoardTheme(boardTheme);
-applyPieceSet(pieceSet);
-for (const [prop, value] of Object.entries(boardFilters)) {
-  document.body.style.setProperty(`---${prop}`, value.toString());
-}
-document.body.classList.toggle("simple-board", filtersAtDefault());
-
 // src/board/index.ts
 var _getCtrl3 = () => {
   throw new Error("ground not initialised");
@@ -8431,7 +8439,7 @@ function closeGlobalMenu(redraw2) {
   redraw2();
 }
 function renderGlobalMenu(deps) {
-  const { downloadPgn: downloadPgn2, redraw: redraw2 } = deps;
+  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, redraw: redraw2 } = deps;
   return h("div.global-menu", [
     h("button.global-menu__trigger", {
       class: { active: showGlobalMenu },
@@ -8450,9 +8458,10 @@ function renderGlobalMenu(deps) {
     }, [
       h("button.global-menu__item", {
         on: { click: () => {
-          console.log("TODO: clear local cache");
+          closeGlobalMenu(redraw2);
+          void resetAllData2();
         } }
-      }, "Clear Local Cache"),
+      }, "Clear Local Data"),
       h("button.global-menu__item", {
         on: { click: () => {
           console.log("TODO: game review settings");
@@ -8682,7 +8691,6 @@ function renderHeader(deps) {
       backdrop
     ]),
     renderNav(route),
-    h("button.dev-reset", { on: { click: () => void resetAllData2() } }, "Reset"),
     renderGlobalMenu(deps)
   ]);
 }
@@ -8952,7 +8960,7 @@ function routeContent(route) {
   }
 }
 async function resetAllData() {
-  if (!confirm("Reset all data? This clears imported games, analysis, and puzzles.")) return;
+  if (!confirm("Clear all local Patzer Pro data? This removes imported games, saved analysis, puzzles, and local board/settings preferences from this browser.")) return;
   try {
     const db = await openGameDb();
     const tx = db.transaction(["game-library", "puzzle-library", "analysis-library"], "readwrite");
@@ -8966,6 +8974,7 @@ async function resetAllData() {
   } catch (e) {
     console.warn("[reset] IDB clear failed", e);
   }
+  clearBoardLocalData();
   window.location.reload();
 }
 function view(route) {

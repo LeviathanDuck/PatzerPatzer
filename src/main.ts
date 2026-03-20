@@ -4,6 +4,7 @@ import {
   applyBoardTheme, applyBoardZoom, applyPieceSet,
   boardFilters, boardTheme, boardThumbnailUrl, boardZoom,
   BOARD_THEMES_FEATURED,
+  clearBoardLocalData,
   filtersAtDefault, piecePreviewUrl, pieceSet,
   PIECE_SETS_FEATURED,
   resetFilters, saveBoardZoom, setFilter,
@@ -342,7 +343,7 @@ function routeContent(route: Route): VNode {
  * Reloads the page so the app boots clean.
  */
 async function resetAllData(): Promise<void> {
-  if (!confirm('Reset all data? This clears imported games, analysis, and puzzles.')) return;
+  if (!confirm('Clear all local Patzer Pro data? This removes imported games, saved analysis, puzzles, and local board/settings preferences from this browser.')) return;
   try {
     const db = await openGameDb();
     const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library'], 'readwrite');
@@ -356,6 +357,7 @@ async function resetAllData(): Promise<void> {
   } catch (e) {
     console.warn('[reset] IDB clear failed', e);
   }
+  clearBoardLocalData();
   window.location.reload();
 }
 

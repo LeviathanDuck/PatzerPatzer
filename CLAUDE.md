@@ -12,6 +12,12 @@ Core goals:
 - Use analysis board to study the game afterwards
 - Extract puzzles for deliberate practice
 
+Reference future-facing product ideas in:
+- `docs/FUTURE_FUNCTIONALITY.md`
+
+Use that file for long-range direction only. Do not treat it as a substitute for the current
+codebase, current architecture docs, or active near-term priorities.
+
 This is a **multi-tool platform**:
 - Game Analysis
 - Puzzles
@@ -26,7 +32,7 @@ The app shell, navigation, and routing are tool-agnostic from day one.
 
 Patzer Pro exists to **replicate Lichess functionality and behavior as closely as possible**.
 
-This is not a typical "design a modern app" project.
+This is not a "design a modern app" project.
 
 It is a **faithful adaptation of Lichess concepts, behavior, and architecture**, implemented in a way that is practical for this project.
 
@@ -81,7 +87,7 @@ Claude must NOT:
 - If no subsystem exists and the feature is substantial, create a new module rather than expanding `main.ts`.
 - Separate “extract code” tasks from “change behavior” tasks.
 - When extracting, move one coherent subsystem at a time and verify behavior remains unchanged.
-- Update `docs/REFACTOR_PLAN.md` whenever a subsystem is extracted or ownership changes.
+- Update the active architecture docs when subsystem ownership changes, and archive completed plans under `docs/archive/` instead of keeping them as live planning documents.
 
 ### Preferred subsystem boundaries
 - `src/engine/` → live analysis, review pipeline, UCI parsing, PV state
@@ -493,7 +499,7 @@ Reference: `ui/analyse/src/ctrl.ts` for how Lichess separates these concerns.
 
 ## Naming & Structure Rule
 
-- Match Lichess naming where possible
+- Match Lichess naming where possible, and doesn’t violate their open source policy
 - Avoid unnecessary renaming
 
 ---
@@ -556,7 +562,7 @@ Do NOT simplify this into a flat move list.
 Puzzle extraction should be derived from Lichess concepts.
 
 Reference:
-- `lichess-puzzle-reference.md` (in /docs)
+- `docs/reference/lichess-puzzle-reference.md`
 - `modules/puzzle/` in Lichess source
 
 Future configurable parameters:
