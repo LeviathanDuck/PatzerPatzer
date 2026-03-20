@@ -62,17 +62,6 @@ Impact:
 
 ---
 
-## [HIGH] Persisted analysis restore still lacks cancellation on rapid game switches
-
-`loadAndRestoreAnalysis()` still runs asynchronously from `src/main.ts` without a cancellation
-token or equivalent guard.
-
-Impact:
-- restore results for one game can still arrive after another game has been loaded
-- eval state can be polluted in shared opening paths
-
----
-
 ## [HIGH] Review state is still not explicitly scoped to an active game context
 
 The codebase still relies on shared engine/cache state and path-based storage without a clearly
@@ -99,27 +88,17 @@ Impact:
 
 ---
 
-## [HIGH] Engine lines and arrows do not always update correctly after creating a variation
+## [LOW] Played-arrow still appears on side-variation nodes it doesn't apply to
 
-When a user creates a new variation directly on the board, the live engine lines and arrows can
-fail to refresh correctly for the new position. Toggling the engine off and back on appears to
-force them back into sync.
-
-Impact:
-- side-line exploration is less trustworthy than mainline review
-- live review behavior becomes inconsistent exactly where puzzle and mistake exploration will rely on it
-
----
-
-## [HIGH] Live engine evaluation sometimes stops updating during move navigation
-
-While stepping through moves in a game, the engine can sometimes stop updating or fail to keep
-calculating for the current position. The intended behavior is that every live board position
-continues evaluating until the requested analysis is complete.
+The played-move arrow (showing the first child of the current node) is still drawn even when the
+current node is inside a side variation rather than the original game line.
 
 Impact:
-- game review becomes unreliable during normal navigation
-- users can no longer trust the current PV lines and arrows to match the current position
+- arrows can communicate the wrong thing while the user explores side lines
+
+Current code path:
+- `src/engine/ctrl.ts` `buildArrowShapes()` derives the played arrow from `ctrl.node.children[0]`,
+  which assumes the current node is still on the played line
 
 ---
 
@@ -150,6 +129,21 @@ it, but that interaction is not yet behaving as intended.
 Impact:
 - graph-driven review is weaker than it should be
 - the graph is less useful as a navigation and inspection tool during analysis
+
+---
+
+## [MEDIUM] Engine arrows can render without a visible arrowhead
+
+Sometimes the live engine arrows draw with only the shaft visible and the arrowhead missing,
+which makes the intended destination less clear than it should be during analysis.
+
+Impact:
+- engine guidance is harder to read at a glance
+- users can misread the intended move destination when the arrowhead is missing
+
+Current code paths:
+- `src/engine/ctrl.ts` builds the engine and played-move arrow shapes
+- `src/board/index.ts` configures the Chessground drawable brushes and arrow rendering
 
 ---
 
