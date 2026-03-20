@@ -10,7 +10,7 @@ This file only lists issues that still appear to be current in the live repo.
 ## [HIGH] `npm run typecheck` is wired but surfaces 53 type errors
 
 `tsconfig.json` was added to the repo root, extending `tsconfig.base.json`. The typecheck gate
-now runs correctly. As of the last run, `tsc --noEmit` reports 53 errors across the source tree,
+now runs correctly. As of the latest audit run on 2026-03-20, `tsc --noEmit` reports 53 errors across the source tree,
 primarily:
 
 - `noUncheckedIndexedAccess` violations (array index access without undefined guards)
@@ -41,6 +41,18 @@ Impact:
 
 ---
 
+## [HIGH] Clear-local-data reset flow is currently broken
+
+`resetAllData()` in `src/main.ts` still calls `openGameDb()`, but `openGameDb` is not imported
+from `src/idb/index.ts`.
+
+Impact:
+- the “Clear all local Patzer Pro data” path is not currently trustworthy
+- cleanup/reset behavior can fail before IDB stores are cleared
+- the UI advertises a recovery path that is not currently safe
+
+---
+
 ## [HIGH] In-flight engine stop handling still relies on a boolean flag
 
 `awaitingStopBestmove` in `src/engine/ctrl.ts` is still a single boolean.
@@ -68,6 +80,22 @@ scoped current-game guard through the full review/restore flow.
 
 Impact:
 - stale or delayed engine output can still land in the wrong active game context
+
+---
+
+## [HIGH] Imported-game board orientation does not always match the importing user's side
+
+When a game is loaded, the app keeps the importing user displayed as the bottom player in the
+player-strip UI, which is correct, but the actual Chessground board orientation does not always
+flip to the same side.
+
+Current code in `src/main.ts` already attempts to derive the importing user's color on `loadGame()`
+and calls `setOrientation(userColor)`, so the current behavior suggests the orientation update is
+not fully propagating to the live board state.
+
+Impact:
+- the board and surrounding player UI can disagree about who is at the bottom
+- analysis review becomes confusing when the imported user's perspective is expected but not shown
 
 ---
 
@@ -152,6 +180,10 @@ and only return when the current path is back on the actual played game line.
 
 Impact:
 - board arrows can communicate the wrong thing while exploring side lines
+
+Current code path:
+- `src/engine/ctrl.ts` still derives the played arrow from `ctrl.node.children[0]`, which assumes
+  the current node is still on the played line
 
 ---
 
