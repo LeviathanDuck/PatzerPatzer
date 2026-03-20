@@ -250,6 +250,10 @@ function parseEngineLine(line: string): void {
     }
 
     if (pvIndex === 1) {
+      // Path guard: discard info lines for a position we've already navigated away from.
+      // Only the threat search is exempt — it always targets the current node.
+      // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
+      if (!evalIsThreat && evalNodePath !== _getCtrl().path) return;
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== undefined) {
         // Normalize to white's perspective — odd plies are black to move, so negate.
@@ -266,6 +270,7 @@ function parseEngineLine(line: string): void {
     } else if (!evalIsThreat && score !== undefined) {
       // Secondary PV line (MultiPV 2, 3, …).
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts multiPv handling.
+      if (evalNodePath !== _getCtrl().path) return; // stale path guard
       const s = evalNodePly % 2 === 1 ? -score : score;
       const idx = pvIndex - 1;
       if (!pendingLines[idx]) pendingLines[idx] = {};
@@ -298,6 +303,15 @@ function parseEngineLine(line: string): void {
       syncArrow();
       _redraw();
     } else {
+      // Path guard: if this bestmove is for an old position, don't update currentEval
+      // or trigger UI redraws — but still advance a pending eval for the current position.
+      // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
+      if (!_isBatchActive() && evalNodePath !== _getCtrl().path) {
+        pendingLines = [];
+        if (pendingEval) evalCurrentPosition();
+        else if (threatMode) evalThreatPosition();
+        return;
+      }
       currentEval.best = parts[1];
       const stored: PositionEval = { ...currentEval };
       pendingLines = [];
