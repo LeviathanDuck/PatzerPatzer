@@ -1,0 +1,19 @@
+# Required for Stockfish WASM multi-threading (SharedArrayBuffer).
+# Without these headers the engine will not start.
+<IfModule mod_headers.c>
+    Header set Cross-Origin-Opener-Policy "same-origin"
+    Header set Cross-Origin-Embedder-Policy "require-corp"
+</IfModule>
+
+# Serve WASM with the correct MIME type
+<IfModule mod_mime.c>
+    AddType application/wasm .wasm
+</IfModule>
+
+# SPA fallback — serve index.html for any path that doesn't map to a file
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.html [L]
+</IfModule>
