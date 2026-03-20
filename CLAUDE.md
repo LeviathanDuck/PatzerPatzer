@@ -14,9 +14,11 @@ Core goals:
 
 Reference future-facing product ideas in:
 - `docs/FUTURE_FUNCTIONALITY.md`
+- `docs/WISHLIST.md`
 
-Use that file for long-range direction only. Do not treat it as a substitute for the current
-codebase, current architecture docs, or active near-term priorities.
+Use those files as reference context only. Do not treat them as a substitute for the current
+codebase, current architecture docs, or active near-term priorities. In particular, wishlist items
+are not automatic next steps and must be checked for safety and ordering before implementation.
 
 This is a **multi-tool platform**:
 - Game Analysis

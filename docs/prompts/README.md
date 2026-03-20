@@ -22,3 +22,4 @@ Formatting convention for prompt-generation workflows:
 - when Codex is asked to return a final prompt for Claude Code, return only the prompt content
 - wrap the entire prompt in a single fenced Markdown code block unless the user explicitly asks for plain text instead
 - do not add commentary before or after the code block
+- prompt-generation templates should also ask Claude Code to include a short manual test checklist with concrete actions and expected results for the implemented change

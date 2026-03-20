@@ -411,6 +411,12 @@ export function evalCurrentPosition(): void {
   syncArrow();
 
   if (engineSearchActive) {
+    // Stop the old search immediately so the new position starts evaluating sooner.
+    // The stale bestmove that arrives after stop is discarded by the path guard in
+    // parseEngineLine (evalNodePath !== _getCtrl().path), which then calls
+    // evalCurrentPosition() via pendingEval.
+    // Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts stop-before-go on navigation.
+    protocol.stop();
     pendingEval = true;
     _redraw();
     return;

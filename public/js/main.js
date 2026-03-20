@@ -1391,6 +1391,7 @@ function evalCurrentPosition() {
   arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   syncArrow();
   if (engineSearchActive) {
+    protocol.stop();
     pendingEval = true;
     _redraw();
     return;
