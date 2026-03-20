@@ -115,11 +115,28 @@ Why now:
 - this is the right bridge between game review and later puzzle tooling
 - it keeps the project centered on strengthening the analysis board before expanding puzzle scope
 
+### 11. Formalize per-move review annotations and add book-move support
+
+Current state:
+- the app already computes win-chance-based `inaccuracy` / `mistake` / `blunder` style labels
+- those labels are still derived directly from eval cache data rather than a dedicated persisted review-annotation layer
+- there is no current book-move source or opening-explorer-backed move tagging during review
+
+Why now:
+- Lichess-style computer analysis is not just raw engine numbers; it turns analysis into move-by-move review language
+- Patzer Pro already has enough review math to support a proper annotation layer, but not yet enough structure to keep extending it safely
+- book-move tagging is useful, but should be added only behind a small cached provider boundary rather than mixed directly into `src/main.ts` or the raw batch engine flow
+
+Implementation shape:
+- first persist explicit per-move review annotations alongside stored analysis
+- make move-list and summary UI read those annotations instead of recomputing ad hoc view labels
+- then add cached opening/book lookup by FEN so opening moves can be marked as book until the played line leaves known theory
+
 ---
 
 ## Priority 4 — Tighten board-review behavior details
 
-### 11. Improve graph, arrows, and move-list review behavior
+### 12. Improve graph, arrows, and move-list review behavior
 
 Current state:
 - several analysis-board behaviors still need tightening for review quality:
@@ -132,7 +149,7 @@ Why now:
 - these are high-value improvements once engine correctness is reliable
 - they improve the actual quality of game review without jumping ahead to full puzzle mode
 
-### 12. Implement the honest minimum route surface
+### 13. Implement the honest minimum route surface
 
 Current state:
 - `analysis-game` and `puzzles` are still route-level placeholders
@@ -141,7 +158,7 @@ Why now:
 - route honesty matters once the core analysis path is reliable
 - the app should not advertise route-level workflows it cannot yet complete
 
-### 13. Make small UI improvements that support review clarity
+### 14. Make small UI improvements that support review clarity
 
 Scope examples:
 - game list readability

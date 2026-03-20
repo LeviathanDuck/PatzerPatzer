@@ -252,8 +252,11 @@ function parseEngineLine(line: string): void {
     if (pvIndex === 1) {
       // Path guard: discard info lines for a position we've already navigated away from.
       // Only the threat search is exempt — it always targets the current node.
+      // During batch review the engine works through the mainline sequentially; evalNodePath
+      // will rarely match the user's current navigation path, so skip the guard entirely
+      // while a batch is active — batch items are identified by evalNodePath, not user path.
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
-      if (!evalIsThreat && evalNodePath !== _getCtrl().path) return;
+      if (!evalIsThreat && !_isBatchActive() && evalNodePath !== _getCtrl().path) return;
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== undefined) {
         // Normalize to white's perspective — odd plies are black to move, so negate.
@@ -407,8 +410,17 @@ export function evalCurrentPosition(): void {
   }
   currentEval  = cached ? { ...cached } : {};
   pendingLines = [];
-  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
+  // Clear old arrows immediately, THEN arm the suppress window.
+  // Order matters: syncArrow() resets arrowSuppressUntil = 0, so setting the
+  // suppress window before syncArrow() would be immediately undone.
+  // With the window correctly set after syncArrow(), syncArrowDebounced() on the
+  // first info line from the new search schedules exactly one deferred update at
+  // arrowSuppressUntil (≈500ms). Subsequent info lines during the suppress window
+  // are no-ops (timer already queued), so rapid shallow-depth info bursts cannot
+  // continuously reset the debounce timer and block arrow updates.
+  // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts ARROW_SETTLE_MS intent.
   syncArrow();
+  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
 
   if (engineSearchActive) {
     // Stop the old search immediately so the new position starts evaluating sooner.
