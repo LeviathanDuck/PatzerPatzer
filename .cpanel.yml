@@ -1,4 +1,10 @@
----
 deployment:
   tasks:
-    - /bin/bash -c 'DEPLOYPATH=/home1/leftcoc0/public_html/patzerpro && [ "$DEPLOYPATH" = "/home1/leftcoc0/public_html/patzerpro" ] || { echo "ABORT: deploy path mismatch"; exit 1; } && [ -d "$PWD/public" ] || { echo "ABORT: source directory public/ not found in $PWD"; exit 1; } && mkdir -p "$DEPLOYPATH" && rsync -a --delete --exclude=".git" "$PWD/public/" "$DEPLOYPATH/"'
+    - >-
+      /bin/bash -c 'set -e;
+      DEPLOYPATH="/home1/leftcoc0/public_html/patzerpro";
+      SOURCEPATH="$PWD/public";
+      [ "$DEPLOYPATH" = "/home1/leftcoc0/public_html/patzerpro" ] || { echo "ABORT: deploy path mismatch"; exit 1; };
+      [ -d "$SOURCEPATH" ] || { echo "ABORT: source directory public/ not found in $PWD"; pwd; ls -la; exit 1; };
+      /bin/mkdir -p "$DEPLOYPATH";
+      /usr/bin/rsync -a --delete --exclude=".git" "$SOURCEPATH/" "$DEPLOYPATH/";'
