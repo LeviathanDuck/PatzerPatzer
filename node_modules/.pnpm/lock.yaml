@@ -11,6 +11,9 @@ importers:
       '@lichess-org/chessground':
         specifier: ^10.1.0
         version: 10.1.0
+      '@lichess-org/stockfish-web':
+        specifier: ^0.2.3
+        version: 0.2.3
       chessops:
         specifier: ^0.15.0
         version: 0.15.0
@@ -195,6 +198,9 @@ packages:
 
   '@lichess-org/chessground@10.1.0':
     resolution: {integrity: sha512-IbchkijrSvHs03cnSwT+U4oLkRGbpgsKjXyr1BsMA+eeE5u07w/N7kMj/b7XlJ8j10E3kj40GLSzfEoLQeZ+1w==}
+
+  '@lichess-org/stockfish-web@0.2.3':
+    resolution: {integrity: sha512-tGCmBVklEQqJwN7pA6peGzgTw9F7Dk62Ajs53byL1EgGU75eqwzv1ZDecY4t7HAsxG5KlcVuEXWXwEDXkNR73w==}
 
   '@parcel/watcher-android-arm64@2.5.6':
     resolution: {integrity: sha512-YQxSS34tPF/6ZG7r/Ih9xy+kP/WwediEUsqmtf0cuCV5TPPKw/PQHRhueUo6JdeFJaqV3pyjm0GdYjZotbRt/A==}
@@ -427,6 +433,8 @@ snapshots:
     optional: true
 
   '@lichess-org/chessground@10.1.0': {}
+
+  '@lichess-org/stockfish-web@0.2.3': {}
 
   '@parcel/watcher-android-arm64@2.5.6':
     optional: true
