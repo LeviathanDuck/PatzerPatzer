@@ -47,6 +47,11 @@ should still be grounded in the current codebase plus:
 - `docs/KNOWN_ISSUES.md`
 - `docs/ARCHITECTURE.md`
 
+Use `docs/WISHLIST.md` as a reference for optional quality-of-life and UI ideas the user may want
+to revisit. Do not treat wishlist items as approved or sequenced work. Wishlist items must be
+checked against current architecture, current known issues, and active priorities before they are
+recommended or implemented.
+
 ## Mandatory workflow for non-trivial implementation tasks
 
 For every non-trivial task, always do this in order:
@@ -288,6 +293,10 @@ When updating docs:
 - `docs/FUTURE_FUNCTIONALITY.md`
   - future product ideas and longer-range intended capabilities
   - not the active sprint plan or current implementation truth
+
+- `docs/WISHLIST.md`
+  - optional quality-of-life ideas and UI wishes
+  - reference only, not the active roadmap
 
 - `docs/archive/`
   - completed plans and historical references only

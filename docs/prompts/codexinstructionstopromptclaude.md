@@ -27,6 +27,7 @@ The prompt you generate must instruct Claude Code to:
 - provide a short diagnosis before coding
 - make the change unless blocked by a real ambiguity or missing dependency
 - validate with build plus the most relevant task-specific checks
+- provide a short manual test checklist with concrete user actions and expected results
 - report remaining risks, limitations, or unvalidated areas clearly
 
 The final prompt must be concise, direct, and action-oriented.
@@ -45,7 +46,14 @@ The final prompt should tell Claude Code to use this output shape:
 - why that step is safely scoped
 - implementation
 - validation
+- manual test checklist
 - remaining risks
+
+For the manual test checklist, the final prompt should tell Claude Code to:
+- list concrete actions a human can perform in the app
+- state the expected result for each action
+- keep the checklist tightly scoped to the implemented change
+- include edge-case checks only when they are directly relevant
 
 Output requirements:
 - output only the final Claude Code prompt
@@ -54,4 +62,3 @@ Output requirements:
 - treat the user's task description as intent, not as guaranteed implementation truth
 
 My rough task description follows:
-[PASTE TASK HERE]
