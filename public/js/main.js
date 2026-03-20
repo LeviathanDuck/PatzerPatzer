@@ -1239,7 +1239,7 @@ function parseEngineLine(line) {
       }
     }
     if (pvIndex === 1) {
-      if (!evalIsThreat && evalNodePath !== _getCtrl().path) return;
+      if (!evalIsThreat && !_isBatchActive() && evalNodePath !== _getCtrl().path) return;
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== void 0) {
         const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
@@ -1388,8 +1388,8 @@ function evalCurrentPosition() {
   }
   currentEval = cached ? { ...cached } : {};
   pendingLines = [];
-  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   syncArrow();
+  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   if (engineSearchActive) {
     protocol.stop();
     pendingEval = true;

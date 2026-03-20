@@ -153,6 +153,26 @@ Impact:
 
 ---
 
+## [HIGH] Underboard eval graph can remain blank during analysis-page Review/Re-analyze
+
+The analysis-page `Review` / `Re-analyze` control is intended to run batch review and progressively
+populate the underboard eval graph from review data. Currently, after clicking `Review` beneath the
+board, the eval graph can remain blank with no plotted data instead of filling in as review
+progresses or after review completes.
+
+Impact:
+- a core analysis/review workflow is not trustworthy
+- users do not get expected visual feedback while batch review is running
+- completed review can still appear unevaluated from the graph display alone
+
+Current code paths:
+- `src/analyse/pgnExport.ts` triggers the analysis-page `Review` / `Re-analyze` action
+- `src/engine/batch.ts` is responsible for batch review progress and eval-cache population
+- `src/analyse/evalView.ts` renders the underboard eval graph from cached review data
+- `src/main.ts` wires the underboard graph into the analysis page
+
+---
+
 ## [MEDIUM] Puzzle route is still a placeholder
 
 Puzzle candidate extraction and puzzle saving both exist, but `#/puzzles` still renders only a
