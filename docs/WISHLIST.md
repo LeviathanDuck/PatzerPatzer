@@ -1,10 +1,24 @@
-# Patzer Pro — Wish list 
+# Patzer Pro — Wishlist
 
-This list is is a set of features or ui changes I would like to do for quality of life. In this wish list I am not sure if these implementations will break our future plans, or create problems. So this list is should be treated like a Wishlist. Are these tasks safe to implement now? Dont treat them as must follow next steps. This is my place to keep track of them, and hopefully we can integrate them at some point. 
+This document is a reference list for quality-of-life ideas, UI improvements, and smaller feature
+thoughts that may be worth revisiting later.
 
-## Wish List Items. 
-- [ ] Here is an item
+Treat this as a wishlist only.
+
+Important:
+
+- do not treat wishlist items as active next steps
+- do not assume wishlist items are safe to implement immediately
+- always check wishlist items against the current codebase, `docs/ARCHITECTURE.md`,
+  `docs/NEXT_STEPS.md`, and `docs/KNOWN_ISSUES.md` before planning or implementing them
+
+This is a holding area for ideas that may eventually be integrated, but are not currently part of
+the committed near-term roadmap.
+
+## Wishlist items
+- [ ] The preview chess boards on engine mouse hover should be roughly twice in size unless it conflicts with other things
+- [ ] Changes to how the eval graph is displayed and formatted
 - [ ] 
 
 
-## Completed Items and their completion date
+## Completed items and completion date
