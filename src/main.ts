@@ -61,7 +61,7 @@ import {
   type ImportedGame, restoreGameIdCounter,
 } from './import/types';
 import {
-  ANALYSIS_VERSION, clearAnalysisFromIdb, loadAnalysisFromIdb, loadGamesFromIdb,
+  ANALYSIS_VERSION, clearAllIdbData, clearAnalysisFromIdb, loadAnalysisFromIdb, loadGamesFromIdb,
   loadPuzzlesFromIdb, saveGamesToIdb, savedPuzzles, savePuzzle,
   setSavedPuzzles, type StoredNodeEntry,
 } from './idb/index';
@@ -72,6 +72,8 @@ import { pgnToTree } from './tree/pgn';
 console.log('Patzer Pro');
 
 const patch = init([classModule, attributesModule, eventListenersModule]);
+const PUBLIC_SOURCE_URL = 'https://github.com/LeviathanDuck/PatzerPatzer';
+const PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
 
 // Callbacks injected into import adapters so they can mutate app state
 // without creating a circular import on main.ts.
@@ -344,19 +346,7 @@ function routeContent(route: Route): VNode {
  */
 async function resetAllData(): Promise<void> {
   if (!confirm('Clear all local Patzer Pro data? This removes imported games, saved analysis, puzzles, and local board/settings preferences from this browser.')) return;
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library'], 'readwrite');
-    tx.objectStore('game-library').clear();
-    tx.objectStore('puzzle-library').clear();
-    tx.objectStore('analysis-library').clear();
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror    = () => reject(tx.error);
-    });
-  } catch (e) {
-    console.warn('[reset] IDB clear failed', e);
-  }
+  await clearAllIdbData();
   clearBoardLocalData();
   window.location.reload();
 }
@@ -378,6 +368,25 @@ function view(route: Route): VNode {
       redraw,
     } satisfies HeaderDeps),
     h('main', [routeContent(route)]),
+    h('footer.app-legal', [
+      h('span', 'Patzer Pro source is available under AGPL-3.0-or-later.'),
+      h('span', 'No warranty.'),
+      h('a', {
+        attrs: {
+          href: PUBLIC_SOURCE_URL,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        },
+      }, 'Source Code'),
+      h('span.app-legal__sep', '•'),
+      h('a', {
+        attrs: {
+          href: PUBLIC_LICENSE_URL,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        },
+      }, 'License'),
+    ]),
     renderPvBoard(),
   ]);
 }

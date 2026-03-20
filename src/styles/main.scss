@@ -25,6 +25,39 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+#shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+}
+
+.app-legal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px 14px;
+  border-top: 1px solid #222;
+  background: #111;
+  color: #8b8b8b;
+  font-size: 0.78rem;
+
+  a {
+    color: #9fc7ff;
+    text-decoration: none;
+
+    &:hover { text-decoration: underline; }
+  }
+
+  &__sep {
+    color: #555;
+  }
+}
+
 // ─── Header ───────────────────────────────────────────────────────────────────
 // Unified search bar as the import control,
 // with a floating dropdown panel containing filters, PGN paste, and game list.
@@ -425,6 +458,7 @@ body {
 // Adapted from Lichess header action menu patterns.
 .global-menu {
   position: relative;
+  margin-left: auto; // push to far right of header flex row
 
   &__trigger {
     padding: 4px 8px;
