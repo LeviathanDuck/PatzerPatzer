@@ -5,6 +5,6 @@ deployment:
       DEPLOYPATH="/home1/leftcoc0/public_html/patzerpro";
       SOURCEPATH="$PWD/public";
       [ "$DEPLOYPATH" = "/home1/leftcoc0/public_html/patzerpro" ] || { echo "ABORT: deploy path mismatch"; exit 1; };
-      [ -d "$SOURCEPATH" ] || { echo "ABORT: source directory public/ not found in $PWD"; pwd; ls -la; exit 1; };
+      [ -d "$SOURCEPATH" ] || { echo "ABORT: source directory not found"; exit 1; };
       /bin/mkdir -p "$DEPLOYPATH";
       /usr/bin/rsync -a --delete --exclude=".git" "$SOURCEPATH/" "$DEPLOYPATH/";'
