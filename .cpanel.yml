@@ -1,4 +1,4 @@
 ---
 deployment:
   tasks:
-    - /bin/bash -c 'pwd > /home1/leftcoc0/public_html/patzerpro/pwd.txt && ls -la > /home1/leftcoc0/public_html/patzerpro/repo-root-listing.txt && echo "debug ok"'
+    - /bin/bash -c 'DEPLOYPATH=/home1/leftcoc0/public_html/patzerpro && [ "$DEPLOYPATH" = "/home1/leftcoc0/public_html/patzerpro" ] || { echo "ABORT: deploy path mismatch"; exit 1; } && [ -d "/home1/leftcoc0/repositories/patzerpatzer/public" ] || { echo "ABORT: source directory public/ not found"; exit 1; } && [ -d "$DEPLOYPATH" ] || { echo "ABORT: destination directory does not exist"; exit 1; } && rsync -a --delete --exclude=".git" /home1/leftcoc0/repositories/patzerpatzer/public/ "$DEPLOYPATH/"'
