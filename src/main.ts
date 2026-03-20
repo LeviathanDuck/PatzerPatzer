@@ -105,6 +105,13 @@ function getActivePgn(): string {
 
 let ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
 
+// Incremented on every loadGame() call. loadAndRestoreAnalysis() captures this value at
+// call time and checks it after the IDB await — if changed, the game has switched and the
+// restore result is discarded as stale.
+// Mirrors the implicit game-scoping in lichess-org/lila: ui/analyse/src/idbTree.ts, where
+// the IDB class is owned by the ctrl instance and cannot outlive it.
+let restoreGeneration = 0;
+
 /**
  * Load a game into the analysis board by PGN.
  * Resets analysis state and re-evaluates if engine is on.
@@ -126,8 +133,11 @@ function loadGame(pgn: string | null): void {
     }
   }
   syncBoardAndArrow();
-  // Restore persisted analysis from IndexedDB; falls back to live eval if nothing stored
-  if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId);
+  // Restore persisted analysis from IndexedDB; falls back to live eval if nothing stored.
+  // Increment restoreGeneration first so any in-flight restore from the previous game
+  // sees a stale generation value and discards its result.
+  restoreGeneration++;
+  if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId, restoreGeneration);
   else evalCurrentPosition();
   redraw();
 }
@@ -159,8 +169,10 @@ function buildAnalysisNodes(): Record<string, StoredNodeEntry> {
  * Load stored analysis for a game into evalCache and restore completion state.
  * Mirrors the IndexedDB restore pattern in lichess-org/lila: ui/analyse/src/idbTree.ts
  */
-async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
+async function loadAndRestoreAnalysis(gameId: string, generation: number): Promise<void> {
   const stored = await loadAnalysisFromIdb(gameId);
+  // Stale: game switched while IDB was loading — discard to prevent cross-game contamination.
+  if (generation !== restoreGeneration || selectedGameId !== gameId) return;
   if (!stored) return;
   // Stale data: version or depth changed — discard
   if (stored.analysisVersion !== ANALYSIS_VERSION) return;
@@ -206,6 +218,12 @@ async function loadAndRestoreAnalysis(gameId: string): Promise<void> {
 // Mirrors the userJump pattern in lichess-org/lila: ui/analyse/src/ctrl.ts
 
 function navigate(path: string): void {
+  // Guard: no-op when already at this path.
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts jump() `pathChanged` guard.
+  // Prevents re-entering evalCurrentPosition() — and stopping an active engine search —
+  // when the caller passes the current path (e.g. clicking the active move in the
+  // move list, clicking the current position in the eval graph).
+  if (path === ctrl.path) return;
   ctrl.setPath(path);
   syncBoard();
   evalCurrentPosition(); // updates currentEval, arrow, and triggers threat eval if on

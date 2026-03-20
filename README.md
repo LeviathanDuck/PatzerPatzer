@@ -63,6 +63,27 @@ Then open:
 http://localhost:3001
 ```
 
+## Deployment
+
+Current Bluehost/cPanel deployment is prebuilt-static deployment, not server-side build deployment.
+
+Why:
+- the cPanel Git deployment shell on this host does not provide `node` or `npm`
+- `.cpanel.yml` therefore deploys the checked-in `public/` artifacts directly
+
+Deployment workflow:
+
+1. Run `npm install` locally if needed.
+2. Run `npm run build` locally.
+3. Commit and push the updated `public/` artifacts together with any source changes.
+4. In cPanel Git Version Control, click `Update from Remote`.
+5. Then click `Deploy HEAD Commit`.
+
+Deployment notes:
+- `.cpanel.yml` must remain checked in at the repo root
+- the deploy task syncs `public/` to `/home1/leftcoc0/public_html/patzerpro`
+- if `public/` is not rebuilt and committed before pushing, cPanel will correctly deploy an older build
+
 ## License and source availability
 
 Patzer Pro is distributed under the GNU Affero General Public License v3.0 or later.

@@ -144,6 +144,13 @@ Current state:
   - move-list eval numbers
   - played-move arrow behavior in side lines
   - clear variations / reset flows
+- variation management is still missing the user-facing controls needed to discard analysis-board side lines without destroying full-game review data
+
+Exact implementation note:
+- add a move-list action to clear user-created side variations and reset the tree view back to the imported/mainline move order without wiping engine evaluation or completed game-review data for the mainline
+- add per-variation remove affordances in the move list, such as a small `x` beside user-created side lines, so variations can be removed one at a time
+- keep this scoped to move-tree mutation and move-list rendering ownership in `src/tree/ops.ts` and `src/analyse/moveList.ts`, with care not to couple variation cleanup to `evalCache` or full-review persistence unless that dependency is intentionally designed
+- because board move input currently creates new variation nodes in `src/board/index.ts`, this work should explicitly define which variations are safe to remove and how the current path is repaired after deletion
 
 Why now:
 - these are high-value improvements once engine correctness is reliable
