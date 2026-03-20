@@ -8775,6 +8775,7 @@ function getActivePgn() {
   return selectedGamePgn ?? SAMPLE_PGN;
 }
 var ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+var restoreGeneration = 0;
 function loadGame(pgn) {
   selectedGamePgn = pgn;
   ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
@@ -8790,7 +8791,8 @@ function loadGame(pgn) {
     }
   }
   syncBoardAndArrow();
-  if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId);
+  restoreGeneration++;
+  if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId, restoreGeneration);
   else evalCurrentPosition();
   redraw();
 }
@@ -8813,8 +8815,9 @@ function buildAnalysisNodes() {
   }
   return nodes;
 }
-async function loadAndRestoreAnalysis(gameId) {
+async function loadAndRestoreAnalysis(gameId, generation) {
   const stored = await loadAnalysisFromIdb(gameId);
+  if (generation !== restoreGeneration || selectedGameId !== gameId) return;
   if (!stored) return;
   if (stored.analysisVersion !== ANALYSIS_VERSION) return;
   if (stored.analysisDepth !== reviewDepth) return;
@@ -8846,6 +8849,7 @@ async function loadAndRestoreAnalysis(gameId) {
   redraw();
 }
 function navigate(path) {
+  if (path === ctrl.path) return;
   ctrl.setPath(path);
   syncBoard();
   evalCurrentPosition();
