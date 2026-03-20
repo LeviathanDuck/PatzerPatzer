@@ -1,7 +1,3 @@
-var __defProp = Object.defineProperty;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-
 // node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/htmldomapi.js
 function createElement(tagName2, options) {
   return document.createElement(tagName2, options);
@@ -698,12 +694,6 @@ function addNode(root, path, node) {
 // src/analyse/ctrl.ts
 var AnalyseCtrl = class {
   constructor(root) {
-    __publicField(this, "root");
-    // Current tree cursor — updated together as a unit (mirrors Lichess setPath)
-    __publicField(this, "path");
-    __publicField(this, "node");
-    __publicField(this, "nodeList");
-    __publicField(this, "mainline");
     this.root = root;
     this.path = "";
     this.nodeList = [root];
@@ -739,12 +729,6 @@ function sharedWasmMemory(lo, hi = 32767) {
   }
 }
 var StockfishProtocol = class {
-  constructor() {
-    __publicField(this, "module");
-    __publicField(this, "onLine");
-    /** Human-readable engine name received from the "id name" response. */
-    __publicField(this, "engineName");
-  }
   /**
    * Load Stockfish 18 (smallnet) from baseUrl and begin the UCI handshake.
    * baseUrl is the URL prefix where sf_18_smallnet.{js,wasm} and the NNUE
@@ -1042,6 +1026,7 @@ function parseEngineLine(line) {
       }
     }
     if (pvIndex === 1) {
+      if (!evalIsThreat && evalNodePath !== _getCtrl().path) return;
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== void 0) {
         const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
@@ -1060,6 +1045,7 @@ function parseEngineLine(line) {
         _redraw();
       }
     } else if (!evalIsThreat && score !== void 0) {
+      if (evalNodePath !== _getCtrl().path) return;
       const s = evalNodePly % 2 === 1 ? -score : score;
       const idx = pvIndex - 1;
       if (!pendingLines[idx]) pendingLines[idx] = {};
@@ -1096,6 +1082,12 @@ function parseEngineLine(line) {
       syncArrow();
       _redraw();
     } else {
+      if (!_isBatchActive() && evalNodePath !== _getCtrl().path) {
+        pendingLines = [];
+        if (pendingEval) evalCurrentPosition();
+        else if (threatMode) evalThreatPosition();
+        return;
+      }
       currentEval.best = parts[1];
       const stored = { ...currentEval };
       pendingLines = [];
