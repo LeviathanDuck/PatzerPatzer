@@ -2,6 +2,1839 @@ var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/htmldomapi.js
+function createElement(tagName2, options) {
+  return document.createElement(tagName2, options);
+}
+function createElementNS(namespaceURI, qualifiedName, options) {
+  return document.createElementNS(namespaceURI, qualifiedName, options);
+}
+function createDocumentFragment() {
+  return parseFragment(document.createDocumentFragment());
+}
+function createTextNode(text) {
+  return document.createTextNode(text);
+}
+function createComment(text) {
+  return document.createComment(text);
+}
+function insertBefore(parentNode2, newNode, referenceNode) {
+  if (isDocumentFragment(parentNode2)) {
+    let node = parentNode2;
+    while (node && isDocumentFragment(node)) {
+      const fragment2 = parseFragment(node);
+      node = fragment2.parent;
+    }
+    parentNode2 = node !== null && node !== void 0 ? node : parentNode2;
+  }
+  if (isDocumentFragment(newNode)) {
+    newNode = parseFragment(newNode, parentNode2);
+  }
+  if (referenceNode && isDocumentFragment(referenceNode)) {
+    referenceNode = parseFragment(referenceNode).firstChildNode;
+  }
+  parentNode2.insertBefore(newNode, referenceNode);
+}
+function removeChild(node, child) {
+  node.removeChild(child);
+}
+function appendChild(node, child) {
+  if (isDocumentFragment(child)) {
+    child = parseFragment(child, node);
+  }
+  node.appendChild(child);
+}
+function parentNode(node) {
+  if (isDocumentFragment(node)) {
+    while (node && isDocumentFragment(node)) {
+      const fragment2 = parseFragment(node);
+      node = fragment2.parent;
+    }
+    return node !== null && node !== void 0 ? node : null;
+  }
+  return node.parentNode;
+}
+function nextSibling(node) {
+  var _a;
+  if (isDocumentFragment(node)) {
+    const fragment2 = parseFragment(node);
+    const parent = parentNode(fragment2);
+    if (parent && fragment2.lastChildNode) {
+      const children = Array.from(parent.childNodes);
+      const index = children.indexOf(fragment2.lastChildNode);
+      return (_a = children[index + 1]) !== null && _a !== void 0 ? _a : null;
+    }
+    return null;
+  }
+  return node.nextSibling;
+}
+function tagName(elm) {
+  return elm.tagName;
+}
+function setTextContent(node, text) {
+  node.textContent = text;
+}
+function getTextContent(node) {
+  return node.textContent;
+}
+function isElement(node) {
+  return node.nodeType === 1;
+}
+function isText(node) {
+  return node.nodeType === 3;
+}
+function isComment(node) {
+  return node.nodeType === 8;
+}
+function isDocumentFragment(node) {
+  return node.nodeType === 11;
+}
+function parseFragment(fragmentNode, parentNode2) {
+  var _a, _b, _c;
+  const fragment2 = fragmentNode;
+  (_a = fragment2.parent) !== null && _a !== void 0 ? _a : fragment2.parent = parentNode2 !== null && parentNode2 !== void 0 ? parentNode2 : null;
+  (_b = fragment2.firstChildNode) !== null && _b !== void 0 ? _b : fragment2.firstChildNode = fragmentNode.firstChild;
+  (_c = fragment2.lastChildNode) !== null && _c !== void 0 ? _c : fragment2.lastChildNode = fragmentNode.lastChild;
+  return fragment2;
+}
+var htmlDomApi = {
+  createElement,
+  createElementNS,
+  createTextNode,
+  createDocumentFragment,
+  createComment,
+  insertBefore,
+  removeChild,
+  appendChild,
+  parentNode,
+  nextSibling,
+  tagName,
+  setTextContent,
+  getTextContent,
+  isElement,
+  isText,
+  isComment,
+  isDocumentFragment
+};
+
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/vnode.js
+function vnode(sel, data, children, text, elm) {
+  const key = data === void 0 ? void 0 : data.key;
+  return { sel, data, children, text, elm, key };
+}
+
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/is.js
+var array = Array.isArray;
+function primitive(s) {
+  return typeof s === "string" || typeof s === "number" || s instanceof String || s instanceof Number;
+}
+
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/init.js
+var emptyNode = vnode("", {}, [], void 0, void 0);
+function sameVnode(vnode1, vnode22) {
+  var _a, _b;
+  const isSameKey = vnode1.key === vnode22.key;
+  const isSameIs = ((_a = vnode1.data) === null || _a === void 0 ? void 0 : _a.is) === ((_b = vnode22.data) === null || _b === void 0 ? void 0 : _b.is);
+  const isSameSel = vnode1.sel === vnode22.sel;
+  const isSameTextOrFragment = !vnode1.sel && vnode1.sel === vnode22.sel ? typeof vnode1.text === typeof vnode22.text : true;
+  return isSameSel && isSameKey && isSameIs && isSameTextOrFragment;
+}
+function documentFragmentIsNotSupported() {
+  throw new Error("The document fragment is not supported on this platform.");
+}
+function isElement2(api, vnode3) {
+  return api.isElement(vnode3);
+}
+function isDocumentFragment2(api, vnode3) {
+  return api.isDocumentFragment(vnode3);
+}
+function createKeyToOldIdx(children, beginIdx, endIdx) {
+  var _a;
+  const map = {};
+  for (let i = beginIdx; i <= endIdx; ++i) {
+    const key = (_a = children[i]) === null || _a === void 0 ? void 0 : _a.key;
+    if (key !== void 0) {
+      map[key] = i;
+    }
+  }
+  return map;
+}
+var hooks = [
+  "create",
+  "update",
+  "remove",
+  "destroy",
+  "pre",
+  "post"
+];
+function init(modules, domApi, options) {
+  const cbs = {
+    create: [],
+    update: [],
+    remove: [],
+    destroy: [],
+    pre: [],
+    post: []
+  };
+  const api = domApi !== void 0 ? domApi : htmlDomApi;
+  for (const hook of hooks) {
+    for (const module of modules) {
+      const currentHook = module[hook];
+      if (currentHook !== void 0) {
+        cbs[hook].push(currentHook);
+      }
+    }
+  }
+  function emptyNodeAt(elm) {
+    const id = elm.id ? "#" + elm.id : "";
+    const classes = elm.getAttribute("class");
+    const c = classes ? "." + classes.split(" ").join(".") : "";
+    return vnode(api.tagName(elm).toLowerCase() + id + c, {}, [], void 0, elm);
+  }
+  function emptyDocumentFragmentAt(frag) {
+    return vnode(void 0, {}, [], void 0, frag);
+  }
+  function createRmCb(childElm, listeners) {
+    return function rmCb() {
+      if (--listeners === 0) {
+        const parent = api.parentNode(childElm);
+        if (parent !== null) {
+          api.removeChild(parent, childElm);
+        }
+      }
+    };
+  }
+  function createElm(vnode3, insertedVnodeQueue) {
+    var _a, _b, _c, _d, _e;
+    let i;
+    const data = vnode3.data;
+    const hook = data === null || data === void 0 ? void 0 : data.hook;
+    (_a = hook === null || hook === void 0 ? void 0 : hook.init) === null || _a === void 0 ? void 0 : _a.call(hook, vnode3);
+    const children = vnode3.children;
+    const sel = vnode3.sel;
+    if (sel === "!") {
+      (_b = vnode3.text) !== null && _b !== void 0 ? _b : vnode3.text = "";
+      vnode3.elm = api.createComment(vnode3.text);
+    } else if (sel === "") {
+      vnode3.elm = api.createTextNode(vnode3.text);
+    } else if (sel !== void 0) {
+      const hashIdx = sel.indexOf("#");
+      const dotIdx = sel.indexOf(".", hashIdx);
+      const hash2 = hashIdx > 0 ? hashIdx : sel.length;
+      const dot = dotIdx > 0 ? dotIdx : sel.length;
+      const tag = hashIdx !== -1 || dotIdx !== -1 ? sel.slice(0, Math.min(hash2, dot)) : sel;
+      const ns = data === null || data === void 0 ? void 0 : data.ns;
+      const elm = ns === void 0 ? api.createElement(tag, data) : api.createElementNS(ns, tag, data);
+      vnode3.elm = elm;
+      if (hash2 < dot)
+        elm.setAttribute("id", sel.slice(hash2 + 1, dot));
+      if (dotIdx > 0)
+        elm.setAttribute("class", sel.slice(dot + 1).replace(/\./g, " "));
+      for (i = 0; i < cbs.create.length; ++i)
+        cbs.create[i](emptyNode, vnode3);
+      if (primitive(vnode3.text) && (!array(children) || children.length === 0)) {
+        api.appendChild(elm, api.createTextNode(vnode3.text));
+      }
+      if (array(children)) {
+        for (i = 0; i < children.length; ++i) {
+          const ch = children[i];
+          if (ch != null) {
+            api.appendChild(elm, createElm(ch, insertedVnodeQueue));
+          }
+        }
+      }
+      if (hook !== void 0) {
+        (_c = hook.create) === null || _c === void 0 ? void 0 : _c.call(hook, emptyNode, vnode3);
+        if (hook.insert !== void 0) {
+          insertedVnodeQueue.push(vnode3);
+        }
+      }
+    } else if (((_d = options === null || options === void 0 ? void 0 : options.experimental) === null || _d === void 0 ? void 0 : _d.fragments) && vnode3.children) {
+      vnode3.elm = ((_e = api.createDocumentFragment) !== null && _e !== void 0 ? _e : documentFragmentIsNotSupported)();
+      for (i = 0; i < cbs.create.length; ++i)
+        cbs.create[i](emptyNode, vnode3);
+      for (i = 0; i < vnode3.children.length; ++i) {
+        const ch = vnode3.children[i];
+        if (ch != null) {
+          api.appendChild(vnode3.elm, createElm(ch, insertedVnodeQueue));
+        }
+      }
+    } else {
+      vnode3.elm = api.createTextNode(vnode3.text);
+    }
+    return vnode3.elm;
+  }
+  function addVnodes(parentElm, before, vnodes, startIdx, endIdx, insertedVnodeQueue) {
+    for (; startIdx <= endIdx; ++startIdx) {
+      const ch = vnodes[startIdx];
+      if (ch != null) {
+        api.insertBefore(parentElm, createElm(ch, insertedVnodeQueue), before);
+      }
+    }
+  }
+  function invokeDestroyHook(vnode3) {
+    var _a, _b;
+    const data = vnode3.data;
+    if (data !== void 0) {
+      (_b = (_a = data === null || data === void 0 ? void 0 : data.hook) === null || _a === void 0 ? void 0 : _a.destroy) === null || _b === void 0 ? void 0 : _b.call(_a, vnode3);
+      for (let i = 0; i < cbs.destroy.length; ++i)
+        cbs.destroy[i](vnode3);
+      if (vnode3.children !== void 0) {
+        for (let j = 0; j < vnode3.children.length; ++j) {
+          const child = vnode3.children[j];
+          if (child != null && typeof child !== "string") {
+            invokeDestroyHook(child);
+          }
+        }
+      }
+    }
+  }
+  function removeVnodes(parentElm, vnodes, startIdx, endIdx) {
+    var _a, _b;
+    for (; startIdx <= endIdx; ++startIdx) {
+      let listeners;
+      const ch = vnodes[startIdx];
+      if (ch != null) {
+        if (ch.sel !== void 0) {
+          invokeDestroyHook(ch);
+          listeners = cbs.remove.length + 1;
+          const rm = createRmCb(ch.elm, listeners);
+          for (let i = 0; i < cbs.remove.length; ++i)
+            cbs.remove[i](ch, rm);
+          const removeHook = (_b = (_a = ch === null || ch === void 0 ? void 0 : ch.data) === null || _a === void 0 ? void 0 : _a.hook) === null || _b === void 0 ? void 0 : _b.remove;
+          if (removeHook !== void 0) {
+            removeHook(ch, rm);
+          } else {
+            rm();
+          }
+        } else if (ch.children) {
+          invokeDestroyHook(ch);
+          removeVnodes(parentElm, ch.children, 0, ch.children.length - 1);
+        } else {
+          api.removeChild(parentElm, ch.elm);
+        }
+      }
+    }
+  }
+  function updateChildren(parentElm, oldCh, newCh, insertedVnodeQueue) {
+    let oldStartIdx = 0;
+    let newStartIdx = 0;
+    let oldEndIdx = oldCh.length - 1;
+    let oldStartVnode = oldCh[0];
+    let oldEndVnode = oldCh[oldEndIdx];
+    let newEndIdx = newCh.length - 1;
+    let newStartVnode = newCh[0];
+    let newEndVnode = newCh[newEndIdx];
+    let oldKeyToIdx;
+    let idxInOld;
+    let elmToMove;
+    let before;
+    while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
+      if (oldStartVnode == null) {
+        oldStartVnode = oldCh[++oldStartIdx];
+      } else if (oldEndVnode == null) {
+        oldEndVnode = oldCh[--oldEndIdx];
+      } else if (newStartVnode == null) {
+        newStartVnode = newCh[++newStartIdx];
+      } else if (newEndVnode == null) {
+        newEndVnode = newCh[--newEndIdx];
+      } else if (sameVnode(oldStartVnode, newStartVnode)) {
+        patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue);
+        oldStartVnode = oldCh[++oldStartIdx];
+        newStartVnode = newCh[++newStartIdx];
+      } else if (sameVnode(oldEndVnode, newEndVnode)) {
+        patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue);
+        oldEndVnode = oldCh[--oldEndIdx];
+        newEndVnode = newCh[--newEndIdx];
+      } else if (sameVnode(oldStartVnode, newEndVnode)) {
+        patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue);
+        api.insertBefore(parentElm, oldStartVnode.elm, api.nextSibling(oldEndVnode.elm));
+        oldStartVnode = oldCh[++oldStartIdx];
+        newEndVnode = newCh[--newEndIdx];
+      } else if (sameVnode(oldEndVnode, newStartVnode)) {
+        patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue);
+        api.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm);
+        oldEndVnode = oldCh[--oldEndIdx];
+        newStartVnode = newCh[++newStartIdx];
+      } else {
+        if (oldKeyToIdx === void 0) {
+          oldKeyToIdx = createKeyToOldIdx(oldCh, oldStartIdx, oldEndIdx);
+        }
+        idxInOld = oldKeyToIdx[newStartVnode.key];
+        if (idxInOld === void 0) {
+          api.insertBefore(parentElm, createElm(newStartVnode, insertedVnodeQueue), oldStartVnode.elm);
+          newStartVnode = newCh[++newStartIdx];
+        } else if (oldKeyToIdx[newEndVnode.key] === void 0) {
+          api.insertBefore(parentElm, createElm(newEndVnode, insertedVnodeQueue), api.nextSibling(oldEndVnode.elm));
+          newEndVnode = newCh[--newEndIdx];
+        } else {
+          elmToMove = oldCh[idxInOld];
+          if (elmToMove.sel !== newStartVnode.sel) {
+            api.insertBefore(parentElm, createElm(newStartVnode, insertedVnodeQueue), oldStartVnode.elm);
+          } else {
+            patchVnode(elmToMove, newStartVnode, insertedVnodeQueue);
+            oldCh[idxInOld] = void 0;
+            api.insertBefore(parentElm, elmToMove.elm, oldStartVnode.elm);
+          }
+          newStartVnode = newCh[++newStartIdx];
+        }
+      }
+    }
+    if (newStartIdx <= newEndIdx) {
+      before = newCh[newEndIdx + 1] == null ? null : newCh[newEndIdx + 1].elm;
+      addVnodes(parentElm, before, newCh, newStartIdx, newEndIdx, insertedVnodeQueue);
+    }
+    if (oldStartIdx <= oldEndIdx) {
+      removeVnodes(parentElm, oldCh, oldStartIdx, oldEndIdx);
+    }
+  }
+  function patchVnode(oldVnode, vnode3, insertedVnodeQueue) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const hook = (_a = vnode3.data) === null || _a === void 0 ? void 0 : _a.hook;
+    (_b = hook === null || hook === void 0 ? void 0 : hook.prepatch) === null || _b === void 0 ? void 0 : _b.call(hook, oldVnode, vnode3);
+    const elm = vnode3.elm = oldVnode.elm;
+    if (oldVnode === vnode3)
+      return;
+    if (vnode3.data !== void 0 || vnode3.text !== void 0 && vnode3.text !== oldVnode.text) {
+      (_c = vnode3.data) !== null && _c !== void 0 ? _c : vnode3.data = {};
+      (_d = oldVnode.data) !== null && _d !== void 0 ? _d : oldVnode.data = {};
+      for (let i = 0; i < cbs.update.length; ++i)
+        cbs.update[i](oldVnode, vnode3);
+      (_g = (_f = (_e = vnode3.data) === null || _e === void 0 ? void 0 : _e.hook) === null || _f === void 0 ? void 0 : _f.update) === null || _g === void 0 ? void 0 : _g.call(_f, oldVnode, vnode3);
+    }
+    const oldCh = oldVnode.children;
+    const ch = vnode3.children;
+    if (vnode3.text === void 0) {
+      if (oldCh !== void 0 && ch !== void 0) {
+        if (oldCh !== ch)
+          updateChildren(elm, oldCh, ch, insertedVnodeQueue);
+      } else if (ch !== void 0) {
+        if (oldVnode.text !== void 0)
+          api.setTextContent(elm, "");
+        addVnodes(elm, null, ch, 0, ch.length - 1, insertedVnodeQueue);
+      } else if (oldCh !== void 0) {
+        removeVnodes(elm, oldCh, 0, oldCh.length - 1);
+      } else if (oldVnode.text !== void 0) {
+        api.setTextContent(elm, "");
+      }
+    } else if (oldVnode.text !== vnode3.text) {
+      if (oldCh !== void 0) {
+        removeVnodes(elm, oldCh, 0, oldCh.length - 1);
+      }
+      api.setTextContent(elm, vnode3.text);
+    }
+    (_h = hook === null || hook === void 0 ? void 0 : hook.postpatch) === null || _h === void 0 ? void 0 : _h.call(hook, oldVnode, vnode3);
+  }
+  return function patch2(oldVnode, vnode3) {
+    let i, elm, parent;
+    const insertedVnodeQueue = [];
+    for (i = 0; i < cbs.pre.length; ++i)
+      cbs.pre[i]();
+    if (isElement2(api, oldVnode)) {
+      oldVnode = emptyNodeAt(oldVnode);
+    } else if (isDocumentFragment2(api, oldVnode)) {
+      oldVnode = emptyDocumentFragmentAt(oldVnode);
+    }
+    if (sameVnode(oldVnode, vnode3)) {
+      patchVnode(oldVnode, vnode3, insertedVnodeQueue);
+    } else {
+      elm = oldVnode.elm;
+      parent = api.parentNode(elm);
+      createElm(vnode3, insertedVnodeQueue);
+      if (parent !== null) {
+        api.insertBefore(parent, vnode3.elm, api.nextSibling(elm));
+        removeVnodes(parent, [oldVnode], 0, 0);
+      }
+    }
+    for (i = 0; i < insertedVnodeQueue.length; ++i) {
+      insertedVnodeQueue[i].data.hook.insert(insertedVnodeQueue[i]);
+    }
+    for (i = 0; i < cbs.post.length; ++i)
+      cbs.post[i]();
+    return vnode3;
+  };
+}
+
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/h.js
+function addNS(data, children, sel) {
+  data.ns = "http://www.w3.org/2000/svg";
+  if (sel !== "foreignObject" && children !== void 0) {
+    for (let i = 0; i < children.length; ++i) {
+      const child = children[i];
+      if (typeof child === "string")
+        continue;
+      const childData = child.data;
+      if (childData !== void 0) {
+        addNS(childData, child.children, child.sel);
+      }
+    }
+  }
+}
+function h(sel, b, c) {
+  let data = {};
+  let children;
+  let text;
+  let i;
+  if (c !== void 0) {
+    if (b !== null) {
+      data = b;
+    }
+    if (array(c)) {
+      children = c;
+    } else if (primitive(c)) {
+      text = c.toString();
+    } else if (c && c.sel) {
+      children = [c];
+    }
+  } else if (b !== void 0 && b !== null) {
+    if (array(b)) {
+      children = b;
+    } else if (primitive(b)) {
+      text = b.toString();
+    } else if (b && b.sel) {
+      children = [b];
+    } else {
+      data = b;
+    }
+  }
+  if (children !== void 0) {
+    for (i = 0; i < children.length; ++i) {
+      if (primitive(children[i]))
+        children[i] = vnode(void 0, void 0, void 0, children[i], void 0);
+    }
+  }
+  if (sel.startsWith("svg") && (sel.length === 3 || sel[3] === "." || sel[3] === "#")) {
+    addNS(data, children, sel);
+  }
+  return vnode(sel, data, children, text, void 0);
+}
+
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/modules/attributes.js
+var xlinkNS = "http://www.w3.org/1999/xlink";
+var xmlnsNS = "http://www.w3.org/2000/xmlns/";
+var xmlNS = "http://www.w3.org/XML/1998/namespace";
+var colonChar = 58;
+var xChar = 120;
+var mChar = 109;
+function updateAttrs(oldVnode, vnode3) {
+  let key;
+  const elm = vnode3.elm;
+  let oldAttrs = oldVnode.data.attrs;
+  let attrs = vnode3.data.attrs;
+  if (!oldAttrs && !attrs)
+    return;
+  if (oldAttrs === attrs)
+    return;
+  oldAttrs = oldAttrs || {};
+  attrs = attrs || {};
+  for (key in attrs) {
+    const cur = attrs[key];
+    const old = oldAttrs[key];
+    if (old !== cur) {
+      if (cur === true) {
+        elm.setAttribute(key, "");
+      } else if (cur === false) {
+        elm.removeAttribute(key);
+      } else {
+        if (key.charCodeAt(0) !== xChar) {
+          elm.setAttribute(key, cur);
+        } else if (key.charCodeAt(3) === colonChar) {
+          elm.setAttributeNS(xmlNS, key, cur);
+        } else if (key.charCodeAt(5) === colonChar) {
+          key.charCodeAt(1) === mChar ? elm.setAttributeNS(xmlnsNS, key, cur) : elm.setAttributeNS(xlinkNS, key, cur);
+        } else {
+          elm.setAttribute(key, cur);
+        }
+      }
+    }
+  }
+  for (key in oldAttrs) {
+    if (!(key in attrs)) {
+      elm.removeAttribute(key);
+    }
+  }
+}
+var attributesModule = {
+  create: updateAttrs,
+  update: updateAttrs
+};
+
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/modules/class.js
+function updateClass(oldVnode, vnode3) {
+  let cur;
+  let name;
+  const elm = vnode3.elm;
+  let oldClass = oldVnode.data.class;
+  let klass = vnode3.data.class;
+  if (!oldClass && !klass)
+    return;
+  if (oldClass === klass)
+    return;
+  oldClass = oldClass || {};
+  klass = klass || {};
+  for (name in oldClass) {
+    if (oldClass[name] && !Object.prototype.hasOwnProperty.call(klass, name)) {
+      elm.classList.remove(name);
+    }
+  }
+  for (name in klass) {
+    cur = klass[name];
+    if (cur !== oldClass[name]) {
+      elm.classList[cur ? "add" : "remove"](name);
+    }
+  }
+}
+var classModule = { create: updateClass, update: updateClass };
+
+// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/modules/eventlisteners.js
+function invokeHandler(handler, vnode3, event) {
+  if (typeof handler === "function") {
+    handler.call(vnode3, event, vnode3);
+  } else if (typeof handler === "object") {
+    for (let i = 0; i < handler.length; i++) {
+      invokeHandler(handler[i], vnode3, event);
+    }
+  }
+}
+function handleEvent(event, vnode3) {
+  const name = event.type;
+  const on = vnode3.data.on;
+  if (on && on[name]) {
+    invokeHandler(on[name], vnode3, event);
+  }
+}
+function createListener() {
+  return function handler(event) {
+    handleEvent(event, handler.vnode);
+  };
+}
+function updateEventListeners(oldVnode, vnode3) {
+  const oldOn = oldVnode.data.on;
+  const oldListener = oldVnode.listener;
+  const oldElm = oldVnode.elm;
+  const on = vnode3 && vnode3.data.on;
+  const elm = vnode3 && vnode3.elm;
+  let name;
+  if (oldOn === on) {
+    return;
+  }
+  if (oldOn && oldListener) {
+    if (!on) {
+      for (name in oldOn) {
+        oldElm.removeEventListener(name, oldListener, false);
+      }
+    } else {
+      for (name in oldOn) {
+        if (!on[name]) {
+          oldElm.removeEventListener(name, oldListener, false);
+        }
+      }
+    }
+  }
+  if (on) {
+    const listener = vnode3.listener = oldVnode.listener || createListener();
+    listener.vnode = vnode3;
+    if (!oldOn) {
+      for (name in on) {
+        elm.addEventListener(name, listener, false);
+      }
+    } else {
+      for (name in on) {
+        if (!oldOn[name]) {
+          elm.addEventListener(name, listener, false);
+        }
+      }
+    }
+  }
+}
+var eventListenersModule = {
+  create: updateEventListeners,
+  update: updateEventListeners,
+  destroy: updateEventListeners
+};
+
+// src/tree/ops.ts
+var pathHead = (path) => path.slice(0, 2);
+var pathTail = (path) => path.slice(2);
+var pathInit = (path) => path.slice(0, -2);
+function childById(node, id) {
+  return node.children.find((c) => c.id === id);
+}
+function nodeAtPath(root, path) {
+  if (path === "") return root;
+  const child = childById(root, pathHead(path));
+  return child ? nodeAtPath(child, pathTail(path)) : void 0;
+}
+function nodeListAt(root, path) {
+  const nodes = [root];
+  let node = root;
+  let p = path;
+  while (p !== "") {
+    const child = childById(node, pathHead(p));
+    if (!child) break;
+    nodes.push(child);
+    node = child;
+    p = pathTail(p);
+  }
+  return nodes;
+}
+function mainlineNodeList(root) {
+  const nodes = [];
+  let node = root;
+  while (node) {
+    nodes.push(node);
+    node = node.children[0];
+  }
+  return nodes;
+}
+function addNode(root, path, node) {
+  const parent = nodeAtPath(root, path);
+  if (!parent) return;
+  if (!childById(parent, node.id)) {
+    parent.children.push(node);
+  }
+}
+
+// src/analyse/ctrl.ts
+var AnalyseCtrl = class {
+  constructor(root) {
+    __publicField(this, "root");
+    // Current tree cursor — updated together as a unit (mirrors Lichess setPath)
+    __publicField(this, "path");
+    __publicField(this, "node");
+    __publicField(this, "nodeList");
+    __publicField(this, "mainline");
+    this.root = root;
+    this.path = "";
+    this.nodeList = [root];
+    this.node = root;
+    this.mainline = mainlineNodeList(root);
+  }
+  /**
+   * Jump to the node at path.
+   * If the path is invalid, the current position is unchanged.
+   * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts setPath
+   */
+  setPath(path) {
+    const target = nodeAtPath(this.root, path);
+    if (!target) return;
+    this.path = path;
+    this.nodeList = nodeListAt(this.root, path);
+    this.node = target;
+    this.mainline = mainlineNodeList(this.root);
+  }
+};
+
+// src/ceval/protocol.ts
+function sharedWasmMemory(lo, hi = 32767) {
+  let shrink = 4;
+  for (; ; ) {
+    try {
+      return new WebAssembly.Memory({ shared: true, initial: lo, maximum: hi });
+    } catch (e) {
+      if (hi <= lo || !(e instanceof RangeError)) throw e;
+      hi = Math.max(lo, Math.ceil(hi - hi / shrink));
+      shrink = shrink === 4 ? 3 : 4;
+    }
+  }
+}
+var StockfishProtocol = class {
+  constructor() {
+    __publicField(this, "module");
+    __publicField(this, "onLine");
+    /** Human-readable engine name received from the "id name" response. */
+    __publicField(this, "engineName");
+  }
+  /**
+   * Load Stockfish 18 (smallnet) from baseUrl and begin the UCI handshake.
+   * baseUrl is the URL prefix where sf_18_smallnet.{js,wasm} and the NNUE
+   * file are served (e.g. "/stockfish-web").
+   *
+   * Uses dynamic import() — esbuild leaves variable-string imports as-is and
+   * does not try to bundle them, so the engine JS is loaded at runtime only.
+   *
+   * Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts boot()
+   */
+  async init(baseUrl) {
+    const scriptUrl = `${baseUrl}/sf_18_smallnet.js`;
+    const { default: makeModule } = await import(scriptUrl);
+    const wasmMemory = sharedWasmMemory(1536);
+    this.module = await makeModule({
+      wasmMemory,
+      // Tell Emscripten where to find the .wasm and any other assets it needs.
+      locateFile: (file) => `${baseUrl}/${file}`,
+      // Emscripten passes this URL to the pthreads workers it spawns, so each
+      // thread can load the same Stockfish module.
+      mainScriptUrlOrBlob: scriptUrl
+    });
+    this.module.listen = (line) => this.received(line);
+    this.module.onError = (msg) => {
+      console.error("[ceval] engine error:", msg);
+    };
+    const nnueName = this.module.getRecommendedNnue(0);
+    if (nnueName) {
+      console.log("[ceval] loading NNUE:", nnueName);
+      const resp = await fetch(`${baseUrl}/${nnueName}`);
+      if (resp.ok) {
+        this.module.setNnueBuffer(new Uint8Array(await resp.arrayBuffer()), 0);
+        console.log("[ceval] NNUE loaded");
+      } else {
+        console.warn("[ceval] NNUE fetch failed:", resp.status, nnueName);
+      }
+    }
+    this.send("uci");
+  }
+  /** Register a callback that fires for every raw UCI line from the engine. */
+  onMessage(cb) {
+    this.onLine = cb;
+  }
+  /**
+   * Send a FEN position to the engine.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork position command.
+   */
+  setPosition(fen) {
+    this.send(`position fen ${fen}`);
+  }
+  /**
+   * Start a fixed-depth search on the current position.
+   * multiPv controls how many candidate lines the engine returns.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
+   */
+  go(depth, multiPv2 = 1) {
+    this.send(`setoption name MultiPV value ${multiPv2}`);
+    this.send(`go depth ${depth}`);
+  }
+  /** Interrupt a running search. */
+  stop() {
+    this.send("stop");
+  }
+  /** Shut down the engine. */
+  destroy() {
+    this.send("quit");
+    this.module = void 0;
+  }
+  send(cmd) {
+    this.module?.uci(cmd);
+  }
+  /**
+   * Handle a raw UCI line from the engine.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts received
+   */
+  received(line) {
+    const parts = line.trim().split(/\s+/);
+    if (parts[0] === "id" && parts[1] === "name") {
+      this.engineName = parts.slice(2).join(" ");
+    } else if (parts[0] === "uciok") {
+      this.send("setoption name UCI_AnalyseMode value true");
+      this.send("setoption name Analysis Contempt value Off");
+      const cores = navigator.hardwareConcurrency ?? 2;
+      const threads = Math.max(1, cores - 1);
+      this.send(`setoption name Threads value ${threads}`);
+      console.log(`[ceval] Stockfish 18 \u2014 ${threads} threads`);
+      this.send("setoption name Hash value 256");
+      this.send("ucinewgame");
+      this.send("isready");
+    }
+    this.onLine?.(line);
+  }
+};
+
+// src/engine/winchances.ts
+var WIN_CHANCE_MULTIPLIER = -368208e-8;
+function rawWinChances(cp) {
+  return 2 / (1 + Math.exp(WIN_CHANCE_MULTIPLIER * cp)) - 1;
+}
+var LOSS_THRESHOLDS = {
+  inaccuracy: 0.025,
+  mistake: 0.06,
+  blunder: 0.14
+};
+function classifyLoss(loss) {
+  if (loss >= LOSS_THRESHOLDS.blunder) return "blunder";
+  if (loss >= LOSS_THRESHOLDS.mistake) return "mistake";
+  if (loss >= LOSS_THRESHOLDS.inaccuracy) return "inaccuracy";
+  return null;
+}
+function evalWinChances(ev) {
+  if (ev.mate !== void 0) {
+    const cp = (21 - Math.min(10, Math.abs(ev.mate))) * 100;
+    return rawWinChances(cp * (ev.mate > 0 ? 1 : -1));
+  }
+  if (ev.cp !== void 0) {
+    return rawWinChances(Math.min(Math.max(-1e3, ev.cp), 1e3));
+  }
+  return void 0;
+}
+
+// src/engine/ctrl.ts
+var _getCtrl = () => {
+  throw new Error("engine not initialised");
+};
+var _getCgInstance = () => void 0;
+var _redraw = () => {
+};
+function initEngine(deps) {
+  _getCtrl = deps.getCtrl;
+  _getCgInstance = deps.getCgInstance;
+  _redraw = deps.redraw;
+}
+var _isBatchActive = () => false;
+var _onBatchBestmove = null;
+function setIsBatchActive(fn) {
+  _isBatchActive = fn;
+}
+function setOnBatchBestmove(fn) {
+  _onBatchBestmove = fn;
+}
+var protocol = new StockfishProtocol();
+var engineEnabled = false;
+var engineReady = false;
+var engineInitialized = false;
+var currentEval = {};
+var evalCache = /* @__PURE__ */ new Map();
+var evalNodeId = "";
+var evalNodePath = "";
+var evalNodePly = 0;
+var evalParentPath = "";
+var engineSearchActive = false;
+var awaitingStopBestmove = false;
+var pendingEval = false;
+var multiPv = 3;
+var analysisDepth = 30;
+var showEngineArrows = true;
+var arrowAllLines = true;
+var showPlayedArrow = true;
+var pendingLines = [];
+var arrowDebounceTimer = null;
+var arrowSuppressUntil = 0;
+var ARROW_SETTLE_MS = 500;
+var threatMode = false;
+var evalIsThreat = false;
+var threatEval = {};
+function resetCurrentEval() {
+  currentEval = {};
+}
+function setCurrentEval(ev) {
+  currentEval = { ...ev };
+}
+function clearEvalCache() {
+  evalCache.clear();
+}
+function setMultiPv(v) {
+  multiPv = v;
+}
+function setAnalysisDepth(v) {
+  analysisDepth = v;
+}
+function clearPendingLines() {
+  pendingLines = [];
+}
+function setShowEngineArrows(v) {
+  showEngineArrows = v;
+}
+function setArrowAllLines(v) {
+  arrowAllLines = v;
+}
+function setShowPlayedArrow(v) {
+  showPlayedArrow = v;
+}
+function setAwaitingStopBestmove(v) {
+  awaitingStopBestmove = v;
+}
+function stopProtocol() {
+  protocol.stop();
+}
+function buildArrowShapes() {
+  const shapes = [];
+  const ctrl2 = _getCtrl();
+  if (engineEnabled && showEngineArrows) {
+    if (currentEval.best) {
+      const uci = currentEval.best;
+      shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
+    }
+    if (arrowAllLines) {
+      const topWc = evalWinChances(currentEval) ?? 0;
+      for (const line of currentEval.lines ?? []) {
+        if (!line.best) continue;
+        const lineWc = evalWinChances(line) ?? 0;
+        const shift = Math.abs(topWc - lineWc) / 2;
+        if (shift >= 0.2) continue;
+        const lineWidth2 = Math.max(2, Math.round(12 - shift * 50));
+        const uci = line.best;
+        shapes.push({
+          orig: uci.slice(0, 2),
+          dest: uci.slice(2, 4),
+          brush: "paleGrey",
+          modifiers: { lineWidth: lineWidth2 }
+        });
+      }
+    }
+  }
+  if (engineEnabled && threatMode && threatEval.best) {
+    const uci = threatEval.best;
+    shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
+  }
+  if (showPlayedArrow) {
+    const nextNode = ctrl2.node.children[0];
+    if (nextNode?.uci) {
+      const uci = nextNode.uci;
+      shapes.push({
+        orig: uci.slice(0, 2),
+        dest: uci.slice(2, 4),
+        brush: "red",
+        modifiers: { lineWidth: 9 }
+      });
+    }
+  }
+  return shapes;
+}
+function syncArrow() {
+  const cg = _getCgInstance();
+  if (!cg) return;
+  if (arrowDebounceTimer !== null) {
+    clearTimeout(arrowDebounceTimer);
+    arrowDebounceTimer = null;
+  }
+  arrowSuppressUntil = 0;
+  cg.set({ drawable: { autoShapes: buildArrowShapes() } });
+}
+function syncArrowDebounced() {
+  const cg = _getCgInstance();
+  if (!cg) return;
+  const now = Date.now();
+  if (now < arrowSuppressUntil) {
+    if (arrowDebounceTimer === null) {
+      arrowDebounceTimer = setTimeout(() => {
+        arrowDebounceTimer = null;
+        arrowSuppressUntil = 0;
+        _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
+      }, arrowSuppressUntil - now);
+    }
+    return;
+  }
+  if (arrowDebounceTimer !== null) {
+    clearTimeout(arrowDebounceTimer);
+  }
+  arrowDebounceTimer = setTimeout(() => {
+    arrowDebounceTimer = null;
+    _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
+  }, 150);
+}
+function parseEngineLine(line) {
+  const parts = line.trim().split(/\s+/);
+  if (parts[0] === "info") {
+    let isMate = false;
+    let score;
+    let best;
+    let pvMoves = [];
+    let pvIndex = 1;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i] === "multipv") {
+        pvIndex = parseInt(parts[++i]);
+      } else if (parts[i] === "score") {
+        isMate = parts[++i] === "mate";
+        score = parseInt(parts[++i]);
+        if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
+      } else if (parts[i] === "pv") {
+        pvMoves = parts.slice(i + 1);
+        best = pvMoves[0];
+        break;
+      }
+    }
+    if (pvIndex === 1) {
+      const ev = evalIsThreat ? threatEval : currentEval;
+      if (score !== void 0) {
+        const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
+        if (isMate) {
+          ev.mate = s;
+          ev.cp = void 0;
+        } else {
+          ev.cp = s;
+          ev.mate = void 0;
+        }
+      }
+      if (best) ev.best = best;
+      if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
+      if ((score !== void 0 || best) && !_isBatchActive()) {
+        syncArrowDebounced();
+        _redraw();
+      }
+    } else if (!evalIsThreat && score !== void 0) {
+      const s = evalNodePly % 2 === 1 ? -score : score;
+      const idx = pvIndex - 1;
+      if (!pendingLines[idx]) pendingLines[idx] = {};
+      const pl = pendingLines[idx];
+      if (isMate) {
+        pl.mate = s;
+        pl.cp = void 0;
+      } else {
+        pl.cp = s;
+        pl.mate = void 0;
+      }
+      if (best) pl.best = best;
+      if (pvMoves.length > 0) pl.moves = pvMoves;
+      currentEval.lines = pendingLines.slice(1).filter(Boolean);
+      if (!_isBatchActive()) _redraw();
+    }
+  } else if (parts[0] === "bestmove") {
+    if (awaitingStopBestmove) {
+      awaitingStopBestmove = false;
+      currentEval = {};
+      pendingLines = [];
+      console.log("[ceval] stale bestmove discarded \u2014 currentEval reset");
+      return;
+    }
+    engineSearchActive = false;
+    if (!parts[1] || parts[1] === "(none)") {
+      if (_isBatchActive()) _onBatchBestmove?.();
+      else if (pendingEval) evalCurrentPosition();
+      return;
+    }
+    if (evalIsThreat) {
+      threatEval.best = parts[1];
+      evalIsThreat = false;
+      syncArrow();
+      _redraw();
+    } else {
+      currentEval.best = parts[1];
+      const stored = { ...currentEval };
+      pendingLines = [];
+      currentEval = stored;
+      if (_isBatchActive()) {
+        _onBatchBestmove?.();
+      } else {
+        syncArrowDebounced();
+        _redraw();
+        if (pendingEval) {
+          evalCurrentPosition();
+        } else if (threatMode) {
+          evalThreatPosition();
+        }
+      }
+    }
+  }
+}
+var _onEngineReady = null;
+function setOnEngineReady(fn) {
+  _onEngineReady = fn;
+}
+protocol.onMessage((line) => {
+  if (line.trim() === "readyok") {
+    engineReady = true;
+    if (_onEngineReady) {
+      _onEngineReady();
+    } else {
+      evalCurrentPosition();
+    }
+    _redraw();
+  } else {
+    if (!_isBatchActive() && (line.startsWith("info") || line.startsWith("bestmove"))) {
+      console.log("[live-diag]", line.slice(0, 120));
+    }
+    parseEngineLine(line);
+  }
+});
+function flipFenColor(fen) {
+  const parts = fen.split(" ");
+  if (parts.length >= 2) parts[1] = parts[1] === "w" ? "b" : "w";
+  if (parts.length >= 4) parts[3] = "-";
+  return parts.join(" ");
+}
+function evalThreatPosition() {
+  if (!engineEnabled || !engineReady || _isBatchActive()) return;
+  threatEval = {};
+  evalIsThreat = true;
+  protocol.stop();
+  protocol.setPosition(flipFenColor(_getCtrl().node.fen));
+  protocol.go(analysisDepth);
+}
+function toggleThreatMode() {
+  threatMode = !threatMode;
+  if (threatMode) {
+    evalThreatPosition();
+  } else {
+    if (evalIsThreat) {
+      protocol.stop();
+      evalIsThreat = false;
+    }
+    threatEval = {};
+    syncArrow();
+    _redraw();
+  }
+}
+function evalCurrentPosition() {
+  if (_isBatchActive()) return;
+  if (!engineEnabled || !engineReady) return;
+  if (evalIsThreat) {
+    awaitingStopBestmove = true;
+    protocol.stop();
+    evalIsThreat = false;
+  }
+  threatEval = {};
+  const ctrl2 = _getCtrl();
+  const cached = evalCache.get(ctrl2.path);
+  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
+  if (cached && cachedHasLines) {
+    currentEval = { ...cached };
+    syncArrow();
+    _redraw();
+    if (threatMode) evalThreatPosition();
+    return;
+  }
+  currentEval = cached ? { ...cached } : {};
+  pendingLines = [];
+  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
+  syncArrow();
+  if (engineSearchActive) {
+    pendingEval = true;
+    _redraw();
+    return;
+  }
+  pendingEval = false;
+  engineSearchActive = true;
+  evalNodeId = ctrl2.node.id;
+  evalNodePath = ctrl2.path;
+  evalNodePly = ctrl2.node.ply;
+  evalParentPath = ctrl2.path.length >= 2 ? ctrl2.path.slice(0, -2) : "";
+  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv);
+  protocol.setPosition(ctrl2.node.fen);
+  protocol.go(analysisDepth, multiPv);
+}
+function toggleEngine() {
+  engineEnabled = !engineEnabled;
+  if (engineEnabled) {
+    if (!engineInitialized) {
+      engineInitialized = true;
+      void protocol.init("/stockfish-web").catch((err) => {
+        console.error("[engine] failed to load:", err);
+        engineEnabled = false;
+        engineInitialized = false;
+        _redraw();
+      });
+    } else if (engineReady) {
+      evalCurrentPosition();
+    }
+  } else {
+    protocol.stop();
+    currentEval = {};
+    evalIsThreat = false;
+    threatEval = {};
+    syncArrow();
+  }
+  _redraw();
+}
+function getEvalNodePath() {
+  return evalNodePath;
+}
+function getEvalNodePly() {
+  return evalNodePly;
+}
+function getEvalParentPath() {
+  return evalParentPath;
+}
+function setEngineSearchActive(v) {
+  engineSearchActive = v;
+}
+function setEvalNode(id, path, ply, parentPath) {
+  evalNodeId = id;
+  evalNodePath = path;
+  evalNodePly = ply;
+  evalParentPath = parentPath;
+}
+function isEngineSearchActive() {
+  return engineSearchActive;
+}
+
+// src/analyse/evalView.ts
+function formatScore(ev) {
+  if (ev.mate !== void 0) {
+    return ev.mate > 0 ? `#${ev.mate}` : `#${ev.mate}`;
+  }
+  if (ev.cp !== void 0) {
+    const e = Math.max(Math.min(Math.round(ev.cp / 10) / 10, 99), -99);
+    return (e > 0 ? "+" : "") + e.toFixed(1);
+  }
+  return "\u2026";
+}
+function moveAccuracyFromDiff(diff2) {
+  if (diff2 < 0) return 100;
+  const raw = 103.1668100711649 * Math.exp(-0.04354415386753951 * diff2) + -3.166924740191411;
+  return Math.max(0, Math.min(100, raw + 1));
+}
+function aggregateAccuracy(accs) {
+  const n = accs.length;
+  if (n < 2) return null;
+  const window2 = Math.max(2, Math.min(8, Math.floor(n / 10)));
+  const weights = [];
+  for (let s = 0; s + window2 <= n; s++) {
+    const slice = accs.slice(s, s + window2);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length;
+    weights.push(Math.max(0.5, Math.min(12, Math.sqrt(variance))));
+  }
+  const pairLen = weights.length;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (let i = 0; i < pairLen; i++) {
+    weightedSum += accs[i] * weights[i];
+    totalWeight += weights[i];
+  }
+  const weightedMean = totalWeight > 0 ? weightedSum / totalWeight : 0;
+  const harmonicMean = n / accs.reduce((acc, a) => acc + 1 / Math.max(a, 1e-3), 0);
+  return Math.max(0, Math.min(100, (weightedMean + harmonicMean) / 2));
+}
+function computeAnalysisSummary(mainline, evalCache2) {
+  if (evalCache2.size === 0) return null;
+  const whiteAccs = [];
+  const blackAccs = [];
+  let wBlunders = 0, wMistakes = 0, wInaccuracies = 0;
+  let bBlunders = 0, bMistakes = 0, bInaccuracies = 0;
+  let path = "";
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i];
+    path += node.id;
+    const parentPath = path.slice(0, -2);
+    const nodeEval = evalCache2.get(path);
+    const parentEval = evalCache2.get(parentPath);
+    if (!nodeEval || !parentEval) continue;
+    const nodeWc = evalWinChances(nodeEval);
+    const parentWc = evalWinChances(parentEval);
+    if (nodeWc === void 0 || parentWc === void 0) continue;
+    const nodeWp = (nodeWc + 1) / 2 * 100;
+    const parentWp = (parentWc + 1) / 2 * 100;
+    const isWhiteMove = node.ply % 2 === 1;
+    const diff2 = isWhiteMove ? parentWp - nodeWp : nodeWp - parentWp;
+    const acc = moveAccuracyFromDiff(diff2);
+    if (isWhiteMove) {
+      whiteAccs.push(acc);
+    } else {
+      blackAccs.push(acc);
+    }
+    const playedBest = node.uci !== void 0 && node.uci === parentEval.best;
+    const label = !playedBest && nodeEval.loss !== void 0 ? classifyLoss(nodeEval.loss) : null;
+    if (isWhiteMove) {
+      if (label === "blunder") wBlunders++;
+      else if (label === "mistake") wMistakes++;
+      else if (label === "inaccuracy") wInaccuracies++;
+    } else {
+      if (label === "blunder") bBlunders++;
+      else if (label === "mistake") bMistakes++;
+      else if (label === "inaccuracy") bInaccuracies++;
+    }
+  }
+  if (whiteAccs.length === 0 && blackAccs.length === 0) return null;
+  return {
+    white: { accuracy: aggregateAccuracy(whiteAccs), blunders: wBlunders, mistakes: wMistakes, inaccuracies: wInaccuracies },
+    black: { accuracy: aggregateAccuracy(blackAccs), blunders: bBlunders, mistakes: bMistakes, inaccuracies: bInaccuracies }
+  };
+}
+function renderAnalysisSummary(analysisComplete2, evalCache2, mainline, whiteName, blackName) {
+  if (!analysisComplete2 && evalCache2.size < 4) return h("div");
+  const summary = computeAnalysisSummary(mainline, evalCache2);
+  if (!summary) return h("div");
+  function playerCol(name, data, color) {
+    const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : "\u2014";
+    const breakdown = [];
+    if (data.blunders > 0) breakdown.push(h("span.summary__blunder", `${data.blunders} blunder${data.blunders !== 1 ? "s" : ""}`));
+    if (data.mistakes > 0) breakdown.push(h("span.summary__mistake", `${data.mistakes} mistake${data.mistakes !== 1 ? "s" : ""}`));
+    if (data.inaccuracies > 0) breakdown.push(h("span.summary__inaccuracy", `${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? "ies" : "y"}`));
+    return h("div.summary__col", [
+      h("div.summary__name", [
+        h("span.summary__color-icon", { class: { "summary__color-icon--white": color === "white", "summary__color-icon--black": color === "black" } }),
+        name
+      ]),
+      h("div.summary__accuracy", accText),
+      breakdown.length > 0 ? h("div.summary__breakdown", breakdown) : h("div.summary__breakdown", "\u2014")
+    ]);
+  }
+  return h("div.analysis-summary", [
+    playerCol(whiteName, summary.white, "white"),
+    playerCol(blackName, summary.black, "black")
+  ]);
+}
+function evalPct(currentEval2) {
+  if (currentEval2.mate !== void 0) return currentEval2.mate > 0 ? 100 : 0;
+  if (currentEval2.cp !== void 0) {
+    const pct = 50 + currentEval2.cp / 20;
+    return Math.max(0, Math.min(100, pct));
+  }
+  return 50;
+}
+var EVAL_BAR_TICKS = [...Array(8).keys()].map(
+  (i) => h(i === 3 ? "div.eval-bar__tick.zero" : "div.eval-bar__tick", {
+    attrs: { style: `height: ${(i + 1) * 12.5}%` }
+  })
+);
+function renderEvalBar(engineEnabled2, currentEval2) {
+  if (!engineEnabled2) return h("div.eval-bar.eval-bar--off");
+  const pct = evalPct(currentEval2);
+  const scorePct = Math.max(8, Math.min(92, pct));
+  const hasScore = currentEval2.cp !== void 0 || currentEval2.mate !== void 0;
+  const score = hasScore ? formatScore(currentEval2) : "";
+  return h("div.eval-bar", [
+    h("div.eval-bar__fill", { attrs: { style: `height: ${pct}%` } }),
+    score ? h("div.eval-bar__score", { attrs: { style: `bottom: ${scorePct}%` } }, score) : null,
+    ...EVAL_BAR_TICKS
+  ]);
+}
+var GRAPH_W = 600;
+var GRAPH_H = 80;
+function countMajorsMinors(fen) {
+  const board = fen.split(" ")[0];
+  let count = 0;
+  for (const ch of board) if ("rnbqRNBQ".includes(ch)) count++;
+  return count;
+}
+function detectPhases(mainline, n) {
+  let middleIdx;
+  let endIdx;
+  for (let i = 1; i <= n; i++) {
+    const mm = countMajorsMinors(mainline[i].fen);
+    if (middleIdx === void 0 && mm <= 10) middleIdx = i;
+    if (endIdx === void 0 && mm <= 6) {
+      endIdx = i;
+      break;
+    }
+  }
+  return { middleIdx, endIdx };
+}
+function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
+  const n = mainline.length - 1;
+  if (n < 2) {
+    return h("div.eval-graph", [
+      h("div.eval-graph__empty", n === 0 ? "No moves to graph." : "Analyze game to see graph.")
+    ]);
+  }
+  const pts = [];
+  let path = "";
+  for (let i = 1; i <= n; i++) {
+    const node = mainline[i];
+    path += node.id;
+    const parentPath = path.slice(0, -2);
+    const cached = evalCache2.get(path);
+    const parentCached = evalCache2.get(parentPath);
+    const wc = cached !== void 0 ? evalWinChances(cached) : void 0;
+    if (wc !== void 0) {
+      const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
+      const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
+      pts.push({
+        x: (i - 1) / (n - 1) * GRAPH_W,
+        y: (1 - wc) / 2 * GRAPH_H,
+        // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
+        path,
+        label,
+        hasMate: cached?.mate !== void 0
+      });
+    } else {
+      pts.push(null);
+    }
+  }
+  const valid = pts.filter((p) => p !== null);
+  if (valid.length < 2) {
+    return h("div.eval-graph", [
+      h("div.eval-graph__empty", "Analyze game to see graph.")
+    ]);
+  }
+  const cy = GRAPH_H / 2;
+  const svgNodes = [];
+  svgNodes.push(h("rect", { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy, fill: "rgba(235,225,180,0.07)" } }));
+  svgNodes.push(h("rect", { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy, fill: "rgba(0,0,0,0.2)" } }));
+  const polyPts = [
+    `${valid[0].x},${cy}`,
+    ...valid.map((p) => `${p.x},${p.y}`),
+    `${valid[valid.length - 1].x},${cy}`
+  ].join(" ");
+  svgNodes.push(h("polygon", { attrs: { points: polyPts, fill: "rgba(160,160,160,0.1)", stroke: "none" } }));
+  svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#444", "stroke-width": 1 } }));
+  svgNodes.push(h("polyline", { attrs: {
+    points: valid.map((p) => `${p.x},${p.y}`).join(" "),
+    fill: "none",
+    stroke: "#888",
+    "stroke-width": 1.5,
+    "stroke-linejoin": "round",
+    "stroke-linecap": "round"
+  } }));
+  const curPt = valid.find((p) => p.path === currentPath);
+  if (curPt) {
+    svgNodes.push(h("line", { attrs: {
+      x1: curPt.x,
+      y1: 0,
+      x2: curPt.x,
+      y2: GRAPH_H,
+      stroke: "#4a8",
+      "stroke-width": 1,
+      opacity: "0.55"
+    } }));
+  }
+  for (const pt of valid) {
+    const capturePath = pt.path;
+    const isCurrent = pt.path === currentPath;
+    svgNodes.push(h("rect", {
+      attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: "transparent" },
+      on: { click: () => navigate2(capturePath) }
+    }));
+    const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "#c084fc" : pt.label === "blunder" ? "#f66" : pt.label === "mistake" ? "#f84" : pt.label === "inaccuracy" ? "#fa4" : "#888";
+    const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
+    svgNodes.push(h("circle", { attrs: {
+      cx: pt.x,
+      cy: pt.y,
+      r: dotR,
+      fill: dotColor,
+      stroke: isCurrent ? "#fff" : "none",
+      "stroke-width": 1
+    } }));
+  }
+  const { middleIdx, endIdx } = detectPhases(mainline, n);
+  const divLines = [];
+  if (middleIdx !== void 0) {
+    if (middleIdx > 1) divLines.push({ label: "Opening", idx: 1 });
+    divLines.push({ label: "Middlegame", idx: middleIdx });
+  }
+  if (endIdx !== void 0) {
+    if (endIdx > 1 && middleIdx === void 0) divLines.push({ label: "Middlegame", idx: 0 });
+    divLines.push({ label: "Endgame", idx: endIdx });
+  }
+  for (const div of divLines) {
+    if (div.idx === 0) continue;
+    const dx = (div.idx - 1) / (n - 1) * GRAPH_W;
+    svgNodes.push(h("line", { attrs: {
+      x1: dx,
+      y1: 0,
+      x2: dx,
+      y2: GRAPH_H,
+      stroke: "#555",
+      "stroke-width": 1,
+      "stroke-dasharray": "3 3",
+      opacity: "0.7"
+    } }));
+  }
+  return h("div.eval-graph", [
+    h("svg", { attrs: {
+      viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
+      width: "100%",
+      height: GRAPH_H,
+      preserveAspectRatio: "none"
+    } }, svgNodes)
+  ]);
+}
+
+// src/idb/index.ts
+var ANALYSIS_VERSION = 2;
+var savedPuzzles = [];
+function setSavedPuzzles(puzzles) {
+  savedPuzzles = puzzles;
+}
+var _idb;
+function openGameDb2() {
+  if (_idb) return Promise.resolve(_idb);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("patzer-pro", 3);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("game-library")) db.createObjectStore("game-library");
+      if (!db.objectStoreNames.contains("puzzle-library")) db.createObjectStore("puzzle-library");
+      if (!db.objectStoreNames.contains("analysis-library")) db.createObjectStore("analysis-library");
+    };
+    req.onsuccess = () => {
+      _idb = req.result;
+      resolve(_idb);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function saveGamesToIdb(games, selectedId, path) {
+  try {
+    const db = await openGameDb2();
+    const tx = db.transaction("game-library", "readwrite");
+    tx.objectStore("game-library").put(
+      { games, selectedId, path },
+      "imported-games"
+    );
+  } catch (e) {
+    console.warn("[idb] save failed", e);
+  }
+}
+async function loadGamesFromIdb() {
+  try {
+    const db = await openGameDb2();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("game-library", "readonly").objectStore("game-library").get("imported-games");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[idb] load failed", e);
+    return void 0;
+  }
+}
+async function saveAnalysisToIdb(status, gameId, nodes, depth) {
+  try {
+    const db = await openGameDb2();
+    const record = {
+      gameId,
+      analysisVersion: ANALYSIS_VERSION,
+      analysisDepth: depth,
+      status,
+      updatedAt: Date.now(),
+      nodes
+    };
+    const tx = db.transaction("analysis-library", "readwrite");
+    tx.objectStore("analysis-library").put(record, gameId);
+  } catch (e) {
+    console.warn("[idb] analysis save failed", e);
+  }
+}
+async function loadAnalysisFromIdb(gameId) {
+  try {
+    const db = await openGameDb2();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("analysis-library", "readonly").objectStore("analysis-library").get(gameId);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[idb] analysis load failed", e);
+    return void 0;
+  }
+}
+async function clearAnalysisFromIdb(gameId) {
+  try {
+    const db = await openGameDb2();
+    const tx = db.transaction("analysis-library", "readwrite");
+    tx.objectStore("analysis-library").delete(gameId);
+  } catch (e) {
+    console.warn("[idb] analysis clear failed", e);
+  }
+}
+async function savePuzzlesToIdb() {
+  try {
+    const db = await openGameDb2();
+    const tx = db.transaction("puzzle-library", "readwrite");
+    tx.objectStore("puzzle-library").put(savedPuzzles, "saved-puzzles");
+  } catch (e) {
+    console.warn("[idb] puzzle save failed", e);
+  }
+}
+async function loadPuzzlesFromIdb() {
+  try {
+    const db = await openGameDb2();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("puzzle-library", "readonly").objectStore("puzzle-library").get("saved-puzzles");
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[idb] puzzle load failed", e);
+    return [];
+  }
+}
+function savePuzzle(c, redraw2) {
+  const already = savedPuzzles.some((p) => p.gameId === c.gameId && p.path === c.path);
+  if (already) return;
+  savedPuzzles = [...savedPuzzles, c];
+  void savePuzzlesToIdb();
+  redraw2();
+}
+
+// src/engine/batch.ts
+var _getCtrl2 = () => {
+  throw new Error("batch not initialised");
+};
+var _getSelectedGameId = () => null;
+var _getImportedGames = () => [];
+var _analyzedGameIds;
+var _missedTacticGameIds;
+var _analyzedGameAccuracy;
+var _buildAnalysisNodes;
+var _getUserColor;
+var _redraw2 = () => {
+};
+function initBatch(deps) {
+  _getCtrl2 = deps.getCtrl;
+  _getSelectedGameId = deps.getSelectedGameId;
+  _getImportedGames = deps.getImportedGames;
+  _analyzedGameIds = deps.analyzedGameIds;
+  _missedTacticGameIds = deps.missedTacticGameIds;
+  _analyzedGameAccuracy = deps.analyzedGameAccuracy;
+  _buildAnalysisNodes = deps.buildAnalysisNodes;
+  _getUserColor = deps.getUserColor;
+  _redraw2 = deps.redraw;
+  setIsBatchActive(() => batchAnalyzing);
+  setOnBatchBestmove(onBatchBestmove);
+  setOnEngineReady(() => {
+    if (pendingBatchOnReady) {
+      pendingBatchOnReady = false;
+      startBatchAnalysis();
+    } else {
+      evalCurrentPosition();
+    }
+  });
+}
+var batchQueue = [];
+var batchDone = 0;
+var batchAnalyzing = false;
+var batchState = "idle";
+var analysisRunning = false;
+var analysisComplete = false;
+var reviewDepth = 16;
+var pendingBatchOnReady = false;
+var MISSED_TACTIC_THRESHOLD = 0.1;
+var MISSED_TACTIC_MAX_PLY = 60;
+function setReviewDepth(v) {
+  reviewDepth = v;
+}
+function setBatchAnalyzing(v) {
+  batchAnalyzing = v;
+}
+function setBatchState(v) {
+  batchState = v;
+}
+function setAnalysisRunning(v) {
+  analysisRunning = v;
+}
+function setAnalysisComplete(v) {
+  analysisComplete = v;
+}
+function resetBatchState() {
+  batchQueue = [];
+  batchDone = 0;
+  batchAnalyzing = false;
+  batchState = "idle";
+  analysisRunning = false;
+  analysisComplete = false;
+}
+function detectMissedTactics(userColor) {
+  const ctrl2 = _getCtrl2();
+  let path = "";
+  for (let i = 1; i < ctrl2.mainline.length; i++) {
+    const node = ctrl2.mainline[i];
+    path += node.id;
+    const isWhiteMove = node.ply % 2 === 1;
+    const isUserMove = userColor === null || userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
+    if (!isUserMove) continue;
+    const parentPath = path.slice(0, -2);
+    const nodeEval = evalCache.get(path);
+    const parentEval = evalCache.get(parentPath);
+    if (!nodeEval || !parentEval || !parentEval.best) continue;
+    const userParentMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
+    if (userParentMate !== void 0 && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
+    if (node.ply >= MISSED_TACTIC_MAX_PLY) continue;
+    if (nodeEval.loss !== void 0 && nodeEval.loss > MISSED_TACTIC_THRESHOLD) return true;
+  }
+  return false;
+}
+function evalBatchItem(item) {
+  const wasActive = isEngineSearchActive();
+  setAwaitingStopBestmove(wasActive);
+  setEngineSearchActive(true);
+  setEvalNode(item.nodeId, item.nodePath, item.nodePly, item.parentPath);
+  resetCurrentEval();
+  clearPendingLines();
+  console.log("[batch]", batchDone + 1, "/", batchQueue.length, "nodeId:", item.nodeId, "path:", item.nodePath, "ply:", item.nodePly);
+  if (wasActive) protocol.stop();
+  protocol.setPosition(item.fen);
+  protocol.go(reviewDepth);
+}
+function onBatchBestmove() {
+  const stored = { ...currentEval };
+  const nodePath = getEvalNodePath();
+  const nodePly = getEvalNodePly();
+  const parentPath = getEvalParentPath();
+  if (stored.cp !== void 0 || stored.mate !== void 0) {
+    const parentEval = evalCache.get(parentPath);
+    if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
+      stored.delta = stored.cp - parentEval.cp;
+    }
+    if (parentEval) {
+      const nodeWc = evalWinChances(stored);
+      const parentWc = evalWinChances(parentEval);
+      if (nodeWc !== void 0 && parentWc !== void 0) {
+        const whiteToMove = nodePly % 2 === 1;
+        const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
+        const moverParentWc = whiteToMove ? parentWc : -parentWc;
+        stored.loss = (moverParentWc - moverNodeWc) / 2;
+      }
+    }
+    evalCache.set(nodePath, stored);
+    console.log(
+      "[review cache] path:",
+      nodePath,
+      "ply:",
+      nodePly,
+      "best:",
+      stored.best,
+      { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) }
+    );
+  } else {
+    console.log("[review cache] skip (no score) \u2014 path:", nodePath, "ply:", nodePly);
+  }
+  advanceBatch();
+}
+function advanceBatch() {
+  batchDone++;
+  const gameId = _getSelectedGameId();
+  if (gameId) void saveAnalysisToIdb("partial", gameId, _buildAnalysisNodes(), reviewDepth);
+  _redraw2();
+  if (batchDone < batchQueue.length) {
+    evalBatchItem(batchQueue[batchDone]);
+  } else {
+    batchAnalyzing = false;
+    batchState = "complete";
+    analysisRunning = false;
+    analysisComplete = true;
+    if (gameId) {
+      _analyzedGameIds.add(gameId);
+      const game = _getImportedGames().find((g) => g.id === gameId);
+      const userColor = game ? _getUserColor(game) : null;
+      if (detectMissedTactics(userColor)) _missedTacticGameIds.add(gameId);
+      const liveSummary = computeAnalysisSummary(_getCtrl2().mainline, evalCache);
+      if (liveSummary) {
+        _analyzedGameAccuracy.set(gameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });
+      }
+    }
+    if (gameId) void saveAnalysisToIdb("complete", gameId, _buildAnalysisNodes(), reviewDepth);
+    evalCache.delete(_getCtrl2().path);
+    resetCurrentEval();
+    clearPendingLines();
+    evalCurrentPosition();
+  }
+}
+function startBatchAnalysis() {
+  if (!engineEnabled || !engineReady || batchAnalyzing) return;
+  const ctrl2 = _getCtrl2();
+  const queue = [];
+  let path = "";
+  let prevPath = "";
+  for (let i = 0; i < ctrl2.mainline.length; i++) {
+    const node = ctrl2.mainline[i];
+    prevPath = path;
+    if (i > 0) path += node.id;
+    if (!evalCache.has(path)) {
+      queue.push({ nodeId: node.id, nodePly: node.ply, nodePath: path, parentPath: prevPath, fen: node.fen });
+    }
+  }
+  batchQueue = queue;
+  batchDone = 0;
+  batchAnalyzing = queue.length > 0;
+  batchState = queue.length > 0 ? "analyzing" : "complete";
+  analysisRunning = queue.length > 0;
+  analysisComplete = queue.length === 0;
+  _redraw2();
+  if (queue.length > 0) evalBatchItem(queue[0]);
+}
+function startBatchWhenReady() {
+  if (!engineEnabled) {
+    pendingBatchOnReady = true;
+    toggleEngine();
+    return;
+  }
+  if (!engineReady) {
+    pendingBatchOnReady = true;
+    return;
+  }
+  startBatchAnalysis();
+}
+
 // node_modules/.pnpm/@lichess-org+chessground@10.1.0/node_modules/@lichess-org/chessground/dist/types.js
 var colors = ["white", "black"];
 var files = ["a", "b", "c", "d", "e", "f", "g", "h"];
@@ -1164,9 +2997,9 @@ function defaults() {
 
 // node_modules/.pnpm/@lichess-org+chessground@10.1.0/node_modules/@lichess-org/chessground/dist/svg.js
 function createDefs() {
-  const defs = createElement("defs");
-  const filter = setAttributes(createElement("filter"), { id: "cg-filter-blur" });
-  filter.appendChild(setAttributes(createElement("feGaussianBlur"), { stdDeviation: "0.013" }));
+  const defs = createElement2("defs");
+  const filter = setAttributes(createElement2("filter"), { id: "cg-filter-blur" });
+  filter.appendChild(setAttributes(createElement2("feGaussianBlur"), { stdDeviation: "0.013" }));
   defs.appendChild(filter);
   return defs;
 }
@@ -1292,7 +3125,7 @@ function textHash(s) {
 function renderShape(state, { shape, current: current2, pendingErase, hash: hash2 }, brushes2, dests, bounds) {
   const from = pos2user(orient(key2pos(shape.orig), state.orientation), bounds), to = shape.dest ? pos2user(orient(key2pos(shape.dest), state.orientation), bounds) : from, brush = shape.brush && makeCustomBrush(brushes2[shape.brush], shape.modifiers), slots = dests.get(shape.dest), svgs = [];
   if (brush) {
-    const el = setAttributes(createElement("g"), { cgHash: hash2 });
+    const el = setAttributes(createElement2("g"), { cgHash: hash2 });
     svgs.push({ el });
     if (from[0] !== to[0] || from[1] !== to[1])
       el.appendChild(renderArrow(shape, brush, from, to, current2, isShort(shape.dest, dests), pendingErase));
@@ -1308,7 +3141,7 @@ function renderShape(state, { shape, current: current2, pendingErase, hash: hash
   if (shape.customSvg) {
     const on = shape.customSvg.center ?? "orig";
     const [x, y] = on === "label" ? labelCoords(from, to, slots).map((c) => c - 0.5) : on === "dest" ? to : from;
-    const el = setAttributes(createElement("g"), { transform: `translate(${x},${y})`, cgHash: hash2 });
+    const el = setAttributes(createElement2("g"), { transform: `translate(${x},${y})`, cgHash: hash2 });
     el.innerHTML = `<svg width="1" height="1" viewBox="0 0 100 100">${shape.customSvg.html}</svg>`;
     svgs.push({ el, isCustom: true });
   }
@@ -1316,7 +3149,7 @@ function renderShape(state, { shape, current: current2, pendingErase, hash: hash
 }
 function renderCircle(brush, at, current2, bounds, pendingErase) {
   const widths = circleWidth(), radius = (bounds.width + bounds.height) / (4 * Math.max(bounds.width, bounds.height));
-  return setAttributes(createElement("circle"), {
+  return setAttributes(createElement2("circle"), {
     stroke: brush.color,
     "stroke-width": widths[current2 ? 0 : 1],
     fill: "none",
@@ -1330,7 +3163,7 @@ function renderArrow(s, brush, from, to, current2, shorten, pendingErase) {
   function renderLine(isHilite) {
     const m = arrowMargin(shorten && !current2), dx = to[0] - from[0], dy = to[1] - from[1], angle = Math.atan2(dy, dx), xo = Math.cos(angle) * m, yo = Math.sin(angle) * m;
     const hilite = hiliteOf(s);
-    return setAttributes(createElement("line"), {
+    return setAttributes(createElement2("line"), {
       stroke: isHilite ? hilite.color : brush.color,
       "stroke-width": lineWidth(brush, current2) * (isHilite ? 1.14 : 1),
       "stroke-linecap": "round",
@@ -1344,8 +3177,8 @@ function renderArrow(s, brush, from, to, current2, shorten, pendingErase) {
   }
   if (!s.modifiers?.hilite)
     return renderLine(false);
-  const g = setAttributes(createElement("g"), { opacity: brush.opacity });
-  const blurred = setAttributes(createElement("g"), { filter: "url(#cg-filter-blur)" });
+  const g = setAttributes(createElement2("g"), { opacity: brush.opacity });
+  const blurred = setAttributes(createElement2("g"), { filter: "url(#cg-filter-blur)" });
   blurred.appendChild(filterBox(from, to));
   blurred.appendChild(renderLine(true));
   g.appendChild(blurred);
@@ -1353,7 +3186,7 @@ function renderArrow(s, brush, from, to, current2, shorten, pendingErase) {
   return g;
 }
 function renderMarker(brush) {
-  const marker = setAttributes(createElement("marker"), {
+  const marker = setAttributes(createElement2("marker"), {
     id: "arrowhead-" + brush.key,
     orient: "auto",
     overflow: "visible",
@@ -1362,7 +3195,7 @@ function renderMarker(brush) {
     refX: brush.key.startsWith("hilite") ? 1.86 : 2.05,
     refY: 2
   });
-  marker.appendChild(setAttributes(createElement("path"), {
+  marker.appendChild(setAttributes(createElement2("path"), {
     d: "M0,0 V4 L3,2 Z",
     fill: brush.color
   }));
@@ -1370,11 +3203,11 @@ function renderMarker(brush) {
   return marker;
 }
 function renderLabel(label, hash2, from, to, slots, corner) {
-  const labelSize = 0.4, fontSize = labelSize * 0.75 ** label.text.length, at = labelCoords(from, to, slots), cornerOff = corner === "tr" ? 0.4 : 0, g = setAttributes(createElement("g"), {
+  const labelSize = 0.4, fontSize = labelSize * 0.75 ** label.text.length, at = labelCoords(from, to, slots), cornerOff = corner === "tr" ? 0.4 : 0, g = setAttributes(createElement2("g"), {
     transform: `translate(${at[0] + cornerOff},${at[1] - cornerOff})`,
     cgHash: hash2
   });
-  g.appendChild(setAttributes(createElement("circle"), {
+  g.appendChild(setAttributes(createElement2("circle"), {
     r: labelSize / 2,
     "fill-opacity": corner ? 1 : 0.8,
     "stroke-opacity": corner ? 1 : 0.7,
@@ -1382,7 +3215,7 @@ function renderLabel(label, hash2, from, to, slots, corner) {
     fill: label.fill ?? "#666",
     stroke: "white"
   }));
-  const labelEl = setAttributes(createElement("text"), {
+  const labelEl = setAttributes(createElement2("text"), {
     "font-size": fontSize,
     "font-family": "Noto Sans",
     "text-anchor": "middle",
@@ -1398,7 +3231,7 @@ var mod = (n, m) => (n % m + m) % m;
 var rotateAngleSlot = (slot, steps) => mod(slot + steps, 16);
 var anyTwoCloserThan90Degrees = (slots) => [...slots].some((slot) => [-3, -2, -1, 1, 2, 3].some((i) => slots.has(rotateAngleSlot(slot, i))));
 var isShort = (dest, dests) => !!dest && dests.has(dest) && anyTwoCloserThan90Degrees(dests.get(dest));
-var createElement = (tagName2) => document.createElementNS("http://www.w3.org/2000/svg", tagName2);
+var createElement2 = (tagName2) => document.createElementNS("http://www.w3.org/2000/svg", tagName2);
 var angleCount = (dest, dests) => dest && dests.has(dest) ? dests.get(dest).size : 0;
 function setAttributes(el, attrs) {
   for (const key in attrs) {
@@ -1431,7 +3264,7 @@ function filterBox(from, to) {
     from: [Math.floor(Math.min(from[0], to[0])), Math.floor(Math.min(from[1], to[1]))],
     to: [Math.ceil(Math.max(from[0], to[0])), Math.ceil(Math.max(from[1], to[1]))]
   };
-  return setAttributes(createElement("rect"), {
+  return setAttributes(createElement2("rect"), {
     x: box.from[0],
     y: box.from[1],
     width: box.to[0] - box.from[0],
@@ -1504,14 +3337,14 @@ function renderWrap(element, s) {
   return { board, container, wrap: element, ghost, shapes, shapesBelow, custom, customBelow, autoPieces };
 }
 function svgContainer(cls, isShapes) {
-  const svg = setAttributes(createElement("svg"), {
+  const svg = setAttributes(createElement2("svg"), {
     class: cls,
     viewBox: isShapes ? "-4 -4 8 8" : "-3.5 -3.5 8 8",
     preserveAspectRatio: "xMidYMid slice"
   });
   if (isShapes)
     svg.appendChild(createDefs());
-  svg.appendChild(createElement("g"));
+  svg.appendChild(createElement2("g"));
   return svg;
 }
 function renderCoords(elems, className, firstColor) {
@@ -3015,6 +4848,27 @@ var normalizeMove = (pos, move3) => {
 };
 
 // node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/compat.js
+var chessgroundDests = (pos, opts) => {
+  const result = /* @__PURE__ */ new Map();
+  const ctx = pos.ctx();
+  for (const [from, squares] of pos.allDests(ctx)) {
+    if (squares.nonEmpty()) {
+      const d = Array.from(squares, makeSquare);
+      if (!(opts === null || opts === void 0 ? void 0 : opts.chess960) && from === ctx.king && squareFile(from) === 4) {
+        if (squares.has(0))
+          d.push("c1");
+        else if (squares.has(56))
+          d.push("c8");
+        if (squares.has(7))
+          d.push("g1");
+        else if (squares.has(63))
+          d.push("g8");
+      }
+      result.set(makeSquare(from), d);
+    }
+  }
+  return result;
+};
 var scalachessCharPair = (move3) => isDrop(move3) ? String.fromCharCode(35 + move3.to, 35 + 64 + 8 * 5 + ["queen", "rook", "bishop", "knight", "pawn"].indexOf(move3.role)) : String.fromCharCode(35 + move3.from, move3.promotion ? 35 + 64 + 8 * ["queen", "rook", "bishop", "knight", "king"].indexOf(move3.promotion) + squareFile(move3.to) : 35 + move3.to);
 
 // node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/setup.js
@@ -3524,878 +5378,1353 @@ var parseSan = (pos, san) => {
   };
 };
 
-// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/htmldomapi.js
-function createElement2(tagName2, options) {
-  return document.createElement(tagName2, options);
+// src/board/cosmetics.ts
+var ZOOM_DEFAULT = 85;
+var ZOOM_KEY = "boardZoom";
+var boardZoom = (() => {
+  const stored = localStorage.getItem(ZOOM_KEY);
+  const n = stored !== null ? parseInt(stored, 10) : NaN;
+  return !isNaN(n) && n >= 0 && n <= 100 ? n : ZOOM_DEFAULT;
+})();
+function applyBoardZoom(zoom) {
+  document.body.style.setProperty("---zoom", String(zoom));
 }
-function createElementNS(namespaceURI, qualifiedName, options) {
-  return document.createElementNS(namespaceURI, qualifiedName, options);
+function saveBoardZoom(zoom) {
+  boardZoom = zoom;
+  localStorage.setItem(ZOOM_KEY, String(zoom));
 }
-function createDocumentFragment() {
-  return parseFragment(document.createDocumentFragment());
-}
-function createTextNode(text) {
-  return document.createTextNode(text);
-}
-function createComment(text) {
-  return document.createComment(text);
-}
-function insertBefore(parentNode2, newNode, referenceNode) {
-  if (isDocumentFragment(parentNode2)) {
-    let node = parentNode2;
-    while (node && isDocumentFragment(node)) {
-      const fragment2 = parseFragment(node);
-      node = fragment2.parent;
-    }
-    parentNode2 = node !== null && node !== void 0 ? node : parentNode2;
-  }
-  if (isDocumentFragment(newNode)) {
-    newNode = parseFragment(newNode, parentNode2);
-  }
-  if (referenceNode && isDocumentFragment(referenceNode)) {
-    referenceNode = parseFragment(referenceNode).firstChildNode;
-  }
-  parentNode2.insertBefore(newNode, referenceNode);
-}
-function removeChild(node, child) {
-  node.removeChild(child);
-}
-function appendChild(node, child) {
-  if (isDocumentFragment(child)) {
-    child = parseFragment(child, node);
-  }
-  node.appendChild(child);
-}
-function parentNode(node) {
-  if (isDocumentFragment(node)) {
-    while (node && isDocumentFragment(node)) {
-      const fragment2 = parseFragment(node);
-      node = fragment2.parent;
-    }
-    return node !== null && node !== void 0 ? node : null;
-  }
-  return node.parentNode;
-}
-function nextSibling(node) {
-  var _a;
-  if (isDocumentFragment(node)) {
-    const fragment2 = parseFragment(node);
-    const parent = parentNode(fragment2);
-    if (parent && fragment2.lastChildNode) {
-      const children = Array.from(parent.childNodes);
-      const index = children.indexOf(fragment2.lastChildNode);
-      return (_a = children[index + 1]) !== null && _a !== void 0 ? _a : null;
-    }
-    return null;
-  }
-  return node.nextSibling;
-}
-function tagName(elm) {
-  return elm.tagName;
-}
-function setTextContent(node, text) {
-  node.textContent = text;
-}
-function getTextContent(node) {
-  return node.textContent;
-}
-function isElement(node) {
-  return node.nodeType === 1;
-}
-function isText(node) {
-  return node.nodeType === 3;
-}
-function isComment(node) {
-  return node.nodeType === 8;
-}
-function isDocumentFragment(node) {
-  return node.nodeType === 11;
-}
-function parseFragment(fragmentNode, parentNode2) {
-  var _a, _b, _c;
-  const fragment2 = fragmentNode;
-  (_a = fragment2.parent) !== null && _a !== void 0 ? _a : fragment2.parent = parentNode2 !== null && parentNode2 !== void 0 ? parentNode2 : null;
-  (_b = fragment2.firstChildNode) !== null && _b !== void 0 ? _b : fragment2.firstChildNode = fragmentNode.firstChild;
-  (_c = fragment2.lastChildNode) !== null && _c !== void 0 ? _c : fragment2.lastChildNode = fragmentNode.lastChild;
-  return fragment2;
-}
-var htmlDomApi = {
-  createElement: createElement2,
-  createElementNS,
-  createTextNode,
-  createDocumentFragment,
-  createComment,
-  insertBefore,
-  removeChild,
-  appendChild,
-  parentNode,
-  nextSibling,
-  tagName,
-  setTextContent,
-  getTextContent,
-  isElement,
-  isText,
-  isComment,
-  isDocumentFragment
-};
-
-// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/vnode.js
-function vnode(sel, data, children, text, elm) {
-  const key = data === void 0 ? void 0 : data.key;
-  return { sel, data, children, text, elm, key };
-}
-
-// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/is.js
-var array = Array.isArray;
-function primitive(s) {
-  return typeof s === "string" || typeof s === "number" || s instanceof String || s instanceof Number;
-}
-
-// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/init.js
-var emptyNode = vnode("", {}, [], void 0, void 0);
-function sameVnode(vnode1, vnode22) {
-  var _a, _b;
-  const isSameKey = vnode1.key === vnode22.key;
-  const isSameIs = ((_a = vnode1.data) === null || _a === void 0 ? void 0 : _a.is) === ((_b = vnode22.data) === null || _b === void 0 ? void 0 : _b.is);
-  const isSameSel = vnode1.sel === vnode22.sel;
-  const isSameTextOrFragment = !vnode1.sel && vnode1.sel === vnode22.sel ? typeof vnode1.text === typeof vnode22.text : true;
-  return isSameSel && isSameKey && isSameIs && isSameTextOrFragment;
-}
-function documentFragmentIsNotSupported() {
-  throw new Error("The document fragment is not supported on this platform.");
-}
-function isElement2(api, vnode3) {
-  return api.isElement(vnode3);
-}
-function isDocumentFragment2(api, vnode3) {
-  return api.isDocumentFragment(vnode3);
-}
-function createKeyToOldIdx(children, beginIdx, endIdx) {
-  var _a;
-  const map = {};
-  for (let i = beginIdx; i <= endIdx; ++i) {
-    const key = (_a = children[i]) === null || _a === void 0 ? void 0 : _a.key;
-    if (key !== void 0) {
-      map[key] = i;
-    }
-  }
-  return map;
-}
-var hooks = [
-  "create",
-  "update",
-  "remove",
-  "destroy",
-  "pre",
-  "post"
+var BOARD_THEME_KEY = "boardTheme";
+var BOARD_THEME_DEFAULT = "green";
+var BOARD_THEMES_FEATURED = [
+  "brown",
+  "wood4",
+  "maple",
+  "horsey",
+  "blue",
+  "blue2",
+  "blue3",
+  "green",
+  "marble",
+  "olive",
+  "grey",
+  "metal",
+  "newspaper",
+  "purple",
+  "purple-diag"
 ];
-function init(modules, domApi, options) {
-  const cbs = {
-    create: [],
-    update: [],
-    remove: [],
-    destroy: [],
-    pre: [],
-    post: []
-  };
-  const api = domApi !== void 0 ? domApi : htmlDomApi;
-  for (const hook of hooks) {
-    for (const module of modules) {
-      const currentHook = module[hook];
-      if (currentHook !== void 0) {
-        cbs[hook].push(currentHook);
-      }
-    }
+var boardTheme = localStorage.getItem(BOARD_THEME_KEY) ?? BOARD_THEME_DEFAULT;
+function applyBoardTheme(name) {
+  document.body.dataset.board = name;
+  boardTheme = name;
+  localStorage.setItem(BOARD_THEME_KEY, name);
+}
+var PIECE_SET_KEY = "pieceSet";
+var PIECE_SET_DEFAULT = "staunty";
+var PIECE_SETS_FEATURED = [
+  "cburnett",
+  "merida",
+  "alpha",
+  "companion",
+  "kosal",
+  "caliente",
+  "rhosgfx",
+  "maestro",
+  "fresca",
+  "cardinal",
+  "gioco",
+  "staunty",
+  "monarchy",
+  "dubrovny",
+  "mpchess",
+  "horsey",
+  "anarcandy"
+];
+var PIECE_VARS = [
+  ["---white-pawn", "wP"],
+  ["---white-knight", "wN"],
+  ["---white-bishop", "wB"],
+  ["---white-rook", "wR"],
+  ["---white-queen", "wQ"],
+  ["---white-king", "wK"],
+  ["---black-pawn", "bP"],
+  ["---black-knight", "bN"],
+  ["---black-bishop", "bB"],
+  ["---black-rook", "bR"],
+  ["---black-queen", "bQ"],
+  ["---black-king", "bK"]
+];
+var PIECE_WEBP_SETS = /* @__PURE__ */ new Set(["monarchy"]);
+var pieceSet = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
+function applyPieceSet(name) {
+  const ext = PIECE_WEBP_SETS.has(name) ? "webp" : "svg";
+  for (const [cssVar, file] of PIECE_VARS) {
+    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.${ext})`);
   }
-  function emptyNodeAt(elm) {
-    const id = elm.id ? "#" + elm.id : "";
-    const classes = elm.getAttribute("class");
-    const c = classes ? "." + classes.split(" ").join(".") : "";
-    return vnode(api.tagName(elm).toLowerCase() + id + c, {}, [], void 0, elm);
-  }
-  function emptyDocumentFragmentAt(frag) {
-    return vnode(void 0, {}, [], void 0, frag);
-  }
-  function createRmCb(childElm, listeners) {
-    return function rmCb() {
-      if (--listeners === 0) {
-        const parent = api.parentNode(childElm);
-        if (parent !== null) {
-          api.removeChild(parent, childElm);
+  document.body.dataset.pieceSet = name;
+  pieceSet = name;
+  localStorage.setItem(PIECE_SET_KEY, name);
+}
+var FILTER_DEFAULTS = {
+  "board-brightness": 100,
+  "board-contrast": 100,
+  "board-hue": 0
+};
+var FILTER_LS_PREFIX = "boardFilter.";
+var boardFilters = {};
+for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
+  const stored = localStorage.getItem(FILTER_LS_PREFIX + prop);
+  boardFilters[prop] = stored !== null ? parseInt(stored, 10) : def;
+}
+function filtersAtDefault() {
+  return Object.entries(FILTER_DEFAULTS).every(([p, def]) => boardFilters[p] === def);
+}
+function setFilter(prop, value) {
+  boardFilters[prop] = value;
+  document.body.style.setProperty(`---${prop}`, value.toString());
+  localStorage.setItem(FILTER_LS_PREFIX + prop, value.toString());
+  document.body.classList.toggle("simple-board", filtersAtDefault());
+}
+function resetFilters() {
+  for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) setFilter(prop, def);
+}
+var BOARD_THEME_EXT = {
+  brown: "png",
+  horsey: "jpg",
+  blue: "png",
+  green: "png",
+  purple: "png",
+  "purple-diag": "png",
+  wood4: "jpg",
+  maple: "jpg",
+  blue2: "jpg",
+  blue3: "jpg",
+  marble: "jpg",
+  olive: "jpg",
+  grey: "jpg",
+  metal: "jpg",
+  newspaper: "svg"
+};
+function boardThumbnailUrl(name) {
+  if (name === "newspaper") return "/images/board/svg/newspaper.svg";
+  return `/images/board/${name}.thumbnail.${BOARD_THEME_EXT[name]}`;
+}
+function piecePreviewUrl(name) {
+  return PIECE_WEBP_SETS.has(name) ? `/piece/${name}/wN.webp` : `/piece/${name}/wN.svg`;
+}
+function renderFilterSlider(prop, label, min, max, step2, redraw2, fmt) {
+  const value = boardFilters[prop];
+  return h("div.board-settings__slider-row", [
+    h("label", label),
+    h("input", {
+      attrs: { type: "range", min, max, step: step2, value },
+      on: {
+        input: (e) => {
+          setFilter(prop, parseInt(e.target.value, 10));
+          redraw2();
         }
       }
+    }),
+    h("span.board-settings__slider-val", fmt ? fmt(value) : `${value}%`)
+  ]);
+}
+function renderBoardSettings(redraw2) {
+  return h("div.board-settings", [
+    // Sliders
+    renderFilterSlider("board-brightness", "Brightness", 20, 140, 1, redraw2),
+    renderFilterSlider("board-contrast", "Contrast", 40, 200, 2, redraw2),
+    renderFilterSlider("board-hue", "Hue", 0, 100, 1, redraw2, (v) => `\xB1${Math.round(v * 3.6)}\xB0`),
+    filtersAtDefault() ? null : h("button.board-settings__reset", {
+      on: { click: () => {
+        resetFilters();
+        redraw2();
+      } }
+    }, "Reset"),
+    // Board theme tile grid
+    h("div.board-settings__label", "Board"),
+    h(
+      "div.board-settings__theme-grid",
+      BOARD_THEMES_FEATURED.map(
+        (name) => h("button.board-settings__theme-tile", {
+          class: { active: boardTheme === name },
+          attrs: { title: name },
+          on: { click: () => {
+            applyBoardTheme(name);
+            redraw2();
+          } }
+        }, [
+          h("span", { attrs: { style: `background-image: url(${boardThumbnailUrl(name)})` } })
+        ])
+      )
+    ),
+    // Piece set tile grid
+    h("div.board-settings__label", "Pieces"),
+    h(
+      "div.board-settings__piece-grid",
+      PIECE_SETS_FEATURED.map(
+        (name) => h("button.board-settings__piece-tile", {
+          class: { active: pieceSet === name },
+          attrs: { title: name },
+          on: { click: () => {
+            applyPieceSet(name);
+            redraw2();
+          } }
+        }, [
+          h("piece", { attrs: { style: `background-image: url(${piecePreviewUrl(name)})` } })
+        ])
+      )
+    )
+  ]);
+}
+applyBoardZoom(boardZoom);
+applyBoardTheme(boardTheme);
+applyPieceSet(pieceSet);
+for (const [prop, value] of Object.entries(boardFilters)) {
+  document.body.style.setProperty(`---${prop}`, value.toString());
+}
+document.body.classList.toggle("simple-board", filtersAtDefault());
+
+// src/board/index.ts
+var _getCtrl3 = () => {
+  throw new Error("ground not initialised");
+};
+var _navigate = () => {
+};
+var _getImportedGames2 = () => [];
+var _getSelectedGameId2 = () => null;
+var _redraw3 = () => {
+};
+function initGround(deps) {
+  _getCtrl3 = deps.getCtrl;
+  _navigate = deps.navigate;
+  _getImportedGames2 = deps.getImportedGames;
+  _getSelectedGameId2 = deps.getSelectedGameId;
+  _redraw3 = deps.redraw;
+}
+var cgInstance = void 0;
+var orientation = "white";
+var pendingPromotion = null;
+function setOrientation(v) {
+  orientation = v;
+}
+function computeDests(fen) {
+  const setup = parseFen(fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  return chessgroundDests(pos);
+}
+function uciToSan(fen, uci) {
+  try {
+    const move3 = parseUci(uci);
+    if (!move3) return uci;
+    const setup = parseFen(fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    return makeSan(pos, move3);
+  } catch {
+    return uci;
+  }
+}
+function onUserMove(orig, dest) {
+  const ctrl2 = _getCtrl3();
+  const setup = parseFen(ctrl2.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const fromSq = parseSquare(orig);
+  const toSq = parseSquare(dest);
+  if (fromSq === void 0 || toSq === void 0) return;
+  const normMove = normalizeMove(pos, { from: fromSq, to: toSq });
+  const normUci = makeUci(normMove);
+  const existingChild = ctrl2.node.children.find((c) => c.uci === normUci || c.uci?.startsWith(normUci));
+  if (existingChild) {
+    _navigate(ctrl2.path + existingChild.id);
+    return;
+  }
+  const piece = pos.board.get(fromSq);
+  if (piece?.role === "pawn" && (pos.turn === "white" && toSq >= 56 || pos.turn === "black" && toSq < 8)) {
+    pendingPromotion = { orig, dest, color: pos.turn };
+    _redraw3();
+    return;
+  }
+  completeMove(orig, dest);
+}
+function completeMove(orig, dest, promotion) {
+  const ctrl2 = _getCtrl3();
+  const setup = parseFen(ctrl2.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const fromSq = parseSquare(orig);
+  const toSq = parseSquare(dest);
+  if (fromSq === void 0 || toSq === void 0) return;
+  const move3 = normalizeMove(pos, { from: fromSq, to: toSq, promotion });
+  const san = makeSanAndPlay(pos, move3);
+  const newNode = {
+    id: scalachessCharPair(move3),
+    ply: ctrl2.node.ply + 1,
+    san,
+    uci: makeUci(move3),
+    fen: makeFen(pos.toSetup()),
+    children: []
+  };
+  addNode(ctrl2.root, ctrl2.path, newNode);
+  console.log("[variation] inserted", {
+    id: newNode.id,
+    ply: newNode.ply,
+    san: newNode.san,
+    uci: newNode.uci,
+    parentPath: ctrl2.path,
+    newPath: ctrl2.path + newNode.id,
+    parentChildCount: ctrl2.node.children.length
+  });
+  _navigate(ctrl2.path + newNode.id);
+}
+function completePromotion(role) {
+  if (!pendingPromotion) return;
+  const { orig, dest } = pendingPromotion;
+  pendingPromotion = null;
+  completeMove(orig, dest, role);
+}
+var PROMOTION_ROLES = ["queen", "knight", "rook", "bishop"];
+function renderPromotionDialog() {
+  if (!pendingPromotion) return null;
+  const { dest, color } = pendingPromotion;
+  const [file] = key2pos(dest);
+  const left = orientation === "white" ? file * 12.5 : (7 - file) * 12.5;
+  const vertical = color === orientation ? "top" : "bottom";
+  return h("div.cg-wrap.promotion-wrap", {
+    on: { click: () => {
+      pendingPromotion = null;
+      syncBoard();
+      _redraw3();
+    } }
+  }, [
+    h("div#promotion-choice." + vertical, {}, PROMOTION_ROLES.map((role, i) => {
+      const top = (color === orientation ? i : 7 - i) * 12.5;
+      return h("square", {
+        attrs: { style: `top:${top}%;left:${left}%` },
+        on: { click: (e) => {
+          e.stopPropagation();
+          completePromotion(role);
+        } }
+      }, [h(`piece.${role}.${color}`)]);
+    }))
+  ]);
+}
+function syncBoard() {
+  if (!cgInstance) return;
+  const ctrl2 = _getCtrl3();
+  const node = ctrl2.node;
+  const dests = computeDests(node.fen);
+  cgInstance.set({
+    fen: node.fen,
+    lastMove: uciToMove(node.uci),
+    turnColor: node.ply % 2 === 0 ? "white" : "black",
+    movable: {
+      color: node.ply % 2 === 0 ? "white" : "black",
+      dests
+    }
+  });
+}
+function flip() {
+  orientation = orientation === "white" ? "black" : "white";
+  cgInstance?.set({ orientation });
+  _redraw3();
+}
+var ROLE_ORDER = ["queen", "rook", "bishop", "knight", "pawn"];
+var ROLE_POINTS = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
+function getMaterialDiff(fen) {
+  const diff2 = {
+    white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+    black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 }
+  };
+  const fenBoard = fen.split(" ")[0];
+  const charToRole2 = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
+  for (const ch of fenBoard) {
+    const lower = ch.toLowerCase();
+    const role = charToRole2[lower];
+    if (!role) continue;
+    const color = ch === lower ? "black" : "white";
+    const opp = color === "white" ? "black" : "white";
+    if (diff2[opp][role] > 0) diff2[opp][role]--;
+    else diff2[color][role]++;
+  }
+  return diff2;
+}
+function getMaterialScore(diff2) {
+  return ROLE_ORDER.reduce((sum, role) => sum + (diff2.white[role] - diff2.black[role]) * ROLE_POINTS[role], 0);
+}
+function renderMaterialPieces(diff2, color, score) {
+  const groups = [];
+  for (const role of ROLE_ORDER) {
+    const count = diff2[color][role];
+    if (count <= 0) continue;
+    const pieces = [];
+    for (let i = 0; i < count; i++) pieces.push(h("mpiece." + role));
+    groups.push(h("div", pieces));
+  }
+  return h("div.material", [
+    ...groups,
+    score > 0 ? h("score", "+" + score) : null
+  ]);
+}
+function formatClock(centis) {
+  const totalSecs = Math.floor(centis / 100);
+  const hh = Math.floor(totalSecs / 3600);
+  const m = Math.floor(totalSecs % 3600 / 60);
+  const s = totalSecs % 60;
+  const pad = (n) => n < 10 ? "0" + n : String(n);
+  return hh > 0 ? `${hh}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+function getClocksAtPath() {
+  const nodes = _getCtrl3().nodeList;
+  let white;
+  let black;
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (n.clock === void 0) continue;
+    if (n.ply % 2 === 1 && white === void 0) white = n.clock;
+    if (n.ply % 2 === 0 && n.ply > 0 && black === void 0) black = n.clock;
+    if (white !== void 0 && black !== void 0) break;
+  }
+  return { white, black };
+}
+function renderPlayerStrips() {
+  const ctrl2 = _getCtrl3();
+  const selectedGameId2 = _getSelectedGameId2();
+  const importedGames2 = _getImportedGames2();
+  const game = importedGames2.find((g) => g.id === selectedGameId2);
+  const whiteName = game?.white ?? "White";
+  const blackName = game?.black ?? "Black";
+  const whiteRating = game?.whiteRating;
+  const blackRating = game?.blackRating;
+  const result = game?.result ?? "*";
+  const diff2 = getMaterialDiff(ctrl2.node.fen);
+  const score = getMaterialScore(diff2);
+  const clocks = getClocksAtPath();
+  const whiteResult = result === "1-0" ? "1" : result === "0-1" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
+  const blackResult = result === "0-1" ? "1" : result === "1-0" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
+  const strip = (color) => {
+    const name = color === "white" ? whiteName : blackName;
+    const rating = color === "white" ? whiteRating : blackRating;
+    const badge = color === "white" ? whiteResult : blackResult;
+    const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
+    const matScore = color === "white" ? score : -score;
+    const centis = color === "white" ? clocks.white : clocks.black;
+    return h("div.analyse__player_strip", [
+      badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null,
+      h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
+      h("span.player-strip__name", rating !== void 0 ? `${name} (${rating})` : name),
+      renderMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
+      centis !== void 0 ? h("div.analyse__clock", formatClock(centis)) : null
+    ]);
+  };
+  const topColor = orientation === "white" ? "black" : "white";
+  const bottomColor = orientation === "white" ? "white" : "black";
+  return [strip(topColor), strip(bottomColor)];
+}
+function bindBoardResizeHandle(container) {
+  const el = document.createElement("cg-resize");
+  container.appendChild(el);
+  const eventPos = (e) => {
+    if (e.clientX !== void 0) return [e.clientX, e.clientY];
+    if (e.targetTouches?.[0]) return [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
+    return void 0;
+  };
+  const startResize = (start4) => {
+    start4.preventDefault();
+    const startPos = eventPos(start4);
+    const initialZoom = boardZoom;
+    let zoom = initialZoom;
+    let saveTimer;
+    const saveZoom = () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => saveBoardZoom(zoom), 700);
     };
-  }
-  function createElm(vnode3, insertedVnodeQueue) {
-    var _a, _b, _c, _d, _e;
-    let i;
-    const data = vnode3.data;
-    const hook = data === null || data === void 0 ? void 0 : data.hook;
-    (_a = hook === null || hook === void 0 ? void 0 : hook.init) === null || _a === void 0 ? void 0 : _a.call(hook, vnode3);
-    const children = vnode3.children;
-    const sel = vnode3.sel;
-    if (sel === "!") {
-      (_b = vnode3.text) !== null && _b !== void 0 ? _b : vnode3.text = "";
-      vnode3.elm = api.createComment(vnode3.text);
-    } else if (sel === "") {
-      vnode3.elm = api.createTextNode(vnode3.text);
-    } else if (sel !== void 0) {
-      const hashIdx = sel.indexOf("#");
-      const dotIdx = sel.indexOf(".", hashIdx);
-      const hash2 = hashIdx > 0 ? hashIdx : sel.length;
-      const dot = dotIdx > 0 ? dotIdx : sel.length;
-      const tag = hashIdx !== -1 || dotIdx !== -1 ? sel.slice(0, Math.min(hash2, dot)) : sel;
-      const ns = data === null || data === void 0 ? void 0 : data.ns;
-      const elm = ns === void 0 ? api.createElement(tag, data) : api.createElementNS(ns, tag, data);
-      vnode3.elm = elm;
-      if (hash2 < dot)
-        elm.setAttribute("id", sel.slice(hash2 + 1, dot));
-      if (dotIdx > 0)
-        elm.setAttribute("class", sel.slice(dot + 1).replace(/\./g, " "));
-      for (i = 0; i < cbs.create.length; ++i)
-        cbs.create[i](emptyNode, vnode3);
-      if (primitive(vnode3.text) && (!array(children) || children.length === 0)) {
-        api.appendChild(elm, api.createTextNode(vnode3.text));
+    const mousemoveEvent = start4.targetTouches ? "touchmove" : "mousemove";
+    const mouseupEvent = start4.targetTouches ? "touchend" : "mouseup";
+    const resize = (move3) => {
+      const pos = eventPos(move3);
+      const delta = pos[0] - startPos[0] + pos[1] - startPos[1];
+      zoom = Math.round(Math.min(100, Math.max(0, initialZoom + delta / 10)));
+      applyBoardZoom(zoom);
+      saveZoom();
+    };
+    document.body.classList.add("resizing");
+    document.addEventListener(mousemoveEvent, resize);
+    document.addEventListener(mouseupEvent, () => {
+      document.removeEventListener(mousemoveEvent, resize);
+      document.body.classList.remove("resizing");
+    }, { once: true });
+  };
+  el.addEventListener("mousedown", startResize, { passive: false });
+  el.addEventListener("touchstart", startResize, { passive: false });
+}
+function renderBoard() {
+  return h("div.cg-wrap", {
+    key: "board",
+    hook: {
+      insert: (vnode3) => {
+        const ctrl2 = _getCtrl3();
+        const node = ctrl2.node;
+        const dests = computeDests(node.fen);
+        cgInstance = Chessground(vnode3.elm, {
+          orientation,
+          viewOnly: false,
+          drawable: {
+            enabled: true,
+            brushes: {
+              // Boost paleBlue opacity from default 0.4 → 0.65 for a bolder engine line
+              paleBlue: { key: "pb", color: "#003088", opacity: 0.65, lineWidth: 15 }
+            }
+          },
+          fen: node.fen,
+          lastMove: uciToMove(node.uci),
+          turnColor: node.ply % 2 === 0 ? "white" : "black",
+          movable: {
+            free: false,
+            color: node.ply % 2 === 0 ? "white" : "black",
+            dests,
+            showDests: true
+          },
+          events: {
+            move: onUserMove
+          }
+        });
+        bindBoardResizeHandle(vnode3.elm);
+      },
+      destroy: () => {
+        cgInstance?.destroy();
+        cgInstance = void 0;
       }
-      if (array(children)) {
-        for (i = 0; i < children.length; ++i) {
-          const ch = children[i];
-          if (ch != null) {
-            api.appendChild(elm, createElm(ch, insertedVnodeQueue));
+    }
+  });
+}
+function syncBoardAndArrow() {
+  syncBoard();
+  syncArrow();
+}
+
+// src/ceval/view.ts
+var _getCtrl4 = () => {
+  throw new Error("cevalView not initialised");
+};
+var _navigate2 = () => {
+};
+var _redraw4 = () => {
+};
+function initCevalView(deps) {
+  _getCtrl4 = deps.getCtrl;
+  _navigate2 = deps.navigate;
+  _redraw4 = deps.redraw;
+}
+var showEngineSettings = false;
+var pvBoard = null;
+var pvBoardPos = { x: 0, y: 0 };
+function renderCeval() {
+  const hasEval = currentEval.cp !== void 0 || currentEval.mate !== void 0;
+  const pearlStr = engineEnabled ? hasEval ? formatScore(currentEval) : engineReady ? "\u2026" : "" : "";
+  const engineLabel = protocol.engineName ?? "Stockfish 18";
+  const statusText = !engineEnabled ? "Local analysis" : !engineReady ? "Loading\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "Engine on";
+  return h("div.ceval", { class: { enabled: engineEnabled } }, [
+    // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
+    h("button.cmn-toggle", {
+      class: { active: engineEnabled },
+      attrs: { title: "Toggle analysis engine (L)" },
+      on: { click: toggleEngine }
+    }, engineEnabled ? "On" : "Off"),
+    // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
+    // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element
+    h("pearl", pearlStr),
+    // Engine name + status info (flex: 2 1 auto, small text)
+    h("div.engine", [
+      engineLabel,
+      h("span.info", statusText)
+    ]),
+    // Settings gear — mirrors button.settings-gear positioning
+    h("button.settings-gear", {
+      class: { active: showEngineSettings },
+      attrs: { title: "Engine settings" },
+      on: { click: (e) => {
+        e.stopPropagation();
+        showEngineSettings = !showEngineSettings;
+        _redraw4();
+      } }
+    }, "\u2699")
+  ]);
+}
+function renderPvMoves(fen, moves) {
+  const MAX_PV_MOVES = 12;
+  try {
+    const setup = parseFen(fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    const first2 = [];
+    const rest = [];
+    let firstMoveDone = false;
+    for (let i = 0; i < Math.min(moves.length, MAX_PV_MOVES); i++) {
+      const numNode = pos.turn === "white" ? h("span.pv-num", `${pos.fullmoves}.`) : i === 0 ? h("span.pv-num", `${pos.fullmoves}\u2026`) : null;
+      const uci = moves[i];
+      const move3 = parseUci(uci);
+      if (!move3) break;
+      const san = makeSanAndPlay(pos, move3);
+      if (san === "--") break;
+      const boardFen = makeFen(pos.toSetup());
+      const sanNode = h("span.pv-san", { key: `${i}|${uci}`, attrs: { "data-board": `${boardFen}|${uci}` } }, san);
+      if (!firstMoveDone) {
+        if (numNode) first2.push(numNode);
+        first2.push(sanNode);
+        firstMoveDone = true;
+      } else {
+        if (numNode) rest.push(numNode);
+        rest.push(sanNode);
+      }
+    }
+    return { first: first2, rest };
+  } catch {
+    return { first: [], rest: [] };
+  }
+}
+function playPvUciList(ucis) {
+  const ctrl2 = _getCtrl4();
+  let path = ctrl2.path;
+  let node = ctrl2.node;
+  for (const uci of ucis) {
+    const existing = node.children.find((c) => c.uci === uci);
+    if (existing) {
+      path += existing.id;
+      node = existing;
+      continue;
+    }
+    const move3 = parseUci(uci);
+    if (!move3) break;
+    try {
+      const setup = parseFen(node.fen).unwrap();
+      const pos = Chess.fromSetup(setup).unwrap();
+      const san = makeSanAndPlay(pos, move3);
+      if (san === "--") break;
+      const newNode = {
+        id: scalachessCharPair(move3),
+        ply: node.ply + 1,
+        san,
+        uci: makeUci(move3),
+        fen: makeFen(pos.toSetup()),
+        children: []
+      };
+      addNode(ctrl2.root, path, newNode);
+      path += newNode.id;
+      node = newNode;
+    } catch {
+      break;
+    }
+  }
+  _navigate2(path);
+}
+function renderPvBox() {
+  if (!engineEnabled) return null;
+  const fen = _getCtrl4().node.fen;
+  function pvRowForSlot(slotIdx) {
+    const ev = slotIdx === 0 ? currentEval.cp !== void 0 || currentEval.mate !== void 0 || currentEval.moves?.length ? currentEval : void 0 : currentEval.lines?.[slotIdx - 1];
+    if (!ev) {
+      if (slotIdx === 0) {
+        const statusText = !engineReady ? "Loading engine\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "\u2026";
+        return h("div.pv.pv--nowrap", [h("span.ceval__info", statusText)]);
+      }
+      return h("div.pv.pv--nowrap.pv--empty");
+    }
+    const score = formatScore(ev);
+    const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
+    const { first: first2, rest } = ev.moves ? renderPvMoves(fen, ev.moves) : { first: [], rest: [] };
+    const children = [];
+    children.push(h("strong", {
+      class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
+    }, score));
+    if (first2.length > 0) children.push(h("span.pv-first", first2));
+    if (rest.length > 0) children.push(h("span.pv-cont", rest));
+    return h("div.pv.pv--nowrap", children);
+  }
+  const slots = [...Array(multiPv).keys()].map((i) => pvRowForSlot(i));
+  return h("div.pv_box", {
+    key: "pv-rows",
+    hook: {
+      insert: (vnode3) => {
+        const el = vnode3.elm;
+        el.addEventListener("mouseover", (e) => {
+          const dataBoard = e.target.dataset.board;
+          if (!dataBoard) return;
+          const sep = dataBoard.indexOf("|");
+          const newFen = dataBoard.slice(0, sep);
+          const newUci = dataBoard.slice(sep + 1);
+          pvBoardPos = { x: e.clientX, y: e.clientY };
+          if (pvBoard?.fen === newFen && pvBoard?.uci === newUci) return;
+          pvBoard = { fen: newFen, uci: newUci };
+          _redraw4();
+        });
+        el.addEventListener("mousemove", (e) => {
+          pvBoardPos = { x: e.clientX, y: e.clientY };
+          const overlay = document.querySelector(".pv-board-float");
+          if (overlay) {
+            const left = Math.min(e.clientX + 16, window.innerWidth - 208);
+            const top = Math.min(e.clientY + 16, window.innerHeight - 208);
+            overlay.style.left = `${left}px`;
+            overlay.style.top = `${top}px`;
+          }
+        });
+        el.addEventListener("mouseleave", () => {
+          if (!pvBoard) return;
+          pvBoard = null;
+          _redraw4();
+        });
+        el.addEventListener("click", (e) => {
+          const sanSpan = e.target.closest("span.pv-san");
+          if (!sanSpan) return;
+          e.preventDefault();
+          const pvRow = sanSpan.closest("div.pv");
+          if (!pvRow) return;
+          const allSans = Array.from(pvRow.querySelectorAll("span.pv-san"));
+          const clickedIdx = allSans.indexOf(sanSpan);
+          if (clickedIdx < 0) return;
+          const ucis = [];
+          for (let i = 0; i <= clickedIdx; i++) {
+            const db = allSans[i].dataset.board;
+            if (!db) break;
+            ucis.push(db.slice(db.indexOf("|") + 1));
+          }
+          if (ucis.length > 0) playPvUciList(ucis);
+        });
+      }
+    }
+  }, slots);
+}
+function renderPvBoard() {
+  if (!pvBoard) return null;
+  const { fen, uci } = pvBoard;
+  const left = Math.min(pvBoardPos.x + 16, window.innerWidth - 208);
+  const top = Math.min(pvBoardPos.y + 16, window.innerHeight - 208);
+  const arrow = uci.length >= 4 ? [{ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" }] : [];
+  const cgConfig = {
+    fen,
+    lastMove: uciToMove(uci),
+    orientation,
+    coordinates: false,
+    viewOnly: true,
+    drawable: { enabled: false, visible: true, autoShapes: arrow }
+  };
+  return h("div.pv-board-float", {
+    key: "pv-board-float",
+    attrs: { style: `left:${left}px;top:${top}px` }
+  }, [
+    h("div.cg-wrap", {
+      hook: {
+        insert: (vnode3) => {
+          vnode3.elm._cg = Chessground(vnode3.elm, cgConfig);
+        },
+        update: (_old, vnode3) => {
+          vnode3.elm._cg?.set(cgConfig);
+        },
+        destroy: (vnode3) => {
+          vnode3.elm._cg?.destroy();
+        }
+      }
+    })
+  ]);
+}
+function renderEngineSettings() {
+  if (!showEngineSettings) return null;
+  return h("div.ceval-settings", [
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-multipv" } }, "Lines"),
+      h("input#ceval-multipv", {
+        attrs: { type: "range", min: 1, max: 5, step: 1, value: multiPv },
+        on: {
+          input: (e) => {
+            setMultiPv(parseInt(e.target.value));
+            clearPendingLines();
+            if (engineEnabled && engineReady && !batchAnalyzing) {
+              resetCurrentEval();
+              evalCurrentPosition();
+            }
+            _redraw4();
           }
         }
-      }
-      if (hook !== void 0) {
-        (_c = hook.create) === null || _c === void 0 ? void 0 : _c.call(hook, emptyNode, vnode3);
-        if (hook.insert !== void 0) {
-          insertedVnodeQueue.push(vnode3);
+      }),
+      h("span.ceval-settings__val", `${multiPv} / 5`)
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-review-depth" } }, "Review depth"),
+      h("select#ceval-review-depth", {
+        on: {
+          change: (e) => {
+            setReviewDepth(parseInt(e.target.value));
+            _redraw4();
+          }
+        }
+      }, [12, 14, 16, 18, 20].map(
+        (d) => h("option", { attrs: { value: d, selected: d === reviewDepth } }, String(d))
+      ))
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-analysis-depth" } }, "Analysis depth"),
+      h("select#ceval-analysis-depth", {
+        on: {
+          change: (e) => {
+            setAnalysisDepth(parseInt(e.target.value));
+            _redraw4();
+          }
+        }
+      }, [18, 20, 24, 30].map(
+        (d) => h("option", { attrs: { value: d, selected: d === analysisDepth } }, String(d))
+      ))
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-arrows" } }, "Arrows"),
+      h("input#ceval-arrows", {
+        attrs: { type: "checkbox", checked: showEngineArrows },
+        on: {
+          change: (e) => {
+            setShowEngineArrows(e.target.checked);
+            syncArrow();
+            _redraw4();
+          }
+        }
+      })
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-arrow-lines" } }, "All lines"),
+      h("input#ceval-arrow-lines", {
+        attrs: { type: "checkbox", checked: arrowAllLines },
+        on: {
+          change: (e) => {
+            setArrowAllLines(e.target.checked);
+            syncArrow();
+            _redraw4();
+          }
+        }
+      })
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-played-arrow" } }, "Played"),
+      h("input#ceval-played-arrow", {
+        attrs: { type: "checkbox", checked: showPlayedArrow },
+        on: {
+          change: (e) => {
+            setShowPlayedArrow(e.target.checked);
+            syncArrow();
+            _redraw4();
+          }
+        }
+      })
+    ])
+  ]);
+}
+
+// src/puzzles/extract.ts
+var PUZZLE_CANDIDATE_MIN_LOSS = 0.14;
+var puzzleCandidates = [];
+function extractPuzzleCandidates(mainline, getEval, gameId) {
+  const candidates = [];
+  let path = "";
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i];
+    const parent = mainline[i - 1];
+    path += node.id;
+    const nodeEval = getEval(path);
+    const parentEval = getEval(path.slice(0, -2));
+    if (nodeEval?.loss !== void 0 && nodeEval.loss >= PUZZLE_CANDIDATE_MIN_LOSS && parentEval?.best) {
+      candidates.push({
+        gameId,
+        path,
+        fen: parent.fen,
+        bestMove: parentEval.best,
+        san: node.san ?? "",
+        loss: nodeEval.loss,
+        ply: node.ply
+      });
+    }
+  }
+  puzzleCandidates = candidates;
+  console.log("[puzzles] extracted", candidates.length, "candidates", candidates);
+  return candidates;
+}
+function clearPuzzleCandidates() {
+  puzzleCandidates = [];
+}
+function renderPuzzleCandidates(deps) {
+  const { engineEnabled: engineEnabled2, batchAnalyzing: batchAnalyzing2, batchState: batchState2, savedPuzzles: savedPuzzles2, currentPath } = deps;
+  const canExtract = engineEnabled2 && !batchAnalyzing2;
+  const btnLabel = canExtract ? `Find Puzzles (${puzzleCandidates.length})` : batchAnalyzing2 ? "Find Puzzles (analyzing\u2026)" : "Find Puzzles (engine off)";
+  const rows = puzzleCandidates.map((c) => {
+    const moveNum = Math.ceil(c.ply / 2);
+    const side = c.ply % 2 === 1 ? "" : "\u2026";
+    const heading = `${moveNum}${side}. ${c.san}`;
+    const lossText = `\u2212${(c.loss * 100).toFixed(0)}%`;
+    const isActive = currentPath === c.path;
+    const isSaved = savedPuzzles2.some((p) => p.gameId === c.gameId && p.path === c.path);
+    return h("li", { attrs: { style: "display:flex;align-items:center" } }, [
+      h("button.game-list__row", {
+        class: { active: isActive },
+        attrs: { style: "flex:1" },
+        on: { click: () => deps.navigate(c.path) }
+      }, [
+        h("span", { attrs: { style: "font-weight:600;margin-right:8px" } }, heading),
+        h("span", { attrs: { style: "color:#f88;margin-right:8px" } }, lossText),
+        h("span", { attrs: { style: "color:#888;font-size:0.8rem" } }, `best: ${deps.uciToSan(c.fen, c.bestMove)}`)
+      ]),
+      h("button", {
+        attrs: {
+          style: "flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px;cursor:pointer",
+          disabled: isSaved,
+          title: isSaved ? "Already saved" : "Save this puzzle"
+        },
+        on: { click: () => {
+          deps.savePuzzle(c, deps.redraw);
+        } }
+      }, isSaved ? "\u2713 Saved" : "Save")
+    ]);
+  });
+  return h("div.game-list", [
+    h("div.pgn-import__row", { attrs: { style: "margin-bottom:6px" } }, [
+      h("button", {
+        attrs: { disabled: !canExtract },
+        on: { click: () => {
+          extractPuzzleCandidates(deps.mainline, deps.getEval, deps.gameId);
+          deps.redraw();
+        } }
+      }, btnLabel)
+    ]),
+    puzzleCandidates.length > 0 ? h("ul", rows) : h("div.game-list__header", batchState2 === "complete" ? "No blunder-level candidates found in this game." : "Run extraction after analysis completes.")
+  ]);
+}
+
+// src/analyse/pgnExport.ts
+var _getCtrl5 = () => {
+  throw new Error("pgnExport not initialised");
+};
+var _getImportedGames3 = () => [];
+var _getSelectedGameId3 = () => null;
+var _buildAnalysisNodes2 = () => ({});
+var _clearGameAnalysis = () => {
+};
+var _redraw5 = () => {
+};
+function initPgnExport(deps) {
+  _getCtrl5 = deps.getCtrl;
+  _getImportedGames3 = deps.getImportedGames;
+  _getSelectedGameId3 = deps.getSelectedGameId;
+  _buildAnalysisNodes2 = deps.buildAnalysisNodes;
+  _clearGameAnalysis = deps.clearGameAnalysis;
+  _redraw5 = deps.redraw;
+}
+var showExportMenu = false;
+function buildPgn(annotated) {
+  const ctrl2 = _getCtrl5();
+  const importedGames2 = _getImportedGames3();
+  const selectedGameId2 = _getSelectedGameId3();
+  const game = importedGames2.find((g) => g.id === selectedGameId2);
+  const headers = [
+    ["Event", "?"],
+    ["Site", "PatzerPro"],
+    ["Date", game?.date ?? "????.??.??"],
+    ["White", game?.white ?? "?"],
+    ["Black", game?.black ?? "?"],
+    ["Result", game?.result ?? "*"]
+  ];
+  if (annotated) headers.push(["Annotator", "PatzerPro"]);
+  const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join("\n");
+  const nodes = ctrl2.mainline.slice(1);
+  const parts = [];
+  let needsMoveNum = true;
+  let pgnPath = "";
+  for (const node of nodes) {
+    pgnPath += node.id;
+    const isWhite = node.ply % 2 === 1;
+    const moveNum = Math.ceil(node.ply / 2);
+    if (isWhite || needsMoveNum) {
+      parts.push(isWhite ? `${moveNum}.` : `${moveNum}...`);
+    }
+    parts.push(node.san ?? "?");
+    if (annotated) {
+      const commentParts = [];
+      const ev = evalCache.get(pgnPath);
+      if (ev) {
+        if (ev.mate !== void 0) {
+          commentParts.push(`[%eval #${ev.mate}]`);
+        } else if (ev.cp !== void 0) {
+          const pawns = (ev.cp / 100).toFixed(2);
+          commentParts.push(`[%eval ${pawns}]`);
         }
       }
-    } else if (((_d = options === null || options === void 0 ? void 0 : options.experimental) === null || _d === void 0 ? void 0 : _d.fragments) && vnode3.children) {
-      vnode3.elm = ((_e = api.createDocumentFragment) !== null && _e !== void 0 ? _e : documentFragmentIsNotSupported)();
-      for (i = 0; i < cbs.create.length; ++i)
-        cbs.create[i](emptyNode, vnode3);
-      for (i = 0; i < vnode3.children.length; ++i) {
-        const ch = vnode3.children[i];
-        if (ch != null) {
-          api.appendChild(vnode3.elm, createElm(ch, insertedVnodeQueue));
-        }
+      if (node.clock !== void 0) {
+        const total = Math.round(node.clock / 100);
+        const hrs = Math.floor(total / 3600);
+        const m = Math.floor(total % 3600 / 60);
+        const s = total % 60;
+        commentParts.push(`[%clk ${hrs}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}]`);
+      }
+      if (commentParts.length > 0) {
+        parts.push(`{ ${commentParts.join(" ")} }`);
+        needsMoveNum = isWhite;
+      } else {
+        needsMoveNum = false;
       }
     } else {
-      vnode3.elm = api.createTextNode(vnode3.text);
-    }
-    return vnode3.elm;
-  }
-  function addVnodes(parentElm, before, vnodes, startIdx, endIdx, insertedVnodeQueue) {
-    for (; startIdx <= endIdx; ++startIdx) {
-      const ch = vnodes[startIdx];
-      if (ch != null) {
-        api.insertBefore(parentElm, createElm(ch, insertedVnodeQueue), before);
-      }
+      needsMoveNum = false;
     }
   }
-  function invokeDestroyHook(vnode3) {
-    var _a, _b;
-    const data = vnode3.data;
-    if (data !== void 0) {
-      (_b = (_a = data === null || data === void 0 ? void 0 : data.hook) === null || _a === void 0 ? void 0 : _a.destroy) === null || _b === void 0 ? void 0 : _b.call(_a, vnode3);
-      for (let i = 0; i < cbs.destroy.length; ++i)
-        cbs.destroy[i](vnode3);
-      if (vnode3.children !== void 0) {
-        for (let j = 0; j < vnode3.children.length; ++j) {
-          const child = vnode3.children[j];
-          if (child != null && typeof child !== "string") {
-            invokeDestroyHook(child);
-          }
-        }
-      }
-    }
+  parts.push(game?.result ?? "*");
+  return `${headerStr}
+
+${parts.join(" ")}
+`;
+}
+function downloadPgn(annotated) {
+  const pgn = buildPgn(annotated);
+  const importedGames2 = _getImportedGames3();
+  const selectedGameId2 = _getSelectedGameId3();
+  const game = importedGames2.find((g) => g.id === selectedGameId2);
+  const w = (game?.white ?? "White").replace(/\s+/g, "_");
+  const b = (game?.black ?? "Black").replace(/\s+/g, "_");
+  const suffix = annotated ? "_annotated" : "";
+  const filename = `${w}_vs_${b}${suffix}.pgn`;
+  const blob = new Blob([pgn], { type: "application/x-chess-pgn" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  showExportMenu = false;
+  _redraw5();
+}
+function renderAnalysisControls() {
+  const ctrl2 = _getCtrl5();
+  const selectedGameId2 = _getSelectedGameId3();
+  const hasGame = ctrl2.mainline.length > 1;
+  let reviewLabel;
+  if (batchAnalyzing) {
+    const pct = batchQueue.length > 0 ? Math.round(batchDone / batchQueue.length * 100) : 0;
+    reviewLabel = `${pct}%`;
+  } else if (analysisComplete) {
+    reviewLabel = "Re-analyze";
+  } else {
+    reviewLabel = "Review";
   }
-  function removeVnodes(parentElm, vnodes, startIdx, endIdx) {
-    var _a, _b;
-    for (; startIdx <= endIdx; ++startIdx) {
-      let listeners;
-      const ch = vnodes[startIdx];
-      if (ch != null) {
-        if (ch.sel !== void 0) {
-          invokeDestroyHook(ch);
-          listeners = cbs.remove.length + 1;
-          const rm = createRmCb(ch.elm, listeners);
-          for (let i = 0; i < cbs.remove.length; ++i)
-            cbs.remove[i](ch, rm);
-          const removeHook = (_b = (_a = ch === null || ch === void 0 ? void 0 : ch.data) === null || _a === void 0 ? void 0 : _a.hook) === null || _b === void 0 ? void 0 : _b.remove;
-          if (removeHook !== void 0) {
-            removeHook(ch, rm);
-          } else {
-            rm();
-          }
-        } else if (ch.children) {
-          invokeDestroyHook(ch);
-          removeVnodes(parentElm, ch.children, 0, ch.children.length - 1);
-        } else {
-          api.removeChild(parentElm, ch.elm);
-        }
-      }
-    }
-  }
-  function updateChildren(parentElm, oldCh, newCh, insertedVnodeQueue) {
-    let oldStartIdx = 0;
-    let newStartIdx = 0;
-    let oldEndIdx = oldCh.length - 1;
-    let oldStartVnode = oldCh[0];
-    let oldEndVnode = oldCh[oldEndIdx];
-    let newEndIdx = newCh.length - 1;
-    let newStartVnode = newCh[0];
-    let newEndVnode = newCh[newEndIdx];
-    let oldKeyToIdx;
-    let idxInOld;
-    let elmToMove;
-    let before;
-    while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
-      if (oldStartVnode == null) {
-        oldStartVnode = oldCh[++oldStartIdx];
-      } else if (oldEndVnode == null) {
-        oldEndVnode = oldCh[--oldEndIdx];
-      } else if (newStartVnode == null) {
-        newStartVnode = newCh[++newStartIdx];
-      } else if (newEndVnode == null) {
-        newEndVnode = newCh[--newEndIdx];
-      } else if (sameVnode(oldStartVnode, newStartVnode)) {
-        patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue);
-        oldStartVnode = oldCh[++oldStartIdx];
-        newStartVnode = newCh[++newStartIdx];
-      } else if (sameVnode(oldEndVnode, newEndVnode)) {
-        patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue);
-        oldEndVnode = oldCh[--oldEndIdx];
-        newEndVnode = newCh[--newEndIdx];
-      } else if (sameVnode(oldStartVnode, newEndVnode)) {
-        patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue);
-        api.insertBefore(parentElm, oldStartVnode.elm, api.nextSibling(oldEndVnode.elm));
-        oldStartVnode = oldCh[++oldStartIdx];
-        newEndVnode = newCh[--newEndIdx];
-      } else if (sameVnode(oldEndVnode, newStartVnode)) {
-        patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue);
-        api.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm);
-        oldEndVnode = oldCh[--oldEndIdx];
-        newStartVnode = newCh[++newStartIdx];
-      } else {
-        if (oldKeyToIdx === void 0) {
-          oldKeyToIdx = createKeyToOldIdx(oldCh, oldStartIdx, oldEndIdx);
-        }
-        idxInOld = oldKeyToIdx[newStartVnode.key];
-        if (idxInOld === void 0) {
-          api.insertBefore(parentElm, createElm(newStartVnode, insertedVnodeQueue), oldStartVnode.elm);
-          newStartVnode = newCh[++newStartIdx];
-        } else if (oldKeyToIdx[newEndVnode.key] === void 0) {
-          api.insertBefore(parentElm, createElm(newEndVnode, insertedVnodeQueue), api.nextSibling(oldEndVnode.elm));
-          newEndVnode = newCh[--newEndIdx];
-        } else {
-          elmToMove = oldCh[idxInOld];
-          if (elmToMove.sel !== newStartVnode.sel) {
-            api.insertBefore(parentElm, createElm(newStartVnode, insertedVnodeQueue), oldStartVnode.elm);
-          } else {
-            patchVnode(elmToMove, newStartVnode, insertedVnodeQueue);
-            oldCh[idxInOld] = void 0;
-            api.insertBefore(parentElm, elmToMove.elm, oldStartVnode.elm);
-          }
-          newStartVnode = newCh[++newStartIdx];
-        }
-      }
-    }
-    if (newStartIdx <= newEndIdx) {
-      before = newCh[newEndIdx + 1] == null ? null : newCh[newEndIdx + 1].elm;
-      addVnodes(parentElm, before, newCh, newStartIdx, newEndIdx, insertedVnodeQueue);
-    }
-    if (oldStartIdx <= oldEndIdx) {
-      removeVnodes(parentElm, oldCh, oldStartIdx, oldEndIdx);
-    }
-  }
-  function patchVnode(oldVnode, vnode3, insertedVnodeQueue) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
-    const hook = (_a = vnode3.data) === null || _a === void 0 ? void 0 : _a.hook;
-    (_b = hook === null || hook === void 0 ? void 0 : hook.prepatch) === null || _b === void 0 ? void 0 : _b.call(hook, oldVnode, vnode3);
-    const elm = vnode3.elm = oldVnode.elm;
-    if (oldVnode === vnode3)
+  const reviewClick = () => {
+    if (batchAnalyzing) {
+      setAwaitingStopBestmove(true);
+      stopProtocol();
+      setBatchAnalyzing(false);
+      setBatchState("idle");
+      setAnalysisRunning(false);
+      if (selectedGameId2) void saveAnalysisToIdb("partial", selectedGameId2, _buildAnalysisNodes2(), reviewDepth);
+      _redraw5();
       return;
-    if (vnode3.data !== void 0 || vnode3.text !== void 0 && vnode3.text !== oldVnode.text) {
-      (_c = vnode3.data) !== null && _c !== void 0 ? _c : vnode3.data = {};
-      (_d = oldVnode.data) !== null && _d !== void 0 ? _d : oldVnode.data = {};
-      for (let i = 0; i < cbs.update.length; ++i)
-        cbs.update[i](oldVnode, vnode3);
-      (_g = (_f = (_e = vnode3.data) === null || _e === void 0 ? void 0 : _e.hook) === null || _f === void 0 ? void 0 : _f.update) === null || _g === void 0 ? void 0 : _g.call(_f, oldVnode, vnode3);
     }
-    const oldCh = oldVnode.children;
-    const ch = vnode3.children;
-    if (vnode3.text === void 0) {
-      if (oldCh !== void 0 && ch !== void 0) {
-        if (oldCh !== ch)
-          updateChildren(elm, oldCh, ch, insertedVnodeQueue);
-      } else if (ch !== void 0) {
-        if (oldVnode.text !== void 0)
-          api.setTextContent(elm, "");
-        addVnodes(elm, null, ch, 0, ch.length - 1, insertedVnodeQueue);
-      } else if (oldCh !== void 0) {
-        removeVnodes(elm, oldCh, 0, oldCh.length - 1);
-      } else if (oldVnode.text !== void 0) {
-        api.setTextContent(elm, "");
-      }
-    } else if (oldVnode.text !== vnode3.text) {
-      if (oldCh !== void 0) {
-        removeVnodes(elm, oldCh, 0, oldCh.length - 1);
-      }
-      api.setTextContent(elm, vnode3.text);
+    if (analysisComplete) {
+      if (selectedGameId2) _clearGameAnalysis(selectedGameId2);
+      clearEvalCache();
+      resetCurrentEval();
+      clearPuzzleCandidates();
+      resetBatchState();
+      syncArrow();
     }
-    (_h = hook === null || hook === void 0 ? void 0 : hook.postpatch) === null || _h === void 0 ? void 0 : _h.call(hook, oldVnode, vnode3);
-  }
-  return function patch2(oldVnode, vnode3) {
-    let i, elm, parent;
-    const insertedVnodeQueue = [];
-    for (i = 0; i < cbs.pre.length; ++i)
-      cbs.pre[i]();
-    if (isElement2(api, oldVnode)) {
-      oldVnode = emptyNodeAt(oldVnode);
-    } else if (isDocumentFragment2(api, oldVnode)) {
-      oldVnode = emptyDocumentFragmentAt(oldVnode);
-    }
-    if (sameVnode(oldVnode, vnode3)) {
-      patchVnode(oldVnode, vnode3, insertedVnodeQueue);
-    } else {
-      elm = oldVnode.elm;
-      parent = api.parentNode(elm);
-      createElm(vnode3, insertedVnodeQueue);
-      if (parent !== null) {
-        api.insertBefore(parent, vnode3.elm, api.nextSibling(elm));
-        removeVnodes(parent, [oldVnode], 0, 0);
-      }
-    }
-    for (i = 0; i < insertedVnodeQueue.length; ++i) {
-      insertedVnodeQueue[i].data.hook.insert(insertedVnodeQueue[i]);
-    }
-    for (i = 0; i < cbs.post.length; ++i)
-      cbs.post[i]();
-    return vnode3;
+    startBatchWhenReady();
   };
-}
-
-// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/h.js
-function addNS(data, children, sel) {
-  data.ns = "http://www.w3.org/2000/svg";
-  if (sel !== "foreignObject" && children !== void 0) {
-    for (let i = 0; i < children.length; ++i) {
-      const child = children[i];
-      if (typeof child === "string")
-        continue;
-      const childData = child.data;
-      if (childData !== void 0) {
-        addNS(childData, child.children, child.sel);
-      }
-    }
-  }
-}
-function h(sel, b, c) {
-  let data = {};
-  let children;
-  let text;
-  let i;
-  if (c !== void 0) {
-    if (b !== null) {
-      data = b;
-    }
-    if (array(c)) {
-      children = c;
-    } else if (primitive(c)) {
-      text = c.toString();
-    } else if (c && c.sel) {
-      children = [c];
-    }
-  } else if (b !== void 0 && b !== null) {
-    if (array(b)) {
-      children = b;
-    } else if (primitive(b)) {
-      text = b.toString();
-    } else if (b && b.sel) {
-      children = [b];
-    } else {
-      data = b;
-    }
-  }
-  if (children !== void 0) {
-    for (i = 0; i < children.length; ++i) {
-      if (primitive(children[i]))
-        children[i] = vnode(void 0, void 0, void 0, children[i], void 0);
-    }
-  }
-  if (sel.startsWith("svg") && (sel.length === 3 || sel[3] === "." || sel[3] === "#")) {
-    addNS(data, children, sel);
-  }
-  return vnode(sel, data, children, text, void 0);
-}
-
-// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/modules/attributes.js
-var xlinkNS = "http://www.w3.org/1999/xlink";
-var xmlnsNS = "http://www.w3.org/2000/xmlns/";
-var xmlNS = "http://www.w3.org/XML/1998/namespace";
-var colonChar = 58;
-var xChar = 120;
-var mChar = 109;
-function updateAttrs(oldVnode, vnode3) {
-  let key;
-  const elm = vnode3.elm;
-  let oldAttrs = oldVnode.data.attrs;
-  let attrs = vnode3.data.attrs;
-  if (!oldAttrs && !attrs)
-    return;
-  if (oldAttrs === attrs)
-    return;
-  oldAttrs = oldAttrs || {};
-  attrs = attrs || {};
-  for (key in attrs) {
-    const cur = attrs[key];
-    const old = oldAttrs[key];
-    if (old !== cur) {
-      if (cur === true) {
-        elm.setAttribute(key, "");
-      } else if (cur === false) {
-        elm.removeAttribute(key);
-      } else {
-        if (key.charCodeAt(0) !== xChar) {
-          elm.setAttribute(key, cur);
-        } else if (key.charCodeAt(3) === colonChar) {
-          elm.setAttributeNS(xmlNS, key, cur);
-        } else if (key.charCodeAt(5) === colonChar) {
-          key.charCodeAt(1) === mChar ? elm.setAttributeNS(xmlnsNS, key, cur) : elm.setAttributeNS(xlinkNS, key, cur);
-        } else {
-          elm.setAttribute(key, cur);
+  return h("div.pgn-import", [
+    h("div.pgn-import__row", [
+      h("button.btn-review", {
+        class: { "btn-review--complete": analysisComplete },
+        attrs: { disabled: !hasGame },
+        on: { click: reviewClick }
+      }, reviewLabel),
+      h("button", {
+        attrs: { disabled: ctrl2.mainline.length <= 1 },
+        on: {
+          click: () => {
+            showExportMenu = !showExportMenu;
+            _redraw5();
+          }
         }
-      }
-    }
-  }
-  for (key in oldAttrs) {
-    if (!(key in attrs)) {
-      elm.removeAttribute(key);
-    }
-  }
+      }, "Export PGN")
+    ]),
+    showExportMenu ? h("div.pgn-import__row", [
+      h("span", { attrs: { style: "font-size:0.8rem;color:#888;margin-right:6px" } }, "Export as:"),
+      h("button", { on: { click: () => downloadPgn(true) } }, "Annotated"),
+      h("button", { on: { click: () => downloadPgn(false) } }, "Plain"),
+      h("button", {
+        attrs: { style: "color:#888" },
+        on: { click: () => {
+          showExportMenu = false;
+          _redraw5();
+        } }
+      }, "Cancel")
+    ]) : null
+  ]);
 }
-var attributesModule = {
-  create: updateAttrs,
-  update: updateAttrs
+
+// src/keyboard.ts
+var _getCtrl6 = () => {
+  throw new Error("keyboard not initialised");
 };
-
-// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/modules/class.js
-function updateClass(oldVnode, vnode3) {
-  let cur;
-  let name;
-  const elm = vnode3.elm;
-  let oldClass = oldVnode.data.class;
-  let klass = vnode3.data.class;
-  if (!oldClass && !klass)
-    return;
-  if (oldClass === klass)
-    return;
-  oldClass = oldClass || {};
-  klass = klass || {};
-  for (name in oldClass) {
-    if (oldClass[name] && !Object.prototype.hasOwnProperty.call(klass, name)) {
-      elm.classList.remove(name);
-    }
-  }
-  for (name in klass) {
-    cur = klass[name];
-    if (cur !== oldClass[name]) {
-      elm.classList[cur ? "add" : "remove"](name);
-    }
-  }
-}
-var classModule = { create: updateClass, update: updateClass };
-
-// node_modules/.pnpm/snabbdom@3.6.3/node_modules/snabbdom/build/modules/eventlisteners.js
-function invokeHandler(handler, vnode3, event) {
-  if (typeof handler === "function") {
-    handler.call(vnode3, event, vnode3);
-  } else if (typeof handler === "object") {
-    for (let i = 0; i < handler.length; i++) {
-      invokeHandler(handler[i], vnode3, event);
-    }
-  }
-}
-function handleEvent(event, vnode3) {
-  const name = event.type;
-  const on = vnode3.data.on;
-  if (on && on[name]) {
-    invokeHandler(on[name], vnode3, event);
-  }
-}
-function createListener() {
-  return function handler(event) {
-    handleEvent(event, handler.vnode);
-  };
-}
-function updateEventListeners(oldVnode, vnode3) {
-  const oldOn = oldVnode.data.on;
-  const oldListener = oldVnode.listener;
-  const oldElm = oldVnode.elm;
-  const on = vnode3 && vnode3.data.on;
-  const elm = vnode3 && vnode3.elm;
-  let name;
-  if (oldOn === on) {
-    return;
-  }
-  if (oldOn && oldListener) {
-    if (!on) {
-      for (name in oldOn) {
-        oldElm.removeEventListener(name, oldListener, false);
-      }
-    } else {
-      for (name in oldOn) {
-        if (!on[name]) {
-          oldElm.removeEventListener(name, oldListener, false);
-        }
-      }
-    }
-  }
-  if (on) {
-    const listener = vnode3.listener = oldVnode.listener || createListener();
-    listener.vnode = vnode3;
-    if (!oldOn) {
-      for (name in on) {
-        elm.addEventListener(name, listener, false);
-      }
-    } else {
-      for (name in on) {
-        if (!oldOn[name]) {
-          elm.addEventListener(name, listener, false);
-        }
-      }
-    }
-  }
-}
-var eventListenersModule = {
-  create: updateEventListeners,
-  update: updateEventListeners,
-  destroy: updateEventListeners
+var _navigate3 = () => {
 };
-
-// src/tree/ops.ts
-var pathHead = (path) => path.slice(0, 2);
-var pathTail = (path) => path.slice(2);
-var pathInit = (path) => path.slice(0, -2);
-function childById(node, id) {
-  return node.children.find((c) => c.id === id);
+var _next = () => {
+};
+var _prev = () => {
+};
+var _first = () => {
+};
+var _last = () => {
+};
+var _flip = () => {
+};
+var _completeMove = () => {
+};
+var _redraw6 = () => {
+};
+function bindKeyboardHandlers(deps) {
+  _getCtrl6 = deps.getCtrl;
+  _navigate3 = deps.navigate;
+  _next = deps.next;
+  _prev = deps.prev;
+  _first = deps.first;
+  _last = deps.last;
+  _flip = deps.flip;
+  _completeMove = deps.completeMove;
+  _redraw6 = deps.redraw;
+  document.addEventListener("keydown", (e) => {
+    const tag = e.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (e.shiftKey) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        previousBranch();
+        _redraw6();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        nextBranch();
+        _redraw6();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        nextSibling2();
+        _redraw6();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        prevSibling();
+        _redraw6();
+      }
+      return;
+    }
+    if (e.key === "ArrowRight") {
+      _next();
+      _redraw6();
+    } else if (e.key === "ArrowLeft") {
+      _prev();
+      _redraw6();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      _first();
+      _redraw6();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      _last();
+      _redraw6();
+    } else if (e.key === "f" || e.key === "F") _flip();
+    else if (e.key === "x" || e.key === "X") toggleThreatMode();
+    else if (e.key === "l" || e.key === "L") toggleEngine();
+    else if (e.key === "a" || e.key === "A") {
+      setShowEngineArrows(!showEngineArrows);
+      syncArrow();
+      _redraw6();
+    } else if (e.key === " ") {
+      e.preventDefault();
+      playBestMove();
+    } else if (e.key === "?") {
+      showKeyboardHelp = !showKeyboardHelp;
+      _redraw6();
+    }
+  });
 }
-function nodeAtPath(root, path) {
-  if (path === "") return root;
-  const child = childById(root, pathHead(path));
-  return child ? nodeAtPath(child, pathTail(path)) : void 0;
-}
-function nodeListAt(root, path) {
-  const nodes = [root];
-  let node = root;
-  let p = path;
-  while (p !== "") {
-    const child = childById(node, pathHead(p));
-    if (!child) break;
-    nodes.push(child);
-    node = child;
-    p = pathTail(p);
+function previousBranch() {
+  const ctrl2 = _getCtrl6();
+  let path = pathInit(ctrl2.path);
+  while (path.length > 0) {
+    const parent = (() => {
+      let p = ctrl2.root;
+      const parts = [];
+      for (let i = 0; i < path.length; i += 2) parts.push(path.slice(i, i + 2));
+      for (const id of parts.slice(0, -1)) {
+        const child = p.children.find((c) => c.id === id);
+        if (!child) return null;
+        p = child;
+      }
+      return p;
+    })();
+    if (parent && parent.children.length >= 2) {
+      _navigate3(path);
+      return;
+    }
+    path = pathInit(path);
   }
-  return nodes;
+  _navigate3("");
 }
-function mainlineNodeList(root) {
-  const nodes = [];
-  let node = root;
-  while (node) {
-    nodes.push(node);
+function nextBranch() {
+  const ctrl2 = _getCtrl6();
+  let path = ctrl2.path;
+  let node = ctrl2.node;
+  while (node.children.length === 1) {
+    path += node.children[0].id;
     node = node.children[0];
   }
-  return nodes;
+  if (node.children.length >= 2) _navigate3(path + node.children[0].id);
+  else _last();
 }
-function addNode(root, path, node) {
-  const parent = nodeAtPath(root, path);
-  if (!parent) return;
-  if (!childById(parent, node.id)) {
-    parent.children.push(node);
-  }
+function nextSibling2() {
+  const ctrl2 = _getCtrl6();
+  const parentPath = pathInit(ctrl2.path);
+  const parentNode2 = ctrl2.nodeList[ctrl2.nodeList.length - 2];
+  if (!parentNode2 || parentNode2.children.length < 2) return;
+  const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
+  const next2 = parentNode2.children[(idx + 1) % parentNode2.children.length];
+  _navigate3(parentPath + next2.id);
+}
+function prevSibling() {
+  const ctrl2 = _getCtrl6();
+  const parentPath = pathInit(ctrl2.path);
+  const parentNode2 = ctrl2.nodeList[ctrl2.nodeList.length - 2];
+  if (!parentNode2 || parentNode2.children.length < 2) return;
+  const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
+  const prev2 = parentNode2.children[(idx - 1 + parentNode2.children.length) % parentNode2.children.length];
+  _navigate3(parentPath + prev2.id);
+}
+function playBestMove() {
+  const best = currentEval.best;
+  if (!best || best.length < 4) return;
+  const orig = best.slice(0, 2);
+  const dest = best.slice(2, 4);
+  const promotion = best.length > 4 ? best.slice(4) : void 0;
+  _completeMove(orig, dest, promotion);
+}
+var showKeyboardHelp = false;
+function renderKeyboardHelp() {
+  if (!showKeyboardHelp) return null;
+  return h("div.keyboard-help", {
+    on: { click: () => {
+      showKeyboardHelp = false;
+      _redraw6();
+    } }
+  }, [
+    h("div.keyboard-help__box", { on: { click: (e) => e.stopPropagation() } }, [
+      h("h2", "Keyboard shortcuts"),
+      h("table", [
+        h("tbody", [
+          ["\u2190  /  \u2192", "Previous / next move"],
+          ["\u2191  /  \u2193", "First / last move"],
+          ["Shift + \u2190", "Jump to previous fork"],
+          ["Shift + \u2192", "Jump to next fork"],
+          ["Shift + \u2191\u2193", "Switch variation at fork"],
+          ["Space", "Play engine best move"],
+          ["l", "Toggle engine"],
+          ["a", "Toggle engine arrows"],
+          ["x", "Toggle threat mode"],
+          ["f", "Flip board"],
+          ["?", "Show this help"]
+        ].map(([key, desc]) => h("tr", [h("td", key), h("td", desc)])))
+      ]),
+      h("button.keyboard-help__close", {
+        on: { click: () => {
+          showKeyboardHelp = false;
+          _redraw6();
+        } }
+      }, "\u2715")
+    ])
+  ]);
 }
 
-// src/analyse/ctrl.ts
-var AnalyseCtrl = class {
-  constructor(root) {
-    __publicField(this, "root");
-    // Current tree cursor — updated together as a unit (mirrors Lichess setPath)
-    __publicField(this, "path");
-    __publicField(this, "node");
-    __publicField(this, "nodeList");
-    __publicField(this, "mainline");
-    this.root = root;
-    this.path = "";
-    this.nodeList = [root];
-    this.node = root;
-    this.mainline = mainlineNodeList(root);
-  }
-  /**
-   * Jump to the node at path.
-   * If the path is invalid, the current position is unchanged.
-   * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts setPath
-   */
-  setPath(path) {
-    const target = nodeAtPath(this.root, path);
-    if (!target) return;
-    this.path = path;
-    this.nodeList = nodeListAt(this.root, path);
-    this.node = target;
-    this.mainline = mainlineNodeList(this.root);
-  }
+// src/import/types.ts
+var gameIdCounter = 0;
+function nextGameId() {
+  return `game-${++gameIdCounter}`;
+}
+function restoreGameIdCounter(max) {
+  if (max > gameIdCounter) gameIdCounter = max;
+}
+function parsePgnHeader(pgn, tag) {
+  return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
+}
+function parseRating(s) {
+  if (typeof s === "number") return s > 0 ? s : void 0;
+  if (!s) return void 0;
+  const n = parseInt(s, 10);
+  return isNaN(n) || n <= 0 ? void 0 : n;
+}
+function timeClassFromTimeControl(tc) {
+  if (!tc || tc === "-") return void 0;
+  const secs = parseInt(tc, 10);
+  if (isNaN(secs)) return void 0;
+  if (secs < 180) return "ultrabullet";
+  if (secs < 600) return "bullet";
+  if (secs < 1800) return "blitz";
+  if (secs <= 10800) return "rapid";
+  return "classical";
+}
+
+// src/import/filters.ts
+var importFilters = {
+  rated: true,
+  speeds: /* @__PURE__ */ new Set(),
+  // empty = all speeds
+  dateRange: "1month",
+  customFrom: "",
+  customTo: ""
 };
-
-// src/ceval/protocol.ts
-function sharedWasmMemory(lo, hi = 32767) {
-  let shrink = 4;
-  for (; ; ) {
-    try {
-      return new WebAssembly.Memory({ shared: true, initial: lo, maximum: hi });
-    } catch (e) {
-      if (hi <= lo || !(e instanceof RangeError)) throw e;
-      hi = Math.max(lo, Math.ceil(hi - hi / shrink));
-      shrink = shrink === 4 ? 3 : 4;
-    }
-  }
-}
-var StockfishProtocol = class {
-  constructor() {
-    __publicField(this, "module");
-    __publicField(this, "onLine");
-    /** Human-readable engine name received from the "id name" response. */
-    __publicField(this, "engineName");
-  }
-  /**
-   * Load Stockfish 18 (smallnet) from baseUrl and begin the UCI handshake.
-   * baseUrl is the URL prefix where sf_18_smallnet.{js,wasm} and the NNUE
-   * file are served (e.g. "/stockfish-web").
-   *
-   * Uses dynamic import() — esbuild leaves variable-string imports as-is and
-   * does not try to bundle them, so the engine JS is loaded at runtime only.
-   *
-   * Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts boot()
-   */
-  async init(baseUrl) {
-    const scriptUrl = `${baseUrl}/sf_18_smallnet.js`;
-    const { default: makeModule } = await import(scriptUrl);
-    const wasmMemory = sharedWasmMemory(1536);
-    this.module = await makeModule({
-      wasmMemory,
-      // Tell Emscripten where to find the .wasm and any other assets it needs.
-      locateFile: (file) => `${baseUrl}/${file}`,
-      // Emscripten passes this URL to the pthreads workers it spawns, so each
-      // thread can load the same Stockfish module.
-      mainScriptUrlOrBlob: scriptUrl
-    });
-    this.module.listen = (line) => this.received(line);
-    this.module.onError = (msg) => {
-      console.error("[ceval] engine error:", msg);
-    };
-    const nnueName = this.module.getRecommendedNnue(0);
-    if (nnueName) {
-      console.log("[ceval] loading NNUE:", nnueName);
-      const resp = await fetch(`${baseUrl}/${nnueName}`);
-      if (resp.ok) {
-        this.module.setNnueBuffer(new Uint8Array(await resp.arrayBuffer()), 0);
-        console.log("[ceval] NNUE loaded");
-      } else {
-        console.warn("[ceval] NNUE fetch failed:", resp.status, nnueName);
-      }
-    }
-    this.send("uci");
-  }
-  /** Register a callback that fires for every raw UCI line from the engine. */
-  onMessage(cb) {
-    this.onLine = cb;
-  }
-  /**
-   * Send a FEN position to the engine.
-   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork position command.
-   */
-  setPosition(fen) {
-    this.send(`position fen ${fen}`);
-  }
-  /**
-   * Start a fixed-depth search on the current position.
-   * multiPv controls how many candidate lines the engine returns.
-   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
-   */
-  go(depth, multiPv2 = 1) {
-    this.send(`setoption name MultiPV value ${multiPv2}`);
-    this.send(`go depth ${depth}`);
-  }
-  /** Interrupt a running search. */
-  stop() {
-    this.send("stop");
-  }
-  /** Shut down the engine. */
-  destroy() {
-    this.send("quit");
-    this.module = void 0;
-  }
-  send(cmd) {
-    this.module?.uci(cmd);
-  }
-  /**
-   * Handle a raw UCI line from the engine.
-   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts received
-   */
-  received(line) {
-    const parts = line.trim().split(/\s+/);
-    if (parts[0] === "id" && parts[1] === "name") {
-      this.engineName = parts.slice(2).join(" ");
-    } else if (parts[0] === "uciok") {
-      this.send("setoption name UCI_AnalyseMode value true");
-      this.send("setoption name Analysis Contempt value Off");
-      const cores = navigator.hardwareConcurrency ?? 2;
-      const threads = Math.max(1, cores - 1);
-      this.send(`setoption name Threads value ${threads}`);
-      console.log(`[ceval] Stockfish 18 \u2014 ${threads} threads`);
-      this.send("setoption name Hash value 256");
-      this.send("ucinewgame");
-      this.send("isready");
-    }
-    this.onLine?.(line);
-  }
-};
-
-// src/router.ts
-var routes = [
-  { pattern: ["analysis", ":id"], name: "analysis-game" },
-  { pattern: ["analysis"], name: "analysis" },
-  { pattern: ["puzzles"], name: "puzzles" },
-  { pattern: ["openings"], name: "openings" },
-  { pattern: ["stats"], name: "stats" },
-  { pattern: ["games"], name: "games" },
-  { pattern: [], name: "home" }
+var SPEED_OPTIONS = [
+  { value: "bullet", label: "Bullet", icon: "\uE032" },
+  // licon.Bullet
+  { value: "blitz", label: "Blitz", icon: "\uE008" },
+  // licon.FlameBlitz
+  { value: "rapid", label: "Rapid", icon: "\uE002" }
+  // licon.Rabbit
 ];
-function parse(hash2) {
-  const path = hash2.replace(/^#\/?/, "");
-  const parts = path ? path.split("/") : [];
-  for (const { pattern, name } of routes) {
-    if (pattern.length !== parts.length) continue;
-    const params = {};
-    let matched = true;
-    for (let i = 0; i < pattern.length; i++) {
-      const seg = pattern[i];
-      if (seg.startsWith(":")) {
-        params[seg.slice(1)] = parts[i];
-      } else if (seg !== parts[i]) {
-        matched = false;
-        break;
-      }
-    }
-    if (matched) return { name, params };
+var DATE_RANGE_OPTIONS = [
+  { value: "24h", label: "24h" },
+  { value: "1week", label: "1 wk" },
+  { value: "1month", label: "1 mo" },
+  { value: "3months", label: "3 mo" },
+  { value: "1year", label: "1 yr" },
+  { value: "all", label: "All" },
+  { value: "custom", label: "Custom" }
+];
+function filterGamesByDate(games) {
+  if (importFilters.dateRange === "all") return games;
+  if (importFilters.dateRange === "custom") {
+    return games.filter((g) => {
+      const d = g.date?.slice(0, 10);
+      if (!d) return true;
+      if (importFilters.customFrom && d < importFilters.customFrom) return false;
+      if (importFilters.customTo && d > importFilters.customTo) return false;
+      return true;
+    });
   }
-  return { name: "home", params: {} };
-}
-function current() {
-  return parse(window.location.hash);
-}
-function onChange2(fn) {
-  window.addEventListener("hashchange", () => fn(current()));
+  const now = /* @__PURE__ */ new Date();
+  let cutoff;
+  switch (importFilters.dateRange) {
+    case "24h":
+      cutoff = new Date(now.getTime() - 864e5);
+      break;
+    case "1week":
+      cutoff = new Date(now.getTime() - 7 * 864e5);
+      break;
+    case "1month":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 1);
+      break;
+    case "3months":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 3);
+      break;
+    case "1year":
+      cutoff = new Date(now);
+      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      break;
+    default:
+      return games;
+  }
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
 }
 
 // node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/variant.js
@@ -5469,2465 +7798,13 @@ function pgnToTree(pgn) {
   };
 }
 
-// src/main.ts
-console.log("Patzer Pro");
-var patch = init([classModule, attributesModule, eventListenersModule]);
-function timeClassFromTimeControl(tc) {
-  if (!tc || tc === "-") return void 0;
-  const secs = parseInt(tc, 10);
-  if (isNaN(secs)) return void 0;
-  if (secs < 180) return "ultrabullet";
-  if (secs < 600) return "bullet";
-  if (secs < 1800) return "blitz";
-  if (secs <= 10800) return "rapid";
-  return "classical";
-}
-function gameSourceUrl(game) {
-  const link = parsePgnHeader(game.pgn, "Link");
-  if (link?.startsWith("http")) return link;
-  const site = parsePgnHeader(game.pgn, "Site");
-  if (site?.startsWith("https://lichess.org/")) return site;
-  return void 0;
-}
-function gameResult(game) {
-  const color = getUserColor(game);
-  if (!game.result) return null;
-  if (game.result.includes("1/2")) return "draw";
-  if (!color) return null;
-  if (color === "white") return game.result === "1-0" ? "win" : "loss";
-  return game.result === "0-1" ? "win" : "loss";
-}
-function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
-  const result = gameResult(game);
-  const userColor = getUserColor(game);
-  const opponent = userColor === "white" ? game.black ?? game.id : userColor === "black" ? game.white ?? game.id : game.white && game.black ? `${game.white} vs ${game.black}` : game.id;
-  const date = game.date ? game.date.slice(0, 10) : null;
-  const tcIconMap = {
-    ultrabullet: "\uE032",
-    bullet: "\uE032",
-    blitz: "\uE008",
-    rapid: "\uE002"
-  };
-  const tcIcon = game.timeClass ? tcIconMap[game.timeClass] ?? null : null;
-  const resultCls = result === "win" ? "grl__result--win" : result === "loss" ? "grl__result--loss" : result === "draw" ? "grl__result--draw" : "grl__result--unknown";
-  const oppColor = userColor === "white" ? "black" : userColor === "black" ? "white" : null;
-  const oppChip = oppColor ? h("span.color-chip.--" + oppColor) : null;
-  const oppRating = userColor === "white" ? game.blackRating : userColor === "black" ? game.whiteRating : void 0;
-  const oppLabel = oppRating !== void 0 ? `${opponent} (${oppRating})` : opponent;
-  return [
-    h("span.grl__result." + resultCls, "\u25CF"),
-    h("span.grl__opponent", [oppLabel, oppChip]),
-    date ? h("span.grl__date", date) : null,
-    tcIcon ? h("span.grl__tc", { attrs: { "data-icon": tcIcon, title: game.timeClass } }) : null,
-    isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
-      isAnalyzed ? h("span.grl__badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
-      hasMissedTactic ? h("span.grl__badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null
-    ]) : null
-  ];
-}
-var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
-var ZOOM_DEFAULT = 85;
-var ZOOM_KEY = "boardZoom";
-var boardZoom = (() => {
-  const stored = localStorage.getItem(ZOOM_KEY);
-  const n = stored !== null ? parseInt(stored, 10) : NaN;
-  return !isNaN(n) && n >= 0 && n <= 100 ? n : ZOOM_DEFAULT;
-})();
-function applyBoardZoom(zoom) {
-  document.body.style.setProperty("---zoom", String(zoom));
-}
-applyBoardZoom(boardZoom);
-var BOARD_THEME_KEY = "boardTheme";
-var BOARD_THEME_DEFAULT = "green";
-var BOARD_THEMES_FEATURED = [
-  "brown",
-  "wood4",
-  "maple",
-  "horsey",
-  "blue",
-  "blue2",
-  "blue3",
-  "green",
-  "marble",
-  "olive",
-  "grey",
-  "metal",
-  "newspaper",
-  "purple",
-  "purple-diag"
-];
-var boardTheme = localStorage.getItem(BOARD_THEME_KEY) ?? BOARD_THEME_DEFAULT;
-function applyBoardTheme(name) {
-  document.body.dataset.board = name;
-  boardTheme = name;
-  localStorage.setItem(BOARD_THEME_KEY, name);
-}
-applyBoardTheme(boardTheme);
-var PIECE_SET_KEY = "pieceSet";
-var PIECE_SET_DEFAULT = "staunty";
-var PIECE_SETS_FEATURED = [
-  "cburnett",
-  "merida",
-  "alpha",
-  "companion",
-  "kosal",
-  "caliente",
-  "rhosgfx",
-  "maestro",
-  "fresca",
-  "cardinal",
-  "gioco",
-  "staunty",
-  "monarchy",
-  "dubrovny",
-  "mpchess",
-  "horsey",
-  "anarcandy"
-];
-var PIECE_VARS = [
-  ["---white-pawn", "wP"],
-  ["---white-knight", "wN"],
-  ["---white-bishop", "wB"],
-  ["---white-rook", "wR"],
-  ["---white-queen", "wQ"],
-  ["---white-king", "wK"],
-  ["---black-pawn", "bP"],
-  ["---black-knight", "bN"],
-  ["---black-bishop", "bB"],
-  ["---black-rook", "bR"],
-  ["---black-queen", "bQ"],
-  ["---black-king", "bK"]
-];
-var PIECE_WEBP_SETS = /* @__PURE__ */ new Set(["monarchy"]);
-var pieceSet = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
-function applyPieceSet(name) {
-  const ext = PIECE_WEBP_SETS.has(name) ? "webp" : "svg";
-  for (const [cssVar, file] of PIECE_VARS) {
-    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.${ext})`);
-  }
-  document.body.dataset.pieceSet = name;
-  pieceSet = name;
-  localStorage.setItem(PIECE_SET_KEY, name);
-}
-applyPieceSet(pieceSet);
-var FILTER_DEFAULTS = {
-  "board-brightness": 100,
-  "board-contrast": 100,
-  "board-hue": 0
-};
-var FILTER_LS_PREFIX = "boardFilter.";
-var boardFilters = {};
-for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
-  const stored = localStorage.getItem(FILTER_LS_PREFIX + prop);
-  boardFilters[prop] = stored !== null ? parseInt(stored, 10) : def;
-}
-function filtersAtDefault() {
-  return Object.entries(FILTER_DEFAULTS).every(([p, def]) => boardFilters[p] === def);
-}
-function setFilter(prop, value) {
-  boardFilters[prop] = value;
-  document.body.style.setProperty(`---${prop}`, value.toString());
-  localStorage.setItem(FILTER_LS_PREFIX + prop, value.toString());
-  document.body.classList.toggle("simple-board", filtersAtDefault());
-}
-function resetFilters() {
-  for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) setFilter(prop, def);
-}
-for (const [prop, value] of Object.entries(boardFilters)) {
-  document.body.style.setProperty(`---${prop}`, value.toString());
-}
-document.body.classList.toggle("simple-board", filtersAtDefault());
-var BOARD_THEME_EXT = {
-  brown: "png",
-  horsey: "jpg",
-  blue: "png",
-  green: "png",
-  purple: "png",
-  "purple-diag": "png",
-  wood4: "jpg",
-  maple: "jpg",
-  blue2: "jpg",
-  blue3: "jpg",
-  marble: "jpg",
-  olive: "jpg",
-  grey: "jpg",
-  metal: "jpg",
-  newspaper: "svg"
-};
-function boardThumbnailUrl(name) {
-  if (name === "newspaper") return "/images/board/svg/newspaper.svg";
-  return `/images/board/${name}.thumbnail.${BOARD_THEME_EXT[name]}`;
-}
-function piecePreviewUrl(name) {
-  return PIECE_WEBP_SETS.has(name) ? `/piece/${name}/wN.webp` : `/piece/${name}/wN.svg`;
-}
-var importedGames = [];
-var selectedGameId = null;
-var selectedGamePgn = null;
-function getActivePgn() {
-  return selectedGamePgn ?? SAMPLE_PGN;
-}
-var ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
-function loadGame(pgn) {
-  selectedGamePgn = pgn;
-  ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
-  evalCache.clear();
-  currentEval = {};
-  puzzleCandidates = [];
-  batchQueue = [];
-  batchDone = 0;
-  batchAnalyzing = false;
-  batchState = "idle";
-  analysisRunning = false;
-  analysisComplete = false;
-  if (selectedGameId) {
-    const loadedGame = importedGames.find((g) => g.id === selectedGameId);
-    if (loadedGame) {
-      const userColor = getUserColor(loadedGame);
-      if (userColor) orientation = userColor;
-    }
-  }
-  syncBoard();
-  syncArrow();
-  if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId);
-  else evalCurrentPosition();
-  redraw();
-}
-var ANALYSIS_VERSION = 2;
-var _idb;
-function openGameDb() {
-  if (_idb) return Promise.resolve(_idb);
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("patzer-pro", 3);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains("game-library")) db.createObjectStore("game-library");
-      if (!db.objectStoreNames.contains("puzzle-library")) db.createObjectStore("puzzle-library");
-      if (!db.objectStoreNames.contains("analysis-library")) db.createObjectStore("analysis-library");
-    };
-    req.onsuccess = () => {
-      _idb = req.result;
-      resolve(_idb);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-var savedPuzzles = [];
-async function savePuzzlesToIdb() {
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction("puzzle-library", "readwrite");
-    tx.objectStore("puzzle-library").put(savedPuzzles, "saved-puzzles");
-  } catch (e) {
-    console.warn("[idb] puzzle save failed", e);
-  }
-}
-async function loadPuzzlesFromIdb() {
-  try {
-    const db = await openGameDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("puzzle-library", "readonly").objectStore("puzzle-library").get("saved-puzzles");
-      req.onsuccess = () => resolve(req.result ?? []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[idb] puzzle load failed", e);
-    return [];
-  }
-}
-function savePuzzle(c) {
-  const already = savedPuzzles.some((p) => p.gameId === c.gameId && p.path === c.path);
-  if (already) return;
-  savedPuzzles = [...savedPuzzles, c];
-  void savePuzzlesToIdb();
-  redraw();
-}
-async function saveGamesToIdb() {
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction("game-library", "readwrite");
-    tx.objectStore("game-library").put(
-      { games: importedGames, selectedId: selectedGameId, path: ctrl.path },
-      "imported-games"
-    );
-  } catch (e) {
-    console.warn("[idb] save failed", e);
-  }
-}
-async function loadGamesFromIdb() {
-  try {
-    const db = await openGameDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("game-library", "readonly").objectStore("game-library").get("imported-games");
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[idb] load failed", e);
-    return void 0;
-  }
-}
-async function saveAnalysisToIdb(status) {
-  if (!selectedGameId) return;
-  try {
-    const db = await openGameDb();
-    const nodes = {};
-    let path = "";
-    for (let i = 1; i < ctrl.mainline.length; i++) {
-      const node = ctrl.mainline[i];
-      path += node.id;
-      const ev = evalCache.get(path);
-      if (ev) {
-        const entry = { nodeId: node.id, path, fen: node.fen };
-        if (ev.cp !== void 0) entry.cp = ev.cp;
-        if (ev.mate !== void 0) entry.mate = ev.mate;
-        if (ev.best !== void 0) entry.best = ev.best;
-        if (ev.loss !== void 0) entry.loss = ev.loss;
-        if (ev.delta !== void 0) entry.delta = ev.delta;
-        nodes[path] = entry;
-      }
-    }
-    const record = {
-      gameId: selectedGameId,
-      analysisVersion: ANALYSIS_VERSION,
-      analysisDepth: reviewDepth,
-      status,
-      updatedAt: Date.now(),
-      nodes
-    };
-    const tx = db.transaction("analysis-library", "readwrite");
-    tx.objectStore("analysis-library").put(record, selectedGameId);
-  } catch (e) {
-    console.warn("[idb] analysis save failed", e);
-  }
-}
-async function loadAnalysisFromIdb(gameId) {
-  try {
-    const db = await openGameDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("analysis-library", "readonly").objectStore("analysis-library").get(gameId);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[idb] analysis load failed", e);
-    return void 0;
-  }
-}
-async function clearAnalysisFromIdb(gameId) {
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction("analysis-library", "readwrite");
-    tx.objectStore("analysis-library").delete(gameId);
-  } catch (e) {
-    console.warn("[idb] analysis clear failed", e);
-  }
-}
-async function loadAndRestoreAnalysis(gameId) {
-  const stored = await loadAnalysisFromIdb(gameId);
-  if (!stored) return;
-  if (stored.analysisVersion !== ANALYSIS_VERSION) return;
-  if (stored.analysisDepth !== reviewDepth) return;
-  for (const entry of Object.values(stored.nodes)) {
-    if (!entry.path) continue;
-    const ev = {};
-    if (entry.cp !== void 0) ev.cp = entry.cp;
-    if (entry.mate !== void 0) ev.mate = entry.mate;
-    if (entry.best !== void 0) ev.best = entry.best;
-    if (entry.loss !== void 0) ev.loss = entry.loss;
-    if (entry.delta !== void 0) ev.delta = entry.delta;
-    evalCache.set(entry.path, ev);
-  }
-  if (stored.status === "complete") {
-    analyzedGameIds.add(gameId);
-    analysisComplete = true;
-    batchState = "complete";
-    const game = importedGames.find((g) => g.id === gameId);
-    const userColor = game ? getUserColor(game) : null;
-    if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
-    const restoredSummary = computeAnalysisSummary();
-    if (restoredSummary) {
-      analyzedGameAccuracy.set(gameId, { white: restoredSummary.white.accuracy, black: restoredSummary.black.accuracy });
-    }
-  }
-  const restoredEval = evalCache.get(ctrl.path);
-  if (restoredEval) currentEval = { ...restoredEval };
-  syncArrow();
-  redraw();
-}
-var WIN_CHANCE_MULTIPLIER = -368208e-8;
-function rawWinChances(cp) {
-  return 2 / (1 + Math.exp(WIN_CHANCE_MULTIPLIER * cp)) - 1;
-}
-function evalWinChances(ev) {
-  if (ev.mate !== void 0) {
-    const cp = (21 - Math.min(10, Math.abs(ev.mate))) * 100;
-    return rawWinChances(cp * (ev.mate > 0 ? 1 : -1));
-  }
-  if (ev.cp !== void 0) {
-    return rawWinChances(Math.min(Math.max(-1e3, ev.cp), 1e3));
-  }
-  return void 0;
-}
-var engineEnabled = false;
-var engineReady = false;
-var engineInitialized = false;
-var currentEval = {};
-var evalCache = /* @__PURE__ */ new Map();
-var evalNodeId = "";
-var evalNodePath = "";
-var evalNodePly = 0;
-var evalParentPath = "";
-var engineSearchActive = false;
-var awaitingStopBestmove = false;
-var pendingEval = false;
-var protocol = new StockfishProtocol();
-var multiPv = 3;
-var showEngineSettings = false;
-var pvBoard = null;
-var pvBoardPos = { x: 0, y: 0 };
-var showEngineArrows = true;
-var arrowAllLines = true;
-var showPlayedArrow = true;
-var arrowDebounceTimer = null;
-var arrowSuppressUntil = 0;
-var ARROW_SETTLE_MS = 500;
-var pendingLines = [];
-var batchQueue = [];
-var batchDone = 0;
-var batchAnalyzing = false;
-var batchState = "idle";
-var reviewDepth = 16;
-var analysisDepth = 30;
-var analysisRunning = false;
-var showExportMenu = false;
-var showGlobalMenu = false;
-var showBoardSettings = false;
-var importPlatform = "chesscom";
-var showImportPanel = false;
-var pendingBatchOnReady = false;
-var analysisComplete = false;
-var analyzedGameIds = /* @__PURE__ */ new Set();
-var missedTacticGameIds = /* @__PURE__ */ new Set();
-var analyzedGameAccuracy = /* @__PURE__ */ new Map();
-var MISSED_TACTIC_THRESHOLD = 0.1;
-var MISSED_TACTIC_MAX_PLY = 60;
-var threatMode = false;
-var evalIsThreat = false;
-var threatEval = {};
-function parseEngineLine(line) {
-  const parts = line.trim().split(/\s+/);
-  if (parts[0] === "info") {
-    let isMate = false;
-    let score;
-    let best;
-    let pvMoves = [];
-    let pvIndex = 1;
-    for (let i = 1; i < parts.length; i++) {
-      if (parts[i] === "multipv") {
-        pvIndex = parseInt(parts[++i]);
-      } else if (parts[i] === "score") {
-        isMate = parts[++i] === "mate";
-        score = parseInt(parts[++i]);
-        if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
-      } else if (parts[i] === "pv") {
-        pvMoves = parts.slice(i + 1);
-        best = pvMoves[0];
-        break;
-      }
-    }
-    if (pvIndex === 1) {
-      const ev = evalIsThreat ? threatEval : currentEval;
-      if (score !== void 0) {
-        const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
-        if (isMate) {
-          ev.mate = s;
-          ev.cp = void 0;
-        } else {
-          ev.cp = s;
-          ev.mate = void 0;
-        }
-      }
-      if (best) ev.best = best;
-      if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
-      if ((score !== void 0 || best) && !batchAnalyzing) {
-        syncArrowDebounced();
-        redraw();
-      }
-    } else if (!evalIsThreat && score !== void 0) {
-      const s = evalNodePly % 2 === 1 ? -score : score;
-      const idx = pvIndex - 1;
-      if (!pendingLines[idx]) pendingLines[idx] = {};
-      const pl = pendingLines[idx];
-      if (isMate) {
-        pl.mate = s;
-        pl.cp = void 0;
-      } else {
-        pl.cp = s;
-        pl.mate = void 0;
-      }
-      if (best) pl.best = best;
-      if (pvMoves.length > 0) pl.moves = pvMoves;
-      currentEval.lines = pendingLines.slice(1).filter(Boolean);
-      if (!batchAnalyzing) redraw();
-    }
-  } else if (parts[0] === "bestmove") {
-    if (awaitingStopBestmove) {
-      awaitingStopBestmove = false;
-      currentEval = {};
-      pendingLines = [];
-      console.log("[ceval] stale bestmove discarded \u2014 currentEval reset");
-      return;
-    }
-    engineSearchActive = false;
-    if (!parts[1] || parts[1] === "(none)") {
-      if (batchAnalyzing) advanceBatch();
-      else if (pendingEval) evalCurrentPosition();
-      return;
-    }
-    if (evalIsThreat) {
-      threatEval.best = parts[1];
-      evalIsThreat = false;
-      syncArrow();
-      redraw();
-    } else {
-      currentEval.best = parts[1];
-      const stored = { ...currentEval };
-      pendingLines = [];
-      currentEval = stored;
-      if (batchAnalyzing) {
-        if (stored.cp !== void 0 || stored.mate !== void 0) {
-          const parentEval = evalCache.get(evalParentPath);
-          if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
-            stored.delta = stored.cp - parentEval.cp;
-          }
-          if (parentEval) {
-            const nodeWc = evalWinChances(stored);
-            const parentWc = evalWinChances(parentEval);
-            if (nodeWc !== void 0 && parentWc !== void 0) {
-              const whiteToMove = evalNodePly % 2 === 1;
-              const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
-              const moverParentWc = whiteToMove ? parentWc : -parentWc;
-              stored.loss = (moverParentWc - moverNodeWc) / 2;
-            }
-          }
-          evalCache.set(evalNodePath, stored);
-          console.log("[review cache] path:", evalNodePath, "ply:", evalNodePly, "best:", stored.best, { cp: stored.cp, delta: stored.delta, loss: stored.loss?.toFixed(4) });
-        } else {
-          console.log("[review cache] skip (no score) \u2014 path:", evalNodePath, "ply:", evalNodePly);
-        }
-        advanceBatch();
-      } else {
-        syncArrowDebounced();
-        redraw();
-        if (pendingEval) {
-          evalCurrentPosition();
-        } else if (threatMode) {
-          evalThreatPosition();
-        }
-      }
-    }
-  }
-}
-protocol.onMessage((line) => {
-  if (line.trim() === "readyok") {
-    engineReady = true;
-    if (pendingBatchOnReady) {
-      pendingBatchOnReady = false;
-      startBatchAnalysis();
-    } else {
-      evalCurrentPosition();
-    }
-    redraw();
-  } else {
-    if (!batchAnalyzing && (line.startsWith("info") || line.startsWith("bestmove"))) {
-      console.log("[live-diag]", line.slice(0, 120));
-    }
-    parseEngineLine(line);
-  }
-});
-function flipFenColor(fen) {
-  const parts = fen.split(" ");
-  if (parts.length >= 2) parts[1] = parts[1] === "w" ? "b" : "w";
-  if (parts.length >= 4) parts[3] = "-";
-  return parts.join(" ");
-}
-function evalThreatPosition() {
-  if (!engineEnabled || !engineReady || batchAnalyzing) return;
-  threatEval = {};
-  evalIsThreat = true;
-  protocol.stop();
-  protocol.setPosition(flipFenColor(ctrl.node.fen));
-  protocol.go(analysisDepth);
-}
-function toggleThreatMode() {
-  threatMode = !threatMode;
-  if (threatMode) {
-    evalThreatPosition();
-  } else {
-    if (evalIsThreat) {
-      protocol.stop();
-      evalIsThreat = false;
-    }
-    threatEval = {};
-    syncArrow();
-    redraw();
-  }
-}
-function evalCurrentPosition() {
-  if (batchAnalyzing) return;
-  if (!engineEnabled || !engineReady) return;
-  if (evalIsThreat) {
-    awaitingStopBestmove = true;
-    protocol.stop();
-    evalIsThreat = false;
-  }
-  threatEval = {};
-  const cached = evalCache.get(ctrl.path);
-  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
-  if (cached && cachedHasLines) {
-    currentEval = { ...cached };
-    syncArrow();
-    redraw();
-    if (threatMode) evalThreatPosition();
-    return;
-  }
-  currentEval = cached ? { ...cached } : {};
-  pendingLines = [];
-  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
-  syncArrow();
-  if (engineSearchActive) {
-    pendingEval = true;
-    redraw();
-    return;
-  }
-  pendingEval = false;
-  engineSearchActive = true;
-  evalNodeId = ctrl.node.id;
-  evalNodePath = ctrl.path;
-  evalNodePly = ctrl.node.ply;
-  evalParentPath = ctrl.path.length >= 2 ? ctrl.path.slice(0, -2) : "";
-  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv);
-  protocol.setPosition(ctrl.node.fen);
-  protocol.go(analysisDepth, multiPv);
-}
-function startBatchWhenReady() {
-  if (!engineEnabled) {
-    pendingBatchOnReady = true;
-    toggleEngine();
-    return;
-  }
-  if (!engineReady) {
-    pendingBatchOnReady = true;
-    return;
-  }
-  startBatchAnalysis();
-}
-function startBatchAnalysis() {
-  if (!engineEnabled || !engineReady || batchAnalyzing) return;
-  const queue = [];
-  let path = "";
-  let prevPath = "";
-  for (let i = 0; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i];
-    prevPath = path;
-    if (i > 0) path += node.id;
-    if (!evalCache.has(path)) {
-      queue.push({ nodeId: node.id, nodePly: node.ply, nodePath: path, parentPath: prevPath, fen: node.fen });
-    }
-  }
-  batchQueue = queue;
-  batchDone = 0;
-  batchAnalyzing = queue.length > 0;
-  batchState = queue.length > 0 ? "analyzing" : "complete";
-  analysisRunning = queue.length > 0;
-  analysisComplete = queue.length === 0;
-  redraw();
-  if (queue.length > 0) evalBatchItem(queue[0]);
-}
-function evalBatchItem(item) {
-  const wasActive = engineSearchActive;
-  awaitingStopBestmove = wasActive;
-  engineSearchActive = true;
-  evalNodeId = item.nodeId;
-  evalNodePath = item.nodePath;
-  evalNodePly = item.nodePly;
-  evalParentPath = item.parentPath;
-  currentEval = {};
-  pendingLines = [];
-  console.log("[batch]", batchDone + 1, "/", batchQueue.length, "nodeId:", item.nodeId, "path:", item.nodePath, "ply:", item.nodePly, "awaiting:", wasActive);
-  if (wasActive) protocol.stop();
-  protocol.setPosition(item.fen);
-  protocol.go(reviewDepth);
-}
-function getUserColor(game) {
-  const knownNames = [game.importedUsername, chesscomUsername, lichessUsername].map((n) => n?.trim().toLowerCase()).filter((n) => !!n);
-  if (knownNames.length === 0) return null;
-  if (game.white && knownNames.includes(game.white.toLowerCase())) return "white";
-  if (game.black && knownNames.includes(game.black.toLowerCase())) return "black";
-  return null;
-}
-function detectMissedTactics(userColor) {
-  let path = "";
-  for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i];
-    path += node.id;
-    const isWhiteMove = node.ply % 2 === 1;
-    const isUserMove = userColor === null || userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
-    if (!isUserMove) continue;
-    const parentPath = path.slice(0, -2);
-    const nodeEval = evalCache.get(path);
-    const parentEval = evalCache.get(parentPath);
-    if (!nodeEval || !parentEval || !parentEval.best) continue;
-    const userParentMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
-    if (userParentMate !== void 0 && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
-    if (node.ply >= MISSED_TACTIC_MAX_PLY) continue;
-    if (nodeEval.loss !== void 0 && nodeEval.loss > MISSED_TACTIC_THRESHOLD) return true;
-  }
-  return false;
-}
-function advanceBatch() {
-  batchDone++;
-  void saveAnalysisToIdb("partial");
-  redraw();
-  if (batchDone < batchQueue.length) {
-    evalBatchItem(batchQueue[batchDone]);
-  } else {
-    batchAnalyzing = false;
-    batchState = "complete";
-    analysisRunning = false;
-    analysisComplete = true;
-    if (selectedGameId) {
-      analyzedGameIds.add(selectedGameId);
-      const game = importedGames.find((g) => g.id === selectedGameId);
-      const userColor = game ? getUserColor(game) : null;
-      if (detectMissedTactics(userColor)) missedTacticGameIds.add(selectedGameId);
-      const liveSummary = computeAnalysisSummary();
-      if (liveSummary) {
-        analyzedGameAccuracy.set(selectedGameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });
-      }
-    }
-    void saveAnalysisToIdb("complete");
-    evalCache.delete(ctrl.path);
-    currentEval = {};
-    pendingLines = [];
-    evalCurrentPosition();
-  }
-}
-function buildArrowShapes() {
-  const shapes = [];
-  if (engineEnabled && showEngineArrows) {
-    if (currentEval.best) {
-      const uci = currentEval.best;
-      shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
-    }
-    if (arrowAllLines) {
-      const topWc = evalWinChances(currentEval) ?? 0;
-      for (const line of currentEval.lines ?? []) {
-        if (!line.best) continue;
-        const lineWc = evalWinChances(line) ?? 0;
-        const shift = Math.abs(topWc - lineWc) / 2;
-        if (shift >= 0.2) continue;
-        const lineWidth2 = Math.max(2, Math.round(12 - shift * 50));
-        const uci = line.best;
-        shapes.push({
-          orig: uci.slice(0, 2),
-          dest: uci.slice(2, 4),
-          brush: "paleGrey",
-          modifiers: { lineWidth: lineWidth2 }
-        });
-      }
-    }
-  }
-  if (engineEnabled && threatMode && threatEval.best) {
-    const uci = threatEval.best;
-    shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
-  }
-  if (showPlayedArrow) {
-    const nextNode = ctrl.node.children[0];
-    if (nextNode?.uci) {
-      const uci = nextNode.uci;
-      shapes.push({
-        orig: uci.slice(0, 2),
-        dest: uci.slice(2, 4),
-        brush: "red",
-        modifiers: { lineWidth: 9 }
-      });
-    }
-  }
-  return shapes;
-}
-function syncArrow() {
-  if (!cgInstance) return;
-  if (arrowDebounceTimer !== null) {
-    clearTimeout(arrowDebounceTimer);
-    arrowDebounceTimer = null;
-  }
-  arrowSuppressUntil = 0;
-  cgInstance.set({ drawable: { autoShapes: buildArrowShapes() } });
-}
-function syncArrowDebounced() {
-  if (!cgInstance) return;
-  const now = Date.now();
-  if (now < arrowSuppressUntil) {
-    if (arrowDebounceTimer === null) {
-      arrowDebounceTimer = setTimeout(() => {
-        arrowDebounceTimer = null;
-        arrowSuppressUntil = 0;
-        cgInstance?.set({ drawable: { autoShapes: buildArrowShapes() } });
-      }, arrowSuppressUntil - now);
-    }
-    return;
-  }
-  if (arrowDebounceTimer !== null) {
-    clearTimeout(arrowDebounceTimer);
-  }
-  arrowDebounceTimer = setTimeout(() => {
-    arrowDebounceTimer = null;
-    cgInstance?.set({ drawable: { autoShapes: buildArrowShapes() } });
-  }, 150);
-}
-function toggleEngine() {
-  engineEnabled = !engineEnabled;
-  if (engineEnabled) {
-    if (!engineInitialized) {
-      engineInitialized = true;
-      void protocol.init("/stockfish-web").catch((err) => {
-        console.error("[engine] failed to load:", err);
-        engineEnabled = false;
-        engineInitialized = false;
-        redraw();
-      });
-    } else if (engineReady) {
-      evalCurrentPosition();
-    }
-  } else {
-    protocol.stop();
-    currentEval = {};
-    evalIsThreat = false;
-    threatEval = {};
-    syncArrow();
-  }
-  redraw();
-}
-function computeDests(fen) {
-  const setup = parseFen(fen).unwrap();
-  const pos = Chess.fromSetup(setup).unwrap();
-  const dests = /* @__PURE__ */ new Map();
-  for (const [from, tos] of pos.allDests()) {
-    const toKeys = [];
-    for (const to of tos) toKeys.push(makeSquare(to));
-    if (toKeys.length > 0) dests.set(makeSquare(from), toKeys);
-  }
-  return dests;
-}
-function uciToSan(fen, uci) {
-  try {
-    const move3 = parseUci(uci);
-    if (!move3) return uci;
-    const setup = parseFen(fen).unwrap();
-    const pos = Chess.fromSetup(setup).unwrap();
-    return makeSan(pos, move3);
-  } catch {
-    return uci;
-  }
-}
-function onUserMove(orig, dest) {
-  const existingChild = ctrl.node.children.find((c) => c.uci === orig + dest || c.uci?.startsWith(orig + dest));
-  if (existingChild) {
-    navigate(ctrl.path + existingChild.id);
-    return;
-  }
-  const setup = parseFen(ctrl.node.fen).unwrap();
-  const pos = Chess.fromSetup(setup).unwrap();
-  const fromSq = parseSquare(orig);
-  const toSq = parseSquare(dest);
-  if (fromSq === void 0 || toSq === void 0) return;
-  const piece = pos.board.get(fromSq);
-  if (piece?.role === "pawn" && (pos.turn === "white" && toSq >= 56 || pos.turn === "black" && toSq < 8)) {
-    pendingPromotion = { orig, dest, color: pos.turn };
-    redraw();
-    return;
-  }
-  completeMove(orig, dest);
-}
-function completeMove(orig, dest, promotion) {
-  const setup = parseFen(ctrl.node.fen).unwrap();
-  const pos = Chess.fromSetup(setup).unwrap();
-  const fromSq = parseSquare(orig);
-  const toSq = parseSquare(dest);
-  if (fromSq === void 0 || toSq === void 0) return;
-  const move3 = { from: fromSq, to: toSq, promotion };
-  const san = makeSanAndPlay(pos, move3);
-  const newNode = {
-    id: scalachessCharPair(move3),
-    ply: ctrl.node.ply + 1,
-    san,
-    uci: makeUci(move3),
-    fen: makeFen(pos.toSetup()),
-    children: []
-  };
-  addNode(ctrl.root, ctrl.path, newNode);
-  console.log("[variation] inserted", {
-    id: newNode.id,
-    ply: newNode.ply,
-    san: newNode.san,
-    uci: newNode.uci,
-    parentPath: ctrl.path,
-    newPath: ctrl.path + newNode.id,
-    parentChildCount: ctrl.node.children.length
-  });
-  navigate(ctrl.path + newNode.id);
-}
-function completePromotion(role) {
-  if (!pendingPromotion) return;
-  const { orig, dest } = pendingPromotion;
-  pendingPromotion = null;
-  completeMove(orig, dest, role);
-}
-var PROMOTION_ROLES = ["queen", "knight", "rook", "bishop"];
-function renderPromotionDialog() {
-  if (!pendingPromotion) return null;
-  const { dest, color } = pendingPromotion;
-  const [file] = key2pos(dest);
-  const left = orientation === "white" ? file * 12.5 : (7 - file) * 12.5;
-  const vertical = color === orientation ? "top" : "bottom";
-  return h("div.cg-wrap.promotion-wrap", {
-    on: { click: () => {
-      pendingPromotion = null;
-      syncBoard();
-      redraw();
-    } }
-  }, [
-    h("div#promotion-choice." + vertical, {}, PROMOTION_ROLES.map((role, i) => {
-      const top = (color === orientation ? i : 7 - i) * 12.5;
-      return h("square", {
-        attrs: { style: `top:${top}%;left:${left}%` },
-        on: { click: (e) => {
-          e.stopPropagation();
-          completePromotion(role);
-        } }
-      }, [h(`piece.${role}.${color}`)]);
-    }))
-  ]);
-}
-function syncBoard() {
-  if (!cgInstance) return;
-  const node = ctrl.node;
-  const dests = computeDests(node.fen);
-  cgInstance.set({
-    fen: node.fen,
-    lastMove: uciToMove(node.uci),
-    turnColor: node.ply % 2 === 0 ? "white" : "black",
-    movable: {
-      color: node.ply % 2 === 0 ? "white" : "black",
-      dests
-    }
-  });
-}
-function navigate(path) {
-  ctrl.setPath(path);
-  syncBoard();
-  evalCurrentPosition();
-  void saveGamesToIdb();
-  redraw();
-  scrollActiveIntoView();
-}
-function scrollActiveIntoView() {
-  requestAnimationFrame(() => {
-    document.querySelector(".move.active")?.scrollIntoView({ block: "nearest" });
-  });
-}
-function next() {
-  const child = ctrl.node.children[0];
-  if (!child) return;
-  navigate(ctrl.path + child.id);
-}
-function prev() {
-  if (ctrl.path === "") return;
-  navigate(pathInit(ctrl.path));
-}
-function first() {
-  navigate("");
-}
-function last() {
-  navigate(ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, ""));
-}
-function activeSection(route) {
-  switch (route.name) {
-    case "analysis":
-    case "analysis-game":
-      return "analysis";
-    case "puzzles":
-      return "puzzles";
-    case "openings":
-      return "openings";
-    case "stats":
-      return "stats";
-    case "games":
-      return "games";
-    default:
-      return "";
-  }
-}
-var navLinks = [
-  { label: "Analysis", href: "#/analysis", section: "analysis" },
-  { label: "Games", href: "#/games", section: "games" },
-  { label: "Puzzles", href: "#/puzzles", section: "puzzles" },
-  { label: "Openings", href: "#/openings", section: "openings" },
-  { label: "Stats", href: "#/stats", section: "stats" }
-];
-function renderNav(route) {
-  const active = activeSection(route);
-  return h("nav.header__nav", navLinks.map(
-    ({ label, href, section }) => h("a", { attrs: { href }, class: { active: active === section } }, label)
-  ));
-}
-function renderHeader(route) {
-  const loading = importPlatform === "chesscom" ? chesscomLoading : lichessLoading;
-  const error = importPlatform === "chesscom" ? chesscomError : lichessError;
-  const username = importPlatform === "chesscom" ? chesscomUsername : lichessUsername;
-  const doImport = () => importPlatform === "chesscom" ? void importChesscom() : void importLichess();
-  const hasActiveFilters = importFilterSpeeds.size > 0 || importFilterDateRange !== "1month" || !importFilterRated;
-  const panel = showImportPanel ? h("div.header__panel", [
-    // Filters section — grouped by type, vertical layout
-    // Adapted from docs/reference/ImportControls/index.jsx (TIME_CONTROLS + DATE_RANGES)
-    h("div.header__panel-section", [
-      // Time control group — multi-select; empty set = all speeds
-      h("div.header__panel-label", "Time control"),
-      h("div.header__panel-row", [
-        h("button.header__pill", {
-          class: { active: importFilterSpeeds.size === 0 },
-          on: { click: () => {
-            importFilterSpeeds = /* @__PURE__ */ new Set();
-            redraw();
-          } }
-        }, "All"),
-        ...SPEED_OPTIONS.map(
-          ({ value, label, icon }) => h("button.header__pill", {
-            class: { active: importFilterSpeeds.has(value) },
-            attrs: { "data-icon": icon },
-            on: { click: () => {
-              const s = new Set(importFilterSpeeds);
-              s.has(value) ? s.delete(value) : s.add(value);
-              importFilterSpeeds = s;
-              redraw();
-            } }
-          }, label)
-        )
-      ]),
-      // Period group
-      h("div.header__panel-label.--mt", "Period"),
-      h("div.header__panel-row", [
-        ...DATE_RANGE_OPTIONS.map(
-          ({ value, label }) => h("button.header__pill", {
-            class: { active: importFilterDateRange === value },
-            on: { click: () => {
-              importFilterDateRange = value;
-              redraw();
-            } }
-          }, label)
-        )
-      ]),
-      // Custom date inputs — only visible when 'custom' is selected
-      // Adapted from docs/reference/ImportControls/index.jsx custom date block
-      importFilterDateRange === "custom" ? h("div.header__panel-row.--mt", [
-        h("span.header__panel-hint", "From"),
-        h("input.header__date-input", {
-          attrs: { type: "date", value: importFilterCustomFrom },
-          on: { change: (e) => {
-            importFilterCustomFrom = e.target.value;
-            redraw();
-          } }
-        }),
-        h("span.header__panel-hint", "To"),
-        h("input.header__date-input", {
-          attrs: { type: "date", value: importFilterCustomTo },
-          on: { change: (e) => {
-            importFilterCustomTo = e.target.value;
-            redraw();
-          } }
-        })
-      ]) : null,
-      // Rated toggle
-      h("div.header__panel-row.--mt", [
-        h("label.header__panel-check", [
-          h("input", {
-            attrs: { type: "checkbox", checked: importFilterRated },
-            on: { change: (e) => {
-              importFilterRated = e.target.checked;
-              redraw();
-            } }
-          }),
-          "Rated only"
-        ])
-      ])
-    ]),
-    h("div.header__panel-divider"),
-    // PGN paste section
-    h("div.header__panel-section", [
-      h("div.header__panel-label", "Paste PGN"),
-      h("textarea.header__pgn-input", {
-        key: pgnKey,
-        attrs: { placeholder: "Paste a PGN here\u2026", rows: 3, spellcheck: false },
-        on: { input: (e) => {
-          pgnInput = e.target.value;
-        } }
-      }),
-      h("div.header__panel-row", [
-        h("button.header__panel-btn", {
-          on: { click: () => {
-            importPgn();
-            if (!pgnError) {
-              showImportPanel = false;
-            }
-            redraw();
-          } }
-        }, "Import PGN"),
-        pgnError ? h("span.header__panel-error", pgnError) : null
-      ])
-    ]),
-    // Game list section — only when games are loaded
-    importedGames.length > 0 ? h("div.header__panel-section", [
-      h("div.header__panel-label", `${importedGames.length} game${importedGames.length === 1 ? "" : "s"} imported`),
-      h("div.header__games-list", importedGames.map((game) => {
-        const isAnalyzed = analyzedGameIds.has(game.id);
-        const hasMissedTactic = missedTacticGameIds.has(game.id);
-        const srcUrl = gameSourceUrl(game);
-        return h("div.header__game-item", [
-          h("button.header__game-row", {
-            class: { active: game.id === selectedGameId },
-            on: { click: () => {
-              selectedGameId = game.id;
-              loadGame(game.pgn);
-              showImportPanel = false;
-              redraw();
-            } }
-          }, renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
-          srcUrl ? h("a.game-ext-link", {
-            attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" },
-            on: { click: (e) => e.stopPropagation() }
-          }) : null
-        ]);
-      }))
-    ]) : null
-  ]) : null;
-  const backdrop = showImportPanel ? h("div.header__backdrop", {
-    on: { click: () => {
-      showImportPanel = false;
-      redraw();
-    } }
-  }) : null;
-  return h("header.header", [
-    // Brand
-    h("a.header__brand", { attrs: { href: "#/" } }, "Patzer Pro"),
-    // Search area — contains the bar + floating panel
-    h("div.header__search", { key: "header-search" }, [
-      // Visible bar row
-      h("div.header__bar", [
-        // Platform toggle
-        h("div.header__platforms", [
-          h("button.header__platform", {
-            class: { active: importPlatform === "chesscom" },
-            on: { click: () => {
-              importPlatform = "chesscom";
-              redraw();
-            } }
-          }, "Chess.com"),
-          h("button.header__platform", {
-            class: { active: importPlatform === "lichess" },
-            on: { click: () => {
-              importPlatform = "lichess";
-              redraw();
-            } }
-          }, "Lichess")
-        ]),
-        // Username input — keyed by platform so it re-renders with the correct stored value on switch
-        h("input.header__input", {
-          key: `input-${importPlatform}`,
-          attrs: {
-            type: "search",
-            placeholder: importPlatform === "chesscom" ? "Chess.com username" : "Lichess username",
-            value: username,
-            disabled: loading,
-            autocomplete: "off",
-            spellcheck: false
-          },
-          on: {
-            input: (e) => {
-              const v = e.target.value;
-              if (importPlatform === "chesscom") chesscomUsername = v;
-              else lichessUsername = v;
-            },
-            keydown: (e) => {
-              if (e.key === "Enter" && username.trim() && !loading) doImport();
-            }
-          }
-        }),
-        // Import button
-        h("button.header__import", {
-          attrs: { disabled: loading || !username.trim() },
-          on: { click: doImport }
-        }, loading ? "Importing\u2026" : "Import"),
-        // Status: game count or error
-        importedGames.length > 0 && !error ? h(
-          "span.header__count",
-          { on: { click: () => {
-            showImportPanel = !showImportPanel;
-            redraw();
-          } } },
-          `${importedGames.length} games`
-        ) : null,
-        error ? h("span.header__error", { attrs: { title: error } }, "\u26A0") : null,
-        // Panel toggle — dot appears when non-default filters are active
-        h("button.header__toggle", {
-          class: { active: showImportPanel, "header__toggle--filtered": hasActiveFilters && !showImportPanel },
-          attrs: { title: "Filters & games" },
-          on: { click: () => {
-            showImportPanel = !showImportPanel;
-            redraw();
-          } }
-        }, showImportPanel ? "\u25B4" : "\u25BE")
-      ]),
-      panel,
-      backdrop
-    ]),
-    // Tool navigation
-    renderNav(route),
-    // Dev + settings
-    h("button.dev-reset", { on: { click: () => void resetAllData() } }, "Reset"),
-    renderGlobalMenu()
-  ]);
-}
-function closeGlobalMenu() {
-  showGlobalMenu = false;
-  showBoardSettings = false;
-  redraw();
-}
-function renderFilterSlider(prop, label, min, max, step2, fmt) {
-  const value = boardFilters[prop];
-  return h("div.board-settings__slider-row", [
-    h("label", label),
-    h("input", {
-      attrs: { type: "range", min, max, step: step2, value },
-      on: {
-        input: (e) => {
-          setFilter(prop, parseInt(e.target.value, 10));
-          redraw();
-        }
-      }
-    }),
-    h("span.board-settings__slider-val", fmt ? fmt(value) : `${value}%`)
-  ]);
-}
-function renderBoardSettings() {
-  return h("div.board-settings", [
-    // Sliders
-    renderFilterSlider("board-brightness", "Brightness", 20, 140, 1),
-    renderFilterSlider("board-contrast", "Contrast", 40, 200, 2),
-    renderFilterSlider("board-hue", "Hue", 0, 100, 1, (v) => `\xB1${Math.round(v * 3.6)}\xB0`),
-    filtersAtDefault() ? null : h("button.board-settings__reset", {
-      on: { click: () => {
-        resetFilters();
-        redraw();
-      } }
-    }, "Reset"),
-    // Board theme tile grid
-    h("div.board-settings__label", "Board"),
-    h(
-      "div.board-settings__theme-grid",
-      BOARD_THEMES_FEATURED.map(
-        (name) => h("button.board-settings__theme-tile", {
-          class: { active: boardTheme === name },
-          attrs: { title: name },
-          on: { click: () => {
-            applyBoardTheme(name);
-            redraw();
-          } }
-        }, [
-          h("span", { attrs: { style: `background-image: url(${boardThumbnailUrl(name)})` } })
-        ])
-      )
-    ),
-    // Piece set tile grid
-    h("div.board-settings__label", "Pieces"),
-    h(
-      "div.board-settings__piece-grid",
-      PIECE_SETS_FEATURED.map(
-        (name) => h("button.board-settings__piece-tile", {
-          class: { active: pieceSet === name },
-          attrs: { title: name },
-          on: { click: () => {
-            applyPieceSet(name);
-            redraw();
-          } }
-        }, [
-          h("piece", { attrs: { style: `background-image: url(${piecePreviewUrl(name)})` } })
-        ])
-      )
-    )
-  ]);
-}
-function renderGlobalMenu() {
-  return h("div.global-menu", [
-    // Trigger button
-    h("button.global-menu__trigger", {
-      class: { active: showGlobalMenu },
-      attrs: { title: "Settings" },
-      on: { click: () => {
-        showGlobalMenu = !showGlobalMenu;
-        showBoardSettings = false;
-        redraw();
-      } }
-    }, "\u2699"),
-    // Backdrop — transparent overlay that closes menu on outside click
-    showGlobalMenu ? h("div.global-menu__backdrop", {
-      on: { click: closeGlobalMenu }
-    }) : null,
-    // Dropdown panel
-    showGlobalMenu ? h("div.global-menu__dropdown", {
-      class: { "board-open": showBoardSettings }
-    }, [
-      h("button.global-menu__item", {
-        on: { click: () => {
-          console.log("TODO: clear local cache");
-        } }
-      }, "Clear Local Cache"),
-      h("button.global-menu__item", {
-        on: { click: () => {
-          console.log("TODO: game review settings");
-        } }
-      }, "Game Review"),
-      h("button.global-menu__item", {
-        on: { click: () => {
-          closeGlobalMenu();
-          downloadPgn(false);
-        } }
-      }, "Export PGN from Current Board"),
-      // Board Settings — expands inline tile grids + sliders
-      h("div.global-menu__item.global-menu__item--has-sub", {
-        on: { click: () => {
-          showBoardSettings = !showBoardSettings;
-          redraw();
-        } }
-      }, [
-        h("span", "Board Settings"),
-        h("span.global-menu__arrow", showBoardSettings ? "\u25BE" : "\u203A")
-      ]),
-      showBoardSettings ? renderBoardSettings() : null
-    ]) : null
-  ]);
-}
-var cgInstance;
-var orientation = "white";
-var pendingPromotion = null;
-function flip() {
-  orientation = orientation === "white" ? "black" : "white";
-  cgInstance?.set({ orientation });
-  redraw();
-}
-var ROLE_ORDER = ["queen", "rook", "bishop", "knight", "pawn"];
-var ROLE_POINTS = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
-function getMaterialDiff(fen) {
-  const diff2 = {
-    white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
-    black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 }
-  };
-  const fenBoard = fen.split(" ")[0];
-  const charToRole2 = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
-  for (const ch of fenBoard) {
-    const lower = ch.toLowerCase();
-    const role = charToRole2[lower];
-    if (!role) continue;
-    const color = ch === lower ? "black" : "white";
-    const opp = color === "white" ? "black" : "white";
-    if (diff2[opp][role] > 0) diff2[opp][role]--;
-    else diff2[color][role]++;
-  }
-  return diff2;
-}
-function getMaterialScore(diff2) {
-  return ROLE_ORDER.reduce((sum, role) => sum + (diff2.white[role] - diff2.black[role]) * ROLE_POINTS[role], 0);
-}
-function renderMaterialPieces(diff2, color, score) {
-  const groups = [];
-  for (const role of ROLE_ORDER) {
-    const count = diff2[color][role];
-    if (count <= 0) continue;
-    const pieces = [];
-    for (let i = 0; i < count; i++) pieces.push(h("mpiece." + role));
-    groups.push(h("div", pieces));
-  }
-  return h("div.material", [
-    ...groups,
-    score > 0 ? h("score", "+" + score) : null
-  ]);
-}
-function formatClock(centis) {
-  const totalSecs = Math.floor(centis / 100);
-  const h2 = Math.floor(totalSecs / 3600);
-  const m = Math.floor(totalSecs % 3600 / 60);
-  const s = totalSecs % 60;
-  const pad = (n) => n < 10 ? "0" + n : String(n);
-  return h2 > 0 ? `${h2}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
-}
-function getClocksAtPath() {
-  const nodes = ctrl.nodeList;
-  let white;
-  let black;
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i];
-    if (n.clock === void 0) continue;
-    if (n.ply % 2 === 1 && white === void 0) white = n.clock;
-    if (n.ply % 2 === 0 && n.ply > 0 && black === void 0) black = n.clock;
-    if (white !== void 0 && black !== void 0) break;
-  }
-  return { white, black };
-}
-function renderPlayerStrips() {
-  const game = importedGames.find((g) => g.id === selectedGameId);
-  const whiteName = game?.white ?? "White";
-  const blackName = game?.black ?? "Black";
-  const whiteRating = game?.whiteRating;
-  const blackRating = game?.blackRating;
-  const result = game?.result ?? "*";
-  const diff2 = getMaterialDiff(ctrl.node.fen);
-  const score = getMaterialScore(diff2);
-  const clocks = getClocksAtPath();
-  const whiteResult = result === "1-0" ? "1" : result === "0-1" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
-  const blackResult = result === "0-1" ? "1" : result === "1-0" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
-  const strip = (color) => {
-    const name = color === "white" ? whiteName : blackName;
-    const rating = color === "white" ? whiteRating : blackRating;
-    const badge = color === "white" ? whiteResult : blackResult;
-    const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
-    const matScore = color === "white" ? score : -score;
-    const centis = color === "white" ? clocks.white : clocks.black;
-    return h("div.analyse__player_strip", [
-      badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null,
-      h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
-      h("span.player-strip__name", rating !== void 0 ? `${name} (${rating})` : name),
-      renderMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
-      centis !== void 0 ? h("div.analyse__clock", formatClock(centis)) : null
-    ]);
-  };
-  const topColor = orientation === "white" ? "black" : "white";
-  const bottomColor = orientation === "white" ? "white" : "black";
-  return [strip(topColor), strip(bottomColor)];
-}
-function bindBoardResizeHandle(container) {
-  const el = document.createElement("cg-resize");
-  container.appendChild(el);
-  const eventPos = (e) => {
-    if (e.clientX !== void 0) return [e.clientX, e.clientY];
-    if (e.targetTouches?.[0]) return [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
-    return void 0;
-  };
-  const startResize = (start4) => {
-    start4.preventDefault();
-    const startPos = eventPos(start4);
-    const initialZoom = boardZoom;
-    let zoom = initialZoom;
-    let saveTimer;
-    const saveZoom = () => {
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => localStorage.setItem(ZOOM_KEY, String(zoom)), 700);
-    };
-    const mousemoveEvent = start4.targetTouches ? "touchmove" : "mousemove";
-    const mouseupEvent = start4.targetTouches ? "touchend" : "mouseup";
-    const resize = (move3) => {
-      const pos = eventPos(move3);
-      const delta = pos[0] - startPos[0] + pos[1] - startPos[1];
-      zoom = Math.round(Math.min(100, Math.max(0, initialZoom + delta / 10)));
-      boardZoom = zoom;
-      applyBoardZoom(zoom);
-      saveZoom();
-    };
-    document.body.classList.add("resizing");
-    document.addEventListener(mousemoveEvent, resize);
-    document.addEventListener(mouseupEvent, () => {
-      document.removeEventListener(mousemoveEvent, resize);
-      document.body.classList.remove("resizing");
-    }, { once: true });
-  };
-  el.addEventListener("mousedown", startResize, { passive: false });
-  el.addEventListener("touchstart", startResize, { passive: false });
-}
-function renderBoard() {
-  return h("div.cg-wrap", {
-    key: "board",
-    hook: {
-      insert: (vnode3) => {
-        const node = ctrl.node;
-        const dests = computeDests(node.fen);
-        cgInstance = Chessground(vnode3.elm, {
-          orientation,
-          viewOnly: false,
-          drawable: {
-            enabled: true,
-            brushes: {
-              // Boost paleBlue opacity from default 0.4 → 0.65 for a bolder engine line
-              paleBlue: { key: "pb", color: "#003088", opacity: 0.65, lineWidth: 15 }
-            }
-          },
-          fen: node.fen,
-          lastMove: uciToMove(node.uci),
-          turnColor: node.ply % 2 === 0 ? "white" : "black",
-          movable: {
-            free: false,
-            color: node.ply % 2 === 0 ? "white" : "black",
-            dests,
-            showDests: true
-          },
-          events: {
-            move: onUserMove
-          }
-        });
-        bindBoardResizeHandle(vnode3.elm);
-      },
-      destroy: () => {
-        cgInstance?.destroy();
-        cgInstance = void 0;
-      }
-    }
-  });
-}
-var LOSS_THRESHOLDS = {
-  inaccuracy: 0.025,
-  mistake: 0.06,
-  blunder: 0.14
-};
-function classifyLoss(loss) {
-  if (loss >= LOSS_THRESHOLDS.blunder) return "blunder";
-  if (loss >= LOSS_THRESHOLDS.mistake) return "mistake";
-  if (loss >= LOSS_THRESHOLDS.inaccuracy) return "inaccuracy";
-  return null;
-}
-function moveAccuracyFromDiff(diff2) {
-  if (diff2 < 0) return 100;
-  const raw = 103.1668100711649 * Math.exp(-0.04354415386753951 * diff2) + -3.166924740191411;
-  return Math.max(0, Math.min(100, raw + 1));
-}
-function aggregateAccuracy(accs) {
-  const n = accs.length;
-  if (n < 2) return null;
-  const window2 = Math.max(2, Math.min(8, Math.floor(n / 10)));
-  const weights = [];
-  for (let s = 0; s + window2 <= n; s++) {
-    const slice = accs.slice(s, s + window2);
-    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
-    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length;
-    weights.push(Math.max(0.5, Math.min(12, Math.sqrt(variance))));
-  }
-  const pairLen = weights.length;
-  let weightedSum = 0;
-  let totalWeight = 0;
-  for (let i = 0; i < pairLen; i++) {
-    weightedSum += accs[i] * weights[i];
-    totalWeight += weights[i];
-  }
-  const weightedMean = totalWeight > 0 ? weightedSum / totalWeight : 0;
-  const harmonicMean = n / accs.reduce((acc, a) => acc + 1 / Math.max(a, 1e-3), 0);
-  return Math.max(0, Math.min(100, (weightedMean + harmonicMean) / 2));
-}
-function computeAnalysisSummary() {
-  if (evalCache.size === 0) return null;
-  const whiteAccs = [];
-  const blackAccs = [];
-  let wBlunders = 0, wMistakes = 0, wInaccuracies = 0;
-  let bBlunders = 0, bMistakes = 0, bInaccuracies = 0;
-  let path = "";
-  for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i];
-    path += node.id;
-    const parentPath = path.slice(0, -2);
-    const nodeEval = evalCache.get(path);
-    const parentEval = evalCache.get(parentPath);
-    if (!nodeEval || !parentEval) continue;
-    const nodeWc = evalWinChances(nodeEval);
-    const parentWc = evalWinChances(parentEval);
-    if (nodeWc === void 0 || parentWc === void 0) continue;
-    const nodeWp = (nodeWc + 1) / 2 * 100;
-    const parentWp = (parentWc + 1) / 2 * 100;
-    const isWhiteMove = node.ply % 2 === 1;
-    const diff2 = isWhiteMove ? parentWp - nodeWp : nodeWp - parentWp;
-    const acc = moveAccuracyFromDiff(diff2);
-    if (isWhiteMove) {
-      whiteAccs.push(acc);
-    } else {
-      blackAccs.push(acc);
-    }
-    const playedBest = node.uci !== void 0 && node.uci === parentEval.best;
-    const label = !playedBest && nodeEval.loss !== void 0 ? classifyLoss(nodeEval.loss) : null;
-    if (isWhiteMove) {
-      if (label === "blunder") wBlunders++;
-      else if (label === "mistake") wMistakes++;
-      else if (label === "inaccuracy") wInaccuracies++;
-    } else {
-      if (label === "blunder") bBlunders++;
-      else if (label === "mistake") bMistakes++;
-      else if (label === "inaccuracy") bInaccuracies++;
-    }
-  }
-  if (whiteAccs.length === 0 && blackAccs.length === 0) return null;
-  return {
-    white: { accuracy: aggregateAccuracy(whiteAccs), blunders: wBlunders, mistakes: wMistakes, inaccuracies: wInaccuracies },
-    black: { accuracy: aggregateAccuracy(blackAccs), blunders: bBlunders, mistakes: bMistakes, inaccuracies: bInaccuracies }
-  };
-}
-function renderAnalysisSummary() {
-  if (!analysisComplete && evalCache.size < 4) return h("div");
-  const summary = computeAnalysisSummary();
-  if (!summary) return h("div");
-  const game = importedGames.find((g) => g.id === selectedGameId);
-  const whiteName = game?.white ?? "White";
-  const blackName = game?.black ?? "Black";
-  function playerCol(name, data, color) {
-    const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : "\u2014";
-    const breakdown = [];
-    if (data.blunders > 0) breakdown.push(h("span.summary__blunder", `${data.blunders} blunder${data.blunders !== 1 ? "s" : ""}`));
-    if (data.mistakes > 0) breakdown.push(h("span.summary__mistake", `${data.mistakes} mistake${data.mistakes !== 1 ? "s" : ""}`));
-    if (data.inaccuracies > 0) breakdown.push(h("span.summary__inaccuracy", `${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? "ies" : "y"}`));
-    return h("div.summary__col", [
-      h("div.summary__name", [
-        h("span.summary__color-icon", { class: { "summary__color-icon--white": color === "white", "summary__color-icon--black": color === "black" } }),
-        name
-      ]),
-      h("div.summary__accuracy", accText),
-      breakdown.length > 0 ? h("div.summary__breakdown", breakdown) : h("div.summary__breakdown", "\u2014")
-    ]);
-  }
-  return h("div.analysis-summary", [
-    playerCol(whiteName, summary.white, "white"),
-    playerCol(blackName, summary.black, "black")
-  ]);
-}
-var GLYPH_COLORS = {
-  "??": "#f66",
-  "?": "#f84",
-  "?!": "#fa4",
-  "!!": "#5af",
-  "!": "#8cf",
-  "!?": "#aaa"
-};
-function renderMoveSpan(node, path, parent, showIndex) {
-  const cached = evalCache.get(path);
-  const parentCached = evalCache.get(pathInit(path));
-  const pgnGlyph = node.glyphs?.[0];
-  const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-  const computedLabel = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
-  const computedSymbol = computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
-  const symbol = pgnGlyph?.symbol ?? computedSymbol;
-  const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
-  const mate = cached?.mate;
-  const inner = [];
-  if (showIndex) {
-    const n = Math.ceil(node.ply / 2);
-    inner.push(h("index", node.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
-  }
-  inner.push(h("san", node.san ?? ""));
-  if (symbol) inner.push(h("glyph", { attrs: { style: `color:${color}` } }, symbol));
-  if (mate !== void 0) inner.push(h("eval", `+M${Math.abs(mate)}`));
-  return h("move", {
-    class: { active: path === ctrl.path },
-    attrs: { p: path },
-    on: { click: () => navigate(path) }
-  }, inner);
-}
-function renderInlineNodes(nodes, parentPath, parent, needsMoveNum) {
-  if (nodes.length === 0) return [];
-  const [main, ...variations] = nodes;
-  const mainPath = parentPath + main.id;
-  const out = [];
-  const showIndex = needsMoveNum || main.ply % 2 === 1;
-  out.push(renderMoveSpan(main, mainPath, parent, showIndex));
-  for (const variant of variations) {
-    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true)));
-  }
-  const hasVariations = variations.length > 0;
-  const firstCont = main.children[0];
-  const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
-  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum));
-  return out;
-}
-function renderColumnNodes(nodes, parentPath, parent, out) {
-  if (nodes.length === 0) return;
-  const [main, ...variations] = nodes;
-  const mainPath = parentPath + main.id;
-  const isWhite = main.ply % 2 === 1;
-  if (isWhite) out.push(h("index", String(Math.ceil(main.ply / 2))));
-  out.push(renderMoveSpan(main, mainPath, parent, false));
-  if (variations.length > 0) {
-    if (isWhite) out.push(h("move.empty", "\u2026"));
-    const varLines = variations.map(
-      (v) => h("line", renderInlineNodes([v], parentPath, parent, true))
-    );
-    out.push(h("interrupt", [h("lines", varLines)]));
-    if (isWhite && main.children.length > 0) {
-      out.push(h("index", String(Math.ceil(main.ply / 2))));
-      out.push(h("move.empty", "\u2026"));
-    }
-  }
-  renderColumnNodes(main.children, mainPath, main, out);
-}
-function renderMoveList() {
-  const nodes = [];
-  renderColumnNodes(ctrl.root.children, "", ctrl.root, nodes);
-  return h("div.tview2.tview2-column", nodes);
-}
-function evalPct() {
-  if (currentEval.mate !== void 0) return currentEval.mate > 0 ? 100 : 0;
-  if (currentEval.cp !== void 0) {
-    const pct = 50 + currentEval.cp / 20;
-    return Math.max(0, Math.min(100, pct));
-  }
-  return 50;
-}
-var EVAL_BAR_TICKS = [...Array(8).keys()].map(
-  (i) => h(i === 3 ? "div.eval-bar__tick.zero" : "div.eval-bar__tick", {
-    attrs: { style: `height: ${(i + 1) * 12.5}%` }
-  })
-);
-function renderEvalBar() {
-  if (!engineEnabled) return h("div.eval-bar.eval-bar--off");
-  const pct = evalPct();
-  const scorePct = Math.max(8, Math.min(92, pct));
-  const hasScore = currentEval.cp !== void 0 || currentEval.mate !== void 0;
-  const score = hasScore ? formatScore(currentEval) : "";
-  return h("div.eval-bar", [
-    h("div.eval-bar__fill", { attrs: { style: `height: ${pct}%` } }),
-    score ? h("div.eval-bar__score", { attrs: { style: `bottom: ${scorePct}%` } }, score) : null,
-    ...EVAL_BAR_TICKS
-  ]);
-}
-var GRAPH_W = 600;
-var GRAPH_H = 80;
-function countMajorsMinors(fen) {
-  const board = fen.split(" ")[0];
-  let count = 0;
-  for (const ch of board) if ("rnbqRNBQ".includes(ch)) count++;
-  return count;
-}
-function detectPhases(mainline, n) {
-  let middleIdx;
-  let endIdx;
-  for (let i = 1; i <= n; i++) {
-    const mm = countMajorsMinors(mainline[i].fen);
-    if (middleIdx === void 0 && mm <= 10) middleIdx = i;
-    if (endIdx === void 0 && mm <= 6) {
-      endIdx = i;
-      break;
-    }
-  }
-  return { middleIdx, endIdx };
-}
-function renderEvalGraph() {
-  const mainline = ctrl.mainline;
-  const n = mainline.length - 1;
-  if (n < 2) {
-    return h("div.eval-graph", [
-      h("div.eval-graph__empty", n === 0 ? "No moves to graph." : "Analyze game to see graph.")
-    ]);
-  }
-  const pts = [];
-  let path = "";
-  for (let i = 1; i <= n; i++) {
-    const node = mainline[i];
-    path += node.id;
-    const parentPath = path.slice(0, -2);
-    const cached = evalCache.get(path);
-    const parentCached = evalCache.get(parentPath);
-    const wc = cached !== void 0 ? evalWinChances(cached) : void 0;
-    if (wc !== void 0) {
-      const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-      const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
-      pts.push({
-        x: (i - 1) / (n - 1) * GRAPH_W,
-        y: (1 - wc) / 2 * GRAPH_H,
-        // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
-        path,
-        label,
-        hasMate: cached?.mate !== void 0
-      });
-    } else {
-      pts.push(null);
-    }
-  }
-  const valid = pts.filter((p) => p !== null);
-  if (valid.length < 2) {
-    return h("div.eval-graph", [
-      h("div.eval-graph__empty", "Analyze game to see graph.")
-    ]);
-  }
-  const cy = GRAPH_H / 2;
-  const svgNodes = [];
-  svgNodes.push(h("rect", { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy, fill: "rgba(235,225,180,0.07)" } }));
-  svgNodes.push(h("rect", { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy, fill: "rgba(0,0,0,0.2)" } }));
-  const polyPts = [
-    `${valid[0].x},${cy}`,
-    ...valid.map((p) => `${p.x},${p.y}`),
-    `${valid[valid.length - 1].x},${cy}`
-  ].join(" ");
-  svgNodes.push(h("polygon", { attrs: { points: polyPts, fill: "rgba(160,160,160,0.1)", stroke: "none" } }));
-  svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#444", "stroke-width": 1 } }));
-  svgNodes.push(h("polyline", { attrs: {
-    points: valid.map((p) => `${p.x},${p.y}`).join(" "),
-    fill: "none",
-    stroke: "#888",
-    "stroke-width": 1.5,
-    "stroke-linejoin": "round",
-    "stroke-linecap": "round"
-  } }));
-  const curPt = valid.find((p) => p.path === ctrl.path);
-  if (curPt) {
-    svgNodes.push(h("line", { attrs: {
-      x1: curPt.x,
-      y1: 0,
-      x2: curPt.x,
-      y2: GRAPH_H,
-      stroke: "#4a8",
-      "stroke-width": 1,
-      opacity: "0.55"
-    } }));
-  }
-  for (const pt of valid) {
-    const capturePath = pt.path;
-    const isCurrent = pt.path === ctrl.path;
-    svgNodes.push(h("rect", {
-      attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: "transparent" },
-      on: { click: () => navigate(capturePath) }
-    }));
-    const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "#c084fc" : pt.label === "blunder" ? "#f66" : pt.label === "mistake" ? "#f84" : pt.label === "inaccuracy" ? "#fa4" : "#888";
-    const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
-    svgNodes.push(h("circle", { attrs: {
-      cx: pt.x,
-      cy: pt.y,
-      r: dotR,
-      fill: dotColor,
-      stroke: isCurrent ? "#fff" : "none",
-      "stroke-width": 1
-    } }));
-  }
-  const { middleIdx, endIdx } = detectPhases(mainline, n);
-  const divLines = [];
-  if (middleIdx !== void 0) {
-    if (middleIdx > 1) divLines.push({ label: "Opening", idx: 1 });
-    divLines.push({ label: "Middlegame", idx: middleIdx });
-  }
-  if (endIdx !== void 0) {
-    if (endIdx > 1 && middleIdx === void 0) divLines.push({ label: "Middlegame", idx: 0 });
-    divLines.push({ label: "Endgame", idx: endIdx });
-  }
-  for (const div of divLines) {
-    if (div.idx === 0) continue;
-    const dx = (div.idx - 1) / (n - 1) * GRAPH_W;
-    svgNodes.push(h("line", { attrs: {
-      x1: dx,
-      y1: 0,
-      x2: dx,
-      y2: GRAPH_H,
-      stroke: "#555",
-      "stroke-width": 1,
-      "stroke-dasharray": "3 3",
-      opacity: "0.7"
-    } }));
-  }
-  return h("div.eval-graph", [
-    h("svg", { attrs: {
-      viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
-      width: "100%",
-      height: GRAPH_H,
-      preserveAspectRatio: "none"
-    } }, svgNodes)
-  ]);
-}
-function formatScore(ev) {
-  if (ev.mate !== void 0) {
-    return ev.mate > 0 ? `#${ev.mate}` : `#${ev.mate}`;
-  }
-  if (ev.cp !== void 0) {
-    const e = Math.max(Math.min(Math.round(ev.cp / 10) / 10, 99), -99);
-    return (e > 0 ? "+" : "") + e.toFixed(1);
-  }
-  return "\u2026";
-}
-function renderCeval() {
-  const hasEval = currentEval.cp !== void 0 || currentEval.mate !== void 0;
-  const pearlStr = engineEnabled ? hasEval ? formatScore(currentEval) : engineReady ? "\u2026" : "" : "";
-  const engineLabel = protocol.engineName ?? "Stockfish 18";
-  const statusText = !engineEnabled ? "Local analysis" : !engineReady ? "Loading\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "Engine on";
-  return h("div.ceval", { class: { enabled: engineEnabled } }, [
-    // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
-    h("button.cmn-toggle", {
-      class: { active: engineEnabled },
-      attrs: { title: "Toggle analysis engine (L)" },
-      on: { click: toggleEngine }
-    }, engineEnabled ? "On" : "Off"),
-    // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
-    // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element
-    h("pearl", pearlStr),
-    // Engine name + status info (flex: 2 1 auto, small text)
-    h("div.engine", [
-      engineLabel,
-      h("span.info", statusText)
-    ]),
-    // Settings gear — mirrors button.settings-gear positioning
-    h("button.settings-gear", {
-      class: { active: showEngineSettings },
-      attrs: { title: "Engine settings" },
-      on: { click: (e) => {
-        e.stopPropagation();
-        showEngineSettings = !showEngineSettings;
-        redraw();
-      } }
-    }, "\u2699")
-  ]);
-}
-function renderPvMoves(fen, moves) {
-  const MAX_PV_MOVES = 12;
-  try {
-    const setup = parseFen(fen).unwrap();
-    const pos = Chess.fromSetup(setup).unwrap();
-    const first2 = [];
-    const rest = [];
-    let firstMoveDone = false;
-    for (let i = 0; i < Math.min(moves.length, MAX_PV_MOVES); i++) {
-      const numNode = pos.turn === "white" ? h("span.pv-num", `${pos.fullmoves}.`) : i === 0 ? h("span.pv-num", `${pos.fullmoves}\u2026`) : null;
-      const uci = moves[i];
-      const move3 = parseUci(uci);
-      if (!move3) break;
-      const san = makeSanAndPlay(pos, move3);
-      if (san === "--") break;
-      const boardFen = makeFen(pos.toSetup());
-      const sanNode = h("span.pv-san", { key: `${i}|${uci}`, attrs: { "data-board": `${boardFen}|${uci}` } }, san);
-      if (!firstMoveDone) {
-        if (numNode) first2.push(numNode);
-        first2.push(sanNode);
-        firstMoveDone = true;
-      } else {
-        if (numNode) rest.push(numNode);
-        rest.push(sanNode);
-      }
-    }
-    return { first: first2, rest };
-  } catch {
-    return { first: [], rest: [] };
-  }
-}
-function renderPvBox() {
-  if (!engineEnabled) return null;
-  const fen = ctrl.node.fen;
-  function pvRowForSlot(slotIdx) {
-    const ev = slotIdx === 0 ? currentEval.cp !== void 0 || currentEval.mate !== void 0 || currentEval.moves?.length ? currentEval : void 0 : currentEval.lines?.[slotIdx - 1];
-    if (!ev) {
-      if (slotIdx === 0) {
-        const statusText = !engineReady ? "Loading engine\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "\u2026";
-        return h("div.pv.pv--nowrap", [h("span.ceval__info", statusText)]);
-      }
-      return h("div.pv.pv--nowrap.pv--empty");
-    }
-    const score = formatScore(ev);
-    const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
-    const { first: first2, rest } = ev.moves ? renderPvMoves(fen, ev.moves) : { first: [], rest: [] };
-    const children = [];
-    children.push(h("strong", {
-      class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
-    }, score));
-    if (first2.length > 0) children.push(h("span.pv-first", first2));
-    if (rest.length > 0) children.push(h("span.pv-cont", rest));
-    return h("div.pv.pv--nowrap", children);
-  }
-  const slots = [...Array(multiPv).keys()].map((i) => pvRowForSlot(i));
-  return h("div.pv_box", {
-    key: "pv-rows",
-    hook: {
-      insert: (vnode3) => {
-        const el = vnode3.elm;
-        el.addEventListener("mouseover", (e) => {
-          const dataBoard = e.target.dataset.board;
-          if (!dataBoard) return;
-          const sep = dataBoard.indexOf("|");
-          const newFen = dataBoard.slice(0, sep);
-          const newUci = dataBoard.slice(sep + 1);
-          pvBoardPos = { x: e.clientX, y: e.clientY };
-          if (pvBoard?.fen === newFen && pvBoard?.uci === newUci) return;
-          pvBoard = { fen: newFen, uci: newUci };
-          redraw();
-        });
-        el.addEventListener("mousemove", (e) => {
-          pvBoardPos = { x: e.clientX, y: e.clientY };
-          const overlay = document.querySelector(".pv-board-float");
-          if (overlay) {
-            const left = Math.min(e.clientX + 16, window.innerWidth - 208);
-            const top = Math.min(e.clientY + 16, window.innerHeight - 208);
-            overlay.style.left = `${left}px`;
-            overlay.style.top = `${top}px`;
-          }
-        });
-        el.addEventListener("mouseleave", () => {
-          if (!pvBoard) return;
-          pvBoard = null;
-          redraw();
-        });
-        el.addEventListener("click", (e) => {
-          const sanSpan = e.target.closest("span.pv-san");
-          if (!sanSpan) return;
-          e.preventDefault();
-          const pvRow = sanSpan.closest("div.pv");
-          if (!pvRow) return;
-          const allSans = Array.from(pvRow.querySelectorAll("span.pv-san"));
-          const clickedIdx = allSans.indexOf(sanSpan);
-          if (clickedIdx < 0) return;
-          const ucis = [];
-          for (let i = 0; i <= clickedIdx; i++) {
-            const db = allSans[i].dataset.board;
-            if (!db) break;
-            ucis.push(db.slice(db.indexOf("|") + 1));
-          }
-          if (ucis.length > 0) playPvUciList(ucis);
-        });
-      }
-    }
-  }, slots);
-}
-function playPvUciList(ucis) {
-  let path = ctrl.path;
-  let node = ctrl.node;
-  for (const uci of ucis) {
-    const existing = node.children.find((c) => c.uci === uci);
-    if (existing) {
-      path += existing.id;
-      node = existing;
-      continue;
-    }
-    const move3 = parseUci(uci);
-    if (!move3) break;
-    try {
-      const setup = parseFen(node.fen).unwrap();
-      const pos = Chess.fromSetup(setup).unwrap();
-      const san = makeSanAndPlay(pos, move3);
-      if (san === "--") break;
-      const newNode = {
-        id: scalachessCharPair(move3),
-        ply: node.ply + 1,
-        san,
-        uci: makeUci(move3),
-        fen: makeFen(pos.toSetup()),
-        children: []
-      };
-      addNode(ctrl.root, path, newNode);
-      path += newNode.id;
-      node = newNode;
-    } catch {
-      break;
-    }
-  }
-  navigate(path);
-}
-function renderPvBoard() {
-  if (!pvBoard) return null;
-  const { fen, uci } = pvBoard;
-  const left = Math.min(pvBoardPos.x + 16, window.innerWidth - 208);
-  const top = Math.min(pvBoardPos.y + 16, window.innerHeight - 208);
-  const arrow = uci.length >= 4 ? [{ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" }] : [];
-  const cgConfig = {
-    fen,
-    lastMove: uciToMove(uci),
-    orientation,
-    coordinates: false,
-    viewOnly: true,
-    drawable: { enabled: false, visible: true, autoShapes: arrow }
-  };
-  return h("div.pv-board-float", {
-    key: "pv-board-float",
-    attrs: { style: `left:${left}px;top:${top}px` }
-  }, [
-    h("div.cg-wrap", {
-      hook: {
-        insert: (vnode3) => {
-          vnode3.elm._cg = Chessground(vnode3.elm, cgConfig);
-        },
-        update: (_old, vnode3) => {
-          vnode3.elm._cg?.set(cgConfig);
-        },
-        destroy: (vnode3) => {
-          vnode3.elm._cg?.destroy();
-        }
-      }
-    })
-  ]);
-}
-function renderEngineSettings() {
-  if (!showEngineSettings) return null;
-  return h("div.ceval-settings", [
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-multipv" } }, "Lines"),
-      h("input#ceval-multipv", {
-        attrs: { type: "range", min: 1, max: 5, step: 1, value: multiPv },
-        on: {
-          input: (e) => {
-            multiPv = parseInt(e.target.value);
-            pendingLines = [];
-            if (engineEnabled && engineReady && !batchAnalyzing) {
-              currentEval = {};
-              evalCurrentPosition();
-            }
-            redraw();
-          }
-        }
-      }),
-      h("span.ceval-settings__val", `${multiPv} / 5`)
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-review-depth" } }, "Review depth"),
-      h("select#ceval-review-depth", {
-        on: {
-          change: (e) => {
-            reviewDepth = parseInt(e.target.value);
-            redraw();
-          }
-        }
-      }, [12, 14, 16, 18, 20].map(
-        (d) => h("option", { attrs: { value: d, selected: d === reviewDepth } }, String(d))
-      ))
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-analysis-depth" } }, "Analysis depth"),
-      h("select#ceval-analysis-depth", {
-        on: {
-          change: (e) => {
-            analysisDepth = parseInt(e.target.value);
-            redraw();
-          }
-        }
-      }, [18, 20, 24, 30].map(
-        (d) => h("option", { attrs: { value: d, selected: d === analysisDepth } }, String(d))
-      ))
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-arrows" } }, "Arrows"),
-      h("input#ceval-arrows", {
-        attrs: { type: "checkbox", checked: showEngineArrows },
-        on: {
-          change: (e) => {
-            showEngineArrows = e.target.checked;
-            syncArrow();
-            redraw();
-          }
-        }
-      })
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-arrow-lines" } }, "All lines"),
-      h("input#ceval-arrow-lines", {
-        attrs: { type: "checkbox", checked: arrowAllLines },
-        on: {
-          change: (e) => {
-            arrowAllLines = e.target.checked;
-            syncArrow();
-            redraw();
-          }
-        }
-      })
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-played-arrow" } }, "Played"),
-      h("input#ceval-played-arrow", {
-        attrs: { type: "checkbox", checked: showPlayedArrow },
-        on: {
-          change: (e) => {
-            showPlayedArrow = e.target.checked;
-            syncArrow();
-            redraw();
-          }
-        }
-      })
-    ])
-  ]);
-}
-var PUZZLE_CANDIDATE_MIN_LOSS = 0.14;
-var puzzleCandidates = [];
-function extractPuzzleCandidates() {
-  const candidates = [];
-  let path = "";
-  for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i];
-    const parent = ctrl.mainline[i - 1];
-    path += node.id;
-    const nodeEval = evalCache.get(path);
-    const parentEval = evalCache.get(path.slice(0, -2));
-    if (nodeEval?.loss !== void 0 && nodeEval.loss >= PUZZLE_CANDIDATE_MIN_LOSS && parentEval?.best) {
-      candidates.push({
-        gameId: selectedGameId,
-        path,
-        fen: parent.fen,
-        bestMove: parentEval.best,
-        san: node.san ?? "",
-        loss: nodeEval.loss,
-        ply: node.ply
-      });
-    }
-  }
-  puzzleCandidates = candidates;
-  console.log("[puzzles] extracted", candidates.length, "candidates", candidates);
-  return candidates;
-}
-function buildPgn(annotated) {
-  const game = importedGames.find((g) => g.id === selectedGameId);
-  const headers = [
-    ["Event", "?"],
-    ["Site", "PatzerPro"],
-    ["Date", game?.date ?? "????.??.??"],
-    ["White", game?.white ?? "?"],
-    ["Black", game?.black ?? "?"],
-    ["Result", game?.result ?? "*"]
-  ];
-  if (annotated) headers.push(["Annotator", "PatzerPro"]);
-  const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join("\n");
-  const nodes = ctrl.mainline.slice(1);
-  const parts = [];
-  let needsMoveNum = true;
-  let pgnPath = "";
-  for (const node of nodes) {
-    pgnPath += node.id;
-    const isWhite = node.ply % 2 === 1;
-    const moveNum = Math.ceil(node.ply / 2);
-    if (isWhite || needsMoveNum) {
-      parts.push(isWhite ? `${moveNum}.` : `${moveNum}...`);
-    }
-    parts.push(node.san ?? "?");
-    if (annotated) {
-      const commentParts = [];
-      const ev = evalCache.get(pgnPath);
-      if (ev) {
-        if (ev.mate !== void 0) {
-          commentParts.push(`[%eval #${ev.mate}]`);
-        } else if (ev.cp !== void 0) {
-          const pawns = (ev.cp / 100).toFixed(2);
-          commentParts.push(`[%eval ${pawns}]`);
-        }
-      }
-      if (node.clock !== void 0) {
-        const total = Math.round(node.clock / 100);
-        const h2 = Math.floor(total / 3600);
-        const m = Math.floor(total % 3600 / 60);
-        const s = total % 60;
-        commentParts.push(`[%clk ${h2}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}]`);
-      }
-      if (commentParts.length > 0) {
-        parts.push(`{ ${commentParts.join(" ")} }`);
-        needsMoveNum = isWhite;
-      } else {
-        needsMoveNum = false;
-      }
-    } else {
-      needsMoveNum = false;
-    }
-  }
-  parts.push(game?.result ?? "*");
-  return `${headerStr}
-
-${parts.join(" ")}
-`;
-}
-function downloadPgn(annotated) {
-  const pgn = buildPgn(annotated);
-  const game = importedGames.find((g) => g.id === selectedGameId);
-  const w = (game?.white ?? "White").replace(/\s+/g, "_");
-  const b = (game?.black ?? "Black").replace(/\s+/g, "_");
-  const suffix = annotated ? "_annotated" : "";
-  const filename = `${w}_vs_${b}${suffix}.pgn`;
-  const blob = new Blob([pgn], { type: "application/x-chess-pgn" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-  showExportMenu = false;
-  redraw();
-}
-function renderAnalysisControls() {
-  const hasGame = ctrl.mainline.length > 1;
-  let reviewLabel;
-  if (batchAnalyzing) {
-    const pct = batchQueue.length > 0 ? Math.round(batchDone / batchQueue.length * 100) : 0;
-    reviewLabel = `${pct}%`;
-  } else if (analysisComplete) {
-    reviewLabel = "Re-analyze";
-  } else {
-    reviewLabel = "Review";
-  }
-  const reviewClick = () => {
-    if (batchAnalyzing) {
-      awaitingStopBestmove = true;
-      protocol.stop();
-      batchAnalyzing = false;
-      batchState = "idle";
-      analysisRunning = false;
-      void saveAnalysisToIdb("partial");
-      redraw();
-      return;
-    }
-    if (analysisComplete) {
-      if (selectedGameId) {
-        void clearAnalysisFromIdb(selectedGameId);
-        analyzedGameIds.delete(selectedGameId);
-        missedTacticGameIds.delete(selectedGameId);
-      }
-      evalCache.clear();
-      currentEval = {};
-      puzzleCandidates = [];
-      batchQueue = [];
-      batchDone = 0;
-      batchAnalyzing = false;
-      batchState = "idle";
-      analysisRunning = false;
-      analysisComplete = false;
-      syncArrow();
-    }
-    startBatchWhenReady();
-  };
-  return h("div.pgn-import", [
-    h("div.pgn-import__row", [
-      h("button.btn-review", {
-        class: { "btn-review--complete": analysisComplete },
-        attrs: { disabled: !hasGame },
-        on: { click: reviewClick }
-      }, reviewLabel),
-      h("button", {
-        attrs: { disabled: ctrl.mainline.length <= 1 },
-        on: {
-          click: () => {
-            showExportMenu = !showExportMenu;
-            redraw();
-          }
-        }
-      }, "Export PGN")
-    ]),
-    showExportMenu ? h("div.pgn-import__row", [
-      h("span", { attrs: { style: "font-size:0.8rem;color:#888;margin-right:6px" } }, "Export as:"),
-      h("button", { on: { click: () => downloadPgn(true) } }, "Annotated"),
-      h("button", { on: { click: () => downloadPgn(false) } }, "Plain"),
-      h("button", {
-        attrs: { style: "color:#888" },
-        on: { click: () => {
-          showExportMenu = false;
-          redraw();
-        } }
-      }, "Cancel")
-    ]) : null
-  ]);
-}
-function renderPuzzleCandidates() {
-  const canExtract = engineEnabled && !batchAnalyzing;
-  const btnLabel = canExtract ? `Find Puzzles (${puzzleCandidates.length})` : batchAnalyzing ? "Find Puzzles (analyzing\u2026)" : "Find Puzzles (engine off)";
-  const rows = puzzleCandidates.map((c) => {
-    const moveNum = Math.ceil(c.ply / 2);
-    const side = c.ply % 2 === 1 ? "" : "\u2026";
-    const heading = `${moveNum}${side}. ${c.san}`;
-    const lossText = `\u2212${(c.loss * 100).toFixed(0)}%`;
-    const isActive = ctrl.path === c.path;
-    const isSaved = savedPuzzles.some((p) => p.gameId === c.gameId && p.path === c.path);
-    return h("li", { attrs: { style: "display:flex;align-items:center" } }, [
-      h("button.game-list__row", {
-        class: { active: isActive },
-        attrs: { style: "flex:1" },
-        on: { click: () => navigate(c.path) }
-      }, [
-        h("span", { attrs: { style: "font-weight:600;margin-right:8px" } }, heading),
-        h("span", { attrs: { style: "color:#f88;margin-right:8px" } }, lossText),
-        h("span", { attrs: { style: "color:#888;font-size:0.8rem" } }, `best: ${uciToSan(c.fen, c.bestMove)}`)
-      ]),
-      h("button", {
-        attrs: {
-          style: "flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px;cursor:pointer",
-          disabled: isSaved,
-          title: isSaved ? "Already saved" : "Save this puzzle"
-        },
-        on: { click: () => {
-          savePuzzle(c);
-        } }
-      }, isSaved ? "\u2713 Saved" : "Save")
-    ]);
-  });
-  return h("div.game-list", [
-    h("div.pgn-import__row", { attrs: { style: "margin-bottom:6px" } }, [
-      h("button", {
-        attrs: { disabled: !canExtract },
-        on: { click: () => {
-          extractPuzzleCandidates();
-          redraw();
-        } }
-      }, btnLabel)
-    ]),
-    puzzleCandidates.length > 0 ? h("ul", rows) : h("div.game-list__header", batchState === "complete" ? "No blunder-level candidates found in this game." : "Run extraction after analysis completes.")
-  ]);
-}
-var importFilterRated = true;
-var importFilterSpeeds = /* @__PURE__ */ new Set();
-var importFilterDateRange = "1month";
-var importFilterCustomFrom = "";
-var importFilterCustomTo = "";
-var SPEED_OPTIONS = [
-  { value: "bullet", label: "Bullet", icon: "\uE032" },
-  // licon.Bullet
-  { value: "blitz", label: "Blitz", icon: "\uE008" },
-  // licon.FlameBlitz
-  { value: "rapid", label: "Rapid", icon: "\uE002" }
-  // licon.Rabbit
-];
-var DATE_RANGE_OPTIONS = [
-  { value: "24h", label: "24h" },
-  { value: "1week", label: "1 wk" },
-  { value: "1month", label: "1 mo" },
-  { value: "3months", label: "3 mo" },
-  { value: "1year", label: "1 yr" },
-  { value: "all", label: "All" },
-  { value: "custom", label: "Custom" }
-];
-function filterGamesByDate(games) {
-  if (importFilterDateRange === "all") return games;
-  if (importFilterDateRange === "custom") {
-    return games.filter((g) => {
-      const d = g.date?.slice(0, 10);
-      if (!d) return true;
-      if (importFilterCustomFrom && d < importFilterCustomFrom) return false;
-      if (importFilterCustomTo && d > importFilterCustomTo) return false;
-      return true;
-    });
-  }
-  const now = /* @__PURE__ */ new Date();
-  let cutoff;
-  switch (importFilterDateRange) {
-    case "24h":
-      cutoff = new Date(now.getTime() - 864e5);
-      break;
-    case "1week":
-      cutoff = new Date(now.getTime() - 7 * 864e5);
-      break;
-    case "1month":
-      cutoff = new Date(now);
-      cutoff.setMonth(cutoff.getMonth() - 1);
-      break;
-    case "3months":
-      cutoff = new Date(now);
-      cutoff.setMonth(cutoff.getMonth() - 3);
-      break;
-    case "1year":
-      cutoff = new Date(now);
-      cutoff.setFullYear(cutoff.getFullYear() - 1);
-      break;
-    default:
-      return games;
-  }
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
-  return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
-}
-var chesscomUsername = "LeviathanDuck";
-var chesscomLoading = false;
-var chesscomError = null;
+// src/import/chesscom.ts
 var CHESSCOM_BASE = "https://api.chess.com/pub/player";
+var chesscom = {
+  username: "LeviathanDuck",
+  loading: false,
+  error: null
+};
 function normalizeChesscomResult(whiteResult, blackResult) {
   if (whiteResult === "win") return "1-0";
   if (blackResult === "win") return "0-1";
@@ -7960,7 +7837,7 @@ async function fetchChesscomGames(username, rated, speeds) {
       continue;
     }
     result.push({
-      id: `game-${++gameIdCounter}`,
+      id: nextGameId(),
       pgn,
       white: raw.white?.username ?? void 0,
       black: raw.black?.username ?? void 0,
@@ -7978,32 +7855,33 @@ async function fetchChesscomGames(username, rated, speeds) {
   }
   return result;
 }
-async function importChesscom() {
-  const name = chesscomUsername.trim();
-  if (!name || chesscomLoading) return;
-  chesscomLoading = true;
-  chesscomError = null;
-  redraw();
+async function importChesscom(callbacks) {
+  const name = chesscom.username.trim();
+  if (!name || chesscom.loading) return;
+  chesscom.loading = true;
+  chesscom.error = null;
+  callbacks.redraw();
   try {
-    const games = filterGamesByDate(await fetchChesscomGames(name, importFilterRated, importFilterSpeeds));
+    const games = filterGamesByDate(await fetchChesscomGames(name, importFilters.rated, importFilters.speeds));
     if (games.length === 0) {
-      chesscomError = "No games found matching current filters.";
+      chesscom.error = "No games found matching current filters.";
     } else {
-      importedGames = [...importedGames, ...games];
-      selectedGameId = games[0].id;
-      void saveGamesToIdb();
-      loadGame(games[0].pgn);
+      callbacks.addGames(games, games[0]);
     }
   } catch (err) {
-    chesscomError = err instanceof Error ? err.message : "Import failed.";
+    chesscom.error = err instanceof Error ? err.message : "Import failed.";
   } finally {
-    chesscomLoading = false;
-    redraw();
+    chesscom.loading = false;
+    callbacks.redraw();
   }
 }
-var lichessUsername = "Leviathan_Duck";
-var lichessLoading = false;
-var lichessError = null;
+
+// src/import/lichess.ts
+var lichess = {
+  username: "Leviathan_Duck",
+  loading: false,
+  error: null
+};
 async function fetchLichessGames(username, rated, speeds) {
   const params = new URLSearchParams({ max: "30" });
   if (rated) params.set("rated", "true");
@@ -8025,7 +7903,7 @@ async function fetchLichessGames(username, rated, speeds) {
     }
     const date = (parsePgnHeader(pgn, "UTCDate") ?? parsePgnHeader(pgn, "Date"))?.replace(/\./g, "-");
     result.push({
-      id: `game-${++gameIdCounter}`,
+      id: nextGameId(),
       pgn,
       white: parsePgnHeader(pgn, "White"),
       black: parsePgnHeader(pgn, "Black"),
@@ -8042,95 +7920,77 @@ async function fetchLichessGames(username, rated, speeds) {
   }
   return result;
 }
-async function importLichess() {
-  const name = lichessUsername.trim();
-  if (!name || lichessLoading) return;
-  lichessLoading = true;
-  lichessError = null;
-  redraw();
+async function importLichess(callbacks) {
+  const name = lichess.username.trim();
+  if (!name || lichess.loading) return;
+  lichess.loading = true;
+  lichess.error = null;
+  callbacks.redraw();
   try {
-    const games = filterGamesByDate(await fetchLichessGames(name, importFilterRated, importFilterSpeeds));
+    const games = filterGamesByDate(await fetchLichessGames(name, importFilters.rated, importFilters.speeds));
     if (games.length === 0) {
-      lichessError = "No games found matching current filters.";
+      lichess.error = "No games found matching current filters.";
     } else {
-      importedGames = [...importedGames, ...games];
-      selectedGameId = games[0].id;
-      void saveGamesToIdb();
-      loadGame(games[0].pgn);
+      callbacks.addGames(games, games[0]);
     }
   } catch (err) {
-    lichessError = err instanceof Error ? err.message : "Import failed.";
+    lichess.error = err instanceof Error ? err.message : "Import failed.";
   } finally {
-    lichessLoading = false;
-    redraw();
+    lichess.loading = false;
+    callbacks.redraw();
   }
 }
-var pgnInput = "";
-var pgnError = null;
-var pgnKey = 0;
-var gameIdCounter = 0;
-function parsePgnHeader(pgn, tag) {
-  return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
+
+// src/games/view.ts
+function getUserColor(game) {
+  const knownNames = [game.importedUsername, chesscom.username, lichess.username].map((n) => n?.trim().toLowerCase()).filter((n) => !!n);
+  if (knownNames.length === 0) return null;
+  if (game.white && knownNames.includes(game.white.toLowerCase())) return "white";
+  if (game.black && knownNames.includes(game.black.toLowerCase())) return "black";
+  return null;
 }
-function parseRating(s) {
-  if (typeof s === "number") return s > 0 ? s : void 0;
-  if (!s) return void 0;
-  const n = parseInt(s, 10);
-  return isNaN(n) || n <= 0 ? void 0 : n;
+function gameResult(game) {
+  const color = getUserColor(game);
+  if (!game.result) return null;
+  if (game.result.includes("1/2")) return "draw";
+  if (!color) return null;
+  if (color === "white") return game.result === "1-0" ? "win" : "loss";
+  return game.result === "0-1" ? "win" : "loss";
 }
-function importPgn() {
-  const raw = pgnInput.trim();
-  if (!raw) return;
-  try {
-    pgnToTree(raw);
-    const game = {
-      id: `game-${++gameIdCounter}`,
-      pgn: raw,
-      white: parsePgnHeader(raw, "White"),
-      black: parsePgnHeader(raw, "Black"),
-      result: parsePgnHeader(raw, "Result"),
-      date: parsePgnHeader(raw, "Date")?.replace(/\./g, "-"),
-      timeClass: timeClassFromTimeControl(parsePgnHeader(raw, "TimeControl")),
-      opening: parsePgnHeader(raw, "Opening"),
-      eco: parsePgnHeader(raw, "ECO"),
-      whiteRating: parseRating(parsePgnHeader(raw, "WhiteElo")),
-      blackRating: parseRating(parsePgnHeader(raw, "BlackElo"))
-      // importedUsername not set: PGN paste has no reliable importing-user identity
-    };
-    importedGames = [...importedGames, game];
-    selectedGameId = game.id;
-    pgnError = null;
-    pgnInput = "";
-    pgnKey++;
-    void saveGamesToIdb();
-    loadGame(game.pgn);
-  } catch (_) {
-    pgnError = "Invalid PGN \u2014 could not parse.";
-    redraw();
-  }
+function gameSourceUrl(game) {
+  const link = parsePgnHeader(game.pgn, "Link");
+  if (link?.startsWith("http")) return link;
+  const site = parsePgnHeader(game.pgn, "Site");
+  if (site?.startsWith("https://lichess.org/")) return site;
+  return void 0;
 }
-function renderGameList() {
-  if (importedGames.length === 0) return h("div");
-  return h("div.game-list", [
-    h("div.game-list__header", `${importedGames.length} imported game${importedGames.length === 1 ? "" : "s"}`),
-    h("ul", importedGames.map((game) => {
-      const isAnalyzed = analyzedGameIds.has(game.id);
-      const hasMissedTactic = missedTacticGameIds.has(game.id);
-      const srcUrl2 = gameSourceUrl(game);
-      return h("li", [
-        h("button.game-list__row", {
-          class: { active: game.id === selectedGameId },
-          on: { click: () => {
-            selectedGameId = game.id;
-            loadGame(game.pgn);
-          } }
-        }, renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
-        srcUrl2 ? h("a.game-ext-link", {
-          attrs: { href: srcUrl2, target: "_blank", rel: "noopener", title: "View on source platform" }
-        }) : null
-      ]);
-    }))
-  ]);
+function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
+  const result = gameResult(game);
+  const userColor = getUserColor(game);
+  const opponent = userColor === "white" ? game.black ?? game.id : userColor === "black" ? game.white ?? game.id : game.white && game.black ? `${game.white} vs ${game.black}` : game.id;
+  const date = game.date ? game.date.slice(0, 10) : null;
+  const tcIconMap = {
+    ultrabullet: "\uE032",
+    bullet: "\uE032",
+    blitz: "\uE008",
+    rapid: "\uE002"
+  };
+  const tcIcon = game.timeClass ? tcIconMap[game.timeClass] ?? null : null;
+  const resultCls = result === "win" ? "grl__result--win" : result === "loss" ? "grl__result--loss" : result === "draw" ? "grl__result--draw" : "grl__result--unknown";
+  const oppColor = userColor === "white" ? "black" : userColor === "black" ? "white" : null;
+  const oppChip = oppColor ? h("span.color-chip.--" + oppColor) : null;
+  const oppRating = userColor === "white" ? game.blackRating : userColor === "black" ? game.whiteRating : void 0;
+  const oppLabel = oppRating !== void 0 ? `${opponent} (${oppRating})` : opponent;
+  return [
+    h("span.grl__result." + resultCls, "\u25CF"),
+    h("span.grl__opponent", [oppLabel, oppChip]),
+    date ? h("span.grl__date", date) : null,
+    tcIcon ? h("span.grl__tc", { attrs: { "data-icon": tcIcon, title: game.timeClass } }) : null,
+    isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
+      isAnalyzed ? h("span.grl__badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
+      hasMissedTactic ? h("span.grl__badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null
+    ]) : null
+  ];
 }
 var gamesFilterResults = /* @__PURE__ */ new Set();
 var gamesFilterSpeeds = /* @__PURE__ */ new Set();
@@ -8138,30 +7998,30 @@ var gamesFilterOpponent = "";
 var gamesFilterColor = "";
 var gamesSortField = "date";
 var gamesSortDir = "desc";
-function toggleGamesSort(field) {
+function toggleGamesSort(field, redraw2) {
   if (gamesSortField === field) {
     gamesSortDir = gamesSortDir === "desc" ? "asc" : "desc";
   } else {
     gamesSortField = field;
     gamesSortDir = "desc";
   }
-  redraw();
+  redraw2();
 }
 function gamesFilterActive() {
   return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 || gamesFilterOpponent.trim() !== "" || gamesFilterColor !== "";
 }
-function clearGamesFilters() {
+function clearGamesFilters(redraw2) {
   gamesFilterResults = /* @__PURE__ */ new Set();
   gamesFilterSpeeds = /* @__PURE__ */ new Set();
   gamesFilterOpponent = "";
   gamesFilterColor = "";
-  redraw();
+  redraw2();
 }
-function filteredGames() {
-  let list = [...importedGames];
+function filteredGames(deps) {
+  let list = [...deps.importedGames];
   if (gamesFilterResults.size > 0) {
     list = list.filter((g) => {
-      const r = gameResult(g);
+      const r = deps.gameResult(g);
       return r !== null && gamesFilterResults.has(r);
     });
   }
@@ -8171,24 +8031,24 @@ function filteredGames() {
   if (gamesFilterOpponent.trim()) {
     const q = gamesFilterOpponent.trim().toLowerCase();
     list = list.filter((g) => {
-      const opp = opponentName(g)?.toLowerCase() ?? "";
+      const opp = opponentName(g, deps.getUserColor)?.toLowerCase() ?? "";
       return opp.includes(q);
     });
   }
   if (gamesFilterColor) {
-    list = list.filter((g) => getUserColor(g) === gamesFilterColor);
+    list = list.filter((g) => deps.getUserColor(g) === gamesFilterColor);
   }
   list.sort((a, b) => {
     let cmp = 0;
     if (gamesSortField === "date") {
       cmp = (a.date ?? "").localeCompare(b.date ?? "");
     } else if (gamesSortField === "opponent") {
-      cmp = (opponentName(a) ?? "").localeCompare(opponentName(b) ?? "");
+      cmp = (opponentName(a, deps.getUserColor) ?? "").localeCompare(opponentName(b, deps.getUserColor) ?? "");
     } else if (gamesSortField === "timeClass") {
       cmp = (a.timeClass ?? "").localeCompare(b.timeClass ?? "");
     } else if (gamesSortField === "result") {
       const ord = (g) => {
-        const r = gameResult(g);
+        const r = deps.gameResult(g);
         return r === "win" ? 0 : r === "draw" ? 1 : r === "loss" ? 2 : 3;
       };
       cmp = ord(a) - ord(b);
@@ -8197,8 +8057,8 @@ function filteredGames() {
   });
   return list;
 }
-function opponentName(game) {
-  const color = getUserColor(game);
+function opponentName(game, getUserColor2) {
+  const color = getUserColor2(game);
   if (color === "white") return game.black;
   if (color === "black") return game.white;
   return game.white && game.black ? `${game.white} vs ${game.black}` : void 0;
@@ -8209,12 +8069,12 @@ function renderResultIcon(r) {
   if (r === "draw") return h("span.games-view__result.--draw", { attrs: { title: "Draw" } }, "\u25CF");
   return h("span.games-view__result", "\u2013");
 }
-function renderSortTh(label, field) {
+function renderSortTh(label, field, redraw2) {
   const active = gamesSortField === field;
   const arrow = active ? gamesSortDir === "desc" ? " \u2193" : " \u2191" : "";
   return h("th", {
     class: { "games-view__th--active": active },
-    on: { click: () => toggleGamesSort(field) }
+    on: { click: () => toggleGamesSort(field, redraw2) }
   }, label + arrow);
 }
 var SPEED_ICONS = {
@@ -8225,8 +8085,29 @@ var SPEED_ICONS = {
   classical: "\uE007"
   // licon.Turtle
 };
-function renderGamesView() {
-  const games = filteredGames();
+function renderGameList(deps) {
+  if (deps.importedGames.length === 0) return h("div");
+  return h("div.game-list", [
+    h("div.game-list__header", `${deps.importedGames.length} imported game${deps.importedGames.length === 1 ? "" : "s"}`),
+    h("ul", deps.importedGames.map((game) => {
+      const isAnalyzed = deps.analyzedGameIds.has(game.id);
+      const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
+      const srcUrl = deps.gameSourceUrl(game);
+      return h("li", [
+        h("button.game-list__row", {
+          class: { active: game.id === deps.selectedGameId },
+          on: { click: () => deps.selectGame(game) }
+        }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
+        srcUrl ? h("a.game-ext-link", {
+          attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" }
+        }) : null
+      ]);
+    }))
+  ]);
+}
+function renderGamesView(deps) {
+  const games = filteredGames(deps);
+  const { redraw: redraw2 } = deps;
   const filterBar = h("div.games-view__controls", [
     // Result filter
     h("div.games-view__filter-group", [
@@ -8238,7 +8119,7 @@ function renderGamesView() {
             const s = new Set(gamesFilterResults);
             s.has(r) ? s.delete(r) : s.add(r);
             gamesFilterResults = s;
-            redraw();
+            redraw2();
           } }
         }, r.charAt(0).toUpperCase() + r.slice(1))
       )
@@ -8254,7 +8135,7 @@ function renderGamesView() {
             const s = new Set(gamesFilterSpeeds);
             s.has(tc) ? s.delete(tc) : s.add(tc);
             gamesFilterSpeeds = s;
-            redraw();
+            redraw2();
           } }
         }, tc.charAt(0).toUpperCase() + tc.slice(1))
       )
@@ -8266,14 +8147,14 @@ function renderGamesView() {
         class: { active: gamesFilterColor === "white" },
         on: { click: () => {
           gamesFilterColor = gamesFilterColor === "white" ? "" : "white";
-          redraw();
+          redraw2();
         } }
       }, "White"),
       h("button.games-view__pill", {
         class: { active: gamesFilterColor === "black" },
         on: { click: () => {
           gamesFilterColor = gamesFilterColor === "black" ? "" : "black";
-          redraw();
+          redraw2();
         } }
       }, "Black")
     ]),
@@ -8284,17 +8165,17 @@ function renderGamesView() {
         attrs: { type: "search", placeholder: "Name\u2026", value: gamesFilterOpponent },
         on: { input: (e) => {
           gamesFilterOpponent = e.target.value;
-          redraw();
+          redraw2();
         } }
       })
     ]),
     // Summary + clear
     h("div.games-view__filter-group.--right", [
-      h("span.games-view__summary", `${games.length} of ${importedGames.length} game${importedGames.length === 1 ? "" : "s"}`),
-      gamesFilterActive() ? h("button.games-view__clear", { on: { click: clearGamesFilters } }, "Clear filters") : null
+      h("span.games-view__summary", `${games.length} of ${deps.importedGames.length} game${deps.importedGames.length === 1 ? "" : "s"}`),
+      gamesFilterActive() ? h("button.games-view__clear", { on: { click: () => clearGamesFilters(redraw2) } }, "Clear filters") : null
     ])
   ]);
-  if (importedGames.length === 0) {
+  if (deps.importedGames.length === 0) {
     return h("div.games-view", [
       filterBar,
       h("div.games-view__empty", [
@@ -8306,11 +8187,11 @@ function renderGamesView() {
   const table = h("div.games-view__table-wrap", [
     h("table.games-view__table", [
       h("thead", h("tr", [
-        renderSortTh("Result", "result"),
-        renderSortTh("Opponent", "opponent"),
+        renderSortTh("Result", "result", redraw2),
+        renderSortTh("Opponent", "opponent", redraw2),
         h("th.games-view__rating-th", "Rating"),
-        renderSortTh("Date", "date"),
-        renderSortTh("Time", "timeClass"),
+        renderSortTh("Date", "date", redraw2),
+        renderSortTh("Time", "timeClass", redraw2),
         h("th", "Opening"),
         h("th.games-view__review-th", "Review"),
         h("th.games-view__puzzles-th", "Puzzles"),
@@ -8319,17 +8200,17 @@ function renderGamesView() {
       h(
         "tbody",
         games.length > 0 ? games.map((game) => {
-          const r = gameResult(game);
-          const opp = opponentName(game) ?? "\u2013";
+          const r = deps.gameResult(game);
+          const opp = opponentName(game, deps.getUserColor) ?? "\u2013";
           const date = game.date ? game.date.slice(0, 10) : "\u2013";
           const tc = game.timeClass ?? "\u2013";
           const tcIcon = game.timeClass ? SPEED_ICONS[game.timeClass] : void 0;
           const opening = game.opening ? game.eco ? `${game.eco} ${game.opening}` : game.opening : "\u2013";
-          const srcUrl3 = gameSourceUrl(game);
-          const isAnalyzed = analyzedGameIds.has(game.id);
-          const hasMissed = missedTacticGameIds.has(game.id);
-          const accEntry = analyzedGameAccuracy.get(game.id);
-          const userColor = getUserColor(game);
+          const srcUrl = deps.gameSourceUrl(game);
+          const isAnalyzed = deps.analyzedGameIds.has(game.id);
+          const hasMissed = deps.missedTacticGameIds.has(game.id);
+          const accEntry = deps.analyzedGameAccuracy.get(game.id);
+          const userColor = deps.getUserColor(game);
           const oppRating = userColor === "white" ? game.blackRating : userColor === "black" ? game.whiteRating : void 0;
           const ratingText = (() => {
             if (oppRating !== void 0) return String(oppRating);
@@ -8362,24 +8243,20 @@ function renderGamesView() {
             h("button.games-view__review-btn", {
               on: { click: (e) => {
                 e.stopPropagation();
-                selectedGameId = game.id;
-                loadGame(game.pgn);
-                window.location.hash = "#/analysis";
-                startBatchWhenReady();
+                deps.reviewGame(game);
               } },
               attrs: { title: "Load into Analysis and start review" }
             }, "Review")
           ]);
-          const puzzleCount = savedPuzzles.filter((p) => p.gameId === game.id).length;
+          const puzzleCount = deps.savedPuzzles.filter((p) => p.gameId === game.id).length;
           const puzzleCell = h(
             "td.games-view__puzzles-cell",
             puzzleCount > 0 ? h("span.games-view__puzzle-count", { attrs: { title: `${puzzleCount} saved puzzle${puzzleCount !== 1 ? "s" : ""}` } }, String(puzzleCount)) : h("span.games-view__puzzle-none", "\u2013")
           );
           return h("tr.games-view__row", {
-            class: { active: game.id === selectedGameId },
+            class: { active: game.id === deps.selectedGameId },
             on: { click: () => {
-              selectedGameId = game.id;
-              loadGame(game.pgn);
+              deps.selectGame(game);
               window.location.hash = "#/analysis";
             } }
           }, [
@@ -8398,8 +8275,8 @@ function renderGamesView() {
             h("td.games-view__opening", h("span", { attrs: { title: opening } }, opening)),
             reviewCell,
             puzzleCell,
-            h("td.games-view__link-cell", srcUrl3 ? h("a.game-ext-link", {
-              attrs: { href: srcUrl3, target: "_blank", rel: "noopener", title: "View on source platform" },
+            h("td.games-view__link-cell", srcUrl ? h("a.game-ext-link", {
+              attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" },
               on: { click: (e) => e.stopPropagation() }
             }) : null)
           ]);
@@ -8409,7 +8286,599 @@ function renderGamesView() {
   ]);
   return h("div.games-view", [filterBar, table]);
 }
+
+// src/analyse/moveList.ts
+var GLYPH_COLORS = {
+  "??": "#f66",
+  "?": "#f84",
+  "?!": "#fa4",
+  "!!": "#5af",
+  "!": "#8cf",
+  "!?": "#aaa"
+};
+function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2) {
+  const cached = getEval(path);
+  const parentCached = getEval(pathInit(path));
+  const pgnGlyph = node.glyphs?.[0];
+  const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
+  const computedLabel = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
+  const computedSymbol = computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
+  const symbol = pgnGlyph?.symbol ?? computedSymbol;
+  const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
+  const mate = cached?.mate;
+  const inner = [];
+  if (showIndex) {
+    const n = Math.ceil(node.ply / 2);
+    inner.push(h("index", node.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
+  }
+  inner.push(h("san", node.san ?? ""));
+  if (symbol) inner.push(h("glyph", { attrs: { style: `color:${color}` } }, symbol));
+  if (mate !== void 0) inner.push(h("eval", `+M${Math.abs(mate)}`));
+  return h("move", {
+    class: { active: path === currentPath },
+    attrs: { p: path },
+    on: { click: () => navigate2(path) }
+  }, inner);
+}
+function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath, getEval, navigate2) {
+  if (nodes.length === 0) return [];
+  const [main, ...variations] = nodes;
+  const mainPath = parentPath + main.id;
+  const out = [];
+  const showIndex = needsMoveNum || main.ply % 2 === 1;
+  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate2));
+  for (const variant of variations) {
+    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2)));
+  }
+  const hasVariations = variations.length > 0;
+  const firstCont = main.children[0];
+  const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
+  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2));
+  return out;
+}
+function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2) {
+  if (nodes.length === 0) return;
+  const [main, ...variations] = nodes;
+  const mainPath = parentPath + main.id;
+  const isWhite = main.ply % 2 === 1;
+  if (isWhite) out.push(h("index", String(Math.ceil(main.ply / 2))));
+  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate2));
+  if (variations.length > 0) {
+    if (isWhite) out.push(h("move.empty", "\u2026"));
+    const varLines = variations.map(
+      (v) => h("line", renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2))
+    );
+    out.push(h("interrupt", [h("lines", varLines)]));
+    if (isWhite && main.children.length > 0) {
+      out.push(h("index", String(Math.ceil(main.ply / 2))));
+      out.push(h("move.empty", "\u2026"));
+    }
+  }
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2);
+}
+function renderMoveList(root, currentPath, getEval, navigate2) {
+  const nodes = [];
+  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2);
+  return h("div.tview2.tview2-column", nodes);
+}
+
+// src/import/pgn.ts
+var pgnState = {
+  input: "",
+  error: null,
+  key: 0
+  // incremented on successful import to reset the textarea via Snabbdom key
+};
+function importPgn(callbacks) {
+  const raw = pgnState.input.trim();
+  if (!raw) return;
+  try {
+    pgnToTree(raw);
+    const game = {
+      id: nextGameId(),
+      pgn: raw,
+      white: parsePgnHeader(raw, "White"),
+      black: parsePgnHeader(raw, "Black"),
+      result: parsePgnHeader(raw, "Result"),
+      date: parsePgnHeader(raw, "Date")?.replace(/\./g, "-"),
+      timeClass: timeClassFromTimeControl(parsePgnHeader(raw, "TimeControl")),
+      opening: parsePgnHeader(raw, "Opening"),
+      eco: parsePgnHeader(raw, "ECO"),
+      whiteRating: parseRating(parsePgnHeader(raw, "WhiteElo")),
+      blackRating: parseRating(parsePgnHeader(raw, "BlackElo"))
+      // importedUsername not set: PGN paste has no reliable importing-user identity
+    };
+    pgnState.error = null;
+    pgnState.input = "";
+    pgnState.key++;
+    callbacks.addGames([game], game);
+  } catch (_) {
+    pgnState.error = "Invalid PGN \u2014 could not parse.";
+    callbacks.redraw();
+  }
+}
+
+// src/header/index.ts
+var importPlatform = "chesscom";
+var showImportPanel = false;
+var showGlobalMenu = false;
+var showBoardSettings = false;
+function activeSection(route) {
+  switch (route.name) {
+    case "analysis":
+    case "analysis-game":
+      return "analysis";
+    case "puzzles":
+      return "puzzles";
+    case "openings":
+      return "openings";
+    case "stats":
+      return "stats";
+    case "games":
+      return "games";
+    default:
+      return "";
+  }
+}
+var navLinks = [
+  { label: "Analysis", href: "#/analysis", section: "analysis" },
+  { label: "Games", href: "#/games", section: "games" },
+  { label: "Puzzles", href: "#/puzzles", section: "puzzles" },
+  { label: "Openings", href: "#/openings", section: "openings" },
+  { label: "Stats", href: "#/stats", section: "stats" }
+];
+function renderNav(route) {
+  const active = activeSection(route);
+  return h("nav.header__nav", navLinks.map(
+    ({ label, href, section }) => h("a", { attrs: { href }, class: { active: active === section } }, label)
+  ));
+}
+function closeGlobalMenu(redraw2) {
+  showGlobalMenu = false;
+  showBoardSettings = false;
+  redraw2();
+}
+function renderGlobalMenu(deps) {
+  const { downloadPgn: downloadPgn2, redraw: redraw2 } = deps;
+  return h("div.global-menu", [
+    h("button.global-menu__trigger", {
+      class: { active: showGlobalMenu },
+      attrs: { title: "Settings" },
+      on: { click: () => {
+        showGlobalMenu = !showGlobalMenu;
+        showBoardSettings = false;
+        redraw2();
+      } }
+    }, "\u2699"),
+    showGlobalMenu ? h("div.global-menu__backdrop", {
+      on: { click: () => closeGlobalMenu(redraw2) }
+    }) : null,
+    showGlobalMenu ? h("div.global-menu__dropdown", {
+      class: { "board-open": showBoardSettings }
+    }, [
+      h("button.global-menu__item", {
+        on: { click: () => {
+          console.log("TODO: clear local cache");
+        } }
+      }, "Clear Local Cache"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          console.log("TODO: game review settings");
+        } }
+      }, "Game Review"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          closeGlobalMenu(redraw2);
+          downloadPgn2(false);
+        } }
+      }, "Export PGN from Current Board"),
+      h("div.global-menu__item.global-menu__item--has-sub", {
+        on: { click: () => {
+          showBoardSettings = !showBoardSettings;
+          redraw2();
+        } }
+      }, [
+        h("span", "Board Settings"),
+        h("span.global-menu__arrow", showBoardSettings ? "\u25BE" : "\u203A")
+      ]),
+      showBoardSettings ? renderBoardSettings(redraw2) : null
+    ]) : null
+  ]);
+}
+function renderHeader(deps) {
+  const {
+    route,
+    importedGames: importedGames2,
+    selectedGameId: selectedGameId2,
+    analyzedGameIds: analyzedGameIds2,
+    missedTacticGameIds: missedTacticGameIds2,
+    importCallbacks: importCallbacks2,
+    onSelectGame,
+    renderGameRow,
+    gameSourceUrl: gameSourceUrl2,
+    resetAllData: resetAllData2,
+    redraw: redraw2
+  } = deps;
+  const loading = importPlatform === "chesscom" ? chesscom.loading : lichess.loading;
+  const error = importPlatform === "chesscom" ? chesscom.error : lichess.error;
+  const username = importPlatform === "chesscom" ? chesscom.username : lichess.username;
+  const doImport = () => importPlatform === "chesscom" ? void importChesscom(importCallbacks2) : void importLichess(importCallbacks2);
+  const hasActiveFilters = importFilters.speeds.size > 0 || importFilters.dateRange !== "1month" || !importFilters.rated;
+  const panel = showImportPanel ? h("div.header__panel", [
+    h("div.header__panel-section", [
+      h("div.header__panel-label", "Time control"),
+      h("div.header__panel-row", [
+        h("button.header__pill", {
+          class: { active: importFilters.speeds.size === 0 },
+          on: { click: () => {
+            importFilters.speeds = /* @__PURE__ */ new Set();
+            redraw2();
+          } }
+        }, "All"),
+        ...SPEED_OPTIONS.map(
+          ({ value, label, icon }) => h("button.header__pill", {
+            class: { active: importFilters.speeds.has(value) },
+            attrs: { "data-icon": icon },
+            on: { click: () => {
+              const s = new Set(importFilters.speeds);
+              s.has(value) ? s.delete(value) : s.add(value);
+              importFilters.speeds = s;
+              redraw2();
+            } }
+          }, label)
+        )
+      ]),
+      h("div.header__panel-label.--mt", "Period"),
+      h("div.header__panel-row", [
+        ...DATE_RANGE_OPTIONS.map(
+          ({ value, label }) => h("button.header__pill", {
+            class: { active: importFilters.dateRange === value },
+            on: { click: () => {
+              importFilters.dateRange = value;
+              redraw2();
+            } }
+          }, label)
+        )
+      ]),
+      importFilters.dateRange === "custom" ? h("div.header__panel-row.--mt", [
+        h("span.header__panel-hint", "From"),
+        h("input.header__date-input", {
+          attrs: { type: "date", value: importFilters.customFrom },
+          on: { change: (e) => {
+            importFilters.customFrom = e.target.value;
+            redraw2();
+          } }
+        }),
+        h("span.header__panel-hint", "To"),
+        h("input.header__date-input", {
+          attrs: { type: "date", value: importFilters.customTo },
+          on: { change: (e) => {
+            importFilters.customTo = e.target.value;
+            redraw2();
+          } }
+        })
+      ]) : null,
+      h("div.header__panel-row.--mt", [
+        h("label.header__panel-check", [
+          h("input", {
+            attrs: { type: "checkbox", checked: importFilters.rated },
+            on: { change: (e) => {
+              importFilters.rated = e.target.checked;
+              redraw2();
+            } }
+          }),
+          "Rated only"
+        ])
+      ])
+    ]),
+    h("div.header__panel-divider"),
+    h("div.header__panel-section", [
+      h("div.header__panel-label", "Paste PGN"),
+      h("textarea.header__pgn-input", {
+        key: pgnState.key,
+        attrs: { placeholder: "Paste a PGN here\u2026", rows: 3, spellcheck: false },
+        on: { input: (e) => {
+          pgnState.input = e.target.value;
+        } }
+      }),
+      h("div.header__panel-row", [
+        h("button.header__panel-btn", {
+          on: { click: () => {
+            importPgn(importCallbacks2);
+            if (!pgnState.error) {
+              showImportPanel = false;
+            }
+            redraw2();
+          } }
+        }, "Import PGN"),
+        pgnState.error ? h("span.header__panel-error", pgnState.error) : null
+      ])
+    ]),
+    importedGames2.length > 0 ? h("div.header__panel-section", [
+      h("div.header__panel-label", `${importedGames2.length} game${importedGames2.length === 1 ? "" : "s"} imported`),
+      h("div.header__games-list", importedGames2.map((game) => {
+        const isAnalyzed = analyzedGameIds2.has(game.id);
+        const hasMissedTactic = missedTacticGameIds2.has(game.id);
+        const srcUrl = gameSourceUrl2(game);
+        return h("div.header__game-item", [
+          h("button.header__game-row", {
+            class: { active: game.id === selectedGameId2 },
+            on: { click: () => {
+              onSelectGame(game.id, game.pgn);
+              showImportPanel = false;
+              redraw2();
+            } }
+          }, renderGameRow(game, isAnalyzed, hasMissedTactic)),
+          srcUrl ? h("a.game-ext-link", {
+            attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" },
+            on: { click: (e) => e.stopPropagation() }
+          }) : null
+        ]);
+      }))
+    ]) : null
+  ]) : null;
+  const backdrop = showImportPanel ? h("div.header__backdrop", {
+    on: { click: () => {
+      showImportPanel = false;
+      redraw2();
+    } }
+  }) : null;
+  return h("header.header", [
+    h("a.header__brand", { attrs: { href: "#/" } }, "Patzer Pro"),
+    h("div.header__search", { key: "header-search" }, [
+      h("div.header__bar", [
+        h("div.header__platforms", [
+          h("button.header__platform", {
+            class: { active: importPlatform === "chesscom" },
+            on: { click: () => {
+              importPlatform = "chesscom";
+              redraw2();
+            } }
+          }, "Chess.com"),
+          h("button.header__platform", {
+            class: { active: importPlatform === "lichess" },
+            on: { click: () => {
+              importPlatform = "lichess";
+              redraw2();
+            } }
+          }, "Lichess")
+        ]),
+        h("input.header__input", {
+          key: `input-${importPlatform}`,
+          attrs: {
+            type: "search",
+            placeholder: importPlatform === "chesscom" ? "Chess.com username" : "Lichess username",
+            value: username,
+            disabled: loading,
+            autocomplete: "off",
+            spellcheck: false
+          },
+          on: {
+            input: (e) => {
+              const v = e.target.value;
+              if (importPlatform === "chesscom") chesscom.username = v;
+              else lichess.username = v;
+            },
+            keydown: (e) => {
+              if (e.key === "Enter" && username.trim() && !loading) doImport();
+            }
+          }
+        }),
+        h("button.header__import", {
+          attrs: { disabled: loading || !username.trim() },
+          on: { click: doImport }
+        }, loading ? "Importing\u2026" : "Import"),
+        importedGames2.length > 0 && !error ? h(
+          "span.header__count",
+          { on: { click: () => {
+            showImportPanel = !showImportPanel;
+            redraw2();
+          } } },
+          `${importedGames2.length} games`
+        ) : null,
+        error ? h("span.header__error", { attrs: { title: error } }, "\u26A0") : null,
+        h("button.header__toggle", {
+          class: { active: showImportPanel, "header__toggle--filtered": hasActiveFilters && !showImportPanel },
+          attrs: { title: "Filters & games" },
+          on: { click: () => {
+            showImportPanel = !showImportPanel;
+            redraw2();
+          } }
+        }, showImportPanel ? "\u25B4" : "\u25BE")
+      ]),
+      panel,
+      backdrop
+    ]),
+    renderNav(route),
+    h("button.dev-reset", { on: { click: () => void resetAllData2() } }, "Reset"),
+    renderGlobalMenu(deps)
+  ]);
+}
+
+// src/router.ts
+var routes = [
+  { pattern: ["analysis", ":id"], name: "analysis-game" },
+  { pattern: ["analysis"], name: "analysis" },
+  { pattern: ["puzzles"], name: "puzzles" },
+  { pattern: ["openings"], name: "openings" },
+  { pattern: ["stats"], name: "stats" },
+  { pattern: ["games"], name: "games" },
+  { pattern: [], name: "home" }
+];
+function parse(hash2) {
+  const path = hash2.replace(/^#\/?/, "");
+  const parts = path ? path.split("/") : [];
+  for (const { pattern, name } of routes) {
+    if (pattern.length !== parts.length) continue;
+    const params = {};
+    let matched = true;
+    for (let i = 0; i < pattern.length; i++) {
+      const seg = pattern[i];
+      if (seg.startsWith(":")) {
+        params[seg.slice(1)] = parts[i];
+      } else if (seg !== parts[i]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return { name, params };
+  }
+  return { name: "home", params: {} };
+}
+function current() {
+  return parse(window.location.hash);
+}
+function onChange2(fn) {
+  window.addEventListener("hashchange", () => fn(current()));
+}
+
+// src/main.ts
+console.log("Patzer Pro");
+var patch = init([classModule, attributesModule, eventListenersModule]);
+var importCallbacks = {
+  addGames(games, first2) {
+    importedGames = [...importedGames, ...games];
+    selectedGameId = first2.id;
+    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    loadGame(first2.pgn);
+  },
+  redraw() {
+    redraw();
+  }
+};
+var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
+var importedGames = [];
+var selectedGameId = null;
+var selectedGamePgn = null;
+var analyzedGameIds = /* @__PURE__ */ new Set();
+var missedTacticGameIds = /* @__PURE__ */ new Set();
+var analyzedGameAccuracy = /* @__PURE__ */ new Map();
+function getActivePgn() {
+  return selectedGamePgn ?? SAMPLE_PGN;
+}
+var ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+function loadGame(pgn) {
+  selectedGamePgn = pgn;
+  ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+  clearEvalCache();
+  resetCurrentEval();
+  clearPuzzleCandidates();
+  resetBatchState();
+  if (selectedGameId) {
+    const loadedGame = importedGames.find((g) => g.id === selectedGameId);
+    if (loadedGame) {
+      const userColor = getUserColor(loadedGame);
+      if (userColor) setOrientation(userColor);
+    }
+  }
+  syncBoardAndArrow();
+  if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId);
+  else evalCurrentPosition();
+  redraw();
+}
+function buildAnalysisNodes() {
+  const nodes = {};
+  let path = "";
+  for (let i = 1; i < ctrl.mainline.length; i++) {
+    const node = ctrl.mainline[i];
+    path += node.id;
+    const ev = evalCache.get(path);
+    if (ev) {
+      const entry = { nodeId: node.id, path, fen: node.fen };
+      if (ev.cp !== void 0) entry.cp = ev.cp;
+      if (ev.mate !== void 0) entry.mate = ev.mate;
+      if (ev.best !== void 0) entry.best = ev.best;
+      if (ev.loss !== void 0) entry.loss = ev.loss;
+      if (ev.delta !== void 0) entry.delta = ev.delta;
+      nodes[path] = entry;
+    }
+  }
+  return nodes;
+}
+async function loadAndRestoreAnalysis(gameId) {
+  const stored = await loadAnalysisFromIdb(gameId);
+  if (!stored) return;
+  if (stored.analysisVersion !== ANALYSIS_VERSION) return;
+  if (stored.analysisDepth !== reviewDepth) return;
+  for (const entry of Object.values(stored.nodes)) {
+    if (!entry.path) continue;
+    const ev = {};
+    if (entry.cp !== void 0) ev.cp = entry.cp;
+    if (entry.mate !== void 0) ev.mate = entry.mate;
+    if (entry.best !== void 0) ev.best = entry.best;
+    if (entry.loss !== void 0) ev.loss = entry.loss;
+    if (entry.delta !== void 0) ev.delta = entry.delta;
+    evalCache.set(entry.path, ev);
+  }
+  if (stored.status === "complete") {
+    analyzedGameIds.add(gameId);
+    setAnalysisComplete(true);
+    setBatchState("complete");
+    const game = importedGames.find((g) => g.id === gameId);
+    const userColor = game ? getUserColor(game) : null;
+    if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
+    const restoredSummary = computeAnalysisSummary(ctrl.mainline, evalCache);
+    if (restoredSummary) {
+      analyzedGameAccuracy.set(gameId, { white: restoredSummary.white.accuracy, black: restoredSummary.black.accuracy });
+    }
+  }
+  const restoredEval = evalCache.get(ctrl.path);
+  if (restoredEval) setCurrentEval(restoredEval);
+  syncArrow();
+  redraw();
+}
+function navigate(path) {
+  ctrl.setPath(path);
+  syncBoard();
+  evalCurrentPosition();
+  void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+  redraw();
+  scrollActiveIntoView();
+}
+function scrollActiveIntoView() {
+  requestAnimationFrame(() => {
+    document.querySelector(".move.active")?.scrollIntoView({ block: "nearest" });
+  });
+}
+function next() {
+  const child = ctrl.node.children[0];
+  if (!child) return;
+  navigate(ctrl.path + child.id);
+}
+function prev() {
+  if (ctrl.path === "") return;
+  navigate(pathInit(ctrl.path));
+}
+function first() {
+  navigate("");
+}
+function last() {
+  navigate(ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, ""));
+}
 function routeContent(route) {
+  const deps = {
+    importedGames,
+    selectedGameId,
+    analyzedGameIds,
+    missedTacticGameIds,
+    analyzedGameAccuracy,
+    savedPuzzles,
+    gameResult,
+    getUserColor,
+    gameSourceUrl,
+    renderCompactGameRow,
+    selectGame(game) {
+      selectedGameId = game.id;
+      loadGame(game.pgn);
+    },
+    reviewGame(game) {
+      selectedGameId = game.id;
+      loadGame(game.pgn);
+      window.location.hash = "#/analysis";
+      startBatchWhenReady();
+    },
+    redraw
+  };
   switch (route.name) {
     case "analysis-game":
       return h("h1", `Analysis Game: ${route.params["id"]}`);
@@ -8427,7 +8896,7 @@ function routeContent(route) {
         })(),
         // Eval gauge — between board and tools (grid-area: gauge)
         // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge grid-area
-        renderEvalBar(),
+        renderEvalBar(engineEnabled, currentEval),
         // Tools — right column (grid-area: tools)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__tools
         h("div.analyse__tools", [
@@ -8440,9 +8909,25 @@ function routeContent(route) {
           // PV lines — below header (and settings when open)
           renderPvBox(),
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
-          h("div.analyse__moves", [renderMoveList()]),
-          renderAnalysisSummary(),
-          renderPuzzleCandidates()
+          h("div.analyse__moves", [renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate)]),
+          (() => {
+            const game = importedGames.find((g) => g.id === selectedGameId);
+            return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? "White", game?.black ?? "Black");
+          })(),
+          renderPuzzleCandidates({
+            mainline: ctrl.mainline,
+            getEval: (p) => evalCache.get(p),
+            gameId: selectedGameId,
+            currentPath: ctrl.path,
+            engineEnabled,
+            batchAnalyzing,
+            batchState,
+            savedPuzzles,
+            navigate,
+            savePuzzle,
+            uciToSan,
+            redraw
+          })
         ]),
         // Controls — below tools (grid-area: controls)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
@@ -8456,14 +8941,14 @@ function routeContent(route) {
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
         h("div.analyse__underboard", [
-          renderEvalGraph(),
+          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate),
           renderAnalysisControls(),
-          renderGameList()
+          renderGameList(deps)
         ]),
         renderKeyboardHelp()
       ]);
     case "games":
-      return renderGamesView();
+      return renderGamesView(deps);
     case "puzzles":
       return h("h1", "Puzzles Page");
     case "openings":
@@ -8493,153 +8978,27 @@ async function resetAllData() {
 }
 function view(route) {
   return h("div#shell", [
-    renderHeader(route),
+    renderHeader({
+      route,
+      importedGames,
+      selectedGameId,
+      analyzedGameIds,
+      missedTacticGameIds,
+      importCallbacks,
+      onSelectGame: (id, pgn) => {
+        selectedGameId = id;
+        loadGame(pgn);
+      },
+      renderGameRow: renderCompactGameRow,
+      gameSourceUrl,
+      downloadPgn,
+      resetAllData,
+      redraw
+    }),
     h("main", [routeContent(route)]),
     renderPvBoard()
   ]);
 }
-function previousBranch() {
-  let path = pathInit(ctrl.path);
-  while (path.length > 0) {
-    const node = ctrl.nodeList.find((n) => ctrl.path.startsWith(path) && path.length === ctrl.nodeList.indexOf(n) * 2);
-    const parent = (() => {
-      let p = ctrl.root;
-      const parts = [];
-      for (let i = 0; i < path.length; i += 2) parts.push(path.slice(i, i + 2));
-      for (const id of parts.slice(0, -1)) {
-        const child = p.children.find((c) => c.id === id);
-        if (!child) return null;
-        p = child;
-      }
-      return p;
-    })();
-    if (parent && parent.children.length >= 2) {
-      navigate(path);
-      return;
-    }
-    path = pathInit(path);
-  }
-  navigate("");
-}
-function nextBranch() {
-  let path = ctrl.path;
-  let node = ctrl.node;
-  while (node.children.length === 1) {
-    path += node.children[0].id;
-    node = node.children[0];
-  }
-  if (node.children.length >= 2) navigate(path + node.children[0].id);
-  else last();
-}
-function nextSibling2() {
-  const parentPath = pathInit(ctrl.path);
-  const parentNode2 = ctrl.nodeList[ctrl.nodeList.length - 2];
-  if (!parentNode2 || parentNode2.children.length < 2) return;
-  const idx = parentNode2.children.findIndex((c) => c.id === ctrl.node.id);
-  const next2 = parentNode2.children[(idx + 1) % parentNode2.children.length];
-  navigate(parentPath + next2.id);
-}
-function prevSibling() {
-  const parentPath = pathInit(ctrl.path);
-  const parentNode2 = ctrl.nodeList[ctrl.nodeList.length - 2];
-  if (!parentNode2 || parentNode2.children.length < 2) return;
-  const idx = parentNode2.children.findIndex((c) => c.id === ctrl.node.id);
-  const prev2 = parentNode2.children[(idx - 1 + parentNode2.children.length) % parentNode2.children.length];
-  navigate(parentPath + prev2.id);
-}
-function playBestMove() {
-  const best = currentEval.best;
-  if (!best || best.length < 4) return;
-  const orig = best.slice(0, 2);
-  const dest = best.slice(2, 4);
-  const promotion = best.length > 4 ? best.slice(4) : void 0;
-  completeMove(orig, dest, promotion);
-}
-var showKeyboardHelp = false;
-function renderKeyboardHelp() {
-  if (!showKeyboardHelp) return null;
-  return h("div.keyboard-help", {
-    on: { click: () => {
-      showKeyboardHelp = false;
-      redraw();
-    } }
-  }, [
-    h("div.keyboard-help__box", { on: { click: (e) => e.stopPropagation() } }, [
-      h("h2", "Keyboard shortcuts"),
-      h("table", [
-        h("tbody", [
-          ["\u2190  /  \u2192", "Previous / next move"],
-          ["\u2191  /  \u2193", "First / last move"],
-          ["Shift + \u2190", "Jump to previous fork"],
-          ["Shift + \u2192", "Jump to next fork"],
-          ["Shift + \u2191\u2193", "Switch variation at fork"],
-          ["Space", "Play engine best move"],
-          ["l", "Toggle engine"],
-          ["a", "Toggle engine arrows"],
-          ["x", "Toggle threat mode"],
-          ["f", "Flip board"],
-          ["?", "Show this help"]
-        ].map(([key, desc]) => h("tr", [h("td", key), h("td", desc)])))
-      ]),
-      h("button.keyboard-help__close", { on: { click: () => {
-        showKeyboardHelp = false;
-        redraw();
-      } } }, "\u2715")
-    ])
-  ]);
-}
-document.addEventListener("keydown", (e) => {
-  const tag = e.target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA") return;
-  if (e.shiftKey) {
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      previousBranch();
-      redraw();
-    } else if (e.key === "ArrowRight") {
-      e.preventDefault();
-      nextBranch();
-      redraw();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      nextSibling2();
-      redraw();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      prevSibling();
-      redraw();
-    }
-    return;
-  }
-  if (e.key === "ArrowRight") {
-    next();
-    redraw();
-  } else if (e.key === "ArrowLeft") {
-    prev();
-    redraw();
-  } else if (e.key === "ArrowUp") {
-    e.preventDefault();
-    first();
-    redraw();
-  } else if (e.key === "ArrowDown") {
-    e.preventDefault();
-    last();
-    redraw();
-  } else if (e.key === "f" || e.key === "F") flip();
-  else if (e.key === "x" || e.key === "X") toggleThreatMode();
-  else if (e.key === "l" || e.key === "L") toggleEngine();
-  else if (e.key === "a" || e.key === "A") {
-    showEngineArrows = !showEngineArrows;
-    syncArrow();
-    redraw();
-  } else if (e.key === " ") {
-    e.preventDefault();
-    playBestMove();
-  } else if (e.key === "?") {
-    showKeyboardHelp = !showKeyboardHelp;
-    redraw();
-  }
-});
 var wheelPixelAccum = 0;
 document.addEventListener("wheel", (e) => {
   if (e.ctrlKey) return;
@@ -8657,29 +9016,81 @@ document.addEventListener("wheel", (e) => {
 }, { passive: false });
 var app = document.getElementById("app");
 var currentRoute = current();
-var vnode2 = patch(app, view(currentRoute));
+var vnode2 = app;
 function redraw() {
   vnode2 = patch(vnode2, view(currentRoute));
 }
+function clearGameAnalysis(gameId) {
+  void clearAnalysisFromIdb(gameId);
+  analyzedGameIds.delete(gameId);
+  missedTacticGameIds.delete(gameId);
+}
+initGround({
+  getCtrl: () => ctrl,
+  navigate,
+  getImportedGames: () => importedGames,
+  getSelectedGameId: () => selectedGameId,
+  redraw
+});
+initCevalView({
+  getCtrl: () => ctrl,
+  navigate,
+  redraw
+});
+initPgnExport({
+  getCtrl: () => ctrl,
+  getImportedGames: () => importedGames,
+  getSelectedGameId: () => selectedGameId,
+  buildAnalysisNodes,
+  clearGameAnalysis,
+  redraw
+});
+initEngine({
+  getCtrl: () => ctrl,
+  getCgInstance: () => cgInstance,
+  redraw
+});
+initBatch({
+  getCtrl: () => ctrl,
+  getSelectedGameId: () => selectedGameId,
+  getImportedGames: () => importedGames,
+  analyzedGameIds,
+  missedTacticGameIds,
+  analyzedGameAccuracy,
+  buildAnalysisNodes,
+  getUserColor,
+  redraw
+});
+bindKeyboardHandlers({
+  getCtrl: () => ctrl,
+  navigate,
+  next,
+  prev,
+  first,
+  last,
+  flip,
+  completeMove,
+  redraw
+});
 onChange2((route) => {
   currentRoute = route;
   vnode2 = patch(vnode2, view(currentRoute));
 });
-void loadPuzzlesFromIdb().then((puzzles) => {
-  savedPuzzles = puzzles;
-});
+vnode2 = patch(app, view(currentRoute));
+void loadPuzzlesFromIdb().then(setSavedPuzzles);
 void loadGamesFromIdb().then((stored) => {
   if (!stored || stored.games.length === 0) return;
   importedGames = stored.games;
+  const maxId = Math.max(...stored.games.map((g) => parseInt(g.id.replace("game-", "")) || 0));
+  restoreGameIdCounter(maxId);
   const toLoad = stored.games.find((g) => g.id === stored.selectedId) ?? stored.games[0];
   selectedGameId = toLoad.id;
   selectedGamePgn = toLoad.pgn;
   ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));
-  evalCache.clear();
-  currentEval = {};
+  clearEvalCache();
+  resetCurrentEval();
   if (stored.path) ctrl.setPath(stored.path);
-  syncBoard();
-  syncArrow();
+  syncBoardAndArrow();
   redraw();
   void loadAndRestoreAnalysis(toLoad.id);
 });
