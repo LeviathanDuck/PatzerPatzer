@@ -5,7 +5,6 @@ deployment:
       DEPLOYPATH="/home1/leftcoc0/public_html/patzerpro";
       SOURCEPATH="$PWD/public";
       [ "$DEPLOYPATH" = "/home1/leftcoc0/public_html/patzerpro" ] || { echo "ABORT: deploy path mismatch"; exit 1; };
-      command -v npm >/dev/null 2>&1 || { echo "ABORT: npm not available"; exit 1; };
       command -v git >/dev/null 2>&1 || { echo "ABORT: git not available"; exit 1; };
       cd "$PWD";
       echo "Deploy working directory: $PWD";
@@ -13,10 +12,8 @@ deployment:
       echo "Deploy path: $DEPLOYPATH";
       echo "Source path: $SOURCEPATH";
       [ -z "$(git status --porcelain)" ] || { echo "ABORT: repository is not clean before deployment"; git status --short; exit 1; };
-      npm install --no-package-lock;
-      npm run build;
-      echo "Repository status after build:";
-      git status --short;
       [ -d "$SOURCEPATH" ] || { echo "ABORT: build output public/ not found"; exit 1; };
+      echo "Deploying prebuilt public/ contents:";
+      /bin/ls -la "$SOURCEPATH";
       /bin/mkdir -p "$DEPLOYPATH";
       /usr/bin/rsync -a --delete --exclude=".git" "$SOURCEPATH/" "$DEPLOYPATH/";'
