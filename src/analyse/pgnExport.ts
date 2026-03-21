@@ -14,17 +14,15 @@ import {
   analysisComplete, setBatchState, setAnalysisRunning,
   reviewDepth, resetBatchState, startBatchWhenReady,
 } from '../engine/batch';
-import { saveAnalysisToIdb } from '../idb/index';
+import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import { clearPuzzleCandidates } from '../puzzles/extract';
 import type { ImportedGame } from '../import/types';
-import type { StoredNodeEntry } from '../idb/index';
 
 // --- Injected deps ---
 
 let _getCtrl:           () => AnalyseCtrl                        = () => { throw new Error('pgnExport not initialised'); };
 let _getImportedGames:  () => ImportedGame[]                     = () => [];
 let _getSelectedGameId: () => string | null                      = () => null;
-let _buildAnalysisNodes:() => Record<string, StoredNodeEntry>    = () => ({});
 let _clearGameAnalysis: (gameId: string) => void                 = () => {};
 let _redraw:            () => void                               = () => {};
 
@@ -32,16 +30,14 @@ export function initPgnExport(deps: {
   getCtrl:            () => AnalyseCtrl;
   getImportedGames:   () => ImportedGame[];
   getSelectedGameId:  () => string | null;
-  buildAnalysisNodes: () => Record<string, StoredNodeEntry>;
   clearGameAnalysis:  (gameId: string) => void;
   redraw:             () => void;
 }): void {
-  _getCtrl            = deps.getCtrl;
-  _getImportedGames   = deps.getImportedGames;
-  _getSelectedGameId  = deps.getSelectedGameId;
-  _buildAnalysisNodes = deps.buildAnalysisNodes;
-  _clearGameAnalysis  = deps.clearGameAnalysis;
-  _redraw             = deps.redraw;
+  _getCtrl           = deps.getCtrl;
+  _getImportedGames  = deps.getImportedGames;
+  _getSelectedGameId = deps.getSelectedGameId;
+  _clearGameAnalysis = deps.clearGameAnalysis;
+  _redraw            = deps.redraw;
 }
 
 // --- Module state ---
@@ -171,7 +167,7 @@ export function renderAnalysisControls(): VNode {
       setBatchAnalyzing(false);
       setBatchState('idle');
       setAnalysisRunning(false);
-      if (selectedGameId) void saveAnalysisToIdb('partial', selectedGameId, _buildAnalysisNodes(), reviewDepth);
+      if (selectedGameId) void saveAnalysisToIdb('partial', selectedGameId, buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)), reviewDepth);
       _redraw();
       return;
     }

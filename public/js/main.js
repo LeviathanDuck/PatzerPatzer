@@ -1731,6 +1731,25 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
 
 // src/idb/index.ts
 var ANALYSIS_VERSION = 2;
+function buildAnalysisNodes(mainline, getEval) {
+  const nodes = {};
+  let path = "";
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i];
+    path += node.id;
+    const ev = getEval(path);
+    if (ev) {
+      const entry = { nodeId: node.id, path, fen: node.fen };
+      if (ev.cp !== void 0) entry.cp = ev.cp;
+      if (ev.mate !== void 0) entry.mate = ev.mate;
+      if (ev.best !== void 0) entry.best = ev.best;
+      if (ev.loss !== void 0) entry.loss = ev.loss;
+      if (ev.delta !== void 0) entry.delta = ev.delta;
+      nodes[path] = entry;
+    }
+  }
+  return nodes;
+}
 var savedPuzzles = [];
 function setSavedPuzzles(puzzles) {
   savedPuzzles = puzzles;
@@ -1871,7 +1890,6 @@ var _getImportedGames = () => [];
 var _analyzedGameIds;
 var _missedTacticGameIds;
 var _analyzedGameAccuracy;
-var _buildAnalysisNodes;
 var _getUserColor;
 var _redraw2 = () => {
 };
@@ -1882,7 +1900,6 @@ function initBatch(deps) {
   _analyzedGameIds = deps.analyzedGameIds;
   _missedTacticGameIds = deps.missedTacticGameIds;
   _analyzedGameAccuracy = deps.analyzedGameAccuracy;
-  _buildAnalysisNodes = deps.buildAnalysisNodes;
   _getUserColor = deps.getUserColor;
   _redraw2 = deps.redraw;
   setIsBatchActive(() => batchAnalyzing);
@@ -1999,7 +2016,7 @@ function onBatchBestmove() {
 function advanceBatch() {
   batchDone++;
   const gameId = _getSelectedGameId();
-  if (gameId) void saveAnalysisToIdb("partial", gameId, _buildAnalysisNodes(), reviewDepth);
+  if (gameId) void saveAnalysisToIdb("partial", gameId, buildAnalysisNodes(_getCtrl2().mainline, (p) => evalCache.get(p)), reviewDepth);
   _redraw2();
   if (batchDone < batchQueue.length) {
     evalBatchItem(batchQueue[batchDone]);
@@ -2018,7 +2035,7 @@ function advanceBatch() {
         _analyzedGameAccuracy.set(gameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });
       }
     }
-    if (gameId) void saveAnalysisToIdb("complete", gameId, _buildAnalysisNodes(), reviewDepth);
+    if (gameId) void saveAnalysisToIdb("complete", gameId, buildAnalysisNodes(_getCtrl2().mainline, (p) => evalCache.get(p)), reviewDepth);
     evalCache.delete(_getCtrl2().path);
     resetCurrentEval();
     clearPendingLines();
@@ -6318,7 +6335,6 @@ var _getCtrl5 = () => {
 };
 var _getImportedGames3 = () => [];
 var _getSelectedGameId3 = () => null;
-var _buildAnalysisNodes2 = () => ({});
 var _clearGameAnalysis = () => {
 };
 var _redraw5 = () => {
@@ -6327,7 +6343,6 @@ function initPgnExport(deps) {
   _getCtrl5 = deps.getCtrl;
   _getImportedGames3 = deps.getImportedGames;
   _getSelectedGameId3 = deps.getSelectedGameId;
-  _buildAnalysisNodes2 = deps.buildAnalysisNodes;
   _clearGameAnalysis = deps.clearGameAnalysis;
   _redraw5 = deps.redraw;
 }
@@ -6432,7 +6447,7 @@ function renderAnalysisControls() {
       setBatchAnalyzing(false);
       setBatchState("idle");
       setAnalysisRunning(false);
-      if (selectedGameId2) void saveAnalysisToIdb("partial", selectedGameId2, _buildAnalysisNodes2(), reviewDepth);
+      if (selectedGameId2) void saveAnalysisToIdb("partial", selectedGameId2, buildAnalysisNodes(_getCtrl5().mainline, (p) => evalCache.get(p)), reviewDepth);
       _redraw5();
       return;
     }
@@ -8803,25 +8818,6 @@ function loadGame(pgn) {
   else evalCurrentPosition();
   redraw();
 }
-function buildAnalysisNodes() {
-  const nodes = {};
-  let path = "";
-  for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i];
-    path += node.id;
-    const ev = evalCache.get(path);
-    if (ev) {
-      const entry = { nodeId: node.id, path, fen: node.fen };
-      if (ev.cp !== void 0) entry.cp = ev.cp;
-      if (ev.mate !== void 0) entry.mate = ev.mate;
-      if (ev.best !== void 0) entry.best = ev.best;
-      if (ev.loss !== void 0) entry.loss = ev.loss;
-      if (ev.delta !== void 0) entry.delta = ev.delta;
-      nodes[path] = entry;
-    }
-  }
-  return nodes;
-}
 async function loadAndRestoreAnalysis(gameId, generation) {
   const stored = await loadAnalysisFromIdb(gameId);
   if (generation !== restoreGeneration || selectedGameId !== gameId) return;
@@ -9078,7 +9074,6 @@ initPgnExport({
   getCtrl: () => ctrl,
   getImportedGames: () => importedGames,
   getSelectedGameId: () => selectedGameId,
-  buildAnalysisNodes,
   clearGameAnalysis,
   redraw
 });
@@ -9094,7 +9089,6 @@ initBatch({
   analyzedGameIds,
   missedTacticGameIds,
   analyzedGameAccuracy,
-  buildAnalysisNodes,
   getUserColor,
   redraw
 });
