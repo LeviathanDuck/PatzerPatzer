@@ -31,8 +31,9 @@ Workflow:
    - hidden coupling
    - missing validation
 9. If the reviewed change corresponds to a queued prompt, remove that prompt from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and update its existing entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-10. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
-11. If the review shows the task needs a follow-up fix prompt, note that the next prompt should reuse the same root `Task ID` with the next `-F#` `Prompt ID` modifier
+10. When updating the matching log entry, also update the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` from `- [ ] CCP-### - Short Task Title` to `- [x] CCP-### - Short Task Title`
+11. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
+12. If the review shows the task needs a follow-up fix prompt, note that the next prompt should reuse the same root `Task ID` with the next `-F#` `Prompt ID` modifier
 
 When checking git state, use local information first:
 - `git status --short --branch`
@@ -68,6 +69,7 @@ Prompt log status rules:
 - if the change is acceptable but has minor caveats, say it should be recorded in `CLAUDE_PROMPT_LOG.md` as `[x] Reviewed` with `Review outcome: passed with notes`
 - if review findings exist, say it should be recorded in `CLAUDE_PROMPT_LOG.md` as `[x] Reviewed`, but with `Review outcome: issues found` or `Review outcome: needs rework`, and the issue summary should be recorded beside that log entry
 - keep the existing `## prompt-id - short task title` heading and fenced log-entry block format when updating the log
+- keep the top checklist index in `CLAUDE_PROMPT_LOG.md` synchronized with the detailed log entry status
 - keep queue/log fenced blocks untagged; do not add a language label such as `text`
 - if the matching prompt is still present in `CLAUDE_PROMPT_QUEUE.md`, say it should be removed from the queue after review
 - if no prompt item is identifiable, say `No prompt queue/log item identified`

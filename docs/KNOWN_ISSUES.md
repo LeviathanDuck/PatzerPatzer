@@ -1,7 +1,7 @@
 # Patzer Pro — Known Issues
 
 Date: 2026-03-20
-Source: current code read + validation pass
+Source: current code read + validation pass + reviewed Claude prompt outcomes
 
 This file only lists issues that still appear to be current in the live repo.
 
@@ -41,18 +41,6 @@ Impact:
 
 ---
 
-## [HIGH] Clear-local-data reset flow is currently broken
-
-`resetAllData()` in `src/main.ts` still calls `openGameDb()`, but `openGameDb` is not imported
-from `src/idb/index.ts`.
-
-Impact:
-- the “Clear all local Patzer Pro data” path is not currently trustworthy
-- cleanup/reset behavior can fail before IDB stores are cleared
-- the UI advertises a recovery path that is not currently safe
-
----
-
 ## [HIGH] In-flight engine stop handling still relies on a boolean flag
 
 `awaitingStopBestmove` in `src/engine/ctrl.ts` is still a single boolean.
@@ -62,13 +50,23 @@ Impact:
 
 ---
 
-## [HIGH] Review state is still not explicitly scoped to an active game context
+## [HIGH] Live per-move engine analysis can stall during move navigation
 
-The codebase still relies on shared engine/cache state and path-based storage without a clearly
-scoped current-game guard through the full review/restore flow.
+While stepping through moves with the live engine enabled, the engine can sometimes stop updating
+for the current position. In practice, it may partially fill only the first PV line and then stall
+entirely while the user continues clicking through moves.
+
+This is distinct from batch `Review` / `Re-analyze`, which can still complete successfully even
+when constant live analysis during navigation is unreliable.
 
 Impact:
-- stale or delayed engine output can still land in the wrong active game context
+- per-move analysis becomes untrustworthy during normal move-by-move review
+- PV lines and arrows can stop matching the current board position
+- users get inconsistent behavior between live engine analysis and batch review
+
+Current code paths:
+- `src/engine/ctrl.ts` owns live engine lifecycle, queued evaluation, and PV updates
+- `src/main.ts` navigation flow triggers per-position reevaluation during move navigation
 
 ---
 
@@ -88,36 +86,42 @@ Impact:
 
 ---
 
-## [LOW] Played-arrow still appears on side-variation nodes it doesn't apply to
+## [MEDIUM] Board resize handle does not reliably appear or work in Safari
 
-The played-move arrow (showing the first child of the current node) is still drawn even when the
-current node is inside a side variation rather than the original game line.
+The draggable board-resize corner can fail to appear or fail to work in Safari, even though the
+same resize control is expected to be available on the analysis board.
 
 Impact:
-- arrows can communicate the wrong thing while the user explores side lines
+- Safari users can lose access to board resizing entirely
+- board layout customization becomes inconsistent across browsers
 
-Current code path:
-- `src/engine/ctrl.ts` `buildArrowShapes()` derives the played arrow from `ctrl.node.children[0]`,
-  which assumes the current node is still on the played line
+Current code paths:
+- `src/board/index.ts` appends and binds the `cg-resize` drag handle
+- `src/styles/main.scss` styles the `cg-resize` element and its visual corner marker
 
 ---
 
-## [MEDIUM] Engine settings are not persisted
+## [MEDIUM] `analysis-game` route can still get stuck in a fake loading state
 
-`reviewDepth`, `analysisDepth`, and `multiPv` are still module-level values that reset on reload.
+`analysis-game` is no longer a pure placeholder, but `src/main.ts` still uses
+`importedGames.length === 0` as a proxy for “IDB is still loading”.
 
 Impact:
-- stored analysis can appear to stop matching after a reload if the previous session used
-  different settings
+- deep-linking to `#/analysis/:id` can get stuck on permanent `Loading…` text when the imported
+  library is genuinely empty
+- missing-game handling is still weaker than it should be before startup library state is known
 
 ---
 
-## [MEDIUM] `analysis-game` route is still a placeholder
+## [MEDIUM] Book-aware retrospection cancellation seam is defined but not live
 
-The route exists in the router, but `src/main.ts` still renders only a header string for it.
+`src/analyse/retro.ts` now accepts an opening-provider callback and checks `openingUcis` before
+emitting retrospection candidates, but the current activation path in `src/main.ts` still calls
+`buildRetroCandidates(...)` without passing any provider.
 
 Impact:
-- deep-linking directly to a stored game is not functional
+- book/theory moves are not actually filtered out of Learn From Mistakes candidates yet
+- the repo now has the cancellation seam, but not the live behavior claimed by the prompt/task
 
 ---
 
@@ -132,81 +136,21 @@ Impact:
 
 ---
 
-## [MEDIUM] Engine arrows can render without a visible arrowhead
-
-Sometimes the live engine arrows draw with only the shaft visible and the arrowhead missing,
-which makes the intended destination less clear than it should be during analysis.
-
-Impact:
-- engine guidance is harder to read at a glance
-- users can misread the intended move destination when the arrowhead is missing
-
-Current code paths:
-- `src/engine/ctrl.ts` builds the engine and played-move arrow shapes
-- `src/board/index.ts` configures the Chessground drawable brushes and arrow rendering
-
 ---
 
-## [HIGH] Underboard eval graph can remain blank during analysis-page Review/Re-analyze
+## [MEDIUM] Move-list variation context menu can open at the top-left of the page
 
-The analysis-page `Review` / `Re-analyze` control is intended to run batch review and progressively
-populate the underboard eval graph from review data. Currently, after clicking `Review` beneath the
-board, the eval graph can remain blank with no plotted data instead of filling in as review
-progresses or after review completes.
+The variation move context menu should open over the move the user selected in the move list, but
+it can instead render at the top-left corner of the page.
 
 Impact:
-- a core analysis/review workflow is not trustworthy
-- users do not get expected visual feedback while batch review is running
-- completed review can still appear unevaluated from the graph display alone
-
-Current code paths:
-- `src/analyse/pgnExport.ts` triggers the analysis-page `Review` / `Re-analyze` action
-- `src/engine/batch.ts` is responsible for batch review progress and eval-cache population
-- `src/analyse/evalView.ts` renders the underboard eval graph from cached review data
-- `src/main.ts` wires the underboard graph into the analysis page
-
----
-
-## [MEDIUM] Puzzle route is still a placeholder
-
-Puzzle candidate extraction and puzzle saving both exist, but `#/puzzles` still renders only a
-placeholder heading.
-
-Impact:
-- the puzzle subsystem is not yet a real user-facing workflow
-
----
-
-## [LOW] Chess.com import still fetches only the latest archive month
-
-`fetchChesscomGames()` still requests only the newest archive URL and then applies date filtering
-after fetch.
-
-Impact:
-- broader date ranges on Chess.com do not yet fetch a true multi-month set
-
----
-
-## [LOW] Played-move arrow behavior is wrong in side variations
-
-The “what was played in the game” arrow should disappear when the user enters a non-game variation
-and only return when the current path is back on the actual played game line.
-
-Impact:
-- board arrows can communicate the wrong thing while exploring side lines
+- variation-management actions feel disconnected from the selected move
+- the menu looks broken and is harder to trust during move-tree editing
 
 Current code path:
-- `src/engine/ctrl.ts` still derives the played arrow from `ctrl.node.children[0]`, which assumes
-  the current node is still on the played line
+- `src/main.ts` stores cursor coordinates for the move-list context menu and renders the fixed-position overlay
+
+Likely current cause:
+- the overlay is rendered with a Snabbdom `style` object, but the app patcher is currently initialised without Snabbdom's style module, so the intended `left` / `top` positioning is not applied
 
 ---
-
-## [LOW] Header global menu still contains stub actions
-
-`src/header/index.ts` still logs TODO messages for:
-
-- Clear Local Cache
-- Game Review
-
-Impact:
-- menu UI is ahead of actual behavior in those entries
