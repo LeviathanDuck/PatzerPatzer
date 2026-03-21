@@ -27,7 +27,7 @@ type EvalCache = ReadonlyMap<string, EvalEntry>;
  *  #KO is the terminal-mate case (mate === 0): the position is already checkmated. */
 export function formatScore(ev: { cp?: number; mate?: number }): string {
   if (ev.mate !== undefined) {
-    if (ev.mate === 0) return '#KO';
+    if (ev.mate === 0) return '#KO!';
     return `#${ev.mate}`;
   }
   if (ev.cp !== undefined) {
@@ -302,6 +302,8 @@ export function renderEvalGraph(
   currentPath: string,
   evalCache:   EvalCache,
   navigate:    (p: string) => void,
+  userColor:   'white' | 'black' | null,
+  userOnly:    boolean,
 ): VNode {
   const n = mainline.length - 1; // non-root move count
 
@@ -313,6 +315,12 @@ export function renderEvalGraph(
 
   interface Pt { x: number; y: number; path: string; label: MoveLabel | null; hasMate: boolean; }
 
+  const shouldShowReviewAnnotation = (nodePly: number): boolean => {
+    if (!userOnly || userColor === null) return true;
+    const isWhiteMove = nodePly % 2 === 1;
+    return (userColor === 'white' && isWhiteMove) || (userColor === 'black' && !isWhiteMove);
+  };
+
   const pts: (Pt | null)[] = [];
   let path = '';
   for (let i = 1; i <= n; i++) {
@@ -321,12 +329,14 @@ export function renderEvalGraph(
     const parentPath   = path.slice(0, -2);
     const cached       = evalCache.get(path);
     const parentCached = evalCache.get(parentPath);
-    const wc = cached !== undefined ? evalWinChances(cached) : undefined;
+    const wc = cached?.mate === 0
+      ? (node.fen.split(' ')[1] === 'b' ? 1 : -1)
+      : (cached !== undefined ? evalWinChances(cached) : undefined);
     if (wc !== undefined) {
       const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
       // Prefer stored review annotation (hydrated from IDB) over classifyLoss(loss) recomputation.
       // cached is defined here (wc !== undefined requires it). Falls back gracefully for live analysis.
-      const label = !playedBest
+      const label = !playedBest && shouldShowReviewAnnotation(node.ply)
         ? (cached!.label ?? (cached!.loss !== undefined ? classifyLoss(cached!.loss) : null))
         : null;
       pts.push({

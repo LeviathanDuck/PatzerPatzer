@@ -89,7 +89,7 @@ export function renderCeval(): VNode {
 
     // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
     // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element
-    h('pearl', pearlStr),
+    h('pearl', { class: { 'ceval__ko': currentEval.mate === 0 } }, pearlStr),
 
     // Engine name + status info (flex: 2 1 auto, small text)
     h('div.engine', [
@@ -225,6 +225,7 @@ export function renderPvBox(): VNode | null {
     }
 
     const score = formatScore(ev);
+    const isKo = ev.mate === 0;
     const isPositive = ev.cp !== undefined ? ev.cp > 0 : ev.mate !== undefined ? ev.mate > 0 : null;
     const { first, rest } = ev.moves ? renderPvMoves(fen, ev.moves) : { first: [], rest: [] };
 
@@ -241,6 +242,7 @@ export function renderPvBox(): VNode | null {
       class: {
         'pv__score--white':   isPositive === true,
         'pv__score--black':   isPositive === false,
+        'pv__score--ko':      isKo,
         'pv__score--massive': isMassive,
       },
     }, score));

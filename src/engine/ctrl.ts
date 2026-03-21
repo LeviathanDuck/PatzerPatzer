@@ -166,6 +166,7 @@ export function stopProtocol(): void              { protocol.stop(); }
 export function buildArrowShapes(): DrawShape[] {
   const shapes: DrawShape[] = [];
   const ctrl = _getCtrl();
+  if (_isBatchActive()) return shapes;
 
   // Suppress engine-guidance arrows whenever retrospection is active and the user has not
   // manually revealed guidance for the current candidate.
@@ -228,6 +229,9 @@ export function buildArrowShapes(): DrawShape[] {
     }
   }
 
+  const koOverlay = buildKoOverlayShape(ctrl.node.fen);
+  if (koOverlay) shapes.push(koOverlay);
+
   return shapes;
 }
 
@@ -248,6 +252,39 @@ function buildPrimaryArrowLabel(): DrawShape | null {
     orig: currentEval.best.slice(2, 4) as any,
     label: { text, fill },
   };
+}
+
+function buildKoOverlayShape(fen: string): DrawShape | null {
+  if (currentEval.mate !== 0) return null;
+  const losingColor = fen.split(' ')[1] === 'b' ? 'black' : 'white';
+  const kingSquare = findKingSquare(fen, losingColor);
+  if (!kingSquare) return null;
+  return {
+    orig: kingSquare as any,
+    label: { text: 'KO', fill: '#c04ccf' },
+  };
+}
+
+function findKingSquare(fen: string, color: 'white' | 'black'): string | null {
+  const board = fen.split(' ')[0] ?? '';
+  const target = color === 'white' ? 'K' : 'k';
+  let rank = 8;
+  let file = 0;
+  for (const ch of board) {
+    if (ch === '/') {
+      rank--;
+      file = 0;
+      continue;
+    }
+    const empty = Number.parseInt(ch, 10);
+    if (!Number.isNaN(empty)) {
+      file += empty;
+      continue;
+    }
+    if (ch === target) return `${'abcdefgh'[file]}${rank}`;
+    file++;
+  }
+  return null;
 }
 
 /**

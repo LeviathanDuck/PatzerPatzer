@@ -11,8 +11,10 @@ import {
 } from '../import/filters';
 import {
   boardWheelNavEnabled,
+  reviewDotsUserOnly,
   renderBoardSettings,
   setBoardWheelNavEnabled,
+  setReviewDotsUserOnly,
 } from '../board/cosmetics';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
@@ -134,6 +136,19 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
           on: {
             change: (e: Event) => {
               setBoardWheelNavEnabled((e.target as HTMLInputElement).checked);
+              redraw();
+            },
+          },
+        }),
+      ]),
+
+      h('label.global-menu__item.global-menu__item--toggle', [
+        h('span', 'Review Dots: User Only'),
+        h('input', {
+          attrs: { type: 'checkbox', checked: reviewDotsUserOnly },
+          on: {
+            change: (e: Event) => {
+              setReviewDotsUserOnly((e.target as HTMLInputElement).checked);
               redraw();
             },
           },

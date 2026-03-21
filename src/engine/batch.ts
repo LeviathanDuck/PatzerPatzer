@@ -7,6 +7,7 @@ import {
   evalCache,
   currentEval,
   evalCurrentPosition,
+  syncArrow,
   toggleEngine,
   engineEnabled,
   engineReady,
@@ -271,6 +272,7 @@ export function startBatchAnalysis(): void {
   batchState       = queue.length > 0 ? 'analyzing' : 'complete';
   analysisRunning  = queue.length > 0;
   analysisComplete = queue.length === 0;
+  syncArrow();
   _redraw();
 
   if (queue.length > 0) evalBatchItem(queue[0]!);
