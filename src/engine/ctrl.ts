@@ -267,7 +267,7 @@ function buildArrowLabelSvg(ev?: Pick<PositionEval, 'cp' | 'mate'> | Pick<EvalLi
   if (!showArrowLabels || !ev) return null;
   if (ev.cp === undefined && ev.mate === undefined) return null;
   const text = formatScore(ev);
-  return `<text x="50" y="55" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="22" font-weight="700" fill="#fff" stroke="rgba(0,0,0,0.92)" stroke-width="6" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="12" font-weight="500" fill="#fff" stroke="rgba(0,0,0,0.92)" stroke-width="6" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
 }
 
 function escapeArrowLabelText(text: string): string {
