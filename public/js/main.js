@@ -1323,40 +1323,23 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
   const cy = GRAPH_H / 2;
   const svgNodes = [];
   const polyPts = [
-    `${valid[0].x},${cy}`,
+    `${valid[0].x},${GRAPH_H}`,
     ...valid.map((p) => `${p.x},${p.y}`),
-    `${valid[valid.length - 1].x},${cy}`
+    `${valid[valid.length - 1].x},${GRAPH_H}`
   ].join(" ");
-  svgNodes.push(h("defs", [
-    h("clipPath", { attrs: { id: "eval-graph-fill-upper" } }, [
-      h("rect", { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy } })
-    ]),
-    h("clipPath", { attrs: { id: "eval-graph-fill-lower" } }, [
-      h("rect", { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy } })
-    ])
-  ]));
   svgNodes.push(h("polygon", {
     attrs: {
       points: polyPts,
       fill: "rgba(255,255,255,0.3)",
-      stroke: "none",
-      "clip-path": "url(#eval-graph-fill-upper)"
-    }
-  }));
-  svgNodes.push(h("polygon", {
-    attrs: {
-      points: polyPts,
-      fill: "rgba(0,0,0,1)",
-      stroke: "none",
-      "clip-path": "url(#eval-graph-fill-lower)"
+      stroke: "none"
     }
   }));
   svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#444", "stroke-width": 1 } }));
   svgNodes.push(h("polyline", { attrs: {
     points: valid.map((p) => `${p.x},${p.y}`).join(" "),
     fill: "none",
-    stroke: "#888",
-    "stroke-width": 1.5,
+    stroke: "#d85000",
+    "stroke-width": 1,
     "stroke-linejoin": "round",
     "stroke-linecap": "round"
   } }));
@@ -1642,7 +1625,7 @@ function buildArrowLabelSvg(ev) {
   if (!showArrowLabels || !ev) return null;
   if (ev.cp === void 0 && ev.mate === void 0) return null;
   const text = formatScore(ev);
-  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="12" font-weight="500" fill="#fff" stroke="rgba(0,0,0,0.72)" stroke-width="1.35" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="10" font-weight="400" fill="#fff" stroke="rgba(0,0,0,0.72)" stroke-width="2" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
 }
 function escapeArrowLabelText(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
