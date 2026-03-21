@@ -1691,7 +1691,7 @@ function storedInt(key, def, min, max) {
   const v = parseInt(localStorage.getItem(key) ?? "", 10);
   return !isNaN(v) && v >= min && v <= max ? v : def;
 }
-var multiPv = storedInt("patzer.multiPv", 3, 1, 5);
+var multiPv = storedInt("patzer.multiPv", 1, 1, 5);
 var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
 var showEngineArrows = true;
 var arrowAllLines = true;
@@ -1703,6 +1703,10 @@ var pendingLines = [];
 var arrowDebounceTimer = null;
 var arrowSuppressUntil = 0;
 var ARROW_SETTLE_MS = 500;
+var LIVE_ENGINE_UI_THROTTLE_MS = 200;
+var liveEngineUiTimer = null;
+var liveEngineUiLastFlushAt = 0;
+var liveEngineUiNeedsRetroCheck = false;
 var threatMode = false;
 var evalIsThreat = false;
 var threatEval = {};
@@ -1920,6 +1924,32 @@ function syncArrowDebounced() {
     _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
   }, 150);
 }
+function cancelLiveEngineUiRefresh() {
+  if (liveEngineUiTimer !== null) {
+    clearTimeout(liveEngineUiTimer);
+    liveEngineUiTimer = null;
+  }
+  liveEngineUiNeedsRetroCheck = false;
+}
+function flushLiveEngineUiRefresh() {
+  liveEngineUiTimer = null;
+  liveEngineUiLastFlushAt = Date.now();
+  syncArrowDebounced();
+  _redraw();
+  if (liveEngineUiNeedsRetroCheck) _getCtrl().retro?.onCeval();
+  liveEngineUiNeedsRetroCheck = false;
+}
+function scheduleLiveEngineUiRefresh(includeRetroCheck = false) {
+  liveEngineUiNeedsRetroCheck ||= includeRetroCheck;
+  const elapsed = Date.now() - liveEngineUiLastFlushAt;
+  if (elapsed >= LIVE_ENGINE_UI_THROTTLE_MS && liveEngineUiTimer === null) {
+    flushLiveEngineUiRefresh();
+    return;
+  }
+  if (liveEngineUiTimer !== null) return;
+  const wait = Math.max(0, LIVE_ENGINE_UI_THROTTLE_MS - elapsed);
+  liveEngineUiTimer = setTimeout(flushLiveEngineUiRefresh, wait);
+}
 function parseEngineLine(line) {
   const parts = line.trim().split(/\s+/);
   if (parts[0] === "info") {
@@ -1971,9 +2001,7 @@ function parseEngineLine(line) {
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if (depth !== void 0 && !evalIsThreat) ev.depth = depth;
       if ((score !== void 0 || best) && !_isBatchActive()) {
-        syncArrowDebounced();
-        _redraw();
-        if (!evalIsThreat) _getCtrl().retro?.onCeval();
+        scheduleLiveEngineUiRefresh(!evalIsThreat);
       }
     } else if (!evalIsThreat && score !== void 0) {
       if (evalNodePath !== _getCtrl().path) return;
@@ -1991,9 +2019,10 @@ function parseEngineLine(line) {
       if (best) pl.best = best;
       if (pvMoves.length > 0) pl.moves = pvMoves;
       currentEval.lines = pendingLines.slice(1).filter(Boolean);
-      if (!_isBatchActive()) _redraw();
+      if (!_isBatchActive()) scheduleLiveEngineUiRefresh();
     }
   } else if (parts[0] === "bestmove") {
+    cancelLiveEngineUiRefresh();
     if (pendingStopCount > 0) {
       pendingStopCount--;
       currentEval = {};
@@ -2068,6 +2097,7 @@ function flipFenColor(fen) {
 }
 function evalThreatPosition() {
   if (!engineEnabled || !engineReady || _isBatchActive()) return;
+  cancelLiveEngineUiRefresh();
   threatEval = {};
   evalIsThreat = true;
   protocol.stop();
@@ -2101,12 +2131,14 @@ function evalCurrentPosition() {
   const cached = evalCache.get(ctrl2.path);
   const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
   if (cached && cachedHasLines) {
+    cancelLiveEngineUiRefresh();
     currentEval = { ...cached };
     syncArrow();
     _redraw();
     if (threatMode) evalThreatPosition();
     return;
   }
+  cancelLiveEngineUiRefresh();
   currentEval = cached ? { ...cached } : {};
   pendingLines = [];
   syncArrow();
@@ -2145,6 +2177,7 @@ function toggleEngine() {
       evalCurrentPosition();
     }
   } else {
+    cancelLiveEngineUiRefresh();
     protocol.stop();
     currentEval = {};
     evalIsThreat = false;
@@ -2221,25 +2254,69 @@ function openGameDb() {
     req.onerror = () => reject(req.error);
   });
 }
-async function saveGamesToIdb(games, selectedId, path) {
+async function saveGamesToIdb(games) {
   try {
     const db = await openGameDb();
     const tx = db.transaction("game-library", "readwrite");
     tx.objectStore("game-library").put(
-      { games, selectedId, path },
+      { games },
       "imported-games"
     );
   } catch (e) {
     console.warn("[idb] save failed", e);
   }
 }
+async function saveNavStateToIdb(selectedId, path) {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction("game-library", "readwrite");
+    tx.objectStore("game-library").put(
+      { selectedId, path },
+      "imported-nav"
+    );
+  } catch (e) {
+    console.warn("[idb] nav-state save failed", e);
+  }
+}
 async function loadGamesFromIdb() {
   try {
     const db = await openGameDb();
     return new Promise((resolve, reject) => {
-      const req = db.transaction("game-library", "readonly").objectStore("game-library").get("imported-games");
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      const tx = db.transaction("game-library", "readonly");
+      const store = tx.objectStore("game-library");
+      const gamesReq = store.get("imported-games");
+      const navReq = store.get("imported-nav");
+      let gamesDone = false;
+      let navDone = false;
+      let libraryRecord;
+      let navRecord;
+      const maybeResolve = () => {
+        if (!gamesDone || !navDone) return;
+        if (!libraryRecord && !navRecord) {
+          resolve(void 0);
+          return;
+        }
+        const games = libraryRecord?.games ?? [];
+        const selectedId = navRecord?.selectedId ?? (libraryRecord && "selectedId" in libraryRecord ? libraryRecord.selectedId : null);
+        const path = navRecord?.path ?? (libraryRecord && "path" in libraryRecord ? libraryRecord.path : void 0);
+        resolve({
+          games,
+          selectedId,
+          ...path !== void 0 ? { path } : {}
+        });
+      };
+      gamesReq.onsuccess = () => {
+        libraryRecord = gamesReq.result;
+        gamesDone = true;
+        maybeResolve();
+      };
+      navReq.onsuccess = () => {
+        navRecord = navReq.result;
+        navDone = true;
+        maybeResolve();
+      };
+      gamesReq.onerror = () => reject(gamesReq.error);
+      navReq.onerror = () => reject(navReq.error);
     });
   } catch (e) {
     console.warn("[idb] load failed", e);
@@ -9701,6 +9778,7 @@ console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
 var PUBLIC_SOURCE_URL = "https://github.com/LeviathanDuck/PatzerPatzer";
 var PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
+var NAV_STATE_SAVE_MS = 500;
 function dedupeImportedGames(existing, incoming) {
   const seenPgns = new Set(existing.map((game) => game.pgn));
   const deduped = [];
@@ -9722,7 +9800,7 @@ var importCallbacks = {
     }
     importedGames = [...importedGames, ...dedupedGames];
     selectedGameId = first2.id;
-    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    void saveGamesToIdb(importedGames);
     loadGame(first2.pgn);
   },
   redraw() {
@@ -9824,6 +9902,15 @@ function getActivePgn() {
 }
 var ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
 var restoreGeneration = 0;
+var navStateSaveTimer = null;
+function scheduleNavStateSave(path = ctrl.path) {
+  if (navStateSaveTimer !== null) clearTimeout(navStateSaveTimer);
+  const selectedId = selectedGameId;
+  navStateSaveTimer = setTimeout(() => {
+    navStateSaveTimer = null;
+    void saveNavStateToIdb(selectedId, path);
+  }, NAV_STATE_SAVE_MS);
+}
 function loadGame(pgn) {
   selectedGamePgn = pgn;
   ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
@@ -9839,6 +9926,7 @@ function loadGame(pgn) {
     }
   }
   syncBoardAndArrow();
+  scheduleNavStateSave("");
   restoreGeneration++;
   if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId, restoreGeneration);
   else evalCurrentPosition();
@@ -9886,7 +9974,7 @@ function navigate(path) {
   ctrl.retro?.onJump(path);
   syncBoard();
   evalCurrentPosition();
-  void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+  scheduleNavStateSave(ctrl.path);
   redraw();
   scrollActiveIntoView();
 }
@@ -9909,7 +9997,7 @@ function deleteVariation(path) {
   if (ctrl.path.startsWith(path)) {
     navigate(pathInit(path));
   } else {
-    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    scheduleNavStateSave(ctrl.path);
     redraw();
   }
 }
