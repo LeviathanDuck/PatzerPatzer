@@ -13,6 +13,7 @@ Assume Claude Code will have access to:
   - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
 
 Before writing the prompt:
+- re-read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md` and `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md` before mutating any prompt-tracking files
 - inspect the relevant Patzer Pro area so the prompt is grounded in the current repo
 - resolve rough or slightly wrong terminology into the real files, modules, and subsystem owner
 - determine whether the task touches Lichess-aligned behavior
@@ -32,8 +33,8 @@ Before writing the prompt:
   - keep `Task ID` as the root family id
   - set `Parent Prompt ID` to the prompt being fixed
 - identify the source planning document and exact step/task the prompt comes from
-- add the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
-- add a matching queue-index item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
+- for normal runnable Claude prompts, add the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
+- for normal runnable Claude prompts, add a matching queue-index item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
 - make each queue-index item include:
   - first line: `- CCP-###: Short Task Title`
   - second line: an indented bullet with a brief one-line description of the target behavior or fix
@@ -41,6 +42,8 @@ Before writing the prompt:
 - when adding the prompt to the queue file, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
 - add a matching unchecked prompt-id-plus-title checklist item to the top index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
+- if the prompt being created is a manager/batch-runner prompt, log it with `Batch prompt IDs` but do not add it to the runnable queue unless the user explicitly asks for that
+- after updating queue/log files, double-check that the files still match the workflow documented in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
 
 The prompt you generate must instruct Claude Code to:
 - inspect the current code first and search for actual implementation points instead of guessing file paths
@@ -105,8 +108,8 @@ Output requirements:
   - `Parent Prompt ID` should point to the reviewed prompt being fixed
 - tell Claude Code to repeat the same `Prompt ID` field in its final report
 - tell Claude Code to include the `Task ID` field in its final report as the root task family id
-- append the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when generating it
-- add a matching item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` at creation time
+- for normal runnable Claude prompts, append the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when generating it
+- for normal runnable Claude prompts, add a matching item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` at creation time
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 - add a matching unchecked `- [ ] CCP-### - Short Task Title` line to the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 

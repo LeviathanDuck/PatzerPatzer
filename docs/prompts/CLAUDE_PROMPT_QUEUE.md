@@ -36,6 +36,9 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 
 ## Queue Index
 
+- CCP-065: Add Toggle For Review Label Visibility
+  - Verify exact Lichess move-review label rendering and add a persisted engine-setting toggle that shows or hides those labels in Patzer.
+
 - CCP-030: First Safe Typecheck Error Slice
   - Clear the first cohesive `npm run typecheck` error cluster in analysis view files without tackling the full backlog.
 
@@ -63,40 +66,258 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 - CCP-038: Replace Header Game Review Stub
   - Replace or honestly disable the header `Game Review` stub instead of leaving a fake action.
 
-- CCP-051: KO Overlay On Losing King For M1
-  - Add a first KO overlay on the losing king for immediate mate positions if the needed asset already exists.
-
-- CCP-052: Hide Arrows During Game Review
-  - Suppress board arrows during active batch review so review runs without arrow clutter.
-
-- CCP-053: Toggle Review Dots To User Perspective Only
-  - Add a setting to filter review dots to one player’s perspective instead of always both sides.
-
-- CCP-055: Mate Display KO Polish
-  - Change mate presentation to `#KO!` in the move list and engine display, with purple engine-display styling.
-
-- CCP-058: Fix White KO Eval-Graph Direction
-  - Fix terminal White KO graph points so they stay at the top instead of flipping to the bottom.
-
-- CCP-059: Add Mobile Analysis Stack Layout
-  - Add the first portrait-mobile single-column analysis layout at narrow widths.
-
-- CCP-060: Hide Mobile Analysis Chrome
-  - Hide low-value desktop chrome on mobile to preserve board space.
-
-- CCP-061: Make Mobile Controls Board-Adjacent
-  - Keep mobile analysis controls directly under the board and comfortably tappable.
-
-- CCP-062: Make Mobile Tools Stack Readable
-  - Restack tools, move list, ceval, and summary so they remain readable on phones.
-
-- CCP-063: Make Underboard Secondary On Mobile
-  - Push graph and game-list content into a clearly secondary mobile underboard area.
-
-- CCP-064: Add One Minimal Mobile Touch Improvement
-  - Add one low-risk touch usability improvement without introducing complex gestures.
+- CCP-044-F1: Refine Engine Arrow Eval Labels
+  - Make engine-arrow eval labels optional, off by default, and integrated into arrowheads for primary, secondary, and played arrows.
 
 ## Queue
+
+## CCP-065 - Add Toggle For Review Label Visibility
+
+```
+Prompt ID: CCP-065
+Task ID: CCP-065
+Source Document: docs/archive/MOVE_QUALITY_AUDIT_2026-03-20.md
+Source Step: Lichess-style move review label visibility parity
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, ask whether any other tool, agent, Codex thread, or Claude Code session is currently working in overlapping move-list, review-label, engine-settings, or analysis-rendering files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task:
+Verify the exact Lichess behavior for move review labels and implement that behavior in Patzer as closely as possible, with a persisted toggle in engine settings that shows or hides the visible review labels.
+
+Important truthfulness requirement:
+- Do not assume Lichess paints `blunder`, `mistake`, or `inaccuracy` text directly onto the board.
+- First verify from source how Lichess actually makes those review labels visible.
+- If Lichess renders them as move glyphs in the move list/tree and summaries rather than on-board badges, preserve that exact behavior instead of inventing a board-label system.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant local Lichess source before deciding how to implement.
+4. Compare:
+   - how Lichess stores and renders review labels
+   - how Patzer currently stores and renders them
+   - where Patzer diverges
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build plus task-specific checks.
+
+Relevant Patzer files to inspect first:
+- `src/analyse/moveList.ts`
+- `src/analyse/evalView.ts`
+- `src/engine/winchances.ts`
+- `src/engine/batch.ts`
+- `src/engine/ctrl.ts`
+- `src/ceval/view.ts`
+- `src/styles/main.scss`
+- `src/main.ts`
+- `src/idb/index.ts`
+- `docs/archive/MOVE_QUALITY_AUDIT_2026-03-20.md`
+
+Relevant local Lichess files to inspect first:
+- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/treeView/inlineView.ts`
+- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/treeView/columnView.ts`
+- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/treeView/contextMenu.ts`
+- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/view/components.ts`
+- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/view/moves.ts`
+- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+- `/Users/leftcoast/Development/lichess-source/lila/ui/lib/tree/src/tree.ts`
+- `/Users/leftcoast/Development/lichess-source/lila/ui/lib/css/tree/_tree.scss`
+- any additional local Lichess files you confirm are the real source of review-glyph rendering
+
+Current repo-grounded behavior to confirm first:
+- Patzer already computes and persists review labels such as `inaccuracy`, `mistake`, and `blunder`
+- `src/analyse/moveList.ts` currently renders PGN glyphs first, then falls back to stored/computed review glyphs like `??`, `?`, and `?!`
+- the current visible review-label behavior is primarily move-list based, not an on-board board-badge system
+- there is currently no dedicated setting to hide or show those review labels independently
+
+Requested behavior:
+- match Lichess’s visible move-review label behavior as closely as possible
+- if Lichess shows review labels as move glyphs in the move list/tree, implement that exact visible behavior and say so explicitly
+- do not invent a separate board-overlay label system unless the Lichess source proves it exists
+- add a toggle in engine settings to show or hide the visible review labels
+- persist that toggle across reloads
+- turning the toggle off must hide the visible review labels without deleting stored analysis data
+- turning the toggle back on must reveal the same stored review labels again
+- the toggle must not change review computation, only visibility
+- keep the implementation small and well scoped
+- do not add substantial new logic to `src/main.ts`
+
+Implementation guidance:
+- prefer placing the setting near the existing engine/review settings in `src/ceval/view.ts`
+- if settings persistence already has a natural owner, use that existing subsystem instead of adding a new top-level store in `main.ts`
+- make move-list rendering read the toggle before rendering visible review glyphs
+- if summary UI also exposes these labels and the Lichess inspection shows they should stay visible, keep scope to move-list glyph visibility only unless there is a tiny safe parity case for broader hiding
+- do not change move-quality classification thresholds or winning-chances math in this task
+
+What I want from you before coding:
+1. What part of the current Patzer codebase is relevant
+2. What Lichess files/systems are relevant
+3. The exact diagnosis
+4. The exact smallest safe step being implemented
+5. Why that step is safe and correctly scoped
+
+Validation requirements:
+- run `npm run build`
+- run `npm run typecheck` if feasible and report the result honestly
+- explicitly report:
+  - build result
+  - whether typecheck was run and its result
+  - exact behavior changed intentionally
+  - whether the new toggle persists across reload
+  - whether visible review labels still appear correctly when enabled
+  - whether they disappear correctly when disabled
+  - whether there are console/runtime errors
+  - any remaining parity gaps versus Lichess
+
+Suggested manual checks:
+- review a game and confirm `??`, `?`, and `?!` style review glyphs appear where Lichess-style move-list review would show them
+- toggle the new setting off and confirm the visible glyphs disappear without losing stored review data
+- reload the page and confirm the setting persists
+- toggle it back on and confirm the same reviewed game shows glyphs again
+- confirm restored analysis and fresh live review both behave correctly
+
+Final report requirement:
+- include `Prompt ID: CCP-065` and `Task ID: CCP-065` in the final report
+```
+
+## CCP-044-F1 - Refine Engine Arrow Eval Labels
+
+```
+Prompt ID: CCP-044-F1
+Task ID: CCP-044
+Parent Prompt ID: CCP-044
+Source Document: docs/WISHLIST.md
+Source Step: Add tag or label next to engine move arrows showing what their eval is
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-arrow / ceval-settings / board-draw files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Refine the recently added engine-arrow eval labels so they become an optional engine setting that is off by default, render as bare numbers inside the arrowheads instead of circled labels, support secondary engine-line arrows, and optionally label the played-move arrow when it differs from the top engine line.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer Pro currently works
+   - how Lichess handles engine arrows, auto-shapes, and ceval settings
+   - where a small Patzer-specific UI divergence is needed for labeled arrowheads
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- This is a follow-up refinement to `CCP-044`, not a new engine-arrow system.
+- Keep the setting off by default.
+- The setting must be reachable from the engine settings panel.
+- Keep the implementation scoped to engine-arrow label behavior and the minimal settings/state required to control it.
+- Do not redesign the whole engine settings model.
+- Do not bundle unrelated ceval, graph, or move-list changes.
+- Do not add substantial new logic to `src/main.ts`.
+
+Relevant current code areas to inspect first:
+- `src/engine/ctrl.ts` — engine arrow shape generation, current primary arrow label, played arrow, MultiPV lines
+- `src/ceval/view.ts` — engine settings UI
+- `src/styles/main.scss` — ceval styling, PV font styling, eval-bar / score styling references
+- `src/board/index.ts` — board draw registration if arrow-label rendering touches shape/defs behavior
+- `docs/prompts/CLAUDE_PROMPT_HISTORY.md` — prior `CCP-044` notes if useful
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/analyse/src/autoShape.ts`
+- `~/Development/lichess-source/lila/ui/lib/src/ceval/view/settings.ts`
+- any relevant Lichess ceval / auto-shape CSS or draw-shape references you need for arrow-label feasibility and settings behavior
+
+Current repo-grounded behavior to confirm first:
+- `src/engine/ctrl.ts` currently enables `showEngineArrows` by default
+- the current primary label is built in `buildPrimaryArrowLabel()` as a separate labeled shape at the arrow destination
+- the current label uses a filled circle-style label treatment rather than bare text integrated into the arrowhead
+- there is currently no separate setting for arrow eval labels
+- secondary engine arrows from MultiPV currently do not get labels
+- the played arrow is controlled separately and currently has no eval label path
+
+Requested behavior:
+- engine-arrow eval labels should be controlled by a dedicated setting in the engine settings panel
+- that setting should default to off
+- the visual treatment should be:
+  - just the number
+  - no surrounding circle
+  - placed inside the actual arrowhead area
+- use the eval-bar score styling as a shadow/reference idea where helpful
+- keep the label about the same size as the current one
+- use the same font family as the engine lines / PV lines
+- make labels available for subsequent engine-line arrows as well, not just the top line
+- add a label path for the played-move arrow when that played arrow is separate from the top engine line
+- keep this played-arrow labeling controlled by the same off-by-default label setting unless inspection shows a tiny safer split is required
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run any task-specific checks you can
+- explicitly report:
+  - build result
+  - feature-specific smoke tests
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Success criteria:
+- engine-arrow eval labels are off by default
+- the engine settings panel includes a control for the label feature
+- primary engine-arrow labels render as bare numbers inside the arrowhead area, not as circled bubbles
+- secondary engine-line arrows can also show labels when the setting is enabled
+- the played arrow can also show a label when it is separate from the top engine line
+- the label font matches the engine-line / PV font family
+- label styling remains readable and does not regress non-labeled arrow behavior
+```
+
+- remove the current winner star presentation
+- render the winner in a clearly designed green box
+- render the loser in a clearly designed red box
+- keep each player box containing:
+  - username
+  - rating, when available
+  - board-color marker
+- keep the result scoped to the player strips only
+- preserve material and clock rendering unless a tiny layout adjustment is needed to keep the boxes coherent
+
+Validation requirements:
+- run `npm run build`
+- run any task-specific checks you can
+- explicitly report:
+  - build result
+  - feature-specific smoke tests
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Success criteria:
+- the winner no longer shows only a star
+- the winner is shown in a green framed/fill treatment
+- the loser is shown in a red framed/fill treatment
+- each player strip still shows username, rating, and board-color marker together inside the box
+- draw behavior remains sane and does not falsely mark both players as winner/loser
+- no unrelated board behavior is changed
+```
 
 ## CCP-030 - First Safe Typecheck Error Slice
 
@@ -878,584 +1099,4 @@ Output shape:
 In your final report, repeat:
 - `Prompt ID: CCP-038`
 - `Task ID: CCP-038`
-```
-
-## CCP-051 - KO Overlay On Losing King For M1
-
-```
-Prompt ID: CCP-051
-Task ID: CCP-051
-Source Document: docs/WISHLIST.md
-Source Step: When M1 is played on the board, the losing king should get a KO symbol over it
-
-Task: Add the first safe checkmate KO overlay for the losing king on immediate mate positions, but stop and ask if the required KO graphic/source asset is not already available in the repo.
-
-Before editing, inspect:
-- `docs/WISHLIST.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/board/index.ts`
-- `src/styles/main.scss`
-- any existing local assets/icons that could supply the KO treatment
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Implement only the smallest safe step:
-- if a suitable KO asset/source already exists or can be represented safely with current local assets, use it
-- if the graphic/source is unknown and truly required, stop and ask instead of inventing a random asset
-- do not redesign all board overlays
-
-Validation:
-- run `npm run build`
-- verify the KO marker appears only on the losing king in the intended M1 state
-- verify non-mate positions are unaffected
-
-Also include a short manual test checklist.
-In your final report, repeat:
-- `Prompt ID: CCP-051`
-- `Task ID: CCP-051`
-```
-
-## CCP-052 - Hide Arrows During Game Review
-
-```
-Prompt ID: CCP-052
-Task ID: CCP-052
-Source Document: docs/WISHLIST.md
-Source Step: when game review button is pressed, all arrows should be removed from board until game review is completed
-
-Task: Hide board arrows during active batch game review in the smallest safe way so review runs without board-arrow clutter.
-
-Before editing, inspect:
-- `docs/WISHLIST.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/engine/batch.ts`
-- `src/engine/ctrl.ts`
-- `src/board/index.ts`
-- `src/analyse/pgnExport.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Inspect relevant Lichess review/analysis guidance suppression behavior first if applicable.
-
-Implement only the smallest safe step:
-- suppress all board arrows during active review
-- restore them when review completes or stops
-- do not redesign all review UI
-
-Validation:
-- run `npm run build`
-- verify arrows disappear during review
-- verify arrows return after review completion/exit
-
-Also include a short manual test checklist.
-In your final report, repeat:
-- `Prompt ID: CCP-052`
-- `Task ID: CCP-052`
-```
-
-## CCP-053 - Toggle Review Dots To User Perspective Only
-
-```
-Prompt ID: CCP-053
-Task ID: CCP-053
-Source Document: docs/WISHLIST.md
-Source Step: Setting to toggle only the user's perspective move review annotated dot colour shown
-
-Task: Add the first safe setting that lets the move-list and graph annotation dots show only the current user-perspective player's review marks, while defaulting to the current both-sides view.
-
-Before editing, inspect:
-- `docs/WISHLIST.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/analyse/moveList.ts`
-- `src/analyse/evalView.ts`
-- `src/games/view.ts`
-- `src/header/index.ts`
-- `src/board/cosmetics.ts`
-- `src/styles/main.scss`
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Implement only the smallest safe step:
-- add one setting with default “show both”
-- filter annotation-dot color visibility by current user perspective when enabled
-- do not redesign review-label computation
-
-Validation:
-- run `npm run build`
-- verify default behavior is unchanged
-- verify user-perspective-only mode filters annotation dots correctly
-
-Also include a short manual test checklist.
-In your final report, repeat:
-- `Prompt ID: CCP-053`
-- `Task ID: CCP-053`
-```
-
-## CCP-055 - Mate Display KO Polish
-
-```
-Prompt ID: CCP-055
-Task ID: CCP-055
-Source Document: inferred from user request in chat
-Source Step: mate-display UI polish so checkmate is shown as `#KO!` in the move list and engine display
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: implement mate-display UI polish so checkmate is shown as `#KO!` in the move list and engine display, and make the engine-display `#KO!` purple.
-
-Requested behavior:
-- In the move list, mate should display as `#KO!` instead of the current mate text.
-- In the engine display / ceval area, mate should also display as `#KO!`.
-- The engine-display `#KO!` should be purple.
-- Keep the change scoped to mate presentation only. Do not bundle unrelated engine, review, or move-list changes.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer Pro currently works
-   - how Lichess works
-   - where they differ
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Lichess is the reference for analysis-board behavior and subsystem shape, but this request is an intentional Patzer-specific UI divergence.
-- Do not add substantial new logic to `src/main.ts`.
-- Keep the implementation small and scoped.
-- Preserve existing non-mate eval formatting behavior.
-
-Relevant current code areas to inspect:
-- `src/analyse/moveList.ts` — move-list mate/eval rendering
-- `src/analyse/evalView.ts` — shared score formatting and eval display
-- `src/ceval/view.ts` — engine display / PV rendering
-- `src/styles/main.scss` — engine display and move-list styling
-
-Likely current behavior to confirm first:
-- move list currently renders mate text from cached eval
-- engine display likely uses shared eval formatting that currently renders `#N`
-- mate styling may currently inherit normal eval text color rather than a distinct purple treatment
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run the build
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Success criteria:
-- move list shows `#KO!` for mate positions
-- engine display shows `#KO!` for mate positions
-- engine-display `#KO!` is purple
-- non-mate eval formatting remains unchanged
-- no unrelated engine/review behavior is changed
-```
-
-
-## CCP-058 - Fix White KO Eval-Graph Direction
-
-```
-Prompt ID: CCP-058
-Task ID: CCP-058
-Source Document: inferred from user request in chat
-Source Step: eval graph bug where White KO drops to the bottom instead of staying at the top
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: Fix the eval-graph mate bug where a terminal KO/checkmate for White plots at the bottom of the graph instead of staying at the top.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer Pro currently works
-   - how Lichess works
-   - where they differ
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Lichess is the reference for analysis-board behavior and score normalization.
-- Do not add substantial new logic to `src/main.ts`.
-- Keep the implementation small and scoped to graph/win-chance correctness.
-- Do not bundle unrelated mate-display UI polish, review-label changes, or eval-bar work unless a tiny shared fix is strictly required.
-
-Relevant current code areas to inspect first:
-- `src/engine/winchances.ts` — `evalWinChances()` mate-to-win-chance conversion
-- `src/analyse/evalView.ts` — eval graph rendering and graph point Y mapping
-- any relevant Lichess win-chances/chart source, especially:
-  - `~/Development/lichess-source/lila/ui/lib/src/ceval/winningChances.ts`
-  - any relevant Lichess analysis/chart source you find necessary
-
-Current repo-grounded diagnosis to confirm:
-- `src/analyse/evalView.ts` plots graph points from `evalWinChances(cached)`
-- `src/engine/winchances.ts` currently converts `mate` scores to a cp-equivalent by sign
-- terminal mate (`mate === 0`) is a special case: the position is already checkmated, so the winner is determined by the side to move in the FEN, not by the sign of `mate`
-- `evalPct()` in `src/analyse/evalView.ts` already handles `mate === 0` specially for the eval bar using FEN turn
-- the graph path appears not to have an equivalent terminal-mate special case
-- likely result: White-delivered KO can be normalized as a losing value and plotted at the bottom
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Implementation goal:
-- make terminal KO/checkmate graph points resolve to the correct winner side
-- specifically, when White has delivered mate, the graph should remain at the top
-- preserve existing non-terminal mate and centipawn graph behavior
-
-Validation requirements:
-- run the build
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Success criteria:
-- terminal mate positions no longer flip to the wrong side of the eval graph
-- a White KO stays at the top of the graph
-- a Black KO stays at the bottom of the graph
-- non-terminal mate values still graph correctly
-- non-mate graph behavior remains unchanged
-```
-
-## CCP-059 - Add Mobile Analysis Stack Layout
-
-```
-Prompt ID: CCP-059
-Task ID: CCP-059
-Execution Target: Codex
-Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
-Source Step: Task 1 — Add a real mobile analysis layout mode
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: Add the first safe portrait-mobile analysis layout mode by changing the current desktop-shaped `.analyse` layout into a single-column stack at narrow widths.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare current Patzer behavior, relevant Lichess behavior, and the actual gap.
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Relevant Patzer Pro files to inspect first:
-- `src/styles/main.scss`
-- `src/main.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
-
-Relevant Lichess sources to inspect first:
-- `~/Development/lichess-source/lila/ui/analyse/css/_layout.scss`
-- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
-- `~/Development/lichess-source/lila/ui/lib/src/device.ts`
-- `docs/archive/LICHESS_ANALYSIS_BOARD_MOBILE_AUDIT_2026-03-21.md`
-
-Implement only the smallest safe step:
-- add a portrait-mobile layout block at a narrow breakpoint, starting from `max-width: 800px`
-- stack analysis areas in this order:
-  1. board
-  2. controls
-  3. tools
-  4. underboard
-- keep the existing desktop layout intact
-- do not bundle chrome-hiding, button resizing, or underboard polish yet unless a tiny CSS fix is strictly required for the layout to function
-
-Validation requirements:
-- run `npm run build`
-- verify on a narrow viewport that the analysis page becomes a single-column stack
-- verify there is no horizontal page overflow from the base layout change alone
-- verify desktop layout still renders as before
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-In your final report, repeat:
-- `Prompt ID: CCP-059`
-- `Task ID: CCP-059`
-- `Execution Target: Codex`
-```
-
-## CCP-060 - Hide Mobile Analysis Chrome
-
-```
-Prompt ID: CCP-060
-Task ID: CCP-060
-Execution Target: Codex
-Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
-Source Step: Task 2 — Hide low-value chrome on mobile
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: Hide the lowest-value desktop chrome on mobile so the board has usable space, without changing analysis behavior.
-
-Inspect first:
-- `src/styles/main.scss`
-- `src/board/index.ts`
-- `src/main.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
-
-Inspect relevant Lichess mobile layout/chrome behavior first:
-- `~/Development/lichess-source/lila/ui/analyse/css/_layout.scss`
-- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
-- `~/Development/lichess-source/lila/ui/analyse/src/view/components.ts`
-
-Implement only the smallest safe step:
-- on the new mobile analysis layout:
-  - hide the eval gauge
-  - hide player strips
-  - hide or disable the board resize handle
-  - reduce obviously wasteful board-adjacent spacing
-- do this in CSS first where possible
-- do not redesign controls or tools ordering yet
-- do not change review or engine state behavior
-
-Validation requirements:
-- run `npm run build`
-- verify the board gets materially more usable space on narrow screens
-- verify the hidden chrome still appears normally on desktop
-- verify no board interaction regression is introduced
-
-Also include a short manual test checklist.
-
-In your final report, repeat:
-- `Prompt ID: CCP-060`
-- `Task ID: CCP-060`
-- `Execution Target: Codex`
-```
-
-## CCP-061 - Make Mobile Controls Board-Adjacent
-
-```
-Prompt ID: CCP-061
-Task ID: CCP-061
-Execution Target: Codex
-Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
-Source Step: Task 3 — Move board navigation and Review into a mobile-friendly control block
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: Make the existing analysis controls mobile-friendly by keeping them directly under the board and making the current actions reachable/tappable on a phone-sized viewport.
-
-Inspect first:
-- `src/main.ts`
-- `src/analyse/pgnExport.ts`
-- `src/styles/main.scss`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
-
-Inspect relevant Lichess controls/mobile references first:
-- `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/view/components.ts`
-- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
-
-Implement only the smallest safe step:
-- keep the same current actions:
-  - `Prev`
-  - `Flip`
-  - `Next`
-  - `Review`
-  - `Mistakes`
-- ensure mobile layout places them directly below the board
-- make touch targets larger and allow wrapping into two rows if needed
-- preserve current button semantics and data flow
-- avoid broader controller or ownership changes unless a tiny render adjustment is clearly required
-
-Validation requirements:
-- run `npm run build`
-- verify the controls stay directly under the board on narrow screens
-- verify `Review` remains reachable and usable during review states
-- verify desktop controls are not broken
-
-Also include a short manual test checklist.
-
-In your final report, repeat:
-- `Prompt ID: CCP-061`
-- `Task ID: CCP-061`
-- `Execution Target: Codex`
-```
-
-## CCP-062 - Make Mobile Tools Stack Readable
-
-```
-Prompt ID: CCP-062
-Task ID: CCP-062
-Execution Target: Codex
-Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
-Source Step: Task 4 — Make the tools column readable as a mobile stack
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: Relax the desktop tools-column expectations on mobile so ceval, PVs, move list, retro strip, and summary stack readably without collapsing the board area.
-
-Inspect first:
-- `src/styles/main.scss`
-- `src/main.ts`
-- `src/ceval/view.ts`
-- `src/analyse/moveList.ts`
-- `src/analyse/retroView.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
-
-Inspect relevant Lichess mobile tools references first:
-- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
-- `~/Development/lichess-source/lila/ui/analyse/src/view/components.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
-
-Implement only the smallest safe step:
-- for mobile only:
-  - remove any expectation that tools must match board height
-  - allow tools to size naturally as a vertical stack
-  - keep ceval above PVs
-  - keep the move list scrollable with a bounded mobile height
-  - keep retro strip below move list
-  - keep summary/puzzle content below retro strip
-- prefer CSS/layout changes over logic changes
-- do not redesign the desktop tools column
-
-Validation requirements:
-- run `npm run build`
-- verify ceval, PVs, move list, and retro/summary content stack readably on a narrow viewport
-- verify the move list remains scrollable
-- verify the board is not squeezed off-screen by the tools stack
-
-Also include a short manual test checklist.
-
-In your final report, repeat:
-- `Prompt ID: CCP-062`
-- `Task ID: CCP-062`
-- `Execution Target: Codex`
-```
-
-## CCP-063 - Make Underboard Secondary On Mobile
-
-```
-Prompt ID: CCP-063
-Task ID: CCP-063
-Execution Target: Codex
-Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
-Source Step: Task 5 — Make underboard truly secondary on mobile
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: Tidy the mobile underboard area so the graph and game list remain reachable below tools without causing overflow or wasting space.
-
-Inspect first:
-- `src/styles/main.scss`
-- `src/main.ts`
-- `src/analyse/evalView.ts`
-- `src/games/view.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
-
-Inspect relevant Lichess mobile/underboard references first if needed, but keep this task focused on current Patzer layout discipline.
-
-Implement only the smallest safe step:
-- on mobile:
-  - keep underboard below the tools stack
-  - reduce padding and gaps
-  - allow graph and game list to stack cleanly
-  - ensure horizontal overflow is impossible
-- do not redesign the underboard feature set
-- do not bundle graph interaction changes
-
-Validation requirements:
-- run `npm run build`
-- verify the graph and game list are still reachable after scrolling on narrow screens
-- verify no horizontal overflow appears from underboard content
-- verify desktop underboard layout is not broken
-
-Also include a short manual test checklist.
-
-In your final report, repeat:
-- `Prompt ID: CCP-063`
-- `Task ID: CCP-063`
-- `Execution Target: Codex`
-```
-
-## CCP-064 - Add One Minimal Mobile Touch Improvement
-
-```
-Prompt ID: CCP-064
-Task ID: CCP-064
-Execution Target: Codex
-Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
-Source Step: Task 6 — Add one minimal touch usability improvement
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: Add one minimal touch usability improvement for the mobile analysis board, using the sprint’s recommended low-risk option rather than introducing gesture complexity.
-
-Inspect first:
-- `src/styles/main.scss`
-- `src/main.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
-
-Inspect relevant Lichess mobile controls/touch references first:
-- `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
-- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
-
-Implement only the smallest safe step:
-- choose Option A from the sprint:
-  - larger mobile tap targets
-  - touch-action tuning on the controls block if needed
-- do not implement swipe scrubbing in this sprint
-- do not add gesture-state logic unless inspection shows a tiny listener is truly required
-
-Validation requirements:
-- run `npm run build`
-- verify buttons feel easier to hit on a narrow touch-sized viewport
-- verify normal click/tap behavior remains unchanged
-- verify no accidental gesture/navigation side effects were introduced
-
-Also include a short manual test checklist.
-
-In your final report, repeat:
-- `Prompt ID: CCP-064`
-- `Task ID: CCP-064`
-- `Execution Target: Codex`
 ```

@@ -363,13 +363,20 @@ export function renderPlayerStrips(): [VNode, VNode] {
     const name     = color === 'white' ? whiteName : blackName;
     const rating   = color === 'white' ? whiteRating : blackRating;
     const winner   = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
+    const loser    = (color === 'white' && result === '0-1') || (color === 'black' && result === '1-0');
     const matScore = color === 'white' ? score : -score;
     const centis   = color === 'white' ? clocks.white : clocks.black;
     return h('div.analyse__player_strip', [
-      // Winner star — replaces numeric 1/0/½ badges; losers and draws show no badge.
-      winner ? h('span.player-strip__result', '★') : null,
-      h('span.player-strip__color-icon', { class: { 'player-strip__color-icon--white': color === 'white', 'player-strip__color-icon--black': color === 'black' } }),
-      h('span.player-strip__name', rating !== undefined ? `${name} (${rating})` : name),
+      h('div.player-strip__identity', {
+        class: {
+          'player-strip__identity--winner': winner,
+          'player-strip__identity--loser': loser,
+          'player-strip__identity--draw': !winner && !loser,
+        },
+      }, [
+        h('span.player-strip__color-icon', { class: { 'player-strip__color-icon--white': color === 'white', 'player-strip__color-icon--black': color === 'black' } }),
+        h('span.player-strip__name', rating !== undefined ? `${name} (${rating})` : name),
+      ]),
       renderMaterialPieces(diff, color, matScore > 0 ? matScore : 0),
       centis !== undefined ? h('div.analyse__clock', formatClock(centis)) : null,
     ]);

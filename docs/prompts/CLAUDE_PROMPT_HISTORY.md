@@ -2937,3 +2937,159 @@ Prompt text not recovered. This history entry was reconstructed after review fro
 - Review outcome: passed
 - Commit: `444a919`
 - Notes: current `src/engine/ctrl.ts` clears `engineSearchActive` before resuming `pendingEval` after discarding a stale interrupted-search `bestmove`, which prevents the permanent live-analysis stall during rapid navigation and keeps reevaluation flowing on the active node
+
+## CCP-051 — Reviewed
+
+- Task: add the first safe KO overlay for the losing king on immediate mate positions
+- Task ID: `CCP-051`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `When M1 is played on the board, the losing king should get a KO symbol over it`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: `src/engine/ctrl.ts` uses the existing Chessground square-label seam to place a KO label on the losing king only when the current eval is terminal mate, without inventing a new board asset pipeline
+
+## CCP-052 — Reviewed
+
+- Task: hide board arrows during active batch game review and restore them when review finishes
+- Task ID: `CCP-052`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `when game review button is pressed, all arrows should be removed from board until game review is completed`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: live board arrows are now suppressed whenever batch review is active, and `syncArrow()` is called on review start, stop, and completion so the board returns cleanly to normal engine-arrow behavior
+
+## CCP-053 — Reviewed
+
+- Task: add a setting that filters review-dot visibility to the current user perspective while defaulting to both
+- Task ID: `CCP-053`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `Setting to toggle only the users whose perspective we are looking at to have their move review annotated dot colour shown`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: the persisted `reviewDotsUserOnly` setting now flows from `src/board/cosmetics.ts` through the header menu into both move-list and eval-graph review-annotation rendering, while preserving the current both-sides default
+
+## CCP-055 — Reviewed
+
+- Task: implement mate-display UI polish so checkmate is shown as `#KO!` in the move list and engine display, and make the engine-display `#KO!` purple
+- Task ID: `CCP-055`
+- Parent prompt ID: none
+- Source document: inferred from user request in chat
+- Source step: `mate-display UI polish so checkmate is shown as #KO! in the move list and engine display`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: move-list mate display, shared score formatting, and ceval styling now consistently use `#KO!`, with a dedicated purple treatment for the engine-display KO state
+
+## CCP-058 — Reviewed
+
+- Task: fix the eval-graph mate bug where a terminal KO/checkmate for White plots at the bottom instead of staying at the top
+- Task ID: `CCP-058`
+- Parent prompt ID: none
+- Source document: inferred from user request in chat
+- Source step: `eval graph bug where White KO drops to the bottom instead of staying at the top`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: `src/analyse/evalView.ts` now uses the FEN side-to-move to special-case terminal KO graph placement, so White KO stays at the top and Black KO stays at the bottom
+
+## CCP-059 — Reviewed
+
+- Task: add the first safe portrait-mobile single-column analysis layout
+- Task ID: `CCP-059`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+- Source step: `Task 1 — Add a real mobile analysis layout mode`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: `src/styles/main.scss` adds a narrow-screen `.analyse` single-column layout with the intended board, controls, tools, underboard order while leaving desktop layout intact
+
+## CCP-060 — Reviewed
+
+- Task: hide low-value desktop chrome on mobile to preserve board space
+- Task ID: `CCP-060`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+- Source step: `Task 2 — Hide low-value chrome on mobile`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: the mobile breakpoint now hides the eval bar, player strips, and resize handle while tightening surrounding spacing to reclaim space for the board
+
+## CCP-061 — Reviewed
+
+- Task: make the current analysis controls mobile-friendly and board-adjacent
+- Task ID: `CCP-061`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+- Source step: `Task 3 — Move board navigation and Review into a mobile-friendly control block`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: the mobile controls block now sits directly below the board, allows wrapping, and enlarges button tap targets without changing the existing analysis-control semantics
+
+## CCP-062 — Reviewed
+
+- Task: relax the desktop tools-column assumptions so mobile ceval, PVs, move list, retro strip, and summary stack readably
+- Task ID: `CCP-062`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+- Source step: `Task 4 — Make the tools column readable as a mobile stack`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: the mobile breakpoint removes fixed-height tools assumptions, lets the tools area size naturally, and bounds the move list with its own scrollable mobile height
+
+## CCP-063 — Reviewed
+
+- Task: tidy mobile underboard spacing and overflow so graph and game list stay reachable below tools
+- Task ID: `CCP-063`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+- Source step: `Task 5 — Make underboard truly secondary on mobile`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: the mobile underboard keeps graph and game-list content below the tools stack with reduced gaps and explicit width/overflow constraints to avoid horizontal spill
+
+## CCP-064 — Reviewed
+
+- Task: add one minimal touch usability improvement using the sprint’s low-risk larger-targets option
+- Task ID: `CCP-064`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+- Source step: `Task 6 — Add one minimal touch usability improvement`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `94ea40e`
+- Notes: the same mobile controls block now uses larger tap targets plus `touch-action: pan-y`, which is the intended minimal-touch improvement without adding gesture logic
+
+## CCP-043-F1 — Reviewed
+
+- Task: replace the current player-strip winner star with styled green/red winner-loser boxes containing username, rating, and board color
+- Task ID: `CCP-043`
+- Parent prompt ID: `CCP-043`
+- Source document: `docs/WISHLIST.md`
+- Source step: `Remove the 1 / 0 / ½ single-game result markers from the player strip by default`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: local worktree (uncommitted)
+- Notes: the current local player-strip implementation replaces the old winner-only star with boxed winner/loser identity clusters in `src/board/index.ts` and `src/styles/main.scss`, while keeping the rest of the strip layout intact
