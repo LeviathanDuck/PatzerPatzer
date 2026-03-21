@@ -4,6 +4,7 @@
 
 import type { ImportedGame } from '../import/types';
 import type { PuzzleCandidate, TreeNode } from '../tree/types';
+import { classifyLoss, type MoveLabel } from '../engine/winchances';
 
 // --- Stored schemas ---
 
@@ -27,6 +28,9 @@ export interface StoredNodeEntry {
   best?:  string;
   loss?:  number;
   delta?: number;
+  /** Explicit move-review annotation derived from win-chance loss at analysis time.
+   *  Absent on older records (ANALYSIS_VERSION < 3) and on moves with no label (good moves). */
+  label?: MoveLabel;
 }
 
 export interface StoredAnalysis {
@@ -64,6 +68,8 @@ export function buildAnalysisNodes(
       if (ev.best  !== undefined) entry.best  = ev.best;
       if (ev.loss  !== undefined) entry.loss  = ev.loss;
       if (ev.delta !== undefined) entry.delta = ev.delta;
+      const label = ev.loss !== undefined ? classifyLoss(ev.loss) : null;
+      if (label !== null) entry.label = label;
       nodes[path] = entry;
     }
   }
