@@ -112,6 +112,17 @@ export function deleteNodeAt(root: TreeNode, path: TreePath): void {
 }
 
 /**
+ * Remove all side-variation children from every node, keeping only the first
+ * child (mainline continuation) at each position. Walks the mainline only so
+ * already-removed branches are not visited twice.
+ * Mirrors lichess-org/lila: ui/lib/src/tree/ops.ts updateAll walking pattern.
+ */
+export function pruneVariations(node: TreeNode): void {
+  if (node.children.length > 1) node.children = [node.children[0]!];
+  if (node.children[0]) pruneVariations(node.children[0]);
+}
+
+/**
  * Promote the node at path toward the mainline.
  * - toMainline=false: promote one level (swap with parent's first child)
  * - toMainline=true:  promote all the way to mainline (first child at every ancestor)
