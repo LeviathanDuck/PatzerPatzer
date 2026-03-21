@@ -2162,6 +2162,7 @@ body[data-board=newspaper] cg-board::before {
 .eval-graph {
   position: relative;
   width: 100%;
+  padding-bottom: 18px;
 }
 .eval-graph svg {
   display: block;
@@ -2186,31 +2187,36 @@ body[data-board=newspaper] cg-board::before {
   background: #111;
   border-radius: 3px;
 }
-.eval-graph__height-control {
+.eval-graph__resize-handle {
   position: absolute;
   left: 50%;
-  bottom: 6px;
+  bottom: 0;
   transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(17, 17, 17, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  width: 22px;
+  height: 14px;
+  cursor: ns-resize;
   z-index: 2;
 }
-.eval-graph__height-control input[type=range] {
-  width: 92px;
-  accent-color: #888;
+.eval-graph__resize-handle::before, .eval-graph__resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 10px;
+  height: 1px;
+  background: #000;
+  transform-origin: center;
 }
-.eval-graph__height-control span {
-  min-width: 34px;
-  font-size: 0.72rem;
-  color: #aaa;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  user-select: none;
+.eval-graph__resize-handle::before {
+  top: 4px;
+  transform: translateX(-50%) rotate(45deg);
+}
+.eval-graph__resize-handle::after {
+  top: 8px;
+  transform: translateX(-50%) rotate(-45deg);
+}
+.eval-graph__resize-handle:hover {
+  border-radius: 50%;
+  background: rgba(74, 136, 136, 0.22);
 }
 
 .analysis-summary {

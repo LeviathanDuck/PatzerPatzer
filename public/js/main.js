@@ -1261,28 +1261,6 @@ function setEvalGraphHeightPct(value) {
   graphHeightPct = Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, Math.round(value)));
   localStorage.setItem("patzer.evalGraphHeightPct", String(graphHeightPct));
 }
-function countMajorsMinors(fen) {
-  const board = fen.split(" ")[0];
-  let count = 0;
-  for (const ch of board) if ("rnbqRNBQ".includes(ch)) count++;
-  return count;
-}
-function detectPhases(mainline, n) {
-  let middleIdx;
-  let endIdx;
-  for (let i = 1; i <= n; i++) {
-    const mm = countMajorsMinors(mainline[i].fen);
-    if (middleIdx === void 0 && mm <= 10) middleIdx = i;
-    if (endIdx === void 0 && mm <= 6) {
-      endIdx = i;
-      break;
-    }
-  }
-  const result = {};
-  if (middleIdx !== void 0) result.middleIdx = middleIdx;
-  if (endIdx !== void 0) result.endIdx = endIdx;
-  return result;
-}
 function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, userColor, userOnly) {
   const n = mainline.length - 1;
   const renderedGraphHeight = Math.round(GRAPH_H * graphHeightPct / 100);
@@ -1290,7 +1268,21 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
     return h("div.eval-graph", [
       h("div.eval-graph__empty", {
         attrs: { style: `height:${renderedGraphHeight}px` }
-      }, n === 0 ? "No moves to graph." : "Analyze game to see graph.")
+      }, n === 0 ? "No moves to graph." : "Analyze game to see graph."),
+      h("div.eval-graph__resize-handle", {
+        attrs: {
+          title: "Drag to resize eval graph",
+          role: "slider",
+          "aria-label": "Eval graph height",
+          "aria-valuemin": String(GRAPH_HEIGHT_MIN),
+          "aria-valuemax": String(GRAPH_HEIGHT_MAX),
+          "aria-valuenow": String(graphHeightPct)
+        },
+        hook: {
+          insert: (vnode3) => bindEvalGraphResize(vnode3.elm, redraw2),
+          update: (_old, vnode3) => bindEvalGraphResize(vnode3.elm, redraw2)
+        }
+      })
     ]);
   }
   const shouldShowReviewAnnotation2 = (nodePly) => {
@@ -1423,43 +1415,6 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       "stroke-width": 1
     } }));
   }
-  const { middleIdx, endIdx } = detectPhases(mainline, n);
-  const divLines = [];
-  if (middleIdx !== void 0) {
-    if (middleIdx > 1) divLines.push({ label: "Opening", idx: 1 });
-    divLines.push({ label: "Middlegame", idx: middleIdx });
-  }
-  if (endIdx !== void 0) {
-    if (endIdx > 1 && middleIdx === void 0) divLines.push({ label: "Middlegame", idx: 0 });
-    divLines.push({ label: "Endgame", idx: endIdx });
-  }
-  for (const div of divLines) {
-    const dx = div.idx === 0 ? 0 : (div.idx - 1) / (n - 1) * GRAPH_W;
-    if (div.idx !== 0) {
-      svgNodes.push(h("line", { attrs: {
-        x1: dx,
-        y1: 0,
-        x2: dx,
-        y2: GRAPH_H,
-        stroke: "#555",
-        "stroke-width": 1,
-        "stroke-dasharray": "3 3",
-        opacity: "0.7"
-      } }));
-    }
-    const labelX = Math.min(Math.max(dx + 6, 6), GRAPH_W - 6);
-    svgNodes.push(h("text", { attrs: {
-      x: labelX,
-      y: 6,
-      fill: "#707070",
-      "font-size": 8,
-      "font-family": "inherit",
-      "text-anchor": "start",
-      "dominant-baseline": "hanging",
-      transform: `rotate(90 ${labelX} 6)`,
-      "pointer-events": "none"
-    } }, div.label));
-  }
   return h("div.eval-graph", {
     on: {
       // Hide hover indicator when mouse leaves the graph area entirely.
@@ -1476,26 +1431,53 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       height: renderedGraphHeight,
       preserveAspectRatio: "none"
     } }, svgNodes),
-    h("div.eval-graph__height-control", [
-      h("input", {
-        attrs: {
-          type: "range",
-          min: GRAPH_HEIGHT_MIN,
-          max: GRAPH_HEIGHT_MAX,
-          step: 25,
-          value: graphHeightPct,
-          "aria-label": "Eval graph height"
-        },
-        on: {
-          input: (e) => {
-            setEvalGraphHeightPct(parseInt(e.target.value, 10));
-            redraw2();
-          }
-        }
-      }),
-      h("span", `${graphHeightPct}%`)
-    ])
+    h("div.eval-graph__resize-handle", {
+      attrs: {
+        title: "Drag to resize eval graph",
+        role: "slider",
+        "aria-label": "Eval graph height",
+        "aria-valuemin": String(GRAPH_HEIGHT_MIN),
+        "aria-valuemax": String(GRAPH_HEIGHT_MAX),
+        "aria-valuenow": String(graphHeightPct)
+      },
+      hook: {
+        insert: (vnode3) => bindEvalGraphResize(vnode3.elm, redraw2),
+        update: (_old, vnode3) => bindEvalGraphResize(vnode3.elm, redraw2)
+      }
+    })
   ]);
+}
+function bindEvalGraphResize(handle, redraw2) {
+  if (handle.dataset.bound === "true") return;
+  handle.dataset.bound = "true";
+  const eventPos = (e) => {
+    if ("clientX" in e) return [e.clientX, e.clientY];
+    if (e.targetTouches?.[0]) return [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
+    return void 0;
+  };
+  const startResize = (start4) => {
+    start4.preventDefault();
+    const startPos = eventPos(start4);
+    if (!startPos) return;
+    const startHeight = graphHeightPct;
+    const mousemoveEvent = "targetTouches" in start4 ? "touchmove" : "mousemove";
+    const mouseupEvent = "targetTouches" in start4 ? "touchend" : "mouseup";
+    const resize = (move3) => {
+      const pos = eventPos(move3);
+      if (!pos) return;
+      const delta = pos[1] - startPos[1];
+      setEvalGraphHeightPct(startHeight + delta);
+      redraw2();
+    };
+    document.body.classList.add("resizing");
+    document.addEventListener(mousemoveEvent, resize, { passive: false });
+    document.addEventListener(mouseupEvent, () => {
+      document.removeEventListener(mousemoveEvent, resize);
+      document.body.classList.remove("resizing");
+    }, { once: true });
+  };
+  handle.addEventListener("mousedown", startResize, { passive: false });
+  handle.addEventListener("touchstart", startResize, { passive: false });
 }
 
 // src/engine/ctrl.ts
