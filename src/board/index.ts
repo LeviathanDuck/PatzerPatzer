@@ -49,7 +49,13 @@ export let orientation: 'white' | 'black' = 'white';
 /** Pending pawn promotion — set when a pawn reaches the back rank, cleared after piece selection. */
 let pendingPromotion: { orig: string; dest: string; color: 'white' | 'black' } | null = null;
 
-export function setOrientation(v: 'white' | 'black'): void { orientation = v; }
+export function setOrientation(v: 'white' | 'black'): void {
+  orientation = v;
+  // Apply to the live board immediately so the orientation change takes effect
+  // without waiting for the next full renderBoard() cycle.
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts flip() cgInstance.set pattern.
+  cgInstance?.set({ orientation: v });
+}
 
 // --- Board sync ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts showGround / makeCgOpts
@@ -142,8 +148,12 @@ export function onUserMove(orig: string, dest: string): void {
   completeMove(orig, dest);
 
   if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
-    retro.onFail();          // post-fail: overwrites 'offTrack' set by onJump
-    _navigate(retroCand.parentPath); // send user back to try again
+    // Enter eval state so ceval can judge whether the played move is near-best.
+    // Mirrors lichess-org/lila: retroCtrl.ts feedback('eval') + checkCeval.
+    // If near-best (povDiff > -0.04): onCeval → onWin().
+    // If not near-best: onCeval → onFail() + navigate back to parentPath via navigateTo callback.
+    retro.setFeedback('eval');
+    retro.onCeval(); // may resolve synchronously if batch eval is already in cache
   }
 }
 
@@ -438,8 +448,13 @@ export function renderBoard(): VNode {
           drawable: {
             enabled: true,
             brushes: {
-              // Boost paleBlue opacity from default 0.4 → 0.65 for a bolder engine line
-              paleBlue: { key: 'pb', color: '#003088', opacity: 0.65, lineWidth: 15 },
+              // Explicitly register all brushes used by engine arrow rendering so their
+              // keys are always present in Chessground state regardless of deepMerge order.
+              // Mirrors lichess-org/lila: state.ts default brushes; opacity/lineWidth values
+              // kept at Chessground defaults except paleBlue which is boosted for visibility.
+              paleBlue: { key: 'pb',  color: '#003088', opacity: 0.65, lineWidth: 15 },
+              paleGrey: { key: 'pgr', color: '#4a4a4a', opacity: 0.35, lineWidth: 15 },
+              red:      { key: 'r',   color: '#882020', opacity: 1,    lineWidth: 10 },
             },
           },
           fen: node.fen,
