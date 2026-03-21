@@ -4,6 +4,19 @@
 
 import { h, type VNode } from 'snabbdom';
 
+// --- Board wheel navigation ---
+const BOARD_WHEEL_NAV_KEY = 'boardWheelNavEnabled';
+const BOARD_WHEEL_NAV_DEFAULT = false;
+export let boardWheelNavEnabled: boolean = (() => {
+  const stored = localStorage.getItem(BOARD_WHEEL_NAV_KEY);
+  return stored === null ? BOARD_WHEEL_NAV_DEFAULT : stored === 'true';
+})();
+
+export function setBoardWheelNavEnabled(enabled: boolean): void {
+  boardWheelNavEnabled = enabled;
+  localStorage.setItem(BOARD_WHEEL_NAV_KEY, String(enabled));
+}
+
 // --- Board zoom ---
 // zoom: 0–100, default 85. Stored in localStorage, applied to body as ---zoom.
 // CSS formula: ---board-scale = (---zoom / 100) * 0.75 + 0.25 (same as Lichess).
@@ -91,6 +104,7 @@ export function clearBoardLocalData(): void {
   localStorage.removeItem(ZOOM_KEY);
   localStorage.removeItem(BOARD_THEME_KEY);
   localStorage.removeItem(PIECE_SET_KEY);
+  localStorage.removeItem(BOARD_WHEEL_NAV_KEY);
   for (const prop of Object.keys(FILTER_DEFAULTS)) {
     localStorage.removeItem(FILTER_LS_PREFIX + prop);
   }
