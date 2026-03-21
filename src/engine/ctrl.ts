@@ -125,7 +125,7 @@ function storedInt(key: string, def: number, min: number, max: number): number {
   return (!isNaN(v) && v >= min && v <= max) ? v : def;
 }
 
-export let multiPv         = storedInt('patzer.multiPv', 3, 1, 5);
+export let multiPv         = storedInt('patzer.multiPv', 1, 1, 5);
 export let analysisDepth   = storedInt('patzer.analysisDepth', 30, 18, 30);
 export let showEngineArrows = true;
 export let arrowAllLines    = true;
@@ -143,6 +143,11 @@ let arrowDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let arrowSuppressUntil = 0;
 /** Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts — Lichess uses 500 ms delay. */
 const ARROW_SETTLE_MS = 500;
+/** Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts onEmit throttle(200, ...) */
+const LIVE_ENGINE_UI_THROTTLE_MS = 200;
+let liveEngineUiTimer: ReturnType<typeof setTimeout> | null = null;
+let liveEngineUiLastFlushAt = 0;
+let liveEngineUiNeedsRetroCheck = false;
 
 // --- Threat mode ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode + keyboard.ts 'x'
@@ -391,6 +396,35 @@ export function syncArrowDebounced(): void {
   }, 150);
 }
 
+function cancelLiveEngineUiRefresh(): void {
+  if (liveEngineUiTimer !== null) {
+    clearTimeout(liveEngineUiTimer);
+    liveEngineUiTimer = null;
+  }
+  liveEngineUiNeedsRetroCheck = false;
+}
+
+function flushLiveEngineUiRefresh(): void {
+  liveEngineUiTimer = null;
+  liveEngineUiLastFlushAt = Date.now();
+  syncArrowDebounced();
+  _redraw();
+  if (liveEngineUiNeedsRetroCheck) _getCtrl().retro?.onCeval();
+  liveEngineUiNeedsRetroCheck = false;
+}
+
+function scheduleLiveEngineUiRefresh(includeRetroCheck = false): void {
+  liveEngineUiNeedsRetroCheck ||= includeRetroCheck;
+  const elapsed = Date.now() - liveEngineUiLastFlushAt;
+  if (elapsed >= LIVE_ENGINE_UI_THROTTLE_MS && liveEngineUiTimer === null) {
+    flushLiveEngineUiRefresh();
+    return;
+  }
+  if (liveEngineUiTimer !== null) return;
+  const wait = Math.max(0, LIVE_ENGINE_UI_THROTTLE_MS - elapsed);
+  liveEngineUiTimer = setTimeout(flushLiveEngineUiRefresh, wait);
+}
+
 // --- UCI parsing ---
 
 /**
@@ -458,11 +492,7 @@ function parseEngineLine(line: string): void {
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if (depth !== undefined && !evalIsThreat) ev.depth = depth;
       if ((score !== undefined || best) && !_isBatchActive()) {
-        syncArrowDebounced();
-        _redraw();
-        // Notify retrospection of a live ceval update for the current position.
-        // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval retro.onCeval() call.
-        if (!evalIsThreat) _getCtrl().retro?.onCeval();
+        scheduleLiveEngineUiRefresh(!evalIsThreat);
       }
     } else if (!evalIsThreat && score !== undefined) {
       // Secondary PV line (MultiPV 2, 3, …).
@@ -482,9 +512,10 @@ function parseEngineLine(line: string): void {
       if (best) pl.best = best;
       if (pvMoves.length > 0) pl.moves = pvMoves;
       currentEval.lines = pendingLines.slice(1).filter(Boolean) as EvalLine[];
-      if (!_isBatchActive()) _redraw();
+      if (!_isBatchActive()) scheduleLiveEngineUiRefresh();
     }
   } else if (parts[0] === 'bestmove') {
+    cancelLiveEngineUiRefresh();
     // Discard the stale bestmove that arrives after a 'stop' interrupted a previous search.
     // Also resume any pending eval so the current position is not left unevaluated.
     if (pendingStopCount > 0) {
@@ -580,6 +611,7 @@ export function flipFenColor(fen: string): string {
 
 export function evalThreatPosition(): void {
   if (!engineEnabled || !engineReady || _isBatchActive()) return;
+  cancelLiveEngineUiRefresh();
   threatEval   = {};
   evalIsThreat = true;
   protocol.stop();
@@ -611,12 +643,14 @@ export function evalCurrentPosition(): void {
   const cached = evalCache.get(ctrl.path);
   const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
   if (cached && cachedHasLines) {
+    cancelLiveEngineUiRefresh();
     currentEval = { ...cached };
     syncArrow();
     _redraw();
     if (threatMode) evalThreatPosition();
     return;
   }
+  cancelLiveEngineUiRefresh();
   currentEval  = cached ? { ...cached } : {};
   pendingLines = [];
   // Clear old arrows immediately, THEN arm the suppress window.
@@ -682,6 +716,7 @@ export function toggleEngine(): void {
       evalCurrentPosition();
     }
   } else {
+    cancelLiveEngineUiRefresh();
     protocol.stop();
     currentEval  = {};
     evalIsThreat = false;
