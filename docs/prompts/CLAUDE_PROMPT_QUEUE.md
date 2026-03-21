@@ -36,88 +36,96 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 
 ## Queue Index
 
-- CCP-067-F1: Fix Eval Graph Fill To Rise From Bottom
-  - Correct the eval-graph fill so white territory fills from the bottom of the chart to the line instead of only filling from the middle line.
+- CCP-070: Add Lichess Review Glyph SVG Layer
+  - Copy the Lichess on-board move-annotation glyph SVG system into a Patzer-owned module without wiring it into the board yet.
 
-- CCP-044-F4: Fade In Engine Arrow Labels And Arrows
-  - Reduce arrow-label typography to 10/400/2 and make both labels and arrows fade in subtly on first appearance.
+- CCP-071: Render Review Glyphs On The Board
+  - Wire Lichess-style review glyph SVG badges onto the analysis board using destination-square anchoring and stacking like Lichess.
 
-- CCP-069: Refine Eval Graph Fill And Resize Handle
-  - Replace the graph slider with a center drag handle, keep Lichess-style white fill, and remove phase labels from the chart.
+- CCP-072: Add Review Glyph Board Toggle
+  - Add an engine-settings toggle for board review glyphs, default it on, and persist it cleanly.
 
-- CCP-067: Bring Eval Graph Fill Into Lichess Parity
-  - Replace the current neutral eval-graph fill treatment with Lichess-style white-advantage fill logic.
+- CCP-073: Clear Board And Ceval Typecheck Slice
+  - Resolve the first cohesive current typecheck slice across board, ceval, and engine files without trying to clear the whole backlog.
 
-- CCP-068: Add Eval Graph Height Toggle
-  - Add a small bottom-center graph control that cycles the eval graph from 100% up to 300% height.
+- CCP-074: Clear Import And Shell Typecheck Slice
+  - Resolve the remaining current typecheck slice across games, imports, keyboard, router, and main-shell files.
 
-- CCP-066: Add Search To Underboard And Games Lists
-  - Add a real search bar to the underboard games list and extend the Games page filter into a broader text search without splitting the two surfaces into separate systems.
+- CCP-075: Make Board Resize Handle Safari-Reliable
+  - Fix the analysis-board resize handle so it appears and works reliably in Safari.
 
-- CCP-035-F1: Fix Arrowhead Loss After Engine Line Changes
-  - Stabilize engine arrowheads when changing line count or related engine-arrow settings so the main arrowhead does not disappear intermittently.
+- CCP-076: Make Book-Aware Retrospection Cancellation Live
+  - Wire the existing opening-provider seam into active retrospection so theory/book moves are actually skipped.
 
-- CCP-044-F2: Match Arrow Label Styling To Eval Bar
-  - Reduce arrow-label text size and make its styling match the eval-bar number instead of using oversized custom text.
+- CCP-077: Finish Eval Graph Hover And Scrub Behavior
+  - Tighten the eval-graph hover and scrub interaction so graph-driven inspection works as intended.
+
+- CCP-078: Fix Move-List Context Menu Positioning
+  - Fix the move-list variation context menu so it opens over the selected move instead of at the page origin.
 
 ## Queue
 
-## CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
+## CCP-070 - Add Lichess Review Glyph SVG Layer
 
 ```
-Prompt ID: CCP-067-F1
-Task ID: CCP-067
-Parent Prompt ID: CCP-067
+Prompt ID: CCP-070
+Task ID: CCP-070
 Source Document: ad hoc user request
-Source Step: make eval-graph white fill rise from the bottom of the chart instead of the center line
+Source Step: copy Lichess board move-review glyph SVGs exactly into Patzer as the source glyph layer
 Execution Target: Codex
 
 You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
 
 Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / analysis-view / underboard styling files.
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board-draw / analysis-glyph / engine-display files.
 - If overlapping work is already in flight, stop and report the overlap before making repo edits.
 
-Task: Fix the eval-graph fill behavior so the white graph fill rises from the bottom of the graph up to the line, instead of only shading from the graph’s middle line. If there is any uncertainty about the intended look, compare directly against the local Lichess source and follow that visible behavior.
+Task: Copy the Lichess move-review glyph SVG system exactly into Patzer as the source layer for future on-board review glyph rendering, without wiring it into the board yet.
 
 Required repo workflow:
 1. Inspect the current Patzer Pro codebase first.
 2. Locate the actual implementation points before assuming file paths.
 3. Inspect the relevant Lichess source before deciding how to implement.
 4. Compare:
-   - how Patzer Pro currently builds the graph fill polygons
-   - how Lichess fills the advantage graph and colors the line
-   - where Patzer’s current fill still diverges visually
+   - how Patzer currently represents move-review labels and PGN glyphs
+   - how Lichess converts move glyphs into board-ready SVG annotation shapes
+   - where the correct ownership seam should live in Patzer
 5. Identify the smallest safe implementation step.
 6. Explain diagnosis before coding.
 7. Implement.
 8. Validate with build + task-specific checks.
 
 Important project constraints:
-- This is a follow-up fix to the existing `CCP-067` eval-graph fill work, not a new graph feature family.
-- Keep the change scoped to graph fill geometry and the graph line styling only if a tiny line adjustment is needed for parity.
-- Do not bundle graph-height handle work, hover redesign, or unrelated underboard changes.
-- Use Lichess as the source of truth for the fill behavior.
+- This task is only about bringing over the Lichess review-glyph SVG source layer and shape-building helper.
+- Copy the Lichess SVGs and stacking logic as faithfully as possible.
+- Do not wire the glyphs into board rendering yet.
+- Do not add the settings toggle yet.
 - Do not add substantial new logic to `src/main.ts`.
 
 Relevant current code areas to inspect first:
-- `src/analyse/evalView.ts` — current graph SVG fill polygons, center line, and eval trace stroke
-- `src/styles/main.scss` — any `.eval-graph` styling that affects visible contrast
+- `src/tree/types.ts` — current glyph data shape
+- `src/tree/pgn.ts` — PGN glyph ingestion
+- `src/analyse/moveList.ts` — current move-review / glyph display behavior
+- `src/board/index.ts` and `src/engine/ctrl.ts` — current board shape seams, only to choose the future ownership boundary correctly
 
 Relevant Lichess source to inspect first:
-- `~/Development/lichess-source/lila/ui/chart/src/acpl.ts`
-- any corresponding local Lichess chart style/constants files used by that graph
+- `~/Development/lichess-source/lila/ui/lib/src/game/glyphs.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/autoShape.ts`
+- any closely related Lichess tree/glyph type files needed to mirror the source behavior accurately
 
 Current repo-grounded behavior to confirm first:
-- Patzer currently closes its SVG fill polygons to `cy`, the graph’s middle line
-- the current white fill therefore reads like shading from the origin/middle rather than white territory rising from the bottom of the chart
-- Lichess should be used as the visual source of truth if there is any doubt about the intended style
+- Patzer already has move glyph/review data on nodes
+- Patzer does not yet have a dedicated Lichess-style on-board glyph SVG module
+- Lichess uses custom SVG badge shapes rather than plain text labels for the common review glyphs
 
 Requested behavior:
-- the graph fill should visually fill entirely from the bottom of the graph up to the eval line
-- the fill color should be white
-- the graph line can use whatever Lichess uses if that is needed to make the parity clearer
-- if there is uncertainty about the exact style difference, inspect the Lichess source directly and follow it rather than guessing
+- create the Patzer-side source module/helper for on-board review glyphs
+- copy the Lichess SVG badge assets/definitions exactly where practical
+- preserve:
+  - destination-square anchoring assumptions
+  - stack ordering
+  - max visible glyph behavior
+- stop before wiring it into the live board
 
 What I want from you:
 - first provide the required pre-implementation output:
@@ -140,537 +148,77 @@ Validation requirements:
   - any remaining risks or limitations
 
 Explicit behaviors to verify:
-- the white fill now rises from the bottom of the chart to the eval line
-- the fill no longer reads like it starts from the center line
-- the graph line remains readable and Lichess-aligned
-- hover/click graph navigation still works
+- Patzer now has a dedicated source/helper for Lichess-style board review glyph SVGs
+- the copied glyph definitions are available for common review glyphs like `?!`, `?`, `??`, and `!`
+- no board rendering behavior has changed yet
 
 Success criteria:
-- white eval-graph territory fills from the bottom of the graph
-- the graph line styling is acceptable and Lichess-aligned
-- no unrelated graph behavior is changed
+- the Lichess review glyph SVG/source layer exists in Patzer
+- it is not yet wired into live board rendering
+- no unrelated behavior is changed
 ```
 
-## CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
+## CCP-071 - Render Review Glyphs On The Board
 
 ```
-Prompt ID: CCP-044-F4
-Task ID: CCP-044
-Parent Prompt ID: CCP-044-F3
+Prompt ID: CCP-071
+Task ID: CCP-071
 Source Document: ad hoc user request
-Source Step: reduce arrow label typography to 10/400/2 and add subtle fade-in for new arrow labels and arrows
+Source Step: render Lichess-style move-review glyph SVGs on the analysis board in the same way Lichess does
 Execution Target: Codex
 
 You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
 
 Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-arrow / board-draw / ceval styling files.
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board-draw / analysis-glyph / engine-arrow files.
 - If overlapping work is already in flight, stop and report the overlap before making repo edits.
 
-Task: Refine the engine-arrow label presentation so the labels use `font-size="10"`, `font-weight="400"`, and `stroke-width="2"`, and make both the arrow labels and the arrows themselves fade in subtly on first appearance instead of popping in instantly.
+Task: Render move-review glyphs on the Patzer analysis board using the Lichess SVG badges and the same general board-annotation behavior Lichess uses.
 
 Required repo workflow:
 1. Inspect the current Patzer Pro codebase first.
 2. Locate the actual implementation points before assuming file paths.
 3. Inspect the relevant Lichess source before deciding how to implement.
 4. Compare:
-   - how Patzer Pro currently renders engine arrows and arrow labels
-   - whether Lichess has any relevant arrow / custom SVG appearance or fade patterns worth borrowing structurally
-   - where Patzer’s current arrow appearance is too abrupt or visually heavy
+   - how Patzer currently builds board auto-shapes
+   - how Lichess injects `annotationShapes(ctrl.node)` into board auto-shapes
+   - how Patzer should scope review-glyph visibility relative to existing board arrows
 5. Identify the smallest safe implementation step.
 6. Explain diagnosis before coding.
 7. Implement.
 8. Validate with build + task-specific checks.
 
 Important project constraints:
-- This is a follow-up refinement to the existing `CCP-044` engine-arrow label work, not a new engine-arrow feature family.
-- Keep the change scoped to arrow-label typography and arrow/label appearance timing only.
-- Do not bundle arrow placement changes, new settings work, MultiPV behavior changes, or unrelated engine logic cleanup.
+- This task is about board rendering only.
+- Use the Lichess review glyph SVG behavior as the source of truth:
+  - destination-square anchoring
+  - stacked badge placement
+  - common review glyph rendering
+- Do not add the settings toggle in this task.
+- Do not redesign all board-shape ownership unless a tiny extraction is clearly required.
 - Do not add substantial new logic to `src/main.ts`.
 
 Relevant current code areas to inspect first:
-- `src/engine/ctrl.ts` — arrow label SVG generation, engine-arrow shape construction, and any shape lifecycle seams
-- `src/board/index.ts` — draw-shape integration and any available animation/styling hooks
-- `src/styles/main.scss` — any existing transition/opacity patterns worth reusing
-- any relevant ceval styling if the arrow-label typography should stay aligned with the eval presentation language
-
-Relevant Lichess source to inspect first:
-- the most relevant local Lichess analyse / board drawing / auto-shape files you can find for engine-arrow rendering behavior
-- any corresponding Lichess CSS if there is a useful appearance/transition pattern
-- if Lichess does not animate these shapes, say that clearly and keep the fade as a Patzer-specific polish step
-
-Current repo-grounded behavior to confirm first:
-- `src/engine/ctrl.ts` currently renders arrow-label text at `font-size="12"`, `font-weight="500"`, and `stroke-width="1.35"`
-- arrow labels currently appear immediately as part of the shape render path
-- the repo does not currently show an obvious dedicated fade-in mechanism for these engine-arrow shapes
-
-Requested behavior:
-- update arrow-label SVG typography to:
-  - `font-size="10"`
-  - `font-weight="400"`
-  - `stroke-width="2"`
-- keep the current shadow/outline concept, but with the updated typography values above
-- when engine arrows first appear, they should fade in subtly and quickly instead of popping in
-- when arrow labels first appear, they should fade in with the same subtle fast timing
-- keep the fade tasteful and lightweight, not slow or flashy
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- arrow-label SVG text now uses `font-size="10"`, `font-weight="400"`, and `stroke-width="2"`
-- engine arrows no longer pop in abruptly on first appearance
-- arrow labels no longer pop in abruptly on first appearance
-- the fade is subtle and fast rather than slow or distracting
-- existing arrow behavior remains otherwise unchanged
-
-Success criteria:
-- engine-arrow labels use the exact requested typography values
-- arrows and labels fade in subtly on first appearance
-- no unrelated engine-arrow behavior is changed
-```
-
-## CCP-069 - Refine Eval Graph Fill And Resize Handle
-
-```
-Prompt ID: CCP-069
-Task ID: CCP-069
-Source Document: ad hoc user request
-Source Step: replace eval-graph slider with a center drag handle, keep Lichess-style white fill, and remove phase labels
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / analysis-view / underboard styling files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Refine the eval graph so it uses a centered drag handle instead of the current slider-based height control, keeps Lichess-style white territory fill, and removes the phase labels from the chart.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer Pro currently renders the graph fill, phase dividers, and height control
-   - how Lichess renders chart fill and chart divisions
-   - how Patzer already implements board-resize drag affordances that could inform the new graph handle
-   - where the current graph UI diverges from the intended behavior
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Keep this task scoped to eval-graph styling and graph-height interaction only.
-- Do not bundle unrelated review-dot, move-list, or engine-display changes.
-- Use Lichess as the source of truth for the graph fill behavior.
-- Treat the drag handle as a Patzer-specific control, but ground its interaction/styling in the existing board resize affordance where helpful.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/analyse/evalView.ts` — eval graph fill polygons, phase labels, fixed graph dimensions, and current slider-based height control
-- `src/styles/main.scss` — `.eval-graph` styling plus the existing board resize handle styling
-- any small graph-height persistence helper currently used by Patzer
-
-Relevant Lichess source to inspect first:
-- `~/Development/lichess-source/lila/ui/chart/src/acpl.ts`
-- `~/Development/lichess-source/lila/ui/chart/src/division.ts`
-- `~/Development/lichess-source/lila/ui/lib/css/component/_board-resize.scss`
-- any corresponding chart CSS needed to confirm the visible fill behavior
-
-Current repo-grounded behavior to confirm first:
-- `src/analyse/evalView.ts` currently renders a bottom-center `input[type="range"]` slider for graph height
-- the graph still renders phase words like `Opening`, `Middlegame`, and `Endgame` directly on the chart
-- the graph fill is currently implemented by two clipped polygons and should be compared directly against Lichess before changing it
-- the repo already has a board resize handle pattern that may be a better reference for the desired graph-height affordance than a slider
-
-Requested behavior:
-- remove the current slider-based height control from the eval graph
-- add a small drag handle centered at the bottom of the graph that can be grabbed and dragged downward to increase height
-- keep the graph-height range bounded so the current baseline acts like 100% and the max remains 300%
-- make the filled area visually read like Lichess, with white territory filling from the bottom up to the line when White has the advantage
-- remove the on-chart phase labels; the words are not needed
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- the eval graph no longer shows the slider UI
-- a small center-bottom drag handle is visible and can increase graph height by dragging downward
-- the graph cannot exceed the existing intended 300% max height
-- the chart no longer shows `Opening`, `Middlegame`, or `Endgame` text labels
-- white-advantage positions visually fill white in the Lichess style
-- hover/click navigation in the graph still works after resizing
-
-Success criteria:
-- the eval graph uses a centered drag handle instead of a slider
-- the graph fill matches Lichess-style white territory behavior more closely
-- phase labels are gone
-- no unrelated analysis-board behavior is changed
-```
-
-## CCP-067 - Bring Eval Graph Fill Into Lichess Parity
-
-```
-Prompt ID: CCP-067
-Task ID: CCP-067
-Source Document: docs/WISHLIST.md
-Source Step: Changes to how the eval graph is displayed and formatted
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / analysis-view / underboard styling files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Bring the eval-graph fill behavior into Lichess parity so the filled area is white when White has the advantage, instead of using Patzer’s current neutral filled polygon treatment.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer Pro currently draws the graph background and filled polygon
-   - how Lichess fills the eval graph for white/black advantage
-   - where Patzer currently diverges
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- This task is only about the eval-graph fill logic and related styling parity.
-- Do not bundle graph-height controls, hover redesign, or unrelated annotation changes.
-- Use Lichess as the source of truth for the fill behavior.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/analyse/evalView.ts` — graph SVG construction, background rectangles, filled polygon
-- `src/styles/main.scss` — `.eval-graph` styling
-- any local Patzer graph-related prompt history if needed
-
-Relevant Lichess source to inspect first:
-- the relevant local Lichess chart / ACPL graph source that governs fill logic
-- any corresponding Lichess CSS needed to confirm visual intent
-
-Current repo-grounded behavior to confirm first:
-- Patzer currently draws:
-  - a light upper-half background
-  - a dark lower-half background
-  - one neutral semi-transparent polygon closed to the center line
-- that does not match the desired Lichess-style fill behavior where White advantage visually fills white
-
-Requested behavior:
-- when White has the advantage, the graph fill should visually read as white territory in the same way Lichess does
-- copy the visible Lichess fill logic rather than inventing a new Patzer graph-fill model
-- keep the graph trace and existing interactions intact unless a tiny related adjustment is strictly required
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- positions where White is better fill the graph the way Lichess does
-- positions where Black is better still render correctly
-- the graph line and current-position marker remain readable
-- hover/click navigation still works
-
-Success criteria:
-- the eval-graph fill logic matches visible Lichess behavior more closely
-- White advantage visually fills white
-- no unrelated graph behavior is changed
-```
-
-## CCP-068 - Add Eval Graph Height Toggle
-
-```
-Prompt ID: CCP-068
-Task ID: CCP-068
-Source Document: ad hoc user request
-Source Step: add a bottom-center eval-graph height toggle from 100% to 300%
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / underboard layout / styling files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Add a small control at the center bottom of the eval graph that lets the user enlarge the graph height from the current 100% size up to 300% maximum.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer Pro currently fixes eval-graph height
-   - whether Lichess exposes any comparable graph-resize or underboard sizing pattern worth borrowing structurally
-   - where a small Patzer-specific control is acceptable
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- This task is only about graph-height control.
-- Treat 100% as the current baseline height.
-- Allow expansion up to 300% max.
-- Keep the UI small and centered at the bottom of the graph.
-- Do not bundle graph fill parity, hover redesign, or broad underboard layout work unless a tiny layout adjustment is strictly required.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/analyse/evalView.ts` — graph render structure and any hook point for a local height control
-- `src/styles/main.scss` — `.eval-graph` sizing and underboard layout styling
-- any current local storage / settings patterns if a persisted graph-height value is the smallest safe fit after inspection
-
-Relevant Lichess source to inspect first:
-- any local Lichess underboard or chart sizing patterns that are structurally relevant
-- do not force parity where Lichess has no equivalent; call it out as a Patzer-specific control if that is what inspection shows
-
-Current repo-grounded behavior to confirm first:
-- `GRAPH_H` is currently fixed at `80`
-- the rendered SVG height is currently fixed to `GRAPH_H`
-- there is no graph-height control in the UI today
-
-Requested behavior:
-- add a small center-bottom graph control
-- the control should let the user increase graph height up to 300% max
-- 100% should correspond to current height
-- keep the control subtle and not visually noisy
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- the control is visible at the center bottom of the graph
-- the graph can be enlarged above the baseline height
-- the graph never exceeds 300% of the baseline
-- click/hover navigation within the graph still works after resizing
-- the underboard layout remains usable when the graph is enlarged
-
-Success criteria:
-- the eval graph has a small bottom-center height control
-- the graph can scale from 100% to 300% max
-- no unrelated graph or underboard behavior is changed
-```
-
-## CCP-066 - Add Search To Underboard And Games Lists
-
-```
-Prompt ID: CCP-066
-Task ID: CCP-066
-Source Document: ad hoc user request
-Source Step: add a search bar to the underboard games list and the Games history page
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same games-list / Games view / filtering / underboard list files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Add a search bar to the underboard games list beneath the chess board, and add a proper search bar to the Games history page, using the smallest safe shared filtering step instead of inventing two separate systems.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer Pro currently renders and filters the underboard games list
-   - how Patzer Pro currently renders and filters the Games page
-   - how Lichess handles comparable game-history / list filtering patterns where relevant
-   - where the smallest shared search seam actually is
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- The underboard compact list currently has no search control.
-- The Games page already has an opponent-only search input; inspect whether the smallest safe step is to broaden that control into a more general text search rather than bolt on a second field.
-- Keep the task scoped to search/filter behavior and the minimal UI needed to expose it.
-- Do not redesign the entire games filtering system.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/games/view.ts` — `renderGameList()`, `renderGamesView()`, existing filter state, existing opponent search
-- `src/styles/main.scss` — games-view search styling and any game-list styling you need for the underboard control
-- `src/main.ts` — only to confirm how the two game-list surfaces are wired, not as the default implementation target
-
-Relevant Lichess source to inspect first:
-- any relevant local Lichess game-history / filtering / list-control files that help confirm search placement and scope
-- do not force a broad Lichess detour if the real change is a small Patzer-local list-filter refinement
-
-Current repo-grounded behavior to confirm first:
-- the underboard compact game list renders in `renderGameList()` with no text search control
-- the Games page already has `gamesFilterOpponent` and an `input.games-view__search` labeled `Opponent`
-- both surfaces draw from the same imported game collection, but they are not currently using a shared text-search model
-
-Requested behavior:
-- add a search bar to the games list beneath the board
-- add a search bar to the Games history page
-- prefer one coherent text-search behavior across both surfaces
-- keep the UI small and obvious
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- typing in the underboard search bar narrows the underboard games list
-- typing in the Games-page search bar narrows the Games history list
-- the Games-page search still composes sanely with existing result/time/color filters
-- clearing the search restores the full visible list
-- empty-state text remains reasonable when the search returns no matches
-
-Success criteria:
-- both game-list surfaces expose a visible text search bar
-- the underboard list can be filtered by search text
-- the Games page can be filtered by search text
-- the implementation does not introduce a second conflicting filter model for the same page
-- no unrelated import/review behavior is changed
-```
-
-## CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
-
-```
-Prompt ID: CCP-035-F1
-Task ID: CCP-035
-Parent Prompt ID: CCP-035
-Source Document: docs/KNOWN_ISSUES.md
-Source Step: [MEDIUM] Changing engine line count can make the main engine arrowhead disappear
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-arrow / Chessground draw / ceval-settings files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Fix the remaining engine-arrowhead instability so changing engine line count or nearby arrow settings no longer causes the main engine arrowhead to disappear intermittently.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer Pro currently builds engine and played arrows
-   - how Patzer Pro applies Chessground brushes and labels during settings changes
-   - how Lichess keeps auto-shape arrows stable across ceval / multipv updates
-   - where the remaining instability seam actually is
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- This is a follow-up fix to `CCP-035`, not a new arrow system.
-- Keep the task scoped to the disappearing-arrowhead bug.
-- Do not bundle broader engine-label styling, arrow UX redesign, or unrelated ceval settings cleanup.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/engine/ctrl.ts` — arrow shape construction, brush selection, played arrow, MultiPV arrows, label integration
-- `src/board/index.ts` — Chessground drawable brush registration and board config
-- `src/ceval/view.ts` — engine line-count / arrow-related settings that trigger the bug
-- `docs/KNOWN_ISSUES.md` — current bug wording
-- `docs/prompts/CLAUDE_PROMPT_HISTORY.md` — prior `CCP-035` notes if useful
+- the new glyph-source/helper introduced by the previous prompt
+- `src/engine/ctrl.ts` — current board auto-shape construction seam
+- `src/board/index.ts` — board draw integration and available shape hooks
+- `src/tree/types.ts` and any current review-label/glyph consumers
 
 Relevant Lichess source to inspect first:
 - `~/Development/lichess-source/lila/ui/analyse/src/autoShape.ts`
-- any relevant local Lichess Chessground / ceval shape wiring needed to confirm arrow stability expectations
+- `~/Development/lichess-source/lila/ui/lib/src/game/glyphs.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
 
-Current repo-grounded diagnosis to confirm first:
-- the original arrowhead fix already forced explicit brush registration and simplified the played-arrow brush path
-- the bug is still logged specifically around changing engine line count
-- that suggests the remaining seam is likely not the original brush-key absence alone, but a settings-transition / shape-composition interaction that still sometimes yields a shape without a stable arrowhead marker
-- current engine arrows now also support labels, so the fix must confirm whether label-bearing shapes or settings-triggered redraw order are part of the remaining regression
+Current repo-grounded behavior to confirm first:
+- Patzer currently shows review information in the move list / eval graph, not as Lichess-style on-board SVG glyph badges
+- Patzer already has a board-shape pipeline that can likely host these glyph shapes
+- Lichess adds move annotations as board shapes for the current node when the setting is enabled
+
+Requested behavior:
+- render move-review glyphs on the analysis board itself
+- use the copied Lichess SVG badges rather than inventing a new badge style
+- anchor them to the move destination square and stack them the Lichess way
+- keep the initial rendering behavior on by default unless the toggle layer later disables it
 
 What I want from you:
 - first provide the required pre-implementation output:
@@ -693,75 +241,75 @@ Validation requirements:
   - any remaining risks or limitations
 
 Explicit behaviors to verify:
-- changing engine line count does not make the primary engine arrowhead disappear
-- toggling arrow-related settings on/off does not leave the arrowhead missing
-- played-arrow and secondary-line arrows still render sanely after the fix
-- existing arrow labels, if enabled, do not reintroduce the disappearance bug
+- current-node review glyphs now appear on the board
+- the badges use the Lichess-style SVG visuals rather than plain text
+- the badges are anchored/stacked in the Lichess manner
+- existing engine arrows and played arrows still behave correctly
 
 Success criteria:
-- the main engine arrow keeps a visible arrowhead after engine line-count changes
-- arrowhead rendering remains stable across nearby engine-arrow settings changes
-- no unrelated engine-arrow behavior is regressed
+- Patzer renders Lichess-style board review glyphs on the analysis board
+- the rendering is faithful to the Lichess badge system
+- no unrelated board behavior is changed
 ```
 
-## CCP-044-F2 - Match Arrow Label Styling To Eval Bar
+## CCP-072 - Add Review Glyph Board Toggle
 
 ```
-Prompt ID: CCP-044-F2
-Task ID: CCP-044
-Parent Prompt ID: CCP-044-F1
-Source Document: docs/WISHLIST.md
-Source Step: Add tag or label next to engine move arrows showing what their eval is
+Prompt ID: CCP-072
+Task ID: CCP-072
+Source Document: ad hoc user request
+Source Step: add an engine-settings toggle for board review glyphs and default it on
 Execution Target: Codex
 
 You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
 
 Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-arrow / score-styling / ceval files.
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-settings / board-glyph / ceval-view files.
 - If overlapping work is already in flight, stop and report the overlap before making repo edits.
 
-Task: Refine the current engine-arrow eval label styling so the text is smaller and matches the visual styling of the eval-bar number.
+Task: Add a toggle in the engine settings menu that turns the on-board review glyphs on or off. The setting should be on by default.
 
 Required repo workflow:
 1. Inspect the current Patzer Pro codebase first.
 2. Locate the actual implementation points before assuming file paths.
 3. Inspect the relevant Lichess source before deciding how to implement.
 4. Compare:
-   - how Patzer Pro currently styles engine-arrow labels
-   - how Patzer Pro styles the eval-bar number and engine-line scores
-   - how Lichess handles comparable score typography
-   - where this small Patzer-specific arrow-label styling choice should remain intentionally local
+   - how Patzer currently stores and renders other engine/board display toggles
+   - how Lichess exposes the move-annotation-on-board setting
+   - where the cleanest local ownership seam is for a persisted Patzer toggle
 5. Identify the smallest safe implementation step.
 6. Explain diagnosis before coding.
 7. Implement.
 8. Validate with build + task-specific checks.
 
 Important project constraints:
-- This is a follow-up refinement to `CCP-044-F1`, not a new arrow-label feature.
-- Keep the implementation scoped to label text size, color, and typography only.
-- Do not bundle changes to arrow geometry, settings defaults, label placement logic, or unrelated ceval behavior.
+- This task is only about the settings toggle and its persistence/wiring.
+- The toggle should live in the existing engine settings menu.
+- The toggle should default to on.
+- Do not redesign the whole settings panel.
+- Do not bundle unrelated engine-arrow setting cleanup.
 - Do not add substantial new logic to `src/main.ts`.
 
 Relevant current code areas to inspect first:
-- `src/engine/ctrl.ts` — current arrow-label text generation and color assignment
-- `src/analyse/evalView.ts` — eval-bar score rendering and score formatting
-- `src/ceval/view.ts` — engine-line score rendering
-- `src/styles/main.scss` — `.ceval__score`, PV score styling, and any current arrow-label styling hooks
+- `src/ceval/view.ts` — existing engine settings UI rows
+- `src/engine/ctrl.ts` — existing persisted toggle patterns like arrows/labels/review labels
+- the board review-glyph rendering seam introduced by the previous prompt(s)
 
 Relevant Lichess source to inspect first:
-- any relevant ceval score styling / auto-shape styling files in local Lichess source that help confirm typography patterns
-- do not force a broad Lichess detour if the real change is only a small local styling refinement
+- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+- any other local Lichess setting storage path relevant to show-move-annotation-on-board behavior
 
 Current repo-grounded behavior to confirm first:
-- the current arrow-label text is visually too large
-- the intended target is the eval-bar number styling, not the oversized current arrow-label treatment
-- the desired result is for the arrow label to feel like the eval-bar score transplanted into the arrow-label context
+- Patzer already has an engine settings menu with checkbox toggles
+- Patzer already persists several board/eval display toggles in localStorage
+- the new on-board review glyphs should follow that same persistence pattern, but start enabled by default
 
 Requested behavior:
-- reduce the arrow-label text size
-- make the color/styling match the eval-bar number
-- keep the change limited to arrow-label styling
-- do not change other score displays unless a tiny shared styling extraction is clearly safer
+- add a checkbox toggle for on-board review glyphs in the engine settings menu
+- default it to on
+- persist it cleanly
+- when disabled, remove/hide the board review glyphs without disturbing unrelated board arrows or move-list review labels
 
 What I want from you:
 - first provide the required pre-implementation output:
@@ -783,9 +331,401 @@ Validation requirements:
   - whether there are console/runtime errors
   - any remaining risks or limitations
 
+Explicit behaviors to verify:
+- board review glyphs are shown by default
+- the new engine-settings toggle appears and can disable them
+- turning the toggle back on restores them
+- the setting persists across reload
+- engine arrows and move-list review labels still behave correctly
+
 Success criteria:
-- arrow-label text is visibly smaller than the current implementation
-- arrow-label styling matches the eval-bar score styling closely
-- non-arrow score displays are not unintentionally regressed
-- no unrelated arrow or engine-setting behavior is changed
+- Patzer has a persisted engine-settings toggle for board review glyphs
+- it defaults on
+- it only affects the on-board review glyph layer
+```
+
+## CCP-073 - Clear Board And Ceval Typecheck Slice
+
+```
+Prompt ID: CCP-073
+Task ID: CCP-073
+Source Document: docs/KNOWN_ISSUES.md
+Source Step: [HIGH] `npm run typecheck` is wired but surfaces type errors
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same typecheck / board / ceval / engine files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Clear the first cohesive current typecheck slice without trying to solve the entire repo-wide backlog.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement, when the affected files touch Lichess-aligned board or ceval behavior.
+4. Compare:
+   - the current real typecheck failures
+   - the affected Patzer ownership seams
+   - any relevant Lichess patterns for the touched board/ceval APIs
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Do not try to clear the whole typecheck backlog in one prompt.
+- Keep this slice scoped to the current board / ceval / engine-adjacent failures.
+- Preserve runtime behavior.
+- Do not bundle unrelated refactors.
+- Do not add substantial new logic to `src/main.ts`.
+
+Relevant current code areas to inspect first:
+- `src/board/cosmetics.ts`
+- `src/board/index.ts`
+- `src/ceval/view.ts`
+- `src/engine/ctrl.ts`
+
+Current repo-grounded diagnosis to confirm first:
+- `npm run typecheck -- --pretty false` currently fails in this slice on:
+  - Snabbdom attrs/value typing in `src/board/cosmetics.ts`
+  - exact-optional / Chessground config issues in `src/board/index.ts`
+  - missing `Key` typing and exact-optional config issues in `src/ceval/view.ts`
+  - undefined string / exact-optional issues in `src/engine/ctrl.ts`
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run `npm run typecheck -- --pretty false`
+- explicitly report:
+  - build result
+  - typecheck result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Success criteria:
+- this board/ceval/engine typecheck slice is cleared
+- runtime behavior is unchanged
+- the repo still builds
+```
+
+## CCP-074 - Clear Import And Shell Typecheck Slice
+
+```
+Prompt ID: CCP-074
+Task ID: CCP-074
+Source Document: docs/KNOWN_ISSUES.md
+Source Step: [HIGH] `npm run typecheck` is wired but surfaces type errors
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same typecheck / games / import / router / main-shell files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Clear the next cohesive current typecheck slice across games, imports, keyboard, router, and shell files without trying to solve the full repo backlog.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement where the touched behavior is Lichess-aligned.
+4. Compare:
+   - the current real typecheck failures in this slice
+   - the current Patzer data contracts and shell ownership seams
+   - any relevant Lichess patterns only where they meaningfully guide safer typing
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Do not try to clear the whole typecheck backlog in one prompt.
+- Keep this slice scoped to:
+  - `src/games/view.ts`
+  - `src/import/*.ts`
+  - `src/keyboard.ts`
+  - `src/router.ts`
+  - `src/main.ts`
+- Preserve runtime behavior.
+- Avoid unrelated cleanup.
+
+Current repo-grounded diagnosis to confirm first:
+- `npm run typecheck -- --pretty false` currently still reports this slice across:
+  - `src/games/view.ts`
+  - `src/import/chesscom.ts`
+  - `src/import/lichess.ts`
+  - `src/import/pgn.ts`
+  - `src/keyboard.ts`
+  - `src/router.ts`
+  - `src/main.ts`
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run `npm run typecheck -- --pretty false`
+- explicitly report:
+  - build result
+  - typecheck result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Success criteria:
+- this import/shell typecheck slice is cleared
+- runtime behavior is unchanged
+- the repo still builds
+```
+
+## CCP-075 - Make Board Resize Handle Safari-Reliable
+
+```
+Prompt ID: CCP-075
+Task ID: CCP-075
+Source Document: docs/KNOWN_ISSUES.md
+Source Step: [MEDIUM] Board resize handle does not reliably appear or work in Safari
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board / resize / Safari-related files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Fix the board-resize handle so it appears and works reliably in Safari on the analysis board.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently injects and binds the resize handle
+   - how Lichess handles board resizing
+   - what Safari-specific failure mode is plausible in the current implementation
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to Safari reliability for the existing resize handle.
+- Do not redesign overall board resizing UX.
+- Do not add substantial new logic to `src/main.ts`.
+
+Relevant current code areas to inspect first:
+- `src/board/index.ts`
+- `src/styles/main.scss`
+
+Relevant Lichess source to inspect first:
+- the local Lichess chessground resize helper and board-resize CSS currently mirrored by Patzer
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- explicitly report:
+  - build result
+  - Safari-specific reasoning or validation
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Success criteria:
+- the existing board resize handle appears reliably
+- dragging it works reliably in Safari
+- no unrelated board behavior is changed
+```
+
+## CCP-076 - Make Book-Aware Retrospection Cancellation Live
+
+```
+Prompt ID: CCP-076
+Task ID: CCP-076
+Source Document: docs/KNOWN_ISSUES.md
+Source Step: [MEDIUM] Book-aware retrospection cancellation seam is defined but not live
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection / opening-provider / analysis files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Make the existing book-aware retrospection cancellation seam live by actually wiring an opening provider into active candidate generation.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently defines the opening-provider seam
+   - where Patzer currently calls `buildRetroCandidates(...)` without a provider
+   - how Lichess retrospection uses opening/explorer data to cancel theory moves
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this focused on making the existing cancellation seam live.
+- Do not redesign all retrospection candidate logic.
+- Do not invent a large opening subsystem.
+- If Patzer’s available opening data is still limited, make the smallest honest live wiring step and call out the remaining limitation explicitly.
+
+Relevant current code areas to inspect first:
+- `src/analyse/retro.ts`
+- `src/main.ts`
+- any current opening/book metadata or provider seam already present in the repo
+
+Relevant Lichess source to inspect first:
+- the local Lichess retrospection files and any opening-cancellation path they use
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- explicitly report:
+  - build result
+  - whether theory/book moves are now actually filtered by the live path
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Success criteria:
+- the existing opening-provider seam is no longer dead
+- active retrospection candidate generation now uses it
+- no unrelated retrospection behavior is changed
+```
+
+## CCP-077 - Finish Eval Graph Hover And Scrub Behavior
+
+```
+Prompt ID: CCP-077
+Task ID: CCP-077
+Source Document: docs/KNOWN_ISSUES.md
+Source Step: [MEDIUM] Eval graph hover/scrub behavior is not yet working as expected
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / analysis-view / underboard interaction files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Tighten the eval-graph hover and scrub interaction so graph-driven review/navigation behaves as intended.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently handles hover indicators and click strips on the graph
+   - how Lichess chart interaction works
+   - where Patzer still falls short for scan/scrub usability
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to graph hover/scrub interaction.
+- Do not bundle unrelated graph fill, resize-handle, or review-summary changes.
+- Use Lichess as the interaction reference where applicable.
+
+Relevant current code areas to inspect first:
+- `src/analyse/evalView.ts`
+- any relevant graph styling in `src/styles/main.scss`
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/chart/src/acpl.ts`
+- any other local Lichess chart interaction helpers that matter
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- explicitly report:
+  - build result
+  - graph hover/scrub behavior after the fix
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Success criteria:
+- graph hover/scrub now behaves as intended
+- graph-driven review/navigation is clearer and more reliable
+- no unrelated graph behavior is changed
+```
+
+## CCP-078 - Fix Move-List Context Menu Positioning
+
+```
+Prompt ID: CCP-078
+Task ID: CCP-078
+Source Document: docs/KNOWN_ISSUES.md
+Source Step: [MEDIUM] Move-list variation context menu can open at the top-left of the page
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same move-list / context-menu / patcher files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Fix the move-list variation context menu so it opens over the selected move instead of rendering at the top-left corner of the page.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently stores cursor coordinates and renders the overlay
+   - whether the Snabbdom patcher/setup is preventing inline positioning styles from applying
+   - how Lichess handles comparable contextual move-list actions where relevant
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to context-menu positioning and the minimum supporting render seam needed.
+- Do not redesign the full move-list action system.
+- Do not bundle unrelated variation-action changes.
+
+Relevant current code areas to inspect first:
+- `src/main.ts`
+- `src/analyse/moveList.ts`
+- the app patcher/bootstrap setup if positioning modules are relevant
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- explicitly report:
+  - build result
+  - context-menu positioning behavior
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Success criteria:
+- the move-list context menu opens near the selected move
+- it no longer falls back to the top-left page origin
+- no unrelated move-list behavior is changed
 ```

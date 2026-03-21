@@ -3145,3 +3145,107 @@ Prompt text not recovered. This history entry was reconstructed after review fro
 - Review outcome: passed
 - Commit: `934a960`
 - Notes: the current implementation reduces arrow-label SVG text from the earlier oversized `font-size="22"` and `font-weight="700"` to `font-size="12"` and `font-weight="500"` in `src/engine/ctrl.ts` while preserving the existing shadow stroke treatment.
+
+## CCP-067-F1 — Reviewed
+
+- Task: fix eval-graph fill so white territory rises from the bottom of the graph instead of shading from the middle line
+- Task ID: `CCP-067`
+- Parent prompt ID: `CCP-067`
+- Source document: `ad hoc user request`
+- Source step: `make eval-graph white fill rise from the bottom of the chart instead of the center line`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `9a7a823`
+- Notes: the current implementation closes the white fill polygon to the bottom of the graph instead of the center line, so white territory now rises from the bottom while keeping graph interaction intact.
+
+## CCP-044-F4 — Reviewed
+
+- Task: refine engine-arrow labels to 10/400/2 and make both arrows and labels fade in subtly on first appearance
+- Task ID: `CCP-044`
+- Parent prompt ID: `CCP-044-F3`
+- Source document: `ad hoc user request`
+- Source step: `reduce arrow label typography to 10/400/2 and add subtle fade-in for new arrow labels and arrows`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `9a7a823`
+- Notes: `src/engine/ctrl.ts` now uses `font-size="10"`, `font-weight="400"`, and `stroke-width="2"` for arrow-label SVG text, and `src/styles/main.scss` adds a short fade-in animation for arrow/label shape groups.
+
+## CCP-069 — Reviewed
+
+- Task: refine the eval graph so it uses a center drag handle, keeps Lichess-style white fill, and removes phase labels
+- Task ID: `CCP-069`
+- Parent prompt ID: none
+- Source document: `ad hoc user request`
+- Source step: `replace eval-graph slider with a center drag handle, keep Lichess-style white fill, and remove phase labels`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `4f2aa23`
+- Notes: the current graph uses a center-bottom resize handle with bounded drag-based height control and no longer renders the earlier on-chart phase labels.
+
+## CCP-067 — Reviewed
+
+- Task: bring the eval-graph fill behavior into Lichess parity so White advantage fills white
+- Task ID: `CCP-067`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `Changes to how the eval graph is displayed and formatted`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `4891f59`
+- Notes: the original parity step replaced the old neutral center-closed fill with a Lichess-inspired white/black territory model using clipped graph areas above and below the origin.
+
+## CCP-068 — Reviewed
+
+- Task: add a small bottom-center eval-graph control that enlarges graph height from 100% up to 300%
+- Task ID: `CCP-068`
+- Parent prompt ID: none
+- Source document: `ad hoc user request`
+- Source step: `add a bottom-center eval-graph height toggle from 100% to 300%`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `4f2aa23`
+- Notes: the current graph-height control is a small center-bottom drag handle rather than a click toggle, but it provides the requested 100% to 300% bounded resize behavior.
+
+## CCP-066 — Reviewed
+
+- Task: add a search bar to both the underboard games list and the Games page using the smallest safe shared search/filter step
+- Task ID: `CCP-066`
+- Parent prompt ID: none
+- Source document: `ad hoc user request`
+- Source step: `add a search bar to the underboard games list and the Games history page`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: `934a960`
+- Notes: the underboard compact game list still has no search bar, and the Games page still exposes only the older opponent-only search instead of a shared broader text search across both surfaces.
+
+## CCP-035-F1 — Reviewed
+
+- Task: fix the remaining engine-arrowhead instability so line-count or nearby arrow-setting changes do not make the main arrowhead disappear
+- Task ID: `CCP-035`
+- Parent prompt ID: `CCP-035`
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[MEDIUM] Changing engine line count can make the main engine arrowhead disappear`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `1d43adc`
+- Notes: the current engine-arrow path uses stable registered brush keys and plain red played-arrow brushes, which removes the earlier line-count/settings transition seam that could drop the main arrowhead marker.
+
+## CCP-044-F2 — Reviewed
+
+- Task: refine engine-arrow label styling so the text is smaller and visually matches the eval-bar score
+- Task ID: `CCP-044`
+- Parent prompt ID: `CCP-044-F1`
+- Source document: `docs/WISHLIST.md`
+- Source step: `Add tag or label next to engine move arrows showing what their eval is`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: `934a960`
+- Notes: this refinement did not land as requested before the later `CCP-044-F3` and `CCP-044-F4` follow-ups changed the label styling in a different direction, so the original eval-bar-matching step is not cleanly present as its own completed prompt.
