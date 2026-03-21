@@ -20,6 +20,7 @@ import {
   showEngineArrows, setShowEngineArrows,
   arrowAllLines, setArrowAllLines,
   showPlayedArrow, setShowPlayedArrow,
+  showArrowLabels, setShowArrowLabels,
   syncArrow, toggleEngine, evalCurrentPosition,
   type EvalLine, type PositionEval,
 } from '../engine/ctrl';
@@ -446,6 +447,19 @@ export function renderEngineSettings(): VNode | null {
         on: {
           change: (e: Event) => {
             setShowPlayedArrow((e.target as HTMLInputElement).checked);
+            syncArrow();
+            _redraw();
+          },
+        },
+      }),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-arrow-labels' } }, 'Labels'),
+      h('input#ceval-arrow-labels', {
+        attrs: { type: 'checkbox', checked: showArrowLabels },
+        on: {
+          change: (e: Event) => {
+            setShowArrowLabels((e.target as HTMLInputElement).checked);
             syncArrow();
             _redraw();
           },

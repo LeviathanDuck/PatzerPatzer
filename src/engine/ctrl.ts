@@ -128,6 +128,7 @@ export let analysisDepth   = storedInt('patzer.analysisDepth', 30, 18, 30);
 export let showEngineArrows = true;
 export let arrowAllLines    = true;
 export let showPlayedArrow  = true;
+export let showArrowLabels  = localStorage.getItem('patzer.showArrowLabels') === 'true';
 
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 export let pendingLines: EvalLine[] = [];
@@ -157,6 +158,7 @@ export function clearPendingLines(): void         { pendingLines = []; }
 export function setShowEngineArrows(v: boolean): void { showEngineArrows = v; }
 export function setArrowAllLines(v: boolean): void    { arrowAllLines = v; }
 export function setShowPlayedArrow(v: boolean): void  { showPlayedArrow = v; }
+export function setShowArrowLabels(v: boolean): void  { showArrowLabels = v; localStorage.setItem('patzer.showArrowLabels', String(v)); }
 export function incrementPendingStopCount(): void { pendingStopCount++; }
 export function stopProtocol(): void              { protocol.stop(); }
 
@@ -179,9 +181,7 @@ export function buildArrowShapes(): DrawShape[] {
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
       const uci = currentEval.best;
-      shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'paleBlue' });
-      const scoreLabel = buildPrimaryArrowLabel();
-      if (scoreLabel) shapes.push(scoreLabel);
+      shapes.push(buildArrowShape(uci, 'paleBlue', currentEval));
     }
     // Secondary PV lines — paleGrey with lineWidth scaled by win% diff
     // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts compute()
@@ -194,12 +194,7 @@ export function buildArrowShapes(): DrawShape[] {
         if (shift >= 0.2) continue;
         const lineWidth = Math.max(2, Math.round(12 - shift * 50));
         const uci = line.best;
-        shapes.push({
-          orig: uci.slice(0, 2) as any,
-          dest: uci.slice(2, 4) as any,
-          brush: 'paleGrey',
-          modifiers: { lineWidth },
-        });
+        shapes.push(buildArrowShape(uci, 'paleGrey', line, { lineWidth }));
       }
     }
   }
@@ -218,14 +213,12 @@ export function buildArrowShapes(): DrawShape[] {
     const nextNode = ctrl.node.children[0];
     if (nextNode?.uci) {
       const uci = nextNode.uci;
+      const nextEval = evalCache.get(ctrl.path + nextNode.id);
       // Use plain red without lineWidth modifier so the arrowhead uses the well-known
       // 'r' brush key (marker arrowhead-r is guaranteed in defs).
       // Mirrors lichess-org/lila: ui/analyse/src/autoShape.ts compute() played-move brush.
-      shapes.push({
-        orig: uci.slice(0, 2) as any,
-        dest: uci.slice(2, 4) as any,
-        brush: 'red',
-      });
+      const playedEval = currentEval.best !== uci ? nextEval : undefined;
+      shapes.push(buildArrowShape(uci, 'red', playedEval));
     }
   }
 
@@ -235,23 +228,42 @@ export function buildArrowShapes(): DrawShape[] {
   return shapes;
 }
 
-function buildPrimaryArrowLabel(): DrawShape | null {
-  if (!currentEval.best) return null;
-  if (currentEval.cp === undefined && currentEval.mate === undefined) return null;
-
-  const text = formatScore(currentEval);
-  const fill = currentEval.mate !== undefined
-    ? '#9158d8'
-    : currentEval.cp !== undefined && currentEval.cp > 0
-      ? '#3d8f63'
-      : currentEval.cp !== undefined && currentEval.cp < 0
-        ? '#3f4f7a'
-        : '#666';
-
-  return {
-    orig: currentEval.best.slice(2, 4) as any,
-    label: { text, fill },
+function buildArrowShape(
+  uci: string,
+  brush: string,
+  ev?: Pick<PositionEval, 'cp' | 'mate'> | Pick<EvalLine, 'cp' | 'mate'>,
+  modifiers?: DrawShape['modifiers'],
+): DrawShape {
+  const shape: DrawShape = {
+    orig: uci.slice(0, 2) as any,
+    dest: uci.slice(2, 4) as any,
+    brush,
+    modifiers,
   };
+  const labelSvg = buildArrowLabelSvg(ev);
+  if (labelSvg) shape.customSvg = { html: labelSvg, center: 'label' };
+  return shape;
+}
+
+function buildArrowLabelSvg(ev?: Pick<PositionEval, 'cp' | 'mate'> | Pick<EvalLine, 'cp' | 'mate'>): string | null {
+  if (!showArrowLabels || !ev) return null;
+  if (ev.cp === undefined && ev.mate === undefined) return null;
+  const text = formatScore(ev);
+  const fill = ev.mate !== undefined
+    ? '#c987ff'
+    : ev.cp !== undefined && ev.cp > 0
+      ? '#8ae0a8'
+      : ev.cp !== undefined && ev.cp < 0
+        ? '#9ab8ff'
+        : '#d0d0d0';
+  return `<text x="50" y="56" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="34" font-weight="700" fill="${fill}" stroke="#111" stroke-width="8" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+}
+
+function escapeArrowLabelText(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 }
 
 function buildKoOverlayShape(fen: string): DrawShape | null {
