@@ -20,6 +20,42 @@ import type { TreeNode } from '../tree/types';
  */
 export type OpeningProvider = (fen: string) => string[] | undefined;
 
+const STANDARD_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const RETRO_OPENING_CANCEL_MAX_PLY = 20;
+
+/**
+ * Build the smallest live opening provider Patzer currently has available.
+ *
+ * Lichess uses explorer-backed master opening data keyed by FEN. Patzer does not
+ * yet have an explorer/book subsystem, so the honest local fallback is the
+ * current game's own early mainline when the PGN has opening metadata.
+ *
+ * This is intentionally limited:
+ * - only for standard-start games
+ * - only when the imported game carried opening/eco metadata
+ * - only for the early opening window, before a later dedicated book source exists
+ */
+export function buildMainlineOpeningProvider(
+  mainline: readonly TreeNode[],
+  hasOpeningMetadata: boolean,
+): OpeningProvider {
+  if (!hasOpeningMetadata) return () => undefined;
+  if (mainline[0]?.fen !== STANDARD_START_FEN) return () => undefined;
+
+  const openingMovesByFen = new Map<string, string[]>();
+  for (let i = 1; i < mainline.length; i++) {
+    const parent = mainline[i - 1];
+    const node = mainline[i];
+    if (!parent || !node?.uci) continue;
+    if (node.ply > RETRO_OPENING_CANCEL_MAX_PLY) break;
+    const moves = openingMovesByFen.get(parent.fen) ?? [];
+    if (!moves.includes(node.uci)) moves.push(node.uci);
+    openingMovesByFen.set(parent.fen, moves);
+  }
+
+  return (fen: string) => openingMovesByFen.get(fen);
+}
+
 // Eval lookup: structural type matching PositionEval without importing it.
 type EvalLookup = (path: string) => {
   cp?:    number;

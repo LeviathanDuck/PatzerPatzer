@@ -2,6 +2,8 @@
 // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts, ui/lib/src/ceval/view/settings.ts
 
 import { Chessground as makeChessground } from '@lichess-org/chessground';
+import type { Config } from '@lichess-org/chessground/config';
+import type { Key } from '@lichess-org/chessground/types';
 import { uciToMove } from '@lichess-org/chessground/util';
 import { Chess } from 'chessops/chess';
 import { scalachessCharPair } from 'chessops/compat';
@@ -336,13 +338,14 @@ export function renderPvBoard(): VNode | null {
   const arrow = uci.length >= 4
     ? [{ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleBlue' }]
     : [];
-  const cgConfig = {
+  const lastMove = uciToMove(uci);
+  const cgConfig: Config = {
     fen,
-    lastMove: uciToMove(uci),
     orientation,
     coordinates: false,
     viewOnly: true,
     drawable: { enabled: false, visible: true, autoShapes: arrow },
+    ...(lastMove ? { lastMove } : {}),
   };
   return h('div.pv-board-float', {
     key: 'pv-board-float',

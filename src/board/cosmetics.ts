@@ -161,7 +161,7 @@ export function renderFilterSlider(
   redraw: () => void,
   fmt?: (v: number) => string,
 ): VNode {
-  const value = boardFilters[prop];
+  const value = boardFilters[prop] ?? FILTER_DEFAULTS[prop] ?? min;
   return h('div.board-settings__slider-row', [
     h('label', label),
     h('input', {

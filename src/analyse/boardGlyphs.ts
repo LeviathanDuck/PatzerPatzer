@@ -26,11 +26,16 @@ export function annotationShapes(node: Pick<TreeNodeBase, 'uci' | 'san' | 'glyph
           : makeSquare(move.to);
         const symbol = glyph.symbol;
         const prerendered = glyphToSvg[symbol] ? glyphToSvg[symbol](idx) : undefined;
+        if (prerendered) {
+          return {
+            orig: destSquare,
+            brush: '',
+            customSvg: { html: prerendered },
+          };
+        }
         return {
           orig: destSquare,
-          brush: prerendered ? '' : undefined,
-          customSvg: prerendered ? { html: prerendered } : undefined,
-          label: prerendered ? undefined : { text: symbol, fill: 'purple' },
+          label: { text: symbol, fill: 'purple' },
           // keep some purple just to keep feedback forum on their toes
         };
       })

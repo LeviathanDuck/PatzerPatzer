@@ -14,18 +14,27 @@ export function importPgn(callbacks: ImportCallbacks): void {
   if (!raw) return;
   try {
     pgnToTree(raw); // validate — throws on bad PGN
+    const white = parsePgnHeader(raw, 'White');
+    const black = parsePgnHeader(raw, 'Black');
+    const result = parsePgnHeader(raw, 'Result');
+    const date = parsePgnHeader(raw, 'Date')?.replace(/\./g, '-');
+    const timeClass = timeClassFromTimeControl(parsePgnHeader(raw, 'TimeControl'));
+    const opening = parsePgnHeader(raw, 'Opening');
+    const eco = parsePgnHeader(raw, 'ECO');
+    const whiteRating = parseRating(parsePgnHeader(raw, 'WhiteElo'));
+    const blackRating = parseRating(parsePgnHeader(raw, 'BlackElo'));
     const game: ImportedGame = {
-      id:          nextGameId(),
-      pgn:         raw,
-      white:       parsePgnHeader(raw, 'White'),
-      black:       parsePgnHeader(raw, 'Black'),
-      result:      parsePgnHeader(raw, 'Result'),
-      date:        parsePgnHeader(raw, 'Date')?.replace(/\./g, '-'),
-      timeClass:   timeClassFromTimeControl(parsePgnHeader(raw, 'TimeControl')),
-      opening:     parsePgnHeader(raw, 'Opening'),
-      eco:         parsePgnHeader(raw, 'ECO'),
-      whiteRating: parseRating(parsePgnHeader(raw, 'WhiteElo')),
-      blackRating: parseRating(parsePgnHeader(raw, 'BlackElo')),
+      id:  nextGameId(),
+      pgn: raw,
+      ...(white ? { white } : {}),
+      ...(black ? { black } : {}),
+      ...(result ? { result } : {}),
+      ...(date ? { date } : {}),
+      ...(timeClass ? { timeClass } : {}),
+      ...(opening ? { opening } : {}),
+      ...(eco ? { eco } : {}),
+      ...(whiteRating !== undefined ? { whiteRating } : {}),
+      ...(blackRating !== undefined ? { blackRating } : {}),
       // importedUsername not set: PGN paste has no reliable importing-user identity
     };
     pgnState.error = null;

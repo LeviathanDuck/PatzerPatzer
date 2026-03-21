@@ -107,10 +107,13 @@ function nextBranch(): void {
   let path = ctrl.path;
   let node = ctrl.node;
   while (node.children.length === 1) {
-    path += node.children[0].id;
-    node = node.children[0];
+    const onlyChild = node.children[0];
+    if (!onlyChild) break;
+    path += onlyChild.id;
+    node = onlyChild;
   }
-  if (node.children.length >= 2) _navigate(path + node.children[0].id);
+  const firstChild = node.children[0];
+  if (node.children.length >= 2 && firstChild) _navigate(path + firstChild.id);
   else _last(); // no fork ahead — go to end
 }
 
@@ -125,6 +128,7 @@ function nextSibling(): void {
   if (!parentNode || parentNode.children.length < 2) return;
   const idx  = parentNode.children.findIndex(c => c.id === ctrl.node.id);
   const next = parentNode.children[(idx + 1) % parentNode.children.length];
+  if (!next) return;
   _navigate(parentPath + next.id);
 }
 
@@ -139,6 +143,7 @@ function prevSibling(): void {
   if (!parentNode || parentNode.children.length < 2) return;
   const idx  = parentNode.children.findIndex(c => c.id === ctrl.node.id);
   const prev = parentNode.children[(idx - 1 + parentNode.children.length) % parentNode.children.length];
+  if (!prev) return;
   _navigate(parentPath + prev.id);
 }
 

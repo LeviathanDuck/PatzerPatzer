@@ -4,6 +4,7 @@
 
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
+import type { Key } from '@lichess-org/chessground/types';
 import { key2pos, uciToMove } from '@lichess-org/chessground/util';
 import type { NormalMove, Role } from 'chessops';
 import { Chess, normalizeMove } from 'chessops/chess';
@@ -67,14 +68,14 @@ export function setOrientation(v: 'white' | 'black'): void {
  * Returns a Map<square, dest[]> suitable for Chessground movable.dests.
  * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts makeCgOpts (dests computation)
  */
-export function computeDests(fen: string): Map<string, string[]> {
+export function computeDests(fen: string): Map<Key, Key[]> {
   const setup = parseFen(fen).unwrap();
   const pos = Chess.fromSetup(setup).unwrap();
   // chessgroundDests handles the chess960→standard castling square translation:
   // it adds g1/c1/g8/c8 destinations alongside the internal rook squares so
   // Chessground can display castling as king-to-final-square.
   // Adapted from lichess-org/lila: ui/lib/src/game/ground.ts
-  return chessgroundDests(pos) as Map<string, string[]>;
+  return chessgroundDests(pos) as Map<Key, Key[]>;
 }
 
 /**
@@ -172,7 +173,10 @@ export function completeMove(orig: string, dest: string, promotion?: Role): void
   // for chessops's internal castling representation (Chess960 style internally).
   // Required because chessgroundDests exposes g1/c1 as destinations.
   // Adapted from lichess-org/lila: ui/lib/src/game/ground.ts
-  const move: NormalMove = normalizeMove(pos, { from: fromSq, to: toSq, promotion }) as NormalMove;
+  const move: NormalMove = normalizeMove(
+    pos,
+    promotion !== undefined ? { from: fromSq, to: toSq, promotion } : { from: fromSq, to: toSq },
+  ) as NormalMove;
   const san = makeSanAndPlay(pos, move);
   const newNode: TreeNode = {
     id: scalachessCharPair(move),
@@ -236,14 +240,15 @@ export function syncBoard(): void {
   const ctrl = _getCtrl();
   const node = ctrl.node;
   const dests = computeDests(node.fen);
+  const lastMove = uciToMove(node.uci);
   cgInstance.set({
     fen: node.fen,
-    lastMove: uciToMove(node.uci),
     turnColor: node.ply % 2 === 0 ? 'white' : 'black',
     movable: {
       color: node.ply % 2 === 0 ? 'white' : 'black',
       dests,
     },
+    ...(lastMove ? { lastMove } : {}),
   });
 }
 
@@ -261,14 +266,14 @@ type MaterialDiffSide = Record<Role, number>;
 interface MaterialDiff { white: MaterialDiffSide; black: MaterialDiffSide; }
 
 const ROLE_ORDER: Role[] = ['queen', 'rook', 'bishop', 'knight', 'pawn'];
-const ROLE_POINTS: Record<string, number> = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
+const ROLE_POINTS: Record<Role, number> = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
 
 function getMaterialDiff(fen: string): MaterialDiff {
   const diff: MaterialDiff = {
     white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
     black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
   };
-  const fenBoard = fen.split(' ')[0];
+  const fenBoard = fen.split(' ')[0] ?? '';
   const charToRole: Record<string, Role> = { p:'pawn', n:'knight', b:'bishop', r:'rook', q:'queen', k:'king' };
   for (const ch of fenBoard) {
     const lower = ch.toLowerCase();
@@ -332,6 +337,7 @@ function getClocksAtPath(): { white: number | undefined; black: number | undefin
   // Walk from most recent backwards so we get the closest available clock
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
+    if (!n) continue;
     if (n.clock === undefined) continue;
     // ply 1 = white moved, ply 2 = black moved, etc.
     if (n.ply % 2 === 1 && white === undefined) white = n.clock;
@@ -394,7 +400,7 @@ function bindBoardResizeHandle(container: HTMLElement): void {
   const el = document.createElement('cg-resize');
   container.appendChild(el);
 
-  type MouchEvent = Event & Partial<MouseEvent & TouchEvent>;
+  type MouchEvent = Event & Partial<MouseEvent & TouchEvent & PointerEvent>;
   const eventPos = (e: MouchEvent): [number, number] | undefined => {
     if (e.clientX !== undefined) return [e.clientX, e.clientY!];
     if (e.targetTouches?.[0]) return [e.targetTouches[0].clientX, e.targetTouches[0].clientY];
@@ -403,7 +409,8 @@ function bindBoardResizeHandle(container: HTMLElement): void {
 
   const startResize = (start: MouchEvent) => {
     start.preventDefault();
-    const startPos = eventPos(start)!;
+    const startPos = eventPos(start);
+    if (!startPos) return;
     const initialZoom = boardZoom;
     let zoom = initialZoom;
 
@@ -414,27 +421,37 @@ function bindBoardResizeHandle(container: HTMLElement): void {
       saveTimer = setTimeout(() => saveBoardZoom(zoom), 700);
     };
 
-    const mousemoveEvent = (start as TouchEvent).targetTouches ? 'touchmove' : 'mousemove';
-    const mouseupEvent   = (start as TouchEvent).targetTouches ? 'touchend'  : 'mouseup';
+    const pointerId = typeof start.pointerId === 'number' ? start.pointerId : null;
+    const usePointer = start.type === 'pointerdown';
+    const mousemoveEvent = usePointer ? 'pointermove' : (start as TouchEvent).targetTouches ? 'touchmove' : 'mousemove';
+    const mouseupEvent   = usePointer ? 'pointerup'   : (start as TouchEvent).targetTouches ? 'touchend'  : 'mouseup';
 
     const resize = (move: MouchEvent) => {
-      const pos = eventPos(move)!;
+      if (pointerId !== null && move.pointerId !== undefined && move.pointerId !== pointerId) return;
+      if (move.cancelable) move.preventDefault();
+      const pos = eventPos(move);
+      if (!pos) return;
       const delta = pos[0] - startPos[0] + pos[1] - startPos[1];
       zoom = Math.round(Math.min(100, Math.max(0, initialZoom + delta / 10)));
       applyBoardZoom(zoom);
+      window.dispatchEvent(new Event('resize'));
       saveZoom();
     };
 
     document.body.classList.add('resizing');
-    document.addEventListener(mousemoveEvent, resize as EventListener);
+    document.addEventListener(mousemoveEvent, resize as EventListener, { passive: false });
     document.addEventListener(mouseupEvent, () => {
       document.removeEventListener(mousemoveEvent, resize as EventListener);
       document.body.classList.remove('resizing');
     }, { once: true });
   };
 
-  el.addEventListener('mousedown',  startResize as EventListener, { passive: false });
-  el.addEventListener('touchstart', startResize as EventListener, { passive: false });
+  if ('PointerEvent' in window) {
+    el.addEventListener('pointerdown', startResize as EventListener, { passive: false });
+  } else {
+    el.addEventListener('mousedown',  startResize as EventListener, { passive: false });
+    el.addEventListener('touchstart', startResize as EventListener, { passive: false });
+  }
 }
 
 // Adapted from lichess-org/lila: ui/analyse/src/ground.ts render + makeConfig
@@ -446,12 +463,16 @@ export function renderBoard(): VNode {
         const ctrl = _getCtrl();
         const node = ctrl.node;
         const dests = computeDests(node.fen);
+        const lastMove = uciToMove(node.uci);
         cgInstance = makeChessground(vnode.elm as HTMLElement, {
           orientation,
           viewOnly: false,
           drawable: {
             enabled: true,
             brushes: {
+              green:    { key: 'g',   color: '#15781B', opacity: 1,    lineWidth: 10 },
+              blue:     { key: 'b',   color: '#003088', opacity: 1,    lineWidth: 10 },
+              yellow:   { key: 'y',   color: '#e68f00', opacity: 1,    lineWidth: 10 },
               // Explicitly register all brushes used by engine arrow rendering so their
               // keys are always present in Chessground state regardless of deepMerge order.
               // Mirrors lichess-org/lila: state.ts default brushes; opacity/lineWidth values
@@ -462,7 +483,6 @@ export function renderBoard(): VNode {
             },
           },
           fen: node.fen,
-          lastMove: uciToMove(node.uci),
           turnColor: node.ply % 2 === 0 ? 'white' : 'black',
           movable: {
             free: false,
@@ -473,6 +493,7 @@ export function renderBoard(): VNode {
           events: {
             move: onUserMove,
           },
+          ...(lastMove ? { lastMove } : {}),
         });
         // Attach resize handle after Chessground is initialized.
         // Adapted from lichess-org/lila: ui/lib/src/chessgroundResize.ts resizeHandle()

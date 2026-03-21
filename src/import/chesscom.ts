@@ -94,21 +94,28 @@ export async function fetchChesscomGames(
     } catch {
       continue;
     }
+    const white = raw.white?.username;
+    const black = raw.black?.username;
+    const date = parsePgnHeader(pgn, 'Date')?.replace(/\./g, '-');
+    const timeClass = raw.time_class as string | undefined;
+    const opening = parsePgnHeader(pgn, 'Opening');
+    const eco = parsePgnHeader(pgn, 'ECO');
+    const whiteRating = parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, 'WhiteElo'));
+    const blackRating = parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, 'BlackElo'));
     result.push({
       id:               nextGameId(),
       pgn,
-      white:            raw.white?.username ?? undefined,
-      black:            raw.black?.username ?? undefined,
       result:           normalizeChesscomResult(raw.white?.result ?? '', raw.black?.result ?? ''),
-      date:             parsePgnHeader(pgn, 'Date')?.replace(/\./g, '-'),
-      timeClass:        raw.time_class as string | undefined,
-      opening:          parsePgnHeader(pgn, 'Opening'),
-      eco:              parsePgnHeader(pgn, 'ECO'),
       source:           'chesscom',
-      // API field is a number; fall back to PGN header if absent
-      whiteRating:      parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, 'WhiteElo')),
-      blackRating:      parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, 'BlackElo')),
       importedUsername: username.toLowerCase(),
+      ...(white ? { white } : {}),
+      ...(black ? { black } : {}),
+      ...(date ? { date } : {}),
+      ...(timeClass ? { timeClass } : {}),
+      ...(opening ? { opening } : {}),
+      ...(eco ? { eco } : {}),
+      ...(whiteRating !== undefined ? { whiteRating } : {}),
+      ...(blackRating !== undefined ? { blackRating } : {}),
     });
   }
   return result;

@@ -271,6 +271,8 @@ const GRAPH_W = 600;
 const GRAPH_H = 80;
 const GRAPH_HEIGHT_MIN = 100;
 const GRAPH_HEIGHT_MAX = 300;
+let evalGraphScrubPointerId: number | null = null;
+let evalGraphLastScrubPath: string | null = null;
 const graphHeightRaw = Number.parseInt(localStorage.getItem('patzer.evalGraphHeightPct') ?? '', 10);
 let graphHeightPct = Number.isFinite(graphHeightRaw)
   ? Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, graphHeightRaw))
@@ -363,6 +365,45 @@ export function renderEvalGraph(
 
   const cy = GRAPH_H / 2;
   const svgNodes: VNode[] = [];
+  const hideHover = (svg: SVGSVGElement | null): void => {
+    const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
+    if (hl) hl.setAttribute('opacity', '0');
+  };
+  const showHover = (svg: SVGSVGElement | null, pt: Pt | null): void => {
+    const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
+    if (!hl || !pt) return;
+    hl.setAttribute('x1', String(pt.x));
+    hl.setAttribute('x2', String(pt.x));
+    hl.setAttribute('opacity', '0.55');
+  };
+  const nearestPointForClientX = (svg: SVGSVGElement | null, clientX: number): Pt | null => {
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const graphX = Math.max(0, Math.min(GRAPH_W, ((clientX - rect.left) / rect.width) * GRAPH_W));
+    let nearest = valid[0]!;
+    let nearestDist = Math.abs(nearest.x - graphX);
+    for (let i = 1; i < valid.length; i++) {
+      const pt = valid[i]!;
+      const dist = Math.abs(pt.x - graphX);
+      if (dist < nearestDist) {
+        nearest = pt;
+        nearestDist = dist;
+      }
+    }
+    return nearest;
+  };
+  const updateHoverAndMaybeScrub = (target: EventTarget | null, clientX: number, scrub: boolean): void => {
+    const svg = target instanceof SVGElement
+      ? (target.ownerSVGElement ?? (target as SVGSVGElement))
+      : null;
+    const pt = nearestPointForClientX(svg, clientX);
+    showHover(svg, pt);
+    if (scrub && pt && pt.path !== evalGraphLastScrubPath) {
+      evalGraphLastScrubPath = pt.path;
+      navigate(pt.path);
+    }
+  };
 
   // Follow-up parity refinement: render White territory as a fill rising from the
   // bottom of the chart to the eval line, matching the intended Lichess-style read.
@@ -414,29 +455,9 @@ export function renderEvalGraph(
     },
   }));
 
-  // Click strips (wider target than the dot) + dots
+  // Dots
   for (const pt of valid) {
-    const capturePath = pt.path;
     const isCurrent = pt.path === currentPath;
-    const capturedX = pt.x;
-
-    // Invisible wide strip for easier clicking + hover targeting
-    svgNodes.push(h('rect', {
-      attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: 'transparent' },
-      on: {
-        click: () => navigate(capturePath),
-        mouseenter: (e: MouseEvent) => {
-          const svg = (e.currentTarget as Element).closest('svg');
-          const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
-          if (hl) {
-            hl.setAttribute('x1', String(capturedX));
-            hl.setAttribute('x2', String(capturedX));
-            hl.setAttribute('opacity', '0.55');
-          }
-        },
-      },
-    }));
-
     // Visible dot — current position overrides to green; mate opportunity → purple;
     // otherwise colored by move classification.
     // Graph dot colors match glyph annotation palette — mirrors _theme.default.scss
@@ -453,17 +474,55 @@ export function renderEvalGraph(
       fill: dotColor,
       stroke: isCurrent ? '#fff' : 'none',
       'stroke-width': 1,
+      'pointer-events': 'none',
     } }));
   }
 
+  // Full-width interaction layer for nearest-x hover and pointer scrubbing.
+  // Mirrors the usability of lichess-org/lila: ui/chart/src/acpl.ts
+  // interaction.mode = 'nearest' / axis = 'x' / intersect = false.
+  svgNodes.push(h('rect', {
+    attrs: {
+      x: 0,
+      y: 0,
+      width: GRAPH_W,
+      height: GRAPH_H,
+      fill: 'transparent',
+    },
+    on: {
+      pointerdown: (e: PointerEvent) => {
+        evalGraphScrubPointerId = e.pointerId;
+        evalGraphLastScrubPath = currentPath;
+        (e.currentTarget as SVGGraphicsElement).setPointerCapture?.(e.pointerId);
+        updateHoverAndMaybeScrub(e.currentTarget, e.clientX, true);
+        e.preventDefault();
+      },
+      pointermove: (e: PointerEvent) => {
+        updateHoverAndMaybeScrub(e.currentTarget, e.clientX, evalGraphScrubPointerId === e.pointerId);
+      },
+      pointerup: (e: PointerEvent) => {
+        if (evalGraphScrubPointerId === e.pointerId) {
+          evalGraphScrubPointerId = null;
+          evalGraphLastScrubPath = null;
+        }
+        (e.currentTarget as SVGGraphicsElement).releasePointerCapture?.(e.pointerId);
+      },
+      pointercancel: (e: PointerEvent) => {
+        if (evalGraphScrubPointerId === e.pointerId) {
+          evalGraphScrubPointerId = null;
+          evalGraphLastScrubPath = null;
+        }
+        hideHover((e.currentTarget as SVGGraphicsElement).ownerSVGElement);
+      },
+      pointerleave: (e: PointerEvent) => {
+        if (evalGraphScrubPointerId !== e.pointerId) hideHover((e.currentTarget as SVGGraphicsElement).ownerSVGElement);
+      },
+    },
+  }));
+
   return h('div.eval-graph', {
     on: {
-      // Hide hover indicator when mouse leaves the graph area entirely.
-      mouseleave: (e: MouseEvent) => {
-        const svg = (e.currentTarget as Element).querySelector('svg');
-        const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
-        if (hl) hl.setAttribute('opacity', '0');
-      },
+      mouseleave: (e: MouseEvent) => hideHover((e.currentTarget as Element).querySelector('svg')),
     },
   }, [
     h('svg', { attrs: {
