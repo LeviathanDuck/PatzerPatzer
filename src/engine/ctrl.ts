@@ -183,7 +183,9 @@ export function buildArrowShapes(): DrawShape[] {
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
       const uci = currentEval.best;
-      shapes.push(buildArrowShape(uci, 'paleBlue', currentEval));
+      shapes.push(buildArrowShape(uci, 'paleBlue'));
+      const labelShape = buildArrowLabelShape(uci, currentEval);
+      if (labelShape) shapes.push(labelShape);
     }
     // Secondary PV lines — paleGrey with lineWidth scaled by win% diff
     // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts compute()
@@ -196,7 +198,9 @@ export function buildArrowShapes(): DrawShape[] {
         if (shift >= 0.2) continue;
         const lineWidth = Math.max(2, Math.round(12 - shift * 50));
         const uci = line.best;
-        shapes.push(buildArrowShape(uci, 'paleGrey', line, { lineWidth }));
+        shapes.push(buildArrowShape(uci, 'paleGrey', { lineWidth }));
+        const labelShape = buildArrowLabelShape(uci, line);
+        if (labelShape) shapes.push(labelShape);
       }
     }
   }
@@ -220,7 +224,9 @@ export function buildArrowShapes(): DrawShape[] {
       // 'r' brush key (marker arrowhead-r is guaranteed in defs).
       // Mirrors lichess-org/lila: ui/analyse/src/autoShape.ts compute() played-move brush.
       const playedEval = currentEval.best !== uci ? nextEval : undefined;
-      shapes.push(buildArrowShape(uci, 'red', playedEval));
+      shapes.push(buildArrowShape(uci, 'red'));
+      const labelShape = buildArrowLabelShape(uci, playedEval);
+      if (labelShape) shapes.push(labelShape);
     }
   }
 
@@ -233,7 +239,6 @@ export function buildArrowShapes(): DrawShape[] {
 function buildArrowShape(
   uci: string,
   brush: string,
-  ev?: Pick<PositionEval, 'cp' | 'mate'> | Pick<EvalLine, 'cp' | 'mate'>,
   modifiers?: DrawShape['modifiers'],
 ): DrawShape {
   const shape: DrawShape = {
@@ -242,9 +247,20 @@ function buildArrowShape(
     brush,
   };
   if (modifiers) shape.modifiers = modifiers;
-  const labelSvg = buildArrowLabelSvg(ev);
-  if (labelSvg) shape.customSvg = { html: labelSvg, center: 'label' };
   return shape;
+}
+
+function buildArrowLabelShape(
+  uci: string,
+  ev?: Pick<PositionEval, 'cp' | 'mate'> | Pick<EvalLine, 'cp' | 'mate'>,
+): DrawShape | null {
+  const labelSvg = buildArrowLabelSvg(ev);
+  if (!labelSvg) return null;
+  return {
+    orig: uci.slice(0, 2) as any,
+    dest: uci.slice(2, 4) as any,
+    customSvg: { html: labelSvg, center: 'label' },
+  };
 }
 
 function buildArrowLabelSvg(ev?: Pick<PositionEval, 'cp' | 'mate'> | Pick<EvalLine, 'cp' | 'mate'>): string | null {
