@@ -113,17 +113,18 @@ main {
     padding: 0 10px;
     height: 34px;
     background: transparent;
-    color: #888;
+    color: #666;
     border: none;
+    border-bottom: 2px solid transparent;
     border-radius: 0;
     cursor: pointer;
     font-size: 0.78rem;
     font-weight: 500;
     white-space: nowrap;
-    transition: background 0.1s, color 0.1s;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
 
-    &:hover { color: #ccc; background: #222; }
-    &.active { color: #e8e8e8; background: #222; }
+    &:hover { color: #bbb; background: #1a1a1a; }
+    &.active { color: #e8e8e8; background: #1a1a1a; border-bottom-color: hsl(209,79%,56%); }
   }
 
   // Username input
@@ -934,15 +935,11 @@ body.resizing {
   }
 }
 
+// Winner-only star — shown only for the winning player; losers and draws show nothing.
 .player-strip__result {
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
-  color: #666;
-  font-weight: 600;
-
-  &--winner {
-    color: #e8e8e8;
-  }
+  font-size: 0.85rem;
+  color: #f0c040;
+  line-height: 1;
 }
 
 // ─── Piece Sets ────────────────────────────────────────────────────────────────
@@ -1695,6 +1692,9 @@ body[data-board='newspaper'] cg-board::before {
 
   &__score--white { color: #d4d4a0; }
   &__score--black { color: #8fb8d4; }
+  // Massive improvement — engine found ≥ 2-pawn advantage for the side to move.
+  // Overrides white/black base color with a brighter signal.
+  &__score--massive { color: hsl(129, 71%, 55%); font-weight: 700; }
 
   // Empty placeholder row — same height as a real row, no content.
   &--empty { color: transparent; }
@@ -1927,16 +1927,18 @@ body[data-board='newspaper'] cg-board::before {
   color: #888;
 }
 
+// Annotation label colors — mirrors lichess-org/lila: ui/lib/css/theme/_theme.default.scss
+// $c-blunder / $c-mistake / $c-inaccuracy
 .summary__blunder {
-  color: #f66;
+  color: hsl(0, 69%, 60%);
 }
 
 .summary__mistake {
-  color: #f84;
+  color: hsl(41, 100%, 45%);
 }
 
 .summary__inaccuracy {
-  color: #fa4;
+  color: hsl(202, 78%, 62%);
 }
 
 // .analyse grid is defined above near .analyse__board-wrap replacement.

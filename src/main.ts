@@ -470,7 +470,7 @@ function routeContent(route: Route): VNode {
 
         // Eval gauge — between board and tools (grid-area: gauge)
         // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge grid-area
-        renderEvalBar(engineEnabled, currentEval),
+        renderEvalBar(engineEnabled, currentEval, ctrl.node.fen),
 
         // Tools — right column (grid-area: tools)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__tools
