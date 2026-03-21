@@ -294,8 +294,26 @@ function routeContent(route: Route): VNode {
     redraw,
   };
   switch (route.name) {
-    case 'analysis-game':
-      return h('h1', `Analysis Game: ${route.params['id']}`);
+    case 'analysis-game': {
+      // Resolve the route's game id against the imported library.
+      // Three states:
+      //   (a) importedGames empty → IDB hasn't loaded yet; show transient loading text.
+      //   (b) id not found → honest fallback instead of a fake workflow.
+      //   (c) id found → fall through to render the full analysis board below.
+      //       The game was already selected by the onChange or startup route handler.
+      const gameId = route.params['id'] ?? '';
+      if (importedGames.length === 0) {
+        return h('p', 'Loading…');
+      }
+      if (!importedGames.find(g => g.id === gameId)) {
+        return h('div', [
+          h('p', `Game "${gameId}" was not found in the imported library.`),
+          h('a', { attrs: { href: '#/games' } }, 'View all games'),
+        ]);
+      }
+      // intentional fallthrough — game is loaded, render the analysis board
+    }
+    // falls through
     case 'analysis':
       return h('div.analyse', [
         // Board — left column (grid-area: board)
@@ -518,6 +536,20 @@ bindKeyboardHandlers({
 
 onChange(route => {
   currentRoute = route;
+  // When deep-linking to a specific game, load it before rendering.
+  // loadGame() calls redraw() which patches via currentRoute, so return early
+  // to avoid a redundant second patch in this handler.
+  // Mirrors the pattern in lichess-org/lila: ui/analyse/src/ctrl.ts where the
+  // controller is always initialized with the correct game data before rendering.
+  if (route.name === 'analysis-game') {
+    const id = route.params['id'] ?? '';
+    const game = importedGames.find(g => g.id === id);
+    if (game && game.id !== selectedGameId) {
+      selectedGameId = game.id;
+      loadGame(game.pgn); // calls redraw() which patches with the updated state
+      return;
+    }
+  }
   vnode = patch(vnode, view(currentRoute));
 });
 
@@ -536,8 +568,14 @@ void loadGamesFromIdb().then(stored => {
   // Restore gameIdCounter so new imports don't collide with existing ids.
   const maxId = Math.max(...stored.games.map(g => parseInt(g.id.replace('game-', '')) || 0));
   restoreGameIdCounter(maxId);
-  // Restore the previously selected game, or fall back to the first one
-  const toLoad = stored.games.find(g => g.id === stored.selectedId) ?? stored.games[0]!;
+  // When deep-linking to analysis-game at boot, prefer the route's id over the
+  // previously selected game so the URL resolves to the intended game immediately.
+  const routeGameId = currentRoute.name === 'analysis-game'
+    ? (currentRoute.params['id'] ?? null)
+    : null;
+  const toLoad = (routeGameId !== null ? stored.games.find(g => g.id === routeGameId) : undefined)
+    ?? stored.games.find(g => g.id === stored.selectedId)
+    ?? stored.games[0]!;
   selectedGameId = toLoad.id;
   selectedGamePgn = toLoad.pgn;
   ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));
