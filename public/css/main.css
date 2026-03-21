@@ -845,6 +845,13 @@ main {
 .global-menu__item--has-sub {
   user-select: none;
 }
+.global-menu__item--toggle {
+  cursor: default;
+}
+.global-menu__item--toggle input {
+  margin: 0;
+  cursor: pointer;
+}
 .global-menu__arrow {
   color: #888;
   font-size: 0.9rem;

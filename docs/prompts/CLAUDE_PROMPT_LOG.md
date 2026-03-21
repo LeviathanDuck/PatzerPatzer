@@ -11,13 +11,27 @@ Use this file to track Claude Code prompts from creation through review.
   - `CCP-013-F2`
 - Prompts should also live in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` until they have actually been run and then reviewed.
 - On prompt creation, add an unchecked entry here immediately.
+- On prompt creation, also add the prompt id and short task title to the top-level checklist index as `- [ ] CCP-### - Short Task Title`.
 - On review, update the same entry here rather than creating a second one.
+- On review, also flip the matching top-level checklist index item from `- [ ]` to `- [x]`.
 - Check the box as soon as the implementation has been reviewed, regardless of whether the review passed cleanly.
 - After review, add a short review outcome label such as `passed`, `passed with notes`, `issues found`, or `needs rework`.
 - If review finds issues, keep the entry checked and record a brief issue summary under the same entry.
 - If the prompt was reviewed but the exact prompt text was not found in `CLAUDE_PROMPT_QUEUE.md`, note that explicitly.
 
 ## Template
+
+## Index Template
+
+Keep a top-level checklist index near the top of this file:
+
+```
+- [ ] CCP-### - Short Task Title
+```
+
+The index is a compact scan list of prompt ids plus short task titles.
+It should not include review notes.
+It should stay in sync with the detailed entry below.
 
 ## CCP-### - Short Task Title
 
@@ -52,7 +66,98 @@ Use this file to track Claude Code prompts from creation through review.
 - If review finds issues, replace `Review issues: none` with a short issue list or summary on the same entry.
 - Keep the entry compact. This log is for tracking prompt provenance and review state, not for full review writeups.
 
+## Prompt Index
+
+- [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
+- [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
+- [x] CCP-015-F2 - Per-Candidate Engine Guidance Toggle In Retrospection
+- [x] CCP-017 - Remove Clear Variations Button
+- [x] CCP-013 - Retrospection Lifecycle Wiring
+- [x] CCP-013-F1 - Finish Retrospection Lifecycle Wiring
+- [x] CCP-014-F1 - Hide Find Puzzles Button During Mistakes Rollout
+- [x] CCP-012 - Retrospection Controller Skeleton
+- [x] CCP-016 - Use Persisted Review Labels In UI
+- [x] CCP-015-F1 - Hide Engine Guidance During Retrospection
+- [x] CCP-018 - Extract Retrospection UI Ownership
+- [x] CCP-019 - Complete Retrospection Lifecycle Handling
+- [x] CCP-020 - Move Retrospection UI Into Analysis Tools
+- [x] CCP-021 - Suppress Conflicting Analysis UI During Retrospection
+- [x] CCP-022 - Persist Retrospection Best-Line Context
+- [x] CCP-023 - Add Book-Aware Retrospection Cancellation
+- [x] CCP-024 - Add Near-Best Acceptance Parity
+- [x] CCP-025 - Add Move-List Context Menu Infrastructure
+- [x] CCP-026 - Add Copy Mainline And Variation PGN Actions
+- [x] CCP-027 - Add Delete-From-Here Variation Action
+- [x] CCP-028 - Add Variation Promotion And Make-Mainline Actions
+- [x] CCP-015 - Minimal Retrospection Solve Loop
+- [x] CCP-014 - Enter Retrospection For Current Game
+- [x] CCP-011 - Retrospection Candidate Builder
+- [x] CCP-010 - Fix Sparse Move-List Row Spacing
+- [x] CCP-009 - Sticky Move-List Action Strip
+- [x] CCP-008 - Move Clear Variations Into Bottom Action Strip
+- [x] CCP-007 - Small Review-State Messaging Improvement
+- [x] CCP-006 - Honest Minimum Analysis-Game Route Surface
+- [x] CCP-005 - Clear Side Variations And Restore Mainline Order
+- [x] CCP-004 - Variation Remove Button Visual Alignment
+- [x] CCP-003 - First Move-List Variation Removal Affordance
+- [x] CCP-030 - First Safe Typecheck Error Slice
+- [x] CCP-031 - Fix Board Wheel Navigation Selector
+- [x] CCP-032 - Replace Stop Boolean With Search Tokens
+- [x] CCP-033 - Fix Imported-Game Orientation Propagation
+- [x] CCP-006-F1 - Fix Analysis-Game Empty-Library Loading State
+- [x] CCP-034 - Improve Eval Graph Hover And Scrub
+- [x] CCP-035 - Fix Engine Arrowhead Rendering
+- [x] CCP-036 - Implement Honest Minimum Puzzles Route
+- [x] CCP-037 - Fetch Multi-Month Chess.com Archives
+- [x] CCP-038 - Replace Header Game Review Stub
+- [ ] CCP-040 - Eval Graph Display Refresh
+- [x] CCP-041 - Review Annotation Color Parity
+- [ ] CCP-042 - Move Review Button Beside Navigation Controls
+- [x] CCP-043 - Replace Player-Strip Result Markers
+- [ ] CCP-044 - Add Eval Labels To Engine Arrows
+- [ ] CCP-045 - Prevent Duplicate Reimports
+- [ ] CCP-046 - Import Only New Games Since Last Import
+- [x] CCP-047 - Header Platform Toggle UX
+- [ ] CCP-056 - Add Main-Menu Toggle For Board Wheel Navigation
+- [x] CCP-048 - Highlight Massive Engine Improvements
+- [x] CCP-049 - Show KO Mate Notation
+- [x] CCP-050 - Winner-Color Eval Bar On Mate
+- [ ] CCP-051 - KO Overlay On Losing King For M1
+- [ ] CCP-052 - Hide Arrows During Game Review
+- [ ] CCP-053 - Toggle Review Dots To User Perspective Only
+- [ ] CCP-055 - Mate Display KO Polish
+
 ## Log
+
+## CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
+
+```
+- [x] Reviewed
+  - ID: `CCP-015-F3`
+  - Task ID: `CCP-015`
+  - Parent prompt ID: `CCP-015-F2`
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Learn From Mistakes guidance behavior follow-up fix`
+  - Task: restore the per-candidate `Show engine` behavior in Learn From Mistakes and document it explicitly if it is a Patzer deviation from Lichess
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-021-F1 - Fix Retrospection Tools Render Corruption
+
+```
+- [x] Reviewed
+  - ID: `CCP-021-F1`
+  - Task ID: `CCP-021`
+  - Parent prompt ID: `CCP-021`
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Recommended next implementation sequence, Step 4 follow-up fix`
+  - Task: fix the retrospection render corruption bug causing duplicated panels, poisoned tools UI, and Snabbdom boolean-child patch failures
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
 
 ## CCP-015-F2 - Per-Candidate Engine Guidance Toggle In Retrospection
 
@@ -192,151 +297,151 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-019 - Complete Retrospection Lifecycle Handling
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-019`
   - Task ID: `CCP-019`
   - Parent prompt ID: none
   - Source document: `docs/reference/patzer-retrospection-audit.md`
   - Source step: `Recommended next implementation sequence, Step 2`
   - Task: replace the inert retrospection `onCeval()` seam with meaningful lifecycle behavior while preserving exact-best MVP solving
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the `CCP-019` lifecycle changes are bundled into the same commit as unrelated `CCP-015-F2` guidance-reveal behavior, so the prompt execution is not cleanly isolated
 ```
 
 ## CCP-020 - Move Retrospection UI Into Analysis Tools
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-020`
   - Task ID: `CCP-020`
   - Parent prompt ID: none
   - Source document: `docs/reference/patzer-retrospection-audit.md`
   - Source step: `Recommended next implementation sequence, Step 3`
   - Task: move the active retrospection UI into the analysis tools area
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the active retrospection panel was moved into the tools area, but this prompt execution also bundled the broader `CCP-021` suppression pass by hiding summary/puzzle surfaces during retrospection instead of staying placement-only
 ```
 
 ## CCP-021 - Suppress Conflicting Analysis UI During Retrospection
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-021`
   - Task ID: `CCP-021`
   - Parent prompt ID: none
   - Source document: `docs/reference/patzer-retrospection-audit.md`
   - Source step: `Recommended next implementation sequence, Step 4`
   - Task: suppress conflicting analysis UI while active retrospection is running
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the suppression behavior is present, but the same local prompt execution is bundled with unrelated later work including `bestLine` persistence, near-best retrospection changes, and move-list context-menu actions, so it is not cleanly isolated
 ```
 
 ## CCP-022 - Persist Retrospection Best-Line Context
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-022`
   - Task ID: `CCP-022`
   - Parent prompt ID: none
   - Source document: `docs/reference/patzer-retrospection-audit.md`
   - Source step: `Recommended next implementation sequence, Step 5`
   - Task: persist richer retrospection solution context such as `bestLine`
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-023 - Add Book-Aware Retrospection Cancellation
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-023`
   - Task ID: `CCP-023`
   - Parent prompt ID: none
   - Source document: `docs/reference/patzer-retrospection-audit.md`
   - Source step: `Recommended next implementation sequence, Step 6`
   - Task: add the first safe opening/book-aware cancellation step for retrospection candidates
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: defines the opening-cancellation seam in `buildRetroCandidates()`, but `toggleRetro()` still calls it without any opening provider, so book-aware suppression is not actually live
 ```
 
 ## CCP-024 - Add Near-Best Acceptance Parity
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-024`
   - Task ID: `CCP-024`
   - Parent prompt ID: none
   - Source document: `docs/reference/patzer-retrospection-audit.md`
   - Source step: `Recommended next implementation sequence, Step 7`
   - Task: add the first source-backed near-best acceptance step to retrospection
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the new `eval` / near-best path is still bypassed when the attempted move already exists in the tree, because `board/index.ts` returns early through the existing-child navigation path before any retro judgment runs
 ```
 
 ## CCP-025 - Add Move-List Context Menu Infrastructure
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-025`
   - Task ID: `CCP-025`
   - Parent prompt ID: none
   - Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
   - Source step: `Source-backed implementation sequence, Step 1`
   - Task: add move-list context-menu infrastructure for path-based variation actions
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the infrastructure step is bundled with real copy/delete/promote actions in `renderContextMenu()`, so it is not cleanly scoped to menu shell + targeting only
 ```
 
 ## CCP-026 - Add Copy Mainline And Variation PGN Actions
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-026`
   - Task ID: `CCP-026`
   - Parent prompt ID: none
   - Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
   - Source step: `Source-backed implementation sequence, Step 2`
   - Task: add context-menu actions to copy mainline and variation PGN from the selected path
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: `copyLinePgn()` uses `nodeListAt(path)` instead of the Lichess-style extended line path, so it can copy only the moves up to the selected node instead of the full selected mainline/variation
 ```
 
 ## CCP-027 - Add Delete-From-Here Variation Action
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-027`
   - Task ID: `CCP-027`
   - Parent prompt ID: none
   - Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
   - Source step: `Source-backed implementation sequence, Step 3`
   - Task: add a move-list context `Delete from here` branch action with active-path repair
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the context-menu action reuses `deleteVariation()`, so deleted branches still are not persisted across reload and can reappear because the mutated move tree is not saved as tree state
 ```
 
 ## CCP-028 - Add Variation Promotion And Make-Mainline Actions
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-028`
   - Task ID: `CCP-028`
   - Parent prompt ID: none
   - Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
   - Source step: `Source-backed implementation sequence, Step 4`
   - Task: add context-menu actions for variation promotion and make-mainline behavior
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: after `promoteAt(...)`, the handler only calls `redraw()` and does not refresh `ctrl.setPath(ctrl.path)`, so `ctrl.mainline` / `nodeList` can stay stale after tree reordering
 ```
 
 
@@ -503,4 +608,395 @@ Use this file to track Claude Code prompts from creation through review.
   - Claude used: yes
   - Review outcome: issues found
   - Review issues: variation deletion is not actually persisted across reload; `saveGamesToIdb()` stores imported game PGN/path, not the mutated move tree, so deleted branches can reappear after reload
+```
+
+## CCP-030 - First Safe Typecheck Error Slice
+
+```
+- [x] Reviewed
+  - ID: `CCP-030`
+  - Task ID: `CCP-030`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[HIGH] npm run typecheck is wired but surfaces 53 type errors`
+  - Task: clear the first cohesive typecheck error cluster in `src/analyse/evalView.ts` and `src/analyse/moveList.ts`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-031 - Fix Board Wheel Navigation Selector
+
+```
+- [x] Reviewed
+  - ID: `CCP-031`
+  - Task ID: `CCP-031`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[HIGH] Wheel scroll navigation is still non-functional`
+  - Task: fix the board wheel-navigation hit target so wheel scrolling over the analysis board actually steps moves
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-032 - Replace Stop Boolean With Search Tokens
+
+```
+- [x] Reviewed
+  - ID: `CCP-032`
+  - Task ID: `CCP-032`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[HIGH] In-flight engine stop handling still relies on a boolean flag`
+  - Task: replace the remaining coarse stop boolean seam with per-search token bookkeeping
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-033 - Fix Imported-Game Orientation Propagation
+
+```
+- [x] Reviewed
+  - ID: `CCP-033`
+  - Task ID: `CCP-033`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[HIGH] Imported-game board orientation does not always match the importing user's side`
+  - Task: fix live board orientation so imported games reliably orient to the importing user's side
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-006-F1 - Fix Analysis-Game Empty-Library Loading State
+
+```
+- [x] Reviewed
+  - ID: `CCP-006-F1`
+  - Task ID: `CCP-006`
+  - Parent prompt ID: `CCP-006`
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] analysis-game route can still get stuck in a fake loading state`
+  - Task: separate loading-vs-empty library semantics so `analysis-game` stops showing permanent fake loading text
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-034 - Improve Eval Graph Hover And Scrub
+
+```
+- [x] Reviewed
+  - ID: `CCP-034`
+  - Task ID: `CCP-034`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] Eval graph hover/scrub behavior is not yet working as expected`
+  - Task: add the first safe eval-graph hover/scrub improvement
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: hover indicator still updates only on per-strip `mouseenter`, not nearest-on-`mousemove`
+```
+
+## CCP-035 - Fix Engine Arrowhead Rendering
+
+```
+- [x] Reviewed
+  - ID: `CCP-035`
+  - Task ID: `CCP-035`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] Engine arrows can render without a visible arrowhead`
+  - Task: fix engine-arrow rendering so live arrows keep a visible arrowhead
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-036 - Implement Honest Minimum Puzzles Route
+
+```
+- [x] Reviewed
+  - ID: `CCP-036`
+  - Task ID: `CCP-036`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] Puzzle route is still a placeholder`
+  - Task: replace the placeholder puzzles route with the smallest honest saved-puzzle workflow
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-037 - Fetch Multi-Month Chess.com Archives
+
+```
+- [x] Reviewed
+  - ID: `CCP-037`
+  - Task ID: `CCP-037`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[LOW] Chess.com import still fetches only the latest archive month`
+  - Task: fetch the necessary Chess.com archive months for the selected date range instead of only the newest month
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-038 - Replace Header Game Review Stub
+
+```
+- [x] Reviewed
+  - ID: `CCP-038`
+  - Task ID: `CCP-038`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[LOW] Header global menu still contains a stub Game Review action`
+  - Task: replace the header `Game Review` TODO stub with honest real behavior or an honest disabled state
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-040 - Eval Graph Display Refresh
+
+```
+- [x] Reviewed
+  - ID: `CCP-040`
+  - Task ID: `CCP-040`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Changes to how the eval graph is displayed and formatted`
+  - Task: take the first small safe wishlist step on eval-graph display and formatting
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-041 - Review Annotation Color Parity
+
+```
+- [x] Reviewed
+  - ID: `CCP-041`
+  - Task ID: `CCP-041`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Bring review annotation label/colors into Lichess parity`
+  - Task: align Patzer review annotation colors and related styling with confirmed Lichess mapping
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-042 - Move Review Button Beside Navigation Controls
+
+```
+- [ ] Reviewed
+  - ID: `CCP-042`
+  - Task ID: `CCP-042`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Move the analysis-page Review / Re-analyze button beside the move-navigation buttons`
+  - Task: move the analysis-page Review/Re-analyze control beside Prev/Flip/Next in the smallest safe way
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-043 - Replace Player-Strip Result Markers
+
+```
+- [x] Reviewed
+  - ID: `CCP-043`
+  - Task ID: `CCP-043`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Remove the 1 / 0 / ½ single-game result markers from the player strip by default`
+  - Task: remove the current player-strip result markers and replace them with a clearer minimal winner/loser signal
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-044 - Add Eval Labels To Engine Arrows
+
+```
+- [ ] Reviewed
+  - ID: `CCP-044`
+  - Task ID: `CCP-044`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Add tag or label next to engine move arrows showing what their eval is`
+  - Task: add the first safe eval label beside the primary engine arrow
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-045 - Prevent Duplicate Reimports
+
+```
+- [ ] Reviewed
+  - ID: `CCP-045`
+  - Task ID: `CCP-045`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `we shouldn't re import the same games that have already been imported`
+  - Task: prevent obviously duplicate game reimports in the smallest safe way
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-046 - Import Only New Games Since Last Import
+
+```
+- [ ] Reviewed
+  - ID: `CCP-046`
+  - Task ID: `CCP-046`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Import only new games since last import`
+  - Task: take the first safe step toward incremental imports and temporary new-import badging
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-047 - Header Platform Toggle UX
+
+```
+- [ ] Reviewed
+  - ID: `CCP-047`
+  - Task ID: `CCP-047`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `In the header, it should default to a chess.com username input field`
+  - Task: tighten the header platform-toggle UX while keeping Chess.com as the default
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-048 - Highlight Massive Engine Improvements
+
+```
+- [ ] Reviewed
+  - ID: `CCP-048`
+  - Task ID: `CCP-048`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `IF there is an engine line available that has a massive improvement`
+  - Task: add a stronger visual highlight for clearly massive engine improvements in the PV list
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-049 - Show KO Mate Notation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-049`
+  - Task ID: `CCP-049`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `When mate is played on the board, the analysis engine should show a #KO symbol`
+  - Task: replace the current terminal mate notation with #KO in the intended analysis UI
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-050 - Winner-Color Eval Bar On Mate
+
+```
+- [ ] Reviewed
+  - ID: `CCP-050`
+  - Task ID: `CCP-050`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `When mate is played on the board, the eval bar should fill up entirely with whatever colour delivered the mate`
+  - Task: fix mate-state eval-bar fill so it resolves fully to the winning side
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-051 - KO Overlay On Losing King For M1
+
+```
+- [ ] Reviewed
+  - ID: `CCP-051`
+  - Task ID: `CCP-051`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `When M1 is played on the board, the losing king should get a KO symbol over it`
+  - Task: add the first safe KO overlay for the losing king on immediate mate positions
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-052 - Hide Arrows During Game Review
+
+```
+- [ ] Reviewed
+  - ID: `CCP-052`
+  - Task ID: `CCP-052`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `when game review button is pressed, all arrows should be removed from board until game review is completed`
+  - Task: hide board arrows during active batch review and restore them when review finishes
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-053 - Toggle Review Dots To User Perspective Only
+
+```
+- [ ] Reviewed
+  - ID: `CCP-053`
+  - Task ID: `CCP-053`
+  - Parent prompt ID: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Setting to toggle only the users whose perspective we are looking at to have their move review annotated dot colour shown`
+  - Task: add a setting that filters review-dot visibility to the current user perspective while defaulting to both
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-055 - Mate Display KO Polish
+
+```
+- [ ] Reviewed
+  - ID: `CCP-055`
+  - Task ID: `CCP-055`
+  - Parent prompt ID: none
+  - Source document: inferred from user request in chat
+  - Source step: `mate-display UI polish so checkmate is shown as #KO! in the move list and engine display`
+  - Task: implement mate-display UI polish so checkmate is shown as `#KO!` in the move list and engine display, and make the engine-display `#KO!` purple
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-056 - Add Main-Menu Toggle For Board Wheel Navigation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-056`
+  - Task ID: `CCP-056`
+  - Parent prompt ID: none
+  - Source document: inferred from user request in chat
+  - Source step: `make board-wheel move navigation a main-menu setting that defaults to off`
+  - Task: add a persisted main-menu toggle for board-wheel move navigation and default it to off
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
 ```

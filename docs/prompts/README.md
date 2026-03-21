@@ -8,9 +8,13 @@ Start each session by pointing the model at:
 - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
 - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
 
+When Codex is creating prompts, also read:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
 Then use the template that matches the task:
 - `code-review.md` — review local changes with findings-first output and suggested manual tests
 - `lichess-parity.md` — Lichess-aligned behavior or structure work
+- `manager-batch.md` — create a Claude Code batch-manager prompt that runs the next contiguous queued prompt range
 - `refactor-step.md` — extraction work, `main.ts` reduction, coupling reduction
 - `bugfix.md` — diagnosing and fixing a specific bug
 - `new-feature.md` — adding a new feature or workflow in the smallest safe step
@@ -29,6 +33,8 @@ Prompt tracking convention:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
+- for Codex-created prompts, follow the extra coordination and formatting rules in:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
 - assign each prompt a stable identifier in the form `CCP-###`
 - when a new prompt is a follow-up fix for a previously reviewed prompt, keep the same task family id and add a follow-up modifier to the prompt id:
   - original prompt: `CCP-013`
@@ -47,11 +53,16 @@ Prompt tracking convention:
 - when appending to `CLAUDE_PROMPT_QUEUE.md`, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
 - use plain fenced Markdown blocks with no language tag for queue entries and log entries
 - when a new prompt is generated, also add an unchecked entry to `CLAUDE_PROMPT_LOG.md`
+- when a new prompt is generated, also add a matching unchecked prompt-id-plus-title item to the top checklist index in `CLAUDE_PROMPT_LOG.md`
 - when appending to `CLAUDE_PROMPT_LOG.md`, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced log entry block
 - when appending to `CLAUDE_PROMPT_HISTORY.md`, use a plain fenced block with no language tag for the stored full prompt text
 - use the log checkbox only to indicate whether review happened:
   - checked means reviewed
   - unchecked means created/logged but not reviewed yet
+- keep the top-of-file prompt-id checklist index in `CLAUDE_PROMPT_LOG.md` in sync with the detailed log entries:
+  - add `- [ ] CCP-### - Short Task Title` when the prompt is created
+  - flip it to `- [x] CCP-### - Short Task Title` when the prompt is reviewed
+  - keep the index compact and title-based, with no review notes
 - record review quality separately with `Review outcome`, for example:
   - `passed`
   - `passed with notes`
@@ -59,6 +70,7 @@ Prompt tracking convention:
   - `needs rework`
 - when doing a code review, remove the matching prompt from `CLAUDE_PROMPT_QUEUE.md`
 - when doing a code review, update the matching `CCP-###` item in `CLAUDE_PROMPT_LOG.md`
+- when doing a code review, also update the matching top checklist item in `CLAUDE_PROMPT_LOG.md` from unchecked to checked
 - if a reviewed prompt needs another fixing pass and the user asks for a follow-up prompt, create a new prompt entry using the same root `Task ID` with the next `-F#` modifier on `Prompt ID`
 - treat natural-language follow-up requests as follow-up fix prompts by default when they clearly refer to an existing reviewed `CCP-###`, for example:
   - `I have a bug to fix with CCP-013`

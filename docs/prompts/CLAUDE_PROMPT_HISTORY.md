@@ -41,6 +41,786 @@ full Claude prompt goes here
 
 ## History
 
+## CCP-041 — Used in Claude Code
+
+- Task: align Patzer review annotation colors and related styling with confirmed Lichess mapping
+- Task ID: `CCP-041`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `Bring review annotation label/colors into Lichess parity`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: current glyph colors, eval-graph dots, and summary colors match the confirmed Lichess theme mappings for blunder, mistake, inaccuracy, brilliant, and interesting labels
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-043 — Used in Claude Code
+
+- Task: remove the current player-strip result markers and replace them with a clearer minimal winner/loser signal
+- Task ID: `CCP-043`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `Remove the 1 / 0 / ½ single-game result markers from the player strip by default`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: player strips now use a restrained winner-only star instead of numeric 1/0/½ result markers, keeping the board header cleaner without inventing match-score semantics
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-047 — Used in Claude Code
+
+- Task: tighten the header import-platform UX while keeping Chess.com as the default
+- Task ID: `CCP-047`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `In the header, it should default to a chess.com username input field`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: the header still defaults to Chess.com and now gives the platform buttons clearer active/inactive titles plus a stronger active-state visual indicator
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-048 — Used in Claude Code
+
+- Task: add a stronger visual highlight for clearly massive engine improvements in the PV list
+- Task ID: `CCP-048`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `IF there is an engine line available that has a massive improvement`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: PV score text now gets a dedicated highlight class for clearly decisive lines without changing the underlying eval logic or cluttering the rest of the ceval box
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-049 — Used in Claude Code
+
+- Task: replace the current terminal mate notation with `#KO` in the intended analysis UI
+- Task ID: `CCP-049`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `When mate is played on the board, the analysis engine should show a #KO symbol`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: `444a919`
+- Notes: `#KO` is correctly used in `formatScore()` for the eval bar and PV views, but the move list still renders plain `KO`, so the prompt is only partially fulfilled
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-050 — Used in Claude Code
+
+- Task: fix mate-state eval-bar fill so it resolves fully to the winning side
+- Task ID: `CCP-050`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `When mate is played on the board, the eval bar should fill up entirely with whatever colour delivered the mate`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: terminal mate fill now uses FEN side-to-move to resolve the winning color correctly for mate-0 positions instead of always collapsing to black
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-030 — Used in Claude Code
+
+- Task: clear the first cohesive typecheck error cluster in `src/analyse/evalView.ts` and `src/analyse/moveList.ts`
+- Task ID: `CCP-030`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[HIGH] npm run typecheck is wired but surfaces 53 type errors`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: reviewed against the live compiler output; the scoped `evalView.ts` / `moveList.ts` slice is no longer part of the current typecheck backlog, even though broader repo type errors remain
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-031 — Used in Claude Code
+
+- Task: fix the board wheel-navigation hit target so wheel scrolling over the analysis board actually steps moves
+- Task ID: `CCP-031`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[HIGH] Wheel scroll navigation is still non-functional`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: current wheel handler targets `.analyse__board.main-board`, which matches the actual board container and restores scroll-based move stepping over the board surface
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-032 — Used in Claude Code
+
+- Task: replace the remaining coarse stop boolean seam with per-search token bookkeeping
+- Task ID: `CCP-032`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[HIGH] In-flight engine stop handling still relies on a boolean flag`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: current engine lifecycle uses `pendingStopCount` rather than the old boolean seam, which safely handles multiple stale `bestmove` replies during rapid stop/start sequences
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-033 — Used in Claude Code
+
+- Task: fix live board orientation so imported games reliably orient to the importing user's side
+- Task ID: `CCP-033`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[HIGH] Imported-game board orientation does not always match the importing user's side`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: `setOrientation()` now propagates directly into the live Chessground instance so imported-game loads update orientation immediately instead of waiting for a later board rebuild
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-006-F1 — Used in Claude Code
+
+- Task: separate loading-vs-empty library semantics so `analysis-game` stops showing permanent fake loading text
+- Task ID: `CCP-006`
+- Parent prompt ID: `CCP-006`
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[MEDIUM] analysis-game route can still get stuck in a fake loading state`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: the route now distinguishes real IDB-load-in-progress from a completed-but-empty library via `gamesLibraryLoaded`, so empty/missing game cases no longer masquerade as loading forever
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-034 — Used in Claude Code
+
+- Task: add the first safe eval-graph hover/scrub improvement
+- Task ID: `CCP-034`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[MEDIUM] Eval graph hover/scrub behavior is not yet working as expected`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: `a956249`
+- Notes: the graph now shows a hover line, but it updates only on per-point `mouseenter` strips rather than true nearest-point `mousemove` scrubbing, so the prompt is only partially fulfilled
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-035 — Used in Claude Code
+
+- Task: fix engine-arrow rendering so live arrows keep a visible arrowhead
+- Task ID: `CCP-035`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[MEDIUM] Engine arrows can render without a visible arrowhead`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: the board now registers the live brushes explicitly and the played-move arrow no longer uses the custom modifier combination that was suppressing the marker arrowhead
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-036 — Used in Claude Code
+
+- Task: replace the placeholder puzzles route with the smallest honest saved-puzzle workflow
+- Task ID: `CCP-036`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[MEDIUM] Puzzle route is still a placeholder`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: `#/puzzles` now renders a real empty state and saved-puzzle list instead of placeholder text, while staying honest about the limited current puzzle workflow
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-037 — Used in Claude Code
+
+- Task: fetch the necessary Chess.com archive months for the selected date range instead of only the newest month
+- Task ID: `CCP-037`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[LOW] Chess.com import still fetches only the latest archive month`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: the importer now computes an archive cutoff month and fetches all relevant archive URLs with `Promise.all`, so broader date ranges can include older eligible games
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-038 — Used in Claude Code
+
+- Task: replace the header `Game Review` TODO stub with honest real behavior or an honest disabled state
+- Task ID: `CCP-038`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[LOW] Header global menu still contains a stub Game Review action`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `a956249`
+- Notes: the global menu now provides honest behavior by navigating to `#/analysis` when a game is selected and disabling the action when no current game exists
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-022 — Used in Claude Code
+
+- Task: persist richer retrospection solution context such as `bestLine`
+- Task ID: `CCP-022`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Recommended next implementation sequence, Step 5`
+- Status: reviewed
+- Review outcome: passed
+- Commit: current `main` / `origin/main`
+- Notes: reviewed against the current implementation; `bestLine` is persisted from eval PV moves in IndexedDB, restored into `PositionEval.moves`, and surfaced onto `RetroCandidate.bestLine` without breaking optional backward compatibility
+
+```
+Prompt ID: CCP-022
+Task ID: CCP-022
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Recommended next implementation sequence, Step 5
+
+Task: Persist richer retrospection solution context by adding a stored `bestLine`-style field for reviewed mistake positions, so answer reveal and later parity work are not limited to a single `bestMove` UCI.
+```
+
+## CCP-015-F3 — Used in Claude Code
+
+- Task: restore the per-candidate `Show engine` behavior in Learn From Mistakes and document it explicitly if it is a Patzer deviation from Lichess
+- Task ID: `CCP-015`
+- Parent prompt ID: `CCP-015-F2`
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Learn From Mistakes guidance behavior follow-up fix`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `f22ce2a`
+- Notes: current implementation restores the Patzer-specific per-candidate `Show engine` reveal behavior; guidance stays hidden by default, `jumpToNext()` resets reveal state, and repo comments now explicitly document that this is a Patzer product deviation from Lichess's implicit `hideComputerLine(...)` model
+
+```
+Prompt ID: CCP-015-F3
+Task ID: CCP-015
+Parent Prompt ID: CCP-015-F2
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Learn From Mistakes guidance behavior follow-up fix
+
+Task: Restore the Patzer Learn From Mistakes guidance behavior so engine guidance is hidden by default when entering retrospection, the user can manually reveal it for the current mistake only, and the next mistake resets back to guidance-hidden by default.
+
+This is a focused follow-up fix for a regression in the `CCP-015-F2` guidance behavior. It is also a product-rule documentation task: if Patzer intentionally differs from Lichess here, document that deviation explicitly in the repo.
+
+Before editing, inspect the current codebase first and confirm the real implementation points instead of guessing. Start with:
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/retroView.ts`
+- `src/main.ts`
+- `src/engine/ctrl.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/ARCHITECTURE.md`
+- `docs/reference/patzer-retrospection-audit.md`
+- `docs/reference/lichess-retrospection/README.md`
+- `docs/reference/lichess-retrospection-ux/README.md`
+
+Relevant Patzer Pro files already identified from current repo inspection:
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/retroView.ts`
+- `src/main.ts`
+- `src/engine/ctrl.ts`
+
+Because this task explicitly asks whether the behavior deviates from Lichess, inspect the relevant Lichess source before deciding implementation details. Start with:
+- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroView.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroCtrl.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+- any closely related Lichess tools/ceval files needed to confirm how computer guidance is hidden during retrospection
+
+Current repo-grounded diagnosis:
+- Patzer previously introduced a retrospection-local guidance reveal model in `CCP-015-F2`
+- the intended Patzer behavior is:
+  - entering Learn From Mistakes starts with engine guidance hidden
+  - the user may manually reveal guidance for the current mistake only
+  - advancing to the next mistake resets guidance back to hidden
+- something in later local work appears to have regressed or obscured that behavior in practice
+- the user also wants this behavior written down explicitly in the repo so future prompts do not silently remove it
+- this may be a deliberate Patzer UX deviation from Lichess, so the implementation must confirm that explicitly and document it if true
+
+Implement only the smallest safe step:
+- restore the current-candidate `Show engine` affordance if it is missing or broken
+- ensure guidance remains hidden by default whenever retrospection is entered
+- ensure the reveal state is local to the current mistake and resets on candidate advance
+- keep global engine settings unchanged
+- if this is a Patzer-specific deviation from Lichess, document it in the most appropriate repo doc
+- do not bundle unrelated retrospection solve-loop work
+- do not redesign the tools column
+
+A likely safe direction is:
+- verify the reveal control still renders from `src/analyse/retroView.ts`
+- verify `guidanceRevealed()` / `revealGuidance()` / reset-on-next still work in `src/analyse/retroCtrl.ts`
+- verify PV and arrow gating still depend on the retrospection-local reveal state in `src/main.ts` and `src/engine/ctrl.ts`
+- add a short explicit note in repo docs if Patzer intentionally differs from Lichess by exposing a manual reveal button
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- whether this is a Lichess deviation or not
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for this guidance behavior
+- explicitly verify:
+  - entering Learn From Mistakes hides engine guidance by default
+  - a visible affordance exists to reveal guidance for the current mistake
+  - revealing guidance does not mutate global engine settings
+  - advancing to the next mistake resets guidance back to hidden
+  - leaving retrospection restores normal analysis guidance behavior
+  - any repo doc note about this behavior is updated
+- report whether behavior changed intentionally
+- report whether there are console/runtime errors
+- report remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- whether this is a Lichess deviation or not
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+
+In your final report, repeat:
+- `Prompt ID: CCP-015-F3`
+- `Task ID: CCP-015`
+```
+
+## CCP-021-F1 — Used in Claude Code
+
+- Task: fix the retrospection render corruption bug causing duplicated panels, poisoned tools UI, and Snabbdom boolean-child patch failures
+- Task ID: `CCP-021`
+- Parent prompt ID: `CCP-021`
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Recommended next implementation sequence, Step 4 follow-up fix`
+- Status: reviewed
+- Review outcome: passed
+- Commit: current `main` / `origin/main`
+- Notes: reviewed against the current implementation; the unsafe boolean-child `!ctrl.retro && ...` tools-column expressions were replaced with ternaries returning `null`, matching the reported Snabbdom crash seam and leaving no remaining finding in the present code
+
+```
+Prompt ID: CCP-021-F1
+Task ID: CCP-021
+Parent Prompt ID: CCP-021
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Recommended next implementation sequence, Step 4 follow-up fix
+
+Task: Fix the active retrospection render corruption bug so entering Learn From Mistakes no longer poisons the tools column, duplicates retrospection panels, or destabilizes adjacent analysis UI after redraws.
+
+Treat this as a focused follow-up fix prompt for the reviewed retrospection UI corruption bug, not as permission to redesign the broader retrospection flow.
+
+Before editing, inspect the current codebase first and confirm the real implementation points instead of guessing. Start with:
+- `src/main.ts`
+- `src/analyse/retroView.ts`
+- `src/analyse/moveList.ts`
+- `src/board/index.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/ARCHITECTURE.md`
+- `docs/KNOWN_ISSUES.md`
+- `docs/reference/patzer-retrospection-audit.md`
+- `docs/reference/lichess-retrospection/README.md`
+
+Relevant Patzer Pro files already identified from current repo inspection:
+- `src/main.ts`
+- `src/analyse/retroView.ts`
+- `src/analyse/moveList.ts`
+- `src/board/index.ts`
+
+Because this task affects analysis-board rendering and retrospection UI ownership, inspect relevant Lichess source before deciding implementation details. Start with:
+- `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroView.ts`
+- any nearby Lichess analyse view files that clarify how conditional children are rendered safely
+
+Current repo-grounded diagnosis:
+- entering `Mistakes` can initially look correct, then later duplicate retrospection panels and corrupt the surrounding analysis UI
+- the browser console shows repeated Snabbdom patch failures: `Cannot create property 'elm' on boolean 'false'`
+- the stack points through redraws triggered from retrospection navigation and callbacks
+- this strongly suggests Patzer is feeding boolean children into a VDOM children array during conditional retrospection rendering, leaving the DOM in a half-patched corrupted state
+- the likely hot path is the analysis tools render path in `src/main.ts`, especially conditional expressions that can evaluate to literal `false` instead of a vnode or `null`
+- once patching crashes, stale DOM and corrupted shared UI state can make the move list, retrospection panel, and player-strip/material display appear duplicated or poisoned across later game loads
+
+Lichess parity requirement:
+- inspect how Lichess conditionally includes/excludes retrospection and tools-column subtrees without returning unsafe boolean children
+- use Lichess as the behavioral reference for a clean tools-column render boundary, not for introducing a larger redesign
+
+Implement only the smallest safe step:
+- fix the retrospection/tools render path so conditional children never pass raw booleans into Snabbdom
+- preserve the current intended Learn From Mistakes UI structure as much as possible
+- make sure entering/exiting retrospection redraws cleanly
+- do not bundle solve-loop changes
+- do not bundle new retrospection features
+- do not redesign the tools column beyond what is required to stop the render corruption
+
+A likely safe direction is:
+- replace boolean-producing conditional child expressions with explicit `null`/array-safe vnode handling
+- keep the ownership where it already lives unless inspection proves a tiny extraction is safer
+- validate the exact redraw paths that previously triggered the crash
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for this render bug
+- explicitly verify:
+  - entering retrospection no longer throws the Snabbdom boolean-child error
+  - retrospection panels do not duplicate during navigation / solve actions
+  - the move list / tools column stay stable during redraws
+  - the player-strip/material display is no longer corrupted by this render failure
+  - switching to another game no longer carries the poisoned UI state forward
+- report whether behavior changed intentionally
+- report whether there are console/runtime errors
+- report remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results. Keep it tightly scoped to this fix.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+
+In your final report, repeat:
+- `Prompt ID: CCP-021-F1`
+- `Task ID: CCP-021`
+```
+
+## CCP-020 — Used in Claude Code
+
+- Task: move the active retrospection UI into the analysis tools area
+- Task ID: `CCP-020`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Recommended next implementation sequence, Step 3`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: local unstaged work
+- Notes: original prompt text recovered from the queue during review; the active retrospection strip was moved into the tools area, but the same prompt execution also bundled the broader suppression pass that `CCP-021` was supposed to handle separately
+
+```
+Prompt ID: CCP-020
+Task ID: CCP-020
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Recommended next implementation sequence, Step 3
+
+Task: Move the active retrospection UI out of the bottom control strip and into the analysis tools area so the feature starts behaving like an analysis-owned mode instead of a page-level footer add-on.
+```
+
+## CCP-021 — Used in Claude Code
+
+- Task: suppress conflicting analysis UI while active retrospection is running
+- Task ID: `CCP-021`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Recommended next implementation sequence, Step 4`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: local unstaged work
+- Notes: original prompt text recovered from the queue during review; suppression behavior is present, but the same local execution is bundled with unrelated later work including best-line persistence, near-best retrospection, and move-list context-menu actions
+
+```
+Prompt ID: CCP-021
+Task ID: CCP-021
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Recommended next implementation sequence, Step 4
+
+Task: Add retrospection-specific suppression of conflicting analysis UI so Learn From Mistakes behaves more like a focused board mode and less like normal analysis with extra controls layered on top.
+```
+
+## CCP-024 — Used in Claude Code
+
+- Task: add the first source-backed near-best acceptance step to retrospection
+- Task ID: `CCP-024`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Recommended next implementation sequence, Step 7`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: local unstaged work
+- Notes: original prompt text recovered from the queue during review; the new `eval` path is still bypassed when the attempted move already exists as a child node
+
+```
+Prompt ID: CCP-024
+Task ID: CCP-024
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Recommended next implementation sequence, Step 7
+
+Task: Add the first source-backed near-best acceptance step to retrospection so Patzer can move beyond exact-best-only solving and start matching Lichess's ceval-assisted acceptance behavior.
+```
+
+## CCP-025 — Used in Claude Code
+
+- Task: add move-list context-menu infrastructure for path-based variation actions
+- Task ID: `CCP-025`
+- Parent prompt ID: none
+- Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
+- Source step: `Source-backed implementation sequence, Step 1`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: local unstaged work
+- Notes: original prompt text recovered from the queue during review; the infrastructure step is bundled with real copy/delete/promote actions instead of staying menu-shell-only
+
+```
+Prompt ID: CCP-025
+Task ID: CCP-025
+Source Document: docs/reference/lichess-analysis-variation-actions-audit.md
+Source Step: Source-backed implementation sequence, Step 1
+
+Task: Add the smallest safe move-list context-menu infrastructure to Patzer’s analysis board so move nodes can expose path-based actions in a Lichess-like way, without yet implementing the full action set.
+```
+
+## CCP-026 — Used in Claude Code
+
+- Task: add context-menu actions to copy mainline and variation PGN from the selected path
+- Task ID: `CCP-026`
+- Parent prompt ID: none
+- Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
+- Source step: `Source-backed implementation sequence, Step 2`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: local unstaged work
+- Notes: original prompt text recovered from the queue during review; `copyLinePgn()` does not extend the selected path through the full line before exporting, so copied PGN can be truncated
+
+```
+Prompt ID: CCP-026
+Task ID: CCP-026
+Source Document: docs/reference/lichess-analysis-variation-actions-audit.md
+Source Step: Source-backed implementation sequence, Step 2
+
+Task: Add path-based `Copy main line PGN` / `Copy variation PGN` actions to the new move-list context menu using a dedicated line export helper, matching the Lichess variation-export model as closely as current Patzer structure allows.
+```
+
+## CCP-027 — Used in Claude Code
+
+- Task: add a move-list context `Delete from here` branch action with active-path repair
+- Task ID: `CCP-027`
+- Parent prompt ID: none
+- Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
+- Source step: `Source-backed implementation sequence, Step 3`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: local unstaged work
+- Notes: original prompt text recovered from the queue during review; the action reuses Patzer’s existing delete flow, so deleted branches still are not persisted across reload
+
+```
+Prompt ID: CCP-027
+Task ID: CCP-027
+Source Document: docs/reference/lichess-analysis-variation-actions-audit.md
+Source Step: Source-backed implementation sequence, Step 3
+
+Task: Add a path-based `Delete from here` move-list context action with active-path repair, shifting Patzer’s variation deletion model closer to the Lichess branch-deletion behavior.
+```
+
+## CCP-028 — Used in Claude Code
+
+- Task: add context-menu actions for variation promotion and make-mainline behavior
+- Task ID: `CCP-028`
+- Parent prompt ID: none
+- Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
+- Source step: `Source-backed implementation sequence, Step 4`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: local unstaged work
+- Notes: original prompt text recovered from the queue during review; promotion handlers reorder the tree but do not refresh `ctrl.setPath(ctrl.path)`, so derived analysis state can remain stale
+
+```
+Prompt ID: CCP-028
+Task ID: CCP-028
+Source Document: docs/reference/lichess-analysis-variation-actions-audit.md
+Source Step: Source-backed implementation sequence, Step 4
+
+Task: Add move-list context actions for `Promote variation` and `Make main line`, using Patzer’s existing tree promotion primitives to align the move-list interaction model more closely with Lichess analysis.
+```
+
+## CCP-023 — Used in Claude Code
+
+- Task: add the first safe opening/book-aware cancellation step for retrospection candidates
+- Task ID: `CCP-023`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Recommended next implementation sequence, Step 6`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: local unstaged work
+- Notes: original prompt text recovered from the queue during review; the opening-cancellation seam was added, but no opening provider is passed to `buildRetroCandidates()`, so book-aware suppression is not actually live
+
+```
+Prompt ID: CCP-023
+Task ID: CCP-023
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Recommended next implementation sequence, Step 6
+
+Task: Add the first safe opening/book-aware cancellation step for retrospection so theory moves are less likely to become Learn From Mistakes exercises once a suitable local book signal exists.
+
+Before editing, inspect the current codebase first and confirm the real implementation points instead of guessing. Start with:
+- `src/analyse/retro.ts`
+- `src/engine/batch.ts`
+- `src/idb/index.ts`
+- `src/main.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/reference/patzer-retrospection-audit.md`
+- `docs/reference/lichess-retrospection/README.md`
+- `docs/reference/lichess-puzzle-ux/README.md`
+
+Relevant Patzer Pro files already identified from current repo inspection:
+- `src/analyse/retro.ts`
+- current review-data and persistence owners
+
+Because this task affects source-backed candidate filtering, inspect relevant Lichess source before deciding implementation details. Start with:
+- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroCtrl.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/nodeFinder.ts`
+- any relevant Lichess explorer/opening hooks that the research docs identify for retrospection cancellation behavior
+
+Current repo-grounded diagnosis:
+- the audit identifies opening/book cancellation as a real parity gap
+- Patzer currently has no proper book-aware cancellation in retrospection candidate building
+- this task must stay small because the repo does not yet have a broad opening-explorer subsystem ready for full parity
+- the correct first step is likely a provider boundary or minimal cached signal, not a large book feature
+
+Implement only the smallest safe step:
+- add the first source-backed book-aware cancellation seam for retrospection
+- keep it limited to candidate suppression/cancellation behavior
+- if a real local book provider does not yet exist, implement the smallest boundary that makes the later full feature safe
+- do not bundle broader opening-explorer UI
+- do not bundle near-best acceptance
+- do not redesign retrospection session flow
+
+A likely safe direction is:
+- define a small opening/book lookup boundary that retrospection candidate selection can consult
+- apply cancellation only when the available signal is trustworthy
+- keep unknown/no-data cases explicit rather than inventing theory heuristics
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for this behavior
+- explicitly verify:
+  - retrospection candidates are cancelled/suppressed only when the new book-aware signal says they should be
+  - unknown/no-book cases still behave safely
+  - current retrospection flows do not regress when no book data is available
+  - there are no console/runtime errors
+- report remaining risks and limitations, especially what still remains deferred until a fuller book provider exists
+
+Also include a short manual test checklist with concrete user actions and expected results. Keep it tightly scoped to this change.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+
+In your final report, repeat:
+- `Prompt ID: CCP-023`
+- `Task ID: CCP-023`
+```
+
 ## CCP-018 — Used in Claude Code
 
 - Task: extract retrospection entry and active-session rendering out of `src/main.ts` into `src/analyse/`
@@ -151,6 +931,98 @@ Output shape:
 In your final report, repeat:
 - `Prompt ID: CCP-018`
 - `Task ID: CCP-018`
+```
+
+## CCP-019 — Used in Claude Code
+
+- Task: replace the inert retrospection `onCeval()` seam with meaningful lifecycle behavior while preserving exact-best MVP solving
+- Task ID: `CCP-019`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Recommended next implementation sequence, Step 2`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: `a63fb71`
+- Notes: the `onCeval()` seam and related lifecycle guards became real enough for the current exact-best MVP, but the prompt was executed in the same commit as unrelated `CCP-015-F2` guidance-reveal work
+
+```
+Prompt ID: CCP-019
+Task ID: CCP-019
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Recommended next implementation sequence, Step 2
+
+Task: Implement the next real retrospection controller lifecycle step by replacing the inert `onCeval()` seam with meaningful session behavior, while preserving the current exact-best-move MVP acceptance rule.
+
+Before editing, inspect the current codebase first and confirm the real implementation points instead of guessing. Start with:
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/ctrl.ts`
+- `src/engine/ctrl.ts`
+- `src/board/index.ts`
+- `src/main.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/reference/patzer-retrospection-audit.md`
+- `docs/reference/lichess-retrospection/README.md`
+- `docs/reference/lichess-retrospection-ux/README.md`
+
+Relevant Patzer Pro files already identified from current repo inspection:
+- `src/analyse/retroCtrl.ts`
+- `src/engine/ctrl.ts`
+- `src/board/index.ts`
+- `src/main.ts`
+
+Because this task affects retrospection controller behavior, inspect relevant Lichess source before deciding implementation details. Start with:
+- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroCtrl.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+
+Current repo-grounded diagnosis:
+- Patzer already wires `onJump()`, `onMergeAnalysisData()`, and `onCeval()` into the app lifecycle
+- but `src/analyse/retroCtrl.ts` still treats `onCeval()` as a stub
+- the audit identifies this as the next controller gap after ownership extraction
+- this task is not yet the near-best acceptance parity task
+- current exact-best success/fail behavior in `src/board/index.ts` should remain the MVP unless a tiny lifecycle correction requires otherwise
+
+Implement only the smallest safe step:
+- make `onCeval()` and related controller lifecycle handling real instead of inert
+- preserve the existing exact-best-move acceptance rule for now
+- use the Lichess controller lifecycle as the reference for state transitions and seams
+- do not yet implement near-best acceptance
+- do not yet implement opening cancellation
+- do not yet redesign the full solve loop
+- do not bundle UI relocation or suppression work
+
+A likely safe direction is:
+- make the retrospection controller own a more meaningful lifecycle state around ceval availability and active-candidate state
+- tighten how `onJump()`, `onMergeAnalysisData()`, and `onCeval()` cooperate
+- preserve current board interception, but stop leaving `onCeval()` as a dead seam
+- if the current exact-best-only MVP means some Lichess `eval` behavior must still remain deferred, keep that explicit and minimal
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for this behavior
+- explicitly verify:
+  - retrospection lifecycle hooks are no longer dead/inert
+  - entering retrospection still lands on the current candidate start position
+  - the current exact-best MVP solve loop still works
+  - no unintended regression is introduced to off-track or merge-analysis handling
+  - there are no console/runtime errors
+- report remaining risks and limitations, especially what still remains deferred until the later near-best parity task
+
+Also include a short manual test checklist with concrete user actions and expected results. Keep it tightly scoped to this change.
 ```
 
 ## CCP-015-F2 — Used in Claude Code
@@ -1978,4 +2850,124 @@ Prompt text not recovered. This history entry was reconstructed after review fro
 
 ```
 Prompt text not recovered. This history entry was reconstructed after review from the prompt log and review thread.
+```
+
+## CCP-056
+
+```
+Prompt ID: CCP-056
+Task ID: CCP-056
+Execution Target: Codex
+Source Document: inferred from user request in chat
+Source Step: make board-wheel move navigation a main-menu setting that defaults to off
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+This prompt follows the repo's Claude prompt-tracking format, but it is intended for Codex to execute.
+
+Task: change board-wheel move navigation so it is controlled by a toggle in the main menu, with the default state set to off.
+
+Current repo-grounded implementation points already identified:
+- `src/main.ts` contains the global `wheel` listener that currently scrolls through moves while the mouse is over the board
+- `src/header/index.ts` owns the global settings menu
+- `src/board/cosmetics.ts` already contains board-related persisted settings patterns using localStorage
+
+Required workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the exact implementation points before assuming file paths.
+3. Inspect relevant Lichess source before deciding implementation details.
+4. Compare:
+   - how Patzer Pro currently works
+   - how Lichess handles nearby settings ownership or board-behavior toggles
+   - where this request intentionally diverges
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Relevant files to inspect first:
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/ARCHITECTURE.md`
+- `docs/NEXT_STEPS.md`
+- `docs/KNOWN_ISSUES.md`
+- `src/main.ts`
+- `src/header/index.ts`
+- `src/board/cosmetics.ts`
+- `src/styles/main.scss`
+
+Relevant Lichess files/systems to inspect first:
+- `~/Development/lichess-source/lila/ui/dasher/src/board.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+- any closely related Lichess setting/menu files you find necessary for board-behavior toggle ownership
+
+Current diagnosis to confirm:
+- board-wheel move navigation is currently always on when the mouse is over the board
+- there is no user-facing setting for this behavior
+- the most likely safe implementation is to add a persisted boolean setting near existing board/global settings ownership, then gate the existing wheel listener on that setting
+- because the menu lives in `src/header/index.ts`, the setting should be exposed there rather than as a one-off hidden flag in `src/main.ts`
+
+Implement only the smallest safe step:
+- add a persisted on/off setting for board-wheel move navigation
+- default it to off for users with no stored preference
+- expose it in the existing main/global menu
+- gate the current wheel listener on that setting
+- keep the change scoped to settings ownership + wheel behavior only
+
+Do not:
+- redesign the global menu
+- move unrelated logic out of `src/main.ts` unless the smallest safe fix requires a tiny extraction
+- bundle other board settings changes
+- change unrelated navigation behavior
+
+Before coding, provide:
+- prompt id
+- task id
+- execution target
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- explicitly report:
+  - whether board-wheel move navigation is now off by default
+  - whether turning the setting on enables wheel-based move navigation over the board
+  - whether turning the setting off disables that behavior again without affecting normal page scroll elsewhere
+  - whether the setting persists across reload
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Also include a short manual test checklist with concrete user actions and expected results. Keep it tightly scoped to this change.
+
+Output shape:
+- prompt id
+- task id
+- execution target
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+
+In your final report, repeat:
+- `Prompt ID: CCP-056`
+- `Task ID: CCP-056`
+- `Execution Target: Codex`
 ```

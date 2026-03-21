@@ -9,7 +9,11 @@ import {
   importFilters, SPEED_OPTIONS, DATE_RANGE_OPTIONS,
   type ImportDateRange,
 } from '../import/filters';
-import { renderBoardSettings } from '../board/cosmetics';
+import {
+  boardWheelNavEnabled,
+  renderBoardSettings,
+  setBoardWheelNavEnabled,
+} from '../board/cosmetics';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 
@@ -122,6 +126,19 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       h('button.global-menu__item', {
         on: { click: () => { closeGlobalMenu(redraw); downloadPgn(false); } },
       }, 'Export PGN (Plain)'),
+
+      h('label.global-menu__item.global-menu__item--toggle', [
+        h('span', 'Board Wheel Navigation'),
+        h('input', {
+          attrs: { type: 'checkbox', checked: boardWheelNavEnabled },
+          on: {
+            change: (e: Event) => {
+              setBoardWheelNavEnabled((e.target as HTMLInputElement).checked);
+              redraw();
+            },
+          },
+        }),
+      ]),
 
       h('div.global-menu__item.global-menu__item--has-sub', {
         on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },

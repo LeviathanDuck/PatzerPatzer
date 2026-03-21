@@ -130,6 +130,7 @@ Rules:
 
 When Codex is asked to create a prompt for Claude Code:
 
+- first read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md` and follow it
 - assign or reuse a stable prompt identifier in the form `CCP-###`
 - add an entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 - add the full prompt text to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
