@@ -76,6 +76,31 @@ export interface PuzzleRenderDeps {
   redraw:         () => void;
 }
 
+// --- Sequential mistake navigation ---
+// Mirrors the nextGlyphSymbol() pattern in lichess-org/lila: ui/analyse/src/nodeFinder.ts —
+// find the next/prev mainline node matching a criterion from the current path.
+// Candidates are stored in ascending mainline order (path length grows with ply).
+
+function prevMistake(currentPath: string): PuzzleCandidate | null {
+  const idx = puzzleCandidates.findIndex(c => c.path === currentPath);
+  if (idx > 0) return puzzleCandidates[idx - 1]!;
+  if (idx === 0) return null; // already at first candidate
+  // Not on a candidate: return the last candidate that precedes the current position.
+  let last: PuzzleCandidate | null = null;
+  for (const c of puzzleCandidates) {
+    if (c.path.length < currentPath.length) last = c;
+    else break;
+  }
+  return last;
+}
+
+function nextMistake(currentPath: string): PuzzleCandidate | null {
+  const idx = puzzleCandidates.findIndex(c => c.path === currentPath);
+  if (idx >= 0) return puzzleCandidates[idx + 1] ?? null;
+  // Not on a candidate: return the first candidate that follows the current position.
+  return puzzleCandidates.find(c => c.path.length > currentPath.length) ?? null;
+}
+
 export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
   const { engineEnabled, batchAnalyzing, batchState, savedPuzzles, currentPath } = deps;
   const canExtract = engineEnabled && !batchAnalyzing;
@@ -111,6 +136,29 @@ export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
     ]);
   });
 
+  // Navigation strip — shown only when candidates exist.
+  // Mirrors lichess-org/lila: ui/analyse/src/nodeFinder.ts nextGlyphSymbol sequential nav.
+  let navRow: VNode | null = null;
+  if (puzzleCandidates.length > 0) {
+    const currentIdx = puzzleCandidates.findIndex(c => c.path === currentPath);
+    const posLabel   = currentIdx >= 0
+      ? `${currentIdx + 1} / ${puzzleCandidates.length}`
+      : `— / ${puzzleCandidates.length}`;
+    const prev = prevMistake(currentPath);
+    const next = nextMistake(currentPath);
+    navRow = h('div.pgn-import__row', { attrs: { style: 'margin-bottom:4px' } }, [
+      h('button', {
+        attrs: { disabled: !prev },
+        on: { click: () => { if (prev) deps.navigate(prev.path); } },
+      }, '← Prev'),
+      h('span', { attrs: { style: 'margin:0 8px;font-size:0.85rem;color:#aaa' } }, posLabel),
+      h('button', {
+        attrs: { disabled: !next },
+        on: { click: () => { if (next) deps.navigate(next.path); } },
+      }, 'Next →'),
+    ]);
+  }
+
   return h('div.game-list', [
     h('div.pgn-import__row', { attrs: { style: 'margin-bottom:6px' } }, [
       h('button', {
@@ -118,6 +166,7 @@ export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
         on: { click: () => { extractPuzzleCandidates(deps.mainline, deps.getEval, deps.gameId); deps.redraw(); } },
       }, btnLabel),
     ]),
+    navRow,
     puzzleCandidates.length > 0
       ? h('ul', rows)
       : h('div.game-list__header', batchState === 'complete'
