@@ -17,6 +17,14 @@ export function setBoardWheelNavEnabled(enabled: boolean): void {
   localStorage.setItem(BOARD_WHEEL_NAV_KEY, String(enabled));
 }
 
+const REVIEW_DOTS_USER_ONLY_KEY = 'reviewDotsUserOnly';
+export let reviewDotsUserOnly: boolean = localStorage.getItem(REVIEW_DOTS_USER_ONLY_KEY) === 'true';
+
+export function setReviewDotsUserOnly(enabled: boolean): void {
+  reviewDotsUserOnly = enabled;
+  localStorage.setItem(REVIEW_DOTS_USER_ONLY_KEY, String(enabled));
+}
+
 // --- Board zoom ---
 // zoom: 0–100, default 85. Stored in localStorage, applied to body as ---zoom.
 // CSS formula: ---board-scale = (---zoom / 100) * 0.75 + 0.25 (same as Lichess).
@@ -105,6 +113,7 @@ export function clearBoardLocalData(): void {
   localStorage.removeItem(BOARD_THEME_KEY);
   localStorage.removeItem(PIECE_SET_KEY);
   localStorage.removeItem(BOARD_WHEEL_NAV_KEY);
+  localStorage.removeItem(REVIEW_DOTS_USER_ONLY_KEY);
   for (const prop of Object.keys(FILTER_DEFAULTS)) {
     localStorage.removeItem(FILTER_LS_PREFIX + prop);
   }
