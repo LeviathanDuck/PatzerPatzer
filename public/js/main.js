@@ -1094,7 +1094,7 @@ var evalNodePath = "";
 var evalNodePly = 0;
 var evalParentPath = "";
 var engineSearchActive = false;
-var awaitingStopBestmove = false;
+var pendingStopCount = 0;
 var pendingEval = false;
 var multiPv = 3;
 var analysisDepth = 30;
@@ -1135,8 +1135,8 @@ function setArrowAllLines(v) {
 function setShowPlayedArrow(v) {
   showPlayedArrow = v;
 }
-function setAwaitingStopBestmove(v) {
-  awaitingStopBestmove = v;
+function incrementPendingStopCount() {
+  pendingStopCount++;
 }
 function stopProtocol() {
   protocol.stop();
@@ -1276,8 +1276,8 @@ function parseEngineLine(line) {
       if (!_isBatchActive()) _redraw();
     }
   } else if (parts[0] === "bestmove") {
-    if (awaitingStopBestmove) {
-      awaitingStopBestmove = false;
+    if (pendingStopCount > 0) {
+      pendingStopCount--;
       currentEval = {};
       pendingLines = [];
       console.log("[ceval] stale bestmove discarded \u2014 currentEval reset");
@@ -1371,7 +1371,7 @@ function evalCurrentPosition() {
   if (_isBatchActive()) return;
   if (!engineEnabled || !engineReady) return;
   if (evalIsThreat) {
-    awaitingStopBestmove = true;
+    pendingStopCount++;
     protocol.stop();
     evalIsThreat = false;
   }
@@ -1946,7 +1946,7 @@ function detectMissedTactics(userColor) {
 }
 function evalBatchItem(item) {
   const wasActive = isEngineSearchActive();
-  setAwaitingStopBestmove(wasActive);
+  if (wasActive) incrementPendingStopCount();
   setEngineSearchActive(true);
   setEvalNode(item.nodeId, item.nodePath, item.nodePly, item.parentPath);
   resetCurrentEval();
@@ -6420,7 +6420,7 @@ function renderAnalysisControls() {
   }
   const reviewClick = () => {
     if (batchAnalyzing) {
-      setAwaitingStopBestmove(true);
+      incrementPendingStopCount();
       stopProtocol();
       setBatchAnalyzing(false);
       setBatchState("idle");
@@ -9122,6 +9122,6 @@ void loadGamesFromIdb().then((stored) => {
   if (stored.path) ctrl.setPath(stored.path);
   syncBoardAndArrow();
   redraw();
-  void loadAndRestoreAnalysis(toLoad.id);
+  void loadAndRestoreAnalysis(toLoad.id, restoreGeneration);
 });
 //# sourceMappingURL=main.js.map

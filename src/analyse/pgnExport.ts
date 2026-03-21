@@ -6,7 +6,7 @@ import { h, type VNode } from 'snabbdom';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import {
   evalCache,
-  setAwaitingStopBestmove, stopProtocol,
+  incrementPendingStopCount, stopProtocol,
   clearEvalCache, resetCurrentEval, syncArrow,
 } from '../engine/ctrl';
 import {
@@ -166,7 +166,7 @@ export function renderAnalysisControls(): VNode {
   const reviewClick = () => {
     if (batchAnalyzing) {
       // Stop in-progress review cleanly — preserve partial evalCache.
-      setAwaitingStopBestmove(true);
+      incrementPendingStopCount();
       stopProtocol();
       setBatchAnalyzing(false);
       setBatchState('idle');
