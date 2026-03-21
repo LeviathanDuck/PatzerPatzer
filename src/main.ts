@@ -63,7 +63,7 @@ import {
 import {
   ANALYSIS_VERSION, clearAllIdbData, clearAnalysisFromIdb, loadAnalysisFromIdb, loadGamesFromIdb,
   loadPuzzlesFromIdb, saveGamesToIdb, savedPuzzles, savePuzzle,
-  setSavedPuzzles, type StoredNodeEntry,
+  setSavedPuzzles,
 } from './idb/index';
 import { current, onChange, type Route } from './router';
 import { pathInit } from './tree/ops';
@@ -140,29 +140,6 @@ function loadGame(pgn: string | null): void {
   if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId, restoreGeneration);
   else evalCurrentPosition();
   redraw();
-}
-
-/**
- * Build the nodes record from the current mainline evalCache for IDB serialization.
- */
-function buildAnalysisNodes(): Record<string, StoredNodeEntry> {
-  const nodes: Record<string, StoredNodeEntry> = {};
-  let path = '';
-  for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i]!;
-    path += node.id;
-    const ev = evalCache.get(path);
-    if (ev) {
-      const entry: StoredNodeEntry = { nodeId: node.id, path, fen: node.fen };
-      if (ev.cp    !== undefined) entry.cp    = ev.cp;
-      if (ev.mate  !== undefined) entry.mate  = ev.mate;
-      if (ev.best  !== undefined) entry.best  = ev.best;
-      if (ev.loss  !== undefined) entry.loss  = ev.loss;
-      if (ev.delta !== undefined) entry.delta = ev.delta;
-      nodes[path] = entry;
-    }
-  }
-  return nodes;
 }
 
 /**
@@ -465,10 +442,9 @@ initCevalView({
   redraw,
 });
 initPgnExport({
-  getCtrl:            () => ctrl,
-  getImportedGames:   () => importedGames,
-  getSelectedGameId:  () => selectedGameId,
-  buildAnalysisNodes,
+  getCtrl:           () => ctrl,
+  getImportedGames:  () => importedGames,
+  getSelectedGameId: () => selectedGameId,
   clearGameAnalysis,
   redraw,
 });
@@ -484,7 +460,6 @@ initBatch({
   analyzedGameIds,
   missedTacticGameIds,
   analyzedGameAccuracy,
-  buildAnalysisNodes,
   getUserColor,
   redraw,
 });
