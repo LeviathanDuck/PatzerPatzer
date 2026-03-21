@@ -439,22 +439,24 @@ main {
   padding: 0 10px;
   height: 34px;
   background: transparent;
-  color: #888;
+  color: #666;
   border: none;
+  border-bottom: 2px solid transparent;
   border-radius: 0;
   cursor: pointer;
   font-size: 0.78rem;
   font-weight: 500;
   white-space: nowrap;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
 .header__platform:hover {
-  color: #ccc;
-  background: #222;
+  color: #bbb;
+  background: #1a1a1a;
 }
 .header__platform.active {
   color: #e8e8e8;
-  background: #222;
+  background: #1a1a1a;
+  border-bottom-color: hsl(209, 79%, 56%);
 }
 .header__input {
   flex: 1;
@@ -1186,13 +1188,9 @@ body.resizing {
 }
 
 .player-strip__result {
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
-  color: #666;
-  font-weight: 600;
-}
-.player-strip__result--winner {
-  color: #e8e8e8;
+  font-size: 0.85rem;
+  color: #f0c040;
+  line-height: 1;
 }
 
 .cg-wrap piece.pawn.white {
@@ -1897,6 +1895,10 @@ body[data-board=newspaper] cg-board::before {
 .pv__score--black {
   color: #8fb8d4;
 }
+.pv__score--massive {
+  color: hsl(129, 71%, 55%);
+  font-weight: 700;
+}
 .pv--empty {
   color: transparent;
 }
@@ -2116,15 +2118,15 @@ body[data-board=newspaper] cg-board::before {
 }
 
 .summary__blunder {
-  color: #f66;
+  color: hsl(0, 69%, 60%);
 }
 
 .summary__mistake {
-  color: #f84;
+  color: hsl(41, 100%, 45%);
 }
 
 .summary__inaccuracy {
-  color: #fa4;
+  color: hsl(202, 78%, 62%);
 }
 
 .keyboard-help {
