@@ -30,14 +30,24 @@ Prompt tracking convention:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
 - assign each prompt a stable identifier in the form `CCP-###`
+- when a new prompt is a follow-up fix for a previously reviewed prompt, keep the same task family id and add a follow-up modifier to the prompt id:
+  - original prompt: `CCP-013`
+  - first follow-up fix prompt: `CCP-013-F1`
+  - second follow-up fix prompt: `CCP-013-F2`
+- use `-F#` as the modifier for follow-up fix prompts because it stays readable, sorts predictably, and makes the relationship explicit
 - include that identifier near the top of the generated prompt
-- include a matching `Task ID` near the top of the generated prompt so Claude can echo it in the final report
+- include a matching `Task ID` near the top of the generated prompt for family tracking
+- instruct Claude to echo the `Prompt ID` in the final report so the exact prompt instance is reported back after execution
+- for follow-up fix prompts:
+  - `Prompt ID` should be the unique follow-up id, such as `CCP-013-F1`
+  - `Task ID` should stay the root family id, such as `CCP-013`
+  - include `Parent Prompt ID`, such as `CCP-013`
 - include `Source Document` and `Source Step` metadata near the top of the generated prompt
 - when a new prompt is generated, append the full prompt to `CLAUDE_PROMPT_QUEUE.md`
-- when appending to `CLAUDE_PROMPT_QUEUE.md`, place a scan-friendly `## CCP-### - short task title` heading immediately before the fenced prompt block
+- when appending to `CLAUDE_PROMPT_QUEUE.md`, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
 - use plain fenced Markdown blocks with no language tag for queue entries and log entries
 - when a new prompt is generated, also add an unchecked entry to `CLAUDE_PROMPT_LOG.md`
-- when appending to `CLAUDE_PROMPT_LOG.md`, place a scan-friendly `## CCP-### - short task title` heading immediately before the fenced log entry block
+- when appending to `CLAUDE_PROMPT_LOG.md`, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced log entry block
 - when appending to `CLAUDE_PROMPT_HISTORY.md`, use a plain fenced block with no language tag for the stored full prompt text
 - use the log checkbox only to indicate whether review happened:
   - checked means reviewed
@@ -49,5 +59,15 @@ Prompt tracking convention:
   - `needs rework`
 - when doing a code review, remove the matching prompt from `CLAUDE_PROMPT_QUEUE.md`
 - when doing a code review, update the matching `CCP-###` item in `CLAUDE_PROMPT_LOG.md`
+- if a reviewed prompt needs another fixing pass and the user asks for a follow-up prompt, create a new prompt entry using the same root `Task ID` with the next `-F#` modifier on `Prompt ID`
+- treat natural-language follow-up requests as follow-up fix prompts by default when they clearly refer to an existing reviewed `CCP-###`, for example:
+  - `I have a bug to fix with CCP-013`
+  - `I want to fix something from CCP-013`
+  - `This needs a bug-fix prompt from CCP-013`
+  - `I have a bug to fix with this` when the current task family is clear from context
+- in those cases:
+  - use the next `-F#` prompt id in that family
+  - keep `Task ID` as the root family id
+  - set `Parent Prompt ID` to the prompt being fixed
 - if the review is for a prompt id but the exact queued prompt text cannot be found, say so explicitly and update only the log entry with that uncertainty noted
 - when a code review finds a real current issue worth tracking, explicitly ask whether it should be added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`

@@ -7,6 +7,26 @@ This list is intentionally small and ordered for safety. It reflects the current
 next phase should focus on making game analysis and review trustworthy enough to support later
 puzzle tooling. Full puzzle work should follow, not lead, the stabilization of the analysis board.
 
+For any roadmap item involving:
+- Learn From Your Mistakes
+- retrospection
+- puzzle extraction
+- puzzle-candidate heuristics
+- review-to-puzzle logic
+
+the mandatory reference base is:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+
+Rule:
+- follow the visible Lichess logic pipeline first
+- do not tune or replace puzzle-selection parameters early
+- if the open-source Lichess repo does not prove a rule, mark it as unknown instead of inventing
+  one
+- any Patzer-specific heuristic divergence should happen only after parity-oriented work and must
+  be called out explicitly
+
 ---
 
 ## Priority 0 — Restore trustworthy validation
@@ -125,6 +145,15 @@ Why now:
 - this is the right bridge between game review and later puzzle tooling
 - it keeps the project centered on strengthening the analysis board before expanding puzzle scope
 
+Mandatory research base:
+- use:
+  - `docs/reference/lichess-retrospection/README.md`
+  - `docs/reference/lichess-retrospection-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  and the linked files as the first reference layer before implementing or tuning this feature
+- replicate the visible Lichess retrospection pipeline first, then tune later if explicitly
+  desired
+
 Implementation shape:
 - build the first version on top of the review data Patzer already produces after `Review`
 - treat this as a retrospective training loop, not as a generic saved-puzzles feature
@@ -186,6 +215,15 @@ Why now:
 - Lichess-style computer analysis is not just raw engine numbers; it turns analysis into move-by-move review language
 - Patzer Pro already has enough review math to support a proper annotation layer, but not yet enough structure to keep extending it safely
 - book-move tagging is useful, but should be added only behind a small cached provider boundary rather than mixed directly into `src/main.ts` or the raw batch engine flow
+
+Mandatory research base:
+- use:
+  - `docs/reference/lichess-retrospection/README.md`
+  - `docs/reference/lichess-retrospection-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  and the linked files before changing any review-to-puzzle or book-aware candidate logic
+- follow the documented Lichess pipeline first rather than introducing Patzer-specific heuristic
+  shortcuts
 
 Implementation shape:
 - first persist explicit per-move review annotations alongside stored analysis

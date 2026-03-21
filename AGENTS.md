@@ -52,6 +52,13 @@ to revisit. Do not treat wishlist items as approved or sequenced work. Wishlist 
 checked against current architecture, current known issues, and active priorities before they are
 recommended or implemented.
 
+For Lichess puzzle, retrospection, and Learn From Your Mistakes work, the reference sets in:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+
+are mandatory source material, not optional background reading.
+
 ## Terminology
 
 In this repo, `Game Review` means the Review-button workflow on the analysis board:
@@ -127,6 +134,7 @@ When Codex is asked to create a prompt for Claude Code:
 - add an entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 - add the full prompt text to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
 - include the same prompt identifier near the top of the generated Claude prompt
+- instruct Claude Code to echo the `Prompt ID` in its final report so the exact prompt instance can be traced later
 - include enough metadata to trace the prompt later:
   - task id
   - source document, if applicable
@@ -146,6 +154,26 @@ Prompt log expectations:
 - `CLAUDE_PROMPT_LOG.md` is the compact index of prompt ids, provenance, and review state
 - `CLAUDE_PROMPT_HISTORY.md` is the full archive of generated Claude prompts plus later status updates
 - treat prompt creation and prompt review as log-writing tasks, not optional follow-up work
+
+Follow-up fix prompt rule:
+
+- if the user asks in natural language to fix a bug, issue, regression, or missed behavior from an existing `CCP-###` task or reviewed prompt, treat it as a follow-up fix prompt by default
+- natural-language signals include phrases like:
+  - `I have a bug to fix with this`
+  - `I want to fix something from this task`
+  - `this needs a follow-up fix`
+  - `create a follow-up fix for CCP-###`
+- when that intent is clear, do not create a brand-new root `CCP-###`
+- instead, keep the same root task family id and use the next follow-up prompt id:
+  - original: `CCP-013`
+  - first follow-up fix prompt: `CCP-013-F1`
+  - second follow-up fix prompt: `CCP-013-F2`
+- for follow-up fix prompts:
+  - `Prompt ID` is the unique follow-up id, such as `CCP-013-F1`
+  - `Task ID` remains the root family id, such as `CCP-013`
+  - `Parent Prompt ID` should point to the prompt being fixed
+- if the user’s wording is natural-language-only but the current task family is clear from context, infer the follow-up relationship and use the next `-F#` id automatically
+- only create a brand-new root `CCP-###` when the user is starting a genuinely new task rather than refining or fixing an existing one
 
 ## Lichess-first rule
 
@@ -169,6 +197,49 @@ you must inspect the relevant Lichess source first and use it to inform:
 
 Do not copy blindly.
 Use Lichess as the source of truth for behavior and subsystem shape.
+
+## Retrospection and puzzle-generation rule
+
+For any task involving:
+- learn from mistakes
+- retrospection
+- puzzle candidate extraction
+- saved puzzle generation
+- "puzzle-worthy moment" heuristics
+- review-to-puzzle pipelines
+
+you must treat:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+- and the linked files in those folders
+
+as mandatory implementation references.
+
+Required process:
+
+1. Inspect the relevant Lichess source files directly
+2. Inspect the Patzer research files in:
+   - `docs/reference/lichess-retrospection/`
+   - `docs/reference/lichess-retrospection-ux/`
+   - `docs/reference/lichess-puzzle-ux/`
+3. Choose the correct reference family explicitly:
+   - use `lichess-retrospection/` for candidate logic, thresholds, and review-to-puzzle reasoning
+   - use `lichess-retrospection-ux/` for Learn From Your Mistakes analysis-board UX and board-mode behavior
+   - use `lichess-puzzle-ux/` for standalone puzzle product UX, board behavior, themes/openings/history/replay, Storm, and Racer
+4. Explicitly state what the source confirms, what is inference, and what is still unknown
+5. Replicate the visible Lichess logic pipeline first
+6. Defer Patzer-specific heuristic tuning until parity with the visible Lichess logic is achieved
+
+Hard constraint:
+
+- do not invent alternate puzzle heuristics, thresholds, or acceptance rules early just because
+  they seem simpler or more intuitive
+- do not replace visible Lichess logic with homegrown parameters unless the user explicitly asks
+  for a deliberate divergence after parity work
+- if the open-source Lichess repo does not prove a rule, say that clearly instead of making one up
+
+No exceptions for puzzle-generation or retrospection work.
 
 ## No file-path guessing
 
