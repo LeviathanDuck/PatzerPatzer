@@ -1489,6 +1489,7 @@ var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
 var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
+var showArrowLabels = localStorage.getItem("patzer.showArrowLabels") === "true";
 var pendingLines = [];
 var arrowDebounceTimer = null;
 var arrowSuppressUntil = 0;
@@ -1525,6 +1526,10 @@ function setArrowAllLines(v) {
 function setShowPlayedArrow(v) {
   showPlayedArrow = v;
 }
+function setShowArrowLabels(v) {
+  showArrowLabels = v;
+  localStorage.setItem("patzer.showArrowLabels", String(v));
+}
 function incrementPendingStopCount() {
   pendingStopCount++;
 }
@@ -1539,9 +1544,7 @@ function buildArrowShapes() {
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
       const uci = currentEval.best;
-      shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
-      const scoreLabel = buildPrimaryArrowLabel();
-      if (scoreLabel) shapes.push(scoreLabel);
+      shapes.push(buildArrowShape(uci, "paleBlue", currentEval));
     }
     if (arrowAllLines) {
       const topWc = evalWinChances(currentEval) ?? 0;
@@ -1552,12 +1555,7 @@ function buildArrowShapes() {
         if (shift >= 0.2) continue;
         const lineWidth2 = Math.max(2, Math.round(12 - shift * 50));
         const uci = line.best;
-        shapes.push({
-          orig: uci.slice(0, 2),
-          dest: uci.slice(2, 4),
-          brush: "paleGrey",
-          modifiers: { lineWidth: lineWidth2 }
-        });
+        shapes.push(buildArrowShape(uci, "paleGrey", line, { lineWidth: lineWidth2 }));
       }
     }
   }
@@ -1569,26 +1567,35 @@ function buildArrowShapes() {
     const nextNode = ctrl2.node.children[0];
     if (nextNode?.uci) {
       const uci = nextNode.uci;
-      shapes.push({
-        orig: uci.slice(0, 2),
-        dest: uci.slice(2, 4),
-        brush: "red"
-      });
+      const nextEval = evalCache.get(ctrl2.path + nextNode.id);
+      const playedEval = currentEval.best !== uci ? nextEval : void 0;
+      shapes.push(buildArrowShape(uci, "red", playedEval));
     }
   }
   const koOverlay = buildKoOverlayShape(ctrl2.node.fen);
   if (koOverlay) shapes.push(koOverlay);
   return shapes;
 }
-function buildPrimaryArrowLabel() {
-  if (!currentEval.best) return null;
-  if (currentEval.cp === void 0 && currentEval.mate === void 0) return null;
-  const text = formatScore(currentEval);
-  const fill = currentEval.mate !== void 0 ? "#9158d8" : currentEval.cp !== void 0 && currentEval.cp > 0 ? "#3d8f63" : currentEval.cp !== void 0 && currentEval.cp < 0 ? "#3f4f7a" : "#666";
-  return {
-    orig: currentEval.best.slice(2, 4),
-    label: { text, fill }
+function buildArrowShape(uci, brush, ev, modifiers) {
+  const shape = {
+    orig: uci.slice(0, 2),
+    dest: uci.slice(2, 4),
+    brush,
+    modifiers
   };
+  const labelSvg = buildArrowLabelSvg(ev);
+  if (labelSvg) shape.customSvg = { html: labelSvg, center: "label" };
+  return shape;
+}
+function buildArrowLabelSvg(ev) {
+  if (!showArrowLabels || !ev) return null;
+  if (ev.cp === void 0 && ev.mate === void 0) return null;
+  const text = formatScore(ev);
+  const fill = ev.mate !== void 0 ? "#c987ff" : ev.cp !== void 0 && ev.cp > 0 ? "#8ae0a8" : ev.cp !== void 0 && ev.cp < 0 ? "#9ab8ff" : "#d0d0d0";
+  return `<text x="50" y="56" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="34" font-weight="700" fill="${fill}" stroke="#111" stroke-width="8" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+}
+function escapeArrowLabelText(text) {
+  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 function buildKoOverlayShape(fen) {
   if (currentEval.mate !== 0) return null;
@@ -6027,13 +6034,20 @@ function renderPlayerStrips() {
     const name = color === "white" ? whiteName : blackName;
     const rating = color === "white" ? whiteRating : blackRating;
     const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
+    const loser = color === "white" && result === "0-1" || color === "black" && result === "1-0";
     const matScore = color === "white" ? score : -score;
     const centis = color === "white" ? clocks.white : clocks.black;
     return h("div.analyse__player_strip", [
-      // Winner star — replaces numeric 1/0/½ badges; losers and draws show no badge.
-      winner ? h("span.player-strip__result", "\u2605") : null,
-      h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
-      h("span.player-strip__name", rating !== void 0 ? `${name} (${rating})` : name),
+      h("div.player-strip__identity", {
+        class: {
+          "player-strip__identity--winner": winner,
+          "player-strip__identity--loser": loser,
+          "player-strip__identity--draw": !winner && !loser
+        }
+      }, [
+        h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
+        h("span.player-strip__name", rating !== void 0 ? `${name} (${rating})` : name)
+      ]),
       renderMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
       centis !== void 0 ? h("div.analyse__clock", formatClock(centis)) : null
     ]);
@@ -6443,6 +6457,19 @@ function renderEngineSettings() {
         on: {
           change: (e) => {
             setShowPlayedArrow(e.target.checked);
+            syncArrow();
+            _redraw4();
+          }
+        }
+      })
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-arrow-labels" } }, "Labels"),
+      h("input#ceval-arrow-labels", {
+        attrs: { type: "checkbox", checked: showArrowLabels },
+        on: {
+          change: (e) => {
+            setShowArrowLabels(e.target.checked);
             syncArrow();
             _redraw4();
           }

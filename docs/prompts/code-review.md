@@ -3,6 +3,7 @@ You are reviewing code changes in this repository.
 Read and follow:
 - /Users/leftcoast/Development/PatzerPatzer/AGENTS.md
 - /Users/leftcoast/Development/PatzerPatzer/CLAUDE.md
+- /Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md
 
 Your job:
 - review code changes with a bug/regression/architectural-drift mindset
@@ -12,29 +13,32 @@ Your job:
 - report findings first, summary second
 
 Workflow:
-1. Detect what changed locally using git
-2. Check `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` for the relevant `CCP-###` item
-3. Determine whether the changes are:
+1. Re-read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md` before mutating any prompt-tracking files
+2. Detect what changed locally using git
+3. Check `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` for the relevant `CCP-###` item
+4. Determine whether the changes are:
    - unstaged
    - staged
    - committed locally but not pushed
    - already pushed, if this can be confirmed against the remote
-4. Use local git information first, then fetch the tracked remote when network access is available to verify push/public status
-5. If remote verification cannot be performed, say clearly that push/public status is unverified and do not guess
-6. Review the actual diff, not just filenames
-7. Keep the review scoped to the actual changes unless surrounding code creates risk
-8. Prioritize:
+5. Use local git information first, then fetch the tracked remote when network access is available to verify push/public status
+6. If remote verification cannot be performed, say clearly that push/public status is unverified and do not guess
+7. Review the actual diff, not just filenames
+8. Keep the review scoped to the actual changes unless surrounding code creates risk
+9. Prioritize:
    - correctness bugs
    - regressions
    - Lichess behavior mismatches
    - architectural drift
    - hidden coupling
    - missing validation
-9. If the reviewed change corresponds to a queued prompt, remove that prompt from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and update its existing entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-10. When removing the prompt from `CLAUDE_PROMPT_QUEUE.md`, also remove its matching item from the top `Queue Index` in that same file so the index continues to list only still-pending prompts
-11. When updating the matching log entry, also update the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` from `- [ ] CCP-### - Short Task Title` to `- [x] CCP-### - Short Task Title`
-12. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
-13. If the review shows the task needs a follow-up fix prompt, note that the next prompt should reuse the same root `Task ID` with the next `-F#` `Prompt ID` modifier
+10. If the reviewed change corresponds to a queued prompt, remove that prompt from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and update its existing entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+11. When removing the prompt from `CLAUDE_PROMPT_QUEUE.md`, also remove its matching item from the top `Queue Index` in that same file so the index continues to list only still-pending prompts
+12. When updating the matching log entry, also update the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` from `- [ ] CCP-### - Short Task Title` to `- [x] CCP-### - Short Task Title`
+13. After updating queue/log state, explicitly verify that the reviewed `CCP-###` no longer appears anywhere in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+14. After that verification, quickly confirm it still matches `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+15. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
+16. If the review shows the task needs a follow-up fix prompt, note that the next prompt should reuse the same root `Task ID` with the next `-F#` `Prompt ID` modifier
 
 When checking git state, use local information first:
 - `git status --short --branch`
@@ -43,6 +47,7 @@ When checking git state, use local information first:
 - `git diff`
 - `git diff --cached`
 - `git diff @{upstream}...HEAD` if upstream exists
+- `rg -n "CCP-###" /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 
 When verifying push/public status, prefer:
 - `git fetch --prune`
@@ -72,6 +77,7 @@ Prompt log status rules:
 - keep the existing `## prompt-id - short task title` heading and fenced log-entry block format when updating the log
 - keep the top checklist index in `CLAUDE_PROMPT_LOG.md` synchronized with the detailed log entry status
 - keep the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md` synchronized with the actual queued prompt blocks
+- do not leave a reviewed prompt in either the queue index or the queue body
 - keep queue/log fenced blocks untagged; do not add a language label such as `text`
 - if the matching prompt is still present in `CLAUDE_PROMPT_QUEUE.md`, say it should be removed from the queue after review
 - if no prompt item is identifiable, say `No prompt queue/log item identified`

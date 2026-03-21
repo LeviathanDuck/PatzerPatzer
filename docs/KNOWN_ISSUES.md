@@ -136,6 +136,22 @@ Impact:
 
 ---
 
+## [MEDIUM] Changing engine line count can make the main engine arrowhead disappear
+
+When the user changes the engine `Lines` / `MultiPV` quantity, the main engine arrow can lose its
+head and render as only a shaft.
+
+Impact:
+- the primary engine recommendation becomes harder to read immediately after changing line count
+- engine-arrow rendering appears unstable around a normal analysis setting change
+
+Current code paths:
+- `src/ceval/view.ts` handles the `Lines` / `MultiPV` setting change and triggers reevaluation
+- `src/engine/ctrl.ts` rebuilds primary and secondary engine arrows from live eval state
+- `src/board/index.ts` configures the Chessground brushes used by engine arrow rendering
+
+---
+
 ---
 
 ## [MEDIUM] Move-list variation context menu can open at the top-left of the page
