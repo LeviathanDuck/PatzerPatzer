@@ -190,12 +190,14 @@ export function renderMoveList(
   // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts renderColumnView
   const nodes: VNode[] = [];
   renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, deleteVariation);
-  // Bottom action strip — full-width flex item, shown only when side variations exist.
-  // Mirrors the button.next placement in lichess-org/lila: ui/analyse/css/_tools.scss .analyse__moves.
-  if (clearVariations && hasVariations(root)) {
-    nodes.push(h('div.move-list-actions', [
-      h('button', { on: { click: clearVariations } }, 'Clear variations'),
-    ]));
-  }
-  return h('div.tview2.tview2-column', nodes);
+
+  // Wrap tview and optional action strip in move-list-inner.
+  // The tview scrolls; the strip is pinned at the bottom as a flex sibling.
+  // Mirrors lichess-org/lila: ui/analyse/css/_tools.scss .analyse__moves flex-direction: column pattern.
+  const strip = (clearVariations && hasVariations(root))
+    ? h('div.move-list-actions', [
+        h('button', { on: { click: clearVariations } }, 'Clear variations'),
+      ])
+    : null;
+  return h('div.move-list-inner', [h('div.tview2.tview2-column', nodes), strip]);
 }
