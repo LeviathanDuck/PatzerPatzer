@@ -70,6 +70,7 @@ import { deleteNodeAt, nodeAtPath, pathInit, pruneVariations } from './tree/ops'
 import { pgnToTree } from './tree/pgn';
 import { buildRetroCandidates } from './analyse/retro';
 import { makeRetroCtrl } from './analyse/retroCtrl';
+import { renderRetroEntry, renderRetroStrip } from './analyse/retroView';
 
 console.log('Patzer Pro');
 
@@ -321,94 +322,6 @@ function toggleRetro(): void {
   else redraw(); // no candidates — still redraw to update button state
 }
 
-/**
- * Feedback strip shown during a retrospection session.
- * Displays the current solving state and action buttons.
- * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroView.ts
- */
-function renderRetroStrip(): VNode | null {
-  const retro = ctrl.retro;
-  if (!retro) return null;
-
-  const feedback  = retro.feedback();
-  const cand      = retro.current();
-  const [solved, total] = retro.completion();
-
-  // Progress indicator — mirrors Lichess "X / Y" completion display
-  const progress = h('span.retro-strip__progress', `${solved} / ${total}`);
-
-  // Action buttons vary by feedback state
-  const buttons: (VNode | null)[] = [];
-
-  if (feedback === 'find' || feedback === 'offTrack') {
-    buttons.push(
-      h('button.retro-strip__btn', {
-        on: { click: () => {
-          retro.viewSolution();
-          // Navigate to the mistake node so the solution is visible on the board
-          if (cand) navigate(cand.path);
-        }},
-      }, 'Show answer'),
-      h('button.retro-strip__btn', {
-        on: { click: () => { retro.skip(); const next = retro.current(); if (next) navigate(next.parentPath); else redraw(); }},
-      }, 'Skip'),
-    );
-  } else if (feedback === 'win') {
-    buttons.push(
-      h('button.retro-strip__btn.retro-strip__btn--next', {
-        on: { click: () => { retro.jumpToNext(); const next = retro.current(); if (next) navigate(next.parentPath); else redraw(); }},
-      }, 'Next →'),
-    );
-  } else if (feedback === 'fail') {
-    buttons.push(
-      h('button.retro-strip__btn', {
-        on: { click: () => {
-          // Already at parentPath (board/index.ts navigated back); just reset feedback
-          retro.setFeedback('find');
-          redraw();
-        }},
-      }, 'Retry'),
-      h('button.retro-strip__btn', {
-        on: { click: () => {
-          retro.viewSolution();
-          if (cand) navigate(cand.path);
-        }},
-      }, 'Show answer'),
-    );
-  } else if (feedback === 'view') {
-    // Show the engine best move in SAN so the user knows what to play
-    const bestSan = cand ? uciToSan(cand.fenBefore, cand.bestMove) : null;
-    if (bestSan) buttons.push(h('span.retro-strip__best', `Best: ${bestSan}`));
-    buttons.push(
-      h('button.retro-strip__btn.retro-strip__btn--next', {
-        on: { click: () => { retro.jumpToNext(); const next = retro.current(); if (next) navigate(next.parentPath); else redraw(); }},
-      }, 'Next →'),
-    );
-  }
-
-  // Label: "Find the best move for White/Black" or classification label
-  let label: string;
-  if (!cand) {
-    label = 'Review complete!';
-  } else if (feedback === 'win') {
-    label = 'Correct!';
-  } else if (feedback === 'fail') {
-    label = 'Not the best move.';
-  } else if (feedback === 'view') {
-    label = `${cand.classification.charAt(0).toUpperCase() + cand.classification.slice(1)} on move ${Math.ceil(cand.ply / 2)}`;
-  } else if (feedback === 'offTrack') {
-    label = 'Navigate back to resume';
-  } else {
-    const color = cand.ply % 2 === 1 ? 'White' : 'Black';
-    label = `Find the best move for ${color}`;
-  }
-
-  return h('div.retro-strip', [
-    h('div.retro-strip__label', label),
-    h('div.retro-strip__actions', [...buttons, progress]),
-  ]);
-}
-
 // --- Route views ---
 
 function routeContent(route: Route): VNode {
@@ -510,20 +423,19 @@ function routeContent(route: Route): VNode {
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.
             // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroView.ts entry affordance.
-            h('button', {
-              class: { active: !!ctrl.retro },
-              attrs: {
-                disabled: !analysisComplete || batchAnalyzing,
-                title: ctrl.retro
-                  ? 'Close mistake review'
-                  : analysisComplete
-                    ? 'Review your mistakes from this game'
-                    : 'Complete game review first',
-              },
-              on: { click: toggleRetro },
-            }, ctrl.retro ? 'Close' : 'Mistakes'),
+            renderRetroEntry({
+              retro:            ctrl.retro,
+              analysisComplete,
+              batchAnalyzing,
+              onToggle:         toggleRetro,
+            }),
           ]),
-          renderRetroStrip(),
+          renderRetroStrip({
+            retro:    ctrl.retro,
+            navigate,
+            redraw,
+            uciToSan,
+          }),
         ]),
 
         // Underboard — below board (grid-area: under)
