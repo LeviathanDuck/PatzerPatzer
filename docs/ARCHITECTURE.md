@@ -6,6 +6,21 @@ Basis: current source tree read, current build output, current docs reconciliati
 This document describes the code that exists today. If this document disagrees with the
 codebase, trust the code and update this file again.
 
+For detailed Lichess retrospection and puzzle-reference research, use:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+
+Those folders are the current source-backed reference sets for Patzer work involving:
+- learn-from-mistakes
+- puzzle candidate extraction
+- review-to-puzzle logic
+- puzzle-quality heuristics
+- standalone puzzle product behavior
+- puzzle board UX
+- puzzle themes/openings/replay/history flows
+- Storm / Racer style puzzle products
+
 ---
 
 ## Current state
@@ -179,6 +194,15 @@ The largest remaining divergences are structural rather than behavioral:
 - engine still runs on the main thread
 - review and restore coordination still lives partly in `main.ts`
 - puzzles route is not a real subsystem yet
+
+For retrospection and puzzle-finder work specifically, the repo now has dedicated research bases:
+- `docs/reference/lichess-retrospection/`
+- `docs/reference/lichess-retrospection-ux/`
+- `docs/reference/lichess-puzzle-ux/`
+
+These folders should be treated as the internal source-backed summary of what Lichess code
+actually proves before adding any Patzer-specific heuristics, UX changes, or product-structure
+assumptions.
 
 ---
 

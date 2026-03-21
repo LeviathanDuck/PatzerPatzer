@@ -15,6 +15,9 @@ Core goals:
 Reference future-facing product ideas in:
 - `docs/FUTURE_FUNCTIONALITY.md`
 - `docs/WISHLIST.md`
+- `docs/reference/lichess-retrospection/README.md`
+- `docs/reference/lichess-retrospection-ux/README.md`
+- `docs/reference/lichess-puzzle-ux/README.md`
 
 Use those files as reference context only. Do not treat them as a substitute for the current
 codebase, current architecture docs, or active near-term priorities. In particular, wishlist items
@@ -168,6 +171,45 @@ Priority order:
 
 Claude should **not redesign features that already exist in Lichess**.
 
+## Retrospection / Puzzle Research Rule
+
+For any work related to:
+- Learn From Your Mistakes
+- retrospection
+- puzzle extraction
+- puzzle-candidate generation
+- saved puzzles
+- "puzzle-worthy" move selection
+
+Claude must use:
+- `docs/reference/lichess-retrospection/README.md`
+- `docs/reference/lichess-retrospection-ux/README.md`
+- `docs/reference/lichess-puzzle-ux/README.md`
+- and the linked files under `docs/reference/lichess-retrospection/`
+
+as mandatory repo reference material.
+
+This is not optional.
+
+Claude must:
+- inspect the relevant Lichess source files directly
+- compare them against the Patzer research docs
+- explicitly pick the right reference family:
+  - `lichess-retrospection/` for candidate logic and source-backed generation thresholds
+  - `lichess-retrospection-ux/` for Learn From Your Mistakes board UX and interaction behavior
+  - `lichess-puzzle-ux/` for standalone puzzle product behavior, filters, themes, openings, Storm, and Racer
+- follow the visible Lichess logic pipeline as closely as possible before proposing any Patzer-only
+  tuning
+- explicitly call out which rules are source-confirmed vs inferred vs unknown
+
+Claude must not:
+- invent custom puzzle-selection heuristics early
+- replace Lichess thresholds with "better feeling" local parameters
+- treat unexplained source gaps as permission to freestyle
+
+If tuning or divergence is ever proposed, it must come after parity-oriented work and be called out
+explicitly as a conscious departure from the documented Lichess reference.
+
 ---
 
 ## Lichess Reference Source
@@ -180,6 +222,7 @@ Claude should use this for:
 - move tree and variation logic
 - engine controls and UX
 - puzzle extraction logic
+- learn-from-mistakes / retrospection logic
 - board interactions
 - keyboard navigation
 - UI state transitions

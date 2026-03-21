@@ -18,9 +18,22 @@ Before writing the prompt:
 - determine whether the task touches Lichess-aligned behavior
 - include Lichess inspection instructions only when that comparison is actually relevant
 - assign the prompt a stable identifier in the form `CCP-###`
+- if the new prompt is fixing or following up on a previously reviewed prompt, keep the same task family id and create a follow-up prompt id using `-F#`, for example:
+  - original: `CCP-013`
+  - follow-up fix: `CCP-013-F1`
+  - next follow-up fix: `CCP-013-F2`
+- if the user uses natural language that clearly means "fix the reviewed task" rather than "start a new task", interpret it as a follow-up fix prompt by default, including phrasings like:
+  - `I have a bug to fix with this`
+  - `I want to fix something from this task`
+  - `this needs a follow-up fix`
+  - `I have a bug to fix with CCP-013`
+- when that intent is clear:
+  - use the next `-F#` prompt id in the same family
+  - keep `Task ID` as the root family id
+  - set `Parent Prompt ID` to the prompt being fixed
 - identify the source planning document and exact step/task the prompt comes from
 - add the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
-- when adding the prompt to the queue file, place a scan-friendly `## CCP-### - short task title` heading immediately before the fenced prompt block
+- when adding the prompt to the queue file, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
 
 The prompt you generate must instruct Claude Code to:
@@ -33,7 +46,8 @@ The prompt you generate must instruct Claude Code to:
 - make the change unless blocked by a real ambiguity or missing dependency
 - validate with build plus the most relevant task-specific checks
 - provide a short manual test checklist with concrete user actions and expected results
-- echo a `Task ID` field in the final report, using the prompt metadata identifier unless the task explicitly defines a different task id
+- echo a `Prompt ID` field in the final report, matching the exact prompt instance metadata
+- keep the `Task ID` field in the final report too, but use it only as the root task-family identifier
 - report remaining risks, limitations, or unvalidated areas clearly
 
 The final prompt must be concise, direct, and action-oriented.
@@ -46,6 +60,7 @@ If they are not yet identifiable, instruct Claude Code to locate them before dec
 The final prompt should tell Claude Code to use this output shape:
 - prompt id
 - task id
+- parent prompt id, if applicable
 - source document
 - source step
 - task title
@@ -75,9 +90,15 @@ Output requirements:
 - use this metadata header shape near the top of the prompt:
   - `Prompt ID: CCP-###`
   - `Task ID: CCP-###`
+  - `Parent Prompt ID: CCP-###` if this is a follow-up fix prompt
   - `Source Document: docs/...`
   - `Source Step: ...`
-- tell Claude Code to repeat the same `Task ID` field in its final report unless a different task id is explicitly provided in the prompt
+- for follow-up fix prompts:
+  - `Prompt ID` is the unique follow-up id, such as `CCP-013-F1`
+  - `Task ID` remains the root task family id, such as `CCP-013`
+  - `Parent Prompt ID` should point to the reviewed prompt being fixed
+- tell Claude Code to repeat the same `Prompt ID` field in its final report
+- tell Claude Code to include the `Task ID` field in its final report as the root task family id
 - append the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when generating it
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 
