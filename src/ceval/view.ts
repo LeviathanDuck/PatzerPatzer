@@ -22,6 +22,7 @@ import {
   showPlayedArrow, setShowPlayedArrow,
   showArrowLabels, setShowArrowLabels,
   showReviewLabels, setShowReviewLabels,
+  showBoardReviewGlyphs, setShowBoardReviewGlyphs,
   syncArrow, toggleEngine, evalCurrentPosition,
   type EvalLine, type PositionEval,
 } from '../engine/ctrl';
@@ -474,6 +475,19 @@ export function renderEngineSettings(): VNode | null {
         on: {
           change: (e: Event) => {
             setShowReviewLabels((e.target as HTMLInputElement).checked);
+            _redraw();
+          },
+        },
+      }),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-board-review-glyphs' } }, 'Board review'),
+      h('input#ceval-board-review-glyphs', {
+        attrs: { type: 'checkbox', checked: showBoardReviewGlyphs },
+        on: {
+          change: (e: Event) => {
+            setShowBoardReviewGlyphs((e.target as HTMLInputElement).checked);
+            syncArrow();
             _redraw();
           },
         },
