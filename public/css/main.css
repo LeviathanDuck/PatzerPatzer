@@ -887,12 +887,18 @@ body {
 cg-resize {
   display: block;
   position: absolute;
-  right: -9px;
-  bottom: -9px;
+  right: 2px;
+  bottom: 2px;
   width: 22px;
   height: 22px;
   cursor: nwse-resize;
   z-index: 100;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 cg-resize::before, cg-resize::after {
   content: "";

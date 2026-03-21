@@ -408,14 +408,24 @@ function parseEngineLine(line: string): void {
     let depth: number | undefined;
     for (let i = 1; i < parts.length; i++) {
       if (parts[i] === 'multipv') {
-        pvIndex = parseInt(parts[++i]);
+        const next = parts[i + 1];
+        if (next === undefined) break;
+        pvIndex = parseInt(next, 10);
+        i++;
       } else if (parts[i] === 'depth') {
         // Parse search depth — used by retroCtrl.ts onCeval() readiness check.
         // Mirrors lichess-org/lila: retroCtrl.ts isCevalReady node.ceval.depth.
-        depth = parseInt(parts[++i]);
+        const next = parts[i + 1];
+        if (next === undefined) break;
+        depth = parseInt(next, 10);
+        i++;
       } else if (parts[i] === 'score') {
-        isMate = parts[++i] === 'mate';
-        score = parseInt(parts[++i]);
+        const scoreType = parts[i + 1];
+        const scoreValue = parts[i + 2];
+        if (scoreType === undefined || scoreValue === undefined) break;
+        isMate = scoreType === 'mate';
+        score = parseInt(scoreValue, 10);
+        i += 2;
         if (parts[i + 1] === 'lowerbound' || parts[i + 1] === 'upperbound') i++;
       } else if (parts[i] === 'pv') {
         pvMoves = parts.slice(i + 1);
@@ -436,8 +446,13 @@ function parseEngineLine(line: string): void {
       if (score !== undefined) {
         // Normalize to white's perspective — odd plies are black to move, so negate.
         const s = (!evalIsThreat && evalNodePly % 2 === 1) ? -score : score;
-        if (isMate) { ev.mate = s; ev.cp = undefined; }
-        else        { ev.cp = s;   ev.mate = undefined; }
+        if (isMate) {
+          ev.mate = s;
+          delete ev.cp;
+        } else {
+          ev.cp = s;
+          delete ev.mate;
+        }
       }
       if (best) ev.best = best;
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
@@ -457,8 +472,13 @@ function parseEngineLine(line: string): void {
       const idx = pvIndex - 1;
       if (!pendingLines[idx]) pendingLines[idx] = {};
       const pl = pendingLines[idx]!;
-      if (isMate) { pl.mate = s; pl.cp = undefined; }
-      else        { pl.cp = s;   pl.mate = undefined; }
+      if (isMate) {
+        pl.mate = s;
+        delete pl.cp;
+      } else {
+        pl.cp = s;
+        delete pl.mate;
+      }
       if (best) pl.best = best;
       if (pvMoves.length > 0) pl.moves = pvMoves;
       currentEval.lines = pendingLines.slice(1).filter(Boolean) as EvalLine[];

@@ -39,20 +39,28 @@ export async function fetchLichessGames(
     }
     // Lichess uses UTCDate; fall back to Date if absent
     const date = (parsePgnHeader(pgn, 'UTCDate') ?? parsePgnHeader(pgn, 'Date'))?.replace(/\./g, '-');
+    const white = parsePgnHeader(pgn, 'White');
+    const black = parsePgnHeader(pgn, 'Black');
+    const resultLabel = parsePgnHeader(pgn, 'Result');
+    const timeClass = timeClassFromTimeControl(parsePgnHeader(pgn, 'TimeControl'));
+    const opening = parsePgnHeader(pgn, 'Opening');
+    const eco = parsePgnHeader(pgn, 'ECO');
+    const whiteRating = parseRating(parsePgnHeader(pgn, 'WhiteElo'));
+    const blackRating = parseRating(parsePgnHeader(pgn, 'BlackElo'));
     result.push({
       id:               nextGameId(),
       pgn,
-      white:            parsePgnHeader(pgn, 'White'),
-      black:            parsePgnHeader(pgn, 'Black'),
-      result:           parsePgnHeader(pgn, 'Result'),
-      date,
-      timeClass:        timeClassFromTimeControl(parsePgnHeader(pgn, 'TimeControl')),
-      opening:          parsePgnHeader(pgn, 'Opening'),
-      eco:              parsePgnHeader(pgn, 'ECO'),
       source:           'lichess',
-      whiteRating:      parseRating(parsePgnHeader(pgn, 'WhiteElo')),
-      blackRating:      parseRating(parsePgnHeader(pgn, 'BlackElo')),
       importedUsername: username.toLowerCase(),
+      ...(white ? { white } : {}),
+      ...(black ? { black } : {}),
+      ...(resultLabel ? { result: resultLabel } : {}),
+      ...(date ? { date } : {}),
+      ...(timeClass ? { timeClass } : {}),
+      ...(opening ? { opening } : {}),
+      ...(eco ? { eco } : {}),
+      ...(whiteRating !== undefined ? { whiteRating } : {}),
+      ...(blackRating !== undefined ? { blackRating } : {}),
     });
   }
   return result;

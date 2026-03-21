@@ -70,6 +70,8 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
+- [ ] CCP-079 - Reduce Board Review Glyph Scale To 20 Percent
+- [ ] CCP-066-F1 - Add Underboard Games Search Bar
 - [ ] CCP-073 - Clear Board And Ceval Typecheck Slice
 - [ ] CCP-074 - Clear Import And Shell Typecheck Slice
 - [ ] CCP-075 - Make Board Resize Handle Safari-Reliable
@@ -160,6 +162,40 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-068 - Add Eval Graph Height Toggle
 
 ## Log
+
+## CCP-079 - Reduce Board Review Glyph Scale To 20 Percent
+
+```
+- [ ] Reviewed
+  - ID: `CCP-079`
+  - Task ID: `CCP-079`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `reduce on-board review glyph SVG scale from 40% to 20%`
+  - Task: reduce the on-board review glyph badge scale from 40% to 20% while preserving the existing badge system
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-066-F1 - Add Underboard Games Search Bar
+
+```
+- [ ] Reviewed
+  - ID: `CCP-066-F1`
+  - Task ID: `CCP-066`
+  - Parent prompt ID: `CCP-066`
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/CLAUDE_PROMPT_LOG.md`
+  - Source step: `CCP-066 review issue — underboard list still has no search bar`
+  - Task: add the missing search bar to the compact games list beneath the analysis board
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
 
 ## CCP-073 - Clear Board And Ceval Typecheck Slice
 
