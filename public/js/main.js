@@ -653,6 +653,7 @@ var eventListenersModule = {
 var pathHead = (path) => path.slice(0, 2);
 var pathTail = (path) => path.slice(2);
 var pathInit = (path) => path.slice(0, -2);
+var pathLast = (path) => path.slice(-2);
 function childById(node, id) {
   return node.children.find((c) => c.id === id);
 }
@@ -660,6 +661,10 @@ function nodeAtPath(root, path) {
   if (path === "") return root;
   const child = childById(root, pathHead(path));
   return child ? nodeAtPath(child, pathTail(path)) : void 0;
+}
+function parentAtPath(root, path) {
+  if (path === "") return void 0;
+  return nodeAtPath(root, pathInit(path));
 }
 function nodeListAt(root, path) {
   const nodes = [root];
@@ -694,6 +699,13 @@ function addNode(root, path, node) {
   if (!childById(parent, node.id)) {
     parent.children.push(node);
   }
+}
+function deleteNodeAt(root, path) {
+  if (path === "") return;
+  const parent = parentAtPath(root, path);
+  if (!parent) return;
+  const id = pathLast(path);
+  parent.children = parent.children.filter((c) => c.id !== id);
 }
 
 // src/analyse/ctrl.ts
@@ -1751,6 +1763,8 @@ function buildAnalysisNodes(mainline, getEval) {
       if (ev.best !== void 0) entry.best = ev.best;
       if (ev.loss !== void 0) entry.loss = ev.loss;
       if (ev.delta !== void 0) entry.delta = ev.delta;
+      const label = ev.loss !== void 0 ? classifyLoss(ev.loss) : null;
+      if (label !== null) entry.label = label;
       nodes[path] = entry;
     }
   }
@@ -6293,6 +6307,22 @@ function extractPuzzleCandidates(mainline, getEval, gameId) {
 function clearPuzzleCandidates() {
   puzzleCandidates = [];
 }
+function prevMistake(currentPath) {
+  const idx = puzzleCandidates.findIndex((c) => c.path === currentPath);
+  if (idx > 0) return puzzleCandidates[idx - 1];
+  if (idx === 0) return null;
+  let last2 = null;
+  for (const c of puzzleCandidates) {
+    if (c.path.length < currentPath.length) last2 = c;
+    else break;
+  }
+  return last2;
+}
+function nextMistake(currentPath) {
+  const idx = puzzleCandidates.findIndex((c) => c.path === currentPath);
+  if (idx >= 0) return puzzleCandidates[idx + 1] ?? null;
+  return puzzleCandidates.find((c) => c.path.length > currentPath.length) ?? null;
+}
 function renderPuzzleCandidates(deps) {
   const { engineEnabled: engineEnabled2, batchAnalyzing: batchAnalyzing2, batchState: batchState2, savedPuzzles: savedPuzzles2, currentPath } = deps;
   const canExtract = engineEnabled2 && !batchAnalyzing2;
@@ -6326,6 +6356,28 @@ function renderPuzzleCandidates(deps) {
       }, isSaved ? "\u2713 Saved" : "Save")
     ]);
   });
+  let navRow = null;
+  if (puzzleCandidates.length > 0) {
+    const currentIdx = puzzleCandidates.findIndex((c) => c.path === currentPath);
+    const posLabel = currentIdx >= 0 ? `${currentIdx + 1} / ${puzzleCandidates.length}` : `\u2014 / ${puzzleCandidates.length}`;
+    const prev2 = prevMistake(currentPath);
+    const next2 = nextMistake(currentPath);
+    navRow = h("div.pgn-import__row", { attrs: { style: "margin-bottom:4px" } }, [
+      h("button", {
+        attrs: { disabled: !prev2 },
+        on: { click: () => {
+          if (prev2) deps.navigate(prev2.path);
+        } }
+      }, "\u2190 Prev"),
+      h("span", { attrs: { style: "margin:0 8px;font-size:0.85rem;color:#aaa" } }, posLabel),
+      h("button", {
+        attrs: { disabled: !next2 },
+        on: { click: () => {
+          if (next2) deps.navigate(next2.path);
+        } }
+      }, "Next \u2192")
+    ]);
+  }
   return h("div.game-list", [
     h("div.pgn-import__row", { attrs: { style: "margin-bottom:6px" } }, [
       h("button", {
@@ -6336,6 +6388,7 @@ function renderPuzzleCandidates(deps) {
         } }
       }, btnLabel)
     ]),
+    navRow,
     puzzleCandidates.length > 0 ? h("ul", rows) : h("div.game-list__header", batchState2 === "complete" ? "No blunder-level candidates found in this game." : "Run extraction after analysis completes.")
   ]);
 }
@@ -6455,6 +6508,7 @@ function renderAnalysisControls() {
     if (batchAnalyzing) {
       incrementPendingStopCount();
       stopProtocol();
+      setEngineSearchActive(false);
       setBatchAnalyzing(false);
       setBatchState("idle");
       setAnalysisRunning(false);
@@ -8385,7 +8439,7 @@ function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath,
   out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2));
   return out;
 }
-function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2) {
+function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2, deleteVariation2) {
   if (nodes.length === 0) return;
   const [main, ...variations] = nodes;
   const mainPath = parentPath + main.id;
@@ -8394,20 +8448,31 @@ function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval,
   out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate2));
   if (variations.length > 0) {
     if (isWhite) out.push(h("move.empty", "\u2026"));
-    const varLines = variations.map(
-      (v) => h("line", renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2))
-    );
+    const varLines = variations.map((v) => {
+      const varPath = parentPath + v.id;
+      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2);
+      if (deleteVariation2) {
+        return h("line", [
+          h("button.variation-remove", {
+            attrs: { title: "Remove variation" },
+            on: { click: () => deleteVariation2(varPath) }
+          }, "\xD7"),
+          ...lineNodes
+        ]);
+      }
+      return h("line", lineNodes);
+    });
     out.push(h("interrupt", [h("lines", varLines)]));
     if (isWhite && main.children.length > 0) {
       out.push(h("index", String(Math.ceil(main.ply / 2))));
       out.push(h("move.empty", "\u2026"));
     }
   }
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, deleteVariation2);
 }
-function renderMoveList(root, currentPath, getEval, navigate2) {
+function renderMoveList(root, currentPath, getEval, navigate2, deleteVariation2) {
   const nodes = [];
-  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2);
+  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, deleteVariation2);
   return h("div.tview2.tview2-column", nodes);
 }
 
@@ -8885,6 +8950,15 @@ function prev() {
   if (ctrl.path === "") return;
   navigate(pathInit(ctrl.path));
 }
+function deleteVariation(path) {
+  deleteNodeAt(ctrl.root, path);
+  if (ctrl.path.startsWith(path)) {
+    navigate(pathInit(path));
+  } else {
+    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    redraw();
+  }
+}
 function first() {
   navigate("");
 }
@@ -8945,7 +9019,7 @@ function routeContent(route) {
           // PV lines — below header (and settings when open)
           renderPvBox(),
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
-          h("div.analyse__moves", [renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate)]),
+          h("div.analyse__moves", [renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation)]),
           (() => {
             const game = importedGames.find((g) => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? "White", game?.black ?? "Black");
