@@ -1101,8 +1101,12 @@ var evalParentPath = "";
 var engineSearchActive = false;
 var pendingStopCount = 0;
 var pendingEval = false;
-var multiPv = 3;
-var analysisDepth = 30;
+function storedInt(key, def, min, max) {
+  const v = parseInt(localStorage.getItem(key) ?? "", 10);
+  return !isNaN(v) && v >= min && v <= max ? v : def;
+}
+var multiPv = storedInt("patzer.multiPv", 3, 1, 5);
+var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
 var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
@@ -1124,9 +1128,11 @@ function clearEvalCache() {
 }
 function setMultiPv(v) {
   multiPv = v;
+  localStorage.setItem("patzer.multiPv", String(v));
 }
 function setAnalysisDepth(v) {
   analysisDepth = v;
+  localStorage.setItem("patzer.analysisDepth", String(v));
 }
 function clearPendingLines() {
   pendingLines = [];
@@ -1919,12 +1925,17 @@ var batchAnalyzing = false;
 var batchState = "idle";
 var analysisRunning = false;
 var analysisComplete = false;
-var reviewDepth = 16;
+function storedInt2(key, def, min, max) {
+  const v = parseInt(localStorage.getItem(key) ?? "", 10);
+  return !isNaN(v) && v >= min && v <= max ? v : def;
+}
+var reviewDepth = storedInt2("patzer.reviewDepth", 16, 12, 20);
 var pendingBatchOnReady = false;
 var MISSED_TACTIC_THRESHOLD = 0.1;
 var MISSED_TACTIC_MAX_PLY = 60;
 function setReviewDepth(v) {
   reviewDepth = v;
+  localStorage.setItem("patzer.reviewDepth", String(v));
 }
 function setBatchAnalyzing(v) {
   batchAnalyzing = v;
