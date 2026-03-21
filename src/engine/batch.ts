@@ -25,10 +25,9 @@ import {
 } from './ctrl';
 import { evalWinChances } from './winchances';
 import { computeAnalysisSummary } from '../analyse/evalView';
-import { saveAnalysisToIdb } from '../idb/index';
+import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import type { ImportedGame } from '../import/types';
-import type { StoredNodeEntry } from '../idb/index';
 
 // --- Types ---
 
@@ -50,7 +49,6 @@ let _getImportedGames: () => ImportedGame[] = () => [];
 let _analyzedGameIds: Set<string>;
 let _missedTacticGameIds: Set<string>;
 let _analyzedGameAccuracy: Map<string, { white: number | null; black: number | null }>;
-let _buildAnalysisNodes: () => Record<string, StoredNodeEntry>;
 let _getUserColor: (game: ImportedGame) => 'white' | 'black' | null;
 let _redraw: () => void = () => {};
 
@@ -61,7 +59,6 @@ export function initBatch(deps: {
   analyzedGameIds:      Set<string>;
   missedTacticGameIds:  Set<string>;
   analyzedGameAccuracy: Map<string, { white: number | null; black: number | null }>;
-  buildAnalysisNodes:   () => Record<string, StoredNodeEntry>;
   getUserColor:         (game: ImportedGame) => 'white' | 'black' | null;
   redraw:               () => void;
 }): void {
@@ -71,7 +68,6 @@ export function initBatch(deps: {
   _analyzedGameIds      = deps.analyzedGameIds;
   _missedTacticGameIds  = deps.missedTacticGameIds;
   _analyzedGameAccuracy = deps.analyzedGameAccuracy;
-  _buildAnalysisNodes   = deps.buildAnalysisNodes;
   _getUserColor         = deps.getUserColor;
   _redraw               = deps.redraw;
 
@@ -215,7 +211,7 @@ function onBatchBestmove(): void {
 export function advanceBatch(): void {
   batchDone++;
   const gameId = _getSelectedGameId();
-  if (gameId) void saveAnalysisToIdb('partial', gameId, _buildAnalysisNodes(), reviewDepth);
+  if (gameId) void saveAnalysisToIdb('partial', gameId, buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)), reviewDepth);
   _redraw();
   if (batchDone < batchQueue.length) {
     evalBatchItem(batchQueue[batchDone]!);
@@ -234,7 +230,7 @@ export function advanceBatch(): void {
         _analyzedGameAccuracy.set(gameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });
       }
     }
-    if (gameId) void saveAnalysisToIdb('complete', gameId, _buildAnalysisNodes(), reviewDepth);
+    if (gameId) void saveAnalysisToIdb('complete', gameId, buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)), reviewDepth);
     // Re-evaluate current node interactively after batch (batch always uses MultiPV=1)
     evalCache.delete(_getCtrl().path);
     resetCurrentEval();
