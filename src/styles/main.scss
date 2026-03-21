@@ -1226,6 +1226,11 @@ body[data-board='newspaper'] cg-board::before {
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
+  // align-content: flex-start prevents the default stretch behavior from distributing
+  // unused panel height across move rows. Without this, a short game's rows expand
+  // to fill the full scroll container (flex: 1 1 0), producing large vertical gaps.
+  // flex-start packs rows naturally at the top while the scroll container stays full-height.
+  align-content: flex-start;
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
