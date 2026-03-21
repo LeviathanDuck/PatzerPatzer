@@ -574,7 +574,7 @@ function routeContent(route: Route): VNode {
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
         h('div.analyse__underboard', [
-          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, currentUserColor, reviewDotsUserOnly),
+          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, redraw, currentUserColor, reviewDotsUserOnly),
           renderGameList(deps),
         ]),
 

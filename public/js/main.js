@@ -1253,6 +1253,14 @@ function renderEvalBar(engineEnabled2, currentEval2, fen) {
 }
 var GRAPH_W = 600;
 var GRAPH_H = 80;
+var GRAPH_HEIGHT_MIN = 100;
+var GRAPH_HEIGHT_MAX = 300;
+var graphHeightRaw = Number.parseInt(localStorage.getItem("patzer.evalGraphHeightPct") ?? "", 10);
+var graphHeightPct = Number.isFinite(graphHeightRaw) ? Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, graphHeightRaw)) : GRAPH_HEIGHT_MIN;
+function setEvalGraphHeightPct(value) {
+  graphHeightPct = Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, Math.round(value)));
+  localStorage.setItem("patzer.evalGraphHeightPct", String(graphHeightPct));
+}
 function countMajorsMinors(fen) {
   const board = fen.split(" ")[0];
   let count = 0;
@@ -1275,11 +1283,14 @@ function detectPhases(mainline, n) {
   if (endIdx !== void 0) result.endIdx = endIdx;
   return result;
 }
-function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, userColor, userOnly) {
+function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, userColor, userOnly) {
   const n = mainline.length - 1;
+  const renderedGraphHeight = Math.round(GRAPH_H * graphHeightPct / 100);
   if (n < 2) {
     return h("div.eval-graph", [
-      h("div.eval-graph__empty", n === 0 ? "No moves to graph." : "Analyze game to see graph.")
+      h("div.eval-graph__empty", {
+        attrs: { style: `height:${renderedGraphHeight}px` }
+      }, n === 0 ? "No moves to graph." : "Analyze game to see graph.")
     ]);
   }
   const shouldShowReviewAnnotation2 = (nodePly) => {
@@ -1319,14 +1330,35 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, userColor
   }
   const cy = GRAPH_H / 2;
   const svgNodes = [];
-  svgNodes.push(h("rect", { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy, fill: "rgba(235,225,180,0.07)" } }));
-  svgNodes.push(h("rect", { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy, fill: "rgba(0,0,0,0.2)" } }));
   const polyPts = [
     `${valid[0].x},${cy}`,
     ...valid.map((p) => `${p.x},${p.y}`),
     `${valid[valid.length - 1].x},${cy}`
   ].join(" ");
-  svgNodes.push(h("polygon", { attrs: { points: polyPts, fill: "rgba(160,160,160,0.1)", stroke: "none" } }));
+  svgNodes.push(h("defs", [
+    h("clipPath", { attrs: { id: "eval-graph-fill-upper" } }, [
+      h("rect", { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy } })
+    ]),
+    h("clipPath", { attrs: { id: "eval-graph-fill-lower" } }, [
+      h("rect", { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy } })
+    ])
+  ]));
+  svgNodes.push(h("polygon", {
+    attrs: {
+      points: polyPts,
+      fill: "rgba(255,255,255,0.3)",
+      stroke: "none",
+      "clip-path": "url(#eval-graph-fill-upper)"
+    }
+  }));
+  svgNodes.push(h("polygon", {
+    attrs: {
+      points: polyPts,
+      fill: "rgba(0,0,0,1)",
+      stroke: "none",
+      "clip-path": "url(#eval-graph-fill-lower)"
+    }
+  }));
   svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#444", "stroke-width": 1 } }));
   svgNodes.push(h("polyline", { attrs: {
     points: valid.map((p) => `${p.x},${p.y}`).join(" "),
@@ -1441,9 +1473,28 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, userColor
     h("svg", { attrs: {
       viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
       width: "100%",
-      height: GRAPH_H,
+      height: renderedGraphHeight,
       preserveAspectRatio: "none"
-    } }, svgNodes)
+    } }, svgNodes),
+    h("div.eval-graph__height-control", [
+      h("input", {
+        attrs: {
+          type: "range",
+          min: GRAPH_HEIGHT_MIN,
+          max: GRAPH_HEIGHT_MAX,
+          step: 25,
+          value: graphHeightPct,
+          "aria-label": "Eval graph height"
+        },
+        on: {
+          input: (e) => {
+            setEvalGraphHeightPct(parseInt(e.target.value, 10));
+            redraw2();
+          }
+        }
+      }),
+      h("span", `${graphHeightPct}%`)
+    ])
   ]);
 }
 
@@ -1609,7 +1660,7 @@ function buildArrowLabelSvg(ev) {
   if (!showArrowLabels || !ev) return null;
   if (ev.cp === void 0 && ev.mate === void 0) return null;
   const text = formatScore(ev);
-  return `<text x="50" y="55" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="22" font-weight="700" fill="#fff" stroke="rgba(0,0,0,0.92)" stroke-width="6" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="12" font-weight="500" fill="#fff" stroke="rgba(0,0,0,0.92)" stroke-width="6" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
 }
 function escapeArrowLabelText(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -9815,7 +9866,7 @@ function routeContent(route) {
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
         h("div.analyse__underboard", [
-          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, currentUserColor, reviewDotsUserOnly),
+          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, redraw, currentUserColor, reviewDotsUserOnly),
           renderGameList(deps)
         ]),
         renderKeyboardHelp()
