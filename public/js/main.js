@@ -1167,8 +1167,8 @@ function stopProtocol() {
 function buildArrowShapes() {
   const shapes = [];
   const ctrl2 = _getCtrl();
-  const retroSolving = ctrl2.retro?.isSolving() ?? false;
-  if (engineEnabled && showEngineArrows && !retroSolving) {
+  const retroHidden = ctrl2.retro !== void 0 && !ctrl2.retro.guidanceRevealed();
+  if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
       const uci = currentEval.best;
       shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
@@ -1191,7 +1191,7 @@ function buildArrowShapes() {
       }
     }
   }
-  if (engineEnabled && threatMode && threatEval.best && !retroSolving) {
+  if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
   }
@@ -1249,9 +1249,12 @@ function parseEngineLine(line) {
     let best;
     let pvMoves = [];
     let pvIndex = 1;
+    let depth;
     for (let i = 1; i < parts.length; i++) {
       if (parts[i] === "multipv") {
         pvIndex = parseInt(parts[++i]);
+      } else if (parts[i] === "depth") {
+        depth = parseInt(parts[++i]);
       } else if (parts[i] === "score") {
         isMate = parts[++i] === "mate";
         score = parseInt(parts[++i]);
@@ -1277,6 +1280,7 @@ function parseEngineLine(line) {
       }
       if (best) ev.best = best;
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
+      if (depth !== void 0 && !evalIsThreat) ev.depth = depth;
       if ((score !== void 0 || best) && !_isBatchActive()) {
         syncArrowDebounced();
         _redraw();
@@ -8860,10 +8864,11 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null) {
 }
 
 // src/analyse/retroCtrl.ts
-function makeRetroCtrl(candidates, userColor = null) {
+function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0) {
   let solvedPlies = [];
   let currentIdx = -1;
   let _feedback = "find";
+  let _guidanceRevealed = false;
   const isPlySolved = (ply) => solvedPlies.includes(ply);
   function findNextIdx() {
     return candidates.findIndex((c) => !isPlySolved(c.ply));
@@ -8874,6 +8879,7 @@ function makeRetroCtrl(candidates, userColor = null) {
   }
   function jumpToNext() {
     _feedback = "find";
+    _guidanceRevealed = false;
     currentIdx = findNextIdx();
   }
   function skip() {
@@ -8900,6 +8906,12 @@ function makeRetroCtrl(candidates, userColor = null) {
     isSolving() {
       return _feedback === "find" || _feedback === "fail";
     },
+    guidanceRevealed() {
+      return _guidanceRevealed;
+    },
+    revealGuidance() {
+      _guidanceRevealed = true;
+    },
     isPlySolved,
     jumpToNext,
     skip,
@@ -8910,16 +8922,24 @@ function makeRetroCtrl(candidates, userColor = null) {
       if (_feedback === "win" || _feedback === "view") {
         return;
       }
+      if (_feedback === "eval" && path !== c.path) {
+        _feedback = "find";
+        return;
+      }
       if (_feedback === "offTrack" && path === c.parentPath) {
         _feedback = "find";
       } else if ((_feedback === "find" || _feedback === "fail") && path !== c.parentPath) {
         _feedback = "offTrack";
       }
     },
-    // Stub: called when a live ceval result arrives for the current node.
-    // Win/fail acceptance logic and engine/ctrl.ts wiring are deferred.
-    // Mirrors lichess-org/lila: retroCtrl.ts onCeval / checkCeval.
     onCeval() {
+      if (_feedback !== "eval") return;
+      const c = currentIdx >= 0 ? candidates[currentIdx] ?? null : null;
+      if (!c) return;
+      const ev = getNodeEval();
+      if (!ev) return;
+      if (!ev.depth || ev.depth < 14) return;
+      _feedback = "fail";
     },
     onWin() {
       solveCurrent();
@@ -8954,11 +8974,12 @@ function renderRetroEntry(deps) {
   }, retro ? "Close" : "Mistakes");
 }
 function renderRetroStrip(deps) {
-  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2 } = deps;
+  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2, onRevealGuidance } = deps;
   if (!retro) return null;
   const feedback = retro.feedback();
   const cand = retro.current();
   const [solved, total] = retro.completion();
+  const revealed = retro.guidanceRevealed();
   const progress = h("span.retro-strip__progress", `${solved} / ${total}`);
   const buttons = [];
   if (feedback === "find" || feedback === "offTrack") {
@@ -9032,6 +9053,13 @@ function renderRetroStrip(deps) {
   } else {
     const color = cand.ply % 2 === 1 ? "White" : "Black";
     label = `Find the best move for ${color}`;
+  }
+  if (!revealed && cand) {
+    buttons.push(
+      h("button.retro-strip__btn.retro-strip__btn--engine", {
+        on: { click: onRevealGuidance }
+      }, "Show engine")
+    );
   }
   return h("div.retro-strip", [
     h("div.retro-strip__label", label),
@@ -9175,7 +9203,7 @@ function toggleRetro() {
     selectedGameId,
     userColor ?? null
   );
-  ctrl.retro = makeRetroCtrl(candidates, userColor ?? null);
+  ctrl.retro = makeRetroCtrl(candidates, userColor ?? null, () => currentEval);
   const first2 = ctrl.retro.current();
   if (first2) navigate(first2.parentPath);
   else redraw();
@@ -9242,11 +9270,12 @@ function routeContent(route) {
           // Engine settings panel — sits directly below header, above PV lines
           // Mirrors lichess-org/lila: renderCevalSettings() position
           renderEngineSettings(),
-          // PV lines — hidden while retro is actively solving so the user is not shown
-          // engine guidance while trying to find the best move.
+          // PV lines — hidden whenever retrospection is active and guidance has not
+          // been manually revealed for the current candidate.
+          // Covers all retro states so the answer is never accidentally visible.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
           //   showCeval && !ctrl.retro?.isSolving() && cevalView.renderPvs(ctrl)
-          !ctrl.retro?.isSolving() ? renderPvBox() : null,
+          !ctrl.retro || ctrl.retro.guidanceRevealed() ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h("div.analyse__moves", [
             renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation)
@@ -9296,7 +9325,11 @@ function routeContent(route) {
             retro: ctrl.retro,
             navigate,
             redraw,
-            uciToSan
+            uciToSan,
+            onRevealGuidance: () => {
+              ctrl.retro?.revealGuidance();
+              redraw();
+            }
           })
         ]),
         // Underboard — below board (grid-area: under)
