@@ -707,6 +707,20 @@ function deleteNodeAt(root, path) {
   const id = pathLast(path);
   parent.children = parent.children.filter((c) => c.id !== id);
 }
+function promoteAt(root, path, toMainline) {
+  const nodes = nodeListAt(root, path);
+  for (let i = nodes.length - 2; i >= 0; i--) {
+    const node = nodes[i + 1];
+    const parent = nodes[i];
+    if (parent.children[0]?.id !== node.id) {
+      parent.children = [node, ...parent.children.filter((c) => c.id !== node.id)];
+      if (!toMainline) break;
+    } else if (node.forceVariation) {
+      node.forceVariation = false;
+      if (!toMainline) break;
+    }
+  }
+}
 
 // src/analyse/ctrl.ts
 var AnalyseCtrl = class {
@@ -1202,8 +1216,7 @@ function buildArrowShapes() {
       shapes.push({
         orig: uci.slice(0, 2),
         dest: uci.slice(2, 4),
-        brush: "red",
-        modifiers: { lineWidth: 9 }
+        brush: "red"
       });
     }
   }
@@ -1309,7 +1322,7 @@ function parseEngineLine(line) {
       pendingStopCount--;
       currentEval = {};
       pendingLines = [];
-      console.log("[ceval] stale bestmove discarded \u2014 currentEval reset");
+      if (pendingEval) evalCurrentPosition();
       return;
     }
     engineSearchActive = false;
@@ -1420,6 +1433,7 @@ function evalCurrentPosition() {
   syncArrow();
   arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
   if (engineSearchActive) {
+    pendingStopCount++;
     protocol.stop();
     pendingEval = true;
     _redraw();
@@ -1631,7 +1645,10 @@ function detectPhases(mainline, n) {
       break;
     }
   }
-  return { middleIdx, endIdx };
+  const result = {};
+  if (middleIdx !== void 0) result.middleIdx = middleIdx;
+  if (endIdx !== void 0) result.endIdx = endIdx;
+  return result;
 }
 function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
   const n = mainline.length - 1;
@@ -1701,12 +1718,37 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
       opacity: "0.55"
     } }));
   }
+  svgNodes.push(h("line", {
+    attrs: {
+      "data-hover": "1",
+      x1: 0,
+      y1: 0,
+      x2: 0,
+      y2: GRAPH_H,
+      stroke: "#aaa",
+      "stroke-width": 1.5,
+      opacity: "0",
+      "pointer-events": "none"
+    }
+  }));
   for (const pt of valid) {
     const capturePath = pt.path;
     const isCurrent = pt.path === currentPath;
+    const capturedX = pt.x;
     svgNodes.push(h("rect", {
       attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: "transparent" },
-      on: { click: () => navigate2(capturePath) }
+      on: {
+        click: () => navigate2(capturePath),
+        mouseenter: (e) => {
+          const svg = e.currentTarget.closest("svg");
+          const hl = svg?.querySelector("[data-hover]");
+          if (hl) {
+            hl.setAttribute("x1", String(capturedX));
+            hl.setAttribute("x2", String(capturedX));
+            hl.setAttribute("opacity", "0.55");
+          }
+        }
+      }
     }));
     const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "#c084fc" : pt.label === "blunder" ? "#f66" : pt.label === "mistake" ? "#f84" : pt.label === "inaccuracy" ? "#fa4" : "#888";
     const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
@@ -1743,7 +1785,16 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
       opacity: "0.7"
     } }));
   }
-  return h("div.eval-graph", [
+  return h("div.eval-graph", {
+    on: {
+      // Hide hover indicator when mouse leaves the graph area entirely.
+      mouseleave: (e) => {
+        const svg = e.currentTarget.querySelector("svg");
+        const hl = svg?.querySelector("[data-hover]");
+        if (hl) hl.setAttribute("opacity", "0");
+      }
+    }
+  }, [
     h("svg", { attrs: {
       viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
       width: "100%",
@@ -1769,6 +1820,7 @@ function buildAnalysisNodes(mainline, getEval) {
       if (ev.best !== void 0) entry.best = ev.best;
       if (ev.loss !== void 0) entry.loss = ev.loss;
       if (ev.delta !== void 0) entry.delta = ev.delta;
+      if (ev.moves !== void 0 && ev.moves.length > 0) entry.bestLine = ev.moves;
       const label = ev.loss !== void 0 ? classifyLoss(ev.loss) : null;
       if (label !== null) entry.label = label;
       nodes[path] = entry;
@@ -5674,6 +5726,7 @@ var orientation = "white";
 var pendingPromotion = null;
 function setOrientation(v) {
   orientation = v;
+  cgInstance?.set({ orientation: v });
 }
 function computeDests(fen) {
   const setup = parseFen(fen).unwrap();
@@ -5719,8 +5772,8 @@ function onUserMove(orig, dest) {
   }
   completeMove(orig, dest);
   if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
-    retro.onFail();
-    _navigate(retroCand.parentPath);
+    retro.setFeedback("eval");
+    retro.onCeval();
   }
 }
 function completeMove(orig, dest, promotion) {
@@ -5947,8 +6000,13 @@ function renderBoard() {
           drawable: {
             enabled: true,
             brushes: {
-              // Boost paleBlue opacity from default 0.4 → 0.65 for a bolder engine line
-              paleBlue: { key: "pb", color: "#003088", opacity: 0.65, lineWidth: 15 }
+              // Explicitly register all brushes used by engine arrow rendering so their
+              // keys are always present in Chessground state regardless of deepMerge order.
+              // Mirrors lichess-org/lila: state.ts default brushes; opacity/lineWidth values
+              // kept at Chessground defaults except paleBlue which is boosted for visibility.
+              paleBlue: { key: "pb", color: "#003088", opacity: 0.65, lineWidth: 15 },
+              paleGrey: { key: "pgr", color: "#4a4a4a", opacity: 0.35, lineWidth: 15 },
+              red: { key: "r", color: "#882020", opacity: 1, lineWidth: 10 }
             }
           },
           fen: node.fen,
@@ -6451,6 +6509,32 @@ function buildPgn(annotated) {
 
 ${parts.join(" ")}
 `;
+}
+function renderVariationPgn(nodeList, onMainline) {
+  const filtered = nodeList.filter((n) => n.san);
+  if (filtered.length === 0) return "";
+  let out = "";
+  for (let i = 0; i < filtered.length; i++) {
+    const node = filtered[i];
+    if (node.ply % 2 === 1) {
+      out += `${Math.ceil(node.ply / 2)}. `;
+    } else if (i === 0) {
+      out += `${Math.ceil(node.ply / 2)}... `;
+    }
+    out += `${node.san} `;
+  }
+  return out.trimEnd();
+}
+function isMainlinePath(root, path) {
+  return pathIsMainline(root, path);
+}
+function copyLinePgn(path) {
+  const ctrl2 = _getCtrl5();
+  const nodes = nodeListAt(ctrl2.root, path);
+  const onMainline = isMainlinePath(ctrl2.root, path);
+  const text = renderVariationPgn(nodes, onMainline);
+  navigator.clipboard.writeText(text).catch(() => {
+  });
 }
 function downloadPgn(annotated) {
   const pgn = buildPgn(annotated);
@@ -7868,6 +7952,38 @@ function pgnToTree(pgn) {
 
 // src/import/chesscom.ts
 var CHESSCOM_BASE = "https://api.chess.com/pub/player";
+function archiveCutoffMonth() {
+  const range = importFilters.dateRange;
+  if (range === "all") return null;
+  if (range === "custom") {
+    return importFilters.customFrom ? importFilters.customFrom.slice(0, 7) : null;
+  }
+  const now = /* @__PURE__ */ new Date();
+  let cutoff;
+  switch (range) {
+    case "24h":
+      cutoff = new Date(now.getTime() - 864e5);
+      break;
+    case "1week":
+      cutoff = new Date(now.getTime() - 7 * 864e5);
+      break;
+    case "1month":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 1);
+      break;
+    case "3months":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 3);
+      break;
+    case "1year":
+      cutoff = new Date(now);
+      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      break;
+    default:
+      return null;
+  }
+  return cutoff.toISOString().slice(0, 7);
+}
 var chesscom = {
   username: "LeviathanDuck",
   loading: false,
@@ -7886,11 +8002,22 @@ async function fetchChesscomGames(username, rated, speeds) {
   const archivesData = await archivesRes.json();
   const archives = archivesData.archives ?? [];
   if (archives.length === 0) return [];
-  const latestUrl = archives[archives.length - 1];
-  const gamesRes = await fetch(latestUrl);
-  if (!gamesRes.ok) throw new Error(`Chess.com API error ${gamesRes.status}`);
-  const gamesData = await gamesRes.json();
-  const rawGames = gamesData.games ?? [];
+  const cutoffMonth = archiveCutoffMonth();
+  const relevantArchives = cutoffMonth === null ? archives : archives.filter((url) => {
+    const parts = url.split("/");
+    const year = parts[parts.length - 2];
+    const month = parts[parts.length - 1];
+    if (!year || !month) return false;
+    return `${year}-${month.padStart(2, "0")}` >= cutoffMonth;
+  });
+  if (relevantArchives.length === 0) return [];
+  const archiveResponses = await Promise.all(relevantArchives.map((url) => fetch(url)));
+  const rawGames = [];
+  for (const res of archiveResponses) {
+    if (!res.ok) throw new Error(`Chess.com API error ${res.status}`);
+    const data = await res.json();
+    rawGames.push(...data.games ?? []);
+  }
   const result = [];
   for (let i = rawGames.length - 1; i >= 0; i--) {
     const raw = rawGames[i];
@@ -8364,7 +8491,7 @@ var GLYPH_COLORS = {
   "!": "#8cf",
   "!?": "#aaa"
 };
-function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2) {
+function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu) {
   const cached = getEval(path);
   const parentCached = getEval(pathInit(path));
   const pgnGlyph = node.glyphs?.[0];
@@ -8383,39 +8510,50 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
   if (symbol) inner.push(h("glyph", { attrs: { style: `color:${color}` } }, symbol));
   if (mate !== void 0) inner.push(h("eval", `+M${Math.abs(mate)}`));
   return h("move", {
-    class: { active: path === currentPath },
+    class: {
+      active: path === currentPath,
+      "context-active": contextMenuPath2 === path
+    },
     attrs: { p: path },
-    on: { click: () => navigate2(path) }
+    on: {
+      click: () => navigate2(path),
+      ...onContextMenu ? { contextmenu: (e) => {
+        e.preventDefault();
+        onContextMenu(path, e);
+      } } : {}
+    }
   }, inner);
 }
-function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath, getEval, navigate2) {
+function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu) {
   if (nodes.length === 0) return [];
-  const [main, ...variations] = nodes;
+  const main = nodes[0];
+  const variations = nodes.slice(1);
   const mainPath = parentPath + main.id;
   const out = [];
   const showIndex = needsMoveNum || main.ply % 2 === 1;
-  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate2));
+  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu));
   for (const variant of variations) {
-    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2)));
+    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu)));
   }
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
   const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
-  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2));
+  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu));
   return out;
 }
-function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2, deleteVariation2) {
+function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2, deleteVariation2, contextMenuPath2, onContextMenu) {
   if (nodes.length === 0) return;
-  const [main, ...variations] = nodes;
+  const main = nodes[0];
+  const variations = nodes.slice(1);
   const mainPath = parentPath + main.id;
   const isWhite = main.ply % 2 === 1;
   if (isWhite) out.push(h("index", String(Math.ceil(main.ply / 2))));
-  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate2));
+  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu));
   if (variations.length > 0) {
     if (isWhite) out.push(h("move.empty", "\u2026"));
     const varLines = variations.map((v) => {
       const varPath = parentPath + v.id;
-      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2);
+      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu);
       if (deleteVariation2) {
         return h("line", [
           h("button.variation-remove", {
@@ -8433,11 +8571,11 @@ function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval,
       out.push(h("move.empty", "\u2026"));
     }
   }
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, deleteVariation2);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, deleteVariation2, contextMenuPath2, onContextMenu);
 }
-function renderMoveList(root, currentPath, getEval, navigate2, deleteVariation2) {
+function renderMoveList(root, currentPath, getEval, navigate2, deleteVariation2, contextMenuPath2, onContextMenu) {
   const nodes = [];
-  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, deleteVariation2);
+  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, deleteVariation2, contextMenuPath2, onContextMenu);
   return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes)]);
 }
 
@@ -8518,7 +8656,8 @@ function closeGlobalMenu(redraw2) {
   redraw2();
 }
 function renderGlobalMenu(deps) {
-  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, redraw: redraw2 } = deps;
+  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
+  const hasGame = selectedGameId2 !== null;
   return h("div.global-menu", [
     h("button.global-menu__trigger", {
       class: { active: showGlobalMenu },
@@ -8541,9 +8680,14 @@ function renderGlobalMenu(deps) {
           void resetAllData2();
         } }
       }, "Clear Local Data"),
+      // Navigate to the analysis board to review the currently loaded game.
+      // Disabled when no game is selected — nothing to review.
       h("button.global-menu__item", {
+        attrs: { disabled: !hasGame, title: hasGame ? "Review current game on analysis board" : "Select a game first" },
         on: { click: () => {
-          console.log("TODO: game review settings");
+          if (!hasGame) return;
+          closeGlobalMenu(redraw2);
+          window.location.hash = "#/analysis";
         } }
       }, "Game Review"),
       h("button.global-menu__item", {
@@ -8818,7 +8962,7 @@ function onChange2(fn) {
 }
 
 // src/analyse/retro.ts
-function buildRetroCandidates(mainline, getEval, gameId, userColor = null) {
+function buildRetroCandidates(mainline, getEval, gameId, userColor = null, getOpeningUcis = () => void 0) {
   const candidates = [];
   let path = "";
   for (let i = 1; i < mainline.length; i++) {
@@ -8839,13 +8983,15 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null) {
     const classification = loss !== void 0 ? classifyLoss(loss) : null;
     const qualifiesByLoss = classification === "mistake" || classification === "blunder";
     if (!qualifiesByLoss && !isMissedMate) continue;
+    const openingUcis = getOpeningUcis(parent.fen);
+    if (openingUcis && node.uci && openingUcis.includes(node.uci)) continue;
     let finalClassification;
     if (classification === "blunder" || classification === "mistake") {
       finalClassification = classification;
     } else {
       finalClassification = "blunder";
     }
-    candidates.push({
+    const candidate = {
       gameId,
       path,
       parentPath,
@@ -8858,13 +9004,18 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null) {
       isMissedMate,
       playerColor,
       ply: node.ply
-    });
+    };
+    if (parentEval.moves && parentEval.moves.length > 0) {
+      candidate.bestLine = parentEval.moves;
+    }
+    candidates.push(candidate);
   }
   return candidates;
 }
 
 // src/analyse/retroCtrl.ts
-function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0) {
+function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0, getEval = () => void 0, navigateTo = () => {
+}) {
   let solvedPlies = [];
   let currentIdx = -1;
   let _feedback = "find";
@@ -8939,7 +9090,23 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0)
       const ev = getNodeEval();
       if (!ev) return;
       if (!ev.depth || ev.depth < 14) return;
-      _feedback = "fail";
+      const parentEv = getEval(c.parentPath);
+      if (parentEv) {
+        const toColor = (wc) => c.playerColor === "white" ? wc : -wc;
+        const nodeWc = toColor(evalWinChances(ev) ?? 0);
+        const parentWc = toColor(evalWinChances(parentEv) ?? 0);
+        const diff2 = (nodeWc - parentWc) / 2;
+        if (diff2 > -0.04) {
+          solveCurrent();
+          _feedback = "win";
+        } else {
+          _feedback = "fail";
+          navigateTo(c.parentPath);
+        }
+      } else {
+        _feedback = "fail";
+        navigateTo(c.parentPath);
+      }
     },
     onWin() {
       solveCurrent();
@@ -9087,6 +9254,74 @@ var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
 var importedGames = [];
 var selectedGameId = null;
 var selectedGamePgn = null;
+var gamesLibraryLoaded = false;
+var contextMenuPath = null;
+var contextMenuPos = null;
+var _contextMenuCloseListener = null;
+function openContextMenu(path, e) {
+  contextMenuPath = path;
+  contextMenuPos = { x: e.clientX, y: e.clientY };
+  if (_contextMenuCloseListener) document.removeEventListener("click", _contextMenuCloseListener);
+  _contextMenuCloseListener = () => {
+    contextMenuPath = null;
+    contextMenuPos = null;
+    _contextMenuCloseListener = null;
+    redraw();
+  };
+  document.addEventListener("click", _contextMenuCloseListener, { once: true });
+  redraw();
+}
+function renderContextMenu() {
+  if (!contextMenuPath || !contextMenuPos) return null;
+  const node = nodeAtPath(ctrl.root, contextMenuPath);
+  const title = node?.san ?? contextMenuPath;
+  const onMainline = isMainlinePath(ctrl.root, contextMenuPath);
+  const copyLabel = onMainline ? "Copy main line PGN" : "Copy variation PGN";
+  return h("div#move-ctx-menu.visible", {
+    style: { left: contextMenuPos.x + "px", top: contextMenuPos.y + "px" },
+    on: { contextmenu: (e) => e.preventDefault() }
+  }, [
+    h("p.title", title),
+    // Copy PGN — mirrors lichess-org/lila: contextMenu.ts clipboard copy action (CCP-026)
+    h("a", {
+      on: { click: () => {
+        copyLinePgn(contextMenuPath);
+        contextMenuPath = null;
+        contextMenuPos = null;
+        redraw();
+      } }
+    }, copyLabel),
+    // Delete from here — mirrors lichess-org/lila: contextMenu.ts deleteFromHere action (CCP-027)
+    h("a", {
+      on: { click: () => {
+        const path = contextMenuPath;
+        contextMenuPath = null;
+        contextMenuPos = null;
+        deleteVariation(path);
+      } }
+    }, "Delete from here"),
+    // Promote variation / Make main line — mirrors lichess-org/lila: contextMenu.ts promote actions (CCP-028)
+    // Only shown for non-mainline nodes: promoting a mainline node is a no-op.
+    !onMainline ? h("a", {
+      on: { click: () => {
+        const path = contextMenuPath;
+        contextMenuPath = null;
+        contextMenuPos = null;
+        promoteAt(ctrl.root, path, false);
+        redraw();
+      } }
+    }, "Promote variation") : null,
+    !onMainline ? h("a", {
+      on: { click: () => {
+        const path = contextMenuPath;
+        contextMenuPath = null;
+        contextMenuPos = null;
+        promoteAt(ctrl.root, path, true);
+        redraw();
+      } }
+    }, "Make main line") : null
+  ]);
+}
 var analyzedGameIds = /* @__PURE__ */ new Set();
 var missedTacticGameIds = /* @__PURE__ */ new Set();
 var analyzedGameAccuracy = /* @__PURE__ */ new Map();
@@ -9130,6 +9365,7 @@ async function loadAndRestoreAnalysis(gameId, generation) {
     if (entry.loss !== void 0) ev.loss = entry.loss;
     if (entry.delta !== void 0) ev.delta = entry.delta;
     if (entry.label !== void 0) ev.label = entry.label;
+    if (entry.bestLine !== void 0) ev.moves = entry.bestLine;
     evalCache.set(entry.path, ev);
   }
   if (stored.status === "complete") {
@@ -9203,7 +9439,13 @@ function toggleRetro() {
     selectedGameId,
     userColor ?? null
   );
-  ctrl.retro = makeRetroCtrl(candidates, userColor ?? null, () => currentEval);
+  ctrl.retro = makeRetroCtrl(
+    candidates,
+    userColor ?? null,
+    () => currentEval,
+    (path) => evalCache.get(path),
+    navigate
+  );
   const first2 = ctrl.retro.current();
   if (first2) navigate(first2.parentPath);
   else redraw();
@@ -9235,7 +9477,7 @@ function routeContent(route) {
   switch (route.name) {
     case "analysis-game": {
       const gameId = route.params["id"] ?? "";
-      if (importedGames.length === 0) {
+      if (!gamesLibraryLoaded) {
         return h("p", "Loading\u2026");
       }
       if (!importedGames.find((g) => g.id === gameId)) {
@@ -9267,9 +9509,10 @@ function routeContent(route) {
           // Engine header: toggle + pearl + engine-name/status + settings gear
           // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderCeval()
           renderCeval(),
-          // Engine settings panel — sits directly below header, above PV lines
-          // Mirrors lichess-org/lila: renderCevalSettings() position
-          renderEngineSettings(),
+          // Engine settings panel — hidden during active retrospection.
+          // Settings are irrelevant while solving; retro is a focused board mode.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts mode-gate pattern.
+          ctrl.retro ? null : renderEngineSettings(),
           // PV lines — hidden whenever retrospection is active and guidance has not
           // been manually revealed for the current candidate.
           // Covers all retro states so the answer is never accidentally visible.
@@ -9278,13 +9521,35 @@ function routeContent(route) {
           !ctrl.retro || ctrl.retro.guidanceRevealed() ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h("div.analyse__moves", [
-            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation)
+            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation, contextMenuPath, openContextMenu)
           ]),
-          (() => {
+          // Active retrospection panel — placed after the move list, before analysis summaries.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
+          //   retroView(ctrl) || explorerView(ctrl) || practiceView(ctrl)
+          renderRetroStrip({
+            retro: ctrl.retro,
+            navigate,
+            redraw,
+            uciToSan,
+            onRevealGuidance: () => {
+              ctrl.retro?.revealGuidance();
+              redraw();
+            }
+          }),
+          // Analysis summary and puzzle finder — hidden during active retrospection.
+          // These are analysis-complete result panels; they conflict with the focused
+          // retro solve mode and match the Lichess pattern of retro replacing explorer/tool panels.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
+          //   retroView(ctrl) || explorerView(ctrl) || practiceView(ctrl) — retro is exclusive.
+          // Use ternary (not &&) to produce null rather than false when retro is active.
+          // Raw Snabbdom h() cannot handle boolean children — false in a children array
+          // throws "Cannot create property 'elm' on boolean 'false'" and corrupts the VDOM.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts LooseVNode intent.
+          ctrl.retro ? null : (() => {
             const game = importedGames.find((g) => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? "White", game?.black ?? "Black");
           })(),
-          (() => {
+          ctrl.retro ? null : (() => {
             const puzzleDeps = {
               mainline: ctrl.mainline,
               getEval: (p) => evalCache.get(p),
@@ -9320,17 +9585,7 @@ function routeContent(route) {
               batchAnalyzing,
               onToggle: toggleRetro
             })
-          ]),
-          renderRetroStrip({
-            retro: ctrl.retro,
-            navigate,
-            redraw,
-            uciToSan,
-            onRevealGuidance: () => {
-              ctrl.retro?.revealGuidance();
-              redraw();
-            }
-          })
+          ])
         ]),
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
@@ -9342,8 +9597,31 @@ function routeContent(route) {
       ]);
     case "games":
       return renderGamesView(deps);
-    case "puzzles":
-      return h("h1", "Puzzles Page");
+    case "puzzles": {
+      if (savedPuzzles.length === 0) {
+        return h("div.puzzles-empty", [
+          h("h2", "Saved Puzzles"),
+          h("p", "No saved puzzles yet."),
+          h("p", "Review games with the engine to find missed tactics, then save them here."),
+          h("a", { attrs: { href: "#/games" } }, "Go to My Games")
+        ]);
+      }
+      return h("div.puzzles-list", [
+        h("h2", `Saved Puzzles (${savedPuzzles.length})`),
+        h("ul.puzzles-list__items", savedPuzzles.map((p) => {
+          const moveNum = Math.ceil(p.ply / 2);
+          const isWhite = p.ply % 2 === 1;
+          const moveTxt = `${moveNum}${isWhite ? "." : "\u2026"} ${p.san}`;
+          const lossPct = Math.round(p.loss * 100);
+          const href = p.gameId ? `#/analysis/${p.gameId}` : "#/analysis";
+          return h("li.puzzles-list__item", [
+            h("span.puzzles-list__move", moveTxt),
+            h("span.puzzles-list__loss", `\u2212${lossPct}%`),
+            p.gameId ? h("a.puzzles-list__link", { attrs: { href } }, "View in game") : null
+          ]);
+        }))
+      ]);
+    }
     case "openings":
       return h("h1", "Openings Page");
     case "stats":
@@ -9378,6 +9656,7 @@ function view(route) {
       redraw
     }),
     h("main", [routeContent(route)]),
+    renderContextMenu(),
     h("footer.app-legal", [
       h("span", "Patzer Pro source is available under AGPL-3.0-or-later."),
       h("span", "No warranty."),
@@ -9403,7 +9682,7 @@ function view(route) {
 var wheelPixelAccum = 0;
 document.addEventListener("wheel", (e) => {
   if (e.ctrlKey) return;
-  const boardWrap = document.querySelector(".analyse__board-wrap");
+  const boardWrap = document.querySelector(".analyse__board.main-board");
   if (!boardWrap?.contains(e.target)) return;
   e.preventDefault();
   if (e.deltaMode === 0) {
@@ -9487,7 +9766,11 @@ onChange2((route) => {
 vnode2 = patch(app, view(currentRoute));
 void loadPuzzlesFromIdb().then(setSavedPuzzles);
 void loadGamesFromIdb().then((stored) => {
-  if (!stored || stored.games.length === 0) return;
+  gamesLibraryLoaded = true;
+  if (!stored || stored.games.length === 0) {
+    redraw();
+    return;
+  }
   importedGames = stored.games;
   const maxId = Math.max(...stored.games.map((g) => parseInt(g.id.replace("game-", "")) || 0));
   restoreGameIdCounter(maxId);

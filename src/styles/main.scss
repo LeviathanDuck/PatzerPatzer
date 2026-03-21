@@ -729,6 +729,53 @@ body.resizing {
   overflow: hidden;
 }
 
+// Retrospection active-session panel — inside the tools column, below the move list.
+// Mirrors lichess-org/lila: ui/analyse/css/_retro.scss .retro-box placement in tools column.
+// Adapted from lichess-org/lila: ui/analyse/css/_training.scss .training-box
+.retro-strip {
+  padding: 10px 12px;
+  border-top: 1px solid #333;
+  background: #1e1e1e;
+  flex-shrink: 0;
+
+  .retro-strip__label {
+    font-size: 0.9em;
+    color: #ccc;
+    margin-bottom: 6px;
+  }
+
+  .retro-strip__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .retro-strip__btn {
+    font-size: 0.82em;
+    padding: 3px 8px;
+    cursor: pointer;
+  }
+
+  .retro-strip__btn--next {
+    background: rgba(56, 147, 232, 0.8);
+    color: #fff;
+    border: none;
+    &:hover { background: rgba(56, 147, 232, 1); }
+  }
+
+  .retro-strip__best {
+    font-size: 0.85em;
+    color: #aaa;
+  }
+
+  .retro-strip__progress {
+    font-size: 0.8em;
+    color: #888;
+    margin-left: auto;
+  }
+}
+
 // Navigation controls below tools.
 // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss grid-area: controls
 .analyse__controls {
@@ -1133,6 +1180,14 @@ body[data-board='newspaper'] cg-board::before {
     &:hover:not(.active) {
       background: rgba(255, 255, 255, 0.08);
       color: #eee;
+    }
+
+    // Context-menu target highlight — dimmer than active, just enough to signal selection.
+    // Mirrors lichess-org/lila: ui/analyse/src/treeView/contextMenu.ts path-targeting.
+    &.context-active:not(.active) {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      outline: 1px solid rgba(255, 255, 255, 0.25);
     }
 
     // Move number prefix inside the move element.
@@ -2247,5 +2302,41 @@ body[data-board='newspaper'] cg-board::before {
   &__empty-hint {
     font-size: 0.82rem;
     color: #444;
+  }
+}
+
+// Move-list context menu overlay.
+// Adapted from lichess-org/lila: ui/analyse/src/treeView/contextMenu.ts #analyse-cm
+#move-ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  min-width: 180px;
+  padding: 4px 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  display: none; // hidden by default; .visible shows it
+
+  &.visible { display: block; }
+
+  p.title {
+    margin: 0;
+    padding: 6px 12px 4px;
+    font-size: 0.85em;
+    font-weight: bold;
+    color: #aaa;
+    border-bottom: 1px solid #3a3a3a;
+  }
+
+  a {
+    display: block;
+    padding: 6px 12px;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 0.9em;
+    text-decoration: none;
+
+    &:hover { background: #383838; color: #fff; }
   }
 }
