@@ -2971,3 +2971,16 @@ In your final report, repeat:
 - `Task ID: CCP-056`
 - `Execution Target: Codex`
 ```
+
+## CCP-057 — Reviewed
+
+- Task: diagnose and fix the live-engine navigation stall so PV lines and arrows keep matching the current position during move-by-move review
+- Task ID: `CCP-057`
+- Parent prompt ID: none
+- Source document: `docs/KNOWN_ISSUES.md`
+- Source step: `[HIGH] Live per-move engine analysis can stall during move navigation`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: current `src/engine/ctrl.ts` clears `engineSearchActive` before resuming `pendingEval` after discarding a stale interrupted-search `bestmove`, which prevents the permanent live-analysis stall during rapid navigation and keeps reevaluation flowing on the active node

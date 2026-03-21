@@ -488,12 +488,18 @@ export function evalCurrentPosition(): void {
 
   if (engineSearchActive) {
     // Stop the old search immediately so the new position starts evaluating sooner.
-    // Increment pendingStopCount so the upcoming stale bestmove is discarded by counter
-    // rather than relying solely on the path guard. This covers the race window where
-    // the stale bestmove arrives after evalNodePath has been updated to the new path.
-    // Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts stop-before-go on navigation.
-    pendingStopCount++;
-    protocol.stop();
+    // But if a reevaluation is already pending, don't queue additional stale-bestmove
+    // discards for the same interrupted search. Rapid navigation can call
+    // evalCurrentPosition() multiple times before the engine answers the first stop;
+    // incrementing pendingStopCount on every call leaves extra stale credits behind,
+    // so a later real bestmove for the current position is wrongly discarded and
+    // live analysis appears to stall.
+    // Mirrors the Lichess ceval pattern of swapping to the latest queued work rather
+    // than repeatedly stacking stop bookkeeping for the same in-flight search.
+    if (!pendingEval) {
+      pendingStopCount++;
+      protocol.stop();
+    }
     pendingEval = true;
     _redraw();
     return;
