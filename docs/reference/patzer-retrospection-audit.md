@@ -205,7 +205,39 @@ Conclusion:
 - UX parity is still early-stage
 - this should be improved after controller wiring is stabilized, not before
 
-## 7. Patzer still lacks the source-backed parity exceptions
+## 7. Guidance reveal is a deliberate Patzer deviation from Lichess
+
+Patzer status:
+- `_guidanceRevealed` in retroCtrl starts `false` for each candidate
+- the user must click "Show engine" in the retro strip to see the PV and arrows
+- `revealGuidance()` sets `_guidanceRevealed = true`
+- `jumpToNext()` resets it to `false` for each new candidate
+- `guidanceRevealed()` gates both the PV box (tools column) and arrow rendering in
+  `buildArrowShapes()` in `src/engine/ctrl.ts`
+
+Lichess baseline:
+- Lichess has no explicit "Show engine" button and no `_guidanceRevealed` flag
+- guidance visibility is computed implicitly per-node via `hideComputerLine(node)` and
+  `showBadNode(node)` in `retroCtrl.ts`
+- these return `true` on the candidate node while feedback is `find`, preventing the computer
+  line from appearing without any user action or explicit reveal step
+
+Assessment:
+- the Patzer approach of a manual reveal button is intentional
+- it is functionally equivalent to Lichess for the user: computer line is hidden until revealed
+- the mechanism is different: Patzer uses an explicit state flag + button; Lichess uses
+  per-node computed predicates on every render pass
+
+Required wiring (fixed in CCP-015-F3):
+- callers that change `_guidanceRevealed` state must call `syncArrow()` before `redraw()`
+  so Chessground arrows update immediately when the user clicks "Show engine"
+- `toggleRetro()` exit path must call `syncArrow()` so suppressed arrows re-appear
+  immediately when the user leaves retro mode
+
+This deviation is intentional and acceptable at current scope. It should be documented
+but does not need to be removed or converted to the Lichess predicate model.
+
+## 8. Patzer still lacks the source-backed parity exceptions
 
 Missing today:
 - opening/book cancellation
