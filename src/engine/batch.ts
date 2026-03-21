@@ -92,7 +92,17 @@ export let batchAnalyzing   = false;
 export let batchState: BatchState = 'idle';
 export let analysisRunning  = false;
 export let analysisComplete = false;
-export let reviewDepth      = 16;
+/**
+ * Read an integer from localStorage, returning def when the key is absent,
+ * unparseable, or out of [min, max].
+ * Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts storedIntProp pattern.
+ */
+function storedInt(key: string, def: number, min: number, max: number): number {
+  const v = parseInt(localStorage.getItem(key) ?? '', 10);
+  return (!isNaN(v) && v >= min && v <= max) ? v : def;
+}
+
+export let reviewDepth      = storedInt('patzer.reviewDepth', 16, 12, 20);
 export let pendingBatchOnReady = false;
 
 // Win-chance swing threshold for missed-tactic detection.
@@ -103,7 +113,7 @@ const MISSED_TACTIC_MAX_PLY   = 60;
 
 // --- Setters (used by main.ts render code and loadGame) ---
 
-export function setReviewDepth(v: number): void      { reviewDepth = v; }
+export function setReviewDepth(v: number): void      { reviewDepth = v; localStorage.setItem('patzer.reviewDepth', String(v)); }
 export function setBatchAnalyzing(v: boolean): void  { batchAnalyzing = v; }
 export function setBatchState(v: BatchState): void   { batchState = v; }
 export function setAnalysisRunning(v: boolean): void { analysisRunning = v; }

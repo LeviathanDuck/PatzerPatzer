@@ -99,8 +99,18 @@ let pendingEval = false;
 // --- Engine settings ---
 // Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts
 
-export let multiPv         = 3;   // number of candidate lines (UCI MultiPV), 1–5
-export let analysisDepth   = 30;  // live analysis depth (transient, does NOT overwrite review)
+/**
+ * Read an integer from localStorage, returning def when the key is absent,
+ * unparseable, or out of [min, max].
+ * Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts storedIntProp pattern.
+ */
+function storedInt(key: string, def: number, min: number, max: number): number {
+  const v = parseInt(localStorage.getItem(key) ?? '', 10);
+  return (!isNaN(v) && v >= min && v <= max) ? v : def;
+}
+
+export let multiPv         = storedInt('patzer.multiPv', 3, 1, 5);
+export let analysisDepth   = storedInt('patzer.analysisDepth', 30, 18, 30);
 export let showEngineArrows = true;
 export let arrowAllLines    = true;
 export let showPlayedArrow  = true;
@@ -127,8 +137,8 @@ let       threatEval: PositionEval = {};
 export function resetCurrentEval(): void          { currentEval = {}; }
 export function setCurrentEval(ev: PositionEval): void { currentEval = { ...ev }; }
 export function clearEvalCache(): void            { evalCache.clear(); }
-export function setMultiPv(v: number): void       { multiPv = v; }
-export function setAnalysisDepth(v: number): void { analysisDepth = v; }
+export function setMultiPv(v: number): void       { multiPv = v; localStorage.setItem('patzer.multiPv', String(v)); }
+export function setAnalysisDepth(v: number): void { analysisDepth = v; localStorage.setItem('patzer.analysisDepth', String(v)); }
 export function clearPendingLines(): void         { pendingLines = []; }
 export function setShowEngineArrows(v: boolean): void { showEngineArrows = v; }
 export function setArrowAllLines(v: boolean): void    { arrowAllLines = v; }
