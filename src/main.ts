@@ -66,7 +66,7 @@ import {
   setSavedPuzzles,
 } from './idb/index';
 import { current, onChange, type Route } from './router';
-import { deleteNodeAt, pathInit } from './tree/ops';
+import { deleteNodeAt, nodeAtPath, pathInit, pruneVariations } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
 
 console.log('Patzer Pro');
@@ -229,6 +229,29 @@ function prev(): void {
 }
 
 /**
+ * Remove all side-variation branches from the tree, restoring the move list to
+ * the imported/mainline move order. evalCache and review state are unaffected.
+ * Repairs the active path if it was inside a deleted branch.
+ * Mirrors lichess-org/lila: ui/lib/src/tree/ops.ts updateAll walking pattern.
+ */
+function clearVariations(): void {
+  pruneVariations(ctrl.root);
+  // Repair current path if it is now invalid (was inside a deleted variation).
+  let repairPath = ctrl.path;
+  while (repairPath !== '' && !nodeAtPath(ctrl.root, repairPath)) {
+    repairPath = pathInit(repairPath);
+  }
+  if (repairPath !== ctrl.path) {
+    navigate(repairPath);
+  } else {
+    ctrl.setPath(ctrl.path); // refresh ctrl.mainline / nodeList after tree mutation
+    syncBoard();
+    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    redraw();
+  }
+}
+
+/**
  * Remove a side variation branch from the tree.
  * If the active path is inside the deleted branch, navigate to the branch root's parent.
  * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts deleteNode path-repair logic.
@@ -302,7 +325,15 @@ function routeContent(route: Route): VNode {
           // PV lines — below header (and settings when open)
           renderPvBox(),
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
-          h('div.analyse__moves', [renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation)]),
+          h('div.analyse__moves', [
+            // Clear-variations button — shown only when side branches exist.
+            ctrl.mainline.some(n => n.children.length > 1)
+              ? h('div.pgn-import__row', { attrs: { style: 'padding-bottom:4px' } }, [
+                  h('button', { on: { click: clearVariations } }, 'Clear variations'),
+                ])
+              : null,
+            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation),
+          ]),
           (() => {
             const game = importedGames.find(g => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? 'White', game?.black ?? 'Black');
