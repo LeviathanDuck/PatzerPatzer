@@ -70,7 +70,7 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
-- [x] CCP-065 - Add Toggle For Review Label Visibility
+- [ ] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 - [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
 - [x] CCP-015-F2 - Per-Candidate Engine Guidance Toggle In Retrospection
@@ -139,11 +139,65 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-064 - Add One Minimal Mobile Touch Improvement
 - [x] CCP-043-F1 - Winner And Loser Player-Strip Boxes
 - [x] CCP-044-F1 - Refine Engine Arrow Eval Labels
-- [ ] CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
+- [x] CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
 - [ ] CCP-044-F2 - Match Arrow Label Styling To Eval Bar
 - [ ] CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
+- [ ] CCP-066 - Add Search To Underboard And Games Lists
+- [ ] CCP-067 - Bring Eval Graph Fill Into Lichess Parity
+- [ ] CCP-068 - Add Eval Graph Height Toggle
 
 ## Log
+
+## CCP-067 - Bring Eval Graph Fill Into Lichess Parity
+
+```
+- [ ] Reviewed
+  - ID: `CCP-067`
+  - Task ID: `CCP-067`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Changes to how the eval graph is displayed and formatted`
+  - Task: bring the eval-graph fill behavior into Lichess parity so White advantage fills white
+  - Claude used: no
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-068 - Add Eval Graph Height Toggle
+
+```
+- [ ] Reviewed
+  - ID: `CCP-068`
+  - Task ID: `CCP-068`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `add a bottom-center eval-graph height toggle from 100% to 300%`
+  - Task: add a small bottom-center eval-graph control that enlarges graph height from 100% up to 300%
+  - Claude used: no
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-066 - Add Search To Underboard And Games Lists
+
+```
+- [ ] Reviewed
+  - ID: `CCP-066`
+  - Task ID: `CCP-066`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `add a search bar to the underboard games list and the Games history page`
+  - Task: add a search bar to both the underboard games list and the Games page using the smallest safe shared search/filter step
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
 
 ## CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
 
@@ -182,7 +236,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-043-F2`
   - Task ID: `CCP-043`
   - Parent prompt ID: `CCP-043-F1`
@@ -191,7 +245,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Remove the 1 / 0 / ½ single-game result markers from the player strip by default`
   - Task: refine the player-strip winner/loser boxes so they hug the displayed identity width and use border-only styling without a background fill
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -199,7 +253,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-065 - Add Toggle For Review Label Visibility
 
 ```
-- [x] Reviewed
+- [ ] Reviewed
   - ID: `CCP-065`
   - Task ID: `CCP-065`
   - Parent prompt ID: none
