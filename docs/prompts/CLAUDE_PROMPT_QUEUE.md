@@ -36,6 +36,12 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 
 ## Queue Index
 
+- CCP-079: Reduce Board Review Glyph Scale To 20 Percent
+  - Shrink the on-board review glyph SVG badges by changing their current 40% scale to 20% while preserving the existing stack behavior.
+
+- CCP-066-F1: Add Underboard Games Search Bar
+  - Add the missing search bar to the compact games list beneath the analysis board without reopening the broader Games-page search scope.
+
 - CCP-070: Add Lichess Review Glyph SVG Layer
   - Copy the Lichess on-board move-annotation glyph SVG system into a Patzer-owned module without wiring it into the board yet.
 
@@ -64,6 +70,176 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
   - Fix the move-list variation context menu so it opens over the selected move instead of at the page origin.
 
 ## Queue
+
+## CCP-079 - Reduce Board Review Glyph Scale To 20 Percent
+
+```
+Prompt ID: CCP-079
+Task ID: CCP-079
+Source Document: ad hoc user request
+Source Step: reduce on-board review glyph SVG scale from 40% to 20%
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board-glyph / board-draw / analysis SVG files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Reduce the on-board move-review glyph badge scale from the current 40% down to 20%, while preserving the existing badge system and stack behavior.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently renders board review glyph SVG badges
+   - how Lichess sizes and positions those glyph badges
+   - whether changing scale alone is sufficient or whether a tiny stack-offset adjustment is needed to keep the smaller badges positioned cleanly
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to board review glyph badge scale and any tiny directly-related positioning adjustment.
+- Do not redesign the board review glyph system.
+- Do not bundle settings, glyph asset rewrites, or unrelated board-shape changes.
+- Do not add substantial new logic to `src/main.ts`.
+
+Relevant current code areas to inspect first:
+- `src/analyse/boardGlyphs.ts` — current SVG badge composition, transform scale, and stack offsets
+- `src/engine/ctrl.ts` — current board review glyph shape injection seam, only to confirm no broader wiring change is needed
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/lib/src/game/glyphs.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/autoShape.ts`
+
+Current repo-grounded behavior to confirm first:
+- Patzer currently composes board review glyph badges with `transform="matrix(.4 0 0 .4 ...)"`, meaning 40% scale
+- the badges are currently stacked using `glyphStacktoPx(...)`
+- this task is only to make them significantly smaller at 20% scale
+
+Requested behavior:
+- update the board review glyph badge scale to 20%
+- preserve the same basic badge design and stacking behavior
+- if a tiny offset tweak is needed so the smaller badges still sit cleanly on the square, keep that tweak minimal and explicit
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run any task-specific checks you can
+- explicitly report:
+  - build result
+  - feature-specific smoke tests
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Explicit behaviors to verify:
+- board review glyph badges are now visibly smaller
+- the badge scale is 20%
+- stacked badges still place cleanly on the move destination square
+- no unrelated board glyph or engine-arrow behavior is changed
+
+Success criteria:
+- on-board review glyph SVG badges use 20% scale
+- the existing badge system remains intact
+- no unrelated board behavior is changed
+```
+
+## CCP-066-F1 - Add Underboard Games Search Bar
+
+```
+Prompt ID: CCP-066-F1
+Task ID: CCP-066
+Parent Prompt ID: CCP-066
+Source Document: docs/prompts/CLAUDE_PROMPT_LOG.md
+Source Step: CCP-066 review issue — underboard list still has no search bar
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same games-list / underboard / filter files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Add the missing search bar to the compact games list beneath the analysis board. This is a follow-up fix to `CCP-066`, whose review already confirmed the Games page has a search seam but the underboard list still does not.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently renders the underboard compact game list
+   - how Patzer currently filters/searches the Games page
+   - whether Lichess has any comparable compact game-list filter pattern that is structurally useful
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- This is a follow-up fix to `CCP-066`, not a new search feature family.
+- Keep the change scoped to adding search to the underboard compact game list.
+- Do not reopen or redesign the full Games-page search/filter system unless a tiny shared helper extraction is clearly the safest way to avoid duplicated filtering.
+- Do not add substantial new logic to `src/main.ts`.
+
+Relevant current code areas to inspect first:
+- `src/games/view.ts` — `renderGameList()` underboard compact list and existing Games-page filter state
+- any relevant local styling in `src/styles/main.scss` for compact game-list controls
+
+Current repo-grounded behavior to confirm first:
+- `renderGameList()` currently renders only a header plus the list rows
+- the Games page already has `gamesFilterOpponent` and `input.games-view__search`
+- the reviewed `CCP-066` log explicitly says the underboard list still has no search bar
+
+Requested behavior:
+- add a search bar to the games list beneath the analysis board
+- make it actually filter that compact list
+- keep the UI compact and appropriate for the underboard surface
+- preserve the existing Games-page search behavior unless a tiny shared seam is the safest fit
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run any task-specific checks you can
+- explicitly report:
+  - build result
+  - feature-specific smoke tests
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Explicit behaviors to verify:
+- the underboard game list now shows a search bar
+- typing filters the compact list beneath the analysis board
+- selecting a filtered game still loads it correctly
+- the existing Games-page search/filter behavior is not regressed
+
+Success criteria:
+- the underboard compact game list has a working search bar
+- the fix stays scoped to the missing underboard surface
+- no unrelated games-view behavior is changed
+```
 
 ## CCP-070 - Add Lichess Review Glyph SVG Layer
 

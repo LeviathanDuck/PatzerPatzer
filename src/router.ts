@@ -24,6 +24,10 @@ function parse(hash: string): Route {
     let matched = true;
     for (let i = 0; i < pattern.length; i++) {
       const seg = pattern[i];
+      if (!seg) {
+        matched = false;
+        break;
+      }
       if (seg.startsWith(':')) {
         params[seg.slice(1)] = parts[i]!;
       } else if (seg !== parts[i]) {
