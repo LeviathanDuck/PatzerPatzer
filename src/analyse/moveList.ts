@@ -101,13 +101,14 @@ function renderInlineNodes(
  * Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts ColumnView.renderNodes
  */
 function renderColumnNodes(
-  nodes:       TreeNode[],
-  parentPath:  TreePath,
-  parent:      TreeNode,
-  out:         VNode[],
-  currentPath: string,
-  getEval:     EvalLookup,
-  navigate:    (p: string) => void,
+  nodes:            TreeNode[],
+  parentPath:       TreePath,
+  parent:           TreeNode,
+  out:              VNode[],
+  currentPath:      string,
+  getEval:          EvalLookup,
+  navigate:         (p: string) => void,
+  deleteVariation?: (path: string) => void,
 ): void {
   if (nodes.length === 0) return;
   const [main, ...variations] = nodes;
@@ -128,9 +129,22 @@ function renderColumnNodes(
     // starts on a new row. Mirrors columnView.ts isWhite && emptyMove().
     if (isWhite) out.push(h('move.empty', '\u2026'));
 
-    const varLines = variations.map(v =>
-      h('line', renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate)),
-    );
+    const varLines = variations.map(v => {
+      const varPath = parentPath + v.id;
+      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate);
+      // Variation remove affordance: small × button at start of each non-mainline line.
+      // Mirrors lichess-org/lila: ui/analyse/src/treeView/contextMenu.ts deleteNode action.
+      if (deleteVariation) {
+        return h('line', [
+          h('button.variation-remove', {
+            attrs: { title: 'Remove variation' },
+            on: { click: () => deleteVariation(varPath) },
+          }, '×'),
+          ...lineNodes,
+        ]);
+      }
+      return h('line', lineNodes);
+    });
     out.push(h('interrupt', [h('lines', varLines)]));
 
     // After the interrupt re-anchor the next mainline move.
@@ -142,7 +156,7 @@ function renderColumnNodes(
     }
   }
 
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, deleteVariation);
 }
 
 /**
@@ -153,14 +167,15 @@ function renderColumnNodes(
  * @param navigate    - called when user clicks a move to navigate to it
  */
 export function renderMoveList(
-  root:        TreeNode,
-  currentPath: string,
-  getEval:     EvalLookup,
-  navigate:    (p: string) => void,
+  root:             TreeNode,
+  currentPath:      string,
+  getEval:          EvalLookup,
+  navigate:         (p: string) => void,
+  deleteVariation?: (path: string) => void,
 ): VNode {
   // div.tview2.tview2-column: flex-wrap grid, index | white | black per row.
   // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts renderColumnView
   const nodes: VNode[] = [];
-  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate);
+  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, deleteVariation);
   return h('div.tview2.tview2-column', nodes);
 }
