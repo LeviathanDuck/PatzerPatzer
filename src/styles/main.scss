@@ -808,6 +808,106 @@ body.resizing {
   min-width: 0;
 }
 
+@media (max-width: 800px) {
+  .analyse {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'board'
+      'controls'
+      'tools'
+      'under';
+    padding: 12px 10px 18px;
+    gap: 8px 0;
+    overflow-x: hidden;
+  }
+
+  .analyse__board,
+  .analyse__tools,
+  .analyse__controls,
+  .analyse__underboard {
+    min-width: 0;
+  }
+
+  .analyse__controls {
+    padding-top: 0;
+    gap: 8px;
+    align-items: stretch;
+    touch-action: pan-y;
+
+    > button,
+    .btn-review,
+    .retro-strip__btn {
+      min-height: 44px;
+      padding: 10px 12px;
+      font-size: 0.92rem;
+    }
+
+    > button,
+    .analyse-review-controls {
+      flex: 1 1 calc(50% - 8px);
+    }
+
+    .analyse-review-controls {
+      min-width: 0;
+    }
+
+    .analyse-review-controls__row {
+      width: 100%;
+      flex-wrap: wrap;
+      gap: 8px;
+
+      > * {
+        flex: 1 1 calc(50% - 8px);
+      }
+    }
+  }
+
+  .eval-bar,
+  .analyse__player_strip,
+  cg-resize {
+    display: none !important;
+  }
+
+  .analyse__tools {
+    align-self: auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .ceval {
+    min-height: 40px;
+    column-gap: 4px;
+  }
+
+  .analyse__moves {
+    flex: 0 1 auto;
+    max-height: 36vh;
+    overflow-y: auto;
+  }
+
+  .retro-strip {
+    margin-top: 0;
+  }
+
+  .analyse__underboard {
+    gap: 8px;
+    padding-top: 0;
+    overflow-x: hidden;
+  }
+
+  .game-list ul,
+  .game-list__row,
+  .games-view__table-wrap {
+    min-width: 0;
+  }
+
+  .eval-graph,
+  .game-list {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
 // Inner wrapper provides the relative positioning context for the promotion overlay
 .analyse__board-inner {
   position: relative;
@@ -1644,6 +1744,10 @@ body[data-board='newspaper'] cg-board::before {
     font-variant-numeric: tabular-nums;
   }
 
+  pearl.ceval__ko {
+    color: hsl(307, 80%, 70%);
+  }
+
   // Engine name + status info — mirrors .engine { flex: 2 1 auto; font-size: 12px }
   .engine {
     flex: 2 1 auto;
@@ -1721,6 +1825,7 @@ body[data-board='newspaper'] cg-board::before {
 
   &__score--white { color: #d4d4a0; }
   &__score--black { color: #8fb8d4; }
+  &__score--ko { color: hsl(307, 80%, 70%); font-weight: 700; }
   // Massive improvement — engine found ≥ 2-pawn advantage for the side to move.
   // Overrides white/black base color with a brighter signal.
   &__score--massive { color: hsl(129, 71%, 55%); font-weight: 700; }

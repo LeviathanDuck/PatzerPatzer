@@ -757,6 +757,12 @@ function setBoardWheelNavEnabled(enabled) {
   boardWheelNavEnabled = enabled;
   localStorage.setItem(BOARD_WHEEL_NAV_KEY, String(enabled));
 }
+var REVIEW_DOTS_USER_ONLY_KEY = "reviewDotsUserOnly";
+var reviewDotsUserOnly = localStorage.getItem(REVIEW_DOTS_USER_ONLY_KEY) === "true";
+function setReviewDotsUserOnly(enabled) {
+  reviewDotsUserOnly = enabled;
+  localStorage.setItem(REVIEW_DOTS_USER_ONLY_KEY, String(enabled));
+}
 var ZOOM_DEFAULT = 85;
 var ZOOM_KEY = "boardZoom";
 var boardZoom = (() => {
@@ -858,6 +864,7 @@ function clearBoardLocalData() {
   localStorage.removeItem(BOARD_THEME_KEY);
   localStorage.removeItem(PIECE_SET_KEY);
   localStorage.removeItem(BOARD_WHEEL_NAV_KEY);
+  localStorage.removeItem(REVIEW_DOTS_USER_ONLY_KEY);
   for (const prop of Object.keys(FILTER_DEFAULTS)) {
     localStorage.removeItem(FILTER_LS_PREFIX + prop);
   }
@@ -1108,7 +1115,7 @@ function evalWinChances(ev) {
 // src/analyse/evalView.ts
 function formatScore(ev) {
   if (ev.mate !== void 0) {
-    if (ev.mate === 0) return "#KO";
+    if (ev.mate === 0) return "#KO!";
     return `#${ev.mate}`;
   }
   if (ev.cp !== void 0) {
@@ -1268,13 +1275,18 @@ function detectPhases(mainline, n) {
   if (endIdx !== void 0) result.endIdx = endIdx;
   return result;
 }
-function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
+function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, userColor, userOnly) {
   const n = mainline.length - 1;
   if (n < 2) {
     return h("div.eval-graph", [
       h("div.eval-graph__empty", n === 0 ? "No moves to graph." : "Analyze game to see graph.")
     ]);
   }
+  const shouldShowReviewAnnotation2 = (nodePly) => {
+    if (!userOnly || userColor === null) return true;
+    const isWhiteMove = nodePly % 2 === 1;
+    return userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
+  };
   const pts = [];
   let path = "";
   for (let i = 1; i <= n; i++) {
@@ -1283,10 +1295,10 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
     const parentPath = path.slice(0, -2);
     const cached = evalCache2.get(path);
     const parentCached = evalCache2.get(parentPath);
-    const wc = cached !== void 0 ? evalWinChances(cached) : void 0;
+    const wc = cached?.mate === 0 ? node.fen.split(" ")[1] === "b" ? 1 : -1 : cached !== void 0 ? evalWinChances(cached) : void 0;
     if (wc !== void 0) {
       const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-      const label = !playedBest ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
+      const label = !playedBest && shouldShowReviewAnnotation2(node.ply) ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
       pts.push({
         x: (i - 1) / (n - 1) * GRAPH_W,
         y: (1 - wc) / 2 * GRAPH_H,
@@ -1522,6 +1534,7 @@ function stopProtocol() {
 function buildArrowShapes() {
   const shapes = [];
   const ctrl2 = _getCtrl();
+  if (_isBatchActive()) return shapes;
   const retroHidden = ctrl2.retro !== void 0 && !ctrl2.retro.guidanceRevealed();
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
@@ -1563,6 +1576,8 @@ function buildArrowShapes() {
       });
     }
   }
+  const koOverlay = buildKoOverlayShape(ctrl2.node.fen);
+  if (koOverlay) shapes.push(koOverlay);
   return shapes;
 }
 function buildPrimaryArrowLabel() {
@@ -1574,6 +1589,37 @@ function buildPrimaryArrowLabel() {
     orig: currentEval.best.slice(2, 4),
     label: { text, fill }
   };
+}
+function buildKoOverlayShape(fen) {
+  if (currentEval.mate !== 0) return null;
+  const losingColor = fen.split(" ")[1] === "b" ? "black" : "white";
+  const kingSquare = findKingSquare(fen, losingColor);
+  if (!kingSquare) return null;
+  return {
+    orig: kingSquare,
+    label: { text: "KO", fill: "#c04ccf" }
+  };
+}
+function findKingSquare(fen, color) {
+  const board = fen.split(" ")[0] ?? "";
+  const target = color === "white" ? "K" : "k";
+  let rank = 8;
+  let file = 0;
+  for (const ch of board) {
+    if (ch === "/") {
+      rank--;
+      file = 0;
+      continue;
+    }
+    const empty = Number.parseInt(ch, 10);
+    if (!Number.isNaN(empty)) {
+      file += empty;
+      continue;
+    }
+    if (ch === target) return `${"abcdefgh"[file]}${rank}`;
+    file++;
+  }
+  return null;
 }
 function syncArrow() {
   const cg = _getCgInstance();
@@ -2193,6 +2239,7 @@ function startBatchAnalysis() {
   batchState = queue.length > 0 ? "analyzing" : "complete";
   analysisRunning = queue.length > 0;
   analysisComplete = queue.length === 0;
+  syncArrow();
   _redraw2();
   if (queue.length > 0) evalBatchItem(queue[0]);
 }
@@ -6114,7 +6161,7 @@ function renderCeval() {
     }, engineEnabled ? "On" : "Off"),
     // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
     // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element
-    h("pearl", pearlStr),
+    h("pearl", { class: { "ceval__ko": currentEval.mate === 0 } }, pearlStr),
     // Engine name + status info (flex: 2 1 auto, small text)
     h("div.engine", [
       engineLabel,
@@ -6211,6 +6258,7 @@ function renderPvBox() {
       return h("div.pv.pv--nowrap.pv--empty");
     }
     const score = formatScore(ev);
+    const isKo = ev.mate === 0;
     const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
     const { first: first2, rest } = ev.moves ? renderPvMoves(fen, ev.moves) : { first: [], rest: [] };
     const stm = fen.split(" ")[1];
@@ -6221,6 +6269,7 @@ function renderPvBox() {
       class: {
         "pv__score--white": isPositive === true,
         "pv__score--black": isPositive === false,
+        "pv__score--ko": isKo,
         "pv__score--massive": isMassive
       }
     }, score));
@@ -6633,6 +6682,7 @@ function renderAnalysisControls(extraButtons) {
       setBatchState("idle");
       setAnalysisRunning(false);
       if (selectedGameId2) void saveAnalysisToIdb("partial", selectedGameId2, buildAnalysisNodes(_getCtrl5().mainline, (p) => evalCache.get(p)), reviewDepth);
+      syncArrow();
       _redraw5();
       return;
     }
@@ -8544,6 +8594,11 @@ function renderGamesView(deps) {
 }
 
 // src/analyse/moveList.ts
+function shouldShowReviewAnnotation(userColor, nodePly, userOnly) {
+  if (!userOnly || userColor === null) return true;
+  const isWhiteMove = nodePly % 2 === 1;
+  return userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
+}
 var GLYPH_COLORS = {
   "??": "hsl(0,69%,60%)",
   // blunder     — muted red
@@ -8558,12 +8613,12 @@ var GLYPH_COLORS = {
   "!?": "hsl(307,80%,70%)"
   // interesting — pink/purple
 };
-function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu) {
+function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu) {
   const cached = getEval(path);
   const parentCached = getEval(pathInit(path));
   const pgnGlyph = node.glyphs?.[0];
   const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-  const computedLabel = !playedBest && cached !== void 0 ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
+  const computedLabel = !playedBest && cached !== void 0 && shouldShowReviewAnnotation(userColor, node.ply, userOnly) ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
   const computedSymbol = computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
   const symbol = pgnGlyph?.symbol ?? computedSymbol;
   const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
@@ -8575,7 +8630,7 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
   }
   inner.push(h("san", node.san ?? ""));
   if (symbol) inner.push(h("glyph", { attrs: { style: `color:${color}` } }, symbol));
-  if (mate !== void 0) inner.push(h("eval", mate === 0 ? "KO" : `+M${Math.abs(mate)}`));
+  if (mate !== void 0) inner.push(h("eval", mate === 0 ? "#KO!" : `+M${Math.abs(mate)}`));
   return h("move", {
     class: {
       active: path === currentPath,
@@ -8591,36 +8646,36 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
     }
   }, inner);
 }
-function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu) {
+function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu) {
   if (nodes.length === 0) return [];
   const main = nodes[0];
   const variations = nodes.slice(1);
   const mainPath = parentPath + main.id;
   const out = [];
   const showIndex = needsMoveNum || main.ply % 2 === 1;
-  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu));
+  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu));
   for (const variant of variations) {
-    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu)));
+    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu)));
   }
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
   const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
-  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu));
+  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu));
   return out;
 }
-function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2, deleteVariation2, contextMenuPath2, onContextMenu) {
+function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu) {
   if (nodes.length === 0) return;
   const main = nodes[0];
   const variations = nodes.slice(1);
   const mainPath = parentPath + main.id;
   const isWhite = main.ply % 2 === 1;
   if (isWhite) out.push(h("index", String(Math.ceil(main.ply / 2))));
-  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu));
+  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu));
   if (variations.length > 0) {
     if (isWhite) out.push(h("move.empty", "\u2026"));
     const varLines = variations.map((v) => {
       const varPath = parentPath + v.id;
-      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu);
+      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu);
       if (deleteVariation2) {
         return h("line", [
           h("button.variation-remove", {
@@ -8638,11 +8693,11 @@ function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval,
       out.push(h("move.empty", "\u2026"));
     }
   }
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, deleteVariation2, contextMenuPath2, onContextMenu);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu);
 }
-function renderMoveList(root, currentPath, getEval, navigate2, deleteVariation2, contextMenuPath2, onContextMenu) {
+function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu) {
   const nodes = [];
-  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, deleteVariation2, contextMenuPath2, onContextMenu);
+  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu);
   return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes)]);
 }
 
@@ -8776,6 +8831,18 @@ function renderGlobalMenu(deps) {
           on: {
             change: (e) => {
               setBoardWheelNavEnabled(e.target.checked);
+              redraw2();
+            }
+          }
+        })
+      ]),
+      h("label.global-menu__item.global-menu__item--toggle", [
+        h("span", "Review Dots: User Only"),
+        h("input", {
+          attrs: { type: "checkbox", checked: reviewDotsUserOnly },
+          on: {
+            change: (e) => {
+              setReviewDotsUserOnly(e.target.checked);
               redraw2();
             }
           }
@@ -9588,6 +9655,8 @@ function routeContent(route) {
     }
     // falls through
     case "analysis":
+      const currentGame = importedGames.find((g) => g.id === selectedGameId);
+      const currentUserColor = currentGame ? getUserColor(currentGame) : null;
       return h("div.analyse", [
         // Board — left column (grid-area: board)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__board.main-board
@@ -9620,7 +9689,7 @@ function routeContent(route) {
           !ctrl.retro || ctrl.retro.guidanceRevealed() ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h("div.analyse__moves", [
-            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation, contextMenuPath, openContextMenu)
+            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu)
           ]),
           // Active retrospection panel — placed after the move list, before analysis summaries.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
@@ -9690,7 +9759,7 @@ function routeContent(route) {
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
         h("div.analyse__underboard", [
-          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate),
+          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, currentUserColor, reviewDotsUserOnly),
           renderGameList(deps)
         ]),
         renderKeyboardHelp()

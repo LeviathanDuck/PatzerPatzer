@@ -3,6 +3,7 @@ import { AnalyseCtrl } from './analyse/ctrl';
 import {
   applyBoardTheme, applyBoardZoom, applyPieceSet,
   boardWheelNavEnabled,
+  reviewDotsUserOnly,
   boardFilters, boardTheme, boardThumbnailUrl, boardZoom,
   BOARD_THEMES_FEATURED,
   clearBoardLocalData,
@@ -475,6 +476,8 @@ function routeContent(route: Route): VNode {
     }
     // falls through
     case 'analysis':
+      const currentGame = importedGames.find(g => g.id === selectedGameId);
+      const currentUserColor = currentGame ? getUserColor(currentGame) : null;
       return h('div.analyse', [
         // Board — left column (grid-area: board)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__board.main-board
@@ -509,7 +512,7 @@ function routeContent(route: Route): VNode {
           (!ctrl.retro || ctrl.retro.guidanceRevealed()) ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves', [
-            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation, contextMenuPath, openContextMenu),
+            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu),
           ]),
           // Active retrospection panel — placed after the move list, before analysis summaries.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
@@ -571,7 +574,7 @@ function routeContent(route: Route): VNode {
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
         h('div.analyse__underboard', [
-          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate),
+          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, currentUserColor, reviewDotsUserOnly),
           renderGameList(deps),
         ]),
 
