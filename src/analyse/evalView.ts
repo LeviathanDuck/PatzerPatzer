@@ -454,12 +454,27 @@ export function renderEvalGraph(
   }
 
   for (const div of divLines) {
-    if (div.idx === 0) continue; // "Middlegame at 0" — label only, no line
-    const dx = ((div.idx - 1) / (n - 1)) * GRAPH_W;
-    svgNodes.push(h('line', { attrs: {
-      x1: dx, y1: 0, x2: dx, y2: GRAPH_H,
-      stroke: '#555', 'stroke-width': 1, 'stroke-dasharray': '3 3', opacity: '0.7',
-    } }));
+    const dx = div.idx === 0 ? 0 : ((div.idx - 1) / (n - 1)) * GRAPH_W;
+    if (div.idx !== 0) {
+      svgNodes.push(h('line', { attrs: {
+        x1: dx, y1: 0, x2: dx, y2: GRAPH_H,
+        stroke: '#555', 'stroke-width': 1, 'stroke-dasharray': '3 3', opacity: '0.7',
+      } }));
+    }
+
+    // Lichess chart divisions show the phase name directly on the chart.
+    const labelX = Math.min(Math.max(dx + 6, 6), GRAPH_W - 6);
+    svgNodes.push(h('text', { attrs: {
+      x: labelX,
+      y: 6,
+      fill: '#707070',
+      'font-size': 8,
+      'font-family': 'inherit',
+      'text-anchor': 'start',
+      'dominant-baseline': 'hanging',
+      transform: `rotate(90 ${labelX} 6)`,
+      'pointer-events': 'none',
+    } }, div.label));
   }
 
   return h('div.eval-graph', {
