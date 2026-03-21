@@ -16,6 +16,7 @@ import {
   evalCurrentPosition,
   syncArrow,
   initEngine,
+  currentEval,
   type PositionEval,
 } from './engine/ctrl';
 import {
@@ -314,7 +315,7 @@ function toggleRetro(): void {
     selectedGameId,
     userColor ?? null,
   );
-  ctrl.retro = makeRetroCtrl(candidates, userColor ?? null);
+  ctrl.retro = makeRetroCtrl(candidates, userColor ?? null, () => currentEval);
   // Jump to the position before the first candidate mistake.
   // Mirrors lichess-org/lila: retroCtrl.ts jumpToNext → root.userJump(prev.path).
   const first = ctrl.retro.current();
@@ -385,11 +386,12 @@ function routeContent(route: Route): VNode {
           // Engine settings panel — sits directly below header, above PV lines
           // Mirrors lichess-org/lila: renderCevalSettings() position
           renderEngineSettings(),
-          // PV lines — hidden while retro is actively solving so the user is not shown
-          // engine guidance while trying to find the best move.
+          // PV lines — hidden whenever retrospection is active and guidance has not
+          // been manually revealed for the current candidate.
+          // Covers all retro states so the answer is never accidentally visible.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
           //   showCeval && !ctrl.retro?.isSolving() && cevalView.renderPvs(ctrl)
-          !ctrl.retro?.isSolving() ? renderPvBox() : null,
+          (!ctrl.retro || ctrl.retro.guidanceRevealed()) ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves', [
             renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation),
@@ -431,10 +433,11 @@ function routeContent(route: Route): VNode {
             }),
           ]),
           renderRetroStrip({
-            retro:    ctrl.retro,
+            retro:             ctrl.retro,
             navigate,
             redraw,
             uciToSan,
+            onRevealGuidance:  () => { ctrl.retro?.revealGuidance(); redraw(); },
           }),
         ]),
 

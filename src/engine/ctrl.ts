@@ -41,6 +41,12 @@ export interface PositionEval {
   label?: MoveLabel;
   /** Secondary PV lines when MultiPV > 1 (indices 0+ correspond to multipv 2, 3, …). */
   lines?: EvalLine[];
+  /**
+   * Search depth of the most recent info line for this position.
+   * Used by retroCtrl.ts onCeval() to determine ceval readiness.
+   * Mirrors lichess-org/lila: retroCtrl.ts isCevalReady node.ceval.depth check.
+   */
+  depth?: number;
 }
 
 // --- Injected deps (set at bootstrap via initEngine) ---
@@ -160,13 +166,15 @@ export function buildArrowShapes(): DrawShape[] {
   const shapes: DrawShape[] = [];
   const ctrl = _getCtrl();
 
-  // Suppress engine-guidance arrows while retro is actively solving — the user should
-  // not be shown the best move while trying to find it.
+  // Suppress engine-guidance arrows whenever retrospection is active and the user has not
+  // manually revealed guidance for the current candidate.
+  // Covers all retro states (find, fail, win, view, offTrack) — not just isSolving() —
+  // so the answer is never accidentally visible at any point during a session.
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts showBestMoveArrows() returning false
   // when retro.hideComputerLine(node) is true for unsolved candidate plies.
-  const retroSolving = ctrl.retro?.isSolving() ?? false;
+  const retroHidden = ctrl.retro !== undefined && !ctrl.retro.guidanceRevealed();
 
-  if (engineEnabled && showEngineArrows && !retroSolving) {
+  if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
       const uci = currentEval.best;
       shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'paleBlue' });
@@ -192,7 +200,7 @@ export function buildArrowShapes(): DrawShape[] {
     }
   }
 
-  if (engineEnabled && threatMode && threatEval.best && !retroSolving) {
+  if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'red' });
   }
@@ -270,9 +278,14 @@ function parseEngineLine(line: string): void {
     let best: string | undefined;
     let pvMoves: string[] = [];
     let pvIndex = 1;
+    let depth: number | undefined;
     for (let i = 1; i < parts.length; i++) {
       if (parts[i] === 'multipv') {
         pvIndex = parseInt(parts[++i]);
+      } else if (parts[i] === 'depth') {
+        // Parse search depth — used by retroCtrl.ts onCeval() readiness check.
+        // Mirrors lichess-org/lila: retroCtrl.ts isCevalReady node.ceval.depth.
+        depth = parseInt(parts[++i]);
       } else if (parts[i] === 'score') {
         isMate = parts[++i] === 'mate';
         score = parseInt(parts[++i]);
@@ -301,6 +314,7 @@ function parseEngineLine(line: string): void {
       }
       if (best) ev.best = best;
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
+      if (depth !== undefined && !evalIsThreat) ev.depth = depth;
       if ((score !== undefined || best) && !_isBatchActive()) {
         syncArrowDebounced();
         _redraw();
