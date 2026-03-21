@@ -119,6 +119,7 @@ It should stay in sync with the detailed entry below.
 - [ ] CCP-046 - Import Only New Games Since Last Import
 - [x] CCP-047 - Header Platform Toggle UX
 - [ ] CCP-056 - Add Main-Menu Toggle For Board Wheel Navigation
+- [x] CCP-057 - Fix Live Engine Stall During Move Navigation
 - [x] CCP-048 - Highlight Massive Engine Improvements
 - [x] CCP-049 - Show KO Mate Notation
 - [x] CCP-050 - Winner-Color Eval Bar On Mate
@@ -997,6 +998,22 @@ It should stay in sync with the detailed entry below.
   - Task: add a persisted main-menu toggle for board-wheel move navigation and default it to off
   - Claude used: no
   - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-057 - Fix Live Engine Stall During Move Navigation
+
+```
+- [x] Reviewed
+  - ID: `CCP-057`
+  - Task ID: `CCP-057`
+  - Parent prompt ID: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[HIGH] Live per-move engine analysis can stall during move navigation`
+  - Task: diagnose and fix the live-engine navigation stall so PV lines and arrows keep matching the current position during move-by-move review
+  - Claude used: no
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
