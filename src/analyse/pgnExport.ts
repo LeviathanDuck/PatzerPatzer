@@ -148,15 +148,19 @@ export function renderAnalysisControls(): VNode {
   // Review button label and behavior change based on state.
   // Mirrors the single-action pattern in Lichess analysis controls.
   let reviewLabel: string;
+  let reviewTitle: string;
   if (batchAnalyzing) {
     const pct = batchQueue.length > 0
       ? Math.round((batchDone / batchQueue.length) * 100)
       : 0;
     reviewLabel = `${pct}%`;
+    reviewTitle = 'Analysis in progress — click to stop';
   } else if (analysisComplete) {
     reviewLabel = 'Re-analyze';
+    reviewTitle = 'Clear previous analysis and run again';
   } else {
     reviewLabel = 'Review';
+    reviewTitle = 'Analyze this game to detect mistakes and blunders';
   }
 
   const reviewClick = () => {
@@ -184,11 +188,18 @@ export function renderAnalysisControls(): VNode {
     startBatchWhenReady();
   };
 
+  // Status line: shown only while analysis is running so the user understands
+  // what the percentage in the button refers to and how many moves remain.
+  // Mirrors the inline completion indicator in Lichess retro mode controls.
+  const statusLine = batchAnalyzing && batchQueue.length > 0
+    ? h('div.pgn-import__status', `Analyzing… ${batchDone} of ${batchQueue.length} moves`)
+    : null;
+
   return h('div.pgn-import', [
     h('div.pgn-import__row', [
       h('button.btn-review', {
         class: { 'btn-review--complete': analysisComplete },
-        attrs: { disabled: !hasGame },
+        attrs: { disabled: !hasGame, title: reviewTitle },
         on: { click: reviewClick },
       }, reviewLabel),
       h('button', {
@@ -210,5 +221,6 @@ export function renderAnalysisControls(): VNode {
         on: { click: () => { showExportMenu = false; _redraw(); } },
       }, 'Cancel'),
     ]) : null,
+    statusLine,
   ]);
 }
