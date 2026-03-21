@@ -1377,6 +1377,15 @@ body[data-board='newspaper'] cg-board::before {
     color: #f66;
     font-size: 0.8rem;
   }
+
+  // Contextual status line shown only while analysis is running.
+  // Tells the user what the percentage in the Review button refers to
+  // and how many moves remain, so the analysis state is unambiguous.
+  &__status {
+    font-size: 0.78rem;
+    color: #888;
+    padding: 0 2px;
+  }
 }
 
 .game-list {
