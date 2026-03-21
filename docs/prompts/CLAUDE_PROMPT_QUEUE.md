@@ -36,6 +36,9 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 
 ## Queue Index
 
+- CCP-069: Refine Eval Graph Fill And Resize Handle
+  - Replace the graph slider with a center drag handle, keep Lichess-style white fill, and remove phase labels from the chart.
+
 - CCP-067: Bring Eval Graph Fill Into Lichess Parity
   - Replace the current neutral eval-graph fill treatment with Lichess-style white-advantage fill logic.
 
@@ -51,64 +54,69 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 - CCP-044-F2: Match Arrow Label Styling To Eval Bar
   - Reduce arrow-label text size and make its styling match the eval-bar number instead of using oversized custom text.
 
-- CCP-044-F3: Reduce Arrow Label Weight And Size
-  - Make move-arrow numbers materially smaller and less bold while preserving the current shadow treatment.
-
 ## Queue
-## CCP-044-F3 - Reduce Arrow Label Weight And Size
+
+## CCP-069 - Refine Eval Graph Fill And Resize Handle
 
 ```
-Prompt ID: CCP-044-F3
-Task ID: CCP-044
-Parent Prompt ID: CCP-044-F2
+Prompt ID: CCP-069
+Task ID: CCP-069
 Source Document: ad hoc user request
-Source Step: reduce move-arrow label size and font weight
+Source Step: replace eval-graph slider with a center drag handle, keep Lichess-style white fill, and remove phase labels
 Execution Target: Codex
 
 You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
 
 Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-arrow label / score-styling files.
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / analysis-view / underboard styling files.
 - If overlapping work is already in flight, stop and report the overlap before making repo edits.
 
-Task: Refine the current move-arrow label typography so the numbers are much smaller and less bold, while keeping the existing shadow treatment.
+Task: Refine the eval graph so it uses a centered drag handle instead of the current slider-based height control, keeps Lichess-style white territory fill, and removes the phase labels from the chart.
 
 Required repo workflow:
 1. Inspect the current Patzer Pro codebase first.
 2. Locate the actual implementation points before assuming file paths.
 3. Inspect the relevant Lichess source before deciding how to implement.
 4. Compare:
-   - how Patzer Pro currently renders move-arrow label SVG text
-   - how Patzer Pro currently styles the eval-bar score and PV score typography
-   - where the arrow-label typography is still oversized and too heavy
+   - how Patzer Pro currently renders the graph fill, phase dividers, and height control
+   - how Lichess renders chart fill and chart divisions
+   - how Patzer already implements board-resize drag affordances that could inform the new graph handle
+   - where the current graph UI diverges from the intended behavior
 5. Identify the smallest safe implementation step.
 6. Explain diagnosis before coding.
 7. Implement.
 8. Validate with build + task-specific checks.
 
 Important project constraints:
-- This is a follow-up refinement to `CCP-044-F2`, not a new label feature.
-- Keep the shadow as-is unless a tiny matching adjustment is strictly required for readability.
-- Focus only on text size and weight.
-- The size should be materially smaller, roughly half the current visual size if inspection confirms that is the right fit.
-- Do not bundle changes to label placement, settings, arrow geometry, or unrelated score styling.
+- Keep this task scoped to eval-graph styling and graph-height interaction only.
+- Do not bundle unrelated review-dot, move-list, or engine-display changes.
+- Use Lichess as the source of truth for the graph fill behavior.
+- Treat the drag handle as a Patzer-specific control, but ground its interaction/styling in the existing board resize affordance where helpful.
 - Do not add substantial new logic to `src/main.ts`.
 
 Relevant current code areas to inspect first:
-- `src/engine/ctrl.ts` — current SVG text generation for arrow labels
-- `src/styles/main.scss` — eval-bar and PV score typography references
-- `src/analyse/evalView.ts` and `src/ceval/view.ts` — score rendering references if needed
+- `src/analyse/evalView.ts` — eval graph fill polygons, phase labels, fixed graph dimensions, and current slider-based height control
+- `src/styles/main.scss` — `.eval-graph` styling plus the existing board resize handle styling
+- any small graph-height persistence helper currently used by Patzer
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/chart/src/acpl.ts`
+- `~/Development/lichess-source/lila/ui/chart/src/division.ts`
+- `~/Development/lichess-source/lila/ui/lib/css/component/_board-resize.scss`
+- any corresponding chart CSS needed to confirm the visible fill behavior
 
 Current repo-grounded behavior to confirm first:
-- the arrow-label SVG text is currently still too large
-- the arrow-label text is currently too bold
-- the shadow treatment is acceptable and should remain unless a tiny readability tweak is required
+- `src/analyse/evalView.ts` currently renders a bottom-center `input[type="range"]` slider for graph height
+- the graph still renders phase words like `Opening`, `Middlegame`, and `Endgame` directly on the chart
+- the graph fill is currently implemented by two clipped polygons and should be compared directly against Lichess before changing it
+- the repo already has a board resize handle pattern that may be a better reference for the desired graph-height affordance than a slider
 
 Requested behavior:
-- make the move-arrow numbers at least about half the current size
-- reduce the font weight noticeably
-- keep the current shadow treatment
-- keep the change tightly scoped to typography refinement
+- remove the current slider-based height control from the eval graph
+- add a small drag handle centered at the bottom of the graph that can be grabbed and dragged downward to increase height
+- keep the graph-height range bounded so the current baseline acts like 100% and the max remains 300%
+- make the filled area visually read like Lichess, with white territory filling from the bottom up to the line when White has the advantage
+- remove the on-chart phase labels; the words are not needed
 
 What I want from you:
 - first provide the required pre-implementation output:
@@ -130,11 +138,19 @@ Validation requirements:
   - whether there are console/runtime errors
   - any remaining risks or limitations
 
+Explicit behaviors to verify:
+- the eval graph no longer shows the slider UI
+- a small center-bottom drag handle is visible and can increase graph height by dragging downward
+- the graph cannot exceed the existing intended 300% max height
+- the chart no longer shows `Opening`, `Middlegame`, or `Endgame` text labels
+- white-advantage positions visually fill white in the Lichess style
+- hover/click navigation in the graph still works after resizing
+
 Success criteria:
-- move-arrow label numbers are visibly smaller
-- the font weight is less bold
-- the shadow remains intact
-- no unrelated arrow-label behavior is changed
+- the eval graph uses a centered drag handle instead of a slider
+- the graph fill matches Lichess-style white territory behavior more closely
+- phase labels are gone
+- no unrelated analysis-board behavior is changed
 ```
 
 ## CCP-067 - Bring Eval Graph Fill Into Lichess Parity
