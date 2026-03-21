@@ -159,16 +159,6 @@ function renderColumnNodes(
   renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, deleteVariation);
 }
 
-/** Walk the mainline and return true if any node has more than one child. */
-function hasVariations(root: TreeNode): boolean {
-  let node: TreeNode | undefined = root;
-  while (node) {
-    if (node.children.length > 1) return true;
-    node = node.children[0];
-  }
-  return false;
-}
-
 /**
  * Render the full move list for the current game.
  * @param root            - root node of the current game tree
@@ -176,7 +166,6 @@ function hasVariations(root: TreeNode): boolean {
  * @param getEval         - eval cache lookup: returns evaluation data for a path, or undefined
  * @param navigate        - called when user clicks a move to navigate to it
  * @param deleteVariation - removes a single variation branch by path
- * @param clearVariations - removes all side variations; renders a bottom action strip when present
  */
 export function renderMoveList(
   root:             TreeNode,
@@ -184,20 +173,10 @@ export function renderMoveList(
   getEval:          EvalLookup,
   navigate:         (p: string) => void,
   deleteVariation?: (path: string) => void,
-  clearVariations?: () => void,
 ): VNode {
   // div.tview2.tview2-column: flex-wrap grid, index | white | black per row.
   // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts renderColumnView
   const nodes: VNode[] = [];
   renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, deleteVariation);
-
-  // Wrap tview and optional action strip in move-list-inner.
-  // The tview scrolls; the strip is pinned at the bottom as a flex sibling.
-  // Mirrors lichess-org/lila: ui/analyse/css/_tools.scss .analyse__moves flex-direction: column pattern.
-  const strip = (clearVariations && hasVariations(root))
-    ? h('div.move-list-actions', [
-        h('button', { on: { click: clearVariations } }, 'Clear variations'),
-      ])
-    : null;
-  return h('div.move-list-inner', [h('div.tview2.tview2-column', nodes), strip]);
+  return h('div.move-list-inner', [h('div.tview2.tview2-column', nodes)]);
 }
