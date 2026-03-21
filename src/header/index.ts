@@ -108,8 +108,12 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       }, 'Game Review'),
 
       h('button.global-menu__item', {
+        on: { click: () => { closeGlobalMenu(redraw); downloadPgn(true); } },
+      }, 'Export PGN (Annotated)'),
+
+      h('button.global-menu__item', {
         on: { click: () => { closeGlobalMenu(redraw); downloadPgn(false); } },
-      }, 'Export PGN from Current Board'),
+      }, 'Export PGN (Plain)'),
 
       h('div.global-menu__item.global-menu__item--has-sub', {
         on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },

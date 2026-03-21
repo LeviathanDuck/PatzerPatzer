@@ -2,13 +2,14 @@
 // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts
 
 import { h, type VNode } from 'snabbdom';
-import { classifyLoss } from '../engine/winchances';
+import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import { pathInit } from '../tree/ops';
 import type { TreeNode, TreePath } from '../tree/types';
 
-// Eval lookup: returns { loss, best, mate } for a given path, or undefined.
+// Eval lookup: returns { loss, best, mate, label } for a given path, or undefined.
 // Typed structurally so callers don't need to import PositionEval.
-type EvalLookup = (path: string) => { loss?: number; best?: string; mate?: number } | undefined;
+// label is present when analysis was saved and restored from IDB; absent during live analysis.
+type EvalLookup = (path: string) => { loss?: number; best?: string; mate?: number; label?: MoveLabel } | undefined;
 
 const GLYPH_COLORS: Record<string, string> = {
   '??': '#f66', '?': '#f84', '?!': '#fa4',
@@ -27,11 +28,16 @@ function renderMoveSpan(
   const cached       = getEval(path);
   const parentCached = getEval(pathInit(path));
 
-  // PGN glyphs take priority; fall back to engine-computed label if no glyph present.
-  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode
+  // PGN glyphs take priority; fall back to stored review annotation, then recompute from loss.
+  // Prefer cached.label (hydrated from IDB) over classifyLoss(loss) recomputation so that
+  // a saved-and-restored analysis session shows exactly the labels that were persisted.
+  // Falls back to classifyLoss(loss) for live analysis sessions and older records without label.
+  // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode glyph priority.
   const pgnGlyph     = node.glyphs?.[0];
   const playedBest   = node.uci !== undefined && node.uci === parentCached?.best;
-  const computedLabel = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
+  const computedLabel: MoveLabel | null = (!playedBest && cached !== undefined)
+    ? (cached.label ?? (cached.loss !== undefined ? classifyLoss(cached.loss) : null))
+    : null;
   const computedSymbol = computedLabel === 'blunder' ? '??' : computedLabel === 'mistake' ? '?' : computedLabel === 'inaccuracy' ? '?!' : null;
 
   const symbol = pgnGlyph?.symbol ?? computedSymbol;

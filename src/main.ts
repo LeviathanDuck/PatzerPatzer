@@ -68,6 +68,8 @@ import {
 import { current, onChange, type Route } from './router';
 import { deleteNodeAt, nodeAtPath, pathInit, pruneVariations } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
+import { buildRetroCandidates } from './analyse/retro';
+import { makeRetroCtrl } from './analyse/retroCtrl';
 
 console.log('Patzer Pro');
 
@@ -164,6 +166,11 @@ async function loadAndRestoreAnalysis(gameId: string, generation: number): Promi
     if (entry.best  !== undefined) ev.best  = entry.best;
     if (entry.loss  !== undefined) ev.loss  = entry.loss;
     if (entry.delta !== undefined) ev.delta = entry.delta;
+    // Carry persisted move-review annotation into the in-memory eval shape so UI
+    // consumers can prefer it over recomputing classifyLoss(loss) on every render.
+    // Absent on older records (ANALYSIS_VERSION < 3 era) — consumers fall back to
+    // classifyLoss(loss) safely.
+    if (entry.label !== undefined) ev.label = entry.label;
     evalCache.set(entry.path, ev);
   }
   if (stored.status === 'complete') {
@@ -183,6 +190,9 @@ async function loadAndRestoreAnalysis(gameId: string, generation: number): Promi
   const restoredEval = evalCache.get(ctrl.path);
   if (restoredEval) setCurrentEval(restoredEval);
   syncArrow();
+  // Notify retrospection that analysis data is now available.
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onMergeAnalysisData() retro call.
+  ctrl.retro?.onMergeAnalysisData();
   redraw();
 }
 
@@ -202,6 +212,9 @@ function navigate(path: string): void {
   // move list, clicking the current position in the eval graph).
   if (path === ctrl.path) return;
   ctrl.setPath(path);
+  // Notify retrospection of the path change — offTrack detection, later win/fail.
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts jump() retro.onJump() call.
+  ctrl.retro?.onJump(path);
   syncBoard();
   evalCurrentPosition(); // updates currentEval, arrow, and triggers threat eval if on
   void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
@@ -277,6 +290,125 @@ function last(): void {
   navigate(ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, ''));
 }
 
+/**
+ * Toggle the per-game retrospection session.
+ * Activating: builds candidates, attaches RetroCtrl, jumps to the position before
+ * the first candidate mistake so the user can try to find the better move.
+ * Deactivating: clears ctrl.retro — all lifecycle hooks silently no-op.
+ *
+ * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleRetro +
+ * retroCtrl.ts jumpToNext → root.userJump(prev.path).
+ */
+function toggleRetro(): void {
+  if (ctrl.retro) {
+    delete ctrl.retro;
+    redraw();
+    return;
+  }
+  const game = importedGames.find(g => g.id === selectedGameId);
+  const userColor = game ? getUserColor(game) : null;
+  const candidates = buildRetroCandidates(
+    ctrl.mainline,
+    p => evalCache.get(p),
+    selectedGameId,
+    userColor ?? null,
+  );
+  ctrl.retro = makeRetroCtrl(candidates, userColor ?? null);
+  // Jump to the position before the first candidate mistake.
+  // Mirrors lichess-org/lila: retroCtrl.ts jumpToNext → root.userJump(prev.path).
+  const first = ctrl.retro.current();
+  if (first) navigate(first.parentPath); // navigate calls redraw()
+  else redraw(); // no candidates — still redraw to update button state
+}
+
+/**
+ * Feedback strip shown during a retrospection session.
+ * Displays the current solving state and action buttons.
+ * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroView.ts
+ */
+function renderRetroStrip(): VNode | null {
+  const retro = ctrl.retro;
+  if (!retro) return null;
+
+  const feedback  = retro.feedback();
+  const cand      = retro.current();
+  const [solved, total] = retro.completion();
+
+  // Progress indicator — mirrors Lichess "X / Y" completion display
+  const progress = h('span.retro-strip__progress', `${solved} / ${total}`);
+
+  // Action buttons vary by feedback state
+  const buttons: (VNode | null)[] = [];
+
+  if (feedback === 'find' || feedback === 'offTrack') {
+    buttons.push(
+      h('button.retro-strip__btn', {
+        on: { click: () => {
+          retro.viewSolution();
+          // Navigate to the mistake node so the solution is visible on the board
+          if (cand) navigate(cand.path);
+        }},
+      }, 'Show answer'),
+      h('button.retro-strip__btn', {
+        on: { click: () => { retro.skip(); const next = retro.current(); if (next) navigate(next.parentPath); else redraw(); }},
+      }, 'Skip'),
+    );
+  } else if (feedback === 'win') {
+    buttons.push(
+      h('button.retro-strip__btn.retro-strip__btn--next', {
+        on: { click: () => { retro.jumpToNext(); const next = retro.current(); if (next) navigate(next.parentPath); else redraw(); }},
+      }, 'Next →'),
+    );
+  } else if (feedback === 'fail') {
+    buttons.push(
+      h('button.retro-strip__btn', {
+        on: { click: () => {
+          // Already at parentPath (board/index.ts navigated back); just reset feedback
+          retro.setFeedback('find');
+          redraw();
+        }},
+      }, 'Retry'),
+      h('button.retro-strip__btn', {
+        on: { click: () => {
+          retro.viewSolution();
+          if (cand) navigate(cand.path);
+        }},
+      }, 'Show answer'),
+    );
+  } else if (feedback === 'view') {
+    // Show the engine best move in SAN so the user knows what to play
+    const bestSan = cand ? uciToSan(cand.fenBefore, cand.bestMove) : null;
+    if (bestSan) buttons.push(h('span.retro-strip__best', `Best: ${bestSan}`));
+    buttons.push(
+      h('button.retro-strip__btn.retro-strip__btn--next', {
+        on: { click: () => { retro.jumpToNext(); const next = retro.current(); if (next) navigate(next.parentPath); else redraw(); }},
+      }, 'Next →'),
+    );
+  }
+
+  // Label: "Find the best move for White/Black" or classification label
+  let label: string;
+  if (!cand) {
+    label = 'Review complete!';
+  } else if (feedback === 'win') {
+    label = 'Correct!';
+  } else if (feedback === 'fail') {
+    label = 'Not the best move.';
+  } else if (feedback === 'view') {
+    label = `${cand.classification.charAt(0).toUpperCase() + cand.classification.slice(1)} on move ${Math.ceil(cand.ply / 2)}`;
+  } else if (feedback === 'offTrack') {
+    label = 'Navigate back to resume';
+  } else {
+    const color = cand.ply % 2 === 1 ? 'White' : 'Black';
+    label = `Find the best move for ${color}`;
+  }
+
+  return h('div.retro-strip', [
+    h('div.retro-strip__label', label),
+    h('div.retro-strip__actions', [...buttons, progress]),
+  ]);
+}
+
 // --- Route views ---
 
 function routeContent(route: Route): VNode {
@@ -340,8 +472,11 @@ function routeContent(route: Route): VNode {
           // Engine settings panel — sits directly below header, above PV lines
           // Mirrors lichess-org/lila: renderCevalSettings() position
           renderEngineSettings(),
-          // PV lines — below header (and settings when open)
-          renderPvBox(),
+          // PV lines — hidden while retro is actively solving so the user is not shown
+          // engine guidance while trying to find the best move.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
+          //   showCeval && !ctrl.retro?.isSolving() && cevalView.renderPvs(ctrl)
+          !ctrl.retro?.isSolving() ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves', [
             renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation),
@@ -371,21 +506,30 @@ function routeContent(route: Route): VNode {
           h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
           h('button', { on: { click: flip } }, 'Flip'),
           h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
-          renderFindPuzzlesButton({
-            mainline:    ctrl.mainline,
-            getEval:     p => evalCache.get(p),
-            gameId:      selectedGameId,
-            currentPath: ctrl.path,
-            engineEnabled, batchAnalyzing, batchState,
-            savedPuzzles, navigate, savePuzzle, uciToSan, redraw,
-          } satisfies PuzzleRenderDeps),
+          renderAnalysisControls([
+            // Mistake-review entry: available after review completes.
+            // Jumps to the position before the first candidate mistake.
+            // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroView.ts entry affordance.
+            h('button', {
+              class: { active: !!ctrl.retro },
+              attrs: {
+                disabled: !analysisComplete || batchAnalyzing,
+                title: ctrl.retro
+                  ? 'Close mistake review'
+                  : analysisComplete
+                    ? 'Review your mistakes from this game'
+                    : 'Complete game review first',
+              },
+              on: { click: toggleRetro },
+            }, ctrl.retro ? 'Close' : 'Mistakes'),
+          ]),
+          renderRetroStrip(),
         ]),
 
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
         h('div.analyse__underboard', [
           renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate),
-          renderAnalysisControls(),
           renderGameList(deps),
         ]),
 

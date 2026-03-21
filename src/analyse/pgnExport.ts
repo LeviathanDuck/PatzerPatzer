@@ -40,10 +40,6 @@ export function initPgnExport(deps: {
   _redraw            = deps.redraw;
 }
 
-// --- Module state ---
-
-let showExportMenu = false;
-
 // --- PGN building ---
 
 /**
@@ -136,11 +132,10 @@ export function downloadPgn(annotated: boolean): void {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-  showExportMenu = false;
   _redraw();
 }
 
-export function renderAnalysisControls(): VNode {
+export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   const ctrl           = _getCtrl();
   const selectedGameId = _getSelectedGameId();
   const hasGame        = ctrl.mainline.length > 1;
@@ -202,25 +197,8 @@ export function renderAnalysisControls(): VNode {
         attrs: { disabled: !hasGame, title: reviewTitle },
         on: { click: reviewClick },
       }, reviewLabel),
-      h('button', {
-        attrs: { disabled: ctrl.mainline.length <= 1 },
-        on: {
-          click: () => {
-            showExportMenu = !showExportMenu;
-            _redraw();
-          },
-        },
-      }, 'Export PGN'),
+      ...(extraButtons ?? []),
     ]),
-    showExportMenu ? h('div.pgn-import__row', [
-      h('span', { attrs: { style: 'font-size:0.8rem;color:#888;margin-right:6px' } }, 'Export as:'),
-      h('button', { on: { click: () => downloadPgn(true) } }, 'Annotated'),
-      h('button', { on: { click: () => downloadPgn(false) } }, 'Plain'),
-      h('button', {
-        attrs: { style: 'color:#888' },
-        on: { click: () => { showExportMenu = false; _redraw(); } },
-      }, 'Cancel'),
-    ]) : null,
     statusLine,
   ]);
 }
