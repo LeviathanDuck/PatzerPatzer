@@ -218,6 +218,7 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
       setBatchState('idle');
       setAnalysisRunning(false);
       if (selectedGameId) void saveAnalysisToIdb('partial', selectedGameId, buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)), reviewDepth);
+      syncArrow();
       _redraw();
       return;
     }
