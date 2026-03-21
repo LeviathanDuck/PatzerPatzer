@@ -344,7 +344,7 @@ function routeContent(route: Route): VNode {
           renderPvBox(),
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves', [
-            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation, clearVariations),
+            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation),
           ]),
           (() => {
             const game = importedGames.find(g => g.id === selectedGameId);
