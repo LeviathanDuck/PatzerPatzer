@@ -53,7 +53,7 @@ import {
   renderEvalBar, renderEvalGraph,
 } from './analyse/evalView';
 import {
-  clearPuzzleCandidates, renderPuzzleCandidates,
+  clearPuzzleCandidates, renderPuzzleCandidates, renderFindPuzzlesButton,
   type PuzzleRenderDeps,
 } from './puzzles/extract';
 import { renderHeader, type HeaderDeps } from './header/index';
@@ -350,20 +350,17 @@ function routeContent(route: Route): VNode {
             const game = importedGames.find(g => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? 'White', game?.black ?? 'Black');
           })(),
-          renderPuzzleCandidates({
-            mainline:       ctrl.mainline,
-            getEval:        p => evalCache.get(p),
-            gameId:         selectedGameId,
-            currentPath:    ctrl.path,
-            engineEnabled,
-            batchAnalyzing,
-            batchState,
-            savedPuzzles,
-            navigate,
-            savePuzzle,
-            uciToSan,
-            redraw,
-          } satisfies PuzzleRenderDeps),
+          (() => {
+            const puzzleDeps: PuzzleRenderDeps = {
+              mainline:    ctrl.mainline,
+              getEval:     p => evalCache.get(p),
+              gameId:      selectedGameId,
+              currentPath: ctrl.path,
+              engineEnabled, batchAnalyzing, batchState,
+              savedPuzzles, navigate, savePuzzle, uciToSan, redraw,
+            };
+            return renderPuzzleCandidates(puzzleDeps);
+          })(),
         ]),
 
         // Controls — below tools (grid-area: controls)
@@ -374,6 +371,14 @@ function routeContent(route: Route): VNode {
           h('button', { on: { click: prev }, attrs: { disabled: ctrl.path === '' } }, '← Prev'),
           h('button', { on: { click: flip } }, 'Flip'),
           h('button', { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, 'Next →'),
+          renderFindPuzzlesButton({
+            mainline:    ctrl.mainline,
+            getEval:     p => evalCache.get(p),
+            gameId:      selectedGameId,
+            currentPath: ctrl.path,
+            engineEnabled, batchAnalyzing, batchState,
+            savedPuzzles, navigate, savePuzzle, uciToSan, redraw,
+          } satisfies PuzzleRenderDeps),
         ]),
 
         // Underboard — below board (grid-area: under)
