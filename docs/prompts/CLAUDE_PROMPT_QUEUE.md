@@ -36,872 +36,746 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 
 ## Queue Index
 
-- CCP-079: Reduce Board Review Glyph Scale To 20 Percent
-  - Shrink the on-board review glyph SVG badges by changing their current 40% scale to 20% while preserving the existing stack behavior.
+- CCP-083: Establish Puzzle Route Ownership
+  - Create a real puzzle module seam and route surface so `#/puzzles` no longer depends on placeholder logic in `src/main.ts`.
 
-- CCP-066-F1: Add Underboard Games Search Bar
-  - Add the missing search bar to the compact games list beneath the analysis board without reopening the broader Games-page search scope.
+- CCP-084: Add Puzzle Round Model
+  - Introduce Patzer-owned puzzle-round types and a compatibility seam from saved `PuzzleCandidate` records.
 
-- CCP-070: Add Lichess Review Glyph SVG Layer
-  - Copy the Lichess on-board move-annotation glyph SVG system into a Patzer-owned module without wiring it into the board yet.
+- CCP-085: Render Saved Puzzle Library
+  - Replace the placeholder puzzles page with a real saved-puzzle list backed by existing local IDB state.
 
-- CCP-071: Render Review Glyphs On The Board
-  - Wire Lichess-style review glyph SVG badges onto the analysis board using destination-square anchoring and stacking like Lichess.
+- CCP-086: Add Puzzle Round Controller
+  - Create a dedicated puzzle controller for active round state before wiring the full solve loop.
 
-- CCP-072: Add Review Glyph Board Toggle
-  - Add an engine-settings toggle for board review glyphs, default it on, and persist it cleanly.
+- CCP-087: Validate Puzzle Moves And Auto-Reply
+  - Route puzzle-mode board moves through strict solution checking and scripted opponent replies.
 
-- CCP-073: Clear Board And Ceval Typecheck Slice
-  - Resolve the first cohesive current typecheck slice across board, ceval, and engine files without trying to clear the whole backlog.
+- CCP-088: Add Puzzle Feedback And Round Controls
+  - Add puzzle-specific feedback and after-round controls instead of reusing generic analysis chrome.
 
-- CCP-074: Clear Import And Shell Typecheck Slice
-  - Resolve the remaining current typecheck slice across games, imports, keyboard, router, and main-shell files.
+- CCP-089: Add Puzzle Side Panel Metadata
+  - Add a lightweight metadata panel for source-game and puzzle context using only data Patzer already owns.
 
-- CCP-075: Make Board Resize Handle Safari-Reliable
-  - Fix the analysis-board resize handle so it appears and works reliably in Safari.
+- CCP-090: Persist Local Puzzle Session
+  - Save lightweight local puzzle session progress so saved-puzzle rounds can continue cleanly across reloads.
 
-- CCP-076: Make Book-Aware Retrospection Cancellation Live
-  - Wire the existing opening-provider seam into active retrospection so theory/book moves are actually skipped.
-
-- CCP-077: Finish Eval Graph Hover And Scrub Behavior
-  - Tighten the eval-graph hover and scrub interaction so graph-driven inspection works as intended.
-
-- CCP-078: Fix Move-List Context Menu Positioning
-  - Fix the move-list variation context menu so it opens over the selected move instead of at the page origin.
+- CCP-091: Tighten Review-To-Puzzle Integration
+  - Make Patzer’s game-review and saved-puzzle flow feel like one coherent local workflow.
 
 ## Queue
 
-## CCP-079 - Reduce Board Review Glyph Scale To 20 Percent
+## CCP-083 - Establish Puzzle Route Ownership
 
 ```
-Prompt ID: CCP-079
-Task ID: CCP-079
-Source Document: ad hoc user request
-Source Step: reduce on-board review glyph SVG scale from 40% to 20%
-Execution Target: Codex
+Prompt ID: CCP-083
+Task ID: CCP-083
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 1 — Establish real puzzle module ownership and route surface
+Execution Target: Claude Code
 
 You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
 
 Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board-glyph / board-draw / analysis SVG files.
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle / routing / main-shell files.
 - If overlapping work is already in flight, stop and report the overlap before making repo edits.
 
-Task: Reduce the on-board move-review glyph badge scale from the current 40% down to 20%, while preserving the existing badge system and stack behavior.
+Task: take the first smallest safe step toward a real puzzles page by creating an owned puzzle module seam and routing `#/puzzles` through it instead of keeping puzzle-page behavior as placeholder logic inside `src/main.ts`.
 
 Required repo workflow:
 1. Inspect the current Patzer Pro codebase first.
 2. Locate the actual implementation points before assuming file paths.
 3. Inspect the relevant Lichess source before deciding how to implement.
 4. Compare:
-   - how Patzer currently renders board review glyph SVG badges
-   - how Lichess sizes and positions those glyph badges
-   - whether changing scale alone is sufficient or whether a tiny stack-offset adjustment is needed to keep the smaller badges positioned cleanly
+   - how Patzer currently routes and renders the puzzles page
+   - what puzzle-specific ownership Lichess gives its puzzle controller/view layer
+   - what the smallest safe Patzer ownership seam is today
 5. Identify the smallest safe implementation step.
 6. Explain diagnosis before coding.
 7. Implement.
 8. Validate with build + task-specific checks.
 
 Important project constraints:
-- Keep this scoped to board review glyph badge scale and any tiny directly-related positioning adjustment.
-- Do not redesign the board review glyph system.
-- Do not bundle settings, glyph asset rewrites, or unrelated board-shape changes.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/analyse/boardGlyphs.ts` — current SVG badge composition, transform scale, and stack offsets
-- `src/engine/ctrl.ts` — current board review glyph shape injection seam, only to confirm no broader wiring change is needed
-
-Relevant Lichess source to inspect first:
-- `~/Development/lichess-source/lila/ui/lib/src/game/glyphs.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/autoShape.ts`
-
-Current repo-grounded behavior to confirm first:
-- Patzer currently composes board review glyph badges with `transform="matrix(.4 0 0 .4 ...)"`, meaning 40% scale
-- the badges are currently stacked using `glyphStacktoPx(...)`
-- this task is only to make them significantly smaller at 20% scale
-
-Requested behavior:
-- update the board review glyph badge scale to 20%
-- preserve the same basic badge design and stacking behavior
-- if a tiny offset tweak is needed so the smaller badges still sit cleanly on the square, keep that tweak minimal and explicit
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- board review glyph badges are now visibly smaller
-- the badge scale is 20%
-- stacked badges still place cleanly on the move destination square
-- no unrelated board glyph or engine-arrow behavior is changed
-
-Success criteria:
-- on-board review glyph SVG badges use 20% scale
-- the existing badge system remains intact
-- no unrelated board behavior is changed
-```
-
-## CCP-066-F1 - Add Underboard Games Search Bar
-
-```
-Prompt ID: CCP-066-F1
-Task ID: CCP-066
-Parent Prompt ID: CCP-066
-Source Document: docs/prompts/CLAUDE_PROMPT_LOG.md
-Source Step: CCP-066 review issue — underboard list still has no search bar
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same games-list / underboard / filter files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Add the missing search bar to the compact games list beneath the analysis board. This is a follow-up fix to `CCP-066`, whose review already confirmed the Games page has a search seam but the underboard list still does not.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer currently renders the underboard compact game list
-   - how Patzer currently filters/searches the Games page
-   - whether Lichess has any comparable compact game-list filter pattern that is structurally useful
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- This is a follow-up fix to `CCP-066`, not a new search feature family.
-- Keep the change scoped to adding search to the underboard compact game list.
-- Do not reopen or redesign the full Games-page search/filter system unless a tiny shared helper extraction is clearly the safest way to avoid duplicated filtering.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/games/view.ts` — `renderGameList()` underboard compact list and existing Games-page filter state
-- any relevant local styling in `src/styles/main.scss` for compact game-list controls
-
-Current repo-grounded behavior to confirm first:
-- `renderGameList()` currently renders only a header plus the list rows
-- the Games page already has `gamesFilterOpponent` and `input.games-view__search`
-- the reviewed `CCP-066` log explicitly says the underboard list still has no search bar
-
-Requested behavior:
-- add a search bar to the games list beneath the analysis board
-- make it actually filter that compact list
-- keep the UI compact and appropriate for the underboard surface
-- preserve the existing Games-page search behavior unless a tiny shared seam is the safest fit
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- the underboard game list now shows a search bar
-- typing filters the compact list beneath the analysis board
-- selecting a filtered game still loads it correctly
-- the existing Games-page search/filter behavior is not regressed
-
-Success criteria:
-- the underboard compact game list has a working search bar
-- the fix stays scoped to the missing underboard surface
-- no unrelated games-view behavior is changed
-```
-
-## CCP-070 - Add Lichess Review Glyph SVG Layer
-
-```
-Prompt ID: CCP-070
-Task ID: CCP-070
-Source Document: ad hoc user request
-Source Step: copy Lichess board move-review glyph SVGs exactly into Patzer as the source glyph layer
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board-draw / analysis-glyph / engine-display files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Copy the Lichess move-review glyph SVG system exactly into Patzer as the source layer for future on-board review glyph rendering, without wiring it into the board yet.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer currently represents move-review labels and PGN glyphs
-   - how Lichess converts move glyphs into board-ready SVG annotation shapes
-   - where the correct ownership seam should live in Patzer
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- This task is only about bringing over the Lichess review-glyph SVG source layer and shape-building helper.
-- Copy the Lichess SVGs and stacking logic as faithfully as possible.
-- Do not wire the glyphs into board rendering yet.
-- Do not add the settings toggle yet.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/tree/types.ts` — current glyph data shape
-- `src/tree/pgn.ts` — PGN glyph ingestion
-- `src/analyse/moveList.ts` — current move-review / glyph display behavior
-- `src/board/index.ts` and `src/engine/ctrl.ts` — current board shape seams, only to choose the future ownership boundary correctly
-
-Relevant Lichess source to inspect first:
-- `~/Development/lichess-source/lila/ui/lib/src/game/glyphs.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/autoShape.ts`
-- any closely related Lichess tree/glyph type files needed to mirror the source behavior accurately
-
-Current repo-grounded behavior to confirm first:
-- Patzer already has move glyph/review data on nodes
-- Patzer does not yet have a dedicated Lichess-style on-board glyph SVG module
-- Lichess uses custom SVG badge shapes rather than plain text labels for the common review glyphs
-
-Requested behavior:
-- create the Patzer-side source module/helper for on-board review glyphs
-- copy the Lichess SVG badge assets/definitions exactly where practical
-- preserve:
-  - destination-square anchoring assumptions
-  - stack ordering
-  - max visible glyph behavior
-- stop before wiring it into the live board
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- Patzer now has a dedicated source/helper for Lichess-style board review glyph SVGs
-- the copied glyph definitions are available for common review glyphs like `?!`, `?`, `??`, and `!`
-- no board rendering behavior has changed yet
-
-Success criteria:
-- the Lichess review glyph SVG/source layer exists in Patzer
-- it is not yet wired into live board rendering
-- no unrelated behavior is changed
-```
-
-## CCP-071 - Render Review Glyphs On The Board
-
-```
-Prompt ID: CCP-071
-Task ID: CCP-071
-Source Document: ad hoc user request
-Source Step: render Lichess-style move-review glyph SVGs on the analysis board in the same way Lichess does
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board-draw / analysis-glyph / engine-arrow files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Render move-review glyphs on the Patzer analysis board using the Lichess SVG badges and the same general board-annotation behavior Lichess uses.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer currently builds board auto-shapes
-   - how Lichess injects `annotationShapes(ctrl.node)` into board auto-shapes
-   - how Patzer should scope review-glyph visibility relative to existing board arrows
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- This task is about board rendering only.
-- Use the Lichess review glyph SVG behavior as the source of truth:
-  - destination-square anchoring
-  - stacked badge placement
-  - common review glyph rendering
-- Do not add the settings toggle in this task.
-- Do not redesign all board-shape ownership unless a tiny extraction is clearly required.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- the new glyph-source/helper introduced by the previous prompt
-- `src/engine/ctrl.ts` — current board auto-shape construction seam
-- `src/board/index.ts` — board draw integration and available shape hooks
-- `src/tree/types.ts` and any current review-label/glyph consumers
-
-Relevant Lichess source to inspect first:
-- `~/Development/lichess-source/lila/ui/analyse/src/autoShape.ts`
-- `~/Development/lichess-source/lila/ui/lib/src/game/glyphs.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
-
-Current repo-grounded behavior to confirm first:
-- Patzer currently shows review information in the move list / eval graph, not as Lichess-style on-board SVG glyph badges
-- Patzer already has a board-shape pipeline that can likely host these glyph shapes
-- Lichess adds move annotations as board shapes for the current node when the setting is enabled
-
-Requested behavior:
-- render move-review glyphs on the analysis board itself
-- use the copied Lichess SVG badges rather than inventing a new badge style
-- anchor them to the move destination square and stack them the Lichess way
-- keep the initial rendering behavior on by default unless the toggle layer later disables it
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- current-node review glyphs now appear on the board
-- the badges use the Lichess-style SVG visuals rather than plain text
-- the badges are anchored/stacked in the Lichess manner
-- existing engine arrows and played arrows still behave correctly
-
-Success criteria:
-- Patzer renders Lichess-style board review glyphs on the analysis board
-- the rendering is faithful to the Lichess badge system
-- no unrelated board behavior is changed
-```
-
-## CCP-072 - Add Review Glyph Board Toggle
-
-```
-Prompt ID: CCP-072
-Task ID: CCP-072
-Source Document: ad hoc user request
-Source Step: add an engine-settings toggle for board review glyphs and default it on
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-settings / board-glyph / ceval-view files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Add a toggle in the engine settings menu that turns the on-board review glyphs on or off. The setting should be on by default.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer currently stores and renders other engine/board display toggles
-   - how Lichess exposes the move-annotation-on-board setting
-   - where the cleanest local ownership seam is for a persisted Patzer toggle
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- This task is only about the settings toggle and its persistence/wiring.
-- The toggle should live in the existing engine settings menu.
-- The toggle should default to on.
-- Do not redesign the whole settings panel.
-- Do not bundle unrelated engine-arrow setting cleanup.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/ceval/view.ts` — existing engine settings UI rows
-- `src/engine/ctrl.ts` — existing persisted toggle patterns like arrows/labels/review labels
-- the board review-glyph rendering seam introduced by the previous prompt(s)
-
-Relevant Lichess source to inspect first:
-- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
-- any other local Lichess setting storage path relevant to show-move-annotation-on-board behavior
-
-Current repo-grounded behavior to confirm first:
-- Patzer already has an engine settings menu with checkbox toggles
-- Patzer already persists several board/eval display toggles in localStorage
-- the new on-board review glyphs should follow that same persistence pattern, but start enabled by default
-
-Requested behavior:
-- add a checkbox toggle for on-board review glyphs in the engine settings menu
-- default it to on
-- persist it cleanly
-- when disabled, remove/hide the board review glyphs without disturbing unrelated board arrows or move-list review labels
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run any task-specific checks you can
-- explicitly report:
-  - build result
-  - feature-specific smoke tests
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Explicit behaviors to verify:
-- board review glyphs are shown by default
-- the new engine-settings toggle appears and can disable them
-- turning the toggle back on restores them
-- the setting persists across reload
-- engine arrows and move-list review labels still behave correctly
-
-Success criteria:
-- Patzer has a persisted engine-settings toggle for board review glyphs
-- it defaults on
-- it only affects the on-board review glyph layer
-```
-
-## CCP-073 - Clear Board And Ceval Typecheck Slice
-
-```
-Prompt ID: CCP-073
-Task ID: CCP-073
-Source Document: docs/KNOWN_ISSUES.md
-Source Step: [HIGH] `npm run typecheck` is wired but surfaces type errors
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same typecheck / board / ceval / engine files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Clear the first cohesive current typecheck slice without trying to solve the entire repo-wide backlog.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement, when the affected files touch Lichess-aligned board or ceval behavior.
-4. Compare:
-   - the current real typecheck failures
-   - the affected Patzer ownership seams
-   - any relevant Lichess patterns for the touched board/ceval APIs
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Do not try to clear the whole typecheck backlog in one prompt.
-- Keep this slice scoped to the current board / ceval / engine-adjacent failures.
-- Preserve runtime behavior.
-- Do not bundle unrelated refactors.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/board/cosmetics.ts`
-- `src/board/index.ts`
-- `src/ceval/view.ts`
-- `src/engine/ctrl.ts`
-
-Current repo-grounded diagnosis to confirm first:
-- `npm run typecheck -- --pretty false` currently fails in this slice on:
-  - Snabbdom attrs/value typing in `src/board/cosmetics.ts`
-  - exact-optional / Chessground config issues in `src/board/index.ts`
-  - missing `Key` typing and exact-optional config issues in `src/ceval/view.ts`
-  - undefined string / exact-optional issues in `src/engine/ctrl.ts`
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run `npm run typecheck -- --pretty false`
-- explicitly report:
-  - build result
-  - typecheck result
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Success criteria:
-- this board/ceval/engine typecheck slice is cleared
-- runtime behavior is unchanged
-- the repo still builds
-```
-
-## CCP-074 - Clear Import And Shell Typecheck Slice
-
-```
-Prompt ID: CCP-074
-Task ID: CCP-074
-Source Document: docs/KNOWN_ISSUES.md
-Source Step: [HIGH] `npm run typecheck` is wired but surfaces type errors
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same typecheck / games / import / router / main-shell files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Clear the next cohesive current typecheck slice across games, imports, keyboard, router, and shell files without trying to solve the full repo backlog.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement where the touched behavior is Lichess-aligned.
-4. Compare:
-   - the current real typecheck failures in this slice
-   - the current Patzer data contracts and shell ownership seams
-   - any relevant Lichess patterns only where they meaningfully guide safer typing
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Do not try to clear the whole typecheck backlog in one prompt.
-- Keep this slice scoped to:
-  - `src/games/view.ts`
-  - `src/import/*.ts`
-  - `src/keyboard.ts`
-  - `src/router.ts`
-  - `src/main.ts`
-- Preserve runtime behavior.
-- Avoid unrelated cleanup.
-
-Current repo-grounded diagnosis to confirm first:
-- `npm run typecheck -- --pretty false` currently still reports this slice across:
-  - `src/games/view.ts`
-  - `src/import/chesscom.ts`
-  - `src/import/lichess.ts`
-  - `src/import/pgn.ts`
-  - `src/keyboard.ts`
-  - `src/router.ts`
-  - `src/main.ts`
-
-What I want from you:
-- first provide the required pre-implementation output:
-  1. what part of the current codebase is relevant
-  2. what Lichess files/systems are relevant
-  3. the exact diagnosis
-  4. the exact small step being implemented
-  5. why that step is safe and correctly scoped
-- then implement the change
-- then validate it
-
-Validation requirements:
-- run `npm run build`
-- run `npm run typecheck -- --pretty false`
-- explicitly report:
-  - build result
-  - typecheck result
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Success criteria:
-- this import/shell typecheck slice is cleared
-- runtime behavior is unchanged
-- the repo still builds
-```
-
-## CCP-075 - Make Board Resize Handle Safari-Reliable
-
-```
-Prompt ID: CCP-075
-Task ID: CCP-075
-Source Document: docs/KNOWN_ISSUES.md
-Source Step: [MEDIUM] Board resize handle does not reliably appear or work in Safari
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board / resize / Safari-related files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Fix the board-resize handle so it appears and works reliably in Safari on the analysis board.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer currently injects and binds the resize handle
-   - how Lichess handles board resizing
-   - what Safari-specific failure mode is plausible in the current implementation
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Keep this scoped to Safari reliability for the existing resize handle.
-- Do not redesign overall board resizing UX.
-- Do not add substantial new logic to `src/main.ts`.
-
-Relevant current code areas to inspect first:
-- `src/board/index.ts`
-- `src/styles/main.scss`
-
-Relevant Lichess source to inspect first:
-- the local Lichess chessground resize helper and board-resize CSS currently mirrored by Patzer
-
-Validation requirements:
-- run `npm run build`
-- run the most relevant task-specific check you can
-- explicitly report:
-  - build result
-  - Safari-specific reasoning or validation
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Success criteria:
-- the existing board resize handle appears reliably
-- dragging it works reliably in Safari
-- no unrelated board behavior is changed
-```
-
-## CCP-076 - Make Book-Aware Retrospection Cancellation Live
-
-```
-Prompt ID: CCP-076
-Task ID: CCP-076
-Source Document: docs/KNOWN_ISSUES.md
-Source Step: [MEDIUM] Book-aware retrospection cancellation seam is defined but not live
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection / opening-provider / analysis files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Make the existing book-aware retrospection cancellation seam live by actually wiring an opening provider into active candidate generation.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer currently defines the opening-provider seam
-   - where Patzer currently calls `buildRetroCandidates(...)` without a provider
-   - how Lichess retrospection uses opening/explorer data to cancel theory moves
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Keep this focused on making the existing cancellation seam live.
-- Do not redesign all retrospection candidate logic.
-- Do not invent a large opening subsystem.
-- If Patzer’s available opening data is still limited, make the smallest honest live wiring step and call out the remaining limitation explicitly.
-
-Relevant current code areas to inspect first:
-- `src/analyse/retro.ts`
-- `src/main.ts`
-- any current opening/book metadata or provider seam already present in the repo
-
-Relevant Lichess source to inspect first:
-- the local Lichess retrospection files and any opening-cancellation path they use
-
-Validation requirements:
-- run `npm run build`
-- run the most relevant task-specific check you can
-- explicitly report:
-  - build result
-  - whether theory/book moves are now actually filtered by the live path
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Success criteria:
-- the existing opening-provider seam is no longer dead
-- active retrospection candidate generation now uses it
-- no unrelated retrospection behavior is changed
-```
-
-## CCP-077 - Finish Eval Graph Hover And Scrub Behavior
-
-```
-Prompt ID: CCP-077
-Task ID: CCP-077
-Source Document: docs/KNOWN_ISSUES.md
-Source Step: [MEDIUM] Eval graph hover/scrub behavior is not yet working as expected
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / analysis-view / underboard interaction files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Tighten the eval-graph hover and scrub interaction so graph-driven review/navigation behaves as intended.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer currently handles hover indicators and click strips on the graph
-   - how Lichess chart interaction works
-   - where Patzer still falls short for scan/scrub usability
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Keep this scoped to graph hover/scrub interaction.
-- Do not bundle unrelated graph fill, resize-handle, or review-summary changes.
-- Use Lichess as the interaction reference where applicable.
-
-Relevant current code areas to inspect first:
-- `src/analyse/evalView.ts`
-- any relevant graph styling in `src/styles/main.scss`
-
-Relevant Lichess source to inspect first:
-- `~/Development/lichess-source/lila/ui/chart/src/acpl.ts`
-- any other local Lichess chart interaction helpers that matter
-
-Validation requirements:
-- run `npm run build`
-- run the most relevant task-specific check you can
-- explicitly report:
-  - build result
-  - graph hover/scrub behavior after the fix
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Success criteria:
-- graph hover/scrub now behaves as intended
-- graph-driven review/navigation is clearer and more reliable
-- no unrelated graph behavior is changed
-```
-
-## CCP-078 - Fix Move-List Context Menu Positioning
-
-```
-Prompt ID: CCP-078
-Task ID: CCP-078
-Source Document: docs/KNOWN_ISSUES.md
-Source Step: [MEDIUM] Move-list variation context menu can open at the top-left of the page
-Execution Target: Codex
-
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same move-list / context-menu / patcher files.
-- If overlapping work is already in flight, stop and report the overlap before making repo edits.
-
-Task: Fix the move-list variation context menu so it opens over the selected move instead of rendering at the top-left corner of the page.
-
-Required repo workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant Lichess source before deciding how to implement.
-4. Compare:
-   - how Patzer currently stores cursor coordinates and renders the overlay
-   - whether the Snabbdom patcher/setup is preventing inline positioning styles from applying
-   - how Lichess handles comparable contextual move-list actions where relevant
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
-
-Important project constraints:
-- Keep this scoped to context-menu positioning and the minimum supporting render seam needed.
-- Do not redesign the full move-list action system.
-- Do not bundle unrelated variation-action changes.
+- Keep this scoped to ownership and route surface only.
+- Do not implement the solve loop, feedback UI, or public-dataset ingestion in this task.
+- Do not bundle broad analysis-page cleanup.
+- Do not add substantial new puzzle logic to `src/main.ts`.
 
 Relevant current code areas to inspect first:
 - `src/main.ts`
-- `src/analyse/moveList.ts`
-- the app patcher/bootstrap setup if positioning modules are relevant
+- `src/router.ts`
+- `src/puzzles/extract.ts`
+- `src/idb/index.ts`
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- Patzer already has puzzle extraction and persistence, but no real puzzle page owner.
+- `#/puzzles` is still effectively a placeholder route.
+- Lichess treats puzzles as a dedicated controller/view subsystem, not as analysis-page residue.
+
+Likely safe direction:
+- create a real Patzer-owned seam in `src/puzzles/` such as `ctrl.ts` / `view.ts` or the closest equivalent that fits the current repo
+- route `#/puzzles` through that seam
+- keep the first rendered surface intentionally minimal
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
 
 Validation requirements:
 - run `npm run build`
 - run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
 - explicitly report:
+  - Prompt ID
+  - Task ID
   - build result
-  - context-menu positioning behavior
+  - feature-specific smoke tests
   - whether behavior changed intentionally
   - whether there are console/runtime errors
-  - any remaining risks or limitations
+  - remaining risks or limitations
+```
 
-Success criteria:
-- the move-list context menu opens near the selected move
-- it no longer falls back to the top-left page origin
-- no unrelated move-list behavior is changed
+## CCP-084 - Add Puzzle Round Model
+
+```
+Prompt ID: CCP-084
+Task ID: CCP-084
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 2 — Introduce a richer puzzle round model without breaking saved candidates
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-type / tree-type / IDB files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: introduce a Patzer-owned puzzle-round model and a compatibility seam from persisted `PuzzleCandidate` records, without breaking existing saved-puzzle data or bundling route/UI work.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - what Patzer currently stores in `PuzzleCandidate`
+   - what Lichess puzzle data and move-tree structures actually require
+   - what the smallest safe Patzer round model is for the next puzzle steps
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to types / conversion / persistence compatibility.
+- Do not implement puzzle solving UI in this task.
+- Do not redesign the entire IDB layer.
+- Do not overload `src/tree/types.ts` with large puzzle-only behavior if a `src/puzzles/` type owner is cleaner.
+
+Relevant current code areas to inspect first:
+- `src/tree/types.ts`
+- `src/puzzles/extract.ts`
+- `src/idb/index.ts`
+- any new `src/puzzles/*` files created by the previous task
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/interfaces.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/moveTree.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- `PuzzleCandidate` is enough for extraction and save actions, but not enough for a full puzzle round.
+- Patzer needs a dedicated puzzle-round model before controller, validation, and session work can land cleanly.
+
+Likely safe direction:
+- add `src/puzzles/types.ts` or the closest equivalent
+- keep `PuzzleCandidate` compatibility explicit
+- add a small conversion seam from saved candidates into the richer round shape
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
+- explicitly report:
+  - Prompt ID
+  - Task ID
+  - build result
+  - type / persistence compatibility results
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks or limitations
+```
+
+## CCP-085 - Render Saved Puzzle Library
+
+```
+Prompt ID: CCP-085
+Task ID: CCP-085
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 3 — Replace the placeholder puzzles route with a saved-puzzle library view
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle route / puzzle view / IDB-backed library files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: replace the placeholder puzzles page with a real saved-puzzle library view backed by current local IDB state, while keeping the page focused on browsing rather than full round solving.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently stores and exposes saved puzzles
+   - how Lichess puzzle pages present a puzzle-focused entry surface
+   - what the smallest honest saved-puzzle library surface is for Patzer now
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to the saved-puzzle library page.
+- Do not implement the full round solve loop in this task.
+- Do not invent fake rating / theme / popularity metadata Patzer does not own.
+- Do not pull in the public Lichess puzzle database.
+
+Relevant current code areas to inspect first:
+- `src/main.ts`
+- `src/idb/index.ts`
+- `src/puzzles/extract.ts`
+- current `src/puzzles/*` module files
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/view/side.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- Patzer already persists saved puzzles locally.
+- The user still cannot browse those puzzles on a real page.
+- The smallest valuable next step is a local library surface, not public catalog expansion.
+
+Likely safe direction:
+- render a list of saved puzzles on `#/puzzles`
+- show honest local metadata such as source game, move context, and loss severity where available
+- prepare a clean selection seam for the later round controller
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
+- explicitly report:
+  - Prompt ID
+  - Task ID
+  - build result
+  - saved-puzzle library behavior
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks or limitations
+```
+
+## CCP-086 - Add Puzzle Round Controller
+
+```
+Prompt ID: CCP-086
+Task ID: CCP-086
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 4 — Add a minimal puzzle round controller
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle controller / board integration / route-selection files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: create a dedicated minimal puzzle round controller that owns active puzzle state, phase, and solution progress before the full solve loop is wired into the board.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently owns analysis and retrospection session state
+   - how Lichess `PuzzleCtrl` owns round state separately from generic board rendering
+   - what the smallest clean Patzer controller seam is
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to controller ownership and minimal state only.
+- Do not yet wire full move validation or scripted replies.
+- Do not reimplement the entire retrospection controller.
+- Do not add substantial puzzle state logic to `src/main.ts`.
+
+Relevant current code areas to inspect first:
+- `src/analyse/ctrl.ts`
+- `src/analyse/retroCtrl.ts`
+- current `src/puzzles/*` files
+- `src/board/index.ts` only as needed to avoid future coupling mistakes
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/interfaces.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- Patzer has puzzle-adjacent data but no puzzle-specific controller.
+- Without that controller, validation, feedback, and session state would leak into unrelated modules.
+
+Likely safe direction:
+- add a minimal `PuzzleCtrl`-style owner in `src/puzzles/`
+- keep the initial surface narrow: active puzzle, phase, current move index, solved/failed flags
+- let later tasks build on that seam
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
+- explicitly report:
+  - Prompt ID
+  - Task ID
+  - build result
+  - puzzle-controller state behavior
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks or limitations
+```
+
+## CCP-087 - Validate Puzzle Moves And Auto-Reply
+
+```
+Prompt ID: CCP-087
+Task ID: CCP-087
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 5 — Route board moves through strict puzzle validation and scripted replies
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle controller / board move-handling / tree path files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: wire puzzle-mode board moves through strict solution validation and scripted reply playback, keeping the solve loop puzzle-owned rather than analysis-owned.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently accepts user moves on the board
+   - how the retrospection flow judges candidate moves today
+   - how Lichess puzzle move validation and reply sequencing work
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to puzzle-mode move validation and auto-replies.
+- Do not add live-engine hints or public-dataset logic.
+- Do not break normal analysis-board move handling.
+- Preserve existing board reuse where possible, but keep puzzle rules puzzle-owned.
+
+Relevant current code areas to inspect first:
+- `src/board/index.ts`
+- `src/analyse/retroCtrl.ts`
+- current `src/puzzles/*` files
+- `src/tree/ops.ts` or related move-tree helpers if needed
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/moveTest.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/view/chessground.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- the biggest missing puzzle behavior is not rendering, it is sequence-aware move validation
+- a correct user move must advance the round
+- expected reply moves must be played automatically
+- a wrong move must fail the round cleanly
+
+Likely safe direction:
+- route puzzle-mode user moves through a controller method
+- compare them against the expected solution move
+- auto-play required reply moves after correct progress
+- keep normal analysis-mode user move handling unchanged
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
+- explicitly report:
+  - Prompt ID
+  - Task ID
+  - build result
+  - puzzle move-validation behavior
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks or limitations
+```
+
+## CCP-088 - Add Puzzle Feedback And Round Controls
+
+```
+Prompt ID: CCP-088
+Task ID: CCP-088
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 6 — Add puzzle feedback and round controls
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle view / feedback / control-bar files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: add puzzle-specific feedback and round controls for correct / wrong / solved / next / view-solution states instead of leaning on generic analysis-board UI.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently renders analysis and retrospection feedback
+   - how Lichess puzzle feedback and after-round controls are separated from board rendering
+   - what the smallest honest Patzer puzzle feedback surface is now
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to puzzle feedback and control UI.
+- Do not redesign the whole analysis tools column.
+- Do not bundle session history or public puzzle metadata.
+- Keep the UI honest about the local-only puzzle scope.
+
+Relevant current code areas to inspect first:
+- `src/analyse/retroView.ts`
+- current `src/puzzles/*` files
+- any small main-shell render seam only if required
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/view/feedback.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/view/after.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- once solve validation exists, Patzer still needs puzzle-native feedback
+- this should not be hidden inside generic analysis controls
+- Lichess treats puzzle feedback as first-class stateful UI
+
+Likely safe direction:
+- add a dedicated feedback strip or panel in `src/puzzles/view.ts`
+- support at least: find, wrong, solved, view solution, and next puzzle states
+- keep the first UI compact and local-puzzle focused
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
+- explicitly report:
+  - Prompt ID
+  - Task ID
+  - build result
+  - puzzle feedback/control behavior
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks or limitations
+```
+
+## CCP-089 - Add Puzzle Side Panel Metadata
+
+```
+Prompt ID: CCP-089
+Task ID: CCP-089
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 7 — Add the puzzle metadata / side-panel surface
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle view / metadata / source-game link files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: add a lightweight puzzle metadata side panel using source-game and puzzle context that Patzer already owns, without inventing public puzzle-catalog semantics.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - what metadata Patzer already has for saved puzzles
+   - how Lichess uses side-panel context to orient the user
+   - what the smallest honest Patzer metadata surface is
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to metadata display.
+- Do not invent ratings, vote counts, or theme tags that Patzer does not own.
+- Do not bundle session persistence or new routing systems.
+
+Relevant current code areas to inspect first:
+- `src/idb/index.ts`
+- `src/puzzles/extract.ts`
+- current `src/puzzles/*` files
+- `src/games/view.ts` only if existing game-row metadata helps the display
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/view/side.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/interfaces.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- puzzle rounds need context, but Patzer should only show data it genuinely has
+- a small metadata surface improves orientation without pretending the app already has a public puzzle catalog
+
+Likely safe direction:
+- add a compact side panel with source-game, move context, side to move, loss severity, and related local fields where available
+- leave absent fields absent rather than faking them
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
+- explicitly report:
+  - Prompt ID
+  - Task ID
+  - build result
+  - metadata-panel behavior
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks or limitations
+```
+
+## CCP-090 - Persist Local Puzzle Session
+
+```
+Prompt ID: CCP-090
+Task ID: CCP-090
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 8 — Persist lightweight local puzzle session state
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle session / local persistence / IDB files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: persist a lightweight local puzzle session so saved-puzzle progress can survive reloads and continue cleanly, without introducing account or server assumptions.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently persists local state for analysis and saved puzzles
+   - how Lichess puzzle session state stays lightweight and user-oriented
+   - what the smallest safe Patzer session record is
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to lightweight local session state.
+- Do not redesign the whole puzzle store.
+- Do not introduce server, account, or rating assumptions.
+- Do not bundle broad review-data persistence changes.
+
+Relevant current code areas to inspect first:
+- `src/idb/index.ts`
+- current `src/puzzles/*` files
+- `src/main.ts` only for the minimum restore seam if required
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/session.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- Patzer already persists saved puzzles, but not a puzzle session
+- a light local session is a natural fit for the current browser-local architecture
+
+Likely safe direction:
+- add a small local session record for recent solved/failed rounds and active-round continuity
+- keep persistence explicit and minimal
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
+- explicitly report:
+  - Prompt ID
+  - Task ID
+  - build result
+  - local puzzle-session behavior
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks or limitations
+```
+
+## CCP-091 - Tighten Review-To-Puzzle Integration
+
+```
+Prompt ID: CCP-091
+Task ID: CCP-091
+Source Document: docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md
+Source Step: Task 9 — Tighten review-to-puzzle integration
+Execution Target: Claude Code
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same review / retrospection / saved-puzzle integration files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: tighten the bridge from Patzer’s game-review flow to its saved-puzzle flow so the puzzle page feels like a direct downstream tool of review data rather than a parallel subsystem.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer currently extracts and saves puzzle candidates from review data
+   - how Patzer retrospection already models per-candidate solving
+   - what the smallest honest review-to-puzzle integration improvement is now
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- Keep this scoped to the review-to-puzzle bridge.
+- Do not start public-dataset ingestion work.
+- Do not collapse retrospection and puzzles into one controller unless the code clearly supports that as a tiny safe step.
+- Preserve the current analysis-board behavior outside the targeted integration seam.
+
+Relevant current code areas to inspect first:
+- `src/puzzles/extract.ts`
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/retroView.ts`
+- `src/idb/index.ts`
+- current `src/puzzles/*` files
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`
+- `~/Development/lichess-source/lila/ui/puzzle/src/moveTree.ts`
+
+Current audit-grounded diagnosis to confirm first:
+- Patzer’s real product advantage is review-driven practice, not just a generic puzzle page
+- the saved-puzzle flow should feel like a clean continuation of Game Review output
+
+Likely safe direction:
+- improve the explicit handoff from extracted/saved candidates into the puzzle page or controller
+- keep the bridge local and data-driven
+- avoid any broader architecture merge that is larger than this task requires
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. relevant Patzer Pro files
+  2. relevant Lichess files
+  3. exact diagnosis
+  4. exact small step to implement
+  5. why that step is safely scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run the most relevant task-specific check you can
+- provide a short manual test checklist with concrete user actions and expected results
+- explicitly report:
+  - Prompt ID
+  - Task ID
+  - build result
+  - review-to-puzzle integration behavior
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks or limitations
 ```

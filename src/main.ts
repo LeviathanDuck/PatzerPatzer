@@ -64,7 +64,7 @@ import {
 } from './import/types';
 import {
   ANALYSIS_VERSION, clearAllIdbData, clearAnalysisFromIdb, loadAnalysisFromIdb, loadGamesFromIdb,
-  loadPuzzlesFromIdb, saveGamesToIdb, savedPuzzles, savePuzzle,
+  loadPuzzlesFromIdb, saveGamesToIdb, saveNavStateToIdb, savedPuzzles, savePuzzle,
   setSavedPuzzles,
 } from './idb/index';
 import { current, onChange, type Route } from './router';
@@ -79,6 +79,7 @@ console.log('Patzer Pro');
 const patch = init([classModule, attributesModule, eventListenersModule]);
 const PUBLIC_SOURCE_URL = 'https://github.com/LeviathanDuck/PatzerPatzer';
 const PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
+const NAV_STATE_SAVE_MS = 500;
 
 function dedupeImportedGames(existing: ImportedGame[], incoming: ImportedGame[]): ImportedGame[] {
   const seenPgns = new Set(existing.map(game => game.pgn));
@@ -104,7 +105,7 @@ const importCallbacks = {
     }
     importedGames = [...importedGames, ...dedupedGames];
     selectedGameId = first.id;
-    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    void saveGamesToIdb(importedGames);
     loadGame(first.pgn); // calls redraw
   },
   redraw(): void { redraw(); },
@@ -229,6 +230,16 @@ let ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
 // Mirrors the implicit game-scoping in lichess-org/lila: ui/analyse/src/idbTree.ts, where
 // the IDB class is owned by the ctrl instance and cannot outlive it.
 let restoreGeneration = 0;
+let navStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleNavStateSave(path = ctrl.path): void {
+  if (navStateSaveTimer !== null) clearTimeout(navStateSaveTimer);
+  const selectedId = selectedGameId;
+  navStateSaveTimer = setTimeout(() => {
+    navStateSaveTimer = null;
+    void saveNavStateToIdb(selectedId, path);
+  }, NAV_STATE_SAVE_MS);
+}
 
 /**
  * Load a game into the analysis board by PGN.
@@ -251,6 +262,7 @@ function loadGame(pgn: string | null): void {
     }
   }
   syncBoardAndArrow();
+  scheduleNavStateSave('');
   // Restore persisted analysis from IndexedDB; falls back to live eval if nothing stored.
   // Increment restoreGeneration first so any in-flight restore from the previous game
   // sees a stale generation value and discards its result.
@@ -338,7 +350,7 @@ function navigate(path: string): void {
   ctrl.retro?.onJump(path);
   syncBoard();
   evalCurrentPosition(); // updates currentEval, arrow, and triggers threat eval if on
-  void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+  scheduleNavStateSave(ctrl.path);
   redraw();
   scrollActiveIntoView();
 }
@@ -380,7 +392,7 @@ function clearVariations(): void {
   } else {
     ctrl.setPath(ctrl.path); // refresh ctrl.mainline / nodeList after tree mutation
     syncBoard();
-    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    scheduleNavStateSave(ctrl.path);
     redraw();
   }
 }
@@ -396,7 +408,7 @@ function deleteVariation(path: string): void {
     // Active node was inside the deleted variation — move up to its parent.
     navigate(pathInit(path));
   } else {
-    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    scheduleNavStateSave(ctrl.path);
     redraw();
   }
 }
