@@ -237,11 +237,11 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   // what the percentage in the button refers to and how many moves remain.
   // Mirrors the inline completion indicator in Lichess retro mode controls.
   const statusLine = batchAnalyzing && batchQueue.length > 0
-    ? h('div.pgn-import__status', `Analyzing… ${batchDone} of ${batchQueue.length} moves`)
+    ? h('div.analyse-review-controls__status', `Analyzing… ${batchDone} of ${batchQueue.length} moves`)
     : null;
 
-  return h('div.pgn-import', [
-    h('div.pgn-import__row', [
+  return h('div.analyse-review-controls', [
+    h('div.analyse-review-controls__row', [
       h('button.btn-review', {
         class: { 'btn-review--complete': analysisComplete },
         attrs: { disabled: !hasGame, title: reviewTitle },

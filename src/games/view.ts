@@ -9,9 +9,15 @@ import { parsePgnHeader, type ImportedGame } from '../import/types';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
 
+const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Game metadata helpers (moved from main.ts — Step 16)
 // ---------------------------------------------------------------------------
+
+function isRecentlyImported(game: ImportedGame): boolean {
+  return game.importedAt !== undefined && Date.now() - game.importedAt < NEW_IMPORT_WINDOW_MS;
+}
 
 /** Determine which side the importing user played in a given game. */
 export function getUserColor(game: ImportedGame): 'white' | 'black' | null {
@@ -65,6 +71,7 @@ export function renderCompactGameRow(game: ImportedGame, isAnalyzed: boolean, ha
     rapid:       '\ue002',
   };
   const tcIcon = game.timeClass ? (tcIconMap[game.timeClass] ?? null) : null;
+  const isNewImport = isRecentlyImported(game);
 
   const resultCls = result === 'win'  ? 'grl__result--win'
     : result === 'loss' ? 'grl__result--loss'
@@ -81,9 +88,10 @@ export function renderCompactGameRow(game: ImportedGame, isAnalyzed: boolean, ha
     h('span.grl__opponent', [oppLabel, oppChip]),
     date ? h('span.grl__date', date) : null,
     tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, title: game.timeClass } }) : null,
-    (isAnalyzed || hasMissedTactic) ? h('span.grl__badges', [
-      isAnalyzed      ? h('span.grl__badge.--ok',   { attrs: { title: 'Analyzed' } },      '✓') : null,
-      hasMissedTactic ? h('span.grl__badge.--warn', { attrs: { title: 'Missed tactic' } }, '!') : null,
+    (isNewImport || isAnalyzed || hasMissedTactic) ? h('span.grl__badges', [
+      isNewImport     ? h('span.grl__badge.--new',  { attrs: { title: 'Newly imported' } }, 'NEW') : null,
+      isAnalyzed      ? h('span.grl__badge.--ok',   { attrs: { title: 'Analyzed' } },       '✓') : null,
+      hasMissedTactic ? h('span.grl__badge.--warn', { attrs: { title: 'Missed tactic' } },  '!') : null,
     ]) : null,
   ];
 }
@@ -368,6 +376,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const srcUrl  = deps.gameSourceUrl(game);
             const isAnalyzed = deps.analyzedGameIds.has(game.id);
             const hasMissed  = deps.missedTacticGameIds.has(game.id);
+            const isNewImport = isRecentlyImported(game);
 
             // User accuracy: read from analyzedGameAccuracy map (populated at analysis-complete time).
             const accEntry  = deps.analyzedGameAccuracy.get(game.id);
@@ -433,6 +442,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
               h('td.games-view__opponent', [
                 opp,
                 userColor ? h('span.color-chip.--' + (userColor === 'white' ? 'black' : 'white')) : null,
+                isNewImport ? h('span.games-view__new-import', { attrs: { title: 'Newly imported' } }, 'NEW') : null,
               ]),
               ratingCell,
               h('td.games-view__date', date),

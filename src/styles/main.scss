@@ -1393,6 +1393,25 @@ body[data-board='newspaper'] cg-board::before {
   }
 }
 
+.analyse-review-controls {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.analyse-review-controls__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.analyse-review-controls__status {
+  font-size: 0.75rem;
+  color: #888;
+  line-height: 1.2;
+}
+
 .pgn-import {
   width: 100%;
   display: flex;
@@ -1528,6 +1547,7 @@ body[data-board='newspaper'] cg-board::before {
     font-size: 0.7em;
     font-weight: 700;
 
+    &.--new  { color: #8fd36b; }
     &.--ok   { color: #4a8; }
     &.--warn { color: #f84; }
   }
@@ -2213,6 +2233,15 @@ body[data-board='newspaper'] cg-board::before {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  &__new-import {
+    margin-left: 8px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #8fd36b;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
   }
 
   &__link-cell {

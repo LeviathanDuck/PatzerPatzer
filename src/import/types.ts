@@ -16,6 +16,8 @@ export interface ImportedGame {
   blackRating?: number;
   // Username of the player who triggered the import (lowercased). Absent for PGN paste.
   importedUsername?: string;
+  // Local timestamp for when this game was first added to the browser library.
+  importedAt?: number;
 }
 
 /** Callbacks injected by main.ts so adapters don't depend on application state. */

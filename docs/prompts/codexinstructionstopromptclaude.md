@@ -33,6 +33,11 @@ Before writing the prompt:
   - set `Parent Prompt ID` to the prompt being fixed
 - identify the source planning document and exact step/task the prompt comes from
 - add the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
+- add a matching queue-index item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
+- make each queue-index item include:
+  - first line: `- CCP-###: Short Task Title`
+  - second line: an indented bullet with a brief one-line description of the target behavior or fix
+  - one blank line between queue-index items for readability
 - when adding the prompt to the queue file, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
 - add a matching unchecked prompt-id-plus-title checklist item to the top index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
@@ -101,6 +106,7 @@ Output requirements:
 - tell Claude Code to repeat the same `Prompt ID` field in its final report
 - tell Claude Code to include the `Task ID` field in its final report as the root task family id
 - append the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when generating it
+- add a matching item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` at creation time
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 - add a matching unchecked `- [ ] CCP-### - Short Task Title` line to the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 

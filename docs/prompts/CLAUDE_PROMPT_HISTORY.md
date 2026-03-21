@@ -2852,125 +2852,78 @@ Prompt text not recovered. This history entry was reconstructed after review fro
 Prompt text not recovered. This history entry was reconstructed after review from the prompt log and review thread.
 ```
 
-## CCP-056
+## CCP-056 — Reviewed
 
-```
-Prompt ID: CCP-056
-Task ID: CCP-056
-Execution Target: Codex
-Source Document: inferred from user request in chat
-Source Step: make board-wheel move navigation a main-menu setting that defaults to off
+- Task: add a persisted main-menu toggle for board-wheel move navigation and default it to off
+- Task ID: `CCP-056`
+- Parent prompt ID: none
+- Source document: inferred from user request in chat
+- Source step: `make board-wheel move navigation a main-menu setting that defaults to off`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: current code stores the wheel-navigation preference in `src/board/cosmetics.ts`, exposes it in the global menu in `src/header/index.ts`, and gates the board listener in `src/main.ts`; the default remains off when no localStorage preference exists
 
-You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+## CCP-040 — Reviewed
 
-This prompt follows the repo's Claude prompt-tracking format, but it is intended for Codex to execute.
+- Task: take the first small safe wishlist step on eval-graph display and formatting
+- Task ID: `CCP-040`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `Changes to how the eval graph is displayed and formatted`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: `src/analyse/evalView.ts` now uses the already-computed divider data to render visible Opening / Middlegame / Endgame chart labels without changing the hover/scrub behavior tracked separately
 
-Task: change board-wheel move navigation so it is controlled by a toggle in the main menu, with the default state set to off.
+## CCP-042 — Reviewed
 
-Current repo-grounded implementation points already identified:
-- `src/main.ts` contains the global `wheel` listener that currently scrolls through moves while the mouse is over the board
-- `src/header/index.ts` owns the global settings menu
-- `src/board/cosmetics.ts` already contains board-related persisted settings patterns using localStorage
+- Task: move the analysis-page Review/Re-analyze control beside Prev/Flip/Next in the smallest safe way
+- Task ID: `CCP-042`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `Move the analysis-page Review / Re-analyze button beside the move-navigation buttons`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: `renderAnalysisControls()` now renders in the controls row beside Prev/Flip/Next, and the old underboard placement is gone without adding broader control-layout glue
 
-Required workflow:
-1. Inspect the current Patzer Pro codebase first.
-2. Locate the exact implementation points before assuming file paths.
-3. Inspect relevant Lichess source before deciding implementation details.
-4. Compare:
-   - how Patzer Pro currently works
-   - how Lichess handles nearby settings ownership or board-behavior toggles
-   - where this request intentionally diverges
-5. Identify the smallest safe implementation step.
-6. Explain diagnosis before coding.
-7. Implement.
-8. Validate with build + task-specific checks.
+## CCP-044 — Reviewed
 
-Relevant files to inspect first:
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/main.ts`
-- `src/header/index.ts`
-- `src/board/cosmetics.ts`
-- `src/styles/main.scss`
+- Task: add the first safe eval label beside the primary engine arrow
+- Task ID: `CCP-044`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `Add tag or label next to engine move arrows showing what their eval is`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: `src/engine/ctrl.ts` now attaches a Chessground square label derived from `formatScore(currentEval)` to the primary engine-arrow destination, without expanding the feature to secondary arrows
 
-Relevant Lichess files/systems to inspect first:
-- `~/Development/lichess-source/lila/ui/dasher/src/board.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
-- any closely related Lichess setting/menu files you find necessary for board-behavior toggle ownership
+## CCP-045 — Reviewed
 
-Current diagnosis to confirm:
-- board-wheel move navigation is currently always on when the mouse is over the board
-- there is no user-facing setting for this behavior
-- the most likely safe implementation is to add a persisted boolean setting near existing board/global settings ownership, then gate the existing wheel listener on that setting
-- because the menu lives in `src/header/index.ts`, the setting should be exposed there rather than as a one-off hidden flag in `src/main.ts`
+- Task: prevent obviously duplicate game reimports in the smallest safe way
+- Task ID: `CCP-045`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `we shouldn't re import the same games that have already been imported`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: `dedupeImportedGames()` in `src/main.ts` now blocks exact-PGN duplicates against both the existing library and duplicates within the incoming batch, while leaving the rest of the import flow unchanged
 
-Implement only the smallest safe step:
-- add a persisted on/off setting for board-wheel move navigation
-- default it to off for users with no stored preference
-- expose it in the existing main/global menu
-- gate the current wheel listener on that setting
-- keep the change scoped to settings ownership + wheel behavior only
+## CCP-046 — Reviewed
 
-Do not:
-- redesign the global menu
-- move unrelated logic out of `src/main.ts` unless the smallest safe fix requires a tiny extraction
-- bundle other board settings changes
-- change unrelated navigation behavior
-
-Before coding, provide:
-- prompt id
-- task id
-- execution target
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can
-- explicitly report:
-  - whether board-wheel move navigation is now off by default
-  - whether turning the setting on enables wheel-based move navigation over the board
-  - whether turning the setting off disables that behavior again without affecting normal page scroll elsewhere
-  - whether the setting persists across reload
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - any remaining risks or limitations
-
-Also include a short manual test checklist with concrete user actions and expected results. Keep it tightly scoped to this change.
-
-Output shape:
-- prompt id
-- task id
-- execution target
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-
-In your final report, repeat:
-- `Prompt ID: CCP-056`
-- `Task ID: CCP-056`
-- `Execution Target: Codex`
-```
+- Task: take the first safe step toward incremental imports and temporary new-import badging
+- Task ID: `CCP-046`
+- Parent prompt ID: none
+- Source document: `docs/WISHLIST.md`
+- Source step: `Import only new games since last import`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `444a919`
+- Notes: newly kept imports are stamped with `importedAt`, persisted through the normal game-library save path, and surfaced as time-bounded `NEW` badges in both compact game rows and the full Games table
 
 ## CCP-057 — Reviewed
 
