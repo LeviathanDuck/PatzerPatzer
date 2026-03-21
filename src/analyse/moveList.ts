@@ -3,6 +3,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
+import { showReviewLabels } from '../engine/ctrl';
 import { pathInit } from '../tree/ops';
 import type { TreeNode, TreePath } from '../tree/types';
 
@@ -55,7 +56,7 @@ function renderMoveSpan(
   // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode glyph priority.
   const pgnGlyph     = node.glyphs?.[0];
   const playedBest   = node.uci !== undefined && node.uci === parentCached?.best;
-  const computedLabel: MoveLabel | null = (!playedBest && cached !== undefined && shouldShowReviewAnnotation(userColor, node.ply, userOnly))
+  const computedLabel: MoveLabel | null = (showReviewLabels && !playedBest && cached !== undefined && shouldShowReviewAnnotation(userColor, node.ply, userOnly))
     ? (cached.label ?? (cached.loss !== undefined ? classifyLoss(cached.loss) : null))
     : null;
   const computedSymbol = computedLabel === 'blunder' ? '??' : computedLabel === 'mistake' ? '?' : computedLabel === 'inaccuracy' ? '?!' : null;

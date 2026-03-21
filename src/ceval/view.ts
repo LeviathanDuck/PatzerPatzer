@@ -21,6 +21,7 @@ import {
   arrowAllLines, setArrowAllLines,
   showPlayedArrow, setShowPlayedArrow,
   showArrowLabels, setShowArrowLabels,
+  showReviewLabels, setShowReviewLabels,
   syncArrow, toggleEngine, evalCurrentPosition,
   type EvalLine, type PositionEval,
 } from '../engine/ctrl';
@@ -461,6 +462,18 @@ export function renderEngineSettings(): VNode | null {
           change: (e: Event) => {
             setShowArrowLabels((e.target as HTMLInputElement).checked);
             syncArrow();
+            _redraw();
+          },
+        },
+      }),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-review-labels' } }, 'Review'),
+      h('input#ceval-review-labels', {
+        attrs: { type: 'checkbox', checked: showReviewLabels },
+        on: {
+          change: (e: Event) => {
+            setShowReviewLabels((e.target as HTMLInputElement).checked);
             _redraw();
           },
         },
