@@ -1549,7 +1549,9 @@ function buildArrowShapes() {
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
       const uci = currentEval.best;
-      shapes.push(buildArrowShape(uci, "paleBlue", currentEval));
+      shapes.push(buildArrowShape(uci, "paleBlue"));
+      const labelShape = buildArrowLabelShape(uci, currentEval);
+      if (labelShape) shapes.push(labelShape);
     }
     if (arrowAllLines) {
       const topWc = evalWinChances(currentEval) ?? 0;
@@ -1560,7 +1562,9 @@ function buildArrowShapes() {
         if (shift >= 0.2) continue;
         const lineWidth2 = Math.max(2, Math.round(12 - shift * 50));
         const uci = line.best;
-        shapes.push(buildArrowShape(uci, "paleGrey", line, { lineWidth: lineWidth2 }));
+        shapes.push(buildArrowShape(uci, "paleGrey", { lineWidth: lineWidth2 }));
+        const labelShape = buildArrowLabelShape(uci, line);
+        if (labelShape) shapes.push(labelShape);
       }
     }
   }
@@ -1574,23 +1578,32 @@ function buildArrowShapes() {
       const uci = nextNode.uci;
       const nextEval = evalCache.get(ctrl2.path + nextNode.id);
       const playedEval = currentEval.best !== uci ? nextEval : void 0;
-      shapes.push(buildArrowShape(uci, "red", playedEval));
+      shapes.push(buildArrowShape(uci, "red"));
+      const labelShape = buildArrowLabelShape(uci, playedEval);
+      if (labelShape) shapes.push(labelShape);
     }
   }
   const koOverlay = buildKoOverlayShape(ctrl2.node.fen);
   if (koOverlay) shapes.push(koOverlay);
   return shapes;
 }
-function buildArrowShape(uci, brush, ev, modifiers) {
+function buildArrowShape(uci, brush, modifiers) {
   const shape = {
     orig: uci.slice(0, 2),
     dest: uci.slice(2, 4),
     brush
   };
   if (modifiers) shape.modifiers = modifiers;
-  const labelSvg = buildArrowLabelSvg(ev);
-  if (labelSvg) shape.customSvg = { html: labelSvg, center: "label" };
   return shape;
+}
+function buildArrowLabelShape(uci, ev) {
+  const labelSvg = buildArrowLabelSvg(ev);
+  if (!labelSvg) return null;
+  return {
+    orig: uci.slice(0, 2),
+    dest: uci.slice(2, 4),
+    customSvg: { html: labelSvg, center: "label" }
+  };
 }
 function buildArrowLabelSvg(ev) {
   if (!showArrowLabels || !ev) return null;
