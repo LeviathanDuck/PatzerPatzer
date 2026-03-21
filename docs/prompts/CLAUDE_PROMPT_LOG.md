@@ -70,6 +70,7 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
+- [ ] CCP-069 - Refine Eval Graph Fill And Resize Handle
 - [x] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 - [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
@@ -141,7 +142,7 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-044-F1 - Refine Engine Arrow Eval Labels
 - [x] CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
 - [ ] CCP-044-F2 - Match Arrow Label Styling To Eval Bar
-- [ ] CCP-044-F3 - Reduce Arrow Label Weight And Size
+- [x] CCP-044-F3 - Reduce Arrow Label Weight And Size
 - [ ] CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
 - [ ] CCP-066 - Add Search To Underboard And Games Lists
 - [ ] CCP-067 - Bring Eval Graph Fill Into Lichess Parity
@@ -149,10 +150,27 @@ It should stay in sync with the detailed entry below.
 
 ## Log
 
-## CCP-044-F3 - Reduce Arrow Label Weight And Size
+## CCP-069 - Refine Eval Graph Fill And Resize Handle
 
 ```
 - [ ] Reviewed
+  - ID: `CCP-069`
+  - Task ID: `CCP-069`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `replace eval-graph slider with a center drag handle, keep Lichess-style white fill, and remove phase labels`
+  - Task: refine the eval graph so it uses a center drag handle, keeps Lichess-style white fill, and removes phase labels
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-044-F3 - Reduce Arrow Label Weight And Size
+
+```
+- [x] Reviewed
   - ID: `CCP-044-F3`
   - Task ID: `CCP-044`
   - Parent prompt ID: `CCP-044-F2`
@@ -161,7 +179,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `reduce move-arrow label size and font weight`
   - Task: refine move-arrow label typography so the numbers are much smaller and less bold while keeping the current shadow
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```

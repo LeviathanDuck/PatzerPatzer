@@ -1660,7 +1660,7 @@ function buildArrowLabelSvg(ev) {
   if (!showArrowLabels || !ev) return null;
   if (ev.cp === void 0 && ev.mate === void 0) return null;
   const text = formatScore(ev);
-  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="12" font-weight="500" fill="#fff" stroke="rgba(0,0,0,0.92)" stroke-width="6" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="12" font-weight="500" fill="#fff" stroke="rgba(0,0,0,0.72)" stroke-width="1.35" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
 }
 function escapeArrowLabelText(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
