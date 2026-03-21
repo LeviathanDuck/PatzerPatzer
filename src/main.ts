@@ -326,13 +326,7 @@ function routeContent(route: Route): VNode {
           renderPvBox(),
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves', [
-            // Clear-variations button — shown only when side branches exist.
-            ctrl.mainline.some(n => n.children.length > 1)
-              ? h('div.pgn-import__row', { attrs: { style: 'padding-bottom:4px' } }, [
-                  h('button', { on: { click: clearVariations } }, 'Clear variations'),
-                ])
-              : null,
-            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation),
+            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation, clearVariations),
           ]),
           (() => {
             const game = importedGames.find(g => g.id === selectedGameId);
