@@ -13,22 +13,25 @@ Your job:
 
 Workflow:
 1. Detect what changed locally using git
-2. Determine whether the changes are:
+2. Check `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` for the relevant `CCP-###` entry if one exists
+3. Determine whether the changes are:
    - unstaged
    - staged
    - committed locally but not pushed
    - already pushed, if this can be confirmed against the remote
-3. Use local git information first, then fetch the tracked remote when network access is available to verify push/public status
-4. If remote verification cannot be performed, say clearly that push/public status is unverified and do not guess
-5. Review the actual diff, not just filenames
-6. Keep the review scoped to the actual changes unless surrounding code creates risk
-7. Prioritize:
+4. Use local git information first, then fetch the tracked remote when network access is available to verify push/public status
+5. If remote verification cannot be performed, say clearly that push/public status is unverified and do not guess
+6. Review the actual diff, not just filenames
+7. Keep the review scoped to the actual changes unless surrounding code creates risk
+8. Prioritize:
    - correctness bugs
    - regressions
    - Lichess behavior mismatches
    - architectural drift
    - hidden coupling
    - missing validation
+9. If the reviewed change corresponds to a prompt-log entry, tell the user that `CCP-###` should now be marked `[x] Reviewed` and specify the review outcome label that should be recorded beside it
+10. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
 
 When checking git state, use local information first:
 - `git status --short --branch`
@@ -51,11 +54,25 @@ Important rules:
 - pay special attention to unnecessary growth in `src/main.ts`
 
 Review output format:
+- Prompt log status
 - Findings
 - Push status
 - Validation gaps
+- Known-issues follow-up
 - Brief summary
 - Suggested manual tests
+
+Prompt log status rules:
+- if a matching `CCP-###` entry is identifiable and no review findings exist, say it should be marked `[x] Reviewed` with `Review outcome: passed`
+- if the change is acceptable but has minor caveats, say it should be marked `[x] Reviewed` with `Review outcome: passed with notes`
+- if review findings exist, say it should still be marked `[x] Reviewed`, but with `Review outcome: issues found` or `Review outcome: needs rework`, and the issue summary should be recorded beside that log entry
+- if no prompt-log entry is identifiable, say `No prompt log item identified`
+
+Known-issues follow-up rules:
+- if review finds a real current issue that belongs in the repo bug log, explicitly ask: `Do you want me to add this to docs/KNOWN_ISSUES.md?`
+- only do this for real, current issues worth tracking at the repository level
+- do not silently add items to `docs/KNOWN_ISSUES.md` during review unless the user explicitly asks
+- if no such issue exists, say `No known-issues log follow-up needed`
 
 Suggested manual tests rules:
 - only include tests relevant to the actual diff

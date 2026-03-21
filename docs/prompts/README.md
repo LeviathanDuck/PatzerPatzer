@@ -23,3 +23,21 @@ Formatting convention for prompt-generation workflows:
 - wrap the entire prompt in a single fenced Markdown code block unless the user explicitly asks for plain text instead
 - do not add commentary before or after the code block
 - prompt-generation templates should also ask Claude Code to include a short manual test checklist with concrete actions and expected results for the implemented change
+
+Prompt tracking convention:
+- track Claude Code prompts in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+- assign each prompt a stable identifier in the form `CCP-###`
+- include that identifier near the top of the generated prompt
+- include a matching `Task ID` near the top of the generated prompt so Claude can echo it in the final report
+- include `Source Document` and `Source Step` metadata near the top of the generated prompt
+- create a prompt-log entry immediately when a new prompt is generated
+- use the log checkbox only to indicate whether review happened:
+  - checked means reviewed
+  - unchecked means not reviewed yet
+- record review quality separately with `Review outcome`, for example:
+  - `passed`
+  - `passed with notes`
+  - `issues found`
+  - `needs rework`
+- when doing a code review, check the prompt log for the matching `CCP-###` item and explicitly say what `Review outcome` should be recorded beside it
+- when a code review finds a real current issue worth tracking, explicitly ask whether it should be added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
