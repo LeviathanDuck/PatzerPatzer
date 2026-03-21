@@ -32,11 +32,16 @@ Workflow:
    - architectural drift
    - hidden coupling
    - missing validation
-10. If the reviewed change corresponds to a queued prompt, remove that prompt from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and update its existing entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-11. When removing the prompt from `CLAUDE_PROMPT_QUEUE.md`, also remove its matching item from the top `Queue Index` in that same file so the index continues to list only still-pending prompts
-12. When updating the matching log entry, also update the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` from `- [ ] CCP-### - Short Task Title` to `- [x] CCP-### - Short Task Title`
-13. After updating queue/log state, explicitly verify that the reviewed `CCP-###` no longer appears anywhere in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-14. After that verification, quickly confirm it still matches `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+10. If the reviewed change corresponds to a queued prompt, complete prompt-tracking closeout as one atomic step:
+   - remove that prompt from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+   - remove its matching item from the top `Queue Index` in that same file
+   - update its existing detailed entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+   - update the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` from `- [ ] CCP-### - Short Task Title` to `- [x] CCP-### - Short Task Title`
+   - update `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md` if the workflow calls for a reviewed/archive entry
+11. After updating queue/log/history state, explicitly verify that the reviewed `CCP-###` no longer appears anywhere in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+12. Explicitly verify that the detailed log entry no longer says `Review outcome: pending`
+13. Run the repo audit command `npm run audit:prompts` when practical; if you do not run it, say so explicitly
+14. After those checks, quickly confirm the tracking state still matches `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
 15. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
 16. If the review shows the task needs a follow-up fix prompt, note that the next prompt should reuse the same root `Task ID` with the next `-F#` `Prompt ID` modifier
 
@@ -60,6 +65,7 @@ Important rules:
 - do not assume code was pushed/public unless verified against the remote, or clearly mark it as unverified
 - do not guess file paths; search first
 - pay special attention to unnecessary growth in `src/main.ts`
+- do not call a prompt reviewed until queue/log invariants pass
 
 Review output format:
 - Prompt log status
@@ -78,6 +84,7 @@ Prompt log status rules:
 - keep the top checklist index in `CLAUDE_PROMPT_LOG.md` synchronized with the detailed log entry status
 - keep the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md` synchronized with the actual queued prompt blocks
 - do not leave a reviewed prompt in either the queue index or the queue body
+- do not leave the detailed log entry at `Review outcome: pending` once the prompt is reviewed
 - keep queue/log fenced blocks untagged; do not add a language label such as `text`
 - if the matching prompt is still present in `CLAUDE_PROMPT_QUEUE.md`, say it should be removed from the queue after review
 - if no prompt item is identifiable, say `No prompt queue/log item identified`
@@ -103,3 +110,9 @@ If there are no findings:
 - say that explicitly
 - include residual risks
 - include missing validation, if any
+
+Review closeout is incomplete if:
+- the reviewed prompt id still appears anywhere in `CLAUDE_PROMPT_QUEUE.md`
+- the top prompt index and queue body disagree
+- the top prompt index says `[x]` but the detailed log block still says `Review outcome: pending`
+- queue/log/history edits were only partially applied

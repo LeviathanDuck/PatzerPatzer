@@ -36,9 +36,6 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 
 ## Queue Index
 
-- CCP-065: Add Toggle For Review Label Visibility
-  - Verify exact Lichess move-review label rendering and add a persisted engine-setting toggle that shows or hides those labels in Patzer.
-
 - CCP-067: Bring Eval Graph Fill Into Lichess Parity
   - Replace the current neutral eval-graph fill treatment with Lichess-style white-advantage fill logic.
 
@@ -54,121 +51,90 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 - CCP-044-F2: Match Arrow Label Styling To Eval Bar
   - Reduce arrow-label text size and make its styling match the eval-bar number instead of using oversized custom text.
 
-## Queue
+- CCP-044-F3: Reduce Arrow Label Weight And Size
+  - Make move-arrow numbers materially smaller and less bold while preserving the current shadow treatment.
 
-## CCP-065 - Add Toggle For Review Label Visibility
+## Queue
+## CCP-044-F3 - Reduce Arrow Label Weight And Size
 
 ```
-Prompt ID: CCP-065
-Task ID: CCP-065
-Source Document: docs/archive/MOVE_QUALITY_AUDIT_2026-03-20.md
-Source Step: Lichess-style move review label visibility parity
-Execution Target: Claude Code
+Prompt ID: CCP-044-F3
+Task ID: CCP-044
+Parent Prompt ID: CCP-044-F2
+Source Document: ad hoc user request
+Source Step: reduce move-arrow label size and font weight
+Execution Target: Codex
 
 You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
 
 Startup coordination step:
-- Before editing, ask whether any other tool, agent, Codex thread, or Claude Code session is currently working in overlapping move-list, review-label, engine-settings, or analysis-rendering files.
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-arrow label / score-styling files.
 - If overlapping work is already in flight, stop and report the overlap before making repo edits.
 
-Task:
-Verify the exact Lichess behavior for move review labels and implement that behavior in Patzer as closely as possible, with a persisted toggle in engine settings that shows or hides the visible review labels.
-
-Important truthfulness requirement:
-- Do not assume Lichess paints `blunder`, `mistake`, or `inaccuracy` text directly onto the board.
-- First verify from source how Lichess actually makes those review labels visible.
-- If Lichess renders them as move glyphs in the move list/tree and summaries rather than on-board badges, preserve that exact behavior instead of inventing a board-label system.
+Task: Refine the current move-arrow label typography so the numbers are much smaller and less bold, while keeping the existing shadow treatment.
 
 Required repo workflow:
 1. Inspect the current Patzer Pro codebase first.
 2. Locate the actual implementation points before assuming file paths.
-3. Inspect the relevant local Lichess source before deciding how to implement.
+3. Inspect the relevant Lichess source before deciding how to implement.
 4. Compare:
-   - how Lichess stores and renders review labels
-   - how Patzer currently stores and renders them
-   - where Patzer diverges
+   - how Patzer Pro currently renders move-arrow label SVG text
+   - how Patzer Pro currently styles the eval-bar score and PV score typography
+   - where the arrow-label typography is still oversized and too heavy
 5. Identify the smallest safe implementation step.
 6. Explain diagnosis before coding.
 7. Implement.
-8. Validate with build plus task-specific checks.
+8. Validate with build + task-specific checks.
 
-Relevant Patzer files to inspect first:
-- `src/analyse/moveList.ts`
-- `src/analyse/evalView.ts`
-- `src/engine/winchances.ts`
-- `src/engine/batch.ts`
-- `src/engine/ctrl.ts`
-- `src/ceval/view.ts`
-- `src/styles/main.scss`
-- `src/main.ts`
-- `src/idb/index.ts`
-- `docs/archive/MOVE_QUALITY_AUDIT_2026-03-20.md`
+Important project constraints:
+- This is a follow-up refinement to `CCP-044-F2`, not a new label feature.
+- Keep the shadow as-is unless a tiny matching adjustment is strictly required for readability.
+- Focus only on text size and weight.
+- The size should be materially smaller, roughly half the current visual size if inspection confirms that is the right fit.
+- Do not bundle changes to label placement, settings, arrow geometry, or unrelated score styling.
+- Do not add substantial new logic to `src/main.ts`.
 
-Relevant local Lichess files to inspect first:
-- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/treeView/inlineView.ts`
-- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/treeView/columnView.ts`
-- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/treeView/contextMenu.ts`
-- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/view/components.ts`
-- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/view/moves.ts`
-- `/Users/leftcoast/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
-- `/Users/leftcoast/Development/lichess-source/lila/ui/lib/tree/src/tree.ts`
-- `/Users/leftcoast/Development/lichess-source/lila/ui/lib/css/tree/_tree.scss`
-- any additional local Lichess files you confirm are the real source of review-glyph rendering
+Relevant current code areas to inspect first:
+- `src/engine/ctrl.ts` — current SVG text generation for arrow labels
+- `src/styles/main.scss` — eval-bar and PV score typography references
+- `src/analyse/evalView.ts` and `src/ceval/view.ts` — score rendering references if needed
 
 Current repo-grounded behavior to confirm first:
-- Patzer already computes and persists review labels such as `inaccuracy`, `mistake`, and `blunder`
-- `src/analyse/moveList.ts` currently renders PGN glyphs first, then falls back to stored/computed review glyphs like `??`, `?`, and `?!`
-- the current visible review-label behavior is primarily move-list based, not an on-board board-badge system
-- there is currently no dedicated setting to hide or show those review labels independently
+- the arrow-label SVG text is currently still too large
+- the arrow-label text is currently too bold
+- the shadow treatment is acceptable and should remain unless a tiny readability tweak is required
 
 Requested behavior:
-- match Lichess’s visible move-review label behavior as closely as possible
-- if Lichess shows review labels as move glyphs in the move list/tree, implement that exact visible behavior and say so explicitly
-- do not invent a separate board-overlay label system unless the Lichess source proves it exists
-- add a toggle in engine settings to show or hide the visible review labels
-- persist that toggle across reloads
-- turning the toggle off must hide the visible review labels without deleting stored analysis data
-- turning the toggle back on must reveal the same stored review labels again
-- the toggle must not change review computation, only visibility
-- keep the implementation small and well scoped
-- do not add substantial new logic to `src/main.ts`
+- make the move-arrow numbers at least about half the current size
+- reduce the font weight noticeably
+- keep the current shadow treatment
+- keep the change tightly scoped to typography refinement
 
-Implementation guidance:
-- prefer placing the setting near the existing engine/review settings in `src/ceval/view.ts`
-- if settings persistence already has a natural owner, use that existing subsystem instead of adding a new top-level store in `main.ts`
-- make move-list rendering read the toggle before rendering visible review glyphs
-- if summary UI also exposes these labels and the Lichess inspection shows they should stay visible, keep scope to move-list glyph visibility only unless there is a tiny safe parity case for broader hiding
-- do not change move-quality classification thresholds or winning-chances math in this task
-
-What I want from you before coding:
-1. What part of the current Patzer codebase is relevant
-2. What Lichess files/systems are relevant
-3. The exact diagnosis
-4. The exact smallest safe step being implemented
-5. Why that step is safe and correctly scoped
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
 
 Validation requirements:
 - run `npm run build`
-- run `npm run typecheck` if feasible and report the result honestly
+- run any task-specific checks you can
 - explicitly report:
   - build result
-  - whether typecheck was run and its result
-  - exact behavior changed intentionally
-  - whether the new toggle persists across reload
-  - whether visible review labels still appear correctly when enabled
-  - whether they disappear correctly when disabled
+  - feature-specific smoke tests
+  - whether behavior changed intentionally
   - whether there are console/runtime errors
-  - any remaining parity gaps versus Lichess
+  - any remaining risks or limitations
 
-Suggested manual checks:
-- review a game and confirm `??`, `?`, and `?!` style review glyphs appear where Lichess-style move-list review would show them
-- toggle the new setting off and confirm the visible glyphs disappear without losing stored review data
-- reload the page and confirm the setting persists
-- toggle it back on and confirm the same reviewed game shows glyphs again
-- confirm restored analysis and fresh live review both behave correctly
-
-Final report requirement:
-- include `Prompt ID: CCP-065` and `Task ID: CCP-065` in the final report
+Success criteria:
+- move-arrow label numbers are visibly smaller
+- the font weight is less bold
+- the shadow remains intact
+- no unrelated arrow-label behavior is changed
 ```
 
 ## CCP-067 - Bring Eval Graph Fill Into Lichess Parity

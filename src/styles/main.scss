@@ -1981,6 +1981,7 @@ body[data-board='newspaper'] cg-board::before {
 }
 
 .eval-graph {
+  position: relative;
   width: 100%;
 
   svg {
@@ -2011,6 +2012,34 @@ body[data-board='newspaper'] cg-board::before {
     border-radius: 3px;
   }
 
+  &__height-control {
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(17, 17, 17, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 2;
+
+    input[type='range'] {
+      width: 92px;
+      accent-color: #888;
+    }
+
+    span {
+      min-width: 34px;
+      font-size: 0.72rem;
+      color: #aaa;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      user-select: none;
+    }
+  }
 }
 
 .analysis-summary {
