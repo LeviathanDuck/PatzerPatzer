@@ -1510,6 +1510,20 @@ body[data-board=newspaper] cg-board::before {
   padding-inline-start: 7px;
   position: relative;
 }
+.tview2-column > interrupt line > button.variation-remove {
+  background: transparent;
+  border: none;
+  padding: 0 4px 0 0;
+  color: #555;
+  font-size: 0.85em;
+  cursor: pointer;
+  vertical-align: middle;
+  line-height: inherit;
+  user-select: none;
+}
+.tview2-column > interrupt line > button.variation-remove:hover {
+  color: #c66;
+}
 .tview2-column > interrupt line > branch {
   border-inline-start: 2px solid rgba(255, 255, 255, 0.12);
   margin-inline-start: -9px;

@@ -17,6 +17,9 @@ Before writing the prompt:
 - resolve rough or slightly wrong terminology into the real files, modules, and subsystem owner
 - determine whether the task touches Lichess-aligned behavior
 - include Lichess inspection instructions only when that comparison is actually relevant
+- assign the prompt a stable identifier in the form `CCP-###`
+- identify the source planning document and exact step/task the prompt comes from
+- add a matching entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
 
 The prompt you generate must instruct Claude Code to:
 - inspect the current code first and search for actual implementation points instead of guessing file paths
@@ -28,6 +31,7 @@ The prompt you generate must instruct Claude Code to:
 - make the change unless blocked by a real ambiguity or missing dependency
 - validate with build plus the most relevant task-specific checks
 - provide a short manual test checklist with concrete user actions and expected results
+- echo a `Task ID` field in the final report, using the prompt metadata identifier unless the task explicitly defines a different task id
 - report remaining risks, limitations, or unvalidated areas clearly
 
 The final prompt must be concise, direct, and action-oriented.
@@ -38,6 +42,10 @@ If relevant Lichess files are identifiable from inspection, name them too.
 If they are not yet identifiable, instruct Claude Code to locate them before deciding implementation details.
 
 The final prompt should tell Claude Code to use this output shape:
+- prompt id
+- task id
+- source document
+- source step
 - task title
 - relevant Patzer Pro files
 - relevant Lichess files, if applicable
@@ -60,5 +68,21 @@ Output requirements:
 - wrap the entire prompt in a single fenced Markdown code block
 - do not include commentary or explanation before or after the code block
 - treat the user's task description as intent, not as guaranteed implementation truth
+- place the prompt identifier near the top so it can be copied into `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+- place the source document and source step near the top so the prompt can be traced back to the planning record it came from
+- use this metadata header shape near the top of the prompt:
+  - `Prompt ID: CCP-###`
+  - `Task ID: CCP-###`
+  - `Source Document: docs/...`
+  - `Source Step: ...`
+- tell Claude Code to repeat the same `Task ID` field in its final report unless a different task id is explicitly provided in the prompt
+- create the prompt-log entry in this exact shape when generating the prompt:
+  - `- [ ] Reviewed`
+  - `  - ID: \`CCP-###\``
+  - `  - Source document: \`docs/...\``
+  - `  - Source step: \`...\``
+  - `  - Task: short task title`
+  - `  - Review outcome: pending`
+  - `  - Review issues: none`
 
 My rough task description follows:
