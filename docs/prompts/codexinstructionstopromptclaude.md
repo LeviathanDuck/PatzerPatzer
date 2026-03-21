@@ -35,6 +35,7 @@ Before writing the prompt:
 - add the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
 - when adding the prompt to the queue file, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
+- add a matching unchecked prompt-id-plus-title checklist item to the top index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
 
 The prompt you generate must instruct Claude Code to:
 - inspect the current code first and search for actual implementation points instead of guessing file paths
@@ -101,5 +102,6 @@ Output requirements:
 - tell Claude Code to include the `Task ID` field in its final report as the root task family id
 - append the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when generating it
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
+- add a matching unchecked `- [ ] CCP-### - Short Task Title` line to the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 
 My rough task description follows:

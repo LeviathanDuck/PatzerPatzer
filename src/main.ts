@@ -2,6 +2,7 @@ import { init, classModule, attributesModule, eventListenersModule, h, type VNod
 import { AnalyseCtrl } from './analyse/ctrl';
 import {
   applyBoardTheme, applyBoardZoom, applyPieceSet,
+  boardWheelNavEnabled,
   boardFilters, boardTheme, boardThumbnailUrl, boardZoom,
   BOARD_THEMES_FEATURED,
   clearBoardLocalData,
@@ -652,6 +653,7 @@ function view(route: Route): VNode {
 // preventing accidental triggers on inertia scrolls.
 let wheelPixelAccum = 0;
 document.addEventListener('wheel', (e: WheelEvent) => {
+  if (!boardWheelNavEnabled) return;
   if (e.ctrlKey) return; // allow pinch-zoom
   const boardWrap = document.querySelector('.analyse__board.main-board');
   if (!boardWrap?.contains(e.target as Node)) return;

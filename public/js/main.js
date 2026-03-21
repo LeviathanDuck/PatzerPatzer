@@ -747,6 +747,16 @@ var AnalyseCtrl = class {
 };
 
 // src/board/cosmetics.ts
+var BOARD_WHEEL_NAV_KEY = "boardWheelNavEnabled";
+var BOARD_WHEEL_NAV_DEFAULT = false;
+var boardWheelNavEnabled = (() => {
+  const stored = localStorage.getItem(BOARD_WHEEL_NAV_KEY);
+  return stored === null ? BOARD_WHEEL_NAV_DEFAULT : stored === "true";
+})();
+function setBoardWheelNavEnabled(enabled) {
+  boardWheelNavEnabled = enabled;
+  localStorage.setItem(BOARD_WHEEL_NAV_KEY, String(enabled));
+}
 var ZOOM_DEFAULT = 85;
 var ZOOM_KEY = "boardZoom";
 var boardZoom = (() => {
@@ -847,6 +857,7 @@ function clearBoardLocalData() {
   localStorage.removeItem(ZOOM_KEY);
   localStorage.removeItem(BOARD_THEME_KEY);
   localStorage.removeItem(PIECE_SET_KEY);
+  localStorage.removeItem(BOARD_WHEEL_NAV_KEY);
   for (const prop of Object.keys(FILTER_DEFAULTS)) {
     localStorage.removeItem(FILTER_LS_PREFIX + prop);
   }
@@ -1322,7 +1333,10 @@ function parseEngineLine(line) {
       pendingStopCount--;
       currentEval = {};
       pendingLines = [];
-      if (pendingEval) evalCurrentPosition();
+      if (pendingEval) {
+        engineSearchActive = false;
+        evalCurrentPosition();
+      }
       return;
     }
     engineSearchActive = false;
@@ -8720,6 +8734,18 @@ function renderGlobalMenu(deps) {
           downloadPgn2(false);
         } }
       }, "Export PGN (Plain)"),
+      h("label.global-menu__item.global-menu__item--toggle", [
+        h("span", "Board Wheel Navigation"),
+        h("input", {
+          attrs: { type: "checkbox", checked: boardWheelNavEnabled },
+          on: {
+            change: (e) => {
+              setBoardWheelNavEnabled(e.target.checked);
+              redraw2();
+            }
+          }
+        })
+      ]),
       h("div.global-menu__item.global-menu__item--has-sub", {
         on: { click: () => {
           showBoardSettings = !showBoardSettings;
@@ -9703,6 +9729,7 @@ function view(route) {
 }
 var wheelPixelAccum = 0;
 document.addEventListener("wheel", (e) => {
+  if (!boardWheelNavEnabled) return;
   if (e.ctrlKey) return;
   const boardWrap = document.querySelector(".analyse__board.main-board");
   if (!boardWrap?.contains(e.target)) return;

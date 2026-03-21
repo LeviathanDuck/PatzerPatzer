@@ -346,7 +346,16 @@ function parseEngineLine(line: string): void {
       pendingStopCount--;
       currentEval  = {};
       pendingLines = [];
-      if (pendingEval) evalCurrentPosition();
+      if (pendingEval) {
+        // The stopped search has ended — the engine is now idle.
+        // Reset engineSearchActive before resuming so evalCurrentPosition() sees a
+        // genuinely idle engine and enters the start-new-search branch.
+        // Without this reset, evalCurrentPosition() sees engineSearchActive=true,
+        // sends another stop (incrementing pendingStopCount back to 1), receives no
+        // bestmove in reply (engine was already idle), and analysis stalls permanently.
+        engineSearchActive = false;
+        evalCurrentPosition();
+      }
       return;
     }
     engineSearchActive = false;

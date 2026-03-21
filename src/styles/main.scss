@@ -517,6 +517,15 @@ main {
     &:hover { background: #2a2a2a; }
 
     &--has-sub { user-select: none; }
+
+    &--toggle {
+      cursor: default;
+
+      input {
+        margin: 0;
+        cursor: pointer;
+      }
+    }
   }
 
   &__arrow {
