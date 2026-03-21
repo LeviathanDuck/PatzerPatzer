@@ -70,6 +70,8 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
+- [ ] CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
+- [ ] CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
 - [ ] CCP-069 - Refine Eval Graph Fill And Resize Handle
 - [x] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
@@ -149,6 +151,40 @@ It should stay in sync with the detailed entry below.
 - [ ] CCP-068 - Add Eval Graph Height Toggle
 
 ## Log
+
+## CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
+
+```
+- [ ] Reviewed
+  - ID: `CCP-067-F1`
+  - Task ID: `CCP-067`
+  - Parent prompt ID: `CCP-067`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `make eval-graph white fill rise from the bottom of the chart instead of the center line`
+  - Task: fix eval-graph fill so white territory rises from the bottom of the graph instead of shading from the middle line
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
+
+```
+- [ ] Reviewed
+  - ID: `CCP-044-F4`
+  - Task ID: `CCP-044`
+  - Parent prompt ID: `CCP-044-F3`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `reduce arrow label typography to 10/400/2 and add subtle fade-in for new arrow labels and arrows`
+  - Task: refine engine-arrow labels to 10/400/2 and make both arrows and labels fade in subtly on first appearance
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
 
 ## CCP-069 - Refine Eval Graph Fill And Resize Handle
 

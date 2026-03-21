@@ -36,6 +36,12 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 
 ## Queue Index
 
+- CCP-067-F1: Fix Eval Graph Fill To Rise From Bottom
+  - Correct the eval-graph fill so white territory fills from the bottom of the chart to the line instead of only filling from the middle line.
+
+- CCP-044-F4: Fade In Engine Arrow Labels And Arrows
+  - Reduce arrow-label typography to 10/400/2 and make both labels and arrows fade in subtly on first appearance.
+
 - CCP-069: Refine Eval Graph Fill And Resize Handle
   - Replace the graph slider with a center drag handle, keep Lichess-style white fill, and remove phase labels from the chart.
 
@@ -55,6 +61,191 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
   - Reduce arrow-label text size and make its styling match the eval-bar number instead of using oversized custom text.
 
 ## Queue
+
+## CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
+
+```
+Prompt ID: CCP-067-F1
+Task ID: CCP-067
+Parent Prompt ID: CCP-067
+Source Document: ad hoc user request
+Source Step: make eval-graph white fill rise from the bottom of the chart instead of the center line
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / analysis-view / underboard styling files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Fix the eval-graph fill behavior so the white graph fill rises from the bottom of the graph up to the line, instead of only shading from the graph’s middle line. If there is any uncertainty about the intended look, compare directly against the local Lichess source and follow that visible behavior.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer Pro currently builds the graph fill polygons
+   - how Lichess fills the advantage graph and colors the line
+   - where Patzer’s current fill still diverges visually
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- This is a follow-up fix to the existing `CCP-067` eval-graph fill work, not a new graph feature family.
+- Keep the change scoped to graph fill geometry and the graph line styling only if a tiny line adjustment is needed for parity.
+- Do not bundle graph-height handle work, hover redesign, or unrelated underboard changes.
+- Use Lichess as the source of truth for the fill behavior.
+- Do not add substantial new logic to `src/main.ts`.
+
+Relevant current code areas to inspect first:
+- `src/analyse/evalView.ts` — current graph SVG fill polygons, center line, and eval trace stroke
+- `src/styles/main.scss` — any `.eval-graph` styling that affects visible contrast
+
+Relevant Lichess source to inspect first:
+- `~/Development/lichess-source/lila/ui/chart/src/acpl.ts`
+- any corresponding local Lichess chart style/constants files used by that graph
+
+Current repo-grounded behavior to confirm first:
+- Patzer currently closes its SVG fill polygons to `cy`, the graph’s middle line
+- the current white fill therefore reads like shading from the origin/middle rather than white territory rising from the bottom of the chart
+- Lichess should be used as the visual source of truth if there is any doubt about the intended style
+
+Requested behavior:
+- the graph fill should visually fill entirely from the bottom of the graph up to the eval line
+- the fill color should be white
+- the graph line can use whatever Lichess uses if that is needed to make the parity clearer
+- if there is uncertainty about the exact style difference, inspect the Lichess source directly and follow it rather than guessing
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run any task-specific checks you can
+- explicitly report:
+  - build result
+  - feature-specific smoke tests
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Explicit behaviors to verify:
+- the white fill now rises from the bottom of the chart to the eval line
+- the fill no longer reads like it starts from the center line
+- the graph line remains readable and Lichess-aligned
+- hover/click graph navigation still works
+
+Success criteria:
+- white eval-graph territory fills from the bottom of the graph
+- the graph line styling is acceptable and Lichess-aligned
+- no unrelated graph behavior is changed
+```
+
+## CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
+
+```
+Prompt ID: CCP-044-F4
+Task ID: CCP-044
+Parent Prompt ID: CCP-044-F3
+Source Document: ad hoc user request
+Source Step: reduce arrow label typography to 10/400/2 and add subtle fade-in for new arrow labels and arrows
+Execution Target: Codex
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine-arrow / board-draw / ceval styling files.
+- If overlapping work is already in flight, stop and report the overlap before making repo edits.
+
+Task: Refine the engine-arrow label presentation so the labels use `font-size="10"`, `font-weight="400"`, and `stroke-width="2"`, and make both the arrow labels and the arrows themselves fade in subtly on first appearance instead of popping in instantly.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare:
+   - how Patzer Pro currently renders engine arrows and arrow labels
+   - whether Lichess has any relevant arrow / custom SVG appearance or fade patterns worth borrowing structurally
+   - where Patzer’s current arrow appearance is too abrupt or visually heavy
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Important project constraints:
+- This is a follow-up refinement to the existing `CCP-044` engine-arrow label work, not a new engine-arrow feature family.
+- Keep the change scoped to arrow-label typography and arrow/label appearance timing only.
+- Do not bundle arrow placement changes, new settings work, MultiPV behavior changes, or unrelated engine logic cleanup.
+- Do not add substantial new logic to `src/main.ts`.
+
+Relevant current code areas to inspect first:
+- `src/engine/ctrl.ts` — arrow label SVG generation, engine-arrow shape construction, and any shape lifecycle seams
+- `src/board/index.ts` — draw-shape integration and any available animation/styling hooks
+- `src/styles/main.scss` — any existing transition/opacity patterns worth reusing
+- any relevant ceval styling if the arrow-label typography should stay aligned with the eval presentation language
+
+Relevant Lichess source to inspect first:
+- the most relevant local Lichess analyse / board drawing / auto-shape files you can find for engine-arrow rendering behavior
+- any corresponding Lichess CSS if there is a useful appearance/transition pattern
+- if Lichess does not animate these shapes, say that clearly and keep the fade as a Patzer-specific polish step
+
+Current repo-grounded behavior to confirm first:
+- `src/engine/ctrl.ts` currently renders arrow-label text at `font-size="12"`, `font-weight="500"`, and `stroke-width="1.35"`
+- arrow labels currently appear immediately as part of the shape render path
+- the repo does not currently show an obvious dedicated fade-in mechanism for these engine-arrow shapes
+
+Requested behavior:
+- update arrow-label SVG typography to:
+  - `font-size="10"`
+  - `font-weight="400"`
+  - `stroke-width="2"`
+- keep the current shadow/outline concept, but with the updated typography values above
+- when engine arrows first appear, they should fade in subtly and quickly instead of popping in
+- when arrow labels first appear, they should fade in with the same subtle fast timing
+- keep the fade tasteful and lightweight, not slow or flashy
+
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
+
+Validation requirements:
+- run `npm run build`
+- run any task-specific checks you can
+- explicitly report:
+  - build result
+  - feature-specific smoke tests
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - any remaining risks or limitations
+
+Explicit behaviors to verify:
+- arrow-label SVG text now uses `font-size="10"`, `font-weight="400"`, and `stroke-width="2"`
+- engine arrows no longer pop in abruptly on first appearance
+- arrow labels no longer pop in abruptly on first appearance
+- the fade is subtle and fast rather than slow or distracting
+- existing arrow behavior remains otherwise unchanged
+
+Success criteria:
+- engine-arrow labels use the exact requested typography values
+- arrows and labels fade in subtly on first appearance
+- no unrelated engine-arrow behavior is changed
+```
 
 ## CCP-069 - Refine Eval Graph Fill And Resize Handle
 
