@@ -66,7 +66,7 @@ import {
   setSavedPuzzles,
 } from './idb/index';
 import { current, onChange, type Route } from './router';
-import { pathInit } from './tree/ops';
+import { deleteNodeAt, pathInit } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
 
 console.log('Patzer Pro');
@@ -228,6 +228,22 @@ function prev(): void {
   navigate(pathInit(ctrl.path));
 }
 
+/**
+ * Remove a side variation branch from the tree.
+ * If the active path is inside the deleted branch, navigate to the branch root's parent.
+ * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts deleteNode path-repair logic.
+ */
+function deleteVariation(path: string): void {
+  deleteNodeAt(ctrl.root, path);
+  if (ctrl.path.startsWith(path)) {
+    // Active node was inside the deleted variation — move up to its parent.
+    navigate(pathInit(path));
+  } else {
+    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    redraw();
+  }
+}
+
 // Mirrors lichess-org/lila: ui/analyse/src/control.ts first / last
 function first(): void {
   navigate('');
@@ -286,7 +302,7 @@ function routeContent(route: Route): VNode {
           // PV lines — below header (and settings when open)
           renderPvBox(),
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
-          h('div.analyse__moves', [renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate)]),
+          h('div.analyse__moves', [renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation)]),
           (() => {
             const game = importedGames.find(g => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? 'White', game?.black ?? 'Black');
