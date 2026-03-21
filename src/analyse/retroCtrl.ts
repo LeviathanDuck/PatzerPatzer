@@ -12,6 +12,14 @@
 //   deferred step that will unlock it.
 // - No opening-explorer cancel logic — deferred until explorer integration.
 // - No hideComputerLine / showBadNode / preventGoingToNextMove — board coupling deferred.
+// - Guidance reveal is Patzer-specific: `_guidanceRevealed` starts false per candidate and
+//   is set true by `revealGuidance()` when the user clicks "Show engine".
+//   Lichess controls this implicitly via `hideComputerLine(node)` / `showBadNode()` computed
+//   per-node on every render — no explicit reveal step or button exists in Lichess.
+//   In Patzer, `guidanceRevealed()` gates both the PV box in the tools column and arrow
+//   rendering in buildArrowShapes(). `jumpToNext()` resets `_guidanceRevealed = false`
+//   so each new candidate starts hidden. Callers that change this state must call
+//   syncArrow() before redraw() so Chessground arrows update immediately.
 // - No redraw dependency — callers are responsible for triggering redraws.
 
 import type { RetroCandidate } from './retro';
