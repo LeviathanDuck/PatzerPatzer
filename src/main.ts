@@ -531,6 +531,8 @@ void loadGamesFromIdb().then(stored => {
   if (stored.path) ctrl.setPath(stored.path);
   syncBoardAndArrow();
   redraw();
-  // Restore persisted engine analysis for this game
-  void loadAndRestoreAnalysis(toLoad.id);
+  // Restore persisted engine analysis for this game.
+  // Pass restoreGeneration so the guard in loadAndRestoreAnalysis can detect a rapid
+  // game switch that occurs before this async restore completes.
+  void loadAndRestoreAnalysis(toLoad.id, restoreGeneration);
 });
