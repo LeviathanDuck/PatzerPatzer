@@ -8941,6 +8941,104 @@ function makeRetroCtrl(candidates, userColor = null) {
   };
 }
 
+// src/analyse/retroView.ts
+function renderRetroEntry(deps) {
+  const { retro, analysisComplete: analysisComplete2, batchAnalyzing: batchAnalyzing2, onToggle } = deps;
+  return h("button", {
+    class: { active: !!retro },
+    attrs: {
+      disabled: !analysisComplete2 || batchAnalyzing2,
+      title: retro ? "Close mistake review" : analysisComplete2 ? "Review your mistakes from this game" : "Complete game review first"
+    },
+    on: { click: onToggle }
+  }, retro ? "Close" : "Mistakes");
+}
+function renderRetroStrip(deps) {
+  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2 } = deps;
+  if (!retro) return null;
+  const feedback = retro.feedback();
+  const cand = retro.current();
+  const [solved, total] = retro.completion();
+  const progress = h("span.retro-strip__progress", `${solved} / ${total}`);
+  const buttons = [];
+  if (feedback === "find" || feedback === "offTrack") {
+    buttons.push(
+      h("button.retro-strip__btn", {
+        on: { click: () => {
+          retro.viewSolution();
+          if (cand) navigate2(cand.path);
+        } }
+      }, "Show answer"),
+      h("button.retro-strip__btn", {
+        on: { click: () => {
+          retro.skip();
+          const next2 = retro.current();
+          if (next2) navigate2(next2.parentPath);
+          else redraw2();
+        } }
+      }, "Skip")
+    );
+  } else if (feedback === "win") {
+    buttons.push(
+      h("button.retro-strip__btn.retro-strip__btn--next", {
+        on: { click: () => {
+          retro.jumpToNext();
+          const next2 = retro.current();
+          if (next2) navigate2(next2.parentPath);
+          else redraw2();
+        } }
+      }, "Next \u2192")
+    );
+  } else if (feedback === "fail") {
+    buttons.push(
+      h("button.retro-strip__btn", {
+        on: { click: () => {
+          retro.setFeedback("find");
+          redraw2();
+        } }
+      }, "Retry"),
+      h("button.retro-strip__btn", {
+        on: { click: () => {
+          retro.viewSolution();
+          if (cand) navigate2(cand.path);
+        } }
+      }, "Show answer")
+    );
+  } else if (feedback === "view") {
+    const bestSan = cand ? uciToSan2(cand.fenBefore, cand.bestMove) : null;
+    if (bestSan) buttons.push(h("span.retro-strip__best", `Best: ${bestSan}`));
+    buttons.push(
+      h("button.retro-strip__btn.retro-strip__btn--next", {
+        on: { click: () => {
+          retro.jumpToNext();
+          const next2 = retro.current();
+          if (next2) navigate2(next2.parentPath);
+          else redraw2();
+        } }
+      }, "Next \u2192")
+    );
+  }
+  let label;
+  if (!cand) {
+    label = "Review complete!";
+  } else if (feedback === "win") {
+    label = "Correct!";
+  } else if (feedback === "fail") {
+    label = "Not the best move.";
+  } else if (feedback === "view") {
+    label = `${cand.classification.charAt(0).toUpperCase() + cand.classification.slice(1)} on move ${Math.ceil(cand.ply / 2)}`;
+  } else if (feedback === "offTrack") {
+    label = "Navigate back to resume";
+  } else {
+    const color = cand.ply % 2 === 1 ? "White" : "Black";
+    label = `Find the best move for ${color}`;
+  }
+  return h("div.retro-strip", [
+    h("div.retro-strip__label", label),
+    h("div.retro-strip__actions", [...buttons, progress])
+  ]);
+}
+
 // src/main.ts
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
@@ -9082,91 +9180,6 @@ function toggleRetro() {
   if (first2) navigate(first2.parentPath);
   else redraw();
 }
-function renderRetroStrip() {
-  const retro = ctrl.retro;
-  if (!retro) return null;
-  const feedback = retro.feedback();
-  const cand = retro.current();
-  const [solved, total] = retro.completion();
-  const progress = h("span.retro-strip__progress", `${solved} / ${total}`);
-  const buttons = [];
-  if (feedback === "find" || feedback === "offTrack") {
-    buttons.push(
-      h("button.retro-strip__btn", {
-        on: { click: () => {
-          retro.viewSolution();
-          if (cand) navigate(cand.path);
-        } }
-      }, "Show answer"),
-      h("button.retro-strip__btn", {
-        on: { click: () => {
-          retro.skip();
-          const next2 = retro.current();
-          if (next2) navigate(next2.parentPath);
-          else redraw();
-        } }
-      }, "Skip")
-    );
-  } else if (feedback === "win") {
-    buttons.push(
-      h("button.retro-strip__btn.retro-strip__btn--next", {
-        on: { click: () => {
-          retro.jumpToNext();
-          const next2 = retro.current();
-          if (next2) navigate(next2.parentPath);
-          else redraw();
-        } }
-      }, "Next \u2192")
-    );
-  } else if (feedback === "fail") {
-    buttons.push(
-      h("button.retro-strip__btn", {
-        on: { click: () => {
-          retro.setFeedback("find");
-          redraw();
-        } }
-      }, "Retry"),
-      h("button.retro-strip__btn", {
-        on: { click: () => {
-          retro.viewSolution();
-          if (cand) navigate(cand.path);
-        } }
-      }, "Show answer")
-    );
-  } else if (feedback === "view") {
-    const bestSan = cand ? uciToSan(cand.fenBefore, cand.bestMove) : null;
-    if (bestSan) buttons.push(h("span.retro-strip__best", `Best: ${bestSan}`));
-    buttons.push(
-      h("button.retro-strip__btn.retro-strip__btn--next", {
-        on: { click: () => {
-          retro.jumpToNext();
-          const next2 = retro.current();
-          if (next2) navigate(next2.parentPath);
-          else redraw();
-        } }
-      }, "Next \u2192")
-    );
-  }
-  let label;
-  if (!cand) {
-    label = "Review complete!";
-  } else if (feedback === "win") {
-    label = "Correct!";
-  } else if (feedback === "fail") {
-    label = "Not the best move.";
-  } else if (feedback === "view") {
-    label = `${cand.classification.charAt(0).toUpperCase() + cand.classification.slice(1)} on move ${Math.ceil(cand.ply / 2)}`;
-  } else if (feedback === "offTrack") {
-    label = "Navigate back to resume";
-  } else {
-    const color = cand.ply % 2 === 1 ? "White" : "Black";
-    label = `Find the best move for ${color}`;
-  }
-  return h("div.retro-strip", [
-    h("div.retro-strip__label", label),
-    h("div.retro-strip__actions", [...buttons, progress])
-  ]);
-}
 function routeContent(route) {
   const deps = {
     importedGames,
@@ -9272,16 +9285,19 @@ function routeContent(route) {
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.
             // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroView.ts entry affordance.
-            h("button", {
-              class: { active: !!ctrl.retro },
-              attrs: {
-                disabled: !analysisComplete || batchAnalyzing,
-                title: ctrl.retro ? "Close mistake review" : analysisComplete ? "Review your mistakes from this game" : "Complete game review first"
-              },
-              on: { click: toggleRetro }
-            }, ctrl.retro ? "Close" : "Mistakes")
+            renderRetroEntry({
+              retro: ctrl.retro,
+              analysisComplete,
+              batchAnalyzing,
+              onToggle: toggleRetro
+            })
           ]),
-          renderRetroStrip()
+          renderRetroStrip({
+            retro: ctrl.retro,
+            navigate,
+            redraw,
+            uciToSan
+          })
         ]),
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
