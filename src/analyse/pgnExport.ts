@@ -6,7 +6,7 @@ import { h, type VNode } from 'snabbdom';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import {
   evalCache,
-  incrementPendingStopCount, stopProtocol,
+  incrementPendingStopCount, stopProtocol, setEngineSearchActive,
   clearEvalCache, resetCurrentEval, syncArrow,
 } from '../engine/ctrl';
 import {
@@ -164,6 +164,7 @@ export function renderAnalysisControls(): VNode {
       // Stop in-progress review cleanly — preserve partial evalCache.
       incrementPendingStopCount();
       stopProtocol();
+      setEngineSearchActive(false);
       setBatchAnalyzing(false);
       setBatchState('idle');
       setAnalysisRunning(false);
