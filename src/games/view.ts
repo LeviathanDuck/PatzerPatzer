@@ -87,7 +87,7 @@ export function renderCompactGameRow(game: ImportedGame, isAnalyzed: boolean, ha
     h('span.grl__result.' + resultCls, '●'),
     h('span.grl__opponent', [oppLabel, oppChip]),
     date ? h('span.grl__date', date) : null,
-    tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, title: game.timeClass } }) : null,
+    tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, ...(game.timeClass ? { title: game.timeClass } : {}) } }) : null,
     (isNewImport || isAnalyzed || hasMissedTactic) ? h('span.grl__badges', [
       isNewImport     ? h('span.grl__badge.--new',  { attrs: { title: 'Newly imported' } }, 'NEW') : null,
       isAnalyzed      ? h('span.grl__badge.--ok',   { attrs: { title: 'Analyzed' } },       '✓') : null,
@@ -106,7 +106,7 @@ export interface GamesViewDeps {
   analyzedGameIds:       Set<string>;
   missedTacticGameIds:   Set<string>;
   analyzedGameAccuracy:  Map<string, { white: number | null; black: number | null }>;
-  savedPuzzles:          Array<{ gameId: string }>;
+  savedPuzzles:          Array<{ gameId: string | null }>;
   gameResult:            (game: ImportedGame) => 'win' | 'loss' | 'draw' | null;
   getUserColor:          (game: ImportedGame) => 'white' | 'black' | null;
   gameSourceUrl:         (game: ImportedGame) => string | undefined;
@@ -446,10 +446,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
               ]),
               ratingCell,
               h('td.games-view__date', date),
-              h('td.games-view__tc', tcIcon
-                ? h('span', { attrs: { 'data-icon': tcIcon, style: `font-family:lichess;margin-right:4px` } })
-                : null,
-                tc.charAt(0).toUpperCase() + tc.slice(1)),
+              h('td.games-view__tc', [
+                tcIcon
+                  ? h('span', { attrs: { 'data-icon': tcIcon, style: 'font-family:lichess;margin-right:4px' } })
+                  : null,
+                tc.charAt(0).toUpperCase() + tc.slice(1),
+              ]),
               h('td.games-view__opening', h('span', { attrs: { title: opening } }, opening)),
               reviewCell,
               puzzleCell,

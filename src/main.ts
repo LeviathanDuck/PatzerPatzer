@@ -18,7 +18,6 @@ import {
   evalCurrentPosition,
   syncArrow,
   initEngine,
-  currentEval,
   type PositionEval,
 } from './engine/ctrl';
 import {
@@ -71,7 +70,7 @@ import {
 import { current, onChange, type Route } from './router';
 import { deleteNodeAt, nodeAtPath, pathInit, promoteAt, pruneVariations } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
-import { buildRetroCandidates } from './analyse/retro';
+import { buildMainlineOpeningProvider, buildRetroCandidates } from './analyse/retro';
 import { makeRetroCtrl } from './analyse/retroCtrl';
 import { renderRetroEntry, renderRetroStrip } from './analyse/retroView';
 
@@ -131,7 +130,11 @@ let _contextMenuCloseListener: (() => void) | null = null;
 
 function openContextMenu(path: string, e: MouseEvent): void {
   contextMenuPath = path;
-  contextMenuPos  = { x: e.clientX, y: e.clientY };
+  const targetRect = (e.currentTarget as HTMLElement | null)?.getBoundingClientRect?.();
+  contextMenuPos  = {
+    x: e.clientX || targetRect?.left || 0,
+    y: e.clientY || targetRect?.top || 0,
+  };
   // Close on next click anywhere on the document.
   // Mirrors lichess-org/lila: contextMenu.ts document.addEventListener('click', close)
   if (_contextMenuCloseListener) document.removeEventListener('click', _contextMenuCloseListener);
@@ -147,6 +150,15 @@ function openContextMenu(path: string, e: MouseEvent): void {
   redraw();
 }
 
+function positionContextMenu(menu: HTMLElement, coords: { x: number; y: number }): void {
+  const menuWidth = menu.offsetWidth + 4;
+  const menuHeight = menu.offsetHeight + 4;
+  const left = window.innerWidth - coords.x < menuWidth ? window.innerWidth - menuWidth : coords.x;
+  const top = window.innerHeight - coords.y < menuHeight ? window.innerHeight - menuHeight : coords.y;
+  menu.style.left = `${Math.max(0, left)}px`;
+  menu.style.top = `${Math.max(0, top)}px`;
+}
+
 /**
  * Render the move-list context menu overlay.
  * Positioned at cursor coords using fixed positioning.
@@ -159,8 +171,11 @@ function renderContextMenu(): VNode | null {
   const onMainline = isMainlinePath(ctrl.root, contextMenuPath);
   const copyLabel  = onMainline ? 'Copy main line PGN' : 'Copy variation PGN';
   return h('div#move-ctx-menu.visible', {
-    style: { left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' },
     on: { contextmenu: (e: Event) => e.preventDefault() },
+    hook: {
+      insert: vnode => positionContextMenu(vnode.elm as HTMLElement, contextMenuPos!),
+      postpatch: (_old, vnode) => positionContextMenu(vnode.elm as HTMLElement, contextMenuPos!),
+    },
   }, [
     h('p.title', title),
     // Copy PGN — mirrors lichess-org/lila: contextMenu.ts clipboard copy action (CCP-026)
@@ -418,11 +433,16 @@ function toggleRetro(): void {
   }
   const game = importedGames.find(g => g.id === selectedGameId);
   const userColor = game ? getUserColor(game) : null;
+  const openingProvider = buildMainlineOpeningProvider(
+    ctrl.mainline,
+    Boolean(game?.opening || game?.eco),
+  );
   const candidates = buildRetroCandidates(
     ctrl.mainline,
     p => evalCache.get(p),
     selectedGameId,
     userColor ?? null,
+    openingProvider,
   );
   ctrl.retro = makeRetroCtrl(
     candidates,

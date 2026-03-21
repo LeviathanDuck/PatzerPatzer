@@ -906,7 +906,7 @@ function piecePreviewUrl(name) {
   return PIECE_WEBP_SETS.has(name) ? `/piece/${name}/wN.webp` : `/piece/${name}/wN.svg`;
 }
 function renderFilterSlider(prop, label, min, max, step2, redraw2, fmt) {
-  const value = boardFilters[prop];
+  const value = boardFilters[prop] ?? FILTER_DEFAULTS[prop] ?? min;
   return h("div.board-settings__slider-row", [
     h("label", label),
     h("input", {
@@ -1065,11 +1065,16 @@ function annotationShapes(node) {
       const destSquare = san.startsWith("O-O") ? squareRank(move3.to) === 0 ? san.startsWith("O-O-O") ? "c1" : "g1" : san.startsWith("O-O-O") ? "c8" : "g8" : makeSquare(move3.to);
       const symbol = glyph.symbol;
       const prerendered = glyphToSvg[symbol] ? glyphToSvg[symbol](idx) : void 0;
+      if (prerendered) {
+        return {
+          orig: destSquare,
+          brush: "",
+          customSvg: { html: prerendered }
+        };
+      }
       return {
         orig: destSquare,
-        brush: prerendered ? "" : void 0,
-        customSvg: prerendered ? { html: prerendered } : void 0,
-        label: prerendered ? void 0 : { text: symbol, fill: "purple" }
+        label: { text: symbol, fill: "purple" }
         // keep some purple just to keep feedback forum on their toes
       };
     }).reverse();
@@ -1385,6 +1390,8 @@ var GRAPH_W = 600;
 var GRAPH_H = 80;
 var GRAPH_HEIGHT_MIN = 100;
 var GRAPH_HEIGHT_MAX = 300;
+var evalGraphScrubPointerId = null;
+var evalGraphLastScrubPath = null;
 var graphHeightRaw = Number.parseInt(localStorage.getItem("patzer.evalGraphHeightPct") ?? "", 10);
 var graphHeightPct = Number.isFinite(graphHeightRaw) ? Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, graphHeightRaw)) : GRAPH_HEIGHT_MIN;
 function setEvalGraphHeightPct(value) {
@@ -1452,6 +1459,43 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
   }
   const cy = GRAPH_H / 2;
   const svgNodes = [];
+  const hideHover = (svg) => {
+    const hl = svg?.querySelector("[data-hover]");
+    if (hl) hl.setAttribute("opacity", "0");
+  };
+  const showHover = (svg, pt) => {
+    const hl = svg?.querySelector("[data-hover]");
+    if (!hl || !pt) return;
+    hl.setAttribute("x1", String(pt.x));
+    hl.setAttribute("x2", String(pt.x));
+    hl.setAttribute("opacity", "0.55");
+  };
+  const nearestPointForClientX = (svg, clientX) => {
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const graphX = Math.max(0, Math.min(GRAPH_W, (clientX - rect.left) / rect.width * GRAPH_W));
+    let nearest = valid[0];
+    let nearestDist = Math.abs(nearest.x - graphX);
+    for (let i = 1; i < valid.length; i++) {
+      const pt = valid[i];
+      const dist2 = Math.abs(pt.x - graphX);
+      if (dist2 < nearestDist) {
+        nearest = pt;
+        nearestDist = dist2;
+      }
+    }
+    return nearest;
+  };
+  const updateHoverAndMaybeScrub = (target, clientX, scrub) => {
+    const svg = target instanceof SVGElement ? target.ownerSVGElement ?? target : null;
+    const pt = nearestPointForClientX(svg, clientX);
+    showHover(svg, pt);
+    if (scrub && pt && pt.path !== evalGraphLastScrubPath) {
+      evalGraphLastScrubPath = pt.path;
+      navigate2(pt.path);
+    }
+  };
   const polyPts = [
     `${valid[0].x},${GRAPH_H}`,
     ...valid.map((p) => `${p.x},${p.y}`),
@@ -1499,24 +1543,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
     }
   }));
   for (const pt of valid) {
-    const capturePath = pt.path;
     const isCurrent = pt.path === currentPath;
-    const capturedX = pt.x;
-    svgNodes.push(h("rect", {
-      attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: "transparent" },
-      on: {
-        click: () => navigate2(capturePath),
-        mouseenter: (e) => {
-          const svg = e.currentTarget.closest("svg");
-          const hl = svg?.querySelector("[data-hover]");
-          if (hl) {
-            hl.setAttribute("x1", String(capturedX));
-            hl.setAttribute("x2", String(capturedX));
-            hl.setAttribute("opacity", "0.55");
-          }
-        }
-      }
-    }));
     const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "hsl(307,80%,70%)" : pt.label === "blunder" ? "hsl(0,69%,60%)" : pt.label === "mistake" ? "hsl(41,100%,45%)" : pt.label === "inaccuracy" ? "hsl(202,78%,62%)" : "#888";
     const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
     svgNodes.push(h("circle", { attrs: {
@@ -1525,17 +1552,51 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       r: dotR,
       fill: dotColor,
       stroke: isCurrent ? "#fff" : "none",
-      "stroke-width": 1
+      "stroke-width": 1,
+      "pointer-events": "none"
     } }));
   }
+  svgNodes.push(h("rect", {
+    attrs: {
+      x: 0,
+      y: 0,
+      width: GRAPH_W,
+      height: GRAPH_H,
+      fill: "transparent"
+    },
+    on: {
+      pointerdown: (e) => {
+        evalGraphScrubPointerId = e.pointerId;
+        evalGraphLastScrubPath = currentPath;
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        updateHoverAndMaybeScrub(e.currentTarget, e.clientX, true);
+        e.preventDefault();
+      },
+      pointermove: (e) => {
+        updateHoverAndMaybeScrub(e.currentTarget, e.clientX, evalGraphScrubPointerId === e.pointerId);
+      },
+      pointerup: (e) => {
+        if (evalGraphScrubPointerId === e.pointerId) {
+          evalGraphScrubPointerId = null;
+          evalGraphLastScrubPath = null;
+        }
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      },
+      pointercancel: (e) => {
+        if (evalGraphScrubPointerId === e.pointerId) {
+          evalGraphScrubPointerId = null;
+          evalGraphLastScrubPath = null;
+        }
+        hideHover(e.currentTarget.ownerSVGElement);
+      },
+      pointerleave: (e) => {
+        if (evalGraphScrubPointerId !== e.pointerId) hideHover(e.currentTarget.ownerSVGElement);
+      }
+    }
+  }));
   return h("div.eval-graph", {
     on: {
-      // Hide hover indicator when mouse leaves the graph area entirely.
-      mouseleave: (e) => {
-        const svg = e.currentTarget.querySelector("svg");
-        const hl = svg?.querySelector("[data-hover]");
-        if (hl) hl.setAttribute("opacity", "0");
-      }
+      mouseleave: (e) => hideHover(e.currentTarget.querySelector("svg"))
     }
   }, [
     h("svg", { attrs: {
@@ -1870,12 +1931,22 @@ function parseEngineLine(line) {
     let depth;
     for (let i = 1; i < parts.length; i++) {
       if (parts[i] === "multipv") {
-        pvIndex = parseInt(parts[++i]);
+        const next2 = parts[i + 1];
+        if (next2 === void 0) break;
+        pvIndex = parseInt(next2, 10);
+        i++;
       } else if (parts[i] === "depth") {
-        depth = parseInt(parts[++i]);
+        const next2 = parts[i + 1];
+        if (next2 === void 0) break;
+        depth = parseInt(next2, 10);
+        i++;
       } else if (parts[i] === "score") {
-        isMate = parts[++i] === "mate";
-        score = parseInt(parts[++i]);
+        const scoreType = parts[i + 1];
+        const scoreValue = parts[i + 2];
+        if (scoreType === void 0 || scoreValue === void 0) break;
+        isMate = scoreType === "mate";
+        score = parseInt(scoreValue, 10);
+        i += 2;
         if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
       } else if (parts[i] === "pv") {
         pvMoves = parts.slice(i + 1);
@@ -1890,10 +1961,10 @@ function parseEngineLine(line) {
         const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
         if (isMate) {
           ev.mate = s;
-          ev.cp = void 0;
+          delete ev.cp;
         } else {
           ev.cp = s;
-          ev.mate = void 0;
+          delete ev.mate;
         }
       }
       if (best) ev.best = best;
@@ -1912,10 +1983,10 @@ function parseEngineLine(line) {
       const pl = pendingLines[idx];
       if (isMate) {
         pl.mate = s;
-        pl.cp = void 0;
+        delete pl.cp;
       } else {
         pl.cp = s;
-        pl.mate = void 0;
+        delete pl.mate;
       }
       if (best) pl.best = best;
       if (pvMoves.length > 0) pl.moves = pvMoves;
@@ -6006,7 +6077,10 @@ function completeMove(orig, dest, promotion) {
   const fromSq = parseSquare(orig);
   const toSq = parseSquare(dest);
   if (fromSq === void 0 || toSq === void 0) return;
-  const move3 = normalizeMove(pos, { from: fromSq, to: toSq, promotion });
+  const move3 = normalizeMove(
+    pos,
+    promotion !== void 0 ? { from: fromSq, to: toSq, promotion } : { from: fromSq, to: toSq }
+  );
   const san = makeSanAndPlay(pos, move3);
   const newNode = {
     id: scalachessCharPair(move3),
@@ -6065,14 +6139,15 @@ function syncBoard() {
   const ctrl2 = _getCtrl3();
   const node = ctrl2.node;
   const dests = computeDests(node.fen);
+  const lastMove = uciToMove(node.uci);
   cgInstance.set({
     fen: node.fen,
-    lastMove: uciToMove(node.uci),
     turnColor: node.ply % 2 === 0 ? "white" : "black",
     movable: {
       color: node.ply % 2 === 0 ? "white" : "black",
       dests
-    }
+    },
+    ...lastMove ? { lastMove } : {}
   });
 }
 function flip() {
@@ -6087,7 +6162,7 @@ function getMaterialDiff(fen) {
     white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
     black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 }
   };
-  const fenBoard = fen.split(" ")[0];
+  const fenBoard = fen.split(" ")[0] ?? "";
   const charToRole2 = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
   for (const ch of fenBoard) {
     const lower = ch.toLowerCase();
@@ -6131,6 +6206,7 @@ function getClocksAtPath() {
   let black;
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
+    if (!n) continue;
     if (n.clock === void 0) continue;
     if (n.ply % 2 === 1 && white === void 0) white = n.clock;
     if (n.ply % 2 === 0 && n.ply > 0 && black === void 0) black = n.clock;
@@ -6188,6 +6264,7 @@ function bindBoardResizeHandle(container) {
   const startResize = (start4) => {
     start4.preventDefault();
     const startPos = eventPos(start4);
+    if (!startPos) return;
     const initialZoom = boardZoom;
     let zoom = initialZoom;
     let saveTimer;
@@ -6195,24 +6272,34 @@ function bindBoardResizeHandle(container) {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => saveBoardZoom(zoom), 700);
     };
-    const mousemoveEvent = start4.targetTouches ? "touchmove" : "mousemove";
-    const mouseupEvent = start4.targetTouches ? "touchend" : "mouseup";
+    const pointerId = typeof start4.pointerId === "number" ? start4.pointerId : null;
+    const usePointer = start4.type === "pointerdown";
+    const mousemoveEvent = usePointer ? "pointermove" : start4.targetTouches ? "touchmove" : "mousemove";
+    const mouseupEvent = usePointer ? "pointerup" : start4.targetTouches ? "touchend" : "mouseup";
     const resize = (move3) => {
+      if (pointerId !== null && move3.pointerId !== void 0 && move3.pointerId !== pointerId) return;
+      if (move3.cancelable) move3.preventDefault();
       const pos = eventPos(move3);
+      if (!pos) return;
       const delta = pos[0] - startPos[0] + pos[1] - startPos[1];
       zoom = Math.round(Math.min(100, Math.max(0, initialZoom + delta / 10)));
       applyBoardZoom(zoom);
+      window.dispatchEvent(new Event("resize"));
       saveZoom();
     };
     document.body.classList.add("resizing");
-    document.addEventListener(mousemoveEvent, resize);
+    document.addEventListener(mousemoveEvent, resize, { passive: false });
     document.addEventListener(mouseupEvent, () => {
       document.removeEventListener(mousemoveEvent, resize);
       document.body.classList.remove("resizing");
     }, { once: true });
   };
-  el.addEventListener("mousedown", startResize, { passive: false });
-  el.addEventListener("touchstart", startResize, { passive: false });
+  if ("PointerEvent" in window) {
+    el.addEventListener("pointerdown", startResize, { passive: false });
+  } else {
+    el.addEventListener("mousedown", startResize, { passive: false });
+    el.addEventListener("touchstart", startResize, { passive: false });
+  }
 }
 function renderBoard() {
   return h("div.cg-wrap", {
@@ -6222,12 +6309,16 @@ function renderBoard() {
         const ctrl2 = _getCtrl3();
         const node = ctrl2.node;
         const dests = computeDests(node.fen);
+        const lastMove = uciToMove(node.uci);
         cgInstance = Chessground(vnode3.elm, {
           orientation,
           viewOnly: false,
           drawable: {
             enabled: true,
             brushes: {
+              green: { key: "g", color: "#15781B", opacity: 1, lineWidth: 10 },
+              blue: { key: "b", color: "#003088", opacity: 1, lineWidth: 10 },
+              yellow: { key: "y", color: "#e68f00", opacity: 1, lineWidth: 10 },
               // Explicitly register all brushes used by engine arrow rendering so their
               // keys are always present in Chessground state regardless of deepMerge order.
               // Mirrors lichess-org/lila: state.ts default brushes; opacity/lineWidth values
@@ -6238,7 +6329,6 @@ function renderBoard() {
             }
           },
           fen: node.fen,
-          lastMove: uciToMove(node.uci),
           turnColor: node.ply % 2 === 0 ? "white" : "black",
           movable: {
             free: false,
@@ -6248,7 +6338,8 @@ function renderBoard() {
           },
           events: {
             move: onUserMove
-          }
+          },
+          ...lastMove ? { lastMove } : {}
         });
         bindBoardResizeHandle(vnode3.elm);
       },
@@ -6471,13 +6562,14 @@ function renderPvBoard() {
   const left = Math.min(pvBoardPos.x + PV_BOARD_OFFSET, window.innerWidth - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
   const top = Math.min(pvBoardPos.y + PV_BOARD_OFFSET, window.innerHeight - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
   const arrow = uci.length >= 4 ? [{ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" }] : [];
+  const lastMove = uciToMove(uci);
   const cgConfig = {
     fen,
-    lastMove: uciToMove(uci),
     orientation,
     coordinates: false,
     viewOnly: true,
-    drawable: { enabled: false, visible: true, autoShapes: arrow }
+    drawable: { enabled: false, visible: true, autoShapes: arrow },
+    ...lastMove ? { lastMove } : {}
   };
   return h("div.pv-board-float", {
     key: "pv-board-float",
@@ -6994,10 +7086,13 @@ function nextBranch() {
   let path = ctrl2.path;
   let node = ctrl2.node;
   while (node.children.length === 1) {
-    path += node.children[0].id;
-    node = node.children[0];
+    const onlyChild = node.children[0];
+    if (!onlyChild) break;
+    path += onlyChild.id;
+    node = onlyChild;
   }
-  if (node.children.length >= 2) _navigate3(path + node.children[0].id);
+  const firstChild = node.children[0];
+  if (node.children.length >= 2 && firstChild) _navigate3(path + firstChild.id);
   else _last();
 }
 function nextSibling2() {
@@ -7007,6 +7102,7 @@ function nextSibling2() {
   if (!parentNode2 || parentNode2.children.length < 2) return;
   const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
   const next2 = parentNode2.children[(idx + 1) % parentNode2.children.length];
+  if (!next2) return;
   _navigate3(parentPath + next2.id);
 }
 function prevSibling() {
@@ -7016,6 +7112,7 @@ function prevSibling() {
   if (!parentNode2 || parentNode2.children.length < 2) return;
   const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
   const prev2 = parentNode2.children[(idx - 1 + parentNode2.children.length) % parentNode2.children.length];
+  if (!prev2) return;
   _navigate3(parentPath + prev2.id);
 }
 function playBestMove() {
@@ -8307,21 +8404,28 @@ async function fetchChesscomGames(username, rated, speeds) {
     } catch {
       continue;
     }
+    const white = raw.white?.username;
+    const black = raw.black?.username;
+    const date = parsePgnHeader(pgn, "Date")?.replace(/\./g, "-");
+    const timeClass = raw.time_class;
+    const opening = parsePgnHeader(pgn, "Opening");
+    const eco = parsePgnHeader(pgn, "ECO");
+    const whiteRating = parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, "WhiteElo"));
+    const blackRating = parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, "BlackElo"));
     result.push({
       id: nextGameId(),
       pgn,
-      white: raw.white?.username ?? void 0,
-      black: raw.black?.username ?? void 0,
       result: normalizeChesscomResult(raw.white?.result ?? "", raw.black?.result ?? ""),
-      date: parsePgnHeader(pgn, "Date")?.replace(/\./g, "-"),
-      timeClass: raw.time_class,
-      opening: parsePgnHeader(pgn, "Opening"),
-      eco: parsePgnHeader(pgn, "ECO"),
       source: "chesscom",
-      // API field is a number; fall back to PGN header if absent
-      whiteRating: parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, "WhiteElo")),
-      blackRating: parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, "BlackElo")),
-      importedUsername: username.toLowerCase()
+      importedUsername: username.toLowerCase(),
+      ...white ? { white } : {},
+      ...black ? { black } : {},
+      ...date ? { date } : {},
+      ...timeClass ? { timeClass } : {},
+      ...opening ? { opening } : {},
+      ...eco ? { eco } : {},
+      ...whiteRating !== void 0 ? { whiteRating } : {},
+      ...blackRating !== void 0 ? { blackRating } : {}
     });
   }
   return result;
@@ -8373,20 +8477,28 @@ async function fetchLichessGames(username, rated, speeds) {
       continue;
     }
     const date = (parsePgnHeader(pgn, "UTCDate") ?? parsePgnHeader(pgn, "Date"))?.replace(/\./g, "-");
+    const white = parsePgnHeader(pgn, "White");
+    const black = parsePgnHeader(pgn, "Black");
+    const resultLabel = parsePgnHeader(pgn, "Result");
+    const timeClass = timeClassFromTimeControl(parsePgnHeader(pgn, "TimeControl"));
+    const opening = parsePgnHeader(pgn, "Opening");
+    const eco = parsePgnHeader(pgn, "ECO");
+    const whiteRating = parseRating(parsePgnHeader(pgn, "WhiteElo"));
+    const blackRating = parseRating(parsePgnHeader(pgn, "BlackElo"));
     result.push({
       id: nextGameId(),
       pgn,
-      white: parsePgnHeader(pgn, "White"),
-      black: parsePgnHeader(pgn, "Black"),
-      result: parsePgnHeader(pgn, "Result"),
-      date,
-      timeClass: timeClassFromTimeControl(parsePgnHeader(pgn, "TimeControl")),
-      opening: parsePgnHeader(pgn, "Opening"),
-      eco: parsePgnHeader(pgn, "ECO"),
       source: "lichess",
-      whiteRating: parseRating(parsePgnHeader(pgn, "WhiteElo")),
-      blackRating: parseRating(parsePgnHeader(pgn, "BlackElo")),
-      importedUsername: username.toLowerCase()
+      importedUsername: username.toLowerCase(),
+      ...white ? { white } : {},
+      ...black ? { black } : {},
+      ...resultLabel ? { result: resultLabel } : {},
+      ...date ? { date } : {},
+      ...timeClass ? { timeClass } : {},
+      ...opening ? { opening } : {},
+      ...eco ? { eco } : {},
+      ...whiteRating !== void 0 ? { whiteRating } : {},
+      ...blackRating !== void 0 ? { blackRating } : {}
     });
   }
   return result;
@@ -8461,7 +8573,7 @@ function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
     h("span.grl__result." + resultCls, "\u25CF"),
     h("span.grl__opponent", [oppLabel, oppChip]),
     date ? h("span.grl__date", date) : null,
-    tcIcon ? h("span.grl__tc", { attrs: { "data-icon": tcIcon, title: game.timeClass } }) : null,
+    tcIcon ? h("span.grl__tc", { attrs: { "data-icon": tcIcon, ...game.timeClass ? { title: game.timeClass } : {} } }) : null,
     isNewImport || isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
       isNewImport ? h("span.grl__badge.--new", { attrs: { title: "Newly imported" } }, "NEW") : null,
       isAnalyzed ? h("span.grl__badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
@@ -8746,11 +8858,10 @@ function renderGamesView(deps) {
             ]),
             ratingCell,
             h("td.games-view__date", date),
-            h(
-              "td.games-view__tc",
-              tcIcon ? h("span", { attrs: { "data-icon": tcIcon, style: `font-family:lichess;margin-right:4px` } }) : null,
+            h("td.games-view__tc", [
+              tcIcon ? h("span", { attrs: { "data-icon": tcIcon, style: "font-family:lichess;margin-right:4px" } }) : null,
               tc.charAt(0).toUpperCase() + tc.slice(1)
-            ),
+            ]),
             h("td.games-view__opening", h("span", { attrs: { title: opening } }, opening)),
             reviewCell,
             puzzleCell,
@@ -8886,18 +8997,27 @@ function importPgn(callbacks) {
   if (!raw) return;
   try {
     pgnToTree(raw);
+    const white = parsePgnHeader(raw, "White");
+    const black = parsePgnHeader(raw, "Black");
+    const result = parsePgnHeader(raw, "Result");
+    const date = parsePgnHeader(raw, "Date")?.replace(/\./g, "-");
+    const timeClass = timeClassFromTimeControl(parsePgnHeader(raw, "TimeControl"));
+    const opening = parsePgnHeader(raw, "Opening");
+    const eco = parsePgnHeader(raw, "ECO");
+    const whiteRating = parseRating(parsePgnHeader(raw, "WhiteElo"));
+    const blackRating = parseRating(parsePgnHeader(raw, "BlackElo"));
     const game = {
       id: nextGameId(),
       pgn: raw,
-      white: parsePgnHeader(raw, "White"),
-      black: parsePgnHeader(raw, "Black"),
-      result: parsePgnHeader(raw, "Result"),
-      date: parsePgnHeader(raw, "Date")?.replace(/\./g, "-"),
-      timeClass: timeClassFromTimeControl(parsePgnHeader(raw, "TimeControl")),
-      opening: parsePgnHeader(raw, "Opening"),
-      eco: parsePgnHeader(raw, "ECO"),
-      whiteRating: parseRating(parsePgnHeader(raw, "WhiteElo")),
-      blackRating: parseRating(parsePgnHeader(raw, "BlackElo"))
+      ...white ? { white } : {},
+      ...black ? { black } : {},
+      ...result ? { result } : {},
+      ...date ? { date } : {},
+      ...timeClass ? { timeClass } : {},
+      ...opening ? { opening } : {},
+      ...eco ? { eco } : {},
+      ...whiteRating !== void 0 ? { whiteRating } : {},
+      ...blackRating !== void 0 ? { blackRating } : {}
       // importedUsername not set: PGN paste has no reliable importing-user identity
     };
     pgnState.error = null;
@@ -9264,6 +9384,10 @@ function parse(hash2) {
     let matched = true;
     for (let i = 0; i < pattern.length; i++) {
       const seg = pattern[i];
+      if (!seg) {
+        matched = false;
+        break;
+      }
       if (seg.startsWith(":")) {
         params[seg.slice(1)] = parts[i];
       } else if (seg !== parts[i]) {
@@ -9283,6 +9407,23 @@ function onChange2(fn) {
 }
 
 // src/analyse/retro.ts
+var STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+var RETRO_OPENING_CANCEL_MAX_PLY = 20;
+function buildMainlineOpeningProvider(mainline, hasOpeningMetadata) {
+  if (!hasOpeningMetadata) return () => void 0;
+  if (mainline[0]?.fen !== STANDARD_START_FEN) return () => void 0;
+  const openingMovesByFen = /* @__PURE__ */ new Map();
+  for (let i = 1; i < mainline.length; i++) {
+    const parent = mainline[i - 1];
+    const node = mainline[i];
+    if (!parent || !node?.uci) continue;
+    if (node.ply > RETRO_OPENING_CANCEL_MAX_PLY) break;
+    const moves = openingMovesByFen.get(parent.fen) ?? [];
+    if (!moves.includes(node.uci)) moves.push(node.uci);
+    openingMovesByFen.set(parent.fen, moves);
+  }
+  return (fen) => openingMovesByFen.get(fen);
+}
 function buildRetroCandidates(mainline, getEval, gameId, userColor = null, getOpeningUcis = () => void 0) {
   const candidates = [];
   let path = "";
@@ -9598,7 +9739,11 @@ var contextMenuPos = null;
 var _contextMenuCloseListener = null;
 function openContextMenu(path, e) {
   contextMenuPath = path;
-  contextMenuPos = { x: e.clientX, y: e.clientY };
+  const targetRect = e.currentTarget?.getBoundingClientRect?.();
+  contextMenuPos = {
+    x: e.clientX || targetRect?.left || 0,
+    y: e.clientY || targetRect?.top || 0
+  };
   if (_contextMenuCloseListener) document.removeEventListener("click", _contextMenuCloseListener);
   _contextMenuCloseListener = () => {
     contextMenuPath = null;
@@ -9609,6 +9754,14 @@ function openContextMenu(path, e) {
   document.addEventListener("click", _contextMenuCloseListener, { once: true });
   redraw();
 }
+function positionContextMenu(menu, coords) {
+  const menuWidth = menu.offsetWidth + 4;
+  const menuHeight = menu.offsetHeight + 4;
+  const left = window.innerWidth - coords.x < menuWidth ? window.innerWidth - menuWidth : coords.x;
+  const top = window.innerHeight - coords.y < menuHeight ? window.innerHeight - menuHeight : coords.y;
+  menu.style.left = `${Math.max(0, left)}px`;
+  menu.style.top = `${Math.max(0, top)}px`;
+}
 function renderContextMenu() {
   if (!contextMenuPath || !contextMenuPos) return null;
   const node = nodeAtPath(ctrl.root, contextMenuPath);
@@ -9616,8 +9769,11 @@ function renderContextMenu() {
   const onMainline = isMainlinePath(ctrl.root, contextMenuPath);
   const copyLabel = onMainline ? "Copy main line PGN" : "Copy variation PGN";
   return h("div#move-ctx-menu.visible", {
-    style: { left: contextMenuPos.x + "px", top: contextMenuPos.y + "px" },
-    on: { contextmenu: (e) => e.preventDefault() }
+    on: { contextmenu: (e) => e.preventDefault() },
+    hook: {
+      insert: (vnode3) => positionContextMenu(vnode3.elm, contextMenuPos),
+      postpatch: (_old, vnode3) => positionContextMenu(vnode3.elm, contextMenuPos)
+    }
   }, [
     h("p.title", title),
     // Copy PGN — mirrors lichess-org/lila: contextMenu.ts clipboard copy action (CCP-026)
@@ -9772,11 +9928,16 @@ function toggleRetro() {
   }
   const game = importedGames.find((g) => g.id === selectedGameId);
   const userColor = game ? getUserColor(game) : null;
+  const openingProvider = buildMainlineOpeningProvider(
+    ctrl.mainline,
+    Boolean(game?.opening || game?.eco)
+  );
   const candidates = buildRetroCandidates(
     ctrl.mainline,
     (p) => evalCache.get(p),
     selectedGameId,
-    userColor ?? null
+    userColor ?? null,
+    openingProvider
   );
   ctrl.retro = makeRetroCtrl(
     candidates,
