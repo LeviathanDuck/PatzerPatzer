@@ -50,6 +50,11 @@ Prompt tracking convention:
   - include `Parent Prompt ID`, such as `CCP-013`
 - include `Source Document` and `Source Step` metadata near the top of the generated prompt
 - when a new prompt is generated, append the full prompt to `CLAUDE_PROMPT_QUEUE.md`
+- when a new prompt is generated, also add a matching item to the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md`
+- each queue-index item should include:
+  - first line: `- CCP-###: Short Task Title`
+  - second line: an indented bullet with a brief one-line description of what the prompt is meant to target
+  - one blank line between queue-index items for readability
 - when appending to `CLAUDE_PROMPT_QUEUE.md`, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
 - use plain fenced Markdown blocks with no language tag for queue entries and log entries
 - when a new prompt is generated, also add an unchecked entry to `CLAUDE_PROMPT_LOG.md`
@@ -69,6 +74,7 @@ Prompt tracking convention:
   - `issues found`
   - `needs rework`
 - when doing a code review, remove the matching prompt from `CLAUDE_PROMPT_QUEUE.md`
+- when doing a code review, also remove the matching item from the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md`
 - when doing a code review, update the matching `CCP-###` item in `CLAUDE_PROMPT_LOG.md`
 - when doing a code review, also update the matching top checklist item in `CLAUDE_PROMPT_LOG.md` from unchecked to checked
 - if a reviewed prompt needs another fixing pass and the user asks for a follow-up prompt, create a new prompt entry using the same root `Task ID` with the next `-F#` modifier on `Prompt ID`

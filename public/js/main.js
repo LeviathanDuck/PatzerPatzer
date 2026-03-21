@@ -1105,411 +1105,6 @@ function evalWinChances(ev) {
   return void 0;
 }
 
-// src/engine/ctrl.ts
-var _getCtrl = () => {
-  throw new Error("engine not initialised");
-};
-var _getCgInstance = () => void 0;
-var _redraw = () => {
-};
-function initEngine(deps) {
-  _getCtrl = deps.getCtrl;
-  _getCgInstance = deps.getCgInstance;
-  _redraw = deps.redraw;
-}
-var _isBatchActive = () => false;
-var _onBatchBestmove = null;
-function setIsBatchActive(fn) {
-  _isBatchActive = fn;
-}
-function setOnBatchBestmove(fn) {
-  _onBatchBestmove = fn;
-}
-var protocol = new StockfishProtocol();
-var engineEnabled = false;
-var engineReady = false;
-var engineInitialized = false;
-var currentEval = {};
-var evalCache = /* @__PURE__ */ new Map();
-var evalNodeId = "";
-var evalNodePath = "";
-var evalNodePly = 0;
-var evalParentPath = "";
-var engineSearchActive = false;
-var pendingStopCount = 0;
-var pendingEval = false;
-function storedInt(key, def, min, max) {
-  const v = parseInt(localStorage.getItem(key) ?? "", 10);
-  return !isNaN(v) && v >= min && v <= max ? v : def;
-}
-var multiPv = storedInt("patzer.multiPv", 3, 1, 5);
-var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
-var showEngineArrows = true;
-var arrowAllLines = true;
-var showPlayedArrow = true;
-var pendingLines = [];
-var arrowDebounceTimer = null;
-var arrowSuppressUntil = 0;
-var ARROW_SETTLE_MS = 500;
-var threatMode = false;
-var evalIsThreat = false;
-var threatEval = {};
-function resetCurrentEval() {
-  currentEval = {};
-}
-function setCurrentEval(ev) {
-  currentEval = { ...ev };
-}
-function clearEvalCache() {
-  evalCache.clear();
-}
-function setMultiPv(v) {
-  multiPv = v;
-  localStorage.setItem("patzer.multiPv", String(v));
-}
-function setAnalysisDepth(v) {
-  analysisDepth = v;
-  localStorage.setItem("patzer.analysisDepth", String(v));
-}
-function clearPendingLines() {
-  pendingLines = [];
-}
-function setShowEngineArrows(v) {
-  showEngineArrows = v;
-}
-function setArrowAllLines(v) {
-  arrowAllLines = v;
-}
-function setShowPlayedArrow(v) {
-  showPlayedArrow = v;
-}
-function incrementPendingStopCount() {
-  pendingStopCount++;
-}
-function stopProtocol() {
-  protocol.stop();
-}
-function buildArrowShapes() {
-  const shapes = [];
-  const ctrl2 = _getCtrl();
-  const retroHidden = ctrl2.retro !== void 0 && !ctrl2.retro.guidanceRevealed();
-  if (engineEnabled && showEngineArrows && !retroHidden) {
-    if (currentEval.best) {
-      const uci = currentEval.best;
-      shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
-    }
-    if (arrowAllLines) {
-      const topWc = evalWinChances(currentEval) ?? 0;
-      for (const line of currentEval.lines ?? []) {
-        if (!line.best) continue;
-        const lineWc = evalWinChances(line) ?? 0;
-        const shift = Math.abs(topWc - lineWc) / 2;
-        if (shift >= 0.2) continue;
-        const lineWidth2 = Math.max(2, Math.round(12 - shift * 50));
-        const uci = line.best;
-        shapes.push({
-          orig: uci.slice(0, 2),
-          dest: uci.slice(2, 4),
-          brush: "paleGrey",
-          modifiers: { lineWidth: lineWidth2 }
-        });
-      }
-    }
-  }
-  if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
-    const uci = threatEval.best;
-    shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
-  }
-  if (showPlayedArrow && pathIsMainline(ctrl2.root, ctrl2.path)) {
-    const nextNode = ctrl2.node.children[0];
-    if (nextNode?.uci) {
-      const uci = nextNode.uci;
-      shapes.push({
-        orig: uci.slice(0, 2),
-        dest: uci.slice(2, 4),
-        brush: "red"
-      });
-    }
-  }
-  return shapes;
-}
-function syncArrow() {
-  const cg = _getCgInstance();
-  if (!cg) return;
-  if (arrowDebounceTimer !== null) {
-    clearTimeout(arrowDebounceTimer);
-    arrowDebounceTimer = null;
-  }
-  arrowSuppressUntil = 0;
-  cg.set({ drawable: { autoShapes: buildArrowShapes() } });
-}
-function syncArrowDebounced() {
-  const cg = _getCgInstance();
-  if (!cg) return;
-  const now = Date.now();
-  if (now < arrowSuppressUntil) {
-    if (arrowDebounceTimer === null) {
-      arrowDebounceTimer = setTimeout(() => {
-        arrowDebounceTimer = null;
-        arrowSuppressUntil = 0;
-        _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
-      }, arrowSuppressUntil - now);
-    }
-    return;
-  }
-  if (arrowDebounceTimer !== null) {
-    clearTimeout(arrowDebounceTimer);
-  }
-  arrowDebounceTimer = setTimeout(() => {
-    arrowDebounceTimer = null;
-    _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
-  }, 150);
-}
-function parseEngineLine(line) {
-  const parts = line.trim().split(/\s+/);
-  if (parts[0] === "info") {
-    let isMate = false;
-    let score;
-    let best;
-    let pvMoves = [];
-    let pvIndex = 1;
-    let depth;
-    for (let i = 1; i < parts.length; i++) {
-      if (parts[i] === "multipv") {
-        pvIndex = parseInt(parts[++i]);
-      } else if (parts[i] === "depth") {
-        depth = parseInt(parts[++i]);
-      } else if (parts[i] === "score") {
-        isMate = parts[++i] === "mate";
-        score = parseInt(parts[++i]);
-        if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
-      } else if (parts[i] === "pv") {
-        pvMoves = parts.slice(i + 1);
-        best = pvMoves[0];
-        break;
-      }
-    }
-    if (pvIndex === 1) {
-      if (!evalIsThreat && !_isBatchActive() && evalNodePath !== _getCtrl().path) return;
-      const ev = evalIsThreat ? threatEval : currentEval;
-      if (score !== void 0) {
-        const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
-        if (isMate) {
-          ev.mate = s;
-          ev.cp = void 0;
-        } else {
-          ev.cp = s;
-          ev.mate = void 0;
-        }
-      }
-      if (best) ev.best = best;
-      if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
-      if (depth !== void 0 && !evalIsThreat) ev.depth = depth;
-      if ((score !== void 0 || best) && !_isBatchActive()) {
-        syncArrowDebounced();
-        _redraw();
-        if (!evalIsThreat) _getCtrl().retro?.onCeval();
-      }
-    } else if (!evalIsThreat && score !== void 0) {
-      if (evalNodePath !== _getCtrl().path) return;
-      const s = evalNodePly % 2 === 1 ? -score : score;
-      const idx = pvIndex - 1;
-      if (!pendingLines[idx]) pendingLines[idx] = {};
-      const pl = pendingLines[idx];
-      if (isMate) {
-        pl.mate = s;
-        pl.cp = void 0;
-      } else {
-        pl.cp = s;
-        pl.mate = void 0;
-      }
-      if (best) pl.best = best;
-      if (pvMoves.length > 0) pl.moves = pvMoves;
-      currentEval.lines = pendingLines.slice(1).filter(Boolean);
-      if (!_isBatchActive()) _redraw();
-    }
-  } else if (parts[0] === "bestmove") {
-    if (pendingStopCount > 0) {
-      pendingStopCount--;
-      currentEval = {};
-      pendingLines = [];
-      if (pendingEval) {
-        engineSearchActive = false;
-        evalCurrentPosition();
-      }
-      return;
-    }
-    engineSearchActive = false;
-    if (!parts[1] || parts[1] === "(none)") {
-      if (_isBatchActive()) _onBatchBestmove?.();
-      else if (pendingEval) evalCurrentPosition();
-      return;
-    }
-    if (evalIsThreat) {
-      threatEval.best = parts[1];
-      evalIsThreat = false;
-      syncArrow();
-      _redraw();
-    } else {
-      if (!_isBatchActive() && evalNodePath !== _getCtrl().path) {
-        pendingLines = [];
-        if (pendingEval) evalCurrentPosition();
-        else if (threatMode) evalThreatPosition();
-        return;
-      }
-      currentEval.best = parts[1];
-      const stored = { ...currentEval };
-      pendingLines = [];
-      currentEval = stored;
-      if (_isBatchActive()) {
-        _onBatchBestmove?.();
-      } else {
-        syncArrowDebounced();
-        _redraw();
-        if (pendingEval) {
-          evalCurrentPosition();
-        } else if (threatMode) {
-          evalThreatPosition();
-        }
-      }
-    }
-  }
-}
-var _onEngineReady = null;
-function setOnEngineReady(fn) {
-  _onEngineReady = fn;
-}
-protocol.onMessage((line) => {
-  if (line.trim() === "readyok") {
-    engineReady = true;
-    if (_onEngineReady) {
-      _onEngineReady();
-    } else {
-      evalCurrentPosition();
-    }
-    _redraw();
-  } else {
-    if (!_isBatchActive() && (line.startsWith("info") || line.startsWith("bestmove"))) {
-      console.log("[live-diag]", line.slice(0, 120));
-    }
-    parseEngineLine(line);
-  }
-});
-function flipFenColor(fen) {
-  const parts = fen.split(" ");
-  if (parts.length >= 2) parts[1] = parts[1] === "w" ? "b" : "w";
-  if (parts.length >= 4) parts[3] = "-";
-  return parts.join(" ");
-}
-function evalThreatPosition() {
-  if (!engineEnabled || !engineReady || _isBatchActive()) return;
-  threatEval = {};
-  evalIsThreat = true;
-  protocol.stop();
-  protocol.setPosition(flipFenColor(_getCtrl().node.fen));
-  protocol.go(analysisDepth);
-}
-function toggleThreatMode() {
-  threatMode = !threatMode;
-  if (threatMode) {
-    evalThreatPosition();
-  } else {
-    if (evalIsThreat) {
-      protocol.stop();
-      evalIsThreat = false;
-    }
-    threatEval = {};
-    syncArrow();
-    _redraw();
-  }
-}
-function evalCurrentPosition() {
-  if (_isBatchActive()) return;
-  if (!engineEnabled || !engineReady) return;
-  if (evalIsThreat) {
-    pendingStopCount++;
-    protocol.stop();
-    evalIsThreat = false;
-  }
-  threatEval = {};
-  const ctrl2 = _getCtrl();
-  const cached = evalCache.get(ctrl2.path);
-  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
-  if (cached && cachedHasLines) {
-    currentEval = { ...cached };
-    syncArrow();
-    _redraw();
-    if (threatMode) evalThreatPosition();
-    return;
-  }
-  currentEval = cached ? { ...cached } : {};
-  pendingLines = [];
-  syncArrow();
-  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
-  if (engineSearchActive) {
-    if (!pendingEval) {
-      pendingStopCount++;
-      protocol.stop();
-    }
-    pendingEval = true;
-    _redraw();
-    return;
-  }
-  pendingEval = false;
-  engineSearchActive = true;
-  evalNodeId = ctrl2.node.id;
-  evalNodePath = ctrl2.path;
-  evalNodePly = ctrl2.node.ply;
-  evalParentPath = ctrl2.path.length >= 2 ? ctrl2.path.slice(0, -2) : "";
-  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv);
-  protocol.setPosition(ctrl2.node.fen);
-  protocol.go(analysisDepth, multiPv);
-}
-function toggleEngine() {
-  engineEnabled = !engineEnabled;
-  if (engineEnabled) {
-    if (!engineInitialized) {
-      engineInitialized = true;
-      void protocol.init("/stockfish-web").catch((err) => {
-        console.error("[engine] failed to load:", err);
-        engineEnabled = false;
-        engineInitialized = false;
-        _redraw();
-      });
-    } else if (engineReady) {
-      evalCurrentPosition();
-    }
-  } else {
-    protocol.stop();
-    currentEval = {};
-    evalIsThreat = false;
-    threatEval = {};
-    syncArrow();
-  }
-  _redraw();
-}
-function getEvalNodePath() {
-  return evalNodePath;
-}
-function getEvalNodePly() {
-  return evalNodePly;
-}
-function getEvalParentPath() {
-  return evalParentPath;
-}
-function setEngineSearchActive(v) {
-  engineSearchActive = v;
-}
-function setEvalNode(id, path, ply, parentPath) {
-  evalNodeId = id;
-  evalNodePath = path;
-  evalNodePly = ply;
-  evalParentPath = parentPath;
-}
-function isEngineSearchActive() {
-  return engineSearchActive;
-}
-
 // src/analyse/evalView.ts
 function formatScore(ev) {
   if (ev.mate !== void 0) {
@@ -1795,18 +1390,31 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
     divLines.push({ label: "Endgame", idx: endIdx });
   }
   for (const div of divLines) {
-    if (div.idx === 0) continue;
-    const dx = (div.idx - 1) / (n - 1) * GRAPH_W;
-    svgNodes.push(h("line", { attrs: {
-      x1: dx,
-      y1: 0,
-      x2: dx,
-      y2: GRAPH_H,
-      stroke: "#555",
-      "stroke-width": 1,
-      "stroke-dasharray": "3 3",
-      opacity: "0.7"
-    } }));
+    const dx = div.idx === 0 ? 0 : (div.idx - 1) / (n - 1) * GRAPH_W;
+    if (div.idx !== 0) {
+      svgNodes.push(h("line", { attrs: {
+        x1: dx,
+        y1: 0,
+        x2: dx,
+        y2: GRAPH_H,
+        stroke: "#555",
+        "stroke-width": 1,
+        "stroke-dasharray": "3 3",
+        opacity: "0.7"
+      } }));
+    }
+    const labelX = Math.min(Math.max(dx + 6, 6), GRAPH_W - 6);
+    svgNodes.push(h("text", { attrs: {
+      x: labelX,
+      y: 6,
+      fill: "#707070",
+      "font-size": 8,
+      "font-family": "inherit",
+      "text-anchor": "start",
+      "dominant-baseline": "hanging",
+      transform: `rotate(90 ${labelX} 6)`,
+      "pointer-events": "none"
+    } }, div.label));
   }
   return h("div.eval-graph", {
     on: {
@@ -1825,6 +1433,423 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
       preserveAspectRatio: "none"
     } }, svgNodes)
   ]);
+}
+
+// src/engine/ctrl.ts
+var _getCtrl = () => {
+  throw new Error("engine not initialised");
+};
+var _getCgInstance = () => void 0;
+var _redraw = () => {
+};
+function initEngine(deps) {
+  _getCtrl = deps.getCtrl;
+  _getCgInstance = deps.getCgInstance;
+  _redraw = deps.redraw;
+}
+var _isBatchActive = () => false;
+var _onBatchBestmove = null;
+function setIsBatchActive(fn) {
+  _isBatchActive = fn;
+}
+function setOnBatchBestmove(fn) {
+  _onBatchBestmove = fn;
+}
+var protocol = new StockfishProtocol();
+var engineEnabled = false;
+var engineReady = false;
+var engineInitialized = false;
+var currentEval = {};
+var evalCache = /* @__PURE__ */ new Map();
+var evalNodeId = "";
+var evalNodePath = "";
+var evalNodePly = 0;
+var evalParentPath = "";
+var engineSearchActive = false;
+var pendingStopCount = 0;
+var pendingEval = false;
+function storedInt(key, def, min, max) {
+  const v = parseInt(localStorage.getItem(key) ?? "", 10);
+  return !isNaN(v) && v >= min && v <= max ? v : def;
+}
+var multiPv = storedInt("patzer.multiPv", 3, 1, 5);
+var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
+var showEngineArrows = true;
+var arrowAllLines = true;
+var showPlayedArrow = true;
+var pendingLines = [];
+var arrowDebounceTimer = null;
+var arrowSuppressUntil = 0;
+var ARROW_SETTLE_MS = 500;
+var threatMode = false;
+var evalIsThreat = false;
+var threatEval = {};
+function resetCurrentEval() {
+  currentEval = {};
+}
+function setCurrentEval(ev) {
+  currentEval = { ...ev };
+}
+function clearEvalCache() {
+  evalCache.clear();
+}
+function setMultiPv(v) {
+  multiPv = v;
+  localStorage.setItem("patzer.multiPv", String(v));
+}
+function setAnalysisDepth(v) {
+  analysisDepth = v;
+  localStorage.setItem("patzer.analysisDepth", String(v));
+}
+function clearPendingLines() {
+  pendingLines = [];
+}
+function setShowEngineArrows(v) {
+  showEngineArrows = v;
+}
+function setArrowAllLines(v) {
+  arrowAllLines = v;
+}
+function setShowPlayedArrow(v) {
+  showPlayedArrow = v;
+}
+function incrementPendingStopCount() {
+  pendingStopCount++;
+}
+function stopProtocol() {
+  protocol.stop();
+}
+function buildArrowShapes() {
+  const shapes = [];
+  const ctrl2 = _getCtrl();
+  const retroHidden = ctrl2.retro !== void 0 && !ctrl2.retro.guidanceRevealed();
+  if (engineEnabled && showEngineArrows && !retroHidden) {
+    if (currentEval.best) {
+      const uci = currentEval.best;
+      shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
+      const scoreLabel = buildPrimaryArrowLabel();
+      if (scoreLabel) shapes.push(scoreLabel);
+    }
+    if (arrowAllLines) {
+      const topWc = evalWinChances(currentEval) ?? 0;
+      for (const line of currentEval.lines ?? []) {
+        if (!line.best) continue;
+        const lineWc = evalWinChances(line) ?? 0;
+        const shift = Math.abs(topWc - lineWc) / 2;
+        if (shift >= 0.2) continue;
+        const lineWidth2 = Math.max(2, Math.round(12 - shift * 50));
+        const uci = line.best;
+        shapes.push({
+          orig: uci.slice(0, 2),
+          dest: uci.slice(2, 4),
+          brush: "paleGrey",
+          modifiers: { lineWidth: lineWidth2 }
+        });
+      }
+    }
+  }
+  if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
+    const uci = threatEval.best;
+    shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
+  }
+  if (showPlayedArrow && pathIsMainline(ctrl2.root, ctrl2.path)) {
+    const nextNode = ctrl2.node.children[0];
+    if (nextNode?.uci) {
+      const uci = nextNode.uci;
+      shapes.push({
+        orig: uci.slice(0, 2),
+        dest: uci.slice(2, 4),
+        brush: "red"
+      });
+    }
+  }
+  return shapes;
+}
+function buildPrimaryArrowLabel() {
+  if (!currentEval.best) return null;
+  if (currentEval.cp === void 0 && currentEval.mate === void 0) return null;
+  const text = formatScore(currentEval);
+  const fill = currentEval.mate !== void 0 ? "#9158d8" : currentEval.cp !== void 0 && currentEval.cp > 0 ? "#3d8f63" : currentEval.cp !== void 0 && currentEval.cp < 0 ? "#3f4f7a" : "#666";
+  return {
+    orig: currentEval.best.slice(2, 4),
+    label: { text, fill }
+  };
+}
+function syncArrow() {
+  const cg = _getCgInstance();
+  if (!cg) return;
+  if (arrowDebounceTimer !== null) {
+    clearTimeout(arrowDebounceTimer);
+    arrowDebounceTimer = null;
+  }
+  arrowSuppressUntil = 0;
+  cg.set({ drawable: { autoShapes: buildArrowShapes() } });
+}
+function syncArrowDebounced() {
+  const cg = _getCgInstance();
+  if (!cg) return;
+  const now = Date.now();
+  if (now < arrowSuppressUntil) {
+    if (arrowDebounceTimer === null) {
+      arrowDebounceTimer = setTimeout(() => {
+        arrowDebounceTimer = null;
+        arrowSuppressUntil = 0;
+        _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
+      }, arrowSuppressUntil - now);
+    }
+    return;
+  }
+  if (arrowDebounceTimer !== null) {
+    clearTimeout(arrowDebounceTimer);
+  }
+  arrowDebounceTimer = setTimeout(() => {
+    arrowDebounceTimer = null;
+    _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
+  }, 150);
+}
+function parseEngineLine(line) {
+  const parts = line.trim().split(/\s+/);
+  if (parts[0] === "info") {
+    let isMate = false;
+    let score;
+    let best;
+    let pvMoves = [];
+    let pvIndex = 1;
+    let depth;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i] === "multipv") {
+        pvIndex = parseInt(parts[++i]);
+      } else if (parts[i] === "depth") {
+        depth = parseInt(parts[++i]);
+      } else if (parts[i] === "score") {
+        isMate = parts[++i] === "mate";
+        score = parseInt(parts[++i]);
+        if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
+      } else if (parts[i] === "pv") {
+        pvMoves = parts.slice(i + 1);
+        best = pvMoves[0];
+        break;
+      }
+    }
+    if (pvIndex === 1) {
+      if (!evalIsThreat && !_isBatchActive() && evalNodePath !== _getCtrl().path) return;
+      const ev = evalIsThreat ? threatEval : currentEval;
+      if (score !== void 0) {
+        const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
+        if (isMate) {
+          ev.mate = s;
+          ev.cp = void 0;
+        } else {
+          ev.cp = s;
+          ev.mate = void 0;
+        }
+      }
+      if (best) ev.best = best;
+      if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
+      if (depth !== void 0 && !evalIsThreat) ev.depth = depth;
+      if ((score !== void 0 || best) && !_isBatchActive()) {
+        syncArrowDebounced();
+        _redraw();
+        if (!evalIsThreat) _getCtrl().retro?.onCeval();
+      }
+    } else if (!evalIsThreat && score !== void 0) {
+      if (evalNodePath !== _getCtrl().path) return;
+      const s = evalNodePly % 2 === 1 ? -score : score;
+      const idx = pvIndex - 1;
+      if (!pendingLines[idx]) pendingLines[idx] = {};
+      const pl = pendingLines[idx];
+      if (isMate) {
+        pl.mate = s;
+        pl.cp = void 0;
+      } else {
+        pl.cp = s;
+        pl.mate = void 0;
+      }
+      if (best) pl.best = best;
+      if (pvMoves.length > 0) pl.moves = pvMoves;
+      currentEval.lines = pendingLines.slice(1).filter(Boolean);
+      if (!_isBatchActive()) _redraw();
+    }
+  } else if (parts[0] === "bestmove") {
+    if (pendingStopCount > 0) {
+      pendingStopCount--;
+      currentEval = {};
+      pendingLines = [];
+      if (pendingEval) {
+        engineSearchActive = false;
+        evalCurrentPosition();
+      }
+      return;
+    }
+    engineSearchActive = false;
+    if (!parts[1] || parts[1] === "(none)") {
+      if (_isBatchActive()) _onBatchBestmove?.();
+      else if (pendingEval) evalCurrentPosition();
+      return;
+    }
+    if (evalIsThreat) {
+      threatEval.best = parts[1];
+      evalIsThreat = false;
+      syncArrow();
+      _redraw();
+    } else {
+      if (!_isBatchActive() && evalNodePath !== _getCtrl().path) {
+        pendingLines = [];
+        if (pendingEval) evalCurrentPosition();
+        else if (threatMode) evalThreatPosition();
+        return;
+      }
+      currentEval.best = parts[1];
+      const stored = { ...currentEval };
+      pendingLines = [];
+      currentEval = stored;
+      if (_isBatchActive()) {
+        _onBatchBestmove?.();
+      } else {
+        syncArrowDebounced();
+        _redraw();
+        if (pendingEval) {
+          evalCurrentPosition();
+        } else if (threatMode) {
+          evalThreatPosition();
+        }
+      }
+    }
+  }
+}
+var _onEngineReady = null;
+function setOnEngineReady(fn) {
+  _onEngineReady = fn;
+}
+protocol.onMessage((line) => {
+  if (line.trim() === "readyok") {
+    engineReady = true;
+    if (_onEngineReady) {
+      _onEngineReady();
+    } else {
+      evalCurrentPosition();
+    }
+    _redraw();
+  } else {
+    if (!_isBatchActive() && (line.startsWith("info") || line.startsWith("bestmove"))) {
+      console.log("[live-diag]", line.slice(0, 120));
+    }
+    parseEngineLine(line);
+  }
+});
+function flipFenColor(fen) {
+  const parts = fen.split(" ");
+  if (parts.length >= 2) parts[1] = parts[1] === "w" ? "b" : "w";
+  if (parts.length >= 4) parts[3] = "-";
+  return parts.join(" ");
+}
+function evalThreatPosition() {
+  if (!engineEnabled || !engineReady || _isBatchActive()) return;
+  threatEval = {};
+  evalIsThreat = true;
+  protocol.stop();
+  protocol.setPosition(flipFenColor(_getCtrl().node.fen));
+  protocol.go(analysisDepth);
+}
+function toggleThreatMode() {
+  threatMode = !threatMode;
+  if (threatMode) {
+    evalThreatPosition();
+  } else {
+    if (evalIsThreat) {
+      protocol.stop();
+      evalIsThreat = false;
+    }
+    threatEval = {};
+    syncArrow();
+    _redraw();
+  }
+}
+function evalCurrentPosition() {
+  if (_isBatchActive()) return;
+  if (!engineEnabled || !engineReady) return;
+  if (evalIsThreat) {
+    pendingStopCount++;
+    protocol.stop();
+    evalIsThreat = false;
+  }
+  threatEval = {};
+  const ctrl2 = _getCtrl();
+  const cached = evalCache.get(ctrl2.path);
+  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
+  if (cached && cachedHasLines) {
+    currentEval = { ...cached };
+    syncArrow();
+    _redraw();
+    if (threatMode) evalThreatPosition();
+    return;
+  }
+  currentEval = cached ? { ...cached } : {};
+  pendingLines = [];
+  syncArrow();
+  arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
+  if (engineSearchActive) {
+    if (!pendingEval) {
+      pendingStopCount++;
+      protocol.stop();
+    }
+    pendingEval = true;
+    _redraw();
+    return;
+  }
+  pendingEval = false;
+  engineSearchActive = true;
+  evalNodeId = ctrl2.node.id;
+  evalNodePath = ctrl2.path;
+  evalNodePly = ctrl2.node.ply;
+  evalParentPath = ctrl2.path.length >= 2 ? ctrl2.path.slice(0, -2) : "";
+  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv);
+  protocol.setPosition(ctrl2.node.fen);
+  protocol.go(analysisDepth, multiPv);
+}
+function toggleEngine() {
+  engineEnabled = !engineEnabled;
+  if (engineEnabled) {
+    if (!engineInitialized) {
+      engineInitialized = true;
+      void protocol.init("/stockfish-web").catch((err) => {
+        console.error("[engine] failed to load:", err);
+        engineEnabled = false;
+        engineInitialized = false;
+        _redraw();
+      });
+    } else if (engineReady) {
+      evalCurrentPosition();
+    }
+  } else {
+    protocol.stop();
+    currentEval = {};
+    evalIsThreat = false;
+    threatEval = {};
+    syncArrow();
+  }
+  _redraw();
+}
+function getEvalNodePath() {
+  return evalNodePath;
+}
+function getEvalNodePly() {
+  return evalNodePly;
+}
+function getEvalParentPath() {
+  return evalParentPath;
+}
+function setEngineSearchActive(v) {
+  engineSearchActive = v;
+}
+function setEvalNode(id, path, ply, parentPath) {
+  evalNodeId = id;
+  evalNodePath = path;
+  evalNodePly = ply;
+  evalParentPath = parentPath;
+}
+function isEngineSearchActive() {
+  return engineSearchActive;
 }
 
 // src/idb/index.ts
@@ -6621,9 +6646,9 @@ function renderAnalysisControls(extraButtons) {
     }
     startBatchWhenReady();
   };
-  const statusLine = batchAnalyzing && batchQueue.length > 0 ? h("div.pgn-import__status", `Analyzing\u2026 ${batchDone} of ${batchQueue.length} moves`) : null;
-  return h("div.pgn-import", [
-    h("div.pgn-import__row", [
+  const statusLine = batchAnalyzing && batchQueue.length > 0 ? h("div.analyse-review-controls__status", `Analyzing\u2026 ${batchDone} of ${batchQueue.length} moves`) : null;
+  return h("div.analyse-review-controls", [
+    h("div.analyse-review-controls__row", [
       h("button.btn-review", {
         class: { "btn-review--complete": analysisComplete },
         attrs: { disabled: !hasGame, title: reviewTitle },
@@ -8165,6 +8190,10 @@ async function importLichess(callbacks) {
 }
 
 // src/games/view.ts
+var NEW_IMPORT_WINDOW_MS = 60 * 60 * 1e3;
+function isRecentlyImported(game) {
+  return game.importedAt !== void 0 && Date.now() - game.importedAt < NEW_IMPORT_WINDOW_MS;
+}
 function getUserColor(game) {
   const knownNames = [game.importedUsername, chesscom.username, lichess.username].map((n) => n?.trim().toLowerCase()).filter((n) => !!n);
   if (knownNames.length === 0) return null;
@@ -8199,6 +8228,7 @@ function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
     rapid: "\uE002"
   };
   const tcIcon = game.timeClass ? tcIconMap[game.timeClass] ?? null : null;
+  const isNewImport = isRecentlyImported(game);
   const resultCls = result === "win" ? "grl__result--win" : result === "loss" ? "grl__result--loss" : result === "draw" ? "grl__result--draw" : "grl__result--unknown";
   const oppColor = userColor === "white" ? "black" : userColor === "black" ? "white" : null;
   const oppChip = oppColor ? h("span.color-chip.--" + oppColor) : null;
@@ -8209,7 +8239,8 @@ function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
     h("span.grl__opponent", [oppLabel, oppChip]),
     date ? h("span.grl__date", date) : null,
     tcIcon ? h("span.grl__tc", { attrs: { "data-icon": tcIcon, title: game.timeClass } }) : null,
-    isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
+    isNewImport || isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
+      isNewImport ? h("span.grl__badge.--new", { attrs: { title: "Newly imported" } }, "NEW") : null,
       isAnalyzed ? h("span.grl__badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
       hasMissedTactic ? h("span.grl__badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null
     ]) : null
@@ -8432,6 +8463,7 @@ function renderGamesView(deps) {
           const srcUrl = deps.gameSourceUrl(game);
           const isAnalyzed = deps.analyzedGameIds.has(game.id);
           const hasMissed = deps.missedTacticGameIds.has(game.id);
+          const isNewImport = isRecentlyImported(game);
           const accEntry = deps.analyzedGameAccuracy.get(game.id);
           const userColor = deps.getUserColor(game);
           const oppRating = userColor === "white" ? game.blackRating : userColor === "black" ? game.whiteRating : void 0;
@@ -8486,7 +8518,8 @@ function renderGamesView(deps) {
             h("td", renderResultIcon(r)),
             h("td.games-view__opponent", [
               opp,
-              userColor ? h("span.color-chip.--" + (userColor === "white" ? "black" : "white")) : null
+              userColor ? h("span.color-chip.--" + (userColor === "white" ? "black" : "white")) : null,
+              isNewImport ? h("span.games-view__new-import", { attrs: { title: "Newly imported" } }, "NEW") : null
             ]),
             ratingCell,
             h("td.games-view__date", date),
@@ -9287,9 +9320,26 @@ console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
 var PUBLIC_SOURCE_URL = "https://github.com/LeviathanDuck/PatzerPatzer";
 var PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
+function dedupeImportedGames(existing, incoming) {
+  const seenPgns = new Set(existing.map((game) => game.pgn));
+  const deduped = [];
+  const importedAt = Date.now();
+  for (const game of incoming) {
+    if (seenPgns.has(game.pgn)) continue;
+    seenPgns.add(game.pgn);
+    deduped.push({ ...game, importedAt });
+  }
+  return deduped;
+}
 var importCallbacks = {
-  addGames(games, first2) {
-    importedGames = [...importedGames, ...games];
+  addGames(games, _first2) {
+    const dedupedGames = dedupeImportedGames(importedGames, games);
+    const first2 = dedupedGames[0];
+    if (!first2) {
+      redraw();
+      return;
+    }
+    importedGames = [...importedGames, ...dedupedGames];
     selectedGameId = first2.id;
     void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
     loadGame(first2.pgn);

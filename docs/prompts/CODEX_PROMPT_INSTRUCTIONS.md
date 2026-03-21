@@ -125,6 +125,22 @@ format.
 If the repo's prompt-tracking workflow is in use, Codex should update the relevant queue/log/history
 files when creating the prompt.
 
+That includes:
+
+- adding the full prompt to `CLAUDE_PROMPT_QUEUE.md`
+- adding a matching item to the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md`
+- adding the detailed unchecked prompt entry to `CLAUDE_PROMPT_LOG.md`
+- adding the matching unchecked checklist item to the top prompt index in `CLAUDE_PROMPT_LOG.md`
+
+Each queue-index item should include:
+
+- first line: `- CCP-###: Short Task Title`
+- second line: an indented bullet with a brief one-line description of the prompt's target
+- one blank line between queue-index items for readability
+
+When review removes a prompt from the queue, the matching item must also be removed from the top
+queue index so the index only reflects still-pending prompts.
+
 If the generated prompt is for Codex rather than Claude Code, Codex may still reuse the same prompt
 ID/logging structure for consistency, but should label the execution target clearly so the prompt's
 intended tool is unambiguous.

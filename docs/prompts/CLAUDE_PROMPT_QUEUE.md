@@ -7,6 +7,15 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 - Add full copy-paste-ready prompts here when they are created.
 - Do not add review status here.
 - Do not add queue status text by default. A queued prompt is simply present in this file.
+- Keep a top-of-file queue index that lists only the prompts currently still queued.
+- In that queue index, format each item as:
+  - first line: `- CCP-###: Short Task Title`
+  - second line: an indented bullet with a brief target description
+- Leave one blank line between queue-index items for readability.
+- Keep the queue index concise and scan-friendly.
+- Keep the queue index in sync with the prompt blocks below:
+  - add a new index item when a prompt is created
+  - remove the matching index item when the prompt is removed from this file during review
 - Add a scan-friendly Markdown heading immediately before each prompt block:
   - format: `## prompt-id - short task title`
   - keep this heading outside the fenced prompt block
@@ -24,6 +33,68 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 - Once a queued prompt has actually been used in Claude Code and then reviewed:
   - remove it from this file
   - add or update its reviewed entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+
+## Queue Index
+
+- CCP-030: First Safe Typecheck Error Slice
+  - Clear the first cohesive `npm run typecheck` error cluster in analysis view files without tackling the full backlog.
+
+- CCP-031: Fix Board Wheel Navigation Selector
+  - Fix the board hit-target seam so wheel navigation actually triggers over the real analysis board.
+
+- CCP-033: Fix Imported-Game Orientation Propagation
+  - Make imported games consistently orient the board to the importing user when that side is known.
+
+- CCP-006-F1: Fix Analysis-Game Empty-Library Loading State
+  - Stop `analysis-game` from showing fake permanent loading when the library is actually empty.
+
+- CCP-034: Improve Eval Graph Hover And Scrub
+  - Make the eval graph more useful with a first hover/scrub interaction improvement.
+
+- CCP-035: Fix Engine Arrowhead Rendering
+  - Restore visible arrowheads on live engine arrows without changing arrow meaning.
+
+- CCP-036: Implement Honest Minimum Puzzles Route
+  - Replace the placeholder puzzles route with the smallest real workflow supported by current puzzle data.
+
+- CCP-037: Fetch Multi-Month Chess.com Archives
+  - Import Chess.com games across the necessary archive months instead of only the newest month.
+
+- CCP-038: Replace Header Game Review Stub
+  - Replace or honestly disable the header `Game Review` stub instead of leaving a fake action.
+
+- CCP-051: KO Overlay On Losing King For M1
+  - Add a first KO overlay on the losing king for immediate mate positions if the needed asset already exists.
+
+- CCP-052: Hide Arrows During Game Review
+  - Suppress board arrows during active batch review so review runs without arrow clutter.
+
+- CCP-053: Toggle Review Dots To User Perspective Only
+  - Add a setting to filter review dots to one player’s perspective instead of always both sides.
+
+- CCP-055: Mate Display KO Polish
+  - Change mate presentation to `#KO!` in the move list and engine display, with purple engine-display styling.
+
+- CCP-058: Fix White KO Eval-Graph Direction
+  - Fix terminal White KO graph points so they stay at the top instead of flipping to the bottom.
+
+- CCP-059: Add Mobile Analysis Stack Layout
+  - Add the first portrait-mobile single-column analysis layout at narrow widths.
+
+- CCP-060: Hide Mobile Analysis Chrome
+  - Hide low-value desktop chrome on mobile to preserve board space.
+
+- CCP-061: Make Mobile Controls Board-Adjacent
+  - Keep mobile analysis controls directly under the board and comfortably tappable.
+
+- CCP-062: Make Mobile Tools Stack Readable
+  - Restack tools, move list, ceval, and summary so they remain readable on phones.
+
+- CCP-063: Make Underboard Secondary On Mobile
+  - Push graph and game-list content into a clearly secondary mobile underboard area.
+
+- CCP-064: Add One Minimal Mobile Touch Improvement
+  - Add one low-risk touch usability improvement without introducing complex gestures.
 
 ## Queue
 
@@ -201,94 +272,6 @@ In your final report, repeat:
 - `Task ID: CCP-031`
 ```
 
-## CCP-032 - Replace Stop Boolean With Search Tokens
-
-```
-Prompt ID: CCP-032
-Task ID: CCP-032
-Source Document: docs/KNOWN_ISSUES.md
-Source Step: [HIGH] In-flight engine stop handling still relies on a boolean flag
-
-Task: Replace the remaining boolean stop-bookkeeping seam with a more reliable per-search token/counter so stale interrupted-search `bestmove` output is handled correctly.
-
-Before editing, inspect the current codebase first and confirm the real implementation points instead of guessing. Start with:
-- `src/engine/ctrl.ts`
-- `src/main.ts`
-- `src/board/index.ts`
-- `src/ceval/protocol.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/KNOWN_ISSUES.md`
-
-Relevant Patzer Pro files already identified from current repo inspection:
-- `src/engine/ctrl.ts`
-- `src/ceval/protocol.ts`
-- `src/main.ts`
-
-Because this task affects analysis-board engine lifecycle behavior, inspect relevant Lichess source before deciding implementation details. Start with:
-- `~/Development/lichess-source/lila/ui/lib/src/ceval/ctrl.ts`
-- `~/Development/lichess-source/lila/ui/lib/src/ceval/protocol.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
-
-Current repo-grounded diagnosis:
-- the known-issues file still tracks in-flight stop handling as a distinct gap
-- `src/engine/ctrl.ts` still carries stop-state bookkeeping that can be too coarse during rapid stop/start sequences
-- the remaining risk is stale `bestmove` output from an interrupted search being mistaken for the current search result
-- this task should stay focused on stop bookkeeping only
-
-Implement only the smallest safe step:
-- replace the remaining coarse boolean-style stop bookkeeping with a per-search token, counter, or equivalently precise seam
-- keep the change local to engine stop/start correctness
-- preserve the already-fixed navigation and restore reliability behavior
-- do not redesign the entire engine lifecycle
-- do not bundle unrelated UI or persistence work
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- explicitly verify:
-  - rapid stop/start sequences do not let stale `bestmove` output corrupt the current node
-  - pending evaluation for the current node still resumes correctly
-  - no regression is introduced to live current-node updates
-- report whether behavior changed intentionally
-- report whether there are console/runtime errors
-- report remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-
-In your final report, repeat:
-- `Prompt ID: CCP-032`
-- `Task ID: CCP-032`
-```
 
 ## CCP-033 - Fix Imported-Game Orientation Propagation
 
@@ -897,203 +880,6 @@ In your final report, repeat:
 - `Task ID: CCP-038`
 ```
 
-## CCP-040 - Eval Graph Display Refresh
-
-```
-Prompt ID: CCP-040
-Task ID: CCP-040
-Source Document: docs/WISHLIST.md
-Source Step: Changes to how the eval graph is displayed and formatted
-
-Task: Take the first small safe wishlist step on eval-graph presentation by improving one clear display/formatting seam without redesigning the whole graph.
-
-Before editing, inspect:
-- `docs/WISHLIST.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/analyse/evalView.ts`
-- `src/styles/main.scss`
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Because this touches analysis-board graph UX, inspect relevant Lichess chart/analysis graph source first.
-
-Implement only the smallest safe formatting/display improvement you can justify from the current code and Lichess comparison.
-Do not bundle hover/scrub fixes already tracked elsewhere.
-Do not redesign the review pipeline.
-
-Validation:
-- run `npm run build`
-- verify the graph still renders for analyzed games
-- verify empty/partial states still behave honestly
-
-Also include a short manual test checklist.
-In your final report, repeat:
-- `Prompt ID: CCP-040`
-- `Task ID: CCP-040`
-```
-
-## CCP-042 - Move Review Button Beside Navigation Controls
-
-```
-Prompt ID: CCP-042
-Task ID: CCP-042
-Source Document: docs/WISHLIST.md
-Source Step: Move the analysis-page Review / Re-analyze button beside the move-navigation buttons
-
-Task: Move the analysis-page `Review` / `Re-analyze` control into the navigation-controls row in the smallest extraction-friendly way.
-
-Before editing, inspect:
-- `docs/WISHLIST.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/main.ts`
-- `src/analyse/pgnExport.ts`
-- `src/styles/main.scss`
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Inspect relevant Lichess analysis-board control placement before deciding implementation details.
-
-Implement only the smallest safe layout ownership step:
-- relocate the review button near `Prev` / `Flip` / `Next`
-- avoid adding more control-layout glue to `src/main.ts`
-- do not redesign other controls
-
-Validation:
-- run `npm run build`
-- verify Review/Re-analyze still works from the new location
-- verify the old underboard location is gone
-
-Also include a short manual test checklist.
-In your final report, repeat:
-- `Prompt ID: CCP-042`
-- `Task ID: CCP-042`
-```
-
-## CCP-044 - Add Eval Labels To Engine Arrows
-
-```
-Prompt ID: CCP-044
-Task ID: CCP-044
-Source Document: docs/WISHLIST.md
-Source Step: Add tag or label next to engine move arrows showing what their eval is
-
-Task: Add the first safe eval label for engine arrows so the current best-move arrow communicates its score more clearly without cluttering the board.
-
-Before editing, inspect:
-- `docs/WISHLIST.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/engine/ctrl.ts`
-- `src/ceval/view.ts`
-- `src/board/index.ts`
-- `src/styles/main.scss`
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Inspect relevant Lichess engine-arrow / auto-shape source first.
-
-Implement only the smallest safe step:
-- start with the primary engine arrow only unless the current board rendering safely supports more
-- keep the label tied to real current eval state
-- do not redesign all arrow rendering
-
-Validation:
-- run `npm run build`
-- verify the label follows the current engine arrow correctly
-- verify the board does not become unreadable
-
-Also include a short manual test checklist.
-In your final report, repeat:
-- `Prompt ID: CCP-044`
-- `Task ID: CCP-044`
-```
-
-## CCP-045 - Prevent Duplicate Reimports
-
-```
-Prompt ID: CCP-045
-Task ID: CCP-045
-Source Document: docs/WISHLIST.md
-Source Step: we shouldn't re import the same games that have already been imported
-
-Task: Prevent obviously duplicate game reimports in the smallest safe way, without redesigning the whole import subsystem.
-
-Before editing, inspect:
-- `docs/WISHLIST.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/main.ts`
-- `src/import/chesscom.ts`
-- `src/import/lichess.ts`
-- `src/import/pgn.ts`
-- `src/import/types.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Implement only the smallest safe dedupe step:
-- define a concrete duplicate identity rule from current imported-game data
-- block re-adding exact duplicates
-- preserve normal import flow otherwise
-- do not bundle incremental-import or “new import” badging yet
-
-Validation:
-- run `npm run build`
-- verify exact duplicate imports are skipped
-- verify genuinely new games still import
-
-Also include a short manual test checklist.
-In your final report, repeat:
-- `Prompt ID: CCP-045`
-- `Task ID: CCP-045`
-```
-
-## CCP-046 - Import Only New Games Since Last Import
-
-```
-Prompt ID: CCP-046
-Task ID: CCP-046
-Source Document: docs/WISHLIST.md
-Source Step: Import only new games since last import. Freshly imported games from last batch should get a new import identifier
-
-Task: Take the first safe step toward incremental imports by importing only new games since the last batch for the same source/user and marking newly added games with a temporary “new import” indicator.
-
-Before editing, inspect:
-- `docs/WISHLIST.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/main.ts`
-- `src/header/index.ts`
-- `src/games/view.ts`
-- `src/import/chesscom.ts`
-- `src/import/lichess.ts`
-- `src/import/types.ts`
-- `src/idb/index.ts`
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Implement only the smallest safe step:
-- build on top of existing duplicate-prevention logic if present
-- keep “new import” marking local and time-bounded
-- avoid redesigning the full import history system
-
-Validation:
-- run `npm run build`
-- verify repeat imports add only new games
-- verify newly added games are visibly marked for a limited time
-
-Also include a short manual test checklist.
-In your final report, repeat:
-- `Prompt ID: CCP-046`
-- `Task ID: CCP-046`
-```
-
 ## CCP-051 - KO Overlay On Losing King For M1
 
 ```
@@ -1287,122 +1073,389 @@ Success criteria:
 - no unrelated engine/review behavior is changed
 ```
 
-## CCP-056 - Add Main-Menu Toggle For Board Wheel Navigation
+
+## CCP-058 - Fix White KO Eval-Graph Direction
 
 ```
-Prompt ID: CCP-056
-Task ID: CCP-056
-Execution Target: Codex
+Prompt ID: CCP-058
+Task ID: CCP-058
 Source Document: inferred from user request in chat
-Source Step: make board-wheel move navigation a main-menu setting that defaults to off
+Source Step: eval graph bug where White KO drops to the bottom instead of staying at the top
 
 You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
 
-This prompt follows the repo's Claude prompt-tracking format, but it is intended for Codex to execute.
+Task: Fix the eval-graph mate bug where a terminal KO/checkmate for White plots at the bottom of the graph instead of staying at the top.
 
-Task: change board-wheel move navigation so it is controlled by a toggle in the main menu, with the default state set to off.
-
-Current repo-grounded implementation points already identified:
-- `src/main.ts` contains the global `wheel` listener that currently scrolls through moves while the mouse is over the board
-- `src/header/index.ts` owns the global settings menu
-- `src/board/cosmetics.ts` already contains board-related persisted settings patterns using localStorage
-
-Required workflow:
+Required repo workflow:
 1. Inspect the current Patzer Pro codebase first.
-2. Locate the exact implementation points before assuming file paths.
-3. Inspect relevant Lichess source before deciding implementation details.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
 4. Compare:
    - how Patzer Pro currently works
-   - how Lichess handles nearby settings ownership or board-behavior toggles
-   - where this request intentionally diverges
+   - how Lichess works
+   - where they differ
 5. Identify the smallest safe implementation step.
 6. Explain diagnosis before coding.
 7. Implement.
 8. Validate with build + task-specific checks.
 
-Relevant files to inspect first:
-- `AGENTS.md`
-- `CLAUDE.md`
-- `docs/ARCHITECTURE.md`
-- `docs/NEXT_STEPS.md`
-- `docs/KNOWN_ISSUES.md`
-- `src/main.ts`
-- `src/header/index.ts`
-- `src/board/cosmetics.ts`
-- `src/styles/main.scss`
+Important project constraints:
+- Lichess is the reference for analysis-board behavior and score normalization.
+- Do not add substantial new logic to `src/main.ts`.
+- Keep the implementation small and scoped to graph/win-chance correctness.
+- Do not bundle unrelated mate-display UI polish, review-label changes, or eval-bar work unless a tiny shared fix is strictly required.
 
-Relevant Lichess files/systems to inspect first:
-- `~/Development/lichess-source/lila/ui/dasher/src/board.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
-- any closely related Lichess setting/menu files you find necessary for board-behavior toggle ownership
+Relevant current code areas to inspect first:
+- `src/engine/winchances.ts` — `evalWinChances()` mate-to-win-chance conversion
+- `src/analyse/evalView.ts` — eval graph rendering and graph point Y mapping
+- any relevant Lichess win-chances/chart source, especially:
+  - `~/Development/lichess-source/lila/ui/lib/src/ceval/winningChances.ts`
+  - any relevant Lichess analysis/chart source you find necessary
 
-Current diagnosis to confirm:
-- board-wheel move navigation is currently always on when the mouse is over the board
-- there is no user-facing setting for this behavior
-- the most likely safe implementation is to add a persisted boolean setting near existing board/global settings ownership, then gate the existing wheel listener on that setting
-- because the menu lives in `src/header/index.ts`, the setting should be exposed there rather than as a one-off hidden flag in `src/main.ts`
+Current repo-grounded diagnosis to confirm:
+- `src/analyse/evalView.ts` plots graph points from `evalWinChances(cached)`
+- `src/engine/winchances.ts` currently converts `mate` scores to a cp-equivalent by sign
+- terminal mate (`mate === 0`) is a special case: the position is already checkmated, so the winner is determined by the side to move in the FEN, not by the sign of `mate`
+- `evalPct()` in `src/analyse/evalView.ts` already handles `mate === 0` specially for the eval bar using FEN turn
+- the graph path appears not to have an equivalent terminal-mate special case
+- likely result: White-delivered KO can be normalized as a losing value and plotted at the bottom
 
-Implement only the smallest safe step:
-- add a persisted on/off setting for board-wheel move navigation
-- default it to off for users with no stored preference
-- expose it in the existing main/global menu
-- gate the current wheel listener on that setting
-- keep the change scoped to settings ownership + wheel behavior only
+What I want from you:
+- first provide the required pre-implementation output:
+  1. what part of the current codebase is relevant
+  2. what Lichess files/systems are relevant
+  3. the exact diagnosis
+  4. the exact small step being implemented
+  5. why that step is safe and correctly scoped
+- then implement the change
+- then validate it
 
-Do not:
-- redesign the global menu
-- move unrelated logic out of `src/main.ts` unless the smallest safe fix requires a tiny extraction
-- bundle other board settings changes
-- change unrelated navigation behavior
+Implementation goal:
+- make terminal KO/checkmate graph points resolve to the correct winner side
+- specifically, when White has delivered mate, the graph should remain at the top
+- preserve existing non-terminal mate and centipawn graph behavior
 
-Before coding, provide:
-- prompt id
-- task id
-- execution target
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can
+Validation requirements:
+- run the build
+- run any task-specific checks you can
 - explicitly report:
-  - whether board-wheel move navigation is now off by default
-  - whether turning the setting on enables wheel-based move navigation over the board
-  - whether turning the setting off disables that behavior again without affecting normal page scroll elsewhere
-  - whether the setting persists across reload
+  - build result
+  - feature-specific smoke tests
   - whether behavior changed intentionally
   - whether there are console/runtime errors
   - any remaining risks or limitations
 
-Also include a short manual test checklist with concrete user actions and expected results. Keep it tightly scoped to this change.
+Success criteria:
+- terminal mate positions no longer flip to the wrong side of the eval graph
+- a White KO stays at the top of the graph
+- a Black KO stays at the bottom of the graph
+- non-terminal mate values still graph correctly
+- non-mate graph behavior remains unchanged
+```
 
-Output shape:
-- prompt id
-- task id
-- execution target
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
+## CCP-059 - Add Mobile Analysis Stack Layout
+
+```
+Prompt ID: CCP-059
+Task ID: CCP-059
+Execution Target: Codex
+Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
+Source Step: Task 1 — Add a real mobile analysis layout mode
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Task: Add the first safe portrait-mobile analysis layout mode by changing the current desktop-shaped `.analyse` layout into a single-column stack at narrow widths.
+
+Required repo workflow:
+1. Inspect the current Patzer Pro codebase first.
+2. Locate the actual implementation points before assuming file paths.
+3. Inspect the relevant Lichess source before deciding how to implement.
+4. Compare current Patzer behavior, relevant Lichess behavior, and the actual gap.
+5. Identify the smallest safe implementation step.
+6. Explain diagnosis before coding.
+7. Implement.
+8. Validate with build + task-specific checks.
+
+Relevant Patzer Pro files to inspect first:
+- `src/styles/main.scss`
+- `src/main.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+
+Relevant Lichess sources to inspect first:
+- `~/Development/lichess-source/lila/ui/analyse/css/_layout.scss`
+- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
+- `~/Development/lichess-source/lila/ui/lib/src/device.ts`
+- `docs/archive/LICHESS_ANALYSIS_BOARD_MOBILE_AUDIT_2026-03-21.md`
+
+Implement only the smallest safe step:
+- add a portrait-mobile layout block at a narrow breakpoint, starting from `max-width: 800px`
+- stack analysis areas in this order:
+  1. board
+  2. controls
+  3. tools
+  4. underboard
+- keep the existing desktop layout intact
+- do not bundle chrome-hiding, button resizing, or underboard polish yet unless a tiny CSS fix is strictly required for the layout to function
+
+Validation requirements:
+- run `npm run build`
+- verify on a narrow viewport that the analysis page becomes a single-column stack
+- verify there is no horizontal page overflow from the base layout change alone
+- verify desktop layout still renders as before
+
+Also include a short manual test checklist with concrete user actions and expected results.
 
 In your final report, repeat:
-- `Prompt ID: CCP-056`
-- `Task ID: CCP-056`
+- `Prompt ID: CCP-059`
+- `Task ID: CCP-059`
+- `Execution Target: Codex`
+```
+
+## CCP-060 - Hide Mobile Analysis Chrome
+
+```
+Prompt ID: CCP-060
+Task ID: CCP-060
+Execution Target: Codex
+Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
+Source Step: Task 2 — Hide low-value chrome on mobile
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Task: Hide the lowest-value desktop chrome on mobile so the board has usable space, without changing analysis behavior.
+
+Inspect first:
+- `src/styles/main.scss`
+- `src/board/index.ts`
+- `src/main.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+
+Inspect relevant Lichess mobile layout/chrome behavior first:
+- `~/Development/lichess-source/lila/ui/analyse/css/_layout.scss`
+- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
+- `~/Development/lichess-source/lila/ui/analyse/src/view/components.ts`
+
+Implement only the smallest safe step:
+- on the new mobile analysis layout:
+  - hide the eval gauge
+  - hide player strips
+  - hide or disable the board resize handle
+  - reduce obviously wasteful board-adjacent spacing
+- do this in CSS first where possible
+- do not redesign controls or tools ordering yet
+- do not change review or engine state behavior
+
+Validation requirements:
+- run `npm run build`
+- verify the board gets materially more usable space on narrow screens
+- verify the hidden chrome still appears normally on desktop
+- verify no board interaction regression is introduced
+
+Also include a short manual test checklist.
+
+In your final report, repeat:
+- `Prompt ID: CCP-060`
+- `Task ID: CCP-060`
+- `Execution Target: Codex`
+```
+
+## CCP-061 - Make Mobile Controls Board-Adjacent
+
+```
+Prompt ID: CCP-061
+Task ID: CCP-061
+Execution Target: Codex
+Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
+Source Step: Task 3 — Move board navigation and Review into a mobile-friendly control block
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Task: Make the existing analysis controls mobile-friendly by keeping them directly under the board and making the current actions reachable/tappable on a phone-sized viewport.
+
+Inspect first:
+- `src/main.ts`
+- `src/analyse/pgnExport.ts`
+- `src/styles/main.scss`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+
+Inspect relevant Lichess controls/mobile references first:
+- `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/view/components.ts`
+- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
+
+Implement only the smallest safe step:
+- keep the same current actions:
+  - `Prev`
+  - `Flip`
+  - `Next`
+  - `Review`
+  - `Mistakes`
+- ensure mobile layout places them directly below the board
+- make touch targets larger and allow wrapping into two rows if needed
+- preserve current button semantics and data flow
+- avoid broader controller or ownership changes unless a tiny render adjustment is clearly required
+
+Validation requirements:
+- run `npm run build`
+- verify the controls stay directly under the board on narrow screens
+- verify `Review` remains reachable and usable during review states
+- verify desktop controls are not broken
+
+Also include a short manual test checklist.
+
+In your final report, repeat:
+- `Prompt ID: CCP-061`
+- `Task ID: CCP-061`
+- `Execution Target: Codex`
+```
+
+## CCP-062 - Make Mobile Tools Stack Readable
+
+```
+Prompt ID: CCP-062
+Task ID: CCP-062
+Execution Target: Codex
+Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
+Source Step: Task 4 — Make the tools column readable as a mobile stack
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Task: Relax the desktop tools-column expectations on mobile so ceval, PVs, move list, retro strip, and summary stack readably without collapsing the board area.
+
+Inspect first:
+- `src/styles/main.scss`
+- `src/main.ts`
+- `src/ceval/view.ts`
+- `src/analyse/moveList.ts`
+- `src/analyse/retroView.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+
+Inspect relevant Lichess mobile tools references first:
+- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
+- `~/Development/lichess-source/lila/ui/analyse/src/view/components.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+
+Implement only the smallest safe step:
+- for mobile only:
+  - remove any expectation that tools must match board height
+  - allow tools to size naturally as a vertical stack
+  - keep ceval above PVs
+  - keep the move list scrollable with a bounded mobile height
+  - keep retro strip below move list
+  - keep summary/puzzle content below retro strip
+- prefer CSS/layout changes over logic changes
+- do not redesign the desktop tools column
+
+Validation requirements:
+- run `npm run build`
+- verify ceval, PVs, move list, and retro/summary content stack readably on a narrow viewport
+- verify the move list remains scrollable
+- verify the board is not squeezed off-screen by the tools stack
+
+Also include a short manual test checklist.
+
+In your final report, repeat:
+- `Prompt ID: CCP-062`
+- `Task ID: CCP-062`
+- `Execution Target: Codex`
+```
+
+## CCP-063 - Make Underboard Secondary On Mobile
+
+```
+Prompt ID: CCP-063
+Task ID: CCP-063
+Execution Target: Codex
+Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
+Source Step: Task 5 — Make underboard truly secondary on mobile
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Task: Tidy the mobile underboard area so the graph and game list remain reachable below tools without causing overflow or wasting space.
+
+Inspect first:
+- `src/styles/main.scss`
+- `src/main.ts`
+- `src/analyse/evalView.ts`
+- `src/games/view.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+
+Inspect relevant Lichess mobile/underboard references first if needed, but keep this task focused on current Patzer layout discipline.
+
+Implement only the smallest safe step:
+- on mobile:
+  - keep underboard below the tools stack
+  - reduce padding and gaps
+  - allow graph and game list to stack cleanly
+  - ensure horizontal overflow is impossible
+- do not redesign the underboard feature set
+- do not bundle graph interaction changes
+
+Validation requirements:
+- run `npm run build`
+- verify the graph and game list are still reachable after scrolling on narrow screens
+- verify no horizontal overflow appears from underboard content
+- verify desktop underboard layout is not broken
+
+Also include a short manual test checklist.
+
+In your final report, repeat:
+- `Prompt ID: CCP-063`
+- `Task ID: CCP-063`
+- `Execution Target: Codex`
+```
+
+## CCP-064 - Add One Minimal Mobile Touch Improvement
+
+```
+Prompt ID: CCP-064
+Task ID: CCP-064
+Execution Target: Codex
+Source Document: docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md
+Source Step: Task 6 — Add one minimal touch usability improvement
+
+You are working in the Patzer Pro repo at `/Users/leftcoast/Development/PatzerPatzer`.
+
+Task: Add one minimal touch usability improvement for the mobile analysis board, using the sprint’s recommended low-risk option rather than introducing gesture complexity.
+
+Inspect first:
+- `src/styles/main.scss`
+- `src/main.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+
+Inspect relevant Lichess mobile controls/touch references first:
+- `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+- `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
+
+Implement only the smallest safe step:
+- choose Option A from the sprint:
+  - larger mobile tap targets
+  - touch-action tuning on the controls block if needed
+- do not implement swipe scrubbing in this sprint
+- do not add gesture-state logic unless inspection shows a tiny listener is truly required
+
+Validation requirements:
+- run `npm run build`
+- verify buttons feel easier to hit on a narrow touch-sized viewport
+- verify normal click/tap behavior remains unchanged
+- verify no accidental gesture/navigation side effects were introduced
+
+Also include a short manual test checklist.
+
+In your final report, repeat:
+- `Prompt ID: CCP-064`
+- `Task ID: CCP-064`
 - `Execution Target: Codex`
 ```

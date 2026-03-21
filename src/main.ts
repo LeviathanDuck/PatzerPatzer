@@ -80,11 +80,29 @@ const patch = init([classModule, attributesModule, eventListenersModule]);
 const PUBLIC_SOURCE_URL = 'https://github.com/LeviathanDuck/PatzerPatzer';
 const PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
 
+function dedupeImportedGames(existing: ImportedGame[], incoming: ImportedGame[]): ImportedGame[] {
+  const seenPgns = new Set(existing.map(game => game.pgn));
+  const deduped: ImportedGame[] = [];
+  const importedAt = Date.now();
+  for (const game of incoming) {
+    if (seenPgns.has(game.pgn)) continue;
+    seenPgns.add(game.pgn);
+    deduped.push({ ...game, importedAt });
+  }
+  return deduped;
+}
+
 // Callbacks injected into import adapters so they can mutate app state
 // without creating a circular import on main.ts.
 const importCallbacks = {
-  addGames(games: ImportedGame[], first: ImportedGame): void {
-    importedGames = [...importedGames, ...games];
+  addGames(games: ImportedGame[], _first: ImportedGame): void {
+    const dedupedGames = dedupeImportedGames(importedGames, games);
+    const first = dedupedGames[0];
+    if (!first) {
+      redraw();
+      return;
+    }
+    importedGames = [...importedGames, ...dedupedGames];
     selectedGameId = first.id;
     void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
     loadGame(first.pgn); // calls redraw

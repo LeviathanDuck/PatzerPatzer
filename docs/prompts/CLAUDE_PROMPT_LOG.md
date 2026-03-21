@@ -110,15 +110,15 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-036 - Implement Honest Minimum Puzzles Route
 - [x] CCP-037 - Fetch Multi-Month Chess.com Archives
 - [x] CCP-038 - Replace Header Game Review Stub
-- [ ] CCP-040 - Eval Graph Display Refresh
+- [x] CCP-040 - Eval Graph Display Refresh
 - [x] CCP-041 - Review Annotation Color Parity
-- [ ] CCP-042 - Move Review Button Beside Navigation Controls
+- [x] CCP-042 - Move Review Button Beside Navigation Controls
 - [x] CCP-043 - Replace Player-Strip Result Markers
-- [ ] CCP-044 - Add Eval Labels To Engine Arrows
-- [ ] CCP-045 - Prevent Duplicate Reimports
-- [ ] CCP-046 - Import Only New Games Since Last Import
+- [x] CCP-044 - Add Eval Labels To Engine Arrows
+- [x] CCP-045 - Prevent Duplicate Reimports
+- [x] CCP-046 - Import Only New Games Since Last Import
 - [x] CCP-047 - Header Platform Toggle UX
-- [ ] CCP-056 - Add Main-Menu Toggle For Board Wheel Navigation
+- [x] CCP-056 - Add Main-Menu Toggle For Board Wheel Navigation
 - [x] CCP-057 - Fix Live Engine Stall During Move Navigation
 - [x] CCP-048 - Highlight Massive Engine Improvements
 - [x] CCP-049 - Show KO Mate Notation
@@ -127,6 +127,13 @@ It should stay in sync with the detailed entry below.
 - [ ] CCP-052 - Hide Arrows During Game Review
 - [ ] CCP-053 - Toggle Review Dots To User Perspective Only
 - [ ] CCP-055 - Mate Display KO Polish
+- [ ] CCP-058 - Fix White KO Eval-Graph Direction
+- [ ] CCP-059 - Add Mobile Analysis Stack Layout
+- [ ] CCP-060 - Hide Mobile Analysis Chrome
+- [ ] CCP-061 - Make Mobile Controls Board-Adjacent
+- [ ] CCP-062 - Make Mobile Tools Stack Readable
+- [ ] CCP-063 - Make Underboard Secondary On Mobile
+- [ ] CCP-064 - Add One Minimal Mobile Touch Improvement
 
 ## Log
 
@@ -794,7 +801,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-042 - Move Review Button Beside Navigation Controls
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-042`
   - Task ID: `CCP-042`
   - Parent prompt ID: none
@@ -802,7 +809,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Move the analysis-page Review / Re-analyze button beside the move-navigation buttons`
   - Task: move the analysis-page Review/Re-analyze control beside Prev/Flip/Next in the smallest safe way
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
@@ -824,7 +831,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-044 - Add Eval Labels To Engine Arrows
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-044`
   - Task ID: `CCP-044`
   - Parent prompt ID: none
@@ -832,14 +839,14 @@ It should stay in sync with the detailed entry below.
   - Source step: `Add tag or label next to engine move arrows showing what their eval is`
   - Task: add the first safe eval label beside the primary engine arrow
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-045 - Prevent Duplicate Reimports
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-045`
   - Task ID: `CCP-045`
   - Parent prompt ID: none
@@ -847,14 +854,14 @@ It should stay in sync with the detailed entry below.
   - Source step: `we shouldn't re import the same games that have already been imported`
   - Task: prevent obviously duplicate game reimports in the smallest safe way
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-046 - Import Only New Games Since Last Import
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-046`
   - Task ID: `CCP-046`
   - Parent prompt ID: none
@@ -862,7 +869,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Import only new games since last import`
   - Task: take the first safe step toward incremental imports and temporary new-import badging
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
@@ -989,7 +996,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-056 - Add Main-Menu Toggle For Board Wheel Navigation
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-056`
   - Task ID: `CCP-056`
   - Parent prompt ID: none
@@ -997,7 +1004,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `make board-wheel move navigation a main-menu setting that defaults to off`
   - Task: add a persisted main-menu toggle for board-wheel move navigation and default it to off
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -1014,6 +1021,117 @@ It should stay in sync with the detailed entry below.
   - Task: diagnose and fix the live-engine navigation stall so PV lines and arrows keep matching the current position during move-by-move review
   - Claude used: no
   - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-058 - Fix White KO Eval-Graph Direction
+
+```
+- [ ] Reviewed
+  - ID: `CCP-058`
+  - Task ID: `CCP-058`
+  - Parent prompt ID: none
+  - Source document: inferred from user request in chat
+  - Source step: `eval graph bug where White KO drops to the bottom instead of staying at the top`
+  - Task: fix the eval-graph mate bug where a terminal KO/checkmate for White plots at the bottom instead of staying at the top
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-059 - Add Mobile Analysis Stack Layout
+
+```
+- [ ] Reviewed
+  - ID: `CCP-059`
+  - Task ID: `CCP-059`
+  - Parent prompt ID: none
+  - Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+  - Source step: `Task 1 — Add a real mobile analysis layout mode`
+  - Task: add the first safe portrait-mobile single-column analysis layout
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-060 - Hide Mobile Analysis Chrome
+
+```
+- [ ] Reviewed
+  - ID: `CCP-060`
+  - Task ID: `CCP-060`
+  - Parent prompt ID: none
+  - Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+  - Source step: `Task 2 — Hide low-value chrome on mobile`
+  - Task: hide eval gauge, player strips, resize handle, and wasteful chrome on the mobile analysis layout
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-061 - Make Mobile Controls Board-Adjacent
+
+```
+- [ ] Reviewed
+  - ID: `CCP-061`
+  - Task ID: `CCP-061`
+  - Parent prompt ID: none
+  - Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+  - Source step: `Task 3 — Move board navigation and Review into a mobile-friendly control block`
+  - Task: make the current analysis controls mobile-friendly and board-adjacent
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-062 - Make Mobile Tools Stack Readable
+
+```
+- [ ] Reviewed
+  - ID: `CCP-062`
+  - Task ID: `CCP-062`
+  - Parent prompt ID: none
+  - Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+  - Source step: `Task 4 — Make the tools column readable as a mobile stack`
+  - Task: relax the desktop tools-column assumptions so mobile ceval, PVs, move list, retro strip, and summary stack readably
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-063 - Make Underboard Secondary On Mobile
+
+```
+- [ ] Reviewed
+  - ID: `CCP-063`
+  - Task ID: `CCP-063`
+  - Parent prompt ID: none
+  - Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+  - Source step: `Task 5 — Make underboard truly secondary on mobile`
+  - Task: tidy mobile underboard spacing and overflow so graph and game list stay reachable below tools
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-064 - Add One Minimal Mobile Touch Improvement
+
+```
+- [ ] Reviewed
+  - ID: `CCP-064`
+  - Task ID: `CCP-064`
+  - Parent prompt ID: none
+  - Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+  - Source step: `Task 6 — Add one minimal touch usability improvement`
+  - Task: add one minimal touch usability improvement using the sprint’s low-risk larger-targets option
+  - Claude used: no
+  - Review outcome: pending
   - Review issues: none
   - Execution target: `Codex`
 ```
