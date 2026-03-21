@@ -1490,6 +1490,7 @@ var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
 var showArrowLabels = localStorage.getItem("patzer.showArrowLabels") === "true";
+var showReviewLabels = localStorage.getItem("patzer.showReviewLabels") !== "false";
 var pendingLines = [];
 var arrowDebounceTimer = null;
 var arrowSuppressUntil = 0;
@@ -1529,6 +1530,10 @@ function setShowPlayedArrow(v) {
 function setShowArrowLabels(v) {
   showArrowLabels = v;
   localStorage.setItem("patzer.showArrowLabels", String(v));
+}
+function setShowReviewLabels(v) {
+  showReviewLabels = v;
+  localStorage.setItem("patzer.showReviewLabels", String(v));
 }
 function incrementPendingStopCount() {
   pendingStopCount++;
@@ -1580,9 +1585,9 @@ function buildArrowShape(uci, brush, ev, modifiers) {
   const shape = {
     orig: uci.slice(0, 2),
     dest: uci.slice(2, 4),
-    brush,
-    modifiers
+    brush
   };
+  if (modifiers) shape.modifiers = modifiers;
   const labelSvg = buildArrowLabelSvg(ev);
   if (labelSvg) shape.customSvg = { html: labelSvg, center: "label" };
   return shape;
@@ -1591,8 +1596,7 @@ function buildArrowLabelSvg(ev) {
   if (!showArrowLabels || !ev) return null;
   if (ev.cp === void 0 && ev.mate === void 0) return null;
   const text = formatScore(ev);
-  const fill = ev.mate !== void 0 ? "#c987ff" : ev.cp !== void 0 && ev.cp > 0 ? "#8ae0a8" : ev.cp !== void 0 && ev.cp < 0 ? "#9ab8ff" : "#d0d0d0";
-  return `<text x="50" y="56" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="34" font-weight="700" fill="${fill}" stroke="#111" stroke-width="8" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+  return `<text x="50" y="55" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="22" font-weight="700" fill="#fff" stroke="rgba(0,0,0,0.92)" stroke-width="6" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
 }
 function escapeArrowLabelText(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -6475,6 +6479,18 @@ function renderEngineSettings() {
           }
         }
       })
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-review-labels" } }, "Review"),
+      h("input#ceval-review-labels", {
+        attrs: { type: "checkbox", checked: showReviewLabels },
+        on: {
+          change: (e) => {
+            setShowReviewLabels(e.target.checked);
+            _redraw4();
+          }
+        }
+      })
     ])
   ]);
 }
@@ -8645,7 +8661,7 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
   const parentCached = getEval(pathInit(path));
   const pgnGlyph = node.glyphs?.[0];
   const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-  const computedLabel = !playedBest && cached !== void 0 && shouldShowReviewAnnotation(userColor, node.ply, userOnly) ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
+  const computedLabel = showReviewLabels && !playedBest && cached !== void 0 && shouldShowReviewAnnotation(userColor, node.ply, userOnly) ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
   const computedSymbol = computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
   const symbol = pgnGlyph?.symbol ?? computedSymbol;
   const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
