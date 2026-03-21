@@ -6,6 +6,13 @@ Patzer Pro is a personal chess analysis and training web app built around a user
 ## Product Goal
 Help users import their games, analyze them, review mistakes, and generate targeted puzzles for deliberate practice.
 
+## Terminology
+
+`Game Review` in Patzer Pro means the Review-button flow where a selected game is analyzed by
+Stockfish, displayed in the analysis board, and optionally stored locally as reusable review data
+for future tools. This is Patzer Pro's term for the Lichess `Request Computer Analysis` /
+computer-analysis flow.
+
 ## Core Users
 - improving club players
 - players importing games from Chess.com and Lichess

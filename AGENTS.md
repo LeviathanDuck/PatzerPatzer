@@ -52,6 +52,17 @@ to revisit. Do not treat wishlist items as approved or sequenced work. Wishlist 
 checked against current architecture, current known issues, and active priorities before they are
 recommended or implemented.
 
+## Terminology
+
+In this repo, `Game Review` means the Review-button workflow on the analysis board:
+
+- Stockfish analyzes the selected game
+- the resulting review/analysis data is shown in the analysis board
+- that review data may also be stored locally for later use by related tools
+
+This is Patzer Pro's term for the Lichess `Request Computer Analysis` / computer-analysis flow.
+Do not interpret `Game Review` as generic commentary, PR review, or a separate non-engine feature.
+
 ## Mandatory workflow for non-trivial implementation tasks
 
 For every non-trivial task, always do this in order:
@@ -107,6 +118,34 @@ Rules:
 - prefer high-signal user-facing verification over generic test advice
 - if the change is docs-only, prompt-only, or tooling-only, explicitly say that no manual app test is needed
 - do not pad the review with speculative test ideas for unchanged areas
+
+## Claude prompt tracking
+
+When Codex is asked to create a prompt for Claude Code:
+
+- assign or reuse a stable prompt identifier in the form `CCP-###`
+- add an entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+- add the full prompt text to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
+- include the same prompt identifier near the top of the generated Claude prompt
+- include enough metadata to trace the prompt later:
+  - task id
+  - source document, if applicable
+  - source step, if applicable
+  - short task title
+
+When Codex is asked to review Claude Code work or to verify whether a prompt/task id was accomplished:
+
+- update `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` as part of the review workflow
+- update the matching entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
+- if the prompt id is known, mark the history entry heading so it clearly shows the prompt was used in Claude Code
+- record review state separately from completion state
+- if the prompt id must be inferred rather than confirmed, say so explicitly in both the review response and the log entry
+
+Prompt log expectations:
+
+- `CLAUDE_PROMPT_LOG.md` is the compact index of prompt ids, provenance, and review state
+- `CLAUDE_PROMPT_HISTORY.md` is the full archive of generated Claude prompts plus later status updates
+- treat prompt creation and prompt review as log-writing tasks, not optional follow-up work
 
 ## Lichess-first rule
 
