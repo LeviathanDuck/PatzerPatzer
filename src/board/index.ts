@@ -359,18 +359,15 @@ export function renderPlayerStrips(): [VNode, VNode] {
   const score  = getMaterialScore(diff);
   const clocks = getClocksAtPath();
 
-  const whiteResult = result === '1-0' ? '1' : result === '0-1' ? '0' : result === '1/2-1/2' ? '½' : null;
-  const blackResult = result === '0-1' ? '1' : result === '1-0' ? '0' : result === '1/2-1/2' ? '½' : null;
-
   const strip = (color: 'white' | 'black'): VNode => {
     const name     = color === 'white' ? whiteName : blackName;
     const rating   = color === 'white' ? whiteRating : blackRating;
-    const badge    = color === 'white' ? whiteResult : blackResult;
     const winner   = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
     const matScore = color === 'white' ? score : -score;
     const centis   = color === 'white' ? clocks.white : clocks.black;
     return h('div.analyse__player_strip', [
-      badge ? h('span.player-strip__result', { class: { 'player-strip__result--winner': winner } }, badge) : null,
+      // Winner star — replaces numeric 1/0/½ badges; losers and draws show no badge.
+      winner ? h('span.player-strip__result', '★') : null,
       h('span.player-strip__color-icon', { class: { 'player-strip__color-icon--white': color === 'white', 'player-strip__color-icon--black': color === 'black' } }),
       h('span.player-strip__name', rating !== undefined ? `${name} (${rating})` : name),
       renderMaterialPieces(diff, color, matScore > 0 ? matScore : 0),
