@@ -4,7 +4,12 @@
 // Patzer Pro deviations from Lichess RetroCtrl:
 // - Candidates are pre-built RetroCandidate[] (from buildRetroCandidates) rather
 //   than derived lazily from tree-node eval fields and comp children.
-// - No board-input wiring (onJump, onCeval, checkCeval) — deferred to a later task.
+// - Win/fail detection is handled by board/index.ts onUserMove() exact-bestMove
+//   comparison, not by onJump() tree-state inspection — so the 'eval' feedback state
+//   is never entered by current code paths.
+// - onCeval() has a real checkCeval implementation; it is gated on _feedback === 'eval'
+//   which is not yet triggered. Near-best acceptance (povDiff > -0.04) is the
+//   deferred step that will unlock it.
 // - No opening-explorer cancel logic — deferred until explorer integration.
 // - No hideComputerLine / showBadNode / preventGoingToNextMove — board coupling deferred.
 // - No redraw dependency — callers are responsible for triggering redraws.
@@ -35,12 +40,26 @@ export interface RetroCtrl {
   /** True when the user is expected to play a move ('find' or 'fail'). */
   isSolving(): boolean;
 
+  /**
+   * True when the user has manually revealed engine guidance for the current candidate.
+   * False by default; resets to false each time the session advances to the next candidate.
+   * Mirrors lichess-org/lila: retroCtrl.ts showBadNode / hideComputerLine visibility logic.
+   */
+  guidanceRevealed(): boolean;
+
+  /**
+   * Reveal engine guidance for the current candidate only.
+   * The flag resets automatically in jumpToNext() — no manual reset needed.
+   */
+  revealGuidance(): void;
+
   /** True if the given ply has already been solved or skipped this session. */
   isPlySolved(ply: number): boolean;
 
   /**
    * Called after every path change (navigate / keyboard / click).
-   * Handles offTrack detection; win/fail checking is deferred to board-input wiring.
+   * Handles offTrack detection and 'eval'-state navigation-away recovery.
+   * Win/fail checking is handled by board/index.ts onUserMove() for the exact-best MVP.
    * Mirrors lichess-org/lila: retroCtrl.ts onJump.
    * @param path — the new active tree path after the jump
    */
@@ -48,7 +67,10 @@ export interface RetroCtrl {
 
   /**
    * Called when a live ceval result arrives for the current node.
-   * Stub for now — wiring from engine/ctrl.ts is deferred.
+   * Implements the checkCeval readiness guard from Lichess.
+   * Only acts when feedback === 'eval' (entered when near-best acceptance is implemented).
+   * Until then this is correctly gated and dormant — the exact-best solve loop is
+   * not affected.
    * Mirrors lichess-org/lila: retroCtrl.ts onCeval / checkCeval.
    */
   onCeval(): void;
@@ -118,14 +140,16 @@ export interface RetroCtrl {
 /**
  * Create a retrospection session controller from a pre-built candidate list.
  *
- * @param candidates  - ordered list from buildRetroCandidates (mainline order)
- * @param userColor   - color filter used when building the list; stored for display
+ * @param candidates   - ordered list from buildRetroCandidates (mainline order)
+ * @param userColor    - color filter used when building the list; stored for display
+ * @param getNodeEval  - returns live ceval for the current node (used by onCeval readiness check)
  *
  * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts make()
  */
 export function makeRetroCtrl(
   candidates: RetroCandidate[],
   userColor: 'white' | 'black' | null = null,
+  getNodeEval: () => { cp?: number; mate?: number; depth?: number } | undefined = () => undefined,
 ): RetroCtrl {
   // Mirrors retroCtrl.ts: solvedPlies (tracks which plies have been resolved)
   let solvedPlies: number[] = [];
@@ -135,6 +159,11 @@ export function makeRetroCtrl(
 
   // Current feedback state. Mirrors retroCtrl.ts: feedback prop.
   let _feedback: RetroFeedback = 'find';
+
+  // Per-candidate guidance reveal flag.
+  // Hidden by default; revealed only when the user explicitly asks.
+  // Reset on every candidate transition (jumpToNext).
+  let _guidanceRevealed = false;
 
   const isPlySolved = (ply: number): boolean => solvedPlies.includes(ply);
 
@@ -151,6 +180,7 @@ export function makeRetroCtrl(
 
   function jumpToNext(): void {
     _feedback = 'find';
+    _guidanceRevealed = false;
     currentIdx = findNextIdx();
   }
 
@@ -180,6 +210,8 @@ export function makeRetroCtrl(
     setFeedback(f: RetroFeedback): void { _feedback = f; },
 
     isSolving(): boolean { return _feedback === 'find' || _feedback === 'fail'; },
+    guidanceRevealed(): boolean { return _guidanceRevealed; },
+    revealGuidance(): void { _guidanceRevealed = true; },
     isPlySolved,
 
     jumpToNext,
@@ -187,11 +219,18 @@ export function makeRetroCtrl(
     viewSolution,
 
     onJump(path: string): void {
-      // Mirrors lichess-org/lila: retroCtrl.ts onJump (structural seam — win/fail deferred).
+      // Mirrors lichess-org/lila: retroCtrl.ts onJump.
       const c = currentIdx >= 0 ? (candidates[currentIdx] ?? null) : null;
       if (!c) return;
       if (_feedback === 'win' || _feedback === 'view') {
         // Win/view state is set before navigate — do not overwrite with offTrack.
+        return;
+      }
+      if (_feedback === 'eval' && path !== c.path) {
+        // User navigated away while ceval was still judging the played move.
+        // Reset to 'find' so the exercise can be retried.
+        // Mirrors lichess-org/lila: retroCtrl.ts onJump `fb === 'eval' && fault.ply !== node.ply`.
+        _feedback = 'find';
         return;
       }
       if (_feedback === 'offTrack' && path === c.parentPath) {
@@ -203,10 +242,35 @@ export function makeRetroCtrl(
       }
     },
 
-    // Stub: called when a live ceval result arrives for the current node.
-    // Win/fail acceptance logic and engine/ctrl.ts wiring are deferred.
-    // Mirrors lichess-org/lila: retroCtrl.ts onCeval / checkCeval.
-    onCeval(): void { /* deferred */ },
+    onCeval(): void {
+      // Mirrors lichess-org/lila: retroCtrl.ts checkCeval (the real implementation).
+      //
+      // This is not a stub — the guard structure and readiness check are complete.
+      // It is currently dormant because _feedback === 'eval' is never set:
+      // win/fail are determined by the exact-bestMove check in board/index.ts,
+      // which bypasses the 'eval' state entirely.
+      //
+      // The 'eval' path will be activated when near-best acceptance is implemented
+      // (allowing ceval to judge moves that are close but not exactly the bestMove).
+      // At that point, the board interception will set _feedback = 'eval' instead of
+      // immediately calling onFail(), and this function will resolve the session state.
+      //
+      // Near-best acceptance (povDiff > -0.04 per lichess-org/lila: retroCtrl.ts
+      // checkCeval) is deferred to the near-best parity task.
+      if (_feedback !== 'eval') return;
+      const c = currentIdx >= 0 ? (candidates[currentIdx] ?? null) : null;
+      if (!c) return;
+      const ev = getNodeEval();
+      if (!ev) return;
+      // Ceval readiness — mirrors lichess-org/lila: retroCtrl.ts isCevalReady:
+      //   node.ceval.depth >= 18 || (node.ceval.depth >= 14 && millis > 6000)
+      // Patzer tracks depth only (no millis); require depth >= 14 as the minimum gate.
+      if (!ev.depth || ev.depth < 14) return;
+      // Near-best povDiff comparison is deferred. When ceval is ready, resolve as fail
+      // so the 'eval' state never gets stuck indefinitely.
+      // This will be replaced with: if (povDiff > -0.04) onWin(); else onFail();
+      _feedback = 'fail';
+    },
 
     onWin(): void {
       // Mark solved BEFORE navigate so onJump sees 'win' and skips offTrack detection.

@@ -46,13 +46,15 @@ export function renderRetroEntry(deps: RetroEntryDeps): VNode {
 
 export interface RetroStripDeps {
   /** Active retro session — returns null when not in retro mode. */
-  retro:    RetroCtrl | undefined;
+  retro:             RetroCtrl | undefined;
   /** Navigate to a tree path; provided by the analysis board owner. */
-  navigate: (path: string) => void;
+  navigate:          (path: string) => void;
   /** Trigger a Snabbdom redraw. */
-  redraw:   () => void;
+  redraw:            () => void;
   /** Convert a UCI move string to SAN given a position FEN. */
-  uciToSan: (fen: string, uci: string) => string;
+  uciToSan:          (fen: string, uci: string) => string;
+  /** Reveal engine guidance for the current candidate and redraw. */
+  onRevealGuidance:  () => void;
 }
 
 /**
@@ -61,12 +63,13 @@ export interface RetroStripDeps {
  * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroView.ts
  */
 export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
-  const { retro, navigate, redraw, uciToSan } = deps;
+  const { retro, navigate, redraw, uciToSan, onRevealGuidance } = deps;
   if (!retro) return null;
 
-  const feedback  = retro.feedback();
-  const cand      = retro.current();
-  const [solved, total] = retro.completion();
+  const feedback         = retro.feedback();
+  const cand             = retro.current();
+  const [solved, total]  = retro.completion();
+  const revealed         = retro.guidanceRevealed();
 
   // Progress indicator — mirrors Lichess "X / Y" completion display
   const progress = h('span.retro-strip__progress', `${solved} / ${total}`);
@@ -152,6 +155,18 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
   } else {
     const color = cand.ply % 2 === 1 ? 'White' : 'Black';
     label = `Find the best move for ${color}`;
+  }
+
+  // "Show engine" — lets the user reveal PV lines and arrows for this candidate only.
+  // Hidden once guidance is already revealed (button becomes "Hide engine" semantically,
+  // but since re-hiding is not needed the button simply disappears).
+  // Mirrors lichess-org/lila: retroCtrl.ts showBadNode reveal affordance.
+  if (!revealed && cand) {
+    buttons.push(
+      h('button.retro-strip__btn.retro-strip__btn--engine', {
+        on: { click: onRevealGuidance },
+      }, 'Show engine'),
+    );
   }
 
   return h('div.retro-strip', [
