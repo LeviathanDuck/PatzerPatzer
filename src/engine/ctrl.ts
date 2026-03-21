@@ -5,6 +5,7 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { StockfishProtocol } from '../ceval/protocol';
 import { evalWinChances } from './winchances';
+import { pathIsMainline } from '../tree/ops';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 
 // --- Types ---
@@ -173,7 +174,12 @@ export function buildArrowShapes(): DrawShape[] {
     shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'red' });
   }
 
-  if (showPlayedArrow) {
+  // Only show the played-move arrow when the current path is on the original
+  // game mainline.  Inside a side variation, children[0] is the first child of
+  // the variation node — not the played game move — so the arrow is semantically
+  // wrong and should be suppressed.
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onMainline gate.
+  if (showPlayedArrow && pathIsMainline(ctrl.root, ctrl.path)) {
     const nextNode = ctrl.node.children[0];
     if (nextNode?.uci) {
       const uci = nextNode.uci;

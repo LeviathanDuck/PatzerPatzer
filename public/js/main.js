@@ -674,6 +674,11 @@ function nodeListAt(root, path) {
   }
   return nodes;
 }
+function pathIsMainline(root, path) {
+  if (path === "") return true;
+  const firstChild = root.children[0];
+  return firstChild?.id === pathHead(path) && pathIsMainline(firstChild, pathTail(path));
+}
 function mainlineNodeList(root) {
   const nodes = [];
   let node = root;
@@ -1171,7 +1176,7 @@ function buildArrowShapes() {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
   }
-  if (showPlayedArrow) {
+  if (showPlayedArrow && pathIsMainline(ctrl2.root, ctrl2.path)) {
     const nextNode = ctrl2.node.children[0];
     if (nextNode?.uci) {
       const uci = nextNode.uci;
@@ -5931,6 +5936,8 @@ function initCevalView(deps) {
 var showEngineSettings = false;
 var pvBoard = null;
 var pvBoardPos = { x: 0, y: 0 };
+var PV_BOARD_SIZE = 384;
+var PV_BOARD_OFFSET = 16;
 function renderCeval() {
   const hasEval = currentEval.cp !== void 0 || currentEval.mate !== void 0;
   const pearlStr = engineEnabled ? hasEval ? formatScore(currentEval) : engineReady ? "\u2026" : "" : "";
@@ -6073,8 +6080,8 @@ function renderPvBox() {
           pvBoardPos = { x: e.clientX, y: e.clientY };
           const overlay = document.querySelector(".pv-board-float");
           if (overlay) {
-            const left = Math.min(e.clientX + 16, window.innerWidth - 208);
-            const top = Math.min(e.clientY + 16, window.innerHeight - 208);
+            const left = Math.min(e.clientX + PV_BOARD_OFFSET, window.innerWidth - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
+            const top = Math.min(e.clientY + PV_BOARD_OFFSET, window.innerHeight - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
             overlay.style.left = `${left}px`;
             overlay.style.top = `${top}px`;
           }
@@ -6108,8 +6115,8 @@ function renderPvBox() {
 function renderPvBoard() {
   if (!pvBoard) return null;
   const { fen, uci } = pvBoard;
-  const left = Math.min(pvBoardPos.x + 16, window.innerWidth - 208);
-  const top = Math.min(pvBoardPos.y + 16, window.innerHeight - 208);
+  const left = Math.min(pvBoardPos.x + PV_BOARD_OFFSET, window.innerWidth - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
+  const top = Math.min(pvBoardPos.y + PV_BOARD_OFFSET, window.innerHeight - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
   const arrow = uci.length >= 4 ? [{ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" }] : [];
   const cgConfig = {
     fen,
