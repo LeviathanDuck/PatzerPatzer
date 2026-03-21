@@ -70,7 +70,7 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
-- [ ] CCP-065 - Add Toggle For Review Label Visibility
+- [x] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 - [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
 - [x] CCP-015-F2 - Per-Candidate Engine Guidance Toggle In Retrospection
@@ -141,12 +141,30 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-044-F1 - Refine Engine Arrow Eval Labels
 - [x] CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
 - [ ] CCP-044-F2 - Match Arrow Label Styling To Eval Bar
+- [ ] CCP-044-F3 - Reduce Arrow Label Weight And Size
 - [ ] CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
 - [ ] CCP-066 - Add Search To Underboard And Games Lists
 - [ ] CCP-067 - Bring Eval Graph Fill Into Lichess Parity
 - [ ] CCP-068 - Add Eval Graph Height Toggle
 
 ## Log
+
+## CCP-044-F3 - Reduce Arrow Label Weight And Size
+
+```
+- [ ] Reviewed
+  - ID: `CCP-044-F3`
+  - Task ID: `CCP-044`
+  - Parent prompt ID: `CCP-044-F2`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `reduce move-arrow label size and font weight`
+  - Task: refine move-arrow label typography so the numbers are much smaller and less bold while keeping the current shadow
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
 
 ## CCP-067 - Bring Eval Graph Fill Into Lichess Parity
 
@@ -253,7 +271,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-065 - Add Toggle For Review Label Visibility
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-065`
   - Task ID: `CCP-065`
   - Parent prompt ID: none
@@ -262,7 +280,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Lichess-style move review label visibility parity`
   - Task: verify exact Lichess move-review label rendering and add a persisted engine-setting toggle that shows or hides visible review labels in Patzer
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -270,7 +288,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-044-F1 - Refine Engine Arrow Eval Labels
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-044-F1`
   - Task ID: `CCP-044`
   - Parent prompt ID: `CCP-044`
@@ -1227,7 +1245,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-060 - Hide Mobile Analysis Chrome
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-060`
   - Task ID: `CCP-060`
   - Parent prompt ID: none
@@ -1235,7 +1253,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Task 2 — Hide low-value chrome on mobile`
   - Task: hide eval gauge, player strips, resize handle, and wasteful chrome on the mobile analysis layout
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -1243,7 +1261,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-061 - Make Mobile Controls Board-Adjacent
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-061`
   - Task ID: `CCP-061`
   - Parent prompt ID: none
@@ -1251,7 +1269,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Task 3 — Move board navigation and Review into a mobile-friendly control block`
   - Task: make the current analysis controls mobile-friendly and board-adjacent
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -1259,7 +1277,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-062 - Make Mobile Tools Stack Readable
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-062`
   - Task ID: `CCP-062`
   - Parent prompt ID: none
@@ -1267,7 +1285,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Task 4 — Make the tools column readable as a mobile stack`
   - Task: relax the desktop tools-column assumptions so mobile ceval, PVs, move list, retro strip, and summary stack readably
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -1275,7 +1293,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-063 - Make Underboard Secondary On Mobile
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-063`
   - Task ID: `CCP-063`
   - Parent prompt ID: none
@@ -1283,7 +1301,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Task 5 — Make underboard truly secondary on mobile`
   - Task: tidy mobile underboard spacing and overflow so graph and game list stay reachable below tools
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -1291,7 +1309,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-064 - Add One Minimal Mobile Touch Improvement
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-064`
   - Task ID: `CCP-064`
   - Parent prompt ID: none
@@ -1299,7 +1317,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Task 6 — Add one minimal touch usability improvement`
   - Task: add one minimal touch usability improvement using the sprint’s low-risk larger-targets option
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```

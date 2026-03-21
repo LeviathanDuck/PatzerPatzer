@@ -269,6 +269,17 @@ export function renderEvalBar(
 
 const GRAPH_W = 600;
 const GRAPH_H = 80;
+const GRAPH_HEIGHT_MIN = 100;
+const GRAPH_HEIGHT_MAX = 300;
+const graphHeightRaw = Number.parseInt(localStorage.getItem('patzer.evalGraphHeightPct') ?? '', 10);
+let graphHeightPct = Number.isFinite(graphHeightRaw)
+  ? Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, graphHeightRaw))
+  : GRAPH_HEIGHT_MIN;
+
+export function setEvalGraphHeightPct(value: number): void {
+  graphHeightPct = Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, Math.round(value)));
+  localStorage.setItem('patzer.evalGraphHeightPct', String(graphHeightPct));
+}
 
 // Count major and minor pieces (r,n,b,q,R,N,B,Q) in a FEN board string.
 // Mirrors scalachess Divider.scala majorsAndMinors logic.
@@ -302,14 +313,18 @@ export function renderEvalGraph(
   currentPath: string,
   evalCache:   EvalCache,
   navigate:    (p: string) => void,
+  redraw:      () => void,
   userColor:   'white' | 'black' | null,
   userOnly:    boolean,
 ): VNode {
   const n = mainline.length - 1; // non-root move count
+  const renderedGraphHeight = Math.round((GRAPH_H * graphHeightPct) / 100);
 
   if (n < 2) {
     return h('div.eval-graph', [
-      h('div.eval-graph__empty', n === 0 ? 'No moves to graph.' : 'Analyze game to see graph.'),
+      h('div.eval-graph__empty', {
+        attrs: { style: `height:${renderedGraphHeight}px` },
+      }, n === 0 ? 'No moves to graph.' : 'Analyze game to see graph.'),
     ]);
   }
 
@@ -362,17 +377,37 @@ export function renderEvalGraph(
   const cy = GRAPH_H / 2;
   const svgNodes: VNode[] = [];
 
-  // Background: upper half = white territory, lower half = black territory
-  svgNodes.push(h('rect', { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy, fill: 'rgba(235,225,180,0.07)' } }));
-  svgNodes.push(h('rect', { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy, fill: 'rgba(0,0,0,0.2)' } }));
-
-  // Filled polygon: eval trace closed at the center line
+  // Lichess-style fill: same area path rendered twice, clipped above/below the origin.
+  // Mirrors ui/chart/src/acpl.ts fill: { target: 'origin', above: whiteFill, below: blackFill }.
   const polyPts = [
     `${valid[0]!.x},${cy}`,
     ...valid.map(p => `${p.x},${p.y}`),
     `${valid[valid.length - 1]!.x},${cy}`,
   ].join(' ');
-  svgNodes.push(h('polygon', { attrs: { points: polyPts, fill: 'rgba(160,160,160,0.1)', stroke: 'none' } }));
+  svgNodes.push(h('defs', [
+    h('clipPath', { attrs: { id: 'eval-graph-fill-upper' } }, [
+      h('rect', { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy } }),
+    ]),
+    h('clipPath', { attrs: { id: 'eval-graph-fill-lower' } }, [
+      h('rect', { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy } }),
+    ]),
+  ]));
+  svgNodes.push(h('polygon', {
+    attrs: {
+      points: polyPts,
+      fill: 'rgba(255,255,255,0.3)',
+      stroke: 'none',
+      'clip-path': 'url(#eval-graph-fill-upper)',
+    },
+  }));
+  svgNodes.push(h('polygon', {
+    attrs: {
+      points: polyPts,
+      fill: 'rgba(0,0,0,1)',
+      stroke: 'none',
+      'clip-path': 'url(#eval-graph-fill-lower)',
+    },
+  }));
 
   // Center line (eval = 0)
   svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#444', 'stroke-width': 1 } }));
@@ -500,8 +535,27 @@ export function renderEvalGraph(
     h('svg', { attrs: {
       viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
       width: '100%',
-      height: GRAPH_H,
+      height: renderedGraphHeight,
       preserveAspectRatio: 'none',
     } }, svgNodes),
+    h('div.eval-graph__height-control', [
+      h('input', {
+        attrs: {
+          type: 'range',
+          min: GRAPH_HEIGHT_MIN,
+          max: GRAPH_HEIGHT_MAX,
+          step: 25,
+          value: graphHeightPct,
+          'aria-label': 'Eval graph height',
+        },
+        on: {
+          input: (e: Event) => {
+            setEvalGraphHeightPct(parseInt((e.target as HTMLInputElement).value, 10));
+            redraw();
+          },
+        },
+      }),
+      h('span', `${graphHeightPct}%`),
+    ]),
   ]);
 }

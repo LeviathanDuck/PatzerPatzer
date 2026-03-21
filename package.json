@@ -10,7 +10,8 @@
   "scripts": {
     "build": "node build.mjs",
     "serve": "node server.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "audit:prompts": "node scripts/audit-prompt-tracking.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.0",
