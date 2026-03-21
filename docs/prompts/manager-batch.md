@@ -12,13 +12,16 @@ Generate a guarded automatic batch-manager prompt for Claude Code that:
 - performs internal validation/self-check after each prompt
 - stops immediately on a real issue
 - does **not** modify queue/log/history/review docs
+- is itself tracked as a prompt artifact in the prompt-log workflow without being re-queued into the runnable batch range
 
 ## Important manager-prompt rules
 
 - the manager prompt itself must have its own `Prompt ID` and `Task ID`
 - the manager prompt must **not** include itself in the execution batch
 - the manager prompt is a runner/controller prompt, not one of the queued implementation prompts it runs
-- unless the user explicitly asks otherwise, treat the manager prompt as an ad hoc execution prompt rather than something that should be re-consumed by the batch it launches
+- unless the user explicitly asks otherwise, treat the manager prompt as a tracked execution artifact, not as a queued implementation prompt to be re-consumed by the batch it launches
+- the manager prompt must never tell Claude to derive a batch range that could include the manager prompt itself
+- the manager prompt must never instruct Claude to re-read or re-run the manager prompt as if it were one of the queued child prompts
 
 ## Codex instructions
 
@@ -32,7 +35,10 @@ When using this template, Codex should:
 2. Determine the next contiguous queued prompt range from the queue file unless the user explicitly gives a custom start/end or explicit prompt IDs.
 3. Assign the manager prompt its own stable `CCP-###` identifier.
 4. Ensure the manager prompt's own `Prompt ID` is not listed in the execution range.
-5. Output only the final Claude Code manager prompt in a single fenced Markdown code block.
+5. Add a matching log entry for the manager prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`.
+6. In that manager log entry, include the exact child prompt ids the batch will run as `Batch prompt IDs`.
+7. Do **not** add the manager prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` unless the user explicitly asks to store manager prompts there.
+8. Output only the final Claude Code manager prompt in a single fenced Markdown code block.
 
 ## How to determine the queued batch range
 
@@ -55,6 +61,7 @@ Do not reorder by numeric ID unless the queue file is already in that order.
 The final manager prompt should include:
 
 - repository path
+- its own `Prompt ID` and `Task ID`
 - mandatory repo instructions:
   - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
   - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
@@ -62,6 +69,7 @@ The final manager prompt should include:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
 - relevant research-reference paths when applicable
 - the exact prompt IDs to execute, in order
+- an explicit rule that the manager prompt's own `Prompt ID` is metadata for the runner only and is not one of the child prompts to execute
 - a clear `Begin with ...` line
 
 ## Required execution rules inside the manager prompt
@@ -85,6 +93,7 @@ The final manager prompt must tell Claude Code:
 - do not continue past a known issue just to finish the batch
 - do not reorder prompts
 - do not create new prompts during the batch
+- do not execute, re-queue, or otherwise recurse into the manager prompt itself
 
 ## Required progress reporting inside the manager prompt
 
@@ -119,6 +128,9 @@ Create a guarded automatic batch-manager prompt for Claude Code that will execut
 Requirements for the manager prompt:
 - The manager prompt itself must have its own Prompt ID and Task ID.
 - The manager prompt must not include itself in the execution batch.
+- The manager prompt must be logged in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` as a manager/run prompt artifact.
+- The manager log entry must include the exact selected child prompt ids as `Batch prompt IDs`.
+- The manager prompt should not be added to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` unless I explicitly ask for manager prompts to be queued there.
 - The manager prompt must tell Claude to inspect the queue file and derive the next contiguous queued range in file order.
 - If I specify a count, Claude should process only that many queued prompts from the front of the contiguous range.
 - If I specify an explicit start/end or explicit prompt IDs, use those instead.
@@ -140,6 +152,7 @@ Requirements for the manager prompt:
 - Claude must not continue past a known issue just to finish the batch.
 - Claude must not reorder prompts.
 - Claude must not create new prompts during the batch.
+- Claude must not execute or recurse into the manager prompt itself.
 - Claude must give a short progress update after each completed prompt with:
   - Prompt ID
   - task title

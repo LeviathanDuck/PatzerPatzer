@@ -21,6 +21,13 @@ These rules apply when Codex is:
 - generating a prompt for Codex itself
 - generating a prompt for Claude Code
 
+Before doing any of those actions, Codex should re-read:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+and treat that re-read as mandatory before mutating queue/log/history files.
+
 ---
 
 ## Core rule
@@ -127,8 +134,8 @@ files when creating the prompt.
 
 That includes:
 
-- adding the full prompt to `CLAUDE_PROMPT_QUEUE.md`
-- adding a matching item to the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md`
+- for normal runnable prompts, adding the full prompt to `CLAUDE_PROMPT_QUEUE.md`
+- for normal runnable prompts, adding a matching item to the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md`
 - adding the detailed unchecked prompt entry to `CLAUDE_PROMPT_LOG.md`
 - adding the matching unchecked checklist item to the top prompt index in `CLAUDE_PROMPT_LOG.md`
 
@@ -144,3 +151,16 @@ queue index so the index only reflects still-pending prompts.
 If the generated prompt is for Codex rather than Claude Code, Codex may still reuse the same prompt
 ID/logging structure for consistency, but should label the execution target clearly so the prompt's
 intended tool is unambiguous.
+
+For manager/batch-runner prompts:
+
+- treat the manager prompt as a tracked prompt artifact with its own `Prompt ID` and `Task ID`
+- add a detailed log entry for it in `CLAUDE_PROMPT_LOG.md`
+- include `Batch prompt IDs` listing the exact child prompts the manager will run
+- do not add the manager prompt to `CLAUDE_PROMPT_QUEUE.md` unless the user explicitly asks for manager prompts to live in the runnable queue
+- make sure the generated manager instructions explicitly forbid running or recursing into the manager prompt itself
+
+After mutating queue/log/history files, Codex should do a quick documentation-consistency check:
+
+- confirm the file updates still match `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- if the intended action required a new workflow rule, update the docs before considering the task complete

@@ -1,91 +1,327 @@
-# Prompt Templates
+# Prompt Workflow
 
-These are repo-local prompt templates for Codex and Claude workflows.
+This directory holds the repo-local prompt workflow for Patzer Pro.
 
-Use them when you want reusable task framing inside the repository without relying on Codex runtime skills.
+Use this README as the canonical starting point for:
+- prompt creation
+- prompt queueing
+- prompt review
+- follow-up fix prompts
+- manager/batch-runner prompts
 
-Start each session by pointing the model at:
+If another prompt doc seems to conflict with this file, update the other doc so the workflow stays consistent.
+
+## Start Here
+
+Before doing any prompt-workflow action, re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
 - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
 - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
 
-When Codex is creating prompts, also read:
+If the action is prompt creation, also re-read:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/codexinstructionstopromptclaude.md`
 
-Then use the template that matches the task:
-- `code-review.md` — review local changes with findings-first output and suggested manual tests
-- `lichess-parity.md` — Lichess-aligned behavior or structure work
-- `manager-batch.md` — create a Claude Code batch-manager prompt that runs the next contiguous queued prompt range
-- `refactor-step.md` — extraction work, `main.ts` reduction, coupling reduction
-- `bugfix.md` — diagnosing and fixing a specific bug
-- `new-feature.md` — adding a new feature or workflow in the smallest safe step
+If the action is review, also re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
 
-These templates are intentionally short.
-They should reinforce repo rules, not replace them.
+If the action is manager-prompt creation, also re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/manager-batch.md`
 
-Formatting convention for prompt-generation workflows:
-- when Codex is asked to return a final prompt for Claude Code, return only the prompt content
-- wrap the entire prompt in a single fenced Markdown code block unless the user explicitly asks for plain text instead
+This re-read is mandatory.
+Do not rely on memory alone when mutating queue/log/history files.
+
+## Core Rule
+
+Prompt-workflow actions are operational actions, not just writing tasks.
+
+That means:
+- creating a prompt must update the tracking files
+- reviewing a prompt must update the tracking files
+- changing the prompt workflow must update this README and any supporting docs that now disagree
+
+If the workflow changes and the docs are not updated, the workflow is incomplete.
+
+## Prompt Files
+
+The tracked prompt files are:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
+
+Their responsibilities are:
+
+- `CLAUDE_PROMPT_QUEUE.md`
+  - holds runnable queued prompts that have not yet been reviewed
+  - includes a top `Queue Index` listing only still-pending queued prompts
+
+- `CLAUDE_PROMPT_LOG.md`
+  - tracks prompt provenance from creation through review
+  - includes a top `Prompt Index` checklist showing review state
+  - also stores manager-prompt entries
+
+- `CLAUDE_PROMPT_HISTORY.md`
+  - stores historical full prompt text when the workflow calls for it
+
+## Prompt Types
+
+There are two main tracked prompt categories:
+
+- Normal runnable prompts
+  - these are implementation prompts meant to be executed later
+  - they go in the queue
+  - they also get logged
+
+- Manager prompts
+  - these are runner/controller prompts that launch a batch of other prompts
+  - they get logged
+  - by default they do not go in the runnable queue unless the user explicitly asks for that
+
+## ID Rules
+
+Every tracked prompt uses:
+- `Prompt ID`
+- `Task ID`
+
+Default format:
+- `CCP-###`
+
+Follow-up fix format:
+- original prompt: `CCP-013`
+- first fix prompt: `CCP-013-F1`
+- second fix prompt: `CCP-013-F2`
+
+Rules:
+- `Prompt ID` is the unique prompt instance id
+- `Task ID` is the root task-family id
+- for a normal root prompt, `Prompt ID` and `Task ID` are the same
+- for a follow-up fix prompt:
+  - `Prompt ID` uses the next `-F#`
+  - `Task ID` stays on the root family id
+  - `Parent Prompt ID` points to the prompt being fixed
+
+## Metadata Rules
+
+Generated prompts should include near the top:
+- `Prompt ID`
+- `Task ID`
+- `Parent Prompt ID`, if applicable
+- `Source Document`, if applicable
+- `Source Step`, if applicable
+- `Execution Target`, when useful
+
+Claude execution prompts should also instruct Claude to echo:
+- `Prompt ID`
+- `Task ID`
+
+in its final report.
+
+## Queue Format
+
+Normal runnable prompts belong in:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+
+Queue rules:
+- use a scan-friendly heading immediately before each prompt block:
+  - `## CCP-### - Short Task Title`
+- use a plain fenced Markdown block with no language tag
+- maintain the top `Queue Index`
+
+Each queue-index item must use this format:
+
+```md
+- CCP-###: Short Task Title
+  - Brief one-line description of the prompt target.
+```
+
+Leave one blank line between queue-index items for readability.
+
+The queue index must list only prompts still present in the queue.
+
+## Log Format
+
+Every created prompt gets a detailed log entry in:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+
+The log also has a top checklist index.
+
+Prompt-index format:
+
+```md
+- [ ] CCP-### - Short Task Title
+```
+
+Detailed log-entry format:
+
+```md
+- [ ] Reviewed
+  - ID: `CCP-###`
+  - Task ID: `CCP-###`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/...`
+  - Source step: `...`
+  - Task: short task title
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+For manager prompts:
+- `Batch prompt IDs` should list the child prompt ids the manager is intended to run
+
+For normal prompts:
+- `Batch prompt IDs: none`
+
+## Normal Prompt Creation Workflow
+
+When creating a normal runnable prompt:
+
+1. Re-read the workflow docs listed in `Start Here`
+2. Ground the prompt in the real repo first
+3. Assign the next correct `Prompt ID` and `Task ID`
+4. Add the full prompt to `CLAUDE_PROMPT_QUEUE.md`
+5. Add the matching item to the top `Queue Index`
+6. Add the detailed unchecked entry to `CLAUDE_PROMPT_LOG.md`
+7. Add the matching unchecked item to the top `Prompt Index` in the log
+8. If needed, update history according to the active workflow
+9. Double-check that queue index, queue body, prompt log index, and detailed log entry all match
+
+Do not stop after only generating prompt text in chat.
+
+## Manager Prompt Creation Workflow
+
+When creating a manager prompt:
+
+1. Re-read the workflow docs listed in `Start Here`
+2. Ground the manager in the real queue/log state
+3. Assign the next correct `Prompt ID` and `Task ID`
+4. Add a detailed unchecked entry to `CLAUDE_PROMPT_LOG.md`
+5. Add the matching unchecked item to the top `Prompt Index` in the log
+6. Record `Batch prompt IDs` in the detailed log entry
+7. Do not add the manager prompt to `CLAUDE_PROMPT_QUEUE.md` unless the user explicitly asks for manager prompts to live there
+8. Double-check that the manager prompt cannot accidentally include itself in the batch it launches
+
+Manager prompts are tracked artifacts, but not normal queued child prompts by default.
+
+## Review Workflow
+
+When reviewing a prompt:
+
+1. Re-read the workflow docs listed in `Start Here`
+2. Find the matching `CCP-###` entry in queue/log/history
+3. Review the actual changes using `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+4. If the prompt is still in `CLAUDE_PROMPT_QUEUE.md`, remove:
+  - the prompt block
+  - the matching queue-index item
+5. Update the detailed log entry
+6. Flip the matching top prompt-index item in the log from `[ ]` to `[x]`
+7. Record `Review outcome`
+8. Record any short `Review issues`
+9. If the review found a real repository issue, ask whether it should be added to `docs/KNOWN_ISSUES.md`
+10. Explicitly verify that the reviewed `CCP-###` no longer appears anywhere in `CLAUDE_PROMPT_QUEUE.md`
+11. Double-check that the queue/log state is still internally consistent
+
+Recommended verification command after review:
+
+```sh
+rg -n "CCP-###" docs/prompts/CLAUDE_PROMPT_QUEUE.md docs/prompts/CLAUDE_PROMPT_LOG.md
+```
+
+Expected result after a completed review:
+- no match in `CLAUDE_PROMPT_QUEUE.md`
+- reviewed match in `CLAUDE_PROMPT_LOG.md`
+
+## Review Outcome Labels
+
+Use:
+- `passed`
+- `passed with notes`
+- `issues found`
+- `needs rework`
+
+Meaning:
+- `passed`
+  - reviewed cleanly
+- `passed with notes`
+  - acceptable, but with minor caveats
+- `issues found`
+  - concrete problems were identified
+- `needs rework`
+  - not ready to accept as-is
+
+The checkbox means only whether review happened:
+- `[ ]` = not reviewed yet
+- `[x]` = reviewed
+
+## Follow-Up Fix Workflow
+
+If a reviewed prompt needs another fix pass:
+
+1. Re-read the workflow docs listed in `Start Here`
+2. Reuse the same root `Task ID`
+3. Assign the next `-F#` `Prompt ID`
+4. Set `Parent Prompt ID` to the prompt being fixed
+5. Treat the new prompt as a fresh created prompt for queue/log purposes
+
+Natural-language requests like these should usually trigger this workflow:
+- `I have a bug to fix with CCP-013`
+- `I want to fix something from this task`
+- `this needs a follow-up fix`
+
+## Documentation Sync Rule
+
+Any time the prompt-id process, queue structure, log structure, manager behavior, review behavior, or indexing rules change:
+
+1. Update this README
+2. Update every supporting prompt doc that now disagrees
+3. Re-read the updated docs
+4. Confirm the workflow is consistent again
+
+Do not leave the new rule documented in only one place.
+
+## Double-Check Rule
+
+Every workflow action should trigger a documentation double-check before file mutation.
+
+That means:
+- before creating a prompt, re-read the workflow docs
+- before reviewing a prompt, re-read the workflow docs
+- before creating a manager prompt, re-read the workflow docs
+- after mutating queue/log/history files, quickly verify the files still match the documented workflow
+
+If the current docs and the intended action disagree:
+- stop
+- update the docs first
+- then perform the workflow action
+
+## Template Map
+
+Use the template that matches the task:
+- `bugfix.md`
+  - diagnosing and fixing a specific bug
+- `new-feature.md`
+  - adding a new feature or workflow in the smallest safe step
+- `refactor-step.md`
+  - extraction work, ownership cleanup, `main.ts` reduction
+- `lichess-parity.md`
+  - Lichess-aligned behavior or structure work
+- `code-review.md`
+  - findings-first review workflow
+- `manager-batch.md`
+  - Claude batch-runner manager prompts
+
+## Output Convention For Prompt Generation
+
+When Codex is asked to return a final prompt:
+- return only the prompt content
+- wrap it in a single fenced Markdown code block unless the user explicitly asks for another format
 - do not add commentary before or after the code block
-- prompt-generation templates should also ask Claude Code to include a short manual test checklist with concrete actions and expected results for the implemented change
 
-Prompt tracking convention:
-- track Claude Code prompts in:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
-- for Codex-created prompts, follow the extra coordination and formatting rules in:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-- assign each prompt a stable identifier in the form `CCP-###`
-- when a new prompt is a follow-up fix for a previously reviewed prompt, keep the same task family id and add a follow-up modifier to the prompt id:
-  - original prompt: `CCP-013`
-  - first follow-up fix prompt: `CCP-013-F1`
-  - second follow-up fix prompt: `CCP-013-F2`
-- use `-F#` as the modifier for follow-up fix prompts because it stays readable, sorts predictably, and makes the relationship explicit
-- include that identifier near the top of the generated prompt
-- include a matching `Task ID` near the top of the generated prompt for family tracking
-- instruct Claude to echo the `Prompt ID` in the final report so the exact prompt instance is reported back after execution
-- for follow-up fix prompts:
-  - `Prompt ID` should be the unique follow-up id, such as `CCP-013-F1`
-  - `Task ID` should stay the root family id, such as `CCP-013`
-  - include `Parent Prompt ID`, such as `CCP-013`
-- include `Source Document` and `Source Step` metadata near the top of the generated prompt
-- when a new prompt is generated, append the full prompt to `CLAUDE_PROMPT_QUEUE.md`
-- when a new prompt is generated, also add a matching item to the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md`
-- each queue-index item should include:
-  - first line: `- CCP-###: Short Task Title`
-  - second line: an indented bullet with a brief one-line description of what the prompt is meant to target
-  - one blank line between queue-index items for readability
-- when appending to `CLAUDE_PROMPT_QUEUE.md`, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
-- use plain fenced Markdown blocks with no language tag for queue entries and log entries
-- when a new prompt is generated, also add an unchecked entry to `CLAUDE_PROMPT_LOG.md`
-- when a new prompt is generated, also add a matching unchecked prompt-id-plus-title item to the top checklist index in `CLAUDE_PROMPT_LOG.md`
-- when appending to `CLAUDE_PROMPT_LOG.md`, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced log entry block
-- when appending to `CLAUDE_PROMPT_HISTORY.md`, use a plain fenced block with no language tag for the stored full prompt text
-- use the log checkbox only to indicate whether review happened:
-  - checked means reviewed
-  - unchecked means created/logged but not reviewed yet
-- keep the top-of-file prompt-id checklist index in `CLAUDE_PROMPT_LOG.md` in sync with the detailed log entries:
-  - add `- [ ] CCP-### - Short Task Title` when the prompt is created
-  - flip it to `- [x] CCP-### - Short Task Title` when the prompt is reviewed
-  - keep the index compact and title-based, with no review notes
-- record review quality separately with `Review outcome`, for example:
-  - `passed`
-  - `passed with notes`
-  - `issues found`
-  - `needs rework`
-- when doing a code review, remove the matching prompt from `CLAUDE_PROMPT_QUEUE.md`
-- when doing a code review, also remove the matching item from the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md`
-- when doing a code review, update the matching `CCP-###` item in `CLAUDE_PROMPT_LOG.md`
-- when doing a code review, also update the matching top checklist item in `CLAUDE_PROMPT_LOG.md` from unchecked to checked
-- if a reviewed prompt needs another fixing pass and the user asks for a follow-up prompt, create a new prompt entry using the same root `Task ID` with the next `-F#` modifier on `Prompt ID`
-- treat natural-language follow-up requests as follow-up fix prompts by default when they clearly refer to an existing reviewed `CCP-###`, for example:
-  - `I have a bug to fix with CCP-013`
-  - `I want to fix something from CCP-013`
-  - `This needs a bug-fix prompt from CCP-013`
-  - `I have a bug to fix with this` when the current task family is clear from context
-- in those cases:
-  - use the next `-F#` prompt id in that family
-  - keep `Task ID` as the root family id
-  - set `Parent Prompt ID` to the prompt being fixed
-- if the review is for a prompt id but the exact queued prompt text cannot be found, say so explicitly and update only the log entry with that uncertainty noted
-- when a code review finds a real current issue worth tracking, explicitly ask whether it should be added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
+## Related Files
+
+These supporting docs must stay aligned with this README:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/codexinstructionstopromptclaude.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/manager-batch.md`

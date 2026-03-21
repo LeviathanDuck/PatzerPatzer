@@ -40,6 +40,7 @@ It should stay in sync with the detailed entry below.
   - ID: `CCP-###`
   - Task ID: `CCP-###`
   - Parent prompt ID: none
+  - Batch prompt IDs: none
   - Source document: `docs/...`
   - Source step: `Priority X, Item Y` or equivalent section label
   - Task: short task title
@@ -57,6 +58,7 @@ It should stay in sync with the detailed entry below.
 - For a normal prompt, `ID` and `Task ID` are the same.
 - For a follow-up fix prompt, `ID` uses the next `-F#` suffix and `Task ID` stays on the root family id.
 - `Parent prompt ID` should be `none` for a root prompt and the reviewed prompt id for a follow-up fix prompt.
+- `Batch prompt IDs` should be `none` for normal prompts and should list the child prompt ids for a manager/batch-runner prompt.
 - Use `Review outcome: passed` when the review found no issues.
 - Use `Review outcome: passed with notes` when the change is acceptable but has minor caveats worth recording.
 - Use `Review outcome: issues found` when the review found concrete problems.
@@ -68,6 +70,7 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
+- [ ] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 - [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
 - [x] CCP-015-F2 - Per-Candidate Engine Guidance Toggle In Retrospection
@@ -123,19 +126,72 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-048 - Highlight Massive Engine Improvements
 - [x] CCP-049 - Show KO Mate Notation
 - [x] CCP-050 - Winner-Color Eval Bar On Mate
-- [ ] CCP-051 - KO Overlay On Losing King For M1
-- [ ] CCP-052 - Hide Arrows During Game Review
-- [ ] CCP-053 - Toggle Review Dots To User Perspective Only
-- [ ] CCP-055 - Mate Display KO Polish
-- [ ] CCP-058 - Fix White KO Eval-Graph Direction
-- [ ] CCP-059 - Add Mobile Analysis Stack Layout
-- [ ] CCP-060 - Hide Mobile Analysis Chrome
-- [ ] CCP-061 - Make Mobile Controls Board-Adjacent
-- [ ] CCP-062 - Make Mobile Tools Stack Readable
-- [ ] CCP-063 - Make Underboard Secondary On Mobile
-- [ ] CCP-064 - Add One Minimal Mobile Touch Improvement
+- [x] CCP-051 - KO Overlay On Losing King For M1
+- [x] CCP-052 - Hide Arrows During Game Review
+- [x] CCP-053 - Toggle Review Dots To User Perspective Only
+- [x] CCP-055 - Mate Display KO Polish
+- [x] CCP-058 - Fix White KO Eval-Graph Direction
+- [x] CCP-059 - Add Mobile Analysis Stack Layout
+- [x] CCP-060 - Hide Mobile Analysis Chrome
+- [x] CCP-061 - Make Mobile Controls Board-Adjacent
+- [x] CCP-062 - Make Mobile Tools Stack Readable
+- [x] CCP-063 - Make Underboard Secondary On Mobile
+- [x] CCP-064 - Add One Minimal Mobile Touch Improvement
+- [x] CCP-043-F1 - Winner And Loser Player-Strip Boxes
+- [ ] CCP-044-F1 - Refine Engine Arrow Eval Labels
 
 ## Log
+
+## CCP-065 - Add Toggle For Review Label Visibility
+
+```
+- [ ] Reviewed
+  - ID: `CCP-065`
+  - Task ID: `CCP-065`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/archive/MOVE_QUALITY_AUDIT_2026-03-20.md`
+  - Source step: `Lichess-style move review label visibility parity`
+  - Task: verify exact Lichess move-review label rendering and add a persisted engine-setting toggle that shows or hides visible review labels in Patzer
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-044-F1 - Refine Engine Arrow Eval Labels
+
+```
+- [ ] Reviewed
+  - ID: `CCP-044-F1`
+  - Task ID: `CCP-044`
+  - Parent prompt ID: `CCP-044`
+  - Batch prompt IDs: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Add tag or label next to engine move arrows showing what their eval is`
+  - Task: refine engine-arrow eval labels so they are off by default, configurable in engine settings, and integrated into arrowheads for primary, secondary, and played arrows
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-043-F1 - Winner And Loser Player-Strip Boxes
+
+```
+- [x] Reviewed
+  - ID: `CCP-043-F1`
+  - Task ID: `CCP-043`
+  - Parent prompt ID: `CCP-043`
+  - Batch prompt IDs: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Remove the 1 / 0 / ½ single-game result markers from the player strip by default`
+  - Task: replace the current player-strip winner star with styled green/red winner-loser boxes containing username, rating, and board color
+  - Claude used: no
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Codex`
+```
 
 ## CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 
@@ -876,7 +932,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-047 - Header Platform Toggle UX
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-047`
   - Task ID: `CCP-047`
   - Parent prompt ID: none
@@ -884,14 +940,15 @@ It should stay in sync with the detailed entry below.
   - Source step: `In the header, it should default to a chess.com username input field`
   - Task: tighten the header platform-toggle UX while keeping Chess.com as the default
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
+  - Execution target: `Codex`
 ```
 
 ## CCP-048 - Highlight Massive Engine Improvements
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-048`
   - Task ID: `CCP-048`
   - Parent prompt ID: none
@@ -899,14 +956,15 @@ It should stay in sync with the detailed entry below.
   - Source step: `IF there is an engine line available that has a massive improvement`
   - Task: add a stronger visual highlight for clearly massive engine improvements in the PV list
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
+  - Execution target: `Codex`
 ```
 
 ## CCP-049 - Show KO Mate Notation
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-049`
   - Task ID: `CCP-049`
   - Parent prompt ID: none
@@ -914,14 +972,15 @@ It should stay in sync with the detailed entry below.
   - Source step: `When mate is played on the board, the analysis engine should show a #KO symbol`
   - Task: replace the current terminal mate notation with #KO in the intended analysis UI
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
+  - Execution target: `Codex`
 ```
 
 ## CCP-050 - Winner-Color Eval Bar On Mate
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-050`
   - Task ID: `CCP-050`
   - Parent prompt ID: none
@@ -929,14 +988,15 @@ It should stay in sync with the detailed entry below.
   - Source step: `When mate is played on the board, the eval bar should fill up entirely with whatever colour delivered the mate`
   - Task: fix mate-state eval-bar fill so it resolves fully to the winning side
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
+  - Execution target: `Codex`
 ```
 
 ## CCP-051 - KO Overlay On Losing King For M1
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-051`
   - Task ID: `CCP-051`
   - Parent prompt ID: none
@@ -944,14 +1004,14 @@ It should stay in sync with the detailed entry below.
   - Source step: `When M1 is played on the board, the losing king should get a KO symbol over it`
   - Task: add the first safe KO overlay for the losing king on immediate mate positions
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-052 - Hide Arrows During Game Review
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-052`
   - Task ID: `CCP-052`
   - Parent prompt ID: none
@@ -959,14 +1019,14 @@ It should stay in sync with the detailed entry below.
   - Source step: `when game review button is pressed, all arrows should be removed from board until game review is completed`
   - Task: hide board arrows during active batch review and restore them when review finishes
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-053 - Toggle Review Dots To User Perspective Only
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-053`
   - Task ID: `CCP-053`
   - Parent prompt ID: none
@@ -974,14 +1034,14 @@ It should stay in sync with the detailed entry below.
   - Source step: `Setting to toggle only the users whose perspective we are looking at to have their move review annotated dot colour shown`
   - Task: add a setting that filters review-dot visibility to the current user perspective while defaulting to both
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-055 - Mate Display KO Polish
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-055`
   - Task ID: `CCP-055`
   - Parent prompt ID: none
@@ -989,7 +1049,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `mate-display UI polish so checkmate is shown as #KO! in the move list and engine display`
   - Task: implement mate-display UI polish so checkmate is shown as `#KO!` in the move list and engine display, and make the engine-display `#KO!` purple
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
@@ -1028,7 +1088,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-058 - Fix White KO Eval-Graph Direction
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-058`
   - Task ID: `CCP-058`
   - Parent prompt ID: none
@@ -1036,14 +1096,14 @@ It should stay in sync with the detailed entry below.
   - Source step: `eval graph bug where White KO drops to the bottom instead of staying at the top`
   - Task: fix the eval-graph mate bug where a terminal KO/checkmate for White plots at the bottom instead of staying at the top
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-059 - Add Mobile Analysis Stack Layout
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-059`
   - Task ID: `CCP-059`
   - Parent prompt ID: none
@@ -1051,7 +1111,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Task 1 — Add a real mobile analysis layout mode`
   - Task: add the first safe portrait-mobile single-column analysis layout
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
