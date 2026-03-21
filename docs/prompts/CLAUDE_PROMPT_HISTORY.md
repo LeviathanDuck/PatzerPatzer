@@ -3133,3 +3133,15 @@ Prompt text not recovered. This history entry was reconstructed after review fro
 - Commit: `ef3ed70`
 - Notes: the current implementation keeps the winner/loser identity cluster intact while changing `.player-strip__identity` to size to content instead of stretching and removing the earlier fill treatment in favor of border-only winner/loser color cues
 
+## CCP-044-F3 — Reviewed
+
+- Task: refine move-arrow label typography so the numbers are much smaller and less bold while keeping the current shadow
+- Task ID: `CCP-044`
+- Parent prompt ID: `CCP-044-F2`
+- Source document: `ad hoc user request`
+- Source step: `reduce move-arrow label size and font weight`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `934a960`
+- Notes: the current implementation reduces arrow-label SVG text from the earlier oversized `font-size="22"` and `font-weight="700"` to `font-size="12"` and `font-weight="500"` in `src/engine/ctrl.ts` while preserving the existing shadow stroke treatment.
