@@ -31,6 +31,14 @@ export interface StoredNodeEntry {
   /** Explicit move-review annotation derived from win-chance loss at analysis time.
    *  Absent on older records (ANALYSIS_VERSION < 3) and on moves with no label (good moves). */
   label?: MoveLabel;
+  /**
+   * Primary PV move sequence from this position, in UCI notation.
+   * Persisted from PositionEval.moves at save time for use by retrospection answer reveal
+   * and later near-best parity work.
+   * Absent on older records and on positions where the engine produced no PV line.
+   * Mirrors lichess-org/lila: RetroCandidate solution line (from comp child moves array).
+   */
+  bestLine?: string[];
 }
 
 export interface StoredAnalysis {
@@ -53,7 +61,7 @@ export interface StoredAnalysis {
  */
 export function buildAnalysisNodes(
   mainline: readonly TreeNode[],
-  getEval:  (path: string) => { cp?: number; mate?: number; best?: string; loss?: number; delta?: number } | undefined,
+  getEval:  (path: string) => { cp?: number; mate?: number; best?: string; loss?: number; delta?: number; moves?: string[] } | undefined,
 ): Record<string, StoredNodeEntry> {
   const nodes: Record<string, StoredNodeEntry> = {};
   let path = '';
@@ -68,6 +76,9 @@ export function buildAnalysisNodes(
       if (ev.best  !== undefined) entry.best  = ev.best;
       if (ev.loss  !== undefined) entry.loss  = ev.loss;
       if (ev.delta !== undefined) entry.delta = ev.delta;
+      // Persist the primary PV line for retrospection answer reveal and near-best parity.
+      // Mirrors lichess-org/lila: retroCtrl.ts solution line from comp child moves array.
+      if (ev.moves !== undefined && ev.moves.length > 0) entry.bestLine = ev.moves;
       const label = ev.loss !== undefined ? classifyLoss(ev.loss) : null;
       if (label !== null) entry.label = label;
       nodes[path] = entry;

@@ -77,7 +77,8 @@ function closeGlobalMenu(redraw: () => void): void {
 }
 
 function renderGlobalMenu(deps: HeaderDeps): VNode {
-  const { downloadPgn, resetAllData, redraw } = deps;
+  const { downloadPgn, resetAllData, selectedGameId, redraw } = deps;
+  const hasGame = selectedGameId !== null;
   return h('div.global-menu', [
     h('button.global-menu__trigger', {
       class: { active: showGlobalMenu },
@@ -103,8 +104,15 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         } },
       }, 'Clear Local Data'),
 
+      // Navigate to the analysis board to review the currently loaded game.
+      // Disabled when no game is selected — nothing to review.
       h('button.global-menu__item', {
-        on: { click: () => { console.log('TODO: game review settings'); } },
+        attrs: { disabled: !hasGame, title: hasGame ? 'Review current game on analysis board' : 'Select a game first' },
+        on: { click: () => {
+          if (!hasGame) return;
+          closeGlobalMenu(redraw);
+          window.location.hash = '#/analysis';
+        }},
       }, 'Game Review'),
 
       h('button.global-menu__item', {

@@ -8,12 +8,25 @@
 import { classifyLoss, LOSS_THRESHOLDS, type MoveLabel } from '../engine/winchances';
 import type { TreeNode } from '../tree/types';
 
+/**
+ * Opening/book lookup boundary.
+ * Returns the list of book UCI moves for a given FEN, or undefined when the
+ * position is not in the book (or no provider is available).
+ *
+ * Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts
+ * `root.explorer.fetchMasterOpening(fen)` — the cancellation seam between
+ * retrospection candidate selection and the opening explorer.
+ * Actual book lookup is deferred until an opening provider is wired in.
+ */
+export type OpeningProvider = (fen: string) => string[] | undefined;
+
 // Eval lookup: structural type matching PositionEval without importing it.
 type EvalLookup = (path: string) => {
-  cp?:   number;
-  mate?: number;
-  best?: string;
-  loss?: number;
+  cp?:    number;
+  mate?:  number;
+  best?:  string;
+  loss?:  number;
+  moves?: string[];
 } | undefined;
 
 /**
@@ -30,10 +43,11 @@ type EvalLookup = (path: string) => {
  *   "comp" child added during server analysis. Patzer Pro stores only the best-move
  *   UCI in evalCache (parentEval.best), so the solution node cannot be reconstructed
  *   without additional multi-PV storage. bestMove is the functional equivalent.
- * - bestLine: deferred. Lichess derives the PV line from the comp child's moves array
- *   (multi-PV output). Patzer Pro batch review runs at MultiPV=1 and stores only the
- *   best move UCI. Include bestLine once multi-PV batch output is persisted.
- * - openingUcis: deferred. Lichess cancels opening-book moves via explorer lookup.
+ * - bestLine: now persisted as the primary-PV move sequence from parentEval.moves.
+ *   Single-PV only (batch runs at MultiPV=1). Multi-PV best lines are deferred.
+ *   Absent when the parent position had no PV stored at review time.
+ * - openingUcis: the cancellation boundary is defined (OpeningProvider below).
+ *   Actual book lookup is deferred until an opening provider is available.
  */
 export interface RetroCandidate {
   gameId:         string | null;
@@ -43,6 +57,14 @@ export interface RetroCandidate {
   playedMove:     string;            // UCI of the move that was played
   playedMoveSan:  string;            // SAN of the move that was played
   bestMove:       string;            // UCI of the engine best move from fenBefore
+  /**
+   * Primary PV line starting from fenBefore, in UCI notation.
+   * Persisted from the parent position's PositionEval.moves at review time.
+   * Absent when no PV was stored (older records, or positions where the engine
+   * produced a score but no PV sequence).
+   * Single-PV only — mirrors lichess-org/lila: retroCtrl.ts solution node moves array.
+   */
+  bestLine?:      string[];
   classification: MoveLabel;         // 'inaccuracy' | 'mistake' | 'blunder'
   loss:           number;            // win-chance loss (mover perspective, 0–0.5 scale)
   isMissedMate:   boolean;           // parent had forced mate ≤ 3 but it was not played
@@ -74,10 +96,11 @@ export interface RetroCandidate {
  * @param userColor - if provided, restrict to mistakes made by this player
  */
 export function buildRetroCandidates(
-  mainline:  readonly TreeNode[],
-  getEval:   EvalLookup,
-  gameId:    string | null,
-  userColor: 'white' | 'black' | null = null,
+  mainline:       readonly TreeNode[],
+  getEval:        EvalLookup,
+  gameId:         string | null,
+  userColor:      'white' | 'black' | null = null,
+  getOpeningUcis: OpeningProvider = () => undefined,
 ): RetroCandidate[] {
   const candidates: RetroCandidate[] = [];
   let path = '';
@@ -128,6 +151,15 @@ export function buildRetroCandidates(
 
     if (!qualifiesByLoss && !isMissedMate) continue;
 
+    // --- Opening cancellation ---
+    // Mirrors lichess-org/lila: retroCtrl.ts findNextNode openingUcis check:
+    // `if (openingUcis.includes(node.uci)) continue`.
+    // Skip positions where the played move appears in the opening book — even if
+    // the loss threshold is exceeded, book deviations are often intentional and
+    // should not be surfaced as mistakes.
+    const openingUcis = getOpeningUcis(parent.fen);
+    if (openingUcis && node.uci && openingUcis.includes(node.uci)) continue;
+
     // Resolve final classification.
     // Missed-mate cases that do not already reach the mistake threshold are labelled
     // blunder (a forced mate was available and was missed — that is a blunder by definition).
@@ -139,7 +171,7 @@ export function buildRetroCandidates(
       finalClassification = 'blunder';
     }
 
-    candidates.push({
+    const candidate: RetroCandidate = {
       gameId,
       path,
       parentPath,
@@ -152,7 +184,13 @@ export function buildRetroCandidates(
       isMissedMate,
       playerColor,
       ply:            node.ply,
-    });
+    };
+    // Attach the persisted PV line when available for answer reveal and near-best parity.
+    // Mirrors lichess-org/lila: retroCtrl.ts solution node (comp child with moves array).
+    if (parentEval.moves && parentEval.moves.length > 0) {
+      candidate.bestLine = parentEval.moves;
+    }
+    candidates.push(candidate);
   }
 
   return candidates;

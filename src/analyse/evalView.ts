@@ -279,7 +279,10 @@ function detectPhases(mainline: TreeNode[], n: number): { middleIdx?: number; en
     if (middleIdx === undefined && mm <= 10) middleIdx = i;
     if (endIdx === undefined && mm <= 6) { endIdx = i; break; }
   }
-  return { middleIdx, endIdx };
+  const result: { middleIdx?: number; endIdx?: number } = {};
+  if (middleIdx !== undefined) result.middleIdx = middleIdx;
+  if (endIdx !== undefined) result.endIdx = endIdx;
+  return result;
 }
 
 export function renderEvalGraph(
@@ -371,15 +374,39 @@ export function renderEvalGraph(
     } }));
   }
 
+  // Hover indicator line — positioned by mouseenter on each strip, hidden on mouseleave.
+  // Drawn before strips+dots so dots remain on top.
+  // Mirrors lichess-org/lila: ui/chart/src/acpl.ts interaction.mode = 'nearest' hover behavior.
+  svgNodes.push(h('line', {
+    attrs: {
+      'data-hover': '1',
+      x1: 0, y1: 0, x2: 0, y2: GRAPH_H,
+      stroke: '#aaa', 'stroke-width': 1.5, opacity: '0',
+      'pointer-events': 'none',
+    },
+  }));
+
   // Click strips (wider target than the dot) + dots
   for (const pt of valid) {
     const capturePath = pt.path;
     const isCurrent = pt.path === currentPath;
+    const capturedX = pt.x;
 
-    // Invisible wide strip for easier clicking
+    // Invisible wide strip for easier clicking + hover targeting
     svgNodes.push(h('rect', {
       attrs: { x: pt.x - 5, y: 0, width: 10, height: GRAPH_H, fill: 'transparent' },
-      on: { click: () => navigate(capturePath) },
+      on: {
+        click: () => navigate(capturePath),
+        mouseenter: (e: MouseEvent) => {
+          const svg = (e.currentTarget as Element).closest('svg');
+          const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
+          if (hl) {
+            hl.setAttribute('x1', String(capturedX));
+            hl.setAttribute('x2', String(capturedX));
+            hl.setAttribute('opacity', '0.55');
+          }
+        },
+      },
     }));
 
     // Visible dot — current position overrides to green; mate opportunity → purple;
@@ -422,7 +449,16 @@ export function renderEvalGraph(
     } }));
   }
 
-  return h('div.eval-graph', [
+  return h('div.eval-graph', {
+    on: {
+      // Hide hover indicator when mouse leaves the graph area entirely.
+      mouseleave: (e: MouseEvent) => {
+        const svg = (e.currentTarget as Element).querySelector('svg');
+        const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
+        if (hl) hl.setAttribute('opacity', '0');
+      },
+    },
+  }, [
     h('svg', { attrs: {
       viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
       width: '100%',

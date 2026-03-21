@@ -15,6 +15,7 @@
 // - No redraw dependency — callers are responsible for triggering redraws.
 
 import type { RetroCandidate } from './retro';
+import { evalWinChances } from '../engine/winchances';
 
 /**
  * Mirrors Lichess Feedback union type from retroCtrl.ts.
@@ -150,6 +151,8 @@ export function makeRetroCtrl(
   candidates: RetroCandidate[],
   userColor: 'white' | 'black' | null = null,
   getNodeEval: () => { cp?: number; mate?: number; depth?: number } | undefined = () => undefined,
+  getEval: (path: string) => { cp?: number; mate?: number } | undefined = () => undefined,
+  navigateTo: (path: string) => void = () => {},
 ): RetroCtrl {
   // Mirrors retroCtrl.ts: solvedPlies (tracks which plies have been resolved)
   let solvedPlies: number[] = [];
@@ -266,10 +269,30 @@ export function makeRetroCtrl(
       //   node.ceval.depth >= 18 || (node.ceval.depth >= 14 && millis > 6000)
       // Patzer tracks depth only (no millis); require depth >= 14 as the minimum gate.
       if (!ev.depth || ev.depth < 14) return;
-      // Near-best povDiff comparison is deferred. When ceval is ready, resolve as fail
-      // so the 'eval' state never gets stuck indefinitely.
-      // This will be replaced with: if (povDiff > -0.04) onWin(); else onFail();
-      _feedback = 'fail';
+      // Near-best acceptance — mirrors lichess-org/lila: retroCtrl.ts checkCeval + winningChances.ts povDiff.
+      // povDiff(color, nodeEval, parentEval) = (toColor(nodeWc) - toColor(parentWc)) / 2
+      // Accept the played move if diff > -0.04 (within 4% win-chance of the parent position).
+      const parentEv = getEval(c.parentPath);
+      if (parentEv) {
+        // toPov: convert white-perspective win chance to color-perspective.
+        // Mirrors lichess-org/lila: winningChances.ts toPov (negate for black).
+        const toColor = (wc: number): number => c.playerColor === 'white' ? wc : -wc;
+        const nodeWc   = toColor(evalWinChances(ev) ?? 0);
+        const parentWc = toColor(evalWinChances(parentEv) ?? 0);
+        const diff = (nodeWc - parentWc) / 2;
+        if (diff > -0.04) {
+          // Near-best: accept. Mirrors lichess-org/lila: retroCtrl.ts onWin().
+          solveCurrent();
+          _feedback = 'win';
+        } else {
+          _feedback = 'fail';
+          navigateTo(c.parentPath); // return user to exercise start for retry
+        }
+      } else {
+        // No parent eval available — cannot compute povDiff; fall back to fail.
+        _feedback = 'fail';
+        navigateTo(c.parentPath);
+      }
     },
 
     onWin(): void {

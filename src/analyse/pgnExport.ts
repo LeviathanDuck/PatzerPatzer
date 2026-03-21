@@ -17,6 +17,8 @@ import {
 import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import { clearPuzzleCandidates } from '../puzzles/extract';
 import type { ImportedGame } from '../import/types';
+import { nodeListAt, pathIsMainline } from '../tree/ops';
+import type { TreeNode, TreePath } from '../tree/types';
 
 // --- Injected deps ---
 
@@ -113,6 +115,54 @@ export function buildPgn(annotated: boolean): string {
 
   parts.push(game?.result ?? '*');
   return `${headerStr}\n\n${parts.join(' ')}\n`;
+}
+
+/**
+ * Build a compact PGN string for a specific node list (line/variation).
+ * Used by the move-list context menu "Copy PGN" actions.
+ * Adapted from lichess-org/lila: ui/analyse/src/pgnExport.ts renderVariationPgn
+ *
+ * @param nodeList - ordered list of nodes from root through the selected path
+ * @param onMainline - true if the path is entirely on the mainline (copy main line vs variation)
+ */
+export function renderVariationPgn(nodeList: TreeNode[], onMainline: boolean): string {
+  const filtered = nodeList.filter(n => n.san);
+  if (filtered.length === 0) return '';
+  let out = '';
+  for (let i = 0; i < filtered.length; i++) {
+    const node = filtered[i]!;
+    if (node.ply % 2 === 1) {
+      // White's move: always emit move number
+      out += `${Math.ceil(node.ply / 2)}. `;
+    } else if (i === 0) {
+      // Variation starting on black's move: emit N...
+      out += `${Math.ceil(node.ply / 2)}... `;
+    }
+    out += `${node.san} `;
+  }
+  return out.trimEnd();
+}
+
+/**
+ * True when `path` follows only first-children (mainline) from `root`.
+ * Re-exported here so context menu rendering can check mainline status
+ * without importing tree/ops directly from main.ts.
+ * Mirrors lichess-org/lila: contextMenu.ts onMainline check.
+ */
+export function isMainlinePath(root: TreeNode, path: TreePath): boolean {
+  return pathIsMainline(root, path);
+}
+
+/**
+ * Copy the PGN for the line ending at `path` to the clipboard.
+ * Mirrors lichess-org/lila: contextMenu.ts clipboard copy action.
+ */
+export function copyLinePgn(path: TreePath): void {
+  const ctrl       = _getCtrl();
+  const nodes      = nodeListAt(ctrl.root, path);
+  const onMainline = isMainlinePath(ctrl.root, path);
+  const text       = renderVariationPgn(nodes, onMainline);
+  navigator.clipboard.writeText(text).catch(() => {});
 }
 
 export function downloadPgn(annotated: boolean): void {
