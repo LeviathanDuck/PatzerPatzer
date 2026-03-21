@@ -228,9 +228,21 @@ export function renderPvBox(): VNode | null {
     const isPositive = ev.cp !== undefined ? ev.cp > 0 : ev.mate !== undefined ? ev.mate > 0 : null;
     const { first, rest } = ev.moves ? renderPvMoves(fen, ev.moves) : { first: [], rest: [] };
 
+    // "Massive improvement" — engine found a line with ≥ 2-pawn advantage for the side to move,
+    // or a forced mate. Threshold 200cp matches a decisive material/positional advantage.
+    // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts (brilliant-move threshold concept)
+    const stm = fen.split(' ')[1]; // 'w' or 'b'
+    const cpStm = ev.cp !== undefined ? (stm === 'w' ? ev.cp : -ev.cp) : undefined;
+    const isMassive = (cpStm !== undefined && cpStm > 200)
+      || (ev.mate !== undefined && ((stm === 'w' && ev.mate > 0) || (stm === 'b' && ev.mate < 0)));
+
     const children: (VNode | null)[] = [];
     children.push(h('strong', {
-      class: { 'pv__score--white': isPositive === true, 'pv__score--black': isPositive === false },
+      class: {
+        'pv__score--white':   isPositive === true,
+        'pv__score--black':   isPositive === false,
+        'pv__score--massive': isMassive,
+      },
     }, score));
     if (first.length > 0) children.push(h('span.pv-first', first));
     if (rest.length  > 0) children.push(h('span.pv-cont',  rest));

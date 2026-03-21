@@ -278,10 +278,12 @@ export function renderHeader(deps: HeaderDeps): VNode {
         h('div.header__platforms', [
           h('button.header__platform', {
             class: { active: importPlatform === 'chesscom' },
+            attrs: { title: importPlatform === 'chesscom' ? 'Chess.com (active)' : 'Switch to Chess.com' },
             on: { click: () => { importPlatform = 'chesscom'; redraw(); } },
           }, 'Chess.com'),
           h('button.header__platform', {
             class: { active: importPlatform === 'lichess' },
+            attrs: { title: importPlatform === 'lichess' ? 'Lichess (active)' : 'Switch to Lichess' },
             on: { click: () => { importPlatform = 'lichess'; redraw(); } },
           }, 'Lichess'),
         ]),

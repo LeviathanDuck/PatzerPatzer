@@ -1497,7 +1497,8 @@ function isEngineSearchActive() {
 // src/analyse/evalView.ts
 function formatScore(ev) {
   if (ev.mate !== void 0) {
-    return ev.mate > 0 ? `#${ev.mate}` : `#${ev.mate}`;
+    if (ev.mate === 0) return "#KO";
+    return `#${ev.mate}`;
   }
   if (ev.cp !== void 0) {
     const e = Math.max(Math.min(Math.round(ev.cp / 10) / 10, 99), -99);
@@ -1601,8 +1602,14 @@ function renderAnalysisSummary(analysisComplete2, evalCache2, mainline, whiteNam
     playerCol(blackName, summary.black, "black")
   ]);
 }
-function evalPct(currentEval2) {
-  if (currentEval2.mate !== void 0) return currentEval2.mate > 0 ? 100 : 0;
+function evalPct(currentEval2, fen) {
+  if (currentEval2.mate !== void 0) {
+    if (currentEval2.mate === 0) {
+      const stm = fen?.split(" ")[1];
+      return stm === "b" ? 100 : 0;
+    }
+    return currentEval2.mate > 0 ? 100 : 0;
+  }
   if (currentEval2.cp !== void 0) {
     const pct = 50 + currentEval2.cp / 20;
     return Math.max(0, Math.min(100, pct));
@@ -1614,9 +1621,9 @@ var EVAL_BAR_TICKS = [...Array(8).keys()].map(
     attrs: { style: `height: ${(i + 1) * 12.5}%` }
   })
 );
-function renderEvalBar(engineEnabled2, currentEval2) {
+function renderEvalBar(engineEnabled2, currentEval2, fen) {
   if (!engineEnabled2) return h("div.eval-bar.eval-bar--off");
-  const pct = evalPct(currentEval2);
+  const pct = evalPct(currentEval2, fen);
   const scorePct = Math.max(8, Math.min(92, pct));
   const hasScore = currentEval2.cp !== void 0 || currentEval2.mate !== void 0;
   const score = hasScore ? formatScore(currentEval2) : "";
@@ -1750,7 +1757,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
         }
       }
     }));
-    const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "#c084fc" : pt.label === "blunder" ? "#f66" : pt.label === "mistake" ? "#f84" : pt.label === "inaccuracy" ? "#fa4" : "#888";
+    const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "hsl(307,80%,70%)" : pt.label === "blunder" ? "hsl(0,69%,60%)" : pt.label === "mistake" ? "hsl(41,100%,45%)" : pt.label === "inaccuracy" ? "hsl(202,78%,62%)" : "#888";
     const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
     svgNodes.push(h("circle", { attrs: {
       cx: pt.x,
@@ -5928,17 +5935,15 @@ function renderPlayerStrips() {
   const diff2 = getMaterialDiff(ctrl2.node.fen);
   const score = getMaterialScore(diff2);
   const clocks = getClocksAtPath();
-  const whiteResult = result === "1-0" ? "1" : result === "0-1" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
-  const blackResult = result === "0-1" ? "1" : result === "1-0" ? "0" : result === "1/2-1/2" ? "\xBD" : null;
   const strip = (color) => {
     const name = color === "white" ? whiteName : blackName;
     const rating = color === "white" ? whiteRating : blackRating;
-    const badge = color === "white" ? whiteResult : blackResult;
     const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
     const matScore = color === "white" ? score : -score;
     const centis = color === "white" ? clocks.white : clocks.black;
     return h("div.analyse__player_strip", [
-      badge ? h("span.player-strip__result", { class: { "player-strip__result--winner": winner } }, badge) : null,
+      // Winner star — replaces numeric 1/0/½ badges; losers and draws show no badge.
+      winner ? h("span.player-strip__result", "\u2605") : null,
       h("span.player-strip__color-icon", { class: { "player-strip__color-icon--white": color === "white", "player-strip__color-icon--black": color === "black" } }),
       h("span.player-strip__name", rating !== void 0 ? `${name} (${rating})` : name),
       renderMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
@@ -6167,9 +6172,16 @@ function renderPvBox() {
     const score = formatScore(ev);
     const isPositive = ev.cp !== void 0 ? ev.cp > 0 : ev.mate !== void 0 ? ev.mate > 0 : null;
     const { first: first2, rest } = ev.moves ? renderPvMoves(fen, ev.moves) : { first: [], rest: [] };
+    const stm = fen.split(" ")[1];
+    const cpStm = ev.cp !== void 0 ? stm === "w" ? ev.cp : -ev.cp : void 0;
+    const isMassive = cpStm !== void 0 && cpStm > 200 || ev.mate !== void 0 && (stm === "w" && ev.mate > 0 || stm === "b" && ev.mate < 0);
     const children = [];
     children.push(h("strong", {
-      class: { "pv__score--white": isPositive === true, "pv__score--black": isPositive === false }
+      class: {
+        "pv__score--white": isPositive === true,
+        "pv__score--black": isPositive === false,
+        "pv__score--massive": isMassive
+      }
     }, score));
     if (first2.length > 0) children.push(h("span.pv-first", first2));
     if (rest.length > 0) children.push(h("span.pv-cont", rest));
@@ -8484,12 +8496,18 @@ function renderGamesView(deps) {
 
 // src/analyse/moveList.ts
 var GLYPH_COLORS = {
-  "??": "#f66",
-  "?": "#f84",
-  "?!": "#fa4",
-  "!!": "#5af",
-  "!": "#8cf",
-  "!?": "#aaa"
+  "??": "hsl(0,69%,60%)",
+  // blunder     — muted red
+  "?": "hsl(41,100%,45%)",
+  // mistake     — amber
+  "?!": "hsl(202,78%,62%)",
+  // inaccuracy  — steel blue
+  "!!": "hsl(129,71%,45%)",
+  // brilliant   — green
+  "!": "hsl(88,62%,37%)",
+  // good        — olive green
+  "!?": "hsl(307,80%,70%)"
+  // interesting — pink/purple
 };
 function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2, contextMenuPath2, onContextMenu) {
   const cached = getEval(path);
@@ -8508,7 +8526,7 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
   }
   inner.push(h("san", node.san ?? ""));
   if (symbol) inner.push(h("glyph", { attrs: { style: `color:${color}` } }, symbol));
-  if (mate !== void 0) inner.push(h("eval", `+M${Math.abs(mate)}`));
+  if (mate !== void 0) inner.push(h("eval", mate === 0 ? "KO" : `+M${Math.abs(mate)}`));
   return h("move", {
     class: {
       active: path === currentPath,
@@ -8860,6 +8878,7 @@ function renderHeader(deps) {
         h("div.header__platforms", [
           h("button.header__platform", {
             class: { active: importPlatform === "chesscom" },
+            attrs: { title: importPlatform === "chesscom" ? "Chess.com (active)" : "Switch to Chess.com" },
             on: { click: () => {
               importPlatform = "chesscom";
               redraw2();
@@ -8867,6 +8886,7 @@ function renderHeader(deps) {
           }, "Chess.com"),
           h("button.header__platform", {
             class: { active: importPlatform === "lichess" },
+            attrs: { title: importPlatform === "lichess" ? "Lichess (active)" : "Switch to Lichess" },
             on: { click: () => {
               importPlatform = "lichess";
               redraw2();
@@ -9428,6 +9448,7 @@ function last() {
 function toggleRetro() {
   if (ctrl.retro) {
     delete ctrl.retro;
+    syncArrow();
     redraw();
     return;
   }
@@ -9502,7 +9523,7 @@ function routeContent(route) {
         })(),
         // Eval gauge — between board and tools (grid-area: gauge)
         // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge grid-area
-        renderEvalBar(engineEnabled, currentEval),
+        renderEvalBar(engineEnabled, currentEval, ctrl.node.fen),
         // Tools — right column (grid-area: tools)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__tools
         h("div.analyse__tools", [
@@ -9533,6 +9554,7 @@ function routeContent(route) {
             uciToSan,
             onRevealGuidance: () => {
               ctrl.retro?.revealGuidance();
+              syncArrow();
               redraw();
             }
           }),

@@ -11,9 +11,15 @@ import type { TreeNode, TreePath } from '../tree/types';
 // label is present when analysis was saved and restored from IDB; absent during live analysis.
 type EvalLookup = (path: string) => { loss?: number; best?: string; mate?: number; label?: MoveLabel } | undefined;
 
+// Annotation glyph colors — mirrors lichess-org/lila: ui/lib/css/theme/_theme.default.scss
+// $c-blunder / $c-mistake / $c-inaccuracy / $c-brilliant / $c-secondary / $c-interesting
 const GLYPH_COLORS: Record<string, string> = {
-  '??': '#f66', '?': '#f84', '?!': '#fa4',
-  '!!': '#5af', '!': '#8cf', '!?': '#aaa',
+  '??': 'hsl(0,69%,60%)',    // blunder     — muted red
+  '?':  'hsl(41,100%,45%)',  // mistake     — amber
+  '?!': 'hsl(202,78%,62%)',  // inaccuracy  — steel blue
+  '!!': 'hsl(129,71%,45%)',  // brilliant   — green
+  '!':  'hsl(88,62%,37%)',   // good        — olive green
+  '!?': 'hsl(307,80%,70%)',  // interesting — pink/purple
 };
 
 function renderMoveSpan(
@@ -55,7 +61,8 @@ function renderMoveSpan(
   }
   inner.push(h('san', node.san ?? ''));
   if (symbol) inner.push(h('glyph', { attrs: { style: `color:${color}` } }, symbol));
-  if (mate !== undefined) inner.push(h('eval', `+M${Math.abs(mate)}`));
+  // mate === 0 = terminal checkmate position; use KO notation instead of +M0.
+  if (mate !== undefined) inner.push(h('eval', mate === 0 ? 'KO' : `+M${Math.abs(mate)}`));
 
   return h('move', {
     class: {

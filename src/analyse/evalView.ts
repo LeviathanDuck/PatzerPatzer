@@ -23,10 +23,12 @@ type EvalCache = ReadonlyMap<string, EvalEntry>;
 // Adapted from lichess-org/lila: ui/lib/src/ceval/util.ts renderEval
 // Score is always from white's perspective (positive = white winning).
 
-/** Format centipawns as +0.8 / -1.2 / #3 / #-3. Matches Lichess renderEval util. */
+/** Format centipawns as +0.8 / -1.2 / #3 / #-3 / #KO. Matches Lichess renderEval util.
+ *  #KO is the terminal-mate case (mate === 0): the position is already checkmated. */
 export function formatScore(ev: { cp?: number; mate?: number }): string {
   if (ev.mate !== undefined) {
-    return ev.mate > 0 ? `#${ev.mate}` : `#${ev.mate}`;
+    if (ev.mate === 0) return '#KO';
+    return `#${ev.mate}`;
   }
   if (ev.cp !== undefined) {
     // Round to 1 decimal, cap at ±99 — mirrors lichess-org/lila: ui/lib/src/ceval/util.ts
@@ -211,8 +213,17 @@ export function renderAnalysisSummary(
 // --- Eval bar ---
 // Adapted from lichess-org/lila: ui/analyse/src/view/ (evaluation bar)
 
-function evalPct(currentEval: { cp?: number; mate?: number }): number {
-  if (currentEval.mate !== undefined) return currentEval.mate > 0 ? 100 : 0;
+function evalPct(currentEval: { cp?: number; mate?: number }, fen?: string): number {
+  if (currentEval.mate !== undefined) {
+    if (currentEval.mate === 0) {
+      // Terminal mate: the side to move is the checkmated one.
+      // Black is to move and checkmated → white wins → 100.
+      // White is to move and checkmated → black wins → 0.
+      const stm = fen?.split(' ')[1];
+      return stm === 'b' ? 100 : 0;
+    }
+    return currentEval.mate > 0 ? 100 : 0;
+  }
   if (currentEval.cp !== undefined) {
     const pct = 50 + currentEval.cp / 20;
     return Math.max(0, Math.min(100, pct));
@@ -234,10 +245,11 @@ const EVAL_BAR_TICKS: VNode[] = [...Array(8).keys()].map(i =>
 export function renderEvalBar(
   engineEnabled: boolean,
   currentEval:   { cp?: number; mate?: number },
+  fen?:          string,
 ): VNode {
   if (!engineEnabled) return h('div.eval-bar.eval-bar--off');
 
-  const pct = evalPct(currentEval);
+  const pct = evalPct(currentEval, fen);
   // Clamp the score label position so it stays visible near the edges.
   const scorePct = Math.max(8, Math.min(92, pct));
   const hasScore = currentEval.cp !== undefined || currentEval.mate !== undefined;
@@ -411,11 +423,12 @@ export function renderEvalGraph(
 
     // Visible dot — current position overrides to green; mate opportunity → purple;
     // otherwise colored by move classification.
+    // Graph dot colors match glyph annotation palette — mirrors _theme.default.scss
     const dotColor = isCurrent         ? '#4a8'
-      : pt.hasMate                     ? '#c084fc'
-      : pt.label === 'blunder'         ? '#f66'
-      : pt.label === 'mistake'         ? '#f84'
-      : pt.label === 'inaccuracy'      ? '#fa4'
+      : pt.hasMate                     ? 'hsl(307,80%,70%)'
+      : pt.label === 'blunder'         ? 'hsl(0,69%,60%)'
+      : pt.label === 'mistake'         ? 'hsl(41,100%,45%)'
+      : pt.label === 'inaccuracy'      ? 'hsl(202,78%,62%)'
       : '#888';
     const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
     svgNodes.push(h('circle', { attrs: {
