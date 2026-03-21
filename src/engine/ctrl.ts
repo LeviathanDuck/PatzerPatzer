@@ -77,10 +77,16 @@ let evalParentPath = '';
 /** True between sending 'go' and receiving the corresponding 'bestmove'. */
 let engineSearchActive = false;
 /**
- * True when we sent 'stop' while a search was in flight and expect one stale
- * 'bestmove' to arrive before the real result for the new position.
+ * Count of 'stop' commands sent to interrupt active searches that have not yet
+ * produced their stale 'bestmove' reply.  Each arriving 'bestmove' while this
+ * count > 0 is discarded and the count decremented.
+ *
+ * A counter rather than a boolean — a rapid stop/start sequence can have
+ * multiple stale bestmoves in flight simultaneously (e.g. threat cleared then
+ * navigation stop fires before the first stale reply arrives).  A boolean can
+ * only discard one; the counter handles arbitrarily many.
  */
-let awaitingStopBestmove = false;
+let pendingStopCount = 0;
 /**
  * User navigated to a new position while the engine was busy.
  * When the current search's bestmove arrives, evalCurrentPosition() is called
@@ -126,7 +132,7 @@ export function clearPendingLines(): void         { pendingLines = []; }
 export function setShowEngineArrows(v: boolean): void { showEngineArrows = v; }
 export function setArrowAllLines(v: boolean): void    { arrowAllLines = v; }
 export function setShowPlayedArrow(v: boolean): void  { showPlayedArrow = v; }
-export function setAwaitingStopBestmove(v: boolean): void { awaitingStopBestmove = v; }
+export function incrementPendingStopCount(): void { pendingStopCount++; }
 export function stopProtocol(): void              { protocol.stop(); }
 
 // --- Arrow rendering ---
@@ -287,8 +293,8 @@ function parseEngineLine(line: string): void {
     }
   } else if (parts[0] === 'bestmove') {
     // Discard the stale bestmove that arrives after a 'stop' interrupted a previous search.
-    if (awaitingStopBestmove) {
-      awaitingStopBestmove = false;
+    if (pendingStopCount > 0) {
+      pendingStopCount--;
       currentEval  = {};
       pendingLines = [];
       console.log('[ceval] stale bestmove discarded — currentEval reset');
@@ -396,7 +402,7 @@ export function toggleThreatMode(): void {
 export function evalCurrentPosition(): void {
   if (_isBatchActive()) return;
   if (!engineEnabled || !engineReady) return;
-  if (evalIsThreat) { awaitingStopBestmove = true; protocol.stop(); evalIsThreat = false; }
+  if (evalIsThreat) { pendingStopCount++; protocol.stop(); evalIsThreat = false; }
   threatEval = {};
   const ctrl = _getCtrl();
   const cached = evalCache.get(ctrl.path);

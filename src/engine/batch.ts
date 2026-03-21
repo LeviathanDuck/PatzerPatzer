@@ -17,7 +17,7 @@ import {
   setOnEngineReady,
   setEvalNode,
   setEngineSearchActive,
-  setAwaitingStopBestmove,
+  incrementPendingStopCount,
   isEngineSearchActive,
   getEvalNodePath,
   getEvalNodePly,
@@ -165,7 +165,7 @@ export function detectMissedTactics(userColor: 'white' | 'black' | null): boolea
 
 export function evalBatchItem(item: BatchItem): void {
   const wasActive      = isEngineSearchActive();
-  setAwaitingStopBestmove(wasActive); // discard stale bestmove if one is in flight
+  if (wasActive) incrementPendingStopCount(); // discard stale bestmove if one is in flight
   setEngineSearchActive(true);
   setEvalNode(item.nodeId, item.nodePath, item.nodePly, item.parentPath);
   resetCurrentEval();
