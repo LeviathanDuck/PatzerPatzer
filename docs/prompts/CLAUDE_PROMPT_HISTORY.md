@@ -3119,3 +3119,17 @@ Prompt text not recovered. This history entry was reconstructed after review fro
 - Review outcome: passed
 - Commit: local worktree (uncommitted)
 - Notes: the current local implementation keeps review-label visibility in the move list, adds a persisted `showReviewLabels` setting in `src/engine/ctrl.ts`, exposes it in `src/ceval/view.ts`, and gates move-list review-glyph fallback in `src/analyse/moveList.ts` without changing review computation or stored analysis data
+
+## CCP-043-F2 — Reviewed
+
+- Task: refine the player-strip winner/loser boxes so they hug the displayed identity width and use border-only styling without a background fill
+- Task ID: `CCP-043`
+- Parent prompt ID: `CCP-043-F1`
+- Source document: `docs/WISHLIST.md`
+- Source step: `Remove the 1 / 0 / ½ single-game result markers from the player strip by default`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `ef3ed70`
+- Notes: the current implementation keeps the winner/loser identity cluster intact while changing `.player-strip__identity` to size to content instead of stretching and removing the earlier fill treatment in favor of border-only winner/loser color cues
+
