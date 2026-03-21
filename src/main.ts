@@ -388,6 +388,11 @@ function last(): void {
 function toggleRetro(): void {
   if (ctrl.retro) {
     delete ctrl.retro;
+    // Restore arrows that were suppressed during retro mode.
+    // buildArrowShapes() gates on ctrl.retro presence — syncArrow() must be
+    // called here so arrows re-appear immediately without waiting for the next
+    // navigation or engine event.
+    syncArrow();
     redraw();
     return;
   }
@@ -495,7 +500,7 @@ function routeContent(route: Route): VNode {
             navigate,
             redraw,
             uciToSan,
-            onRevealGuidance:  () => { ctrl.retro?.revealGuidance(); redraw(); },
+            onRevealGuidance:  () => { ctrl.retro?.revealGuidance(); syncArrow(); redraw(); },
           }),
           // Analysis summary and puzzle finder — hidden during active retrospection.
           // These are analysis-complete result panels; they conflict with the focused
