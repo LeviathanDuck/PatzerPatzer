@@ -364,35 +364,19 @@ export function renderEvalGraph(
   const cy = GRAPH_H / 2;
   const svgNodes: VNode[] = [];
 
-  // Lichess-style fill: same area path rendered twice, clipped above/below the origin.
-  // Mirrors ui/chart/src/acpl.ts fill: { target: 'origin', above: whiteFill, below: blackFill }.
+  // Follow-up parity refinement: render White territory as a fill rising from the
+  // bottom of the chart to the eval line, matching the intended Lichess-style read.
+  // This keeps the interaction model intact while removing the center-origin look.
   const polyPts = [
-    `${valid[0]!.x},${cy}`,
+    `${valid[0]!.x},${GRAPH_H}`,
     ...valid.map(p => `${p.x},${p.y}`),
-    `${valid[valid.length - 1]!.x},${cy}`,
+    `${valid[valid.length - 1]!.x},${GRAPH_H}`,
   ].join(' ');
-  svgNodes.push(h('defs', [
-    h('clipPath', { attrs: { id: 'eval-graph-fill-upper' } }, [
-      h('rect', { attrs: { x: 0, y: 0, width: GRAPH_W, height: cy } }),
-    ]),
-    h('clipPath', { attrs: { id: 'eval-graph-fill-lower' } }, [
-      h('rect', { attrs: { x: 0, y: cy, width: GRAPH_W, height: cy } }),
-    ]),
-  ]));
   svgNodes.push(h('polygon', {
     attrs: {
       points: polyPts,
       fill: 'rgba(255,255,255,0.3)',
       stroke: 'none',
-      'clip-path': 'url(#eval-graph-fill-upper)',
-    },
-  }));
-  svgNodes.push(h('polygon', {
-    attrs: {
-      points: polyPts,
-      fill: 'rgba(0,0,0,1)',
-      stroke: 'none',
-      'clip-path': 'url(#eval-graph-fill-lower)',
     },
   }));
 
@@ -403,8 +387,8 @@ export function renderEvalGraph(
   svgNodes.push(h('polyline', { attrs: {
     points: valid.map(p => `${p.x},${p.y}`).join(' '),
     fill: 'none',
-    stroke: '#888',
-    'stroke-width': 1.5,
+    stroke: '#d85000',
+    'stroke-width': 1,
     'stroke-linejoin': 'round',
     'stroke-linecap': 'round',
   } }));
