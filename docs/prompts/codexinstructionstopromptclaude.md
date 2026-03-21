@@ -19,7 +19,9 @@ Before writing the prompt:
 - include Lichess inspection instructions only when that comparison is actually relevant
 - assign the prompt a stable identifier in the form `CCP-###`
 - identify the source planning document and exact step/task the prompt comes from
-- add a matching entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
+- add the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
+- when adding the prompt to the queue file, place a scan-friendly `## CCP-### - short task title` heading immediately before the fenced prompt block
+- add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
 
 The prompt you generate must instruct Claude Code to:
 - inspect the current code first and search for actual implementation points instead of guessing file paths
@@ -76,13 +78,7 @@ Output requirements:
   - `Source Document: docs/...`
   - `Source Step: ...`
 - tell Claude Code to repeat the same `Task ID` field in its final report unless a different task id is explicitly provided in the prompt
-- create the prompt-log entry in this exact shape when generating the prompt:
-  - `- [ ] Reviewed`
-  - `  - ID: \`CCP-###\``
-  - `  - Source document: \`docs/...\``
-  - `  - Source step: \`...\``
-  - `  - Task: short task title`
-  - `  - Review outcome: pending`
-  - `  - Review issues: none`
+- append the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when generating it
+- add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 
 My rough task description follows:

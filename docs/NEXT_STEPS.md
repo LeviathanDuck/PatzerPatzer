@@ -125,6 +125,56 @@ Why now:
 - this is the right bridge between game review and later puzzle tooling
 - it keeps the project centered on strengthening the analysis board before expanding puzzle scope
 
+Implementation shape:
+- build the first version on top of the review data Patzer already produces after `Review`
+- treat this as a retrospective training loop, not as a generic saved-puzzles feature
+- keep the first milestone scoped to one reviewed game at a time
+
+MVP checklist:
+- introduce a dedicated per-game retrospection candidate shape
+  - `gameId`
+  - `path`
+  - `fenBefore`
+  - `playedMove`
+  - `bestMove`
+  - `bestLine`
+  - `classification`
+  - `loss`
+  - `isMissedMate`
+  - `playerColor`
+- build those candidates from current reviewed mainline data rather than from ad hoc UI state
+- select candidates from reviewed moves only
+- start with `mistake` and `blunder` level moves, plus missed mate-in-3 style cases
+- when the user enters the feature, jump to the position before the mistake
+- let the user try a move from that position
+- first-pass acceptance rule:
+  - accept the exact engine best move
+  - defer Lichess-style "close enough by eval margin" acceptance until the feature loop itself is stable
+- after success, show the stored best line and advance to the next candidate
+- after failure, show the expected move and line, then allow continue / retry
+- support sequential navigation through candidates inside the current game
+- persist enough state to resume the reviewed game later, but do not yet design a cross-game training inbox around it
+
+What current review output is already sufficient for:
+- identifying candidate mistake nodes from `loss`
+- locating the puzzle-start position from the parent FEN
+- showing the move that was played
+- showing the engine best move from that position
+- building a simple next / previous mistake flow
+
+What is still missing for full Lichess-style parity and should be deferred until after the MVP:
+- persisted `comp`-style alternative lines in the move tree
+- opening / book cancellation for theory moves
+- local ceval fallback to accept near-best alternatives
+- richer player-targeted practice state machine behavior
+- a broader cross-game “learn from my mistakes” queue
+
+Guardrails:
+- do not couple the first version to the saved-puzzles subsystem
+- do not add this mode by inventing large new ownership in `src/main.ts`
+- prefer a small dedicated retrospection module that consumes completed review output
+- keep the first version mainline-only until review-state correctness and side-line semantics are safer
+
 ### 11. Formalize per-move review annotations and add book-move support
 
 Current state:

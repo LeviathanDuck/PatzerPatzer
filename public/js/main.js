@@ -707,6 +707,10 @@ function deleteNodeAt(root, path) {
   const id = pathLast(path);
   parent.children = parent.children.filter((c) => c.id !== id);
 }
+function pruneVariations(node) {
+  if (node.children.length > 1) node.children = [node.children[0]];
+  if (node.children[0]) pruneVariations(node.children[0]);
+}
 
 // src/analyse/ctrl.ts
 var AnalyseCtrl = class {
@@ -6496,13 +6500,17 @@ function renderAnalysisControls() {
   const selectedGameId2 = _getSelectedGameId3();
   const hasGame = ctrl2.mainline.length > 1;
   let reviewLabel;
+  let reviewTitle;
   if (batchAnalyzing) {
     const pct = batchQueue.length > 0 ? Math.round(batchDone / batchQueue.length * 100) : 0;
     reviewLabel = `${pct}%`;
+    reviewTitle = "Analysis in progress \u2014 click to stop";
   } else if (analysisComplete) {
     reviewLabel = "Re-analyze";
+    reviewTitle = "Clear previous analysis and run again";
   } else {
     reviewLabel = "Review";
+    reviewTitle = "Analyze this game to detect mistakes and blunders";
   }
   const reviewClick = () => {
     if (batchAnalyzing) {
@@ -6526,11 +6534,12 @@ function renderAnalysisControls() {
     }
     startBatchWhenReady();
   };
+  const statusLine = batchAnalyzing && batchQueue.length > 0 ? h("div.pgn-import__status", `Analyzing\u2026 ${batchDone} of ${batchQueue.length} moves`) : null;
   return h("div.pgn-import", [
     h("div.pgn-import__row", [
       h("button.btn-review", {
         class: { "btn-review--complete": analysisComplete },
-        attrs: { disabled: !hasGame },
+        attrs: { disabled: !hasGame, title: reviewTitle },
         on: { click: reviewClick }
       }, reviewLabel),
       h("button", {
@@ -6554,7 +6563,8 @@ function renderAnalysisControls() {
           _redraw5();
         } }
       }, "Cancel")
-    ]) : null
+    ]) : null,
+    statusLine
   ]);
 }
 
@@ -8433,9 +8443,9 @@ function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath,
   for (const variant of variations) {
     out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2)));
   }
-  const hasVariations = variations.length > 0;
+  const hasVariations2 = variations.length > 0;
   const firstCont = main.children[0];
-  const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
+  const contNeedsNum = hasVariations2 && firstCont !== void 0 && firstCont.ply % 2 === 0;
   out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2));
   return out;
 }
@@ -8470,10 +8480,21 @@ function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval,
   }
   renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, deleteVariation2);
 }
-function renderMoveList(root, currentPath, getEval, navigate2, deleteVariation2) {
+function hasVariations(root) {
+  let node = root;
+  while (node) {
+    if (node.children.length > 1) return true;
+    node = node.children[0];
+  }
+  return false;
+}
+function renderMoveList(root, currentPath, getEval, navigate2, deleteVariation2, clearVariations2) {
   const nodes = [];
   renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, deleteVariation2);
-  return h("div.tview2.tview2-column", nodes);
+  const strip = clearVariations2 && hasVariations(root) ? h("div.move-list-actions", [
+    h("button", { on: { click: clearVariations2 } }, "Clear variations")
+  ]) : null;
+  return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes), strip]);
 }
 
 // src/import/pgn.ts
@@ -8950,6 +8971,21 @@ function prev() {
   if (ctrl.path === "") return;
   navigate(pathInit(ctrl.path));
 }
+function clearVariations() {
+  pruneVariations(ctrl.root);
+  let repairPath = ctrl.path;
+  while (repairPath !== "" && !nodeAtPath(ctrl.root, repairPath)) {
+    repairPath = pathInit(repairPath);
+  }
+  if (repairPath !== ctrl.path) {
+    navigate(repairPath);
+  } else {
+    ctrl.setPath(ctrl.path);
+    syncBoard();
+    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
+    redraw();
+  }
+}
 function deleteVariation(path) {
   deleteNodeAt(ctrl.root, path);
   if (ctrl.path.startsWith(path)) {
@@ -8990,8 +9026,19 @@ function routeContent(route) {
     redraw
   };
   switch (route.name) {
-    case "analysis-game":
-      return h("h1", `Analysis Game: ${route.params["id"]}`);
+    case "analysis-game": {
+      const gameId = route.params["id"] ?? "";
+      if (importedGames.length === 0) {
+        return h("p", "Loading\u2026");
+      }
+      if (!importedGames.find((g) => g.id === gameId)) {
+        return h("div", [
+          h("p", `Game "${gameId}" was not found in the imported library.`),
+          h("a", { attrs: { href: "#/games" } }, "View all games")
+        ]);
+      }
+    }
+    // falls through
     case "analysis":
       return h("div.analyse", [
         // Board — left column (grid-area: board)
@@ -9019,7 +9066,9 @@ function routeContent(route) {
           // PV lines — below header (and settings when open)
           renderPvBox(),
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
-          h("div.analyse__moves", [renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation)]),
+          h("div.analyse__moves", [
+            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation, clearVariations)
+          ]),
           (() => {
             const game = importedGames.find((g) => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? "White", game?.black ?? "Black");
@@ -9190,6 +9239,15 @@ bindKeyboardHandlers({
 });
 onChange2((route) => {
   currentRoute = route;
+  if (route.name === "analysis-game") {
+    const id = route.params["id"] ?? "";
+    const game = importedGames.find((g) => g.id === id);
+    if (game && game.id !== selectedGameId) {
+      selectedGameId = game.id;
+      loadGame(game.pgn);
+      return;
+    }
+  }
   vnode2 = patch(vnode2, view(currentRoute));
 });
 vnode2 = patch(app, view(currentRoute));
@@ -9199,7 +9257,8 @@ void loadGamesFromIdb().then((stored) => {
   importedGames = stored.games;
   const maxId = Math.max(...stored.games.map((g) => parseInt(g.id.replace("game-", "")) || 0));
   restoreGameIdCounter(maxId);
-  const toLoad = stored.games.find((g) => g.id === stored.selectedId) ?? stored.games[0];
+  const routeGameId = currentRoute.name === "analysis-game" ? currentRoute.params["id"] ?? null : null;
+  const toLoad = (routeGameId !== null ? stored.games.find((g) => g.id === routeGameId) : void 0) ?? stored.games.find((g) => g.id === stored.selectedId) ?? stored.games[0];
   selectedGameId = toLoad.id;
   selectedGamePgn = toLoad.pgn;
   ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));

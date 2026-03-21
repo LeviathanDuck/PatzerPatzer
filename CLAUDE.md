@@ -26,6 +26,16 @@ This is a **multi-tool platform**:
 - Opening Trainer
 - Stats Dashboard
 
+## Terminology
+
+In Patzer Pro, `Game Review` means the Review-button workflow for a selected game:
+
+- Stockfish analyzes the game
+- the analysis is displayed in the analysis board
+- the resulting review data may be stored locally for later use by related tools
+
+This is Patzer Pro's term for the Lichess `Request Computer Analysis` / computer-analysis flow.
+
 The app shell, navigation, and routing are tool-agnostic from day one.
 
 ---

@@ -16,7 +16,7 @@ Lichess-style module layout.
 
 Current source layout:
 
-```text
+```
 src/
   main.ts                 — app bootstrap, route dispatch, game selection/load flow,
                             analysis restore, wheel navigation, startup restore
