@@ -53,6 +53,8 @@ export function initCevalView(deps: {
 let showEngineSettings = false;
 let pvBoard: { fen: string; uci: string } | null = null;
 let pvBoardPos: { x: number; y: number } = { x: 0, y: 0 };
+const PV_BOARD_SIZE = 384;
+const PV_BOARD_OFFSET = 16;
 
 // --- renderCeval ---
 
@@ -266,8 +268,8 @@ export function renderPvBox(): VNode | null {
           // Update position directly on DOM to avoid Snabbdom redraw per-frame.
           const overlay = document.querySelector<HTMLElement>('.pv-board-float');
           if (overlay) {
-            const left = Math.min(e.clientX + 16, window.innerWidth - 208);
-            const top  = Math.min(e.clientY + 16, window.innerHeight - 208);
+            const left = Math.min(e.clientX + PV_BOARD_OFFSET, window.innerWidth - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
+            const top  = Math.min(e.clientY + PV_BOARD_OFFSET, window.innerHeight - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
             overlay.style.left = `${left}px`;
             overlay.style.top  = `${top}px`;
           }
@@ -312,8 +314,8 @@ export function renderPvBox(): VNode | null {
 export function renderPvBoard(): VNode | null {
   if (!pvBoard) return null;
   const { fen, uci } = pvBoard;
-  const left = Math.min(pvBoardPos.x + 16, window.innerWidth - 208);
-  const top  = Math.min(pvBoardPos.y + 16, window.innerHeight - 208);
+  const left = Math.min(pvBoardPos.x + PV_BOARD_OFFSET, window.innerWidth - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
+  const top  = Math.min(pvBoardPos.y + PV_BOARD_OFFSET, window.innerHeight - (PV_BOARD_SIZE + PV_BOARD_OFFSET));
   const arrow = uci.length >= 4
     ? [{ orig: uci.slice(0, 2) as Key, dest: uci.slice(2, 4) as Key, brush: 'paleBlue' }]
     : [];
