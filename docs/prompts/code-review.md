@@ -13,7 +13,7 @@ Your job:
 
 Workflow:
 1. Detect what changed locally using git
-2. Check `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` for the relevant `CCP-###` entry if one exists
+2. Check `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` for the relevant `CCP-###` item
 3. Determine whether the changes are:
    - unstaged
    - staged
@@ -30,7 +30,7 @@ Workflow:
    - architectural drift
    - hidden coupling
    - missing validation
-9. If the reviewed change corresponds to a prompt-log entry, tell the user that `CCP-###` should now be marked `[x] Reviewed` and specify the review outcome label that should be recorded beside it
+9. If the reviewed change corresponds to a queued prompt, remove that prompt from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and update its existing entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 10. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
 
 When checking git state, use local information first:
@@ -63,10 +63,14 @@ Review output format:
 - Suggested manual tests
 
 Prompt log status rules:
-- if a matching `CCP-###` entry is identifiable and no review findings exist, say it should be marked `[x] Reviewed` with `Review outcome: passed`
-- if the change is acceptable but has minor caveats, say it should be marked `[x] Reviewed` with `Review outcome: passed with notes`
-- if review findings exist, say it should still be marked `[x] Reviewed`, but with `Review outcome: issues found` or `Review outcome: needs rework`, and the issue summary should be recorded beside that log entry
-- if no prompt-log entry is identifiable, say `No prompt log item identified`
+- if a matching `CCP-###` item is identifiable and no review findings exist, say it should be recorded in `CLAUDE_PROMPT_LOG.md` as `[x] Reviewed` with `Review outcome: passed`
+- if the change is acceptable but has minor caveats, say it should be recorded in `CLAUDE_PROMPT_LOG.md` as `[x] Reviewed` with `Review outcome: passed with notes`
+- if review findings exist, say it should be recorded in `CLAUDE_PROMPT_LOG.md` as `[x] Reviewed`, but with `Review outcome: issues found` or `Review outcome: needs rework`, and the issue summary should be recorded beside that log entry
+- keep the existing `## CCP-### - short task title` heading and fenced log-entry block format when updating the log
+- keep queue/log fenced blocks untagged; do not add a language label such as `text`
+- if the matching prompt is still present in `CLAUDE_PROMPT_QUEUE.md`, say it should be removed from the queue after review
+- if no prompt item is identifiable, say `No prompt queue/log item identified`
+- if a reviewed change has a `CCP-###` id but no log entry exists yet, say that explicitly and create the missing log entry before updating its review fields
 
 Known-issues follow-up rules:
 - if review finds a real current issue that belongs in the repo bug log, explicitly ask: `Do you want me to add this to docs/KNOWN_ISSUES.md?`
