@@ -58,10 +58,20 @@ User impact:
 Current state:
 - review results and persisted restore flow still need stronger active-game protection
 - restore is still async and coordinated from `src/main.ts`
+- review is still effectively tied to the currently selected game instead of being a clearly
+  scoped per-game background task with explicit progress visibility in the game list
 
 User impact:
 - analysis can become untrustworthy when switching games quickly
+- users cannot reliably start review on one game, move to another game, and still see the first
+  game continue reviewing in the background with visible progress
 - puzzle tooling later will depend on this data being correct
+
+Implementation note:
+- per-game review ownership should be explicit enough that a game already under review can keep
+  progressing even when it is no longer the selected board context
+- the Games list should show that review is in progress for that game, including a visible
+  percentage indicator in the relevant review-status area of the row
 
 ### 6. Fix engine stop bookkeeping
 

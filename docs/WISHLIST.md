@@ -16,7 +16,7 @@ This is a holding area for ideas that may eventually be integrated, but are not 
 the committed near-term roadmap.
 
 ## Wishlist items
-- [ ] The preview chess boards on engine mouse hover should be roughly twice in size unless it conflicts with other things
+- [x] The preview chess boards on engine mouse hover should be roughly twice in size unless it conflicts with other things
 - [ ] Changes to how the eval graph is displayed and formatted
 - [ ] Bring review annotation label/colors into Lichess parity. Current Patzer Pro review annotations are driven by `classifyLoss()` in `src/engine/winchances.ts`, rendered in `src/analyse/moveList.ts` and `src/analyse/evalView.ts`, and styled in `src/styles/main.scss`. Before changing colors, confirm the exact Lichess mapping for `inaccuracy`, `mistake`, `blunder`, and whether `miss` should exist as a per-move review label here or remain a separate missed-tactic/puzzle concept. Then align both the glyph/dot colors and any summary styling with that decision.
 - [ ] Move the analysis-page `Review` / `Re-analyze` button out of the underboard analysis controls and place it beside the move-navigation buttons in the analysis controls row near `Prev` / `Flip` / `Next`. Current split ownership is awkward: the navigation row is rendered in `src/main.ts`, while the review/export control block is rendered by `renderAnalysisControls()` in `src/analyse/pgnExport.ts`. If implemented, keep the move small and extraction-friendly instead of adding more control-layout glue back into `src/main.ts`.
@@ -29,7 +29,7 @@ the committed near-term roadmap.
 - [ ] When there is a list of games, it should on the right hand side of the list, say who the user they were playing against was. Less dominant and agressive, but also show the elo number of the user. This should be formatted more subtly. The goal is so that if you are importing games from multiple accounts it's easy to see 
 - [ ] When mate is played on the board, the analysis engine should show a #KO symbol not a #0 symbol. 
 - [ ] When mate is played on the board, for some reason the eval bar drops to full black. The eval bar should fill up entirely with whatever colour delivered the mate. 
-- [ ] For the mini board preview on engine line mouse hover should be larger. If right now is considered 100%, we should go up to 200% in size. 
+- [x] For the mini board preview on engine line mouse hover should be larger. If right now is considered 100%, we should go up to 200% in size. 
 - [ ] When M1 is played on the board, the losing king should get a KO symbol over it. The KO symbol would be a mini version of what is used in street fighter, if the source of this KO graphic isnt known you should ask. 
 - [ ] when game review button is pressed, all arrows should be removed from board until game review is completed. 
 - [ ] Setting to toggle only the users whose perspective we are looking at the game from to have their move review annotated dot colour shown. Default state shows both. 
