@@ -4,7 +4,7 @@
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { StockfishProtocol } from '../ceval/protocol';
-import { evalWinChances } from './winchances';
+import { evalWinChances, type MoveLabel } from './winchances';
 import { pathIsMainline } from '../tree/ops';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 
@@ -32,6 +32,13 @@ export interface PositionEval {
    * Mirrors lichess-org/lila: ui/lib/src/ceval/winningChances.ts + practiceCtrl.ts
    */
   loss?: number;
+  /**
+   * Persisted move-review annotation hydrated from IndexedDB on restore.
+   * Absent during live/batch analysis (set only after a save+restore cycle).
+   * UI consumers should prefer this over recomputing classifyLoss(loss) when present.
+   * Mirrors the node.glyphs annotation layer in lichess-org/lila: ui/lib/src/tree/types.ts
+   */
+  label?: MoveLabel;
   /** Secondary PV lines when MultiPV > 1 (indices 0+ correspond to multipv 2, 3, …). */
   lines?: EvalLine[];
 }
@@ -153,7 +160,13 @@ export function buildArrowShapes(): DrawShape[] {
   const shapes: DrawShape[] = [];
   const ctrl = _getCtrl();
 
-  if (engineEnabled && showEngineArrows) {
+  // Suppress engine-guidance arrows while retro is actively solving — the user should
+  // not be shown the best move while trying to find it.
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts showBestMoveArrows() returning false
+  // when retro.hideComputerLine(node) is true for unsolved candidate plies.
+  const retroSolving = ctrl.retro?.isSolving() ?? false;
+
+  if (engineEnabled && showEngineArrows && !retroSolving) {
     if (currentEval.best) {
       const uci = currentEval.best;
       shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'paleBlue' });
@@ -179,7 +192,7 @@ export function buildArrowShapes(): DrawShape[] {
     }
   }
 
-  if (engineEnabled && threatMode && threatEval.best) {
+  if (engineEnabled && threatMode && threatEval.best && !retroSolving) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'red' });
   }
@@ -291,6 +304,9 @@ function parseEngineLine(line: string): void {
       if ((score !== undefined || best) && !_isBatchActive()) {
         syncArrowDebounced();
         _redraw();
+        // Notify retrospection of a live ceval update for the current position.
+        // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval retro.onCeval() call.
+        if (!evalIsThreat) _getCtrl().retro?.onCeval();
       }
     } else if (!evalIsThreat && score !== undefined) {
       // Secondary PV line (MultiPV 2, 3, …).

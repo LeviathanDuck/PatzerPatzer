@@ -124,7 +124,27 @@ export function onUserMove(orig: string, dest: string): void {
     return;
   }
 
+  // Retro move interception: check win/fail before and after completeMove.
+  // Timing is critical:
+  //   - onWin() must run BEFORE completeMove() so onJump() inside navigate sees 'win'
+  //     and skips the offTrack check (since the path leaves parentPath on a win).
+  //   - onFail() must run AFTER completeMove() to overwrite the transient 'offTrack'
+  //     that onJump() sets when the wrong-move path differs from parentPath.
+  // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts onWin / onFail.
+  const retro = ctrl.retro?.isSolving() ? ctrl.retro : undefined;
+  const retroCand = retro ? retro.current() : null;
+  const atRetroExercise = !!(retro && retroCand && ctrl.path === retroCand.parentPath);
+
+  if (atRetroExercise && retro && retroCand && normUci === retroCand.bestMove) {
+    retro.onWin(); // pre-win: sets 'win' before navigate, suppresses offTrack
+  }
+
   completeMove(orig, dest);
+
+  if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
+    retro.onFail();          // post-fail: overwrites 'offTrack' set by onJump
+    _navigate(retroCand.parentPath); // send user back to try again
+  }
 }
 
 /**
