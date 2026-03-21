@@ -1,11 +1,36 @@
 // Chess.com username import adapter.
 // Adapted from docs/reference/api/chesscom.js
 
-import { filterGamesByDate, importFilters, type ImportSpeed } from './filters';
+import { filterGamesByDate, importFilters, type ImportDateRange, type ImportSpeed } from './filters';
 import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating } from './types';
 import { pgnToTree } from '../tree/pgn';
 
 const CHESSCOM_BASE = 'https://api.chess.com/pub/player';
+
+/**
+ * Return the earliest YYYY-MM string that should be fetched for the current date filter,
+ * or null when the filter is 'all' (fetch every archive month available).
+ * Mirrors the cutoff logic in filters.ts filterGamesByDate().
+ */
+function archiveCutoffMonth(): string | null {
+  const range: ImportDateRange = importFilters.dateRange;
+  if (range === 'all') return null;
+  if (range === 'custom') {
+    // customFrom is YYYY-MM-DD; take the YYYY-MM prefix as the archive cutoff.
+    return importFilters.customFrom ? importFilters.customFrom.slice(0, 7) : null;
+  }
+  const now = new Date();
+  let cutoff: Date;
+  switch (range) {
+    case '24h':     cutoff = new Date(now.getTime() - 86_400_000);                          break;
+    case '1week':   cutoff = new Date(now.getTime() - 7 * 86_400_000);                     break;
+    case '1month':  cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 1);         break;
+    case '3months': cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 3);         break;
+    case '1year':   cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1);   break;
+    default: return null;
+  }
+  return cutoff.toISOString().slice(0, 7); // YYYY-MM
+}
 
 export const chesscom = {
   username: 'LeviathanDuck',
@@ -31,12 +56,29 @@ export async function fetchChesscomGames(
   const archives = archivesData.archives ?? [];
   if (archives.length === 0) return [];
 
-  // 2. Fetch only the most recent archive month
-  const latestUrl = archives[archives.length - 1]!;
-  const gamesRes = await fetch(latestUrl);
-  if (!gamesRes.ok) throw new Error(`Chess.com API error ${gamesRes.status}`);
-  const gamesData = await gamesRes.json() as { games?: any[] };
-  const rawGames: any[] = gamesData.games ?? [];
+  // 2. Select archive months that fall within the current date-filter window.
+  // Archive URLs end with /YYYY/MM — extract the month string and compare to cutoff.
+  // Mirrors the cutoff logic in filters.ts filterGamesByDate(), applied to archive-month granularity.
+  const cutoffMonth = archiveCutoffMonth();
+  const relevantArchives = cutoffMonth === null
+    ? archives
+    : archives.filter(url => {
+        const parts = url.split('/');
+        const year  = parts[parts.length - 2];
+        const month = parts[parts.length - 1];
+        if (!year || !month) return false;
+        return `${year}-${month.padStart(2, '0')}` >= cutoffMonth;
+      });
+  if (relevantArchives.length === 0) return [];
+
+  // 3. Fetch all relevant archive months in parallel.
+  const archiveResponses = await Promise.all(relevantArchives.map(url => fetch(url)));
+  const rawGames: any[] = [];
+  for (const res of archiveResponses) {
+    if (!res.ok) throw new Error(`Chess.com API error ${res.status}`);
+    const data = await res.json() as { games?: any[] };
+    rawGames.push(...(data.games ?? []));
+  }
 
   // 3. Normalize: standard, no daily, apply filters — newest first
   const result: ImportedGame[] = [];

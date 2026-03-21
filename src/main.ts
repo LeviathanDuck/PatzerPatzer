@@ -41,7 +41,7 @@ import {
   initCevalView,
 } from './ceval/view';
 import {
-  renderAnalysisControls, downloadPgn, initPgnExport,
+  renderAnalysisControls, downloadPgn, initPgnExport, copyLinePgn, isMainlinePath,
 } from './analyse/pgnExport';
 import { bindKeyboardHandlers, renderKeyboardHelp } from './keyboard';
 import {
@@ -67,7 +67,7 @@ import {
   setSavedPuzzles,
 } from './idb/index';
 import { current, onChange, type Route } from './router';
-import { deleteNodeAt, nodeAtPath, pathInit, pruneVariations } from './tree/ops';
+import { deleteNodeAt, nodeAtPath, pathInit, promoteAt, pruneVariations } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
 import { buildRetroCandidates } from './analyse/retro';
 import { makeRetroCtrl } from './analyse/retroCtrl';
@@ -96,6 +96,85 @@ const SAMPLE_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
 let importedGames: ImportedGame[] = [];
 let selectedGameId: string | null = null;
 let selectedGamePgn: string | null = null;
+/**
+ * True once the initial IDB game-library load attempt has completed (whether the
+ * stored library was empty or had games). Used to distinguish "still loading" from
+ * "genuinely empty" in route rendering.
+ */
+let gamesLibraryLoaded = false;
+
+// --- Move-list context menu state ---
+// Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts contextMenuPath
+let contextMenuPath: string | null = null;
+let contextMenuPos:  { x: number; y: number } | null = null;
+let _contextMenuCloseListener: (() => void) | null = null;
+
+function openContextMenu(path: string, e: MouseEvent): void {
+  contextMenuPath = path;
+  contextMenuPos  = { x: e.clientX, y: e.clientY };
+  // Close on next click anywhere on the document.
+  // Mirrors lichess-org/lila: contextMenu.ts document.addEventListener('click', close)
+  if (_contextMenuCloseListener) document.removeEventListener('click', _contextMenuCloseListener);
+  _contextMenuCloseListener = () => {
+    contextMenuPath = null;
+    contextMenuPos  = null;
+    _contextMenuCloseListener = null;
+    redraw();
+  };
+  // Use capture to run before Snabbdom click handlers so the menu closes even if
+  // the user clicks inside the move list.
+  document.addEventListener('click', _contextMenuCloseListener, { once: true });
+  redraw();
+}
+
+/**
+ * Render the move-list context menu overlay.
+ * Positioned at cursor coords using fixed positioning.
+ * Mirrors lichess-org/lila: ui/analyse/src/treeView/contextMenu.ts view()
+ */
+function renderContextMenu(): VNode | null {
+  if (!contextMenuPath || !contextMenuPos) return null;
+  const node       = nodeAtPath(ctrl.root, contextMenuPath);
+  const title      = node?.san ?? contextMenuPath;
+  const onMainline = isMainlinePath(ctrl.root, contextMenuPath);
+  const copyLabel  = onMainline ? 'Copy main line PGN' : 'Copy variation PGN';
+  return h('div#move-ctx-menu.visible', {
+    style: { left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' },
+    on: { contextmenu: (e: Event) => e.preventDefault() },
+  }, [
+    h('p.title', title),
+    // Copy PGN — mirrors lichess-org/lila: contextMenu.ts clipboard copy action (CCP-026)
+    h('a', {
+      on: { click: () => { copyLinePgn(contextMenuPath!); contextMenuPath = null; contextMenuPos = null; redraw(); } },
+    }, copyLabel),
+    // Delete from here — mirrors lichess-org/lila: contextMenu.ts deleteFromHere action (CCP-027)
+    h('a', {
+      on: { click: () => {
+        const path = contextMenuPath!;
+        contextMenuPath = null; contextMenuPos = null;
+        deleteVariation(path);
+      } },
+    }, 'Delete from here'),
+    // Promote variation / Make main line — mirrors lichess-org/lila: contextMenu.ts promote actions (CCP-028)
+    // Only shown for non-mainline nodes: promoting a mainline node is a no-op.
+    !onMainline ? h('a', {
+      on: { click: () => {
+        const path = contextMenuPath!;
+        contextMenuPath = null; contextMenuPos = null;
+        promoteAt(ctrl.root, path, false);
+        redraw();
+      } },
+    }, 'Promote variation') : null,
+    !onMainline ? h('a', {
+      on: { click: () => {
+        const path = contextMenuPath!;
+        contextMenuPath = null; contextMenuPos = null;
+        promoteAt(ctrl.root, path, true);
+        redraw();
+      } },
+    }, 'Make main line') : null,
+  ]);
+}
 
 const analyzedGameIds:      Set<string>                                              = new Set();
 const missedTacticGameIds:  Set<string>                                              = new Set();
@@ -172,7 +251,12 @@ async function loadAndRestoreAnalysis(gameId: string, generation: number): Promi
     // consumers can prefer it over recomputing classifyLoss(loss) on every render.
     // Absent on older records (ANALYSIS_VERSION < 3 era) — consumers fall back to
     // classifyLoss(loss) safely.
-    if (entry.label !== undefined) ev.label = entry.label;
+    if (entry.label    !== undefined) ev.label = entry.label;
+    // Restore the persisted primary PV line into PositionEval.moves so that
+    // buildRetroCandidates() can expose it as RetroCandidate.bestLine.
+    // Absent on older records — consumers treat undefined as no PV available.
+    // Mirrors lichess-org/lila: retroCtrl.ts solution node PV moves hydration.
+    if (entry.bestLine !== undefined) ev.moves = entry.bestLine;
     evalCache.set(entry.path, ev);
   }
   if (stored.status === 'complete') {
@@ -315,7 +399,13 @@ function toggleRetro(): void {
     selectedGameId,
     userColor ?? null,
   );
-  ctrl.retro = makeRetroCtrl(candidates, userColor ?? null, () => currentEval);
+  ctrl.retro = makeRetroCtrl(
+    candidates,
+    userColor ?? null,
+    () => currentEval,
+    (path) => evalCache.get(path),
+    navigate,
+  );
   // Jump to the position before the first candidate mistake.
   // Mirrors lichess-org/lila: retroCtrl.ts jumpToNext → root.userJump(prev.path).
   const first = ctrl.retro.current();
@@ -343,12 +433,12 @@ function routeContent(route: Route): VNode {
     case 'analysis-game': {
       // Resolve the route's game id against the imported library.
       // Three states:
-      //   (a) importedGames empty → IDB hasn't loaded yet; show transient loading text.
-      //   (b) id not found → honest fallback instead of a fake workflow.
+      //   (a) IDB not yet loaded → show transient loading text until gamesLibraryLoaded.
+      //   (b) id not found after load → honest not-found fallback.
       //   (c) id found → fall through to render the full analysis board below.
       //       The game was already selected by the onChange or startup route handler.
       const gameId = route.params['id'] ?? '';
-      if (importedGames.length === 0) {
+      if (!gamesLibraryLoaded) {
         return h('p', 'Loading…');
       }
       if (!importedGames.find(g => g.id === gameId)) {
@@ -383,9 +473,10 @@ function routeContent(route: Route): VNode {
           // Engine header: toggle + pearl + engine-name/status + settings gear
           // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderCeval()
           renderCeval(),
-          // Engine settings panel — sits directly below header, above PV lines
-          // Mirrors lichess-org/lila: renderCevalSettings() position
-          renderEngineSettings(),
+          // Engine settings panel — hidden during active retrospection.
+          // Settings are irrelevant while solving; retro is a focused board mode.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts mode-gate pattern.
+          ctrl.retro ? null : renderEngineSettings(),
           // PV lines — hidden whenever retrospection is active and guidance has not
           // been manually revealed for the current candidate.
           // Covers all retro states so the answer is never accidentally visible.
@@ -394,13 +485,32 @@ function routeContent(route: Route): VNode {
           (!ctrl.retro || ctrl.retro.guidanceRevealed()) ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves', [
-            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation),
+            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, deleteVariation, contextMenuPath, openContextMenu),
           ]),
-          (() => {
+          // Active retrospection panel — placed after the move list, before analysis summaries.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
+          //   retroView(ctrl) || explorerView(ctrl) || practiceView(ctrl)
+          renderRetroStrip({
+            retro:             ctrl.retro,
+            navigate,
+            redraw,
+            uciToSan,
+            onRevealGuidance:  () => { ctrl.retro?.revealGuidance(); redraw(); },
+          }),
+          // Analysis summary and puzzle finder — hidden during active retrospection.
+          // These are analysis-complete result panels; they conflict with the focused
+          // retro solve mode and match the Lichess pattern of retro replacing explorer/tool panels.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
+          //   retroView(ctrl) || explorerView(ctrl) || practiceView(ctrl) — retro is exclusive.
+          // Use ternary (not &&) to produce null rather than false when retro is active.
+          // Raw Snabbdom h() cannot handle boolean children — false in a children array
+          // throws "Cannot create property 'elm' on boolean 'false'" and corrupts the VDOM.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts LooseVNode intent.
+          ctrl.retro ? null : (() => {
             const game = importedGames.find(g => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? 'White', game?.black ?? 'Black');
           })(),
-          (() => {
+          ctrl.retro ? null : (() => {
             const puzzleDeps: PuzzleRenderDeps = {
               mainline:    ctrl.mainline,
               getEval:     p => evalCache.get(p),
@@ -432,13 +542,6 @@ function routeContent(route: Route): VNode {
               onToggle:         toggleRetro,
             }),
           ]),
-          renderRetroStrip({
-            retro:             ctrl.retro,
-            navigate,
-            redraw,
-            uciToSan,
-            onRevealGuidance:  () => { ctrl.retro?.revealGuidance(); redraw(); },
-          }),
         ]),
 
         // Underboard — below board (grid-area: under)
@@ -451,7 +554,35 @@ function routeContent(route: Route): VNode {
         renderKeyboardHelp(),
       ]);
     case 'games':    return renderGamesView(deps);
-    case 'puzzles':  return h('h1', 'Puzzles Page');
+    case 'puzzles': {
+      // Minimal honest saved-puzzle list — displays existing saved puzzles from IDB.
+      // Full puzzle-solving session is a future task; this task makes the route honest.
+      if (savedPuzzles.length === 0) {
+        return h('div.puzzles-empty', [
+          h('h2', 'Saved Puzzles'),
+          h('p', 'No saved puzzles yet.'),
+          h('p', 'Review games with the engine to find missed tactics, then save them here.'),
+          h('a', { attrs: { href: '#/games' } }, 'Go to My Games'),
+        ]);
+      }
+      return h('div.puzzles-list', [
+        h('h2', `Saved Puzzles (${savedPuzzles.length})`),
+        h('ul.puzzles-list__items', savedPuzzles.map((p) => {
+          const moveNum  = Math.ceil(p.ply / 2);
+          const isWhite  = p.ply % 2 === 1;
+          const moveTxt  = `${moveNum}${isWhite ? '.' : '…'} ${p.san}`;
+          const lossPct  = Math.round(p.loss * 100);
+          const href     = p.gameId ? `#/analysis/${p.gameId}` : '#/analysis';
+          return h('li.puzzles-list__item', [
+            h('span.puzzles-list__move', moveTxt),
+            h('span.puzzles-list__loss', `−${lossPct}%`),
+            p.gameId
+              ? h('a.puzzles-list__link', { attrs: { href } }, 'View in game')
+              : null,
+          ]);
+        })),
+      ]);
+    }
     case 'openings': return h('h1', 'Openings Page');
     case 'stats':    return h('h1', 'Stats Page');
     default:         return h('h1', 'Home');
@@ -486,6 +617,7 @@ function view(route: Route): VNode {
       redraw,
     } satisfies HeaderDeps),
     h('main', [routeContent(route)]),
+    renderContextMenu(),
     h('footer.app-legal', [
       h('span', 'Patzer Pro source is available under AGPL-3.0-or-later.'),
       h('span', 'No warranty.'),
@@ -516,7 +648,7 @@ function view(route: Route): VNode {
 let wheelPixelAccum = 0;
 document.addEventListener('wheel', (e: WheelEvent) => {
   if (e.ctrlKey) return; // allow pinch-zoom
-  const boardWrap = document.querySelector('.analyse__board-wrap');
+  const boardWrap = document.querySelector('.analyse__board.main-board');
   if (!boardWrap?.contains(e.target as Node)) return;
   e.preventDefault();
   if (e.deltaMode === 0) {
@@ -627,7 +759,8 @@ void loadPuzzlesFromIdb().then(setSavedPuzzles);
 // Runs after the initial render so the board already exists when syncBoard is called.
 // Mirrors the deferred-load pattern of lichess-org/lila: ui/analyse/src/idbTree.ts merge()
 void loadGamesFromIdb().then(stored => {
-  if (!stored || stored.games.length === 0) return;
+  gamesLibraryLoaded = true;
+  if (!stored || stored.games.length === 0) { redraw(); return; }
   importedGames = stored.games;
   // Restore gameIdCounter so new imports don't collide with existing ids.
   const maxId = Math.max(...stored.games.map(g => parseInt(g.id.replace('game-', '')) || 0));

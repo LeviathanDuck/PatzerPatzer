@@ -214,11 +214,13 @@ export function buildArrowShapes(): DrawShape[] {
     const nextNode = ctrl.node.children[0];
     if (nextNode?.uci) {
       const uci = nextNode.uci;
+      // Use plain red without lineWidth modifier so the arrowhead uses the well-known
+      // 'r' brush key (marker arrowhead-r is guaranteed in defs).
+      // Mirrors lichess-org/lila: ui/analyse/src/autoShape.ts compute() played-move brush.
       shapes.push({
         orig: uci.slice(0, 2) as any,
         dest: uci.slice(2, 4) as any,
         brush: 'red',
-        modifiers: { lineWidth: 9 },
       });
     }
   }
@@ -339,11 +341,12 @@ function parseEngineLine(line: string): void {
     }
   } else if (parts[0] === 'bestmove') {
     // Discard the stale bestmove that arrives after a 'stop' interrupted a previous search.
+    // Also resume any pending eval so the current position is not left unevaluated.
     if (pendingStopCount > 0) {
       pendingStopCount--;
       currentEval  = {};
       pendingLines = [];
-      console.log('[ceval] stale bestmove discarded — currentEval reset');
+      if (pendingEval) evalCurrentPosition();
       return;
     }
     engineSearchActive = false;
@@ -476,10 +479,11 @@ export function evalCurrentPosition(): void {
 
   if (engineSearchActive) {
     // Stop the old search immediately so the new position starts evaluating sooner.
-    // The stale bestmove that arrives after stop is discarded by the path guard in
-    // parseEngineLine (evalNodePath !== _getCtrl().path), which then calls
-    // evalCurrentPosition() via pendingEval.
+    // Increment pendingStopCount so the upcoming stale bestmove is discarded by counter
+    // rather than relying solely on the path guard. This covers the race window where
+    // the stale bestmove arrives after evalNodePath has been updated to the new path.
     // Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts stop-before-go on navigation.
+    pendingStopCount++;
     protocol.stop();
     pendingEval = true;
     _redraw();
