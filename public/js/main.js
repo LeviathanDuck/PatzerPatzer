@@ -977,6 +977,136 @@ for (const [prop, value] of Object.entries(boardFilters)) {
 }
 document.body.classList.toggle("simple-board", filtersAtDefault());
 
+// node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/types.js
+var FILE_NAMES = ["a", "b", "c", "d", "e", "f", "g", "h"];
+var RANK_NAMES = ["1", "2", "3", "4", "5", "6", "7", "8"];
+var COLORS = ["white", "black"];
+var ROLES = ["pawn", "knight", "bishop", "rook", "queen", "king"];
+var CASTLING_SIDES = ["a", "h"];
+var isDrop = (v) => "role" in v;
+
+// node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/util.js
+var defined = (v) => v !== void 0;
+var opposite = (color) => color === "white" ? "black" : "white";
+var squareRank = (square) => square >> 3;
+var squareFile = (square) => square & 7;
+var squareFromCoords = (file, rank) => 0 <= file && file < 8 && 0 <= rank && rank < 8 ? file + 8 * rank : void 0;
+var roleToChar = (role) => {
+  switch (role) {
+    case "pawn":
+      return "p";
+    case "knight":
+      return "n";
+    case "bishop":
+      return "b";
+    case "rook":
+      return "r";
+    case "queen":
+      return "q";
+    case "king":
+      return "k";
+  }
+};
+function charToRole(ch) {
+  switch (ch.toLowerCase()) {
+    case "p":
+      return "pawn";
+    case "n":
+      return "knight";
+    case "b":
+      return "bishop";
+    case "r":
+      return "rook";
+    case "q":
+      return "queen";
+    case "k":
+      return "king";
+    default:
+      return;
+  }
+}
+function parseSquare(str) {
+  if (str.length !== 2)
+    return;
+  return squareFromCoords(str.charCodeAt(0) - "a".charCodeAt(0), str.charCodeAt(1) - "1".charCodeAt(0));
+}
+var makeSquare = (square) => FILE_NAMES[squareFile(square)] + RANK_NAMES[squareRank(square)];
+var parseUci = (str) => {
+  if (str[1] === "@" && str.length === 4) {
+    const role = charToRole(str[0]);
+    const to = parseSquare(str.slice(2));
+    if (role && defined(to))
+      return { role, to };
+  } else if (str.length === 4 || str.length === 5) {
+    const from = parseSquare(str.slice(0, 2));
+    const to = parseSquare(str.slice(2, 4));
+    let promotion;
+    if (str.length === 5) {
+      promotion = charToRole(str[4]);
+      if (!promotion)
+        return;
+    }
+    if (defined(from) && defined(to))
+      return { from, to, promotion };
+  }
+  return;
+};
+var makeUci = (move3) => isDrop(move3) ? `${roleToChar(move3.role).toUpperCase()}@${makeSquare(move3.to)}` : makeSquare(move3.from) + makeSquare(move3.to) + (move3.promotion ? roleToChar(move3.promotion) : "");
+var kingCastlesTo = (color, side) => color === "white" ? side === "a" ? 2 : 6 : side === "a" ? 58 : 62;
+var rookCastlesTo = (color, side) => color === "white" ? side === "a" ? 3 : 5 : side === "a" ? 59 : 61;
+
+// src/analyse/boardGlyphs.ts
+var maxGlyphs = 4;
+function annotationShapes(node) {
+  const { uci, glyphs, san } = node;
+  if (uci && san && glyphs) {
+    return glyphs.slice(0, maxGlyphs).map((glyph, idx) => {
+      const move3 = parseUci(uci);
+      const destSquare = san.startsWith("O-O") ? squareRank(move3.to) === 0 ? san.startsWith("O-O-O") ? "c1" : "g1" : san.startsWith("O-O-O") ? "c8" : "g8" : makeSquare(move3.to);
+      const symbol = glyph.symbol;
+      const prerendered = glyphToSvg[symbol] ? glyphToSvg[symbol](idx) : void 0;
+      return {
+        orig: destSquare,
+        brush: prerendered ? "" : void 0,
+        customSvg: prerendered ? { html: prerendered } : void 0,
+        label: prerendered ? void 0 : { text: symbol, fill: "purple" }
+        // keep some purple just to keep feedback forum on their toes
+      };
+    }).reverse();
+  } else return [];
+}
+var composeGlyph = (fill, path) => (stackedNumber) => `<defs><filter id="a"><feDropShadow dx="4" dy="7" flood-opacity=".5" stdDeviation="5"/></filter></defs><g transform="matrix(.4 0 0 .4 ${glyphStacktoPx(stackedNumber).x} ${glyphStacktoPx(stackedNumber).y})"><circle cx="50" cy="50" r="50" fill="${fill}" filter="url(#a)"/>${path}</g>`;
+var glyphStacktoPx = (stack) => ({
+  x: 71 - stack % maxGlyphs * 28,
+  y: -12
+});
+var glyphToSvg = {
+  "?!": composeGlyph(
+    "#56b4e9",
+    '<path fill="#fff" d="M37.734 21.947c-3.714 0-7.128.464-10.242 1.393-3.113.928-6.009 2.13-8.685 3.605l4.343 8.766c2.35-1.202 4.644-2.157 6.883-2.867a22.366 22.366 0 0 1 6.799-1.065c2.294 0 4.07.464 5.326 1.393 1.311.874 1.967 2.186 1.967 3.933 0 1.748-.546 3.277-1.639 4.588-1.038 1.257-2.786 2.758-5.244 4.506-2.786 2.021-4.751 3.961-5.898 5.819-1.147 1.857-1.721 4.15-1.721 6.88v2.952h10.568v-2.377c0-1.147.137-2.103.41-2.868.328-.764.93-1.557 1.803-2.376.874-.82 2.104-1.803 3.688-2.95 2.13-1.584 3.906-3.058 5.326-4.424 1.42-1.42 2.485-2.95 3.195-4.59.71-1.638 1.065-3.576 1.065-5.816 0-4.206-1.584-7.675-4.752-10.406-3.114-2.731-7.51-4.096-13.192-4.096zm24.745.819 2.048 39.084h9.75l2.047-39.084zM35.357 68.73c-1.966 0-3.632.52-4.998 1.557-1.365.983-2.047 2.732-2.047 5.244 0 2.404.682 4.152 2.047 5.244 1.366 1.038 3.032 1.557 4.998 1.557 1.912 0 3.55-.519 4.916-1.557 1.366-1.092 2.05-2.84 2.05-5.244 0-2.512-.684-4.26-2.05-5.244-1.365-1.038-3.004-1.557-4.916-1.557zm34.004 0c-1.966 0-3.632.52-4.998 1.557-1.365.983-2.049 2.732-2.049 5.244 0 2.404.684 4.152 2.05 5.244 1.365 1.038 3.03 1.557 4.997 1.557 1.912 0 3.55-.519 4.916-1.557 1.366-1.092 2.047-2.84 2.047-5.244 0-2.512-.681-4.26-2.047-5.244-1.365-1.038-3.004-1.557-4.916-1.557z"/>'
+  ),
+  "?": composeGlyph(
+    "#e69f00",
+    '<path fill="#fff" d="M40.436 60.851q0-4.66 1.957-7.83 1.958-3.17 6.712-6.619 4.195-2.983 5.967-5.127 1.864-2.237 1.864-5.22 0-2.983-2.237-4.475-2.144-1.585-6.06-1.585-3.915 0-7.737 1.212t-7.83 3.263l-4.941-9.975q4.568-2.517 9.881-4.101 5.314-1.585 11.653-1.585 9.695 0 15.008 4.661 5.407 4.661 5.407 11.839 0 3.822-1.212 6.619-1.212 2.796-3.635 5.22-2.424 2.33-6.06 5.034-2.703 1.958-4.195 3.356-1.491 1.398-2.05 2.703-.467 1.305-.467 3.263v2.703H40.436zm-1.492 18.924q0-4.288 2.33-5.966 2.331-1.771 5.687-1.771 3.263 0 5.594 1.771 2.33 1.678 2.33 5.966 0 4.102-2.33 5.966-2.331 1.772-5.594 1.772-3.356 0-5.686-1.772-2.33-1.864-2.33-5.966z"/>'
+  ),
+  "??": composeGlyph(
+    "#df5353",
+    '<path fill="#fff" d="M31.8 22.22c-3.675 0-7.052.46-10.132 1.38-3.08.918-5.945 2.106-8.593 3.565l4.298 8.674c2.323-1.189 4.592-2.136 6.808-2.838a22.138 22.138 0 0 1 6.728-1.053c2.27 0 4.025.46 5.268 1.378 1.297.865 1.946 2.16 1.946 3.89s-.541 3.242-1.622 4.539c-1.027 1.243-2.756 2.73-5.188 4.458-2.756 2-4.7 3.918-5.836 5.755-1.134 1.837-1.702 4.107-1.702 6.808v2.92h10.457v-2.35c0-1.135.135-2.082.406-2.839.324-.756.918-1.54 1.783-2.35.864-.81 2.079-1.784 3.646-2.918 2.107-1.568 3.863-3.026 5.268-4.376 1.405-1.405 2.46-2.92 3.162-4.541.703-1.621 1.054-3.54 1.054-5.755 0-4.161-1.568-7.592-4.702-10.294-3.08-2.702-7.43-4.052-13.05-4.052zm38.664 0c-3.675 0-7.053.46-10.133 1.38-3.08.918-5.944 2.106-8.591 3.565l4.295 8.674c2.324-1.189 4.593-2.136 6.808-2.838a22.138 22.138 0 0 1 6.728-1.053c2.27 0 4.026.46 5.269 1.378 1.297.865 1.946 2.16 1.946 3.89s-.54 3.242-1.62 4.539c-1.027 1.243-2.757 2.73-5.189 4.458-2.756 2-4.7 3.918-5.835 5.755-1.135 1.837-1.703 4.107-1.703 6.808v2.92h10.457v-2.35c0-1.135.134-2.082.404-2.839.324-.756.918-1.54 1.783-2.35.865-.81 2.081-1.784 3.648-2.918 2.108-1.568 3.864-3.026 5.269-4.376 1.405-1.405 2.46-2.92 3.162-4.541.702-1.621 1.053-3.54 1.053-5.755 0-4.161-1.567-7.592-4.702-10.294-3.08-2.702-7.43-4.052-13.05-4.052zM29.449 68.504c-1.945 0-3.593.513-4.944 1.54-1.351.973-2.027 2.703-2.027 5.188 0 2.378.676 4.108 2.027 5.188 1.35 1.027 3 1.54 4.944 1.54 1.892 0 3.512-.513 4.863-1.54 1.35-1.08 2.026-2.81 2.026-5.188 0-2.485-.675-4.215-2.026-5.188-1.351-1.027-2.971-1.54-4.863-1.54zm38.663 0c-1.945 0-3.592.513-4.943 1.54-1.35.973-2.026 2.703-2.026 5.188 0 2.378.675 4.108 2.026 5.188 1.351 1.027 2.998 1.54 4.943 1.54 1.891 0 3.513-.513 4.864-1.54 1.351-1.08 2.027-2.81 2.027-5.188 0-2.485-.676-4.215-2.027-5.188-1.35-1.027-2.973-1.54-4.864-1.54z"/>'
+  ),
+  "!?": composeGlyph(
+    "#ea45d8",
+    '<path fill="#fff" d="M60.823 58.9q0-4.098 1.72-6.883 1.721-2.786 5.9-5.818 3.687-2.622 5.243-4.506 1.64-1.966 1.64-4.588t-1.967-3.933q-1.885-1.393-5.326-1.393t-6.8 1.065q-3.36 1.065-6.883 2.868l-4.343-8.767q4.015-2.212 8.685-3.605 4.67-1.393 10.242-1.393 8.521 0 13.192 4.097 4.752 4.096 4.752 10.405 0 3.36-1.065 5.818-1.066 2.458-3.196 4.588-2.13 2.048-5.326 4.424-2.376 1.72-3.687 2.95-1.31 1.229-1.802 2.376-.41 1.147-.41 2.868v2.376h-10.57zm-1.311 16.632q0-3.77 2.048-5.244 2.049-1.557 4.998-1.557 2.868 0 4.916 1.557 2.049 1.475 2.049 5.244 0 3.605-2.049 5.244-2.048 1.556-4.916 1.556-2.95 0-4.998-1.556-2.048-1.64-2.048-5.244zM36.967 61.849h-9.75l-2.049-39.083h13.847zM25.004 75.532q0-3.77 2.049-5.244 2.048-1.557 4.998-1.557 2.867 0 4.916 1.557 2.048 1.475 2.048 5.244 0 3.605-2.048 5.244-2.049 1.556-4.916 1.556-2.95 0-4.998-1.556-2.049-1.64-2.049-5.244z" vector-effect="non-scaling-stroke"/>'
+  ),
+  "!": composeGlyph(
+    "#22ac38",
+    '<path fill="#fff" d="M54.967 62.349h-9.75l-2.049-39.083h13.847zM43.004 76.032q0-3.77 2.049-5.244 2.048-1.557 4.998-1.557 2.867 0 4.916 1.557 2.048 1.475 2.048 5.244 0 3.605-2.048 5.244-2.049 1.556-4.916 1.556-2.95 0-4.998-1.556-2.049-1.64-2.049-5.244z" vector-effect="non-scaling-stroke"/>'
+  ),
+  "!!": composeGlyph(
+    "#168226",
+    '<path fill="#fff" d="M71.967 62.349h-9.75l-2.049-39.083h13.847zM60.004 76.032q0-3.77 2.049-5.244 2.048-1.557 4.998-1.557 2.867 0 4.916 1.557 2.048 1.475 2.048 5.244 0 3.605-2.048 5.244-2.049 1.556-4.916 1.556-2.95 0-4.998-1.556-2.049-1.64-2.049-5.244zM37.967 62.349h-9.75l-2.049-39.083h13.847zM26.004 76.032q0-3.77 2.049-5.244 2.048-1.557 4.998-1.557 2.867 0 4.916 1.557 2.048 1.475 2.048 5.244 0 3.605-2.048 5.244-2.049 1.556-4.916 1.556-2.95 0-4.998-1.556-2.049-1.64-2.049-5.244z" vector-effect="non-scaling-stroke"/>'
+  )
+};
+
 // src/ceval/protocol.ts
 function sharedWasmMemory(lo, hi = 32767) {
   let shrink = 4;
@@ -1507,6 +1637,7 @@ var arrowAllLines = true;
 var showPlayedArrow = true;
 var showArrowLabels = localStorage.getItem("patzer.showArrowLabels") === "true";
 var showReviewLabels = localStorage.getItem("patzer.showReviewLabels") !== "false";
+var showBoardReviewGlyphs = localStorage.getItem("patzer.showBoardReviewGlyphs") !== "false";
 var pendingLines = [];
 var arrowDebounceTimer = null;
 var arrowSuppressUntil = 0;
@@ -1551,6 +1682,10 @@ function setShowReviewLabels(v) {
   showReviewLabels = v;
   localStorage.setItem("patzer.showReviewLabels", String(v));
 }
+function setShowBoardReviewGlyphs(v) {
+  showBoardReviewGlyphs = v;
+  localStorage.setItem("patzer.showBoardReviewGlyphs", String(v));
+}
 function incrementPendingStopCount() {
   pendingStopCount++;
 }
@@ -1587,6 +1722,9 @@ function buildArrowShapes() {
   if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
+  }
+  if (showBoardReviewGlyphs) {
+    shapes.push(...buildCurrentNodeReviewGlyphShapes(ctrl2));
   }
   if (showPlayedArrow && pathIsMainline(ctrl2.root, ctrl2.path)) {
     const nextNode = ctrl2.node.children[0];
@@ -1629,6 +1767,34 @@ function buildArrowLabelSvg(ev) {
 }
 function escapeArrowLabelText(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+function buildCurrentNodeReviewGlyphShapes(ctrl2) {
+  const glyphNode = currentNodeBoardGlyphNode(ctrl2);
+  return glyphNode ? annotationShapes(glyphNode) : [];
+}
+function currentNodeBoardGlyphNode(ctrl2) {
+  const { node, path } = ctrl2;
+  if (!node.uci || !node.san) return null;
+  if (node.glyphs?.length) return { uci: node.uci, san: node.san, glyphs: node.glyphs };
+  const cached = evalCache.get(path);
+  if (!cached) return null;
+  const parentCached = evalCache.get(pathInit(path));
+  const playedBest = node.uci === parentCached?.best;
+  if (playedBest) return null;
+  const label = cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null);
+  const symbol = labelToBoardReviewSymbol(label);
+  if (!symbol) return null;
+  return {
+    uci: node.uci,
+    san: node.san,
+    glyphs: [{ id: 0, name: symbol, symbol }]
+  };
+}
+function labelToBoardReviewSymbol(label) {
+  if (label === "blunder") return "??";
+  if (label === "mistake") return "?";
+  if (label === "inaccuracy") return "?!";
+  return null;
 }
 function buildKoOverlayShape(fen) {
   if (currentEval.mate !== 0) return null;
@@ -2346,7 +2512,7 @@ var timer = () => {
     }
   };
 };
-var opposite = (c) => c === "white" ? "black" : "white";
+var opposite2 = (c) => c === "white" ? "black" : "white";
 var distanceSq = (pos1, pos2) => (pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2;
 var samePiece = (p1, p2) => p1.role === p2.role && p1.color === p2.color;
 var samePos = (p1, p2) => p1[0] === p2[0] && p1[1] === p2[1];
@@ -2429,7 +2595,7 @@ function premove(state, key) {
   const piece = pieces.get(key);
   if (!piece || piece.color === state.turnColor)
     return [];
-  const color = piece.color, friendlies = new Map([...pieces].filter(([_, p]) => p.color === color)), enemies = new Map([...pieces].filter(([_, p]) => p.color === opposite(color))), orig = { key, pos: key2pos(key) }, mobility = (ctx) => mobilityByRole[piece.role](ctx) && state.premovable.additionalPremoveRequirements(ctx), partialCtx = {
+  const color = piece.color, friendlies = new Map([...pieces].filter(([_, p]) => p.color === color)), enemies = new Map([...pieces].filter(([_, p]) => p.color === opposite2(color))), orig = { key, pos: key2pos(key) }, mobility = (ctx) => mobilityByRole[piece.role](ctx) && state.premovable.additionalPremoveRequirements(ctx), partialCtx = {
     orig,
     role: piece.role,
     allPieces: pieces,
@@ -2448,7 +2614,7 @@ function callUserFunction(f, ...args) {
     setTimeout(() => f(...args), 1);
 }
 function toggleOrientation(state) {
-  state.orientation = opposite(state.orientation);
+  state.orientation = opposite2(state.orientation);
   state.animation.current = state.draggable.current = state.selected = void 0;
 }
 function setPieces(state, pieces) {
@@ -2553,14 +2719,14 @@ function baseNewPiece(state, piece, key, force) {
   state.check = void 0;
   callUserFunction(state.events.change);
   state.movable.dests = void 0;
-  state.turnColor = opposite(state.turnColor);
+  state.turnColor = opposite2(state.turnColor);
   return true;
 }
 function baseUserMove(state, orig, dest) {
   const result = baseMove(state, orig, dest);
   if (result) {
     state.movable.dests = void 0;
-    state.turnColor = opposite(state.turnColor);
+    state.turnColor = opposite2(state.turnColor);
     state.animation.current = void 0;
   }
   return result;
@@ -3786,7 +3952,7 @@ function renderWrap(element, s) {
       files.forEach((f, i) => container.appendChild(renderCoords(ranks.map((r) => f + r), "squares rank" + rankN(i) + orientClass + ranksPositionClass, i % 2 === 0 ? "black" : "white")));
     } else {
       container.appendChild(renderCoords(ranks, "ranks" + orientClass + ranksPositionClass, s.ranksPosition === "right" === (s.orientation === "white") ? "white" : "black"));
-      container.appendChild(renderCoords(files, "files" + orientClass, opposite(s.orientation)));
+      container.appendChild(renderCoords(files, "files" + orientClass, opposite2(s.orientation)));
     }
   }
   let ghost;
@@ -4472,84 +4638,6 @@ var SquareSet = class _SquareSet {
   }
 };
 
-// node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/types.js
-var FILE_NAMES = ["a", "b", "c", "d", "e", "f", "g", "h"];
-var RANK_NAMES = ["1", "2", "3", "4", "5", "6", "7", "8"];
-var COLORS = ["white", "black"];
-var ROLES = ["pawn", "knight", "bishop", "rook", "queen", "king"];
-var CASTLING_SIDES = ["a", "h"];
-var isDrop = (v) => "role" in v;
-
-// node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/util.js
-var defined = (v) => v !== void 0;
-var opposite2 = (color) => color === "white" ? "black" : "white";
-var squareRank = (square) => square >> 3;
-var squareFile = (square) => square & 7;
-var squareFromCoords = (file, rank) => 0 <= file && file < 8 && 0 <= rank && rank < 8 ? file + 8 * rank : void 0;
-var roleToChar = (role) => {
-  switch (role) {
-    case "pawn":
-      return "p";
-    case "knight":
-      return "n";
-    case "bishop":
-      return "b";
-    case "rook":
-      return "r";
-    case "queen":
-      return "q";
-    case "king":
-      return "k";
-  }
-};
-function charToRole(ch) {
-  switch (ch.toLowerCase()) {
-    case "p":
-      return "pawn";
-    case "n":
-      return "knight";
-    case "b":
-      return "bishop";
-    case "r":
-      return "rook";
-    case "q":
-      return "queen";
-    case "k":
-      return "king";
-    default:
-      return;
-  }
-}
-function parseSquare(str) {
-  if (str.length !== 2)
-    return;
-  return squareFromCoords(str.charCodeAt(0) - "a".charCodeAt(0), str.charCodeAt(1) - "1".charCodeAt(0));
-}
-var makeSquare = (square) => FILE_NAMES[squareFile(square)] + RANK_NAMES[squareRank(square)];
-var parseUci = (str) => {
-  if (str[1] === "@" && str.length === 4) {
-    const role = charToRole(str[0]);
-    const to = parseSquare(str.slice(2));
-    if (role && defined(to))
-      return { role, to };
-  } else if (str.length === 4 || str.length === 5) {
-    const from = parseSquare(str.slice(0, 2));
-    const to = parseSquare(str.slice(2, 4));
-    let promotion;
-    if (str.length === 5) {
-      promotion = charToRole(str[4]);
-      if (!promotion)
-        return;
-    }
-    if (defined(from) && defined(to))
-      return { from, to, promotion };
-  }
-  return;
-};
-var makeUci = (move3) => isDrop(move3) ? `${roleToChar(move3.role).toUpperCase()}@${makeSquare(move3.to)}` : makeSquare(move3.from) + makeSquare(move3.to) + (move3.promotion ? roleToChar(move3.promotion) : "");
-var kingCastlesTo = (color, side) => color === "white" ? side === "a" ? 2 : 6 : side === "a" ? 58 : 62;
-var rookCastlesTo = (color, side) => color === "white" ? side === "a" ? 3 : 5 : side === "a" ? 59 : 61;
-
 // node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/attacks.js
 var computeRange = (square, deltas) => {
   let range = SquareSet.empty();
@@ -4778,7 +4866,7 @@ var IllegalSetup;
 })(IllegalSetup || (IllegalSetup = {}));
 var PositionError = class extends Error {
 };
-var attacksTo = (square, attacker, board, occupied) => board[attacker].intersect(rookAttacks(square, occupied).intersect(board.rooksAndQueens()).union(bishopAttacks(square, occupied).intersect(board.bishopsAndQueens())).union(knightAttacks(square).intersect(board.knight)).union(kingAttacks(square).intersect(board.king)).union(pawnAttacks(opposite2(attacker), square).intersect(board.pawn)));
+var attacksTo = (square, attacker, board, occupied) => board[attacker].intersect(rookAttacks(square, occupied).intersect(board.rooksAndQueens()).union(bishopAttacks(square, occupied).intersect(board.bishopsAndQueens())).union(knightAttacks(square).intersect(board.knight)).union(kingAttacks(square).intersect(board.king)).union(pawnAttacks(opposite(attacker), square).intersect(board.pawn)));
 var Castles = class _Castles {
   constructor() {
   }
@@ -4907,7 +4995,7 @@ var Position = class {
     if (captured.role === "rook")
       this.castles.discardRook(square);
     if (this.pockets)
-      this.pockets[opposite2(captured.color)][captured.promoted ? "pawn" : captured.role]++;
+      this.pockets[opposite(captured.color)][captured.promoted ? "pawn" : captured.role]++;
   }
   ctx() {
     const variantEnd = this.isVariantEnd();
@@ -4915,14 +5003,14 @@ var Position = class {
     if (!defined(king2)) {
       return { king: king2, blockers: SquareSet.empty(), checkers: SquareSet.empty(), variantEnd, mustCapture: false };
     }
-    const snipers = rookAttacks(king2, SquareSet.empty()).intersect(this.board.rooksAndQueens()).union(bishopAttacks(king2, SquareSet.empty()).intersect(this.board.bishopsAndQueens())).intersect(this.board[opposite2(this.turn)]);
+    const snipers = rookAttacks(king2, SquareSet.empty()).intersect(this.board.rooksAndQueens()).union(bishopAttacks(king2, SquareSet.empty()).intersect(this.board.bishopsAndQueens())).intersect(this.board[opposite(this.turn)]);
     let blockers = SquareSet.empty();
     for (const sniper of snipers) {
       const b = between(king2, sniper).intersect(this.board.occupied);
       if (!b.moreThanOne())
         blockers = blockers.union(b);
     }
-    const checkers = this.kingAttackers(king2, opposite2(this.turn), this.board.occupied);
+    const checkers = this.kingAttackers(king2, opposite(this.turn), this.board.occupied);
     return {
       king: king2,
       blockers,
@@ -4951,7 +5039,7 @@ var Position = class {
       return Result.err(new PositionError(IllegalSetup.Kings));
     if (!defined(this.board.kingOf(this.turn)))
       return Result.err(new PositionError(IllegalSetup.Kings));
-    const otherKing = this.board.kingOf(opposite2(this.turn));
+    const otherKing = this.board.kingOf(opposite(this.turn));
     if (!defined(otherKing))
       return Result.err(new PositionError(IllegalSetup.Kings));
     if (this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) {
@@ -4974,7 +5062,7 @@ var Position = class {
       return SquareSet.empty();
     let pseudo, legal;
     if (piece.role === "pawn") {
-      pseudo = pawnAttacks(this.turn, square).intersect(this.board[opposite2(this.turn)]);
+      pseudo = pawnAttacks(this.turn, square).intersect(this.board[opposite(this.turn)]);
       const delta = this.turn === "white" ? 8 : -8;
       const step2 = square + delta;
       if (0 <= step2 && step2 < 64 && !this.board.occupied.has(step2)) {
@@ -5003,7 +5091,7 @@ var Position = class {
       if (piece.role === "king") {
         const occ = this.board.occupied.without(square);
         for (const to of pseudo) {
-          if (this.kingAttackers(to, opposite2(this.turn), occ).nonEmpty())
+          if (this.kingAttackers(to, opposite(this.turn), occ).nonEmpty())
             pseudo = pseudo.without(to);
         }
         return pseudo.union(castlingDest(this, "a", ctx)).union(castlingDest(this, "h", ctx));
@@ -5031,7 +5119,7 @@ var Position = class {
     if (this.board[color].intersect(this.board.pawn.union(this.board.rooksAndQueens())).nonEmpty())
       return false;
     if (this.board[color].intersects(this.board.knight)) {
-      return this.board[color].size() <= 2 && this.board[opposite2(color)].diff(this.board.king).diff(this.board.queen).isEmpty();
+      return this.board[color].size() <= 2 && this.board[opposite(color)].diff(this.board.king).diff(this.board.queen).isEmpty();
     }
     if (this.board[color].intersects(this.board.bishop)) {
       const sameColor2 = !this.board.bishop.intersects(SquareSet.darkSquares()) || !this.board.bishop.intersects(SquareSet.lightSquares());
@@ -5084,7 +5172,7 @@ var Position = class {
   }
   isCheck() {
     const king2 = this.board.kingOf(this.turn);
-    return defined(king2) && this.kingAttackers(king2, opposite2(this.turn), this.board.occupied).nonEmpty();
+    return defined(king2) && this.kingAttackers(king2, opposite(this.turn), this.board.occupied).nonEmpty();
   }
   isEnd(ctx) {
     if (ctx ? ctx.variantEnd : this.isVariantEnd())
@@ -5105,7 +5193,7 @@ var Position = class {
       return variantOutcome;
     ctx = ctx || this.ctx();
     if (this.isCheckmate(ctx))
-      return { winner: opposite2(this.turn) };
+      return { winner: opposite(this.turn) };
     else if (this.isInsufficientMaterial() || this.isStalemate(ctx))
       return { winner: void 0 };
     else
@@ -5129,7 +5217,7 @@ var Position = class {
     this.halfmoves += 1;
     if (turn === "black")
       this.fullmoves += 1;
-    this.turn = opposite2(turn);
+    this.turn = opposite(turn);
     if (isDrop(move3)) {
       this.board.set(move3.to, { role: move3.role, color: turn });
       if (this.pockets)
@@ -5208,7 +5296,7 @@ var validEpSquare = (pos, square) => {
   if (pos.board.occupied.has(square + forward))
     return;
   const pawn2 = square - forward;
-  if (!pos.board.pawn.has(pawn2) || !pos.board[opposite2(pos.turn)].has(pawn2))
+  if (!pos.board.pawn.has(pawn2) || !pos.board[opposite(pos.turn)].has(pawn2))
     return;
   return square;
 };
@@ -5217,7 +5305,7 @@ var legalEpSquare = (pos) => {
     return;
   const ctx = pos.ctx();
   const ourPawns = pos.board.pieces(pos.turn, "pawn");
-  const candidates = ourPawns.intersect(pawnAttacks(opposite2(pos.turn), pos.epSquare));
+  const candidates = ourPawns.intersect(pawnAttacks(opposite(pos.turn), pos.epSquare));
   for (const candidate of candidates) {
     if (pos.dests(candidate, ctx).has(pos.epSquare))
       return pos.epSquare;
@@ -5233,7 +5321,7 @@ var canCaptureEp = (pos, pawnFrom, ctx) => {
     return true;
   const delta = pos.turn === "white" ? 8 : -8;
   const captured = pos.epSquare - delta;
-  return pos.kingAttackers(ctx.king, opposite2(pos.turn), pos.board.occupied.toggle(pawnFrom).toggle(captured).with(pos.epSquare)).without(captured).isEmpty();
+  return pos.kingAttackers(ctx.king, opposite(pos.turn), pos.board.occupied.toggle(pawnFrom).toggle(captured).with(pos.epSquare)).without(captured).isEmpty();
 };
 var castlingDest = (pos, side, ctx) => {
   if (!defined(ctx.king) || ctx.checkers.nonEmpty())
@@ -5247,12 +5335,12 @@ var castlingDest = (pos, side, ctx) => {
   const kingPath = between(ctx.king, kingTo);
   const occ = pos.board.occupied.without(ctx.king);
   for (const sq of kingPath) {
-    if (pos.kingAttackers(sq, opposite2(pos.turn), occ).nonEmpty())
+    if (pos.kingAttackers(sq, opposite(pos.turn), occ).nonEmpty())
       return SquareSet.empty();
   }
   const rookTo = rookCastlesTo(pos.turn, side);
   const after = pos.board.occupied.toggle(ctx.king).toggle(rook2).toggle(rookTo);
-  if (pos.kingAttackers(kingTo, opposite2(pos.turn), after).nonEmpty())
+  if (pos.kingAttackers(kingTo, opposite(pos.turn), after).nonEmpty())
     return SquareSet.empty();
   return SquareSet.fromSquare(rook2);
 };
@@ -5264,7 +5352,7 @@ var pseudoDests = (pos, square, ctx) => {
     return SquareSet.empty();
   let pseudo = attacks(piece, square, pos.board.occupied);
   if (piece.role === "pawn") {
-    let captureTargets = pos.board[opposite2(pos.turn)];
+    let captureTargets = pos.board[opposite(pos.turn)];
     if (defined(pos.epSquare))
       captureTargets = captureTargets.with(pos.epSquare);
     pseudo = pseudo.intersect(captureTargets);
@@ -5821,7 +5909,7 @@ var parseSan = (pos, san) => {
   if (match[3])
     candidates = candidates.intersect(SquareSet.fromRank(match[3].charCodeAt(0) - "1".charCodeAt(0)));
   const pawnAdvance = role === "pawn" ? SquareSet.fromFile(squareFile(to)) : SquareSet.empty();
-  candidates = candidates.intersect(pawnAdvance.union(attacks({ color: opposite2(pos.turn), role }, to, pos.board.occupied)));
+  candidates = candidates.intersect(pawnAdvance.union(attacks({ color: opposite(pos.turn), role }, to, pos.board.occupied)));
   let from;
   for (const candidate of candidates) {
     if (pos.dests(candidate, ctx).has(to)) {
@@ -6520,6 +6608,19 @@ function renderEngineSettings() {
           }
         }
       })
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-board-review-glyphs" } }, "Board review"),
+      h("input#ceval-board-review-glyphs", {
+        attrs: { type: "checkbox", checked: showBoardReviewGlyphs },
+        on: {
+          change: (e) => {
+            setShowBoardReviewGlyphs(e.target.checked);
+            syncArrow();
+            _redraw4();
+          }
+        }
+      })
     ])
   ]);
 }
@@ -7133,7 +7234,7 @@ var Atomic = class extends Position {
       return Result.err(new PositionError(IllegalSetup.Empty));
     if (this.board.king.size() > 2)
       return Result.err(new PositionError(IllegalSetup.Kings));
-    const otherKing = this.board.kingOf(opposite2(this.turn));
+    const otherKing = this.board.kingOf(opposite(this.turn));
     if (!defined(otherKing))
       return Result.err(new PositionError(IllegalSetup.Kings));
     if (this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) {
@@ -7163,11 +7264,11 @@ var Atomic = class extends Position {
     }
   }
   hasInsufficientMaterial(color) {
-    if (this.board.pieces(opposite2(color), "king").isEmpty())
+    if (this.board.pieces(opposite(color), "king").isEmpty())
       return false;
     if (this.board[color].diff(this.board.king).isEmpty())
       return true;
-    if (this.board[opposite2(color)].diff(this.board.king).nonEmpty()) {
+    if (this.board[opposite(color)].diff(this.board.king).nonEmpty()) {
       if (this.board.occupied.equals(this.board.bishop.union(this.board.king))) {
         if (!this.board.bishop.intersect(this.board.white).intersects(SquareSet.darkSquares())) {
           return !this.board.bishop.intersect(this.board.black).intersects(SquareSet.lightSquares());
@@ -7206,7 +7307,7 @@ var Atomic = class extends Position {
   variantOutcome(_ctx) {
     for (const color of COLORS) {
       if (this.board.pieces(color, "king").isEmpty())
-        return { winner: opposite2(color) };
+        return { winner: opposite(color) };
     }
     return;
   }
@@ -7249,11 +7350,11 @@ var Antichess = class extends Position {
   }
   ctx() {
     const ctx = super.ctx();
-    if (defined(this.epSquare) && pawnAttacks(opposite2(this.turn), this.epSquare).intersects(this.board.pieces(this.turn, "pawn"))) {
+    if (defined(this.epSquare) && pawnAttacks(opposite(this.turn), this.epSquare).intersects(this.board.pieces(this.turn, "pawn"))) {
       ctx.mustCapture = true;
       return ctx;
     }
-    const enemy = this.board[opposite2(this.turn)];
+    const enemy = this.board[opposite(this.turn)];
     for (const from of this.board[this.turn]) {
       if (pseudoDests(this, from, ctx).intersects(enemy)) {
         ctx.mustCapture = true;
@@ -7265,19 +7366,19 @@ var Antichess = class extends Position {
   dests(square, ctx) {
     ctx = ctx || this.ctx();
     const dests = pseudoDests(this, square, ctx);
-    const enemy = this.board[opposite2(this.turn)];
+    const enemy = this.board[opposite(this.turn)];
     return dests.intersect(ctx.mustCapture ? defined(this.epSquare) && this.board.getRole(square) === "pawn" ? enemy.with(this.epSquare) : enemy : SquareSet.full());
   }
   hasInsufficientMaterial(color) {
     if (this.board[color].isEmpty())
       return false;
-    if (this.board[opposite2(color)].isEmpty())
+    if (this.board[opposite(color)].isEmpty())
       return true;
     if (this.board.occupied.equals(this.board.bishop)) {
       const weSomeOnLight = this.board[color].intersects(SquareSet.lightSquares());
       const weSomeOnDark = this.board[color].intersects(SquareSet.darkSquares());
-      const theyAllOnDark = this.board[opposite2(color)].isDisjoint(SquareSet.lightSquares());
-      const theyAllOnLight = this.board[opposite2(color)].isDisjoint(SquareSet.darkSquares());
+      const theyAllOnDark = this.board[opposite(color)].isDisjoint(SquareSet.lightSquares());
+      const theyAllOnLight = this.board[opposite(color)].isDisjoint(SquareSet.darkSquares());
       return weSomeOnLight && theyAllOnDark || weSomeOnDark && theyAllOnLight;
     }
     if (this.board.occupied.equals(this.board.knight) && this.board.occupied.size() === 2) {
@@ -7513,12 +7614,12 @@ var Horde = class extends Position {
       return Result.err(new PositionError(IllegalSetup.Empty));
     if (this.board.king.size() !== 1)
       return Result.err(new PositionError(IllegalSetup.Kings));
-    const otherKing = this.board.kingOf(opposite2(this.turn));
+    const otherKing = this.board.kingOf(opposite(this.turn));
     if (defined(otherKing) && this.kingAttackers(otherKing, this.turn, this.board.occupied).nonEmpty()) {
       return Result.err(new PositionError(IllegalSetup.OppositeCheck));
     }
     for (const color of COLORS) {
-      const backranks = this.board.pieces(color, "king").isEmpty() ? SquareSet.backrank(opposite2(color)) : SquareSet.backranks();
+      const backranks = this.board.pieces(color, "king").isEmpty() ? SquareSet.backrank(opposite(color)) : SquareSet.backranks();
       if (this.board.pieces(color, "pawn").intersects(backranks)) {
         return Result.err(new PositionError(IllegalSetup.PawnsOnBackrank));
       }
@@ -7538,8 +7639,8 @@ var Horde = class extends Position {
     const hordeBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(color, "bishop")).size();
     const hordeBishopColor = hordeBishops("light") >= 1 ? "light" : "dark";
     const hordeNum = horde.pawn + horde.knight + horde.rook + horde.queen + Math.min(hordeBishops("dark"), 2) + Math.min(hordeBishops("light"), 2);
-    const pieces = MaterialSide.fromBoard(this.board, opposite2(color));
-    const piecesBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(opposite2(color), "bishop")).size();
+    const pieces = MaterialSide.fromBoard(this.board, opposite(color));
+    const piecesBishops = (squareColor) => coloredSquares(squareColor).intersect(this.board.pieces(opposite(color), "bishop")).size();
     const piecesNum = pieces.size();
     const piecesOfRoleNot = (piece) => piecesNum - piece;
     if (hordeNum === 0)
@@ -7588,7 +7689,7 @@ var Horde = class extends Position {
         // on A2.
         // Moreover, when black has four or more pieces and two of them are
         // pawns, black can promote their pawns and selfmate theirself.
-        (piecesNum >= 4 && (pieces.knight >= 2 || pieces.pawn >= 2 || pieces.rook >= 1 && pieces.knight >= 1 || pieces.rook >= 1 && pieces.bishop >= 1 || pieces.knight >= 1 && pieces.bishop >= 1 || pieces.rook >= 1 && pieces.pawn >= 1 || pieces.knight >= 1 && pieces.pawn >= 1 || pieces.bishop >= 1 && pieces.pawn >= 1 || hasBishopPair(opposite2(color)) && pieces.pawn >= 1) && (piecesBishops("dark") < 2 || piecesOfRoleNot(piecesBishops("dark")) >= 3) && (piecesBishops("light") < 2 || piecesOfRoleNot(piecesBishops("light")) >= 3));
+        (piecesNum >= 4 && (pieces.knight >= 2 || pieces.pawn >= 2 || pieces.rook >= 1 && pieces.knight >= 1 || pieces.rook >= 1 && pieces.bishop >= 1 || pieces.knight >= 1 && pieces.bishop >= 1 || pieces.rook >= 1 && pieces.pawn >= 1 || pieces.knight >= 1 && pieces.pawn >= 1 || pieces.bishop >= 1 && pieces.pawn >= 1 || hasBishopPair(opposite(color)) && pieces.pawn >= 1) && (piecesBishops("dark") < 2 || piecesOfRoleNot(piecesBishops("dark")) >= 3) && (piecesBishops("light") < 2 || piecesOfRoleNot(piecesBishops("light")) >= 3));
       }
     } else if (hordeNum === 2) {
       if (piecesNum === 1) {

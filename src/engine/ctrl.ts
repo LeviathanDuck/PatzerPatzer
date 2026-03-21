@@ -3,11 +3,13 @@
 
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
+import { annotationShapes as buildBoardGlyphShapes } from '../analyse/boardGlyphs';
 import { StockfishProtocol } from '../ceval/protocol';
-import { evalWinChances, type MoveLabel } from './winchances';
+import { evalWinChances, classifyLoss, type MoveLabel } from './winchances';
 import { formatScore } from '../analyse/evalView';
-import { pathIsMainline } from '../tree/ops';
+import { pathInit, pathIsMainline } from '../tree/ops';
 import type { AnalyseCtrl } from '../analyse/ctrl';
+import type { Glyph } from '../tree/types';
 
 // --- Types ---
 
@@ -130,6 +132,7 @@ export let arrowAllLines    = true;
 export let showPlayedArrow  = true;
 export let showArrowLabels  = localStorage.getItem('patzer.showArrowLabels') === 'true';
 export let showReviewLabels = localStorage.getItem('patzer.showReviewLabels') !== 'false';
+export let showBoardReviewGlyphs = localStorage.getItem('patzer.showBoardReviewGlyphs') !== 'false';
 
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 export let pendingLines: EvalLine[] = [];
@@ -161,6 +164,7 @@ export function setArrowAllLines(v: boolean): void    { arrowAllLines = v; }
 export function setShowPlayedArrow(v: boolean): void  { showPlayedArrow = v; }
 export function setShowArrowLabels(v: boolean): void  { showArrowLabels = v; localStorage.setItem('patzer.showArrowLabels', String(v)); }
 export function setShowReviewLabels(v: boolean): void { showReviewLabels = v; localStorage.setItem('patzer.showReviewLabels', String(v)); }
+export function setShowBoardReviewGlyphs(v: boolean): void { showBoardReviewGlyphs = v; localStorage.setItem('patzer.showBoardReviewGlyphs', String(v)); }
 export function incrementPendingStopCount(): void { pendingStopCount++; }
 export function stopProtocol(): void              { protocol.stop(); }
 
@@ -208,6 +212,10 @@ export function buildArrowShapes(): DrawShape[] {
   if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'red' });
+  }
+
+  if (showBoardReviewGlyphs) {
+    shapes.push(...buildCurrentNodeReviewGlyphShapes(ctrl));
   }
 
   // Only show the played-move arrow when the current path is on the original
@@ -275,6 +283,41 @@ function escapeArrowLabelText(text: string): string {
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;');
+}
+
+function buildCurrentNodeReviewGlyphShapes(ctrl: AnalyseCtrl): DrawShape[] {
+  const glyphNode = currentNodeBoardGlyphNode(ctrl);
+  return glyphNode ? buildBoardGlyphShapes(glyphNode) : [];
+}
+
+function currentNodeBoardGlyphNode(ctrl: AnalyseCtrl): { uci: string; san: string; glyphs: Glyph[] } | null {
+  const { node, path } = ctrl;
+  if (!node.uci || !node.san) return null;
+  if (node.glyphs?.length) return { uci: node.uci, san: node.san, glyphs: node.glyphs };
+
+  const cached = evalCache.get(path);
+  if (!cached) return null;
+
+  const parentCached = evalCache.get(pathInit(path));
+  const playedBest = node.uci === parentCached?.best;
+  if (playedBest) return null;
+
+  const label = cached.label ?? (cached.loss !== undefined ? classifyLoss(cached.loss) : null);
+  const symbol = labelToBoardReviewSymbol(label);
+  if (!symbol) return null;
+
+  return {
+    uci: node.uci,
+    san: node.san,
+    glyphs: [{ id: 0, name: symbol, symbol }],
+  };
+}
+
+function labelToBoardReviewSymbol(label: MoveLabel | null | undefined): string | null {
+  if (label === 'blunder') return '??';
+  if (label === 'mistake') return '?';
+  if (label === 'inaccuracy') return '?!';
+  return null;
 }
 
 function buildKoOverlayShape(fen: string): DrawShape | null {

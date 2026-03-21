@@ -70,9 +70,18 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
-- [ ] CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
-- [ ] CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
-- [ ] CCP-069 - Refine Eval Graph Fill And Resize Handle
+- [ ] CCP-073 - Clear Board And Ceval Typecheck Slice
+- [ ] CCP-074 - Clear Import And Shell Typecheck Slice
+- [ ] CCP-075 - Make Board Resize Handle Safari-Reliable
+- [ ] CCP-076 - Make Book-Aware Retrospection Cancellation Live
+- [ ] CCP-077 - Finish Eval Graph Hover And Scrub Behavior
+- [ ] CCP-078 - Fix Move-List Context Menu Positioning
+- [ ] CCP-070 - Add Lichess Review Glyph SVG Layer
+- [ ] CCP-071 - Render Review Glyphs On The Board
+- [ ] CCP-072 - Add Review Glyph Board Toggle
+- [x] CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
+- [x] CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
+- [x] CCP-069 - Refine Eval Graph Fill And Resize Handle
 - [x] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 - [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
@@ -143,19 +152,172 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-043-F1 - Winner And Loser Player-Strip Boxes
 - [x] CCP-044-F1 - Refine Engine Arrow Eval Labels
 - [x] CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
-- [ ] CCP-044-F2 - Match Arrow Label Styling To Eval Bar
+- [x] CCP-044-F2 - Match Arrow Label Styling To Eval Bar
 - [x] CCP-044-F3 - Reduce Arrow Label Weight And Size
-- [ ] CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
-- [ ] CCP-066 - Add Search To Underboard And Games Lists
-- [ ] CCP-067 - Bring Eval Graph Fill Into Lichess Parity
-- [ ] CCP-068 - Add Eval Graph Height Toggle
+- [x] CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
+- [x] CCP-066 - Add Search To Underboard And Games Lists
+- [x] CCP-067 - Bring Eval Graph Fill Into Lichess Parity
+- [x] CCP-068 - Add Eval Graph Height Toggle
 
 ## Log
+
+## CCP-073 - Clear Board And Ceval Typecheck Slice
+
+```
+- [ ] Reviewed
+  - ID: `CCP-073`
+  - Task ID: `CCP-073`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[HIGH] npm run typecheck is wired but surfaces type errors`
+  - Task: clear the first cohesive current typecheck slice across board, ceval, and engine files without tackling the whole backlog
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-074 - Clear Import And Shell Typecheck Slice
+
+```
+- [ ] Reviewed
+  - ID: `CCP-074`
+  - Task ID: `CCP-074`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[HIGH] npm run typecheck is wired but surfaces type errors`
+  - Task: clear the next cohesive current typecheck slice across games, imports, keyboard, router, and shell files
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-075 - Make Board Resize Handle Safari-Reliable
+
+```
+- [ ] Reviewed
+  - ID: `CCP-075`
+  - Task ID: `CCP-075`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] Board resize handle does not reliably appear or work in Safari`
+  - Task: fix the board resize handle so it appears and works reliably in Safari
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-076 - Make Book-Aware Retrospection Cancellation Live
+
+```
+- [ ] Reviewed
+  - ID: `CCP-076`
+  - Task ID: `CCP-076`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] Book-aware retrospection cancellation seam is defined but not live`
+  - Task: make the existing book-aware retrospection cancellation seam live by wiring an opening provider into active candidate generation
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-077 - Finish Eval Graph Hover And Scrub Behavior
+
+```
+- [ ] Reviewed
+  - ID: `CCP-077`
+  - Task ID: `CCP-077`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] Eval graph hover/scrub behavior is not yet working as expected`
+  - Task: tighten eval-graph hover and scrub interaction so graph-driven review works as intended
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-078 - Fix Move-List Context Menu Positioning
+
+```
+- [ ] Reviewed
+  - ID: `CCP-078`
+  - Task ID: `CCP-078`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] Move-list variation context menu can open at the top-left of the page`
+  - Task: fix the move-list variation context menu so it opens over the selected move instead of at the page origin
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-070 - Add Lichess Review Glyph SVG Layer
+
+```
+- [ ] Reviewed
+  - ID: `CCP-070`
+  - Task ID: `CCP-070`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `copy Lichess board move-review glyph SVGs exactly into Patzer as the source glyph layer`
+  - Task: copy the Lichess board review glyph SVG system into Patzer as the source layer without wiring it into the board yet
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-071 - Render Review Glyphs On The Board
+
+```
+- [ ] Reviewed
+  - ID: `CCP-071`
+  - Task ID: `CCP-071`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `render Lichess-style move-review glyph SVGs on the analysis board in the same way Lichess does`
+  - Task: render Lichess-style board review glyph SVG badges on the analysis board using destination-square anchoring and stacking
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-072 - Add Review Glyph Board Toggle
+
+```
+- [ ] Reviewed
+  - ID: `CCP-072`
+  - Task ID: `CCP-072`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `add an engine-settings toggle for board review glyphs and default it on`
+  - Task: add a persisted engine-settings toggle for board review glyphs and default it on
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
 
 ## CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-067-F1`
   - Task ID: `CCP-067`
   - Parent prompt ID: `CCP-067`
@@ -164,7 +326,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `make eval-graph white fill rise from the bottom of the chart instead of the center line`
   - Task: fix eval-graph fill so white territory rises from the bottom of the graph instead of shading from the middle line
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -172,7 +334,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-044-F4`
   - Task ID: `CCP-044`
   - Parent prompt ID: `CCP-044-F3`
@@ -181,7 +343,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `reduce arrow label typography to 10/400/2 and add subtle fade-in for new arrow labels and arrows`
   - Task: refine engine-arrow labels to 10/400/2 and make both arrows and labels fade in subtly on first appearance
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -189,7 +351,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-069 - Refine Eval Graph Fill And Resize Handle
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-069`
   - Task ID: `CCP-069`
   - Parent prompt ID: none
@@ -198,7 +360,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `replace eval-graph slider with a center drag handle, keep Lichess-style white fill, and remove phase labels`
   - Task: refine the eval graph so it uses a center drag handle, keeps Lichess-style white fill, and removes phase labels
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -223,7 +385,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-067 - Bring Eval Graph Fill Into Lichess Parity
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-067`
   - Task ID: `CCP-067`
   - Parent prompt ID: none
@@ -240,7 +402,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-068 - Add Eval Graph Height Toggle
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-068`
   - Task ID: `CCP-068`
   - Parent prompt ID: none
@@ -257,7 +419,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-066 - Add Search To Underboard And Games Lists
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-066`
   - Task ID: `CCP-066`
   - Parent prompt ID: none
@@ -266,15 +428,15 @@ It should stay in sync with the detailed entry below.
   - Source step: `add a search bar to the underboard games list and the Games history page`
   - Task: add a search bar to both the underboard games list and the Games page using the smallest safe shared search/filter step
   - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Review outcome: issues found
+  - Review issues: underboard list still has no search bar and Games-page search remains opponent-only rather than a shared text search
   - Execution target: `Codex`
 ```
 
 ## CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-035-F1`
   - Task ID: `CCP-035`
   - Parent prompt ID: `CCP-035`
@@ -283,7 +445,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `[MEDIUM] Changing engine line count can make the main engine arrowhead disappear`
   - Task: fix the remaining engine-arrowhead instability so line-count or nearby arrow-setting changes do not make the main arrowhead disappear
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -291,7 +453,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-044-F2 - Match Arrow Label Styling To Eval Bar
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-044-F2`
   - Task ID: `CCP-044`
   - Parent prompt ID: `CCP-044-F1`
@@ -300,8 +462,8 @@ It should stay in sync with the detailed entry below.
   - Source step: `Add tag or label next to engine move arrows showing what their eval is`
   - Task: refine engine-arrow label styling so the text is smaller and visually matches the eval-bar score
   - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Review outcome: issues found
+  - Review issues: the reviewed family did not land the requested eval-bar-matching refinement before later F3/F4 follow-ups took the label styling in a different direction
   - Execution target: `Codex`
 ```
 
