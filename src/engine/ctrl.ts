@@ -5,6 +5,7 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { StockfishProtocol } from '../ceval/protocol';
 import { evalWinChances, type MoveLabel } from './winchances';
+import { formatScore } from '../analyse/evalView';
 import { pathIsMainline } from '../tree/ops';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 
@@ -178,6 +179,8 @@ export function buildArrowShapes(): DrawShape[] {
     if (currentEval.best) {
       const uci = currentEval.best;
       shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'paleBlue' });
+      const scoreLabel = buildPrimaryArrowLabel();
+      if (scoreLabel) shapes.push(scoreLabel);
     }
     // Secondary PV lines — paleGrey with lineWidth scaled by win% diff
     // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts compute()
@@ -226,6 +229,25 @@ export function buildArrowShapes(): DrawShape[] {
   }
 
   return shapes;
+}
+
+function buildPrimaryArrowLabel(): DrawShape | null {
+  if (!currentEval.best) return null;
+  if (currentEval.cp === undefined && currentEval.mate === undefined) return null;
+
+  const text = formatScore(currentEval);
+  const fill = currentEval.mate !== undefined
+    ? '#9158d8'
+    : currentEval.cp !== undefined && currentEval.cp > 0
+      ? '#3d8f63'
+      : currentEval.cp !== undefined && currentEval.cp < 0
+        ? '#3f4f7a'
+        : '#666';
+
+  return {
+    orig: currentEval.best.slice(2, 4) as any,
+    label: { text, fill },
+  };
 }
 
 /**
