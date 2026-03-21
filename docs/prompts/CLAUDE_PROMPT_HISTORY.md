@@ -3093,3 +3093,29 @@ Prompt text not recovered. This history entry was reconstructed after review fro
 - Review outcome: passed
 - Commit: local worktree (uncommitted)
 - Notes: the current local player-strip implementation replaces the old winner-only star with boxed winner/loser identity clusters in `src/board/index.ts` and `src/styles/main.scss`, while keeping the rest of the strip layout intact
+
+## CCP-044-F1 — Reviewed
+
+- Task: refine engine-arrow eval labels so they are off by default, configurable in engine settings, and integrated into arrowheads for primary, secondary, and played arrows
+- Task ID: `CCP-044`
+- Parent prompt ID: `CCP-044`
+- Source document: `docs/WISHLIST.md`
+- Source step: `Add tag or label next to engine move arrows showing what their eval is`
+- Execution target: `Codex`
+- Status: reviewed
+- Review outcome: passed
+- Commit: local worktree (uncommitted)
+- Notes: the current local engine-arrow implementation adds a persisted `showArrowLabels` setting in `src/engine/ctrl.ts`, exposes it in `src/ceval/view.ts`, and renders enabled labels through Chessground `customSvg` centered on the arrow label position for primary, secondary, and eligible played arrows
+
+## CCP-065 — Reviewed
+
+- Task: verify exact Lichess move-review label rendering and add a persisted engine-setting toggle that shows or hides visible review labels in Patzer
+- Task ID: `CCP-065`
+- Parent prompt ID: none
+- Source document: `docs/archive/MOVE_QUALITY_AUDIT_2026-03-20.md`
+- Source step: `Lichess-style move review label visibility parity`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: local worktree (uncommitted)
+- Notes: the current local implementation keeps review-label visibility in the move list, adds a persisted `showReviewLabels` setting in `src/engine/ctrl.ts`, exposes it in `src/ceval/view.ts`, and gates move-list review-glyph fallback in `src/analyse/moveList.ts` without changing review computation or stored analysis data

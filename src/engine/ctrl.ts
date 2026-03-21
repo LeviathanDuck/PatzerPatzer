@@ -129,6 +129,7 @@ export let showEngineArrows = true;
 export let arrowAllLines    = true;
 export let showPlayedArrow  = true;
 export let showArrowLabels  = localStorage.getItem('patzer.showArrowLabels') === 'true';
+export let showReviewLabels = localStorage.getItem('patzer.showReviewLabels') !== 'false';
 
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 export let pendingLines: EvalLine[] = [];
@@ -159,6 +160,7 @@ export function setShowEngineArrows(v: boolean): void { showEngineArrows = v; }
 export function setArrowAllLines(v: boolean): void    { arrowAllLines = v; }
 export function setShowPlayedArrow(v: boolean): void  { showPlayedArrow = v; }
 export function setShowArrowLabels(v: boolean): void  { showArrowLabels = v; localStorage.setItem('patzer.showArrowLabels', String(v)); }
+export function setShowReviewLabels(v: boolean): void { showReviewLabels = v; localStorage.setItem('patzer.showReviewLabels', String(v)); }
 export function incrementPendingStopCount(): void { pendingStopCount++; }
 export function stopProtocol(): void              { protocol.stop(); }
 
@@ -238,8 +240,8 @@ function buildArrowShape(
     orig: uci.slice(0, 2) as any,
     dest: uci.slice(2, 4) as any,
     brush,
-    modifiers,
   };
+  if (modifiers) shape.modifiers = modifiers;
   const labelSvg = buildArrowLabelSvg(ev);
   if (labelSvg) shape.customSvg = { html: labelSvg, center: 'label' };
   return shape;
@@ -249,14 +251,7 @@ function buildArrowLabelSvg(ev?: Pick<PositionEval, 'cp' | 'mate'> | Pick<EvalLi
   if (!showArrowLabels || !ev) return null;
   if (ev.cp === undefined && ev.mate === undefined) return null;
   const text = formatScore(ev);
-  const fill = ev.mate !== undefined
-    ? '#c987ff'
-    : ev.cp !== undefined && ev.cp > 0
-      ? '#8ae0a8'
-      : ev.cp !== undefined && ev.cp < 0
-        ? '#9ab8ff'
-        : '#d0d0d0';
-  return `<text x="50" y="56" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="34" font-weight="700" fill="${fill}" stroke="#111" stroke-width="8" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+  return `<text x="50" y="55" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="22" font-weight="700" fill="#fff" stroke="rgba(0,0,0,0.92)" stroke-width="6" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
 }
 
 function escapeArrowLabelText(text: string): string {

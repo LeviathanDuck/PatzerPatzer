@@ -45,7 +45,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Priority X, Item Y` or equivalent section label
   - Task: short task title
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
@@ -70,7 +70,7 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
-- [ ] CCP-065 - Add Toggle For Review Label Visibility
+- [x] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 - [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
 - [x] CCP-015-F2 - Per-Candidate Engine Guidance Toggle In Retrospection
@@ -138,14 +138,68 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-063 - Make Underboard Secondary On Mobile
 - [x] CCP-064 - Add One Minimal Mobile Touch Improvement
 - [x] CCP-043-F1 - Winner And Loser Player-Strip Boxes
-- [ ] CCP-044-F1 - Refine Engine Arrow Eval Labels
+- [x] CCP-044-F1 - Refine Engine Arrow Eval Labels
+- [ ] CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
+- [ ] CCP-044-F2 - Match Arrow Label Styling To Eval Bar
+- [ ] CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
 
 ## Log
+
+## CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
+
+```
+- [ ] Reviewed
+  - ID: `CCP-035-F1`
+  - Task ID: `CCP-035`
+  - Parent prompt ID: `CCP-035`
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: `[MEDIUM] Changing engine line count can make the main engine arrowhead disappear`
+  - Task: fix the remaining engine-arrowhead instability so line-count or nearby arrow-setting changes do not make the main arrowhead disappear
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-044-F2 - Match Arrow Label Styling To Eval Bar
+
+```
+- [ ] Reviewed
+  - ID: `CCP-044-F2`
+  - Task ID: `CCP-044`
+  - Parent prompt ID: `CCP-044-F1`
+  - Batch prompt IDs: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Add tag or label next to engine move arrows showing what their eval is`
+  - Task: refine engine-arrow label styling so the text is smaller and visually matches the eval-bar score
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
+
+## CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
+
+```
+- [ ] Reviewed
+  - ID: `CCP-043-F2`
+  - Task ID: `CCP-043`
+  - Parent prompt ID: `CCP-043-F1`
+  - Batch prompt IDs: none
+  - Source document: `docs/WISHLIST.md`
+  - Source step: `Remove the 1 / 0 / ½ single-game result markers from the player strip by default`
+  - Task: refine the player-strip winner/loser boxes so they hug the displayed identity width and use border-only styling without a background fill
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Codex`
+```
 
 ## CCP-065 - Add Toggle For Review Label Visibility
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-065`
   - Task ID: `CCP-065`
   - Parent prompt ID: none
@@ -171,7 +225,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Add tag or label next to engine move arrows showing what their eval is`
   - Task: refine engine-arrow eval labels so they are off by default, configurable in engine settings, and integrated into arrowheads for primary, secondary, and played arrows
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
