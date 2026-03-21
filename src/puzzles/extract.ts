@@ -101,6 +101,23 @@ function nextMistake(currentPath: string): PuzzleCandidate | null {
   return puzzleCandidates.find(c => c.path.length > currentPath.length) ?? null;
 }
 
+/**
+ * Standalone Find Puzzles button — placed in the analysis controls bar alongside
+ * the move navigation buttons. Separated from renderPuzzleCandidates so the
+ * trigger action lives next to other board controls while the candidate list
+ * stays in the tools panel.
+ */
+export function renderFindPuzzlesButton(deps: PuzzleRenderDeps): VNode {
+  const canExtract = deps.engineEnabled && !deps.batchAnalyzing;
+  const btnLabel = canExtract
+    ? `Find Puzzles (${puzzleCandidates.length})`
+    : deps.batchAnalyzing ? 'Find Puzzles (analyzing…)' : 'Find Puzzles (engine off)';
+  return h('button', {
+    attrs: { disabled: !canExtract, title: 'Scan completed analysis for blunder-level puzzle candidates' },
+    on: { click: () => { extractPuzzleCandidates(deps.mainline, deps.getEval, deps.gameId); deps.redraw(); } },
+  }, btnLabel);
+}
+
 export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
   const { engineEnabled, batchAnalyzing, batchState, savedPuzzles, currentPath } = deps;
   const canExtract = engineEnabled && !batchAnalyzing;
@@ -160,12 +177,6 @@ export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
   }
 
   return h('div.game-list', [
-    h('div.pgn-import__row', { attrs: { style: 'margin-bottom:6px' } }, [
-      h('button', {
-        attrs: { disabled: !canExtract },
-        on: { click: () => { extractPuzzleCandidates(deps.mainline, deps.getEval, deps.gameId); deps.redraw(); } },
-      }, btnLabel),
-    ]),
     navRow,
     puzzleCandidates.length > 0
       ? h('ul', rows)
