@@ -3,7 +3,7 @@
 // Mirrors the pattern of lichess-org/lila: ui/analyse/src/idbTree.ts
 
 import type { ImportedGame } from '../import/types';
-import type { PuzzleCandidate } from '../tree/types';
+import type { PuzzleCandidate, TreeNode } from '../tree/types';
 
 // --- Stored schemas ---
 
@@ -36,6 +36,38 @@ export interface StoredAnalysis {
   status:          AnalysisStatus;
   updatedAt:       number; // Date.now()
   nodes:           Record<string, StoredNodeEntry>; // keyed by path
+}
+
+// --- Analysis serialization ---
+
+/**
+ * Serialize the mainline eval cache into the StoredNodeEntry map used by saveAnalysisToIdb.
+ * Extracted from main.ts so that analysis serialization has a permanent home in the
+ * persistence layer next to the types it produces.
+ * Mirrors the self-contained serialization approach in
+ * lichess-org/lila: ui/analyse/src/idbTree.ts IdbTree.serializeNode.
+ */
+export function buildAnalysisNodes(
+  mainline: readonly TreeNode[],
+  getEval:  (path: string) => { cp?: number; mate?: number; best?: string; loss?: number; delta?: number } | undefined,
+): Record<string, StoredNodeEntry> {
+  const nodes: Record<string, StoredNodeEntry> = {};
+  let path = '';
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i]!;
+    path += node.id;
+    const ev = getEval(path);
+    if (ev) {
+      const entry: StoredNodeEntry = { nodeId: node.id, path, fen: node.fen };
+      if (ev.cp    !== undefined) entry.cp    = ev.cp;
+      if (ev.mate  !== undefined) entry.mate  = ev.mate;
+      if (ev.best  !== undefined) entry.best  = ev.best;
+      if (ev.loss  !== undefined) entry.loss  = ev.loss;
+      if (ev.delta !== undefined) entry.delta = ev.delta;
+      nodes[path] = entry;
+    }
+  }
+  return nodes;
 }
 
 // --- Puzzle state ---
