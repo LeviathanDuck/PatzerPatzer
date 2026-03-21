@@ -54,6 +54,21 @@ Use this file to track Claude Code prompts from creation through review.
 
 ## Log
 
+## CCP-015-F2 - Per-Candidate Engine Guidance Toggle In Retrospection
+
+```
+- [x] Reviewed
+  - ID: `CCP-015-F2`
+  - Task ID: `CCP-015`
+  - Parent prompt ID: `CCP-015-F1`
+  - Source document: `docs/NEXT_STEPS.md`
+  - Source step: `Priority 3, Item 10`
+  - Task: keep engine guidance off by default in retrospection, allow per-candidate reveal, and reset to hidden on the next mistake
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
 ## CCP-017 - Remove Clear Variations Button
 
 ```
@@ -147,17 +162,183 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-015-F1 - Hide Engine Guidance During Retrospection
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-015-F1`
   - Task ID: `CCP-015`
   - Parent prompt ID: `CCP-015`
   - Source document: `docs/NEXT_STEPS.md`
   - Source step: `Priority 3, Item 10`
   - Task: hide engine lines and arrows while Learn From Mistakes / retrospection mode is active
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: engine PV lines and arrows are hidden only while `ctrl.retro?.isSolving()` is true, not for the full time retrospection mode is active, so guidance returns in other retro states like `win` / `view`
+```
+
+## CCP-018 - Extract Retrospection UI Ownership
+
+```
+- [x] Reviewed
+  - ID: `CCP-018`
+  - Task ID: `CCP-018`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Recommended next implementation sequence, Step 1`
+  - Task: extract retrospection entry and active-session rendering out of `src/main.ts` into `src/analyse/`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-019 - Complete Retrospection Lifecycle Handling
+
+```
+- [ ] Reviewed
+  - ID: `CCP-019`
+  - Task ID: `CCP-019`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Recommended next implementation sequence, Step 2`
+  - Task: replace the inert retrospection `onCeval()` seam with meaningful lifecycle behavior while preserving exact-best MVP solving
   - Claude used: no
   - Review outcome: pending
   - Review issues: none
 ```
+
+## CCP-020 - Move Retrospection UI Into Analysis Tools
+
+```
+- [ ] Reviewed
+  - ID: `CCP-020`
+  - Task ID: `CCP-020`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Recommended next implementation sequence, Step 3`
+  - Task: move the active retrospection UI into the analysis tools area
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-021 - Suppress Conflicting Analysis UI During Retrospection
+
+```
+- [ ] Reviewed
+  - ID: `CCP-021`
+  - Task ID: `CCP-021`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Recommended next implementation sequence, Step 4`
+  - Task: suppress conflicting analysis UI while active retrospection is running
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-022 - Persist Retrospection Best-Line Context
+
+```
+- [ ] Reviewed
+  - ID: `CCP-022`
+  - Task ID: `CCP-022`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Recommended next implementation sequence, Step 5`
+  - Task: persist richer retrospection solution context such as `bestLine`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-023 - Add Book-Aware Retrospection Cancellation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-023`
+  - Task ID: `CCP-023`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Recommended next implementation sequence, Step 6`
+  - Task: add the first safe opening/book-aware cancellation step for retrospection candidates
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-024 - Add Near-Best Acceptance Parity
+
+```
+- [ ] Reviewed
+  - ID: `CCP-024`
+  - Task ID: `CCP-024`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/patzer-retrospection-audit.md`
+  - Source step: `Recommended next implementation sequence, Step 7`
+  - Task: add the first source-backed near-best acceptance step to retrospection
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-025 - Add Move-List Context Menu Infrastructure
+
+```
+- [ ] Reviewed
+  - ID: `CCP-025`
+  - Task ID: `CCP-025`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
+  - Source step: `Source-backed implementation sequence, Step 1`
+  - Task: add move-list context-menu infrastructure for path-based variation actions
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-026 - Add Copy Mainline And Variation PGN Actions
+
+```
+- [ ] Reviewed
+  - ID: `CCP-026`
+  - Task ID: `CCP-026`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
+  - Source step: `Source-backed implementation sequence, Step 2`
+  - Task: add context-menu actions to copy mainline and variation PGN from the selected path
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-027 - Add Delete-From-Here Variation Action
+
+```
+- [ ] Reviewed
+  - ID: `CCP-027`
+  - Task ID: `CCP-027`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
+  - Source step: `Source-backed implementation sequence, Step 3`
+  - Task: add a move-list context `Delete from here` branch action with active-path repair
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-028 - Add Variation Promotion And Make-Mainline Actions
+
+```
+- [ ] Reviewed
+  - ID: `CCP-028`
+  - Task ID: `CCP-028`
+  - Parent prompt ID: none
+  - Source document: `docs/reference/lichess-analysis-variation-actions-audit.md`
+  - Source step: `Source-backed implementation sequence, Step 4`
+  - Task: add context-menu actions for variation promotion and make-mainline behavior
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
 
 ## CCP-015 - Minimal Retrospection Solve Loop
 

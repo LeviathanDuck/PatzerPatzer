@@ -41,17 +41,266 @@ full Claude prompt goes here
 
 ## History
 
-## CCP-015-F1 — Created
+## CCP-018 — Used in Claude Code
+
+- Task: extract retrospection entry and active-session rendering out of `src/main.ts` into `src/analyse/`
+- Task ID: `CCP-018`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-retrospection-audit.md`
+- Source step: `Recommended next implementation sequence, Step 1`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `9e2b79f`
+- Notes: clean extraction into `src/analyse/retroView.ts`; behavior and placement preserved
+
+```
+Prompt ID: CCP-018
+Task ID: CCP-018
+Source Document: docs/reference/patzer-retrospection-audit.md
+Source Step: Recommended next implementation sequence, Step 1
+
+Task: Extract retrospection entry and active-session rendering out of `src/main.ts` into an analysis-owned module under `src/analyse/`, while preserving the current behavior and placement exactly.
+
+Before editing, inspect the current codebase first and confirm the real implementation points instead of guessing. Start with:
+- `src/main.ts`
+- `src/analyse/ctrl.ts`
+- `src/analyse/retro.ts`
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/moveList.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/ARCHITECTURE.md`
+- `docs/NEXT_STEPS.md`
+- `docs/reference/patzer-retrospection-audit.md`
+- `docs/reference/lichess-retrospection-ux/README.md`
+
+Relevant Patzer Pro files already identified from current repo inspection:
+- `src/main.ts`
+- `src/analyse/ctrl.ts`
+- `src/analyse/retro.ts`
+- `src/analyse/retroCtrl.ts`
+
+Because this task affects analysis-board ownership and retrospection UX structure, inspect relevant Lichess source before deciding implementation details. Start with:
+- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroView.ts`
+
+Current repo-grounded diagnosis:
+- Patzer already has working first-pass retrospection logic, but the entry button and active retrospection UI still live in `src/main.ts`
+- the audit in `docs/reference/patzer-retrospection-audit.md` identifies this as the first structural gap to fix before deeper Lichess parity work
+- the safest first step is ownership extraction only, not behavioral change
+- this task should not yet move the UI into the tools area or alter solving behavior
+
+Implement only the smallest safe step:
+- extract the retrospection entry-button rendering and active-session rendering out of `src/main.ts`
+- move that ownership into a small analysis-owned module under `src/analyse/`
+- preserve current behavior, labels, actions, and placement exactly for now
+- keep `toggleRetro()` orchestration where it already belongs if moving it would expand scope
+- do not bundle controller lifecycle changes
+- do not bundle UI relocation into the tools column
+- do not bundle suppression/hiding rules
+
+A likely safe direction is:
+- create a small `src/analyse/retroView.ts` or similarly named module
+- move the rendering-only retrospection UI there
+- keep event handlers and data passed in explicitly rather than reaching deeper into unrelated module state
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for this structural change
+- explicitly verify:
+  - the `Mistakes` entry affordance still appears where it did before
+  - entering retrospection still works exactly as before
+  - the active retrospection strip still renders and behaves as before
+  - no retrospection behavior changed intentionally in this extraction step
+  - there are no console/runtime errors
+- report remaining risks and limitations, especially that the UI is still in the old placement and lifecycle parity is still deferred
+
+Also include a short manual test checklist with concrete user actions and expected results. Keep it tightly scoped to this change.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+
+In your final report, repeat:
+- `Prompt ID: CCP-018`
+- `Task ID: CCP-018`
+```
+
+## CCP-015-F2 — Used in Claude Code
+
+- Task: add a per-candidate engine guidance toggle in retrospection
+- Task ID: `CCP-015`
+- Parent prompt ID: `CCP-015-F1`
+- Source document: `docs/NEXT_STEPS.md`
+- Source step: `Priority 3, Item 10`
+- Status: reviewed
+- Review outcome: passed
+- Commit: local unstaged work
+- Notes: adds a retro-owned per-candidate guidance reveal flag and resets it on candidate advance, matching the requested default-hidden behavior
+
+```
+Prompt ID: CCP-015-F2
+Task ID: CCP-015
+Parent Prompt ID: CCP-015-F1
+Source Document: docs/NEXT_STEPS.md
+Source Step: Priority 3, Item 10
+
+Task: Take the next smallest safe follow-up step on retrospection guidance concealment by making engine guidance hidden by default whenever Learn From Mistakes mode is entered, while allowing the user to reveal it manually for the current mistake only, and automatically resetting back to hidden when advancing to the next mistake.
+
+Treat this as a focused follow-up to the retrospection guidance work, not as permission to redesign the engine settings model or broaden the retrospection solve loop.
+
+Before editing, inspect the current codebase first and confirm the real implementation points instead of guessing. Start with:
+- `src/main.ts`
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/ctrl.ts`
+- `src/ceval/view.ts`
+- `src/engine/ctrl.ts`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `docs/ARCHITECTURE.md`
+- `docs/NEXT_STEPS.md`
+- `docs/KNOWN_ISSUES.md`
+- `docs/reference/lichess-retrospection/README.md`
+- `docs/reference/lichess-retrospection-ux/README.md`
+
+Relevant Patzer Pro files already identified from current repo inspection:
+- `src/main.ts`
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/ctrl.ts`
+- `src/ceval/view.ts`
+- `src/engine/ctrl.ts`
+
+Because this task affects analysis-board and retrospection behavior, inspect relevant Lichess source before deciding implementation details. Start with:
+- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroView.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroCtrl.ts`
+- `~/Development/lichess-source/lila/ui/analyse/src/autoShape.ts`
+
+Current repo-grounded diagnosis:
+- Patzer now hides PV lines and arrows only while `ctrl.retro?.isSolving()` is true
+- that means guidance can reappear in other retro states like `win` / `view`
+- the current user intent is stronger:
+  - entering Learn From Mistakes should start with engine guidance off
+  - the user may choose to reveal guidance for the current mistake
+  - moving to the next mistake should reset back to the default hidden state
+- this should behave like retrospection-local reveal state, not like a permanent mutation of global engine settings such as `showEngineArrows`
+
+Lichess parity requirement:
+- inspect how Lichess keeps retrospection guidance under retro-owned control rather than mutating broad engine preferences
+- specifically compare:
+  - `view/tools.ts` gating of ceval PVs
+  - `ctrl.ts` / `autoShape.ts` best-move-arrow suppression hooks
+  - `retroCtrl.ts` `hideComputerLine()` and related retro state ownership
+- if Patzer needs a temporary simplification, keep it minimal and call it out explicitly
+
+Implement only the smallest safe step:
+- make engine guidance hidden by default for the whole time retrospection mode is active
+- add a small retrospection-local toggle to reveal engine guidance for the current candidate only
+- reset that reveal state automatically whenever retrospection advances to a different candidate
+- keep global engine settings unchanged outside retrospection
+- keep the existing retro strip / controls layout as intact as possible
+- do not redesign ceval settings
+- do not bundle unrelated solve-loop fixes or review-controls work
+
+A likely safe direction is:
+- store a small “guidance revealed for current candidate” flag in retrospection-owned state
+- gate PV rendering and engine/threat arrow rendering on:
+  - retrospection active
+  - and whether the current candidate’s reveal flag is enabled
+- reset the reveal flag inside the candidate-transition seam (`jumpToNext`, `skip`, success advance, etc.) rather than spreading ad hoc resets through UI click handlers
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for this behavior
+- explicitly verify:
+  - entering retrospection starts with engine guidance hidden
+  - the user can reveal engine guidance for the current mistake without changing global engine settings
+  - advancing to the next mistake resets guidance back to hidden by default
+  - closing retrospection restores normal analysis behavior
+  - normal engine guidance outside retrospection is unchanged
+- report whether behavior changed intentionally
+- report whether there are console/runtime errors
+- report remaining risks and limitations, especially whether the reveal toggle is available in all retro states or only the intended subset
+
+Also include a short manual test checklist with concrete user actions and expected results. Keep it tightly scoped to this change.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+
+In your final report, repeat:
+- `Prompt ID: CCP-015-F2`
+- `Task ID: CCP-015`
+```
+
+## CCP-015-F1 — Used in Claude Code
 
 - Task: hide engine guidance during retrospection
 - Task ID: `CCP-015`
 - Parent prompt ID: `CCP-015`
 - Source document: `docs/NEXT_STEPS.md`
 - Source step: `Priority 3, Item 10`
-- Status: created
-- Review outcome: pending
-- Commit: unknown
-- Notes: follow-up fix prompt to conceal engine guidance while the user is solving mistakes
+- Status: reviewed
+- Review outcome: issues found
+- Commit: `b87e6f1`
+- Notes: hides engine PV lines and arrows only during retro solving states, not for the full time retrospection mode is active
 
 ```
 Prompt ID: CCP-015-F1
