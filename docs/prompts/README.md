@@ -63,6 +63,15 @@ Their responsibilities are:
 - `CLAUDE_PROMPT_HISTORY.md`
   - stores historical full prompt text when the workflow calls for it
 
+Status ownership rule:
+- `CLAUDE_PROMPT_LOG.md` is the canonical review-status record
+- `CLAUDE_PROMPT_QUEUE.md` is a pending-only working set
+- `CLAUDE_PROMPT_HISTORY.md` is an archive/audit trail, not the canonical status source
+
+That means:
+- if a prompt has been reviewed, it must not remain in `CLAUDE_PROMPT_QUEUE.md`
+- if queue and log disagree, fix the queue/log mismatch immediately before doing more prompt work
+
 ## Prompt Types
 
 There are two main tracked prompt categories:
@@ -211,18 +220,19 @@ When reviewing a prompt:
 1. Re-read the workflow docs listed in `Start Here`
 2. Find the matching `CCP-###` entry in queue/log/history
 3. Review the actual changes using `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
-4. If the prompt is still in `CLAUDE_PROMPT_QUEUE.md`, remove:
-  - the prompt block
-  - the matching queue-index item
-5. Update the detailed log entry
-6. Flip the matching top prompt-index item in the log from `[ ]` to `[x]`
-7. Record `Review outcome`
-8. Record any short `Review issues`
-9. If the review found a real repository issue, ask whether it should be added to `docs/KNOWN_ISSUES.md`
-10. Explicitly verify that the reviewed `CCP-###` no longer appears anywhere in `CLAUDE_PROMPT_QUEUE.md`
-11. Double-check that the queue/log state is still internally consistent
+4. Complete prompt-tracking closeout as one atomic step:
+  - remove the prompt block from `CLAUDE_PROMPT_QUEUE.md`
+  - remove the matching queue-index item from `CLAUDE_PROMPT_QUEUE.md`
+  - update the detailed log entry in `CLAUDE_PROMPT_LOG.md`
+  - flip the matching top prompt-index item in `CLAUDE_PROMPT_LOG.md` from `[ ]` to `[x]`
+  - record `Review outcome`
+  - record any short `Review issues`
+  - update `CLAUDE_PROMPT_HISTORY.md` if the active workflow expects a reviewed/archive entry
+5. If the review found a real repository issue, ask whether it should be added to `docs/KNOWN_ISSUES.md`
+6. Run the required invariant verification
+7. Only after that verification passes is the review complete
 
-Recommended verification command after review:
+Required invariant verification after review:
 
 ```sh
 rg -n "CCP-###" docs/prompts/CLAUDE_PROMPT_QUEUE.md docs/prompts/CLAUDE_PROMPT_LOG.md
@@ -231,6 +241,21 @@ rg -n "CCP-###" docs/prompts/CLAUDE_PROMPT_QUEUE.md docs/prompts/CLAUDE_PROMPT_L
 Expected result after a completed review:
 - no match in `CLAUDE_PROMPT_QUEUE.md`
 - reviewed match in `CLAUDE_PROMPT_LOG.md`
+
+Recommended full audit after review:
+
+```sh
+npm run audit:prompts
+```
+
+Atomic closeout rule:
+- a prompt review is incomplete if any of the following are still true after review:
+  - the prompt id still appears anywhere in `CLAUDE_PROMPT_QUEUE.md`
+  - the top log checklist still shows `[ ]`
+  - the detailed log entry still says `Review outcome: pending`
+  - the queue index and queue body disagree about pending prompt ids
+
+Do not describe a review as complete until those invariants pass.
 
 ## Review Outcome Labels
 
