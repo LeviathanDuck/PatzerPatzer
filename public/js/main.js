@@ -707,10 +707,6 @@ function deleteNodeAt(root, path) {
   const id = pathLast(path);
   parent.children = parent.children.filter((c) => c.id !== id);
 }
-function pruneVariations(node) {
-  if (node.children.length > 1) node.children = [node.children[0]];
-  if (node.children[0]) pruneVariations(node.children[0]);
-}
 
 // src/analyse/ctrl.ts
 var AnalyseCtrl = class {
@@ -1171,7 +1167,8 @@ function stopProtocol() {
 function buildArrowShapes() {
   const shapes = [];
   const ctrl2 = _getCtrl();
-  if (engineEnabled && showEngineArrows) {
+  const retroSolving = ctrl2.retro?.isSolving() ?? false;
+  if (engineEnabled && showEngineArrows && !retroSolving) {
     if (currentEval.best) {
       const uci = currentEval.best;
       shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "paleBlue" });
@@ -1194,7 +1191,7 @@ function buildArrowShapes() {
       }
     }
   }
-  if (engineEnabled && threatMode && threatEval.best) {
+  if (engineEnabled && threatMode && threatEval.best && !retroSolving) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
   }
@@ -1283,6 +1280,7 @@ function parseEngineLine(line) {
       if ((score !== void 0 || best) && !_isBatchActive()) {
         syncArrowDebounced();
         _redraw();
+        if (!evalIsThreat) _getCtrl().retro?.onCeval();
       }
     } else if (!evalIsThreat && score !== void 0) {
       if (evalNodePath !== _getCtrl().path) return;
@@ -1544,7 +1542,7 @@ function computeAnalysisSummary(mainline, evalCache2) {
       blackAccs.push(acc);
     }
     const playedBest = node.uci !== void 0 && node.uci === parentEval.best;
-    const label = !playedBest && nodeEval.loss !== void 0 ? classifyLoss(nodeEval.loss) : null;
+    const label = !playedBest ? nodeEval.label ?? (nodeEval.loss !== void 0 ? classifyLoss(nodeEval.loss) : null) : null;
     if (isWhiteMove) {
       if (label === "blunder") wBlunders++;
       else if (label === "mistake") wMistakes++;
@@ -1649,7 +1647,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2) {
     const wc = cached !== void 0 ? evalWinChances(cached) : void 0;
     if (wc !== void 0) {
       const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-      const label = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
+      const label = !playedBest ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
       pts.push({
         x: (i - 1) / (n - 1) * GRAPH_W,
         y: (1 - wc) / 2 * GRAPH_H,
@@ -5709,7 +5707,17 @@ function onUserMove(orig, dest) {
     _redraw3();
     return;
   }
+  const retro = ctrl2.retro?.isSolving() ? ctrl2.retro : void 0;
+  const retroCand = retro ? retro.current() : null;
+  const atRetroExercise = !!(retro && retroCand && ctrl2.path === retroCand.parentPath);
+  if (atRetroExercise && retro && retroCand && normUci === retroCand.bestMove) {
+    retro.onWin();
+  }
   completeMove(orig, dest);
+  if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
+    retro.onFail();
+    _navigate(retroCand.parentPath);
+  }
 }
 function completeMove(orig, dest, promotion) {
   const ctrl2 = _getCtrl3();
@@ -6281,33 +6289,7 @@ function renderEngineSettings() {
 }
 
 // src/puzzles/extract.ts
-var PUZZLE_CANDIDATE_MIN_LOSS = 0.14;
 var puzzleCandidates = [];
-function extractPuzzleCandidates(mainline, getEval, gameId) {
-  const candidates = [];
-  let path = "";
-  for (let i = 1; i < mainline.length; i++) {
-    const node = mainline[i];
-    const parent = mainline[i - 1];
-    path += node.id;
-    const nodeEval = getEval(path);
-    const parentEval = getEval(path.slice(0, -2));
-    if (nodeEval?.loss !== void 0 && nodeEval.loss >= PUZZLE_CANDIDATE_MIN_LOSS && parentEval?.best) {
-      candidates.push({
-        gameId,
-        path,
-        fen: parent.fen,
-        bestMove: parentEval.best,
-        san: node.san ?? "",
-        loss: nodeEval.loss,
-        ply: node.ply
-      });
-    }
-  }
-  puzzleCandidates = candidates;
-  console.log("[puzzles] extracted", candidates.length, "candidates", candidates);
-  return candidates;
-}
 function clearPuzzleCandidates() {
   puzzleCandidates = [];
 }
@@ -6383,15 +6365,6 @@ function renderPuzzleCandidates(deps) {
     ]);
   }
   return h("div.game-list", [
-    h("div.pgn-import__row", { attrs: { style: "margin-bottom:6px" } }, [
-      h("button", {
-        attrs: { disabled: !canExtract },
-        on: { click: () => {
-          extractPuzzleCandidates(deps.mainline, deps.getEval, deps.gameId);
-          deps.redraw();
-        } }
-      }, btnLabel)
-    ]),
     navRow,
     puzzleCandidates.length > 0 ? h("ul", rows) : h("div.game-list__header", batchState2 === "complete" ? "No blunder-level candidates found in this game." : "Run extraction after analysis completes.")
   ]);
@@ -6414,7 +6387,6 @@ function initPgnExport(deps) {
   _clearGameAnalysis = deps.clearGameAnalysis;
   _redraw5 = deps.redraw;
 }
-var showExportMenu = false;
 function buildPgn(annotated) {
   const ctrl2 = _getCtrl5();
   const importedGames2 = _getImportedGames3();
@@ -6492,10 +6464,9 @@ function downloadPgn(annotated) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-  showExportMenu = false;
   _redraw5();
 }
-function renderAnalysisControls() {
+function renderAnalysisControls(extraButtons) {
   const ctrl2 = _getCtrl5();
   const selectedGameId2 = _getSelectedGameId3();
   const hasGame = ctrl2.mainline.length > 1;
@@ -6542,28 +6513,8 @@ function renderAnalysisControls() {
         attrs: { disabled: !hasGame, title: reviewTitle },
         on: { click: reviewClick }
       }, reviewLabel),
-      h("button", {
-        attrs: { disabled: ctrl2.mainline.length <= 1 },
-        on: {
-          click: () => {
-            showExportMenu = !showExportMenu;
-            _redraw5();
-          }
-        }
-      }, "Export PGN")
+      ...extraButtons ?? []
     ]),
-    showExportMenu ? h("div.pgn-import__row", [
-      h("span", { attrs: { style: "font-size:0.8rem;color:#888;margin-right:6px" } }, "Export as:"),
-      h("button", { on: { click: () => downloadPgn(true) } }, "Annotated"),
-      h("button", { on: { click: () => downloadPgn(false) } }, "Plain"),
-      h("button", {
-        attrs: { style: "color:#888" },
-        on: { click: () => {
-          showExportMenu = false;
-          _redraw5();
-        } }
-      }, "Cancel")
-    ]) : null,
     statusLine
   ]);
 }
@@ -8414,7 +8365,7 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
   const parentCached = getEval(pathInit(path));
   const pgnGlyph = node.glyphs?.[0];
   const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
-  const computedLabel = !playedBest && cached?.loss !== void 0 ? classifyLoss(cached.loss) : null;
+  const computedLabel = !playedBest && cached !== void 0 ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
   const computedSymbol = computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
   const symbol = pgnGlyph?.symbol ?? computedSymbol;
   const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
@@ -8443,9 +8394,9 @@ function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath,
   for (const variant of variations) {
     out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2)));
   }
-  const hasVariations2 = variations.length > 0;
+  const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
-  const contNeedsNum = hasVariations2 && firstCont !== void 0 && firstCont.ply % 2 === 0;
+  const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
   out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2));
   return out;
 }
@@ -8480,21 +8431,10 @@ function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval,
   }
   renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, deleteVariation2);
 }
-function hasVariations(root) {
-  let node = root;
-  while (node) {
-    if (node.children.length > 1) return true;
-    node = node.children[0];
-  }
-  return false;
-}
-function renderMoveList(root, currentPath, getEval, navigate2, deleteVariation2, clearVariations2) {
+function renderMoveList(root, currentPath, getEval, navigate2, deleteVariation2) {
   const nodes = [];
   renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, deleteVariation2);
-  const strip = clearVariations2 && hasVariations(root) ? h("div.move-list-actions", [
-    h("button", { on: { click: clearVariations2 } }, "Clear variations")
-  ]) : null;
-  return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes), strip]);
+  return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes)]);
 }
 
 // src/import/pgn.ts
@@ -8605,9 +8545,15 @@ function renderGlobalMenu(deps) {
       h("button.global-menu__item", {
         on: { click: () => {
           closeGlobalMenu(redraw2);
+          downloadPgn2(true);
+        } }
+      }, "Export PGN (Annotated)"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          closeGlobalMenu(redraw2);
           downloadPgn2(false);
         } }
-      }, "Export PGN from Current Board"),
+      }, "Export PGN (Plain)"),
       h("div.global-menu__item.global-menu__item--has-sub", {
         on: { click: () => {
           showBoardSettings = !showBoardSettings;
@@ -8867,6 +8813,134 @@ function onChange2(fn) {
   window.addEventListener("hashchange", () => fn(current()));
 }
 
+// src/analyse/retro.ts
+function buildRetroCandidates(mainline, getEval, gameId, userColor = null) {
+  const candidates = [];
+  let path = "";
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i];
+    const parent = mainline[i - 1];
+    path += node.id;
+    const parentPath = path.slice(0, -2);
+    const isWhiteMove = node.ply % 2 === 1;
+    const playerColor = isWhiteMove ? "white" : "black";
+    if (userColor !== null && playerColor !== userColor) continue;
+    const nodeEval = getEval(path);
+    const parentEval = getEval(parentPath);
+    if (!nodeEval || !parentEval || !parentEval.best) continue;
+    if (!node.uci) continue;
+    const parentMatePov = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
+    const isMissedMate = parentMatePov !== void 0 && parentMatePov > 0 && parentMatePov <= 3 && !nodeEval.mate;
+    const loss = nodeEval.loss;
+    const classification = loss !== void 0 ? classifyLoss(loss) : null;
+    const qualifiesByLoss = classification === "mistake" || classification === "blunder";
+    if (!qualifiesByLoss && !isMissedMate) continue;
+    let finalClassification;
+    if (classification === "blunder" || classification === "mistake") {
+      finalClassification = classification;
+    } else {
+      finalClassification = "blunder";
+    }
+    candidates.push({
+      gameId,
+      path,
+      parentPath,
+      fenBefore: parent.fen,
+      playedMove: node.uci,
+      playedMoveSan: node.san ?? "",
+      bestMove: parentEval.best,
+      classification: finalClassification,
+      loss: loss ?? 0,
+      isMissedMate,
+      playerColor,
+      ply: node.ply
+    });
+  }
+  return candidates;
+}
+
+// src/analyse/retroCtrl.ts
+function makeRetroCtrl(candidates, userColor = null) {
+  let solvedPlies = [];
+  let currentIdx = -1;
+  let _feedback = "find";
+  const isPlySolved = (ply) => solvedPlies.includes(ply);
+  function findNextIdx() {
+    return candidates.findIndex((c) => !isPlySolved(c.ply));
+  }
+  function solveCurrent() {
+    const c = candidates[currentIdx];
+    if (c && !isPlySolved(c.ply)) solvedPlies.push(c.ply);
+  }
+  function jumpToNext() {
+    _feedback = "find";
+    currentIdx = findNextIdx();
+  }
+  function skip() {
+    solveCurrent();
+    jumpToNext();
+  }
+  function viewSolution() {
+    _feedback = "view";
+    solveCurrent();
+  }
+  jumpToNext();
+  return {
+    candidates,
+    userColor,
+    current() {
+      return currentIdx >= 0 ? candidates[currentIdx] ?? null : null;
+    },
+    feedback() {
+      return _feedback;
+    },
+    setFeedback(f) {
+      _feedback = f;
+    },
+    isSolving() {
+      return _feedback === "find" || _feedback === "fail";
+    },
+    isPlySolved,
+    jumpToNext,
+    skip,
+    viewSolution,
+    onJump(path) {
+      const c = currentIdx >= 0 ? candidates[currentIdx] ?? null : null;
+      if (!c) return;
+      if (_feedback === "win" || _feedback === "view") {
+        return;
+      }
+      if (_feedback === "offTrack" && path === c.parentPath) {
+        _feedback = "find";
+      } else if ((_feedback === "find" || _feedback === "fail") && path !== c.parentPath) {
+        _feedback = "offTrack";
+      }
+    },
+    // Stub: called when a live ceval result arrives for the current node.
+    // Win/fail acceptance logic and engine/ctrl.ts wiring are deferred.
+    // Mirrors lichess-org/lila: retroCtrl.ts onCeval / checkCeval.
+    onCeval() {
+    },
+    onWin() {
+      solveCurrent();
+      _feedback = "win";
+    },
+    onFail() {
+      _feedback = "fail";
+    },
+    onMergeAnalysisData() {
+      if ((_feedback === "find" || _feedback === "fail") && currentIdx < 0) jumpToNext();
+    },
+    completion() {
+      return [solvedPlies.length, candidates.length];
+    },
+    reset() {
+      solvedPlies = [];
+      jumpToNext();
+    }
+  };
+}
+
 // src/main.ts
 console.log("Patzer Pro");
 var patch = init([classModule, attributesModule, eventListenersModule]);
@@ -8929,6 +9003,7 @@ async function loadAndRestoreAnalysis(gameId, generation) {
     if (entry.best !== void 0) ev.best = entry.best;
     if (entry.loss !== void 0) ev.loss = entry.loss;
     if (entry.delta !== void 0) ev.delta = entry.delta;
+    if (entry.label !== void 0) ev.label = entry.label;
     evalCache.set(entry.path, ev);
   }
   if (stored.status === "complete") {
@@ -8946,11 +9021,13 @@ async function loadAndRestoreAnalysis(gameId, generation) {
   const restoredEval = evalCache.get(ctrl.path);
   if (restoredEval) setCurrentEval(restoredEval);
   syncArrow();
+  ctrl.retro?.onMergeAnalysisData();
   redraw();
 }
 function navigate(path) {
   if (path === ctrl.path) return;
   ctrl.setPath(path);
+  ctrl.retro?.onJump(path);
   syncBoard();
   evalCurrentPosition();
   void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
@@ -8971,21 +9048,6 @@ function prev() {
   if (ctrl.path === "") return;
   navigate(pathInit(ctrl.path));
 }
-function clearVariations() {
-  pruneVariations(ctrl.root);
-  let repairPath = ctrl.path;
-  while (repairPath !== "" && !nodeAtPath(ctrl.root, repairPath)) {
-    repairPath = pathInit(repairPath);
-  }
-  if (repairPath !== ctrl.path) {
-    navigate(repairPath);
-  } else {
-    ctrl.setPath(ctrl.path);
-    syncBoard();
-    void saveGamesToIdb(importedGames, selectedGameId, ctrl.path);
-    redraw();
-  }
-}
 function deleteVariation(path) {
   deleteNodeAt(ctrl.root, path);
   if (ctrl.path.startsWith(path)) {
@@ -9000,6 +9062,110 @@ function first() {
 }
 function last() {
   navigate(ctrl.mainline.slice(1).reduce((acc, n) => acc + n.id, ""));
+}
+function toggleRetro() {
+  if (ctrl.retro) {
+    delete ctrl.retro;
+    redraw();
+    return;
+  }
+  const game = importedGames.find((g) => g.id === selectedGameId);
+  const userColor = game ? getUserColor(game) : null;
+  const candidates = buildRetroCandidates(
+    ctrl.mainline,
+    (p) => evalCache.get(p),
+    selectedGameId,
+    userColor ?? null
+  );
+  ctrl.retro = makeRetroCtrl(candidates, userColor ?? null);
+  const first2 = ctrl.retro.current();
+  if (first2) navigate(first2.parentPath);
+  else redraw();
+}
+function renderRetroStrip() {
+  const retro = ctrl.retro;
+  if (!retro) return null;
+  const feedback = retro.feedback();
+  const cand = retro.current();
+  const [solved, total] = retro.completion();
+  const progress = h("span.retro-strip__progress", `${solved} / ${total}`);
+  const buttons = [];
+  if (feedback === "find" || feedback === "offTrack") {
+    buttons.push(
+      h("button.retro-strip__btn", {
+        on: { click: () => {
+          retro.viewSolution();
+          if (cand) navigate(cand.path);
+        } }
+      }, "Show answer"),
+      h("button.retro-strip__btn", {
+        on: { click: () => {
+          retro.skip();
+          const next2 = retro.current();
+          if (next2) navigate(next2.parentPath);
+          else redraw();
+        } }
+      }, "Skip")
+    );
+  } else if (feedback === "win") {
+    buttons.push(
+      h("button.retro-strip__btn.retro-strip__btn--next", {
+        on: { click: () => {
+          retro.jumpToNext();
+          const next2 = retro.current();
+          if (next2) navigate(next2.parentPath);
+          else redraw();
+        } }
+      }, "Next \u2192")
+    );
+  } else if (feedback === "fail") {
+    buttons.push(
+      h("button.retro-strip__btn", {
+        on: { click: () => {
+          retro.setFeedback("find");
+          redraw();
+        } }
+      }, "Retry"),
+      h("button.retro-strip__btn", {
+        on: { click: () => {
+          retro.viewSolution();
+          if (cand) navigate(cand.path);
+        } }
+      }, "Show answer")
+    );
+  } else if (feedback === "view") {
+    const bestSan = cand ? uciToSan(cand.fenBefore, cand.bestMove) : null;
+    if (bestSan) buttons.push(h("span.retro-strip__best", `Best: ${bestSan}`));
+    buttons.push(
+      h("button.retro-strip__btn.retro-strip__btn--next", {
+        on: { click: () => {
+          retro.jumpToNext();
+          const next2 = retro.current();
+          if (next2) navigate(next2.parentPath);
+          else redraw();
+        } }
+      }, "Next \u2192")
+    );
+  }
+  let label;
+  if (!cand) {
+    label = "Review complete!";
+  } else if (feedback === "win") {
+    label = "Correct!";
+  } else if (feedback === "fail") {
+    label = "Not the best move.";
+  } else if (feedback === "view") {
+    label = `${cand.classification.charAt(0).toUpperCase() + cand.classification.slice(1)} on move ${Math.ceil(cand.ply / 2)}`;
+  } else if (feedback === "offTrack") {
+    label = "Navigate back to resume";
+  } else {
+    const color = cand.ply % 2 === 1 ? "White" : "Black";
+    label = `Find the best move for ${color}`;
+  }
+  return h("div.retro-strip", [
+    h("div.retro-strip__label", label),
+    h("div.retro-strip__actions", [...buttons, progress])
+  ]);
 }
 function routeContent(route) {
   const deps = {
@@ -9063,30 +9229,36 @@ function routeContent(route) {
           // Engine settings panel — sits directly below header, above PV lines
           // Mirrors lichess-org/lila: renderCevalSettings() position
           renderEngineSettings(),
-          // PV lines — below header (and settings when open)
-          renderPvBox(),
+          // PV lines — hidden while retro is actively solving so the user is not shown
+          // engine guidance while trying to find the best move.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
+          //   showCeval && !ctrl.retro?.isSolving() && cevalView.renderPvs(ctrl)
+          !ctrl.retro?.isSolving() ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h("div.analyse__moves", [
-            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation, clearVariations)
+            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, deleteVariation)
           ]),
           (() => {
             const game = importedGames.find((g) => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? "White", game?.black ?? "Black");
           })(),
-          renderPuzzleCandidates({
-            mainline: ctrl.mainline,
-            getEval: (p) => evalCache.get(p),
-            gameId: selectedGameId,
-            currentPath: ctrl.path,
-            engineEnabled,
-            batchAnalyzing,
-            batchState,
-            savedPuzzles,
-            navigate,
-            savePuzzle,
-            uciToSan,
-            redraw
-          })
+          (() => {
+            const puzzleDeps = {
+              mainline: ctrl.mainline,
+              getEval: (p) => evalCache.get(p),
+              gameId: selectedGameId,
+              currentPath: ctrl.path,
+              engineEnabled,
+              batchAnalyzing,
+              batchState,
+              savedPuzzles,
+              navigate,
+              savePuzzle,
+              uciToSan,
+              redraw
+            };
+            return renderPuzzleCandidates(puzzleDeps);
+          })()
         ]),
         // Controls — below tools (grid-area: controls)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
@@ -9095,13 +9267,26 @@ function routeContent(route) {
         h("div.analyse__controls", [
           h("button", { on: { click: prev }, attrs: { disabled: ctrl.path === "" } }, "\u2190 Prev"),
           h("button", { on: { click: flip } }, "Flip"),
-          h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192")
+          h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192"),
+          renderAnalysisControls([
+            // Mistake-review entry: available after review completes.
+            // Jumps to the position before the first candidate mistake.
+            // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroView.ts entry affordance.
+            h("button", {
+              class: { active: !!ctrl.retro },
+              attrs: {
+                disabled: !analysisComplete || batchAnalyzing,
+                title: ctrl.retro ? "Close mistake review" : analysisComplete ? "Review your mistakes from this game" : "Complete game review first"
+              },
+              on: { click: toggleRetro }
+            }, ctrl.retro ? "Close" : "Mistakes")
+          ]),
+          renderRetroStrip()
         ]),
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
         h("div.analyse__underboard", [
           renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate),
-          renderAnalysisControls(),
           renderGameList(deps)
         ]),
         renderKeyboardHelp()
