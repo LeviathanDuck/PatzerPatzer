@@ -1200,23 +1200,20 @@ body.resizing {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
+  max-width: 100%;
   padding: 3px 8px;
   border-radius: 6px;
   border: 1px solid #454545;
-  background: rgba(255, 255, 255, 0.03);
 }
 .player-strip__identity--winner {
   border-color: #2f7f52;
-  background: rgba(56, 140, 90, 0.16);
 }
 .player-strip__identity--loser {
   border-color: #9a3d44;
-  background: rgba(156, 65, 73, 0.16);
 }
 .player-strip__identity--draw {
   border-color: #505050;
-  background: rgba(255, 255, 255, 0.03);
 }
 
 .analyse__clock {
