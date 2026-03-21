@@ -8,12 +8,14 @@ import type { TreeNode } from '../tree/types';
 // Local structural type for evalCache entries — matches PositionEval shape.
 // Using a structural type keeps this module free of the PositionEval declaration
 // until that type is extracted to its own module.
+// label is present when analysis was saved and restored from IDB; absent during live analysis.
 interface EvalEntry {
   cp?:    number;
   mate?:  number;
   best?:  string;
   loss?:  number;
   delta?: number;
+  label?: MoveLabel;
 }
 type EvalCache = ReadonlyMap<string, EvalEntry>;
 
@@ -145,9 +147,13 @@ export function computeAnalysisSummary(
       blackAccs.push(acc);
     }
 
-    // Count move labels using the same best-move-played short-circuit as renderMoveList
+    // Count move labels using the same best-move-played short-circuit as renderMoveList.
+    // Prefer stored review annotation (hydrated from IDB) over classifyLoss(loss) recomputation.
+    // Falls back to classifyLoss(loss) for live analysis and older records without label.
     const playedBest = node.uci !== undefined && node.uci === parentEval.best;
-    const label = (!playedBest && nodeEval.loss !== undefined) ? classifyLoss(nodeEval.loss) : null;
+    const label = !playedBest
+      ? (nodeEval.label ?? (nodeEval.loss !== undefined ? classifyLoss(nodeEval.loss) : null))
+      : null;
     if (isWhiteMove) {
       if (label === 'blunder') wBlunders++;
       else if (label === 'mistake') wMistakes++;
@@ -303,7 +309,11 @@ export function renderEvalGraph(
     const wc = cached !== undefined ? evalWinChances(cached) : undefined;
     if (wc !== undefined) {
       const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
-      const label = (!playedBest && cached?.loss !== undefined) ? classifyLoss(cached.loss) : null;
+      // Prefer stored review annotation (hydrated from IDB) over classifyLoss(loss) recomputation.
+      // cached is defined here (wc !== undefined requires it). Falls back gracefully for live analysis.
+      const label = !playedBest
+        ? (cached!.label ?? (cached!.loss !== undefined ? classifyLoss(cached!.loss) : null))
+        : null;
       pts.push({
         x: ((i - 1) / (n - 1)) * GRAPH_W,
         y: ((1 - wc) / 2) * GRAPH_H, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
