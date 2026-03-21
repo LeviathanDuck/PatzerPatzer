@@ -70,17 +70,20 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
-- [ ] CCP-079 - Reduce Board Review Glyph Scale To 20 Percent
-- [ ] CCP-066-F1 - Add Underboard Games Search Bar
-- [ ] CCP-073 - Clear Board And Ceval Typecheck Slice
-- [ ] CCP-074 - Clear Import And Shell Typecheck Slice
-- [ ] CCP-075 - Make Board Resize Handle Safari-Reliable
-- [ ] CCP-076 - Make Book-Aware Retrospection Cancellation Live
-- [ ] CCP-077 - Finish Eval Graph Hover And Scrub Behavior
-- [ ] CCP-078 - Fix Move-List Context Menu Positioning
-- [ ] CCP-070 - Add Lichess Review Glyph SVG Layer
-- [ ] CCP-071 - Render Review Glyphs On The Board
-- [ ] CCP-072 - Add Review Glyph Board Toggle
+- [ ] CCP-080 - Throttle Live Engine UI Refresh
+- [ ] CCP-081 - Split And Debounce Nav-State Persistence
+- [ ] CCP-082 - Reduce Default Live Engine Workload
+- [x] CCP-079 - Reduce Board Review Glyph Scale To 20 Percent
+- [x] CCP-066-F1 - Add Underboard Games Search Bar
+- [x] CCP-073 - Clear Board And Ceval Typecheck Slice
+- [x] CCP-074 - Clear Import And Shell Typecheck Slice
+- [x] CCP-075 - Make Board Resize Handle Safari-Reliable
+- [x] CCP-076 - Make Book-Aware Retrospection Cancellation Live
+- [x] CCP-077 - Finish Eval Graph Hover And Scrub Behavior
+- [x] CCP-078 - Fix Move-List Context Menu Positioning
+- [x] CCP-070 - Add Lichess Review Glyph SVG Layer
+- [x] CCP-071 - Render Review Glyphs On The Board
+- [x] CCP-072 - Add Review Glyph Board Toggle
 - [x] CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
 - [x] CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
 - [x] CCP-069 - Refine Eval Graph Fill And Resize Handle
@@ -163,10 +166,61 @@ It should stay in sync with the detailed entry below.
 
 ## Log
 
+## CCP-080 - Throttle Live Engine UI Refresh
+
+```
+- [x] Reviewed
+  - ID: `CCP-080`
+  - Task ID: `CCP-080`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+  - Source step: `Recommended Order Of Work, Step 1`
+  - Task: throttle engine-driven visible UI refresh during live analysis instead of redrawing directly from raw engine info output
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: `src/analyse/boardGlyphs.ts` still uses the original `.4` SVG scale matrix, so the requested 20% glyph shrink did not land
+  - Execution target: `Claude Code`
+```
+
+## CCP-081 - Split And Debounce Nav-State Persistence
+
+```
+- [x] Reviewed
+  - ID: `CCP-081`
+  - Task ID: `CCP-081`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+  - Source step: `Recommended Order Of Work, Step 2`
+  - Task: stop full imported-game library saves on every move-navigation step and move to a lightweight debounced nav-state persistence seam
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: `src/games/view.ts` still renders the underboard compact list without any search input; only the older Games-page opponent search exists
+  - Execution target: `Claude Code`
+```
+
+## CCP-082 - Reduce Default Live Engine Workload
+
+```
+- [x] Reviewed
+  - ID: `CCP-082`
+  - Task ID: `CCP-082`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+  - Source step: `Recommended Order Of Work, Step 3`
+  - Task: lower Patzer's default live-engine workload toward Lichess while preserving existing saved user preferences
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
 ## CCP-079 - Reduce Board Review Glyph Scale To 20 Percent
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-079`
   - Task ID: `CCP-079`
   - Parent prompt ID: none
@@ -174,8 +228,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `ad hoc user request`
   - Source step: `reduce on-board review glyph SVG scale from 40% to 20%`
   - Task: reduce the on-board review glyph badge scale from 40% to 20% while preserving the existing badge system
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -183,7 +237,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-066-F1 - Add Underboard Games Search Bar
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-066-F1`
   - Task ID: `CCP-066`
   - Parent prompt ID: `CCP-066`
@@ -191,8 +245,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/prompts/CLAUDE_PROMPT_LOG.md`
   - Source step: `CCP-066 review issue — underboard list still has no search bar`
   - Task: add the missing search bar to the compact games list beneath the analysis board
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -200,7 +254,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-073 - Clear Board And Ceval Typecheck Slice
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-073`
   - Task ID: `CCP-073`
   - Parent prompt ID: none
@@ -208,8 +262,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/KNOWN_ISSUES.md`
   - Source step: `[HIGH] npm run typecheck is wired but surfaces type errors`
   - Task: clear the first cohesive current typecheck slice across board, ceval, and engine files without tackling the whole backlog
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -217,7 +271,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-074 - Clear Import And Shell Typecheck Slice
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-074`
   - Task ID: `CCP-074`
   - Parent prompt ID: none
@@ -225,8 +279,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/KNOWN_ISSUES.md`
   - Source step: `[HIGH] npm run typecheck is wired but surfaces type errors`
   - Task: clear the next cohesive current typecheck slice across games, imports, keyboard, router, and shell files
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -234,7 +288,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-075 - Make Board Resize Handle Safari-Reliable
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-075`
   - Task ID: `CCP-075`
   - Parent prompt ID: none
@@ -242,8 +296,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/KNOWN_ISSUES.md`
   - Source step: `[MEDIUM] Board resize handle does not reliably appear or work in Safari`
   - Task: fix the board resize handle so it appears and works reliably in Safari
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -251,7 +305,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-076 - Make Book-Aware Retrospection Cancellation Live
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-076`
   - Task ID: `CCP-076`
   - Parent prompt ID: none
@@ -259,16 +313,16 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/KNOWN_ISSUES.md`
   - Source step: `[MEDIUM] Book-aware retrospection cancellation seam is defined but not live`
   - Task: make the existing book-aware retrospection cancellation seam live by wiring an opening provider into active candidate generation
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the source-layer step in `src/analyse/boardGlyphs.ts` is bundled with later board wiring and settings work in `src/engine/ctrl.ts` and `src/ceval/view.ts`, so it did not land as a clean isolated extraction
   - Execution target: `Codex`
 ```
 
 ## CCP-077 - Finish Eval Graph Hover And Scrub Behavior
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-077`
   - Task ID: `CCP-077`
   - Parent prompt ID: none
@@ -276,8 +330,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/KNOWN_ISSUES.md`
   - Source step: `[MEDIUM] Eval graph hover/scrub behavior is not yet working as expected`
   - Task: tighten eval-graph hover and scrub interaction so graph-driven review works as intended
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -285,7 +339,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-078 - Fix Move-List Context Menu Positioning
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-078`
   - Task ID: `CCP-078`
   - Parent prompt ID: none
@@ -293,8 +347,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/KNOWN_ISSUES.md`
   - Source step: `[MEDIUM] Move-list variation context menu can open at the top-left of the page`
   - Task: fix the move-list variation context menu so it opens over the selected move instead of at the page origin
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```

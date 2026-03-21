@@ -14,6 +14,15 @@ export interface StoredGames {
   path?:      string;
 }
 
+interface StoredGameLibrary {
+  games: ImportedGame[];
+}
+
+interface StoredGameNavState {
+  selectedId: string | null;
+  path?:      string;
+}
+
 // Bumped when the analysis node schema changes. Records from older versions are discarded.
 export const ANALYSIS_VERSION = 2; // path-keyed nodes (was node.id-keyed in v1)
 
@@ -117,14 +126,12 @@ function openGameDb(): Promise<IDBDatabase> {
 
 // --- Game library ---
 
-export async function saveGamesToIdb(
-  games: ImportedGame[], selectedId: string | null, path: string,
-): Promise<void> {
+export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
   try {
     const db = await openGameDb();
     const tx = db.transaction('game-library', 'readwrite');
     tx.objectStore('game-library').put(
-      { games, selectedId, path } satisfies StoredGames,
+      { games } satisfies StoredGameLibrary,
       'imported-games',
     );
   } catch (e) {
@@ -132,14 +139,62 @@ export async function saveGamesToIdb(
   }
 }
 
+export async function saveNavStateToIdb(selectedId: string | null, path: string): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('game-library', 'readwrite');
+    tx.objectStore('game-library').put(
+      { selectedId, path } satisfies StoredGameNavState,
+      'imported-nav',
+    );
+  } catch (e) {
+    console.warn('[idb] nav-state save failed', e);
+  }
+}
+
 export async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
   try {
     const db = await openGameDb();
     return new Promise((resolve, reject) => {
-      const req = db.transaction('game-library', 'readonly')
-        .objectStore('game-library').get('imported-games');
-      req.onsuccess = () => resolve(req.result as StoredGames | undefined);
-      req.onerror   = () => reject(req.error);
+      const tx = db.transaction('game-library', 'readonly');
+      const store = tx.objectStore('game-library');
+      const gamesReq = store.get('imported-games');
+      const navReq = store.get('imported-nav');
+      let gamesDone = false;
+      let navDone = false;
+      let libraryRecord: StoredGameLibrary | StoredGames | undefined;
+      let navRecord: StoredGameNavState | undefined;
+
+      const maybeResolve = () => {
+        if (!gamesDone || !navDone) return;
+        if (!libraryRecord && !navRecord) {
+          resolve(undefined);
+          return;
+        }
+        const games = libraryRecord?.games ?? [];
+        const selectedId = navRecord?.selectedId
+          ?? (libraryRecord && 'selectedId' in libraryRecord ? libraryRecord.selectedId : null);
+        const path = navRecord?.path
+          ?? (libraryRecord && 'path' in libraryRecord ? libraryRecord.path : undefined);
+        resolve({
+          games,
+          selectedId,
+          ...(path !== undefined ? { path } : {}),
+        });
+      };
+
+      gamesReq.onsuccess = () => {
+        libraryRecord = gamesReq.result as StoredGameLibrary | StoredGames | undefined;
+        gamesDone = true;
+        maybeResolve();
+      };
+      navReq.onsuccess = () => {
+        navRecord = navReq.result as StoredGameNavState | undefined;
+        navDone = true;
+        maybeResolve();
+      };
+      gamesReq.onerror = () => reject(gamesReq.error);
+      navReq.onerror = () => reject(navReq.error);
     });
   } catch (e) {
     console.warn('[idb] load failed', e);
