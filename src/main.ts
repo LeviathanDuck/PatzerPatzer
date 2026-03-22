@@ -59,6 +59,7 @@ import {
   type PuzzleRenderDeps,
 } from './puzzles/extract';
 import { initPuzzles, puzzleHrefForCandidate, renderPuzzlesRoute, syncPuzzleRoute } from './puzzles/index';
+import { buildStandalonePuzzleRoot } from './puzzles/round';
 import { renderHeader, type HeaderDeps } from './header/index';
 import {
   type ImportedGame, restoreGameIdCounter,
@@ -224,6 +225,13 @@ function getActivePgn(): string {
 // --- Analysis controller (persists for the session) ---
 
 let ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+let standalonePuzzleBackground: {
+  ctrl: AnalyseCtrl;
+  selectedGameId: string | null;
+  selectedGamePgn: string | null;
+  currentEval: PositionEval;
+  evalEntries: Array<[string, PositionEval]>;
+} | null = null;
 
 // Incremented on every loadGame() call. loadAndRestoreAnalysis() captures this value at
 // call time and checks it after the IDB await — if changed, the game has switched and the
@@ -232,6 +240,61 @@ let ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
 // the IDB class is owned by the ctrl instance and cannot outlive it.
 let restoreGeneration = 0;
 let navStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clonePositionEval(ev: PositionEval): PositionEval {
+  return {
+    ...ev,
+    ...(ev.moves ? { moves: [...ev.moves] } : {}),
+    ...(ev.lines
+      ? {
+          lines: ev.lines.map(line => ({
+            ...line,
+            ...(line.moves ? { moves: [...line.moves] } : {}),
+          })),
+        }
+      : {}),
+  };
+}
+
+function openStandalonePuzzle(fen: string): void {
+  if (!standalonePuzzleBackground) {
+    standalonePuzzleBackground = {
+      ctrl,
+      selectedGameId,
+      selectedGamePgn,
+      currentEval: clonePositionEval(currentEval),
+      evalEntries: [...evalCache.entries()].map(([path, ev]) => [path, clonePositionEval(ev)]),
+    };
+  }
+  contextMenuPath = null;
+  contextMenuPos = null;
+  selectedGameId = null;
+  selectedGamePgn = null;
+  ctrl = new AnalyseCtrl(buildStandalonePuzzleRoot(fen));
+  resetCurrentEval();
+  syncBoardAndArrow();
+  redraw();
+}
+
+function restoreStandalonePuzzleBackground(): void {
+  const snapshot = standalonePuzzleBackground;
+  if (!snapshot) return;
+  standalonePuzzleBackground = null;
+  selectedGameId = snapshot.selectedGameId;
+  selectedGamePgn = snapshot.selectedGamePgn;
+  ctrl = snapshot.ctrl;
+  clearEvalCache();
+  for (const [path, ev] of snapshot.evalEntries) {
+    evalCache.set(path, clonePositionEval(ev));
+  }
+  setCurrentEval(snapshot.currentEval);
+  syncBoardAndArrow();
+  redraw();
+}
+
+function hasStandalonePuzzleBackground(): boolean {
+  return standalonePuzzleBackground !== null;
+}
 
 function scheduleNavStateSave(path = ctrl.path): void {
   if (navStateSaveTimer !== null) clearTimeout(navStateSaveTimer);
@@ -753,6 +816,9 @@ initPuzzles({
   navigate,
   clearRetro:        clearRetroMode,
   redraw,
+  openStandalonePuzzle,
+  restoreStandalonePuzzleBackground,
+  hasStandalonePuzzleBackground,
 });
 initCevalView({
   getCtrl:  () => ctrl,
@@ -795,6 +861,9 @@ bindKeyboardHandlers({
 
 onChange(route => {
   currentRoute = route;
+  if (route.name === 'analysis-game' && hasStandalonePuzzleBackground()) {
+    restoreStandalonePuzzleBackground();
+  }
   // When deep-linking to a specific game, load it before rendering.
   // loadGame() calls redraw() which patches via currentRoute, so return early
   // to avoid a redundant second patch in this handler.

@@ -3,3 +3,8 @@ node_modules/
 
 # NNUE weight files — large binaries, downloaded by `pnpm build`
 public/stockfish/*.nnue
+
+# Local-only Lichess puzzle dataset workspace
+data/lichess/raw/
+data/lichess/work/
+public/generated/lichess-puzzles/
