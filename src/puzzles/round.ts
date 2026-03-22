@@ -1,8 +1,9 @@
 import type { StoredAnalysis } from '../idb/index';
 import type { ImportedGame } from '../import/types';
+import { parseFen } from 'chessops/fen';
 import { pathInit } from '../tree/ops';
-import type { PuzzleCandidate } from '../tree/types';
-import type { PuzzleRound } from './types';
+import type { PuzzleCandidate, TreeNode } from '../tree/types';
+import type { SavedPuzzleRound } from './types';
 
 const LOCAL_PUZZLE_GAME_ID = 'local';
 
@@ -51,16 +52,29 @@ export function buildPuzzleRound(
     sourceGame?: ImportedGame | null;
     storedAnalysis?: StoredAnalysis;
   } = {},
-): PuzzleRound {
+): SavedPuzzleRound {
   const key = puzzleKey(candidate);
   return {
     key,
     routeId: puzzleRouteIdFromKey(key),
+    sourceKind: 'saved',
     source: candidate,
     sourceGame: opts.sourceGame ?? null,
+    imported: null,
     parentPath: pathInit(candidate.path),
     startFen: candidate.fen,
     solution: getPuzzleSolutionLine(candidate, opts.storedAnalysis),
     toMove: candidate.ply % 2 === 1 ? 'white' : 'black',
+  };
+}
+
+export function buildStandalonePuzzleRoot(fen: string): TreeNode {
+  const setup = parseFen(fen).unwrap();
+  const initialPly = (setup.fullmoves - 1) * 2 + (setup.turn === 'white' ? 0 : 1);
+  return {
+    id: '',
+    ply: initialPly,
+    fen,
+    children: [],
   };
 }

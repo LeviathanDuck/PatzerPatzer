@@ -4608,3 +4608,207 @@ Prompt text not recovered. This history entry was reconstructed from the prompt 
 ```
 Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
 ```
+
+## CCP-083 — Used in Claude Code
+
+- Task: establish a real puzzle module seam and route surface so `#/puzzles` no longer depends on placeholder logic in `src/main.ts`
+- Task ID: `CCP-083`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 1 — Establish real puzzle module ownership and route surface`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: the app now routes `#/puzzles` and `#/puzzles/:id` through the owned `src/puzzles/index.ts` seam and delegates route rendering out of `src/main.ts`.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-084 — Used in Claude Code
+
+- Task: introduce a Patzer-owned puzzle-round model and a compatibility seam from persisted `PuzzleCandidate` records
+- Task ID: `CCP-084`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 2 — Introduce a richer puzzle round model without breaking saved candidates`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: `src/puzzles/types.ts` and `src/puzzles/round.ts` now own the round model and compatibility conversion from saved candidates.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-085 — Used in Claude Code
+
+- Task: replace the placeholder puzzles page with a real saved-puzzle library view backed by current local IDB state
+- Task ID: `CCP-085`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 3 — Replace the placeholder puzzles route with a saved-puzzle library view`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: `renderPuzzleLibrary(...)` in `src/puzzles/view.ts` now gives `#/puzzles` a real saved-puzzle library surface with empty-state and list behavior.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-086 — Used in Claude Code
+
+- Task: create a dedicated minimal puzzle round controller that owns active puzzle state, phase, and solution progress
+- Task ID: `CCP-086`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 4 — Add a minimal puzzle round controller`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: `src/puzzles/ctrl.ts` now owns minimal round state, progress, feedback, and result handling instead of leaving that logic in analysis glue.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-087 — Used in Claude Code
+
+- Task: wire puzzle-mode board moves through strict solution validation and scripted reply playback
+- Task ID: `CCP-087`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 5 — Route board moves through strict puzzle validation and scripted replies`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: `6b58ee3`
+- Notes: the validation and auto-reply seam exists, but `restoreRoundBoard(...)` replays puzzle progress with `playUciMove(...)`, which can mutate the live source-game analysis tree by inserting best-line variations.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-088 — Used in Claude Code
+
+- Task: add puzzle-specific feedback and round controls for correct, wrong, solved, next, and view-solution states
+- Task ID: `CCP-088`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 6 — Add puzzle feedback and round controls`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: `renderPuzzleRound(...)` now provides puzzle-owned feedback text and round controls instead of reusing generic analysis controls.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-089 — Used in Claude Code
+
+- Task: add a lightweight puzzle metadata side panel using source-game and puzzle context that Patzer already owns
+- Task ID: `CCP-089`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 7 — Add the puzzle metadata / side-panel surface`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: the puzzle route now renders a lightweight source-game metadata panel with move, loss, opening, and source-game context.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-090 — Used in Claude Code
+
+- Task: persist a lightweight local puzzle session so saved-puzzle progress can survive reloads and continue cleanly
+- Task ID: `CCP-090`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 8 — Persist lightweight local puzzle session state`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: `src/puzzles/session.ts` plus puzzle-session IDB load/save now preserve local saved-puzzle progress across reloads.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-091 — Used in Claude Code
+
+- Task: tighten the bridge from Patzer’s game-review flow to its saved-puzzle flow so the puzzle page feels like a direct downstream tool of review data
+- Task ID: `CCP-091`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+- Source step: `Task 9 — Tighten review-to-puzzle integration`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: the existing review-derived candidate flow now links cleanly into the owned puzzle route via saved puzzles and route ids instead of a placeholder page.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-092 — Used in Claude Code
+
+- Task: stop recomputing legal move destinations from FEN on every navigation step and move to a cached destination seam
+- Task ID: `CCP-092`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+- Source step: `Next deep fix 1 — cache legal move destinations instead of recomputing them on every navigation step`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `6b58ee3`
+- Notes: `src/board/index.ts` now caches Chessground destination maps by FEN instead of recomputing them on every board sync.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-093 — Used in Claude Code
+
+- Task: switch engine-overlay updates onto a narrower Chessground auto-shape path and skip no-op shape rebuilds
+- Task ID: `CCP-093`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+- Source step: `Next deep fix 2 — switch to narrower Chessground auto-shape updates and skip no-op shape rebuilds`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `cb0e443`
+- Notes: `applyAutoShapes(...)` in `src/engine/ctrl.ts` now hashes the outgoing payload and avoids pushing unchanged auto-shape sets back into Chessground.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
+
+## CCP-094 — Used in Claude Code
+
+- Task: remove the Patzer board-overlay fade so arrows and custom SVG overlays appear immediately during move stepping
+- Task ID: `CCP-094`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+- Source step: `Next deep fix 3 — remove Patzer overlay fade animation from board arrows and custom SVGs`
+- Execution target: `Claude Code`
+- Status: reviewed
+- Review outcome: passed
+- Commit: `cb0e443`
+- Notes: the current board overlay CSS no longer carries a Patzer-specific fade animation for arrow/custom SVG layers, so overlay stepping uses the immediate baseline.
+
+```
+Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
+```
