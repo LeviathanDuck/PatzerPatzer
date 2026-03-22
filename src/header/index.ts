@@ -51,6 +51,7 @@ function activeSection(route: Route): string {
     case 'analysis':
     case 'analysis-game':
       return 'analysis';
+    case 'puzzle-round':
     case 'puzzles':  return 'puzzles';
     case 'openings': return 'openings';
     case 'stats':    return 'stats';

@@ -17,6 +17,7 @@ import type { AnalyseCtrl } from '../analyse/ctrl';
 import { boardZoom, applyBoardZoom, saveBoardZoom } from './cosmetics';
 import { syncArrow } from '../engine/ctrl';
 import type { ImportedGame } from '../import/types';
+import { getActivePuzzleCtrl } from '../puzzles/runtime';
 import { addNode } from '../tree/ops';
 import type { TreeNode } from '../tree/types';
 
@@ -78,6 +79,21 @@ export function computeDests(fen: string): Map<Key, Key[]> {
   return chessgroundDests(pos) as Map<Key, Key[]>;
 }
 
+const DESTS_CACHE_MAX = 512;
+const destsCache = new Map<string, Map<Key, Key[]>>();
+
+function cachedDests(fen: string): Map<Key, Key[]> {
+  const cached = destsCache.get(fen);
+  if (cached) return cached;
+  const dests = computeDests(fen);
+  destsCache.set(fen, dests);
+  if (destsCache.size > DESTS_CACHE_MAX) {
+    const oldest = destsCache.keys().next().value;
+    if (oldest !== undefined) destsCache.delete(oldest);
+  }
+  return dests;
+}
+
 /**
  * Convert a UCI move string to readable SAN given the position FEN.
  * Falls back to the raw UCI string if conversion fails for any reason.
@@ -115,6 +131,30 @@ export function onUserMove(orig: string, dest: string): void {
   // Adapted from lichess-org/lila: ui/lib/src/game/ground.ts
   const normMove = normalizeMove(pos, { from: fromSq, to: toSq });
   const normUci  = makeUci(normMove);
+  const puzzleCtrl = getActivePuzzleCtrl();
+
+  if (puzzleCtrl) {
+    const piece = pos.board.get(fromSq);
+    const reachesBackRank = piece?.role === 'pawn' && ((pos.turn === 'white' && toSq >= 56) || (pos.turn === 'black' && toSq < 8));
+    if (reachesBackRank) {
+      const expected = puzzleCtrl.currentExpectedMove();
+      if (expected?.startsWith(normUci)) {
+        pendingPromotion = { orig, dest, color: pos.turn };
+        _redraw();
+        return;
+      }
+    }
+    const outcome = puzzleCtrl.submitUserMove(normUci, ctrl.path);
+    if (!outcome.accepted) {
+      syncBoard();
+      _redraw();
+      return;
+    }
+    applyMoveToTree(normMove as NormalMove, pos);
+    for (const reply of outcome.replies) playUciMove(reply);
+    puzzleCtrl.setCurrentPath(_getCtrl().path);
+    return;
+  }
 
   // Check existing children first — follow the tree if this move is already there
   const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
@@ -177,6 +217,17 @@ export function completeMove(orig: string, dest: string, promotion?: Role): void
     pos,
     promotion !== undefined ? { from: fromSq, to: toSq, promotion } : { from: fromSq, to: toSq },
   ) as NormalMove;
+  applyMoveToTree(move, pos);
+}
+
+function applyMoveToTree(move: NormalMove, pos: Chess): void {
+  const ctrl = _getCtrl();
+  const normUci = makeUci(move);
+  const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
+  if (existingChild) {
+    _navigate(ctrl.path + existingChild.id);
+    return;
+  }
   const san = makeSanAndPlay(pos, move);
   const newNode: TreeNode = {
     id: scalachessCharPair(move),
@@ -195,6 +246,16 @@ export function completeMove(orig: string, dest: string, promotion?: Role): void
   _navigate(ctrl.path + newNode.id);
 }
 
+export function playUciMove(uci: string): void {
+  const ctrl = _getCtrl();
+  const parsed = parseUci(uci);
+  if (!parsed) return;
+  const setup = parseFen(ctrl.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const move = normalizeMove(pos, parsed) as NormalMove;
+  applyMoveToTree(move, pos);
+}
+
 /**
  * Called when the user selects a piece in the promotion dialog.
  * Adapted from lichess-org/lila: ui/lib/src/game/promotion.ts PromotionCtrl.finish
@@ -203,6 +264,26 @@ export function completePromotion(role: Role): void {
   if (!pendingPromotion) return;
   const { orig, dest } = pendingPromotion;
   pendingPromotion = null;
+  const puzzleCtrl = getActivePuzzleCtrl();
+  if (puzzleCtrl) {
+    const ctrl = _getCtrl();
+    const setup = parseFen(ctrl.node.fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    const fromSq = parseSquare(orig);
+    const toSq = parseSquare(dest);
+    if (fromSq === undefined || toSq === undefined) return;
+    const move = normalizeMove(pos, { from: fromSq, to: toSq, promotion: role }) as NormalMove;
+    const outcome = puzzleCtrl.submitUserMove(makeUci(move), ctrl.path);
+    if (!outcome.accepted) {
+      syncBoard();
+      _redraw();
+      return;
+    }
+    applyMoveToTree(move, pos);
+    for (const reply of outcome.replies) playUciMove(reply);
+    puzzleCtrl.setCurrentPath(_getCtrl().path);
+    return;
+  }
   completeMove(orig, dest, role);
 }
 
@@ -239,7 +320,7 @@ export function syncBoard(): void {
   if (!cgInstance) return;
   const ctrl = _getCtrl();
   const node = ctrl.node;
-  const dests = computeDests(node.fen);
+  const dests = cachedDests(node.fen);
   const lastMove = uciToMove(node.uci);
   cgInstance.set({
     fen: node.fen,
@@ -462,7 +543,7 @@ export function renderBoard(): VNode {
       insert: vnode => {
         const ctrl = _getCtrl();
         const node = ctrl.node;
-        const dests = computeDests(node.fen);
+        const dests = cachedDests(node.fen);
         const lastMove = uciToMove(node.uci);
         cgInstance = makeChessground(vnode.elm as HTMLElement, {
           orientation,

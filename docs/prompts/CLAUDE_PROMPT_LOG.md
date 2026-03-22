@@ -70,6 +70,25 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
+- [ ] CCP-083 - Establish Puzzle Route Ownership
+- [ ] CCP-084 - Add Puzzle Round Model
+- [ ] CCP-085 - Render Saved Puzzle Library
+- [ ] CCP-086 - Add Puzzle Round Controller
+- [ ] CCP-087 - Validate Puzzle Moves And Auto-Reply
+- [ ] CCP-088 - Add Puzzle Feedback And Round Controls
+- [ ] CCP-089 - Add Puzzle Side Panel Metadata
+- [ ] CCP-090 - Persist Local Puzzle Session
+- [ ] CCP-091 - Tighten Review-To-Puzzle Integration
+- [ ] CCP-092 - Cache Board Move Destinations
+- [ ] CCP-093 - Narrow Board Auto-Shape Updates
+- [ ] CCP-094 - Remove Board Overlay Fade Animation
+- [ ] CCP-095 - Establish Lichess Dataset Workspace
+- [ ] CCP-096 - Add Lichess Puzzle Download Script
+- [ ] CCP-097 - Build Lichess Puzzle Shard Pipeline
+- [ ] CCP-098 - Add Imported Puzzle Loader Seam
+- [ ] CCP-099 - Add Imported Puzzle Source Switch
+- [ ] CCP-100 - Open Imported Lichess Puzzle Rounds
+- [ ] CCP-101 - Add Imported Puzzle Filters And Paging
 - [ ] CCP-080 - Throttle Live Engine UI Refresh
 - [ ] CCP-081 - Split And Debounce Nav-State Persistence
 - [ ] CCP-082 - Reduce Default Live Engine Workload
@@ -166,10 +185,333 @@ It should stay in sync with the detailed entry below.
 
 ## Log
 
+## CCP-095 - Establish Lichess Dataset Workspace
+
+```
+- [ ] Reviewed
+  - ID: `CCP-095`
+  - Task ID: `CCP-095`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/LICHESS_PUZZLE_DATABASE_INTEGRATION_SPRINT_2026-03-21.md`
+  - Source step: `Task 1 — Establish a repo-safe local dataset workspace`
+  - Task: add a repo-safe ignored local dataset workspace for raw Lichess puzzle downloads and generated shard output
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-096 - Add Lichess Puzzle Download Script
+
+```
+- [ ] Reviewed
+  - ID: `CCP-096`
+  - Task ID: `CCP-096`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/LICHESS_PUZZLE_DATABASE_INTEGRATION_SPRINT_2026-03-21.md`
+  - Source step: `Task 2 — Add an official Lichess puzzle download script`
+  - Task: add an explicit script to fetch the official `lichess_db_puzzle.csv.zst` export into the local dataset workspace
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-097 - Build Lichess Puzzle Shard Pipeline
+
+```
+- [ ] Reviewed
+  - ID: `CCP-097`
+  - Task ID: `CCP-097`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/LICHESS_PUZZLE_DATABASE_INTEGRATION_SPRINT_2026-03-21.md`
+  - Source step: `Task 3 — Add a streaming preprocessing pipeline to Patzer shard format`
+  - Task: convert the official export into Patzer-friendly generated manifest and shard files instead of loading raw CSV in the browser
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-098 - Add Imported Puzzle Loader Seam
+
+```
+- [ ] Reviewed
+  - ID: `CCP-098`
+  - Task ID: `CCP-098`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/LICHESS_PUZZLE_DATABASE_INTEGRATION_SPRINT_2026-03-21.md`
+  - Source step: `Task 4 — Add imported Lichess puzzle types and loader seams`
+  - Task: add Patzer-owned imported-puzzle types and a loader that adapts generated Lichess shards into the app’s puzzle model
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-099 - Add Imported Puzzle Source Switch
+
+```
+- [ ] Reviewed
+  - ID: `CCP-099`
+  - Task ID: `CCP-099`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/LICHESS_PUZZLE_DATABASE_INTEGRATION_SPRINT_2026-03-21.md`
+  - Source step: `Task 5 — Add a puzzle-source switch and imported library surface`
+  - Task: let the puzzles page switch between local saved puzzles and imported Lichess puzzles
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-100 - Open Imported Lichess Puzzle Rounds
+
+```
+- [ ] Reviewed
+  - ID: `CCP-100`
+  - Task ID: `CCP-100`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/LICHESS_PUZZLE_DATABASE_INTEGRATION_SPRINT_2026-03-21.md`
+  - Source step: `Task 6 — Open imported Lichess puzzles in Patzer’s own puzzle controller`
+  - Task: open imported Lichess puzzle records inside Patzer’s own puzzle controller and board flow
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-101 - Add Imported Puzzle Filters And Paging
+
+```
+- [ ] Reviewed
+  - ID: `CCP-101`
+  - Task ID: `CCP-101`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/LICHESS_PUZZLE_DATABASE_INTEGRATION_SPRINT_2026-03-21.md`
+  - Source step: `Task 7 — Add basic filters and lazy paging for imported puzzles`
+  - Task: add basic rating, theme, and opening filters plus lazy shard paging for the imported Lichess library
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-083 - Establish Puzzle Route Ownership
+
+```
+- [ ] Reviewed
+  - ID: `CCP-083`
+  - Task ID: `CCP-083`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 1 — Establish real puzzle module ownership and route surface`
+  - Task: establish a real puzzle module seam and route surface so `#/puzzles` no longer depends on placeholder logic in `src/main.ts`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-084 - Add Puzzle Round Model
+
+```
+- [ ] Reviewed
+  - ID: `CCP-084`
+  - Task ID: `CCP-084`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 2 — Introduce a richer puzzle round model without breaking saved candidates`
+  - Task: introduce a Patzer-owned puzzle-round model and a compatibility seam from persisted `PuzzleCandidate` records
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-085 - Render Saved Puzzle Library
+
+```
+- [ ] Reviewed
+  - ID: `CCP-085`
+  - Task ID: `CCP-085`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 3 — Replace the placeholder puzzles route with a saved-puzzle library view`
+  - Task: replace the placeholder puzzles page with a real saved-puzzle library view backed by current local IDB state
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-086 - Add Puzzle Round Controller
+
+```
+- [ ] Reviewed
+  - ID: `CCP-086`
+  - Task ID: `CCP-086`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 4 — Add a minimal puzzle round controller`
+  - Task: create a dedicated minimal puzzle round controller that owns active puzzle state, phase, and solution progress
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-087 - Validate Puzzle Moves And Auto-Reply
+
+```
+- [ ] Reviewed
+  - ID: `CCP-087`
+  - Task ID: `CCP-087`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 5 — Route board moves through strict puzzle validation and scripted replies`
+  - Task: wire puzzle-mode board moves through strict solution validation and scripted reply playback
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-088 - Add Puzzle Feedback And Round Controls
+
+```
+- [ ] Reviewed
+  - ID: `CCP-088`
+  - Task ID: `CCP-088`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 6 — Add puzzle feedback and round controls`
+  - Task: add puzzle-specific feedback and round controls for correct, wrong, solved, next, and view-solution states
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-089 - Add Puzzle Side Panel Metadata
+
+```
+- [ ] Reviewed
+  - ID: `CCP-089`
+  - Task ID: `CCP-089`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 7 — Add the puzzle metadata / side-panel surface`
+  - Task: add a lightweight puzzle metadata side panel using source-game and puzzle context that Patzer already owns
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-092 - Cache Board Move Destinations
+
+```
+- [ ] Reviewed
+  - ID: `CCP-092`
+  - Task ID: `CCP-092`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+  - Source step: `Next deep fix 1 — cache legal move destinations instead of recomputing them on every navigation step`
+  - Task: stop recomputing legal move destinations from FEN on every navigation step and move to a cached destination seam
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-093 - Narrow Board Auto-Shape Updates
+
+```
+- [ ] Reviewed
+  - ID: `CCP-093`
+  - Task ID: `CCP-093`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+  - Source step: `Next deep fix 2 — switch to narrower Chessground auto-shape updates and skip no-op shape rebuilds`
+  - Task: switch engine-overlay updates onto a narrower Chessground auto-shape path and skip no-op shape pushes
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-094 - Remove Board Overlay Fade Animation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-094`
+  - Task ID: `CCP-094`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+  - Source step: `Next deep fix 3 — remove Patzer overlay fade animation from board arrows and custom SVGs`
+  - Task: remove the Patzer board-overlay fade so arrows and custom SVG overlays appear immediately during move stepping
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-090 - Persist Local Puzzle Session
+
+```
+- [ ] Reviewed
+  - ID: `CCP-090`
+  - Task ID: `CCP-090`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 8 — Persist lightweight local puzzle session state`
+  - Task: persist a lightweight local puzzle session so saved-puzzle progress can survive reloads and continue cleanly
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-091 - Tighten Review-To-Puzzle Integration
+
+```
+- [ ] Reviewed
+  - ID: `CCP-091`
+  - Task ID: `CCP-091`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`
+  - Source step: `Task 9 — Tighten review-to-puzzle integration`
+  - Task: tighten the bridge from Patzer’s game-review flow to its saved-puzzle flow so the puzzle page feels like a direct downstream tool of review data
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
 ## CCP-080 - Throttle Live Engine UI Refresh
 
 ```
-- [x] Reviewed
+- [ ] Reviewed
   - ID: `CCP-080`
   - Task ID: `CCP-080`
   - Parent prompt ID: none
@@ -177,16 +519,16 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
   - Source step: `Recommended Order Of Work, Step 1`
   - Task: throttle engine-driven visible UI refresh during live analysis instead of redrawing directly from raw engine info output
-  - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: `src/analyse/boardGlyphs.ts` still uses the original `.4` SVG scale matrix, so the requested 20% glyph shrink did not land
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-081 - Split And Debounce Nav-State Persistence
 
 ```
-- [x] Reviewed
+- [ ] Reviewed
   - ID: `CCP-081`
   - Task ID: `CCP-081`
   - Parent prompt ID: none
@@ -194,16 +536,16 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
   - Source step: `Recommended Order Of Work, Step 2`
   - Task: stop full imported-game library saves on every move-navigation step and move to a lightweight debounced nav-state persistence seam
-  - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: `src/games/view.ts` still renders the underboard compact list without any search input; only the older Games-page opponent search exists
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-082 - Reduce Default Live Engine Workload
 
 ```
-- [x] Reviewed
+- [ ] Reviewed
   - ID: `CCP-082`
   - Task ID: `CCP-082`
   - Parent prompt ID: none
@@ -211,8 +553,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/reference/patzer-board-motion-lag-audit.md`
   - Source step: `Recommended Order Of Work, Step 3`
   - Task: lower Patzer's default live-engine workload toward Lichess while preserving existing saved user preferences
-  - Claude used: yes
-  - Review outcome: passed
+  - Claude used: no
+  - Review outcome: pending
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -356,7 +698,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-070 - Add Lichess Review Glyph SVG Layer
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-070`
   - Task ID: `CCP-070`
   - Parent prompt ID: none
@@ -364,16 +706,16 @@ It should stay in sync with the detailed entry below.
   - Source document: `ad hoc user request`
   - Source step: `copy Lichess board move-review glyph SVGs exactly into Patzer as the source glyph layer`
   - Task: copy the Lichess board review glyph SVG system into Patzer as the source layer without wiring it into the board yet
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: bundled with later board-glyph wiring and toggle work in `src/engine/ctrl.ts` and `src/ceval/view.ts`, so the source-layer-only step did not land in isolation
   - Execution target: `Codex`
 ```
 
 ## CCP-071 - Render Review Glyphs On The Board
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-071`
   - Task ID: `CCP-071`
   - Parent prompt ID: none
@@ -381,8 +723,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `ad hoc user request`
   - Source step: `render Lichess-style move-review glyph SVGs on the analysis board in the same way Lichess does`
   - Task: render Lichess-style board review glyph SVG badges on the analysis board using destination-square anchoring and stacking
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
@@ -390,7 +732,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-072 - Add Review Glyph Board Toggle
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-072`
   - Task ID: `CCP-072`
   - Parent prompt ID: none
@@ -398,8 +740,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `ad hoc user request`
   - Source step: `add an engine-settings toggle for board review glyphs and default it on`
   - Task: add a persisted engine-settings toggle for board review glyphs and default it on
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
 ```
