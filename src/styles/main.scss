@@ -1280,16 +1280,6 @@ body[data-board='newspaper'] cg-board::before {
 .cg-wrap {
   width: 100%;
   aspect-ratio: 1 / 1;
-
-  .cg-shapes g[cgHash],
-  .cg-custom-svgs g[cgHash] {
-    animation: engine-arrow-fade-in 130ms ease-out;
-  }
-}
-
-@keyframes engine-arrow-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 // Move list — tview2 inline layout.
@@ -2554,5 +2544,150 @@ body[data-board='newspaper'] cg-board::before {
     text-decoration: none;
 
     &:hover { background: #383838; color: #fff; }
+  }
+}
+
+.puzzle-library {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+
+  &--empty {
+    max-width: 640px;
+  }
+
+  &__header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--c-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--c-bg) 84%, white 16%);
+  }
+
+  &__main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__move {
+    font-weight: 700;
+  }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    color: var(--c-muted);
+    font-size: 0.9rem;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  &__badge {
+    font-size: 0.8rem;
+    text-transform: capitalize;
+    color: var(--c-muted);
+  }
+}
+
+.puzzle-round {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  padding: 16px;
+  align-items: start;
+
+  &__board-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  &__feedback,
+  &__controls,
+  &__meta {
+    border: 1px solid var(--c-border);
+    border-radius: 12px;
+    padding: 12px;
+    background: color-mix(in srgb, var(--c-bg) 86%, white 14%);
+  }
+
+  &__status {
+    font-weight: 700;
+  }
+
+  &__progress {
+    margin-top: 6px;
+    color: var(--c-muted);
+  }
+
+  &__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  &__meta {
+    h3 {
+      margin: 0 0 10px;
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 6px 10px;
+      margin: 0 0 12px;
+    }
+
+    dt {
+      color: var(--c-muted);
+    }
+
+    dd {
+      margin: 0;
+    }
+  }
+}
+
+@media (max-width: 900px) {
+  .puzzle-library__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .puzzle-round {
+    grid-template-columns: 1fr;
   }
 }

@@ -1220,6 +1220,18 @@ var StockfishProtocol = class {
   }
 };
 
+// src/puzzles/runtime.ts
+var activePuzzleCtrl;
+function getActivePuzzleCtrl() {
+  return activePuzzleCtrl;
+}
+function setActivePuzzleCtrl(ctrl2) {
+  activePuzzleCtrl = ctrl2;
+}
+function puzzleHidesAnalysis() {
+  return activePuzzleCtrl !== void 0;
+}
+
 // src/engine/winchances.ts
 var WIN_CHANCE_MULTIPLIER = -368208e-8;
 function rawWinChances(cp) {
@@ -1703,6 +1715,8 @@ var pendingLines = [];
 var arrowDebounceTimer = null;
 var arrowSuppressUntil = 0;
 var ARROW_SETTLE_MS = 500;
+var lastAutoShapesHash = null;
+var lastAutoShapesCg;
 var LIVE_ENGINE_UI_THROTTLE_MS = 200;
 var liveEngineUiTimer = null;
 var liveEngineUiLastFlushAt = 0;
@@ -1761,6 +1775,7 @@ function buildArrowShapes() {
   const shapes = [];
   const ctrl2 = _getCtrl();
   if (_isBatchActive()) return shapes;
+  if (puzzleHidesAnalysis()) return shapes;
   const retroHidden = ctrl2.retro !== void 0 && !ctrl2.retro.guidanceRevealed();
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
@@ -1900,7 +1915,7 @@ function syncArrow() {
     arrowDebounceTimer = null;
   }
   arrowSuppressUntil = 0;
-  cg.set({ drawable: { autoShapes: buildArrowShapes() } });
+  applyAutoShapes(buildArrowShapes());
 }
 function syncArrowDebounced() {
   const cg = _getCgInstance();
@@ -1911,7 +1926,7 @@ function syncArrowDebounced() {
       arrowDebounceTimer = setTimeout(() => {
         arrowDebounceTimer = null;
         arrowSuppressUntil = 0;
-        _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
+        applyAutoShapes(buildArrowShapes());
       }, arrowSuppressUntil - now);
     }
     return;
@@ -1921,8 +1936,32 @@ function syncArrowDebounced() {
   }
   arrowDebounceTimer = setTimeout(() => {
     arrowDebounceTimer = null;
-    _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
+    applyAutoShapes(buildArrowShapes());
   }, 150);
+}
+function applyAutoShapes(shapes) {
+  const cg = _getCgInstance();
+  if (!cg) return;
+  if (cg !== lastAutoShapesCg) {
+    lastAutoShapesCg = cg;
+    lastAutoShapesHash = null;
+  }
+  const nextHash = autoShapesHash(shapes);
+  if (nextHash === lastAutoShapesHash) return;
+  lastAutoShapesHash = nextHash;
+  cg.setAutoShapes(shapes);
+}
+function autoShapesHash(shapes) {
+  return shapes.map((shape) => [
+    shape.orig ?? "",
+    shape.dest ?? "",
+    shape.brush ?? "",
+    shape.piece ? `${shape.piece.color}|${shape.piece.role}|${shape.piece.scale ?? ""}` : "",
+    shape.modifiers ? `${shape.modifiers.lineWidth ?? ""}|${shape.modifiers.hilite ?? ""}` : "",
+    shape.customSvg ? `${shape.customSvg.center ?? ""}|${shape.customSvg.html}` : "",
+    shape.label ? `${shape.label.text}|${shape.label.fill ?? ""}` : "",
+    shape.below ? "1" : ""
+  ].join("~")).join(";");
 }
 function cancelLiveEngineUiRefresh() {
   if (liveEngineUiTimer !== null) {
@@ -2405,6 +2444,28 @@ function savePuzzle(c, redraw2) {
   savedPuzzles = [...savedPuzzles, c];
   void savePuzzlesToIdb();
   redraw2();
+}
+async function savePuzzleSessionToIdb(session) {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction("puzzle-library", "readwrite");
+    tx.objectStore("puzzle-library").put(session, "puzzle-session");
+  } catch (e) {
+    console.warn("[idb] puzzle session save failed", e);
+  }
+}
+async function loadPuzzleSessionFromIdb() {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("puzzle-library", "readonly").objectStore("puzzle-library").get("puzzle-session");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[idb] puzzle session load failed", e);
+    return void 0;
+  }
 }
 
 // src/engine/batch.ts
@@ -6104,6 +6165,19 @@ function computeDests(fen) {
   const pos = Chess.fromSetup(setup).unwrap();
   return chessgroundDests(pos);
 }
+var DESTS_CACHE_MAX = 512;
+var destsCache = /* @__PURE__ */ new Map();
+function cachedDests(fen) {
+  const cached = destsCache.get(fen);
+  if (cached) return cached;
+  const dests = computeDests(fen);
+  destsCache.set(fen, dests);
+  if (destsCache.size > DESTS_CACHE_MAX) {
+    const oldest = destsCache.keys().next().value;
+    if (oldest !== void 0) destsCache.delete(oldest);
+  }
+  return dests;
+}
 function uciToSan(fen, uci) {
   try {
     const move3 = parseUci(uci);
@@ -6124,6 +6198,29 @@ function onUserMove(orig, dest) {
   if (fromSq === void 0 || toSq === void 0) return;
   const normMove = normalizeMove(pos, { from: fromSq, to: toSq });
   const normUci = makeUci(normMove);
+  const puzzleCtrl = getActivePuzzleCtrl();
+  if (puzzleCtrl) {
+    const piece2 = pos.board.get(fromSq);
+    const reachesBackRank = piece2?.role === "pawn" && (pos.turn === "white" && toSq >= 56 || pos.turn === "black" && toSq < 8);
+    if (reachesBackRank) {
+      const expected = puzzleCtrl.currentExpectedMove();
+      if (expected?.startsWith(normUci)) {
+        pendingPromotion = { orig, dest, color: pos.turn };
+        _redraw3();
+        return;
+      }
+    }
+    const outcome = puzzleCtrl.submitUserMove(normUci, ctrl2.path);
+    if (!outcome.accepted) {
+      syncBoard();
+      _redraw3();
+      return;
+    }
+    applyMoveToTree(normMove, pos);
+    for (const reply of outcome.replies) playUciMove(reply);
+    puzzleCtrl.setCurrentPath(_getCtrl3().path);
+    return;
+  }
   const existingChild = ctrl2.node.children.find((c) => c.uci === normUci || c.uci?.startsWith(normUci));
   if (existingChild) {
     _navigate(ctrl2.path + existingChild.id);
@@ -6158,6 +6255,16 @@ function completeMove(orig, dest, promotion) {
     pos,
     promotion !== void 0 ? { from: fromSq, to: toSq, promotion } : { from: fromSq, to: toSq }
   );
+  applyMoveToTree(move3, pos);
+}
+function applyMoveToTree(move3, pos) {
+  const ctrl2 = _getCtrl3();
+  const normUci = makeUci(move3);
+  const existingChild = ctrl2.node.children.find((c) => c.uci === normUci || c.uci?.startsWith(normUci));
+  if (existingChild) {
+    _navigate(ctrl2.path + existingChild.id);
+    return;
+  }
   const san = makeSanAndPlay(pos, move3);
   const newNode = {
     id: scalachessCharPair(move3),
@@ -6179,10 +6286,39 @@ function completeMove(orig, dest, promotion) {
   });
   _navigate(ctrl2.path + newNode.id);
 }
+function playUciMove(uci) {
+  const ctrl2 = _getCtrl3();
+  const parsed = parseUci(uci);
+  if (!parsed) return;
+  const setup = parseFen(ctrl2.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const move3 = normalizeMove(pos, parsed);
+  applyMoveToTree(move3, pos);
+}
 function completePromotion(role) {
   if (!pendingPromotion) return;
   const { orig, dest } = pendingPromotion;
   pendingPromotion = null;
+  const puzzleCtrl = getActivePuzzleCtrl();
+  if (puzzleCtrl) {
+    const ctrl2 = _getCtrl3();
+    const setup = parseFen(ctrl2.node.fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    const fromSq = parseSquare(orig);
+    const toSq = parseSquare(dest);
+    if (fromSq === void 0 || toSq === void 0) return;
+    const move3 = normalizeMove(pos, { from: fromSq, to: toSq, promotion: role });
+    const outcome = puzzleCtrl.submitUserMove(makeUci(move3), ctrl2.path);
+    if (!outcome.accepted) {
+      syncBoard();
+      _redraw3();
+      return;
+    }
+    applyMoveToTree(move3, pos);
+    for (const reply of outcome.replies) playUciMove(reply);
+    puzzleCtrl.setCurrentPath(_getCtrl3().path);
+    return;
+  }
   completeMove(orig, dest, role);
 }
 var PROMOTION_ROLES = ["queen", "knight", "rook", "bishop"];
@@ -6215,7 +6351,7 @@ function syncBoard() {
   if (!cgInstance) return;
   const ctrl2 = _getCtrl3();
   const node = ctrl2.node;
-  const dests = computeDests(node.fen);
+  const dests = cachedDests(node.fen);
   const lastMove = uciToMove(node.uci);
   cgInstance.set({
     fen: node.fen,
@@ -6385,7 +6521,7 @@ function renderBoard() {
       insert: (vnode3) => {
         const ctrl2 = _getCtrl3();
         const node = ctrl2.node;
-        const dests = computeDests(node.fen);
+        const dests = cachedDests(node.fen);
         const lastMove = uciToMove(node.uci);
         cgInstance = Chessground(vnode3.elm, {
           orientation,
@@ -6845,7 +6981,18 @@ function renderPuzzleCandidates(deps) {
         on: { click: () => {
           deps.savePuzzle(c, deps.redraw);
         } }
-      }, isSaved ? "\u2713 Saved" : "Save")
+      }, isSaved ? "\u2713 Saved" : "Save"),
+      h("a", {
+        attrs: {
+          href: deps.puzzleHref(c),
+          style: "flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px"
+        },
+        on: {
+          click: () => {
+            if (!isSaved) deps.savePuzzle(c, deps.redraw);
+          }
+        }
+      }, isSaved ? "Solve" : "Save & Solve")
     ]);
   });
   let navRow = null;
@@ -9062,6 +9209,490 @@ function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOn
   return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes)]);
 }
 
+// src/puzzles/round.ts
+var LOCAL_PUZZLE_GAME_ID = "local";
+function puzzleKey(candidate) {
+  return `${candidate.gameId ?? LOCAL_PUZZLE_GAME_ID}::${candidate.path}`;
+}
+function puzzleRouteIdFromKey(key) {
+  return encodeURIComponent(key);
+}
+function decodePuzzleRouteId(routeId) {
+  try {
+    return decodeURIComponent(routeId);
+  } catch {
+    return routeId;
+  }
+}
+function puzzleRouteHref(candidate) {
+  return `#/puzzles/${puzzleRouteIdFromKey(puzzleKey(candidate))}`;
+}
+function findSavedPuzzleByRouteId(puzzles, routeId) {
+  const decoded = decodePuzzleRouteId(routeId);
+  return puzzles.find((p) => puzzleKey(p) === decoded) ?? null;
+}
+function getPuzzleSolutionLine(candidate, storedAnalysis) {
+  const parentPath = pathInit(candidate.path);
+  const persisted = storedAnalysis?.nodes[parentPath]?.bestLine ?? [];
+  if (persisted.length === 0) return [candidate.bestMove];
+  if (persisted[0] === candidate.bestMove) return persisted;
+  return [candidate.bestMove, ...persisted];
+}
+function buildPuzzleRound(candidate, opts = {}) {
+  const key = puzzleKey(candidate);
+  return {
+    key,
+    routeId: puzzleRouteIdFromKey(key),
+    source: candidate,
+    sourceGame: opts.sourceGame ?? null,
+    parentPath: pathInit(candidate.path),
+    startFen: candidate.fen,
+    solution: getPuzzleSolutionLine(candidate, opts.storedAnalysis),
+    toMove: candidate.ply % 2 === 1 ? "white" : "black"
+  };
+}
+
+// src/puzzles/ctrl.ts
+var altCastles = {
+  e1a1: "e1c1",
+  e1h1: "e1g1",
+  e8a8: "e8c8",
+  e8h8: "e8g8"
+};
+function isAltCastle(uci) {
+  return uci in altCastles;
+}
+function sameMove(played, expected) {
+  return played === expected || isAltCastle(played) && altCastles[played] === expected;
+}
+function makePuzzleCtrl(round, onChange3 = () => {
+}) {
+  let feedback = "find";
+  let result = "active";
+  let progressPly = 0;
+  let currentPath = round.parentPath;
+  const totalUserMoves = Math.ceil(round.solution.length / 2);
+  function emit() {
+    onChange3({
+      key: round.key,
+      progressPly,
+      currentPath,
+      feedback,
+      result,
+      updatedAt: Date.now()
+    });
+  }
+  return {
+    round: () => round,
+    feedback: () => feedback,
+    result: () => result,
+    progress: () => [Math.ceil(progressPly / 2), totalUserMoves],
+    progressPly: () => progressPly,
+    currentPath: () => currentPath,
+    currentExpectedMove: () => round.solution[progressPly] ?? null,
+    setCurrentPath(path) {
+      currentPath = path;
+      emit();
+    },
+    submitUserMove(uci, path) {
+      const expected = round.solution[progressPly];
+      if (!expected || path !== currentPath || result !== "active" || !sameMove(uci, expected)) {
+        feedback = "fail";
+        result = "failed";
+        emit();
+        return { accepted: false, replies: [] };
+      }
+      progressPly += 1;
+      const replies = [];
+      while (progressPly < round.solution.length && progressPly % 2 === 1) {
+        replies.push(round.solution[progressPly]);
+        progressPly += 1;
+      }
+      if (progressPly >= round.solution.length) {
+        feedback = "win";
+        result = "solved";
+      } else {
+        feedback = "good";
+      }
+      emit();
+      return { accepted: true, replies };
+    },
+    retry() {
+      progressPly = 0;
+      feedback = "find";
+      result = "active";
+      currentPath = round.parentPath;
+      emit();
+    },
+    viewSolution() {
+      feedback = "view";
+      result = "viewed";
+      progressPly = round.solution.length;
+      emit();
+      return [...round.solution];
+    },
+    restore(snapshot) {
+      progressPly = Math.max(0, Math.min(snapshot.progressPly, round.solution.length));
+      feedback = snapshot.feedback;
+      result = snapshot.result;
+      currentPath = snapshot.currentPath;
+      emit();
+    },
+    snapshot() {
+      return {
+        key: round.key,
+        progressPly,
+        currentPath,
+        feedback,
+        result,
+        updatedAt: Date.now()
+      };
+    }
+  };
+}
+
+// src/puzzles/session.ts
+var RECENT_PUZZLES_MAX = 16;
+function emptyPuzzleSession() {
+  return {
+    current: null,
+    recent: [],
+    updatedAt: Date.now()
+  };
+}
+function applyPuzzleSnapshot(session, snapshot) {
+  const next2 = {
+    current: snapshot,
+    recent: [...session.recent],
+    updatedAt: snapshot.updatedAt
+  };
+  if (snapshot.result !== "active") {
+    const result = snapshot.result;
+    next2.recent = [
+      { key: snapshot.key, result, updatedAt: snapshot.updatedAt },
+      ...next2.recent.filter((entry) => entry.key !== snapshot.key)
+    ].slice(0, RECENT_PUZZLES_MAX);
+  }
+  return next2;
+}
+function currentPuzzleSnapshot(session, key) {
+  return session.current?.key === key ? session.current : null;
+}
+function currentPuzzleIsActive(session, key) {
+  return session.current?.key === key && session.current.result === "active";
+}
+function recentPuzzleResult(session, key) {
+  if (session.current?.key === key && session.current.result !== "active") {
+    return session.current.result;
+  }
+  return session.recent.find((entry) => entry.key === key)?.result ?? null;
+}
+
+// src/puzzles/view.ts
+function formatLoss(loss) {
+  return `\u2212${Math.round(loss * 100)}%`;
+}
+function formatMove(round) {
+  const moveNum = Math.ceil(round.source.ply / 2);
+  const prefix = round.source.ply % 2 === 1 ? `${moveNum}.` : `${moveNum}\u2026`;
+  return `${prefix} ${round.source.san}`;
+}
+function renderPuzzleLibrary(deps) {
+  const { rounds, currentPuzzleKey, recentResultForKey, isResumeKey } = deps;
+  if (rounds.length === 0) {
+    return h("div.puzzle-library puzzle-library--empty", [
+      h("h2", "Saved Puzzles"),
+      h("p", "No saved puzzles yet."),
+      h("p", "Review games, save missed tactics, and they will appear here as local training rounds."),
+      h("a", { attrs: { href: "#/games" } }, "Go to My Games")
+    ]);
+  }
+  const resumeKey = currentPuzzleKey ?? deps.session.current?.key ?? null;
+  return h("div.puzzle-library", [
+    h("div.puzzle-library__header", [
+      h("div", [
+        h("h2", `Saved Puzzles (${rounds.length})`),
+        h("p", "Local tactics extracted from your reviewed games.")
+      ]),
+      resumeKey ? h("a.button", { attrs: { href: `#/puzzles/${encodeURIComponent(resumeKey)}` } }, "Resume Current Puzzle") : null
+    ]),
+    h("ul.puzzle-library__list", rounds.map((round) => {
+      const result = recentResultForKey(round.key);
+      const resume = isResumeKey(round.key);
+      const source = round.sourceGame ? `${round.sourceGame.white ?? "White"} vs ${round.sourceGame.black ?? "Black"}` : "Source game unavailable";
+      return h("li.puzzle-library__item", [
+        h("div.puzzle-library__main", [
+          h("div.puzzle-library__move", formatMove(round)),
+          h("div.puzzle-library__meta", [
+            h("span", formatLoss(round.source.loss)),
+            h("span", `Best: ${uciToSan(round.startFen, round.source.bestMove)}`),
+            h("span", source)
+          ])
+        ]),
+        h("div.puzzle-library__actions", [
+          result ? h("span.puzzle-library__badge", result) : null,
+          round.sourceGame ? h("a.button", { attrs: { href: `#/puzzles/${round.routeId}` } }, resume ? "Resume" : "Solve") : h("span.puzzle-library__badge", "Unavailable")
+        ])
+      ]);
+    }))
+  ]);
+}
+function renderPuzzleRound(deps) {
+  const round = deps.ctrl.round();
+  const [done, total] = deps.ctrl.progress();
+  const feedback = deps.ctrl.feedback();
+  const result = deps.ctrl.result();
+  let label = `Find the best move for ${round.toMove === "white" ? "White" : "Black"}`;
+  if (feedback === "good") label = "Correct. Keep going.";
+  else if (feedback === "fail") label = "Not the move. Try again or reveal the line.";
+  else if (feedback === "win") label = "Solved.";
+  else if (feedback === "view") label = "Solution shown.";
+  const sourceGame = round.sourceGame;
+  const sourceLabel = sourceGame ? `${sourceGame.white ?? "White"} vs ${sourceGame.black ?? "Black"}` : "Source game unavailable";
+  const metaRows = [
+    h("dt", "Source game"),
+    h("dd", sourceLabel),
+    h("dt", "Mistake"),
+    h("dd", formatMove(round)),
+    h("dt", "Loss"),
+    h("dd", formatLoss(round.source.loss)),
+    h("dt", "Best move"),
+    h("dd", uciToSan(round.startFen, round.source.bestMove))
+  ];
+  if (sourceGame?.opening || sourceGame?.eco) {
+    metaRows.push(h("dt", "Opening"), h("dd", sourceGame.opening ?? sourceGame.eco ?? ""));
+  }
+  if (sourceGame?.date) {
+    metaRows.push(h("dt", "Date"), h("dd", sourceGame.date));
+  }
+  if (sourceGame?.timeClass) {
+    metaRows.push(h("dt", "Time control"), h("dd", sourceGame.timeClass));
+  }
+  return h("div.puzzle-round", [
+    h("div.analyse__board.main-board.puzzle-round__board-shell", [
+      deps.topStrip,
+      h("div.analyse__board-inner", [deps.board, deps.promotionDialog]),
+      deps.bottomStrip
+    ]),
+    h("aside.puzzle-round__side", [
+      h("section.puzzle-round__feedback", [
+        h("div.puzzle-round__status", label),
+        h("div.puzzle-round__progress", `${done} / ${total}`)
+      ]),
+      h("section.puzzle-round__controls", [
+        h("button", { on: { click: deps.onBack } }, "Back to library"),
+        h("button", { on: { click: deps.onFlip } }, "Flip"),
+        feedback === "fail" ? h("button", { on: { click: deps.onRetry } }, "Retry") : null,
+        feedback === "find" || feedback === "good" || feedback === "fail" ? h("button", { on: { click: deps.onViewSolution } }, "View solution") : null,
+        result === "solved" || result === "viewed" ? h("button", { on: { click: deps.onNext } }, "Next puzzle") : null
+      ]),
+      h("section.puzzle-round__meta", [
+        h("h3", "Puzzle context"),
+        h("dl", metaRows),
+        round.sourceGame ? h("button", { on: { click: deps.onOpenSourceGame } }, "Open source game") : null
+      ])
+    ])
+  ]);
+}
+
+// src/puzzles/index.ts
+var _getImportedGames4 = () => [];
+var _getRoute = () => ({ name: "home", params: {} });
+var _getCtrlPath = () => "";
+var _loadGameById = () => false;
+var _navigate4 = () => {
+};
+var _clearRetro = () => {
+};
+var _redraw7 = () => {
+};
+var routeState = { status: "idle" };
+var puzzleSession = emptyPuzzleSession();
+function saveSessionSnapshot() {
+  const active = getActivePuzzleCtrl();
+  if (!active) return;
+  puzzleSession = applyPuzzleSnapshot(puzzleSession, active.snapshot());
+  void savePuzzleSessionToIdb(puzzleSession);
+}
+function clearActivePuzzleRoute() {
+  setActivePuzzleCtrl(void 0);
+  syncArrow();
+}
+function allPuzzleRounds() {
+  const games = _getImportedGames4();
+  return savedPuzzles.map(
+    (candidate) => buildPuzzleRound(candidate, {
+      sourceGame: candidate.gameId ? games.find((game) => game.id === candidate.gameId) ?? null : null
+    })
+  );
+}
+function nextPuzzleHref(currentKey) {
+  const rounds = allPuzzleRounds();
+  const idx = rounds.findIndex((round) => round.key === currentKey);
+  const next2 = idx >= 0 ? rounds[idx + 1] : null;
+  return next2 ? `#/puzzles/${next2.routeId}` : "#/puzzles";
+}
+function openSourceGame(round) {
+  if (!round.source.gameId) return;
+  if (!_loadGameById(round.source.gameId)) return;
+  _clearRetro();
+  _navigate4(round.parentPath);
+  window.location.hash = `#/analysis/${round.source.gameId}`;
+}
+function restoreRoundBoard(round, progressPly) {
+  if (round.source.gameId) _loadGameById(round.source.gameId);
+  _clearRetro();
+  _navigate4(round.parentPath);
+  for (let i = 0; i < progressPly; i++) {
+    const move3 = round.solution[i];
+    if (!move3) break;
+    playUciMove(move3);
+  }
+}
+function initPuzzles(deps) {
+  _getImportedGames4 = deps.getImportedGames;
+  _getRoute = deps.getRoute;
+  _getCtrlPath = deps.getCtrlPath;
+  _loadGameById = deps.loadGameById;
+  _navigate4 = deps.navigate;
+  _clearRetro = deps.clearRetro;
+  _redraw7 = deps.redraw;
+  void loadPuzzleSessionFromIdb().then((session) => {
+    puzzleSession = session ?? emptyPuzzleSession();
+    _redraw7();
+    void syncPuzzleRoute(_getRoute());
+  });
+}
+async function syncPuzzleRoute(route) {
+  if (route.name !== "puzzle-round") {
+    if (route.name === "puzzles") {
+      routeState = { status: "library" };
+    } else {
+      routeState = { status: "idle" };
+    }
+    if (getActivePuzzleCtrl()) {
+      saveSessionSnapshot();
+      clearActivePuzzleRoute();
+    }
+    _redraw7();
+    return;
+  }
+  const routeId = route.params["id"] ?? "";
+  const active = getActivePuzzleCtrl();
+  const activeSnapshot = active ? currentPuzzleSnapshot(puzzleSession, active.round().key) : null;
+  if (active?.round().routeId === routeId && routeState.status === "ready" && (!activeSnapshot || active.progressPly() === activeSnapshot.progressPly)) return;
+  routeState = { status: "loading", routeId };
+  clearActivePuzzleRoute();
+  _redraw7();
+  const candidate = findSavedPuzzleByRouteId(savedPuzzles, routeId);
+  if (!candidate) {
+    routeState = { status: "missing", routeId, message: "This saved puzzle was not found." };
+    _redraw7();
+    return;
+  }
+  if (!candidate.gameId) {
+    routeState = { status: "missing", routeId, message: "This puzzle has no saved source game to load." };
+    _redraw7();
+    return;
+  }
+  const sourceGame = _getImportedGames4().find((game) => game.id === candidate.gameId) ?? null;
+  if (!sourceGame) {
+    routeState = { status: "missing", routeId, message: "The source game for this puzzle is no longer in the local library." };
+    _redraw7();
+    return;
+  }
+  const storedAnalysis = await loadAnalysisFromIdb(candidate.gameId);
+  const round = buildPuzzleRound(candidate, {
+    sourceGame,
+    ...storedAnalysis !== void 0 ? { storedAnalysis } : {}
+  });
+  const ctrl2 = makePuzzleCtrl(round, (snapshot2) => {
+    puzzleSession = applyPuzzleSnapshot(puzzleSession, snapshot2);
+    void savePuzzleSessionToIdb(puzzleSession);
+    _redraw7();
+  });
+  setActivePuzzleCtrl(ctrl2);
+  syncArrow();
+  const snapshot = currentPuzzleSnapshot(puzzleSession, round.key);
+  const progressPly = snapshot?.progressPly ?? 0;
+  restoreRoundBoard(round, progressPly);
+  if (snapshot) ctrl2.restore(snapshot);
+  ctrl2.setCurrentPath(_getCtrlPath());
+  routeState = { status: "ready", routeId };
+  _redraw7();
+}
+function renderPuzzlesRoute(route) {
+  if (route.name === "puzzles") {
+    const rounds = allPuzzleRounds();
+    return renderPuzzleLibrary({
+      rounds,
+      session: puzzleSession,
+      currentPuzzleKey: getActivePuzzleCtrl()?.round().key ?? null,
+      recentResultForKey: (key) => recentPuzzleResult(puzzleSession, key),
+      isResumeKey: (key) => currentPuzzleIsActive(puzzleSession, key)
+    });
+  }
+  if (route.name !== "puzzle-round") {
+    return h("div");
+  }
+  if (routeState.status === "loading") {
+    return h("div.puzzle-library puzzle-library--empty", [
+      h("h2", "Saved Puzzles"),
+      h("p", "Loading puzzle\u2026")
+    ]);
+  }
+  if (routeState.status === "missing") {
+    return h("div.puzzle-library puzzle-library--empty", [
+      h("h2", "Saved Puzzles"),
+      h("p", routeState.message),
+      h("a", { attrs: { href: "#/puzzles" } }, "Back to puzzle library")
+    ]);
+  }
+  const ctrl2 = getActivePuzzleCtrl();
+  if (!ctrl2) {
+    return h("div.puzzle-library puzzle-library--empty", [
+      h("h2", "Saved Puzzles"),
+      h("p", "Loading puzzle\u2026")
+    ]);
+  }
+  const [topStrip, bottomStrip] = renderPlayerStrips();
+  return renderPuzzleRound({
+    ctrl: ctrl2,
+    onBack: () => {
+      window.location.hash = "#/puzzles";
+    },
+    onFlip: () => {
+      flip();
+      _redraw7();
+    },
+    onRetry: () => {
+      ctrl2.retry();
+      restoreRoundBoard(ctrl2.round(), 0);
+      ctrl2.setCurrentPath(_getCtrlPath());
+      syncArrow();
+      _redraw7();
+    },
+    onViewSolution: () => {
+      ctrl2.viewSolution();
+      restoreRoundBoard(ctrl2.round(), ctrl2.round().solution.length);
+      ctrl2.setCurrentPath(_getCtrlPath());
+      syncArrow();
+      _redraw7();
+    },
+    onNext: () => {
+      window.location.hash = nextPuzzleHref(ctrl2.round().key);
+    },
+    onOpenSourceGame: () => openSourceGame(ctrl2.round()),
+    board: renderBoard(),
+    promotionDialog: renderPromotionDialog(),
+    topStrip,
+    bottomStrip
+  });
+}
+function puzzleHrefForCandidate(gameId, path) {
+  return puzzleRouteHref({ gameId, path });
+}
+
 // src/import/pgn.ts
 var pgnState = {
   input: "",
@@ -9117,6 +9748,7 @@ function activeSection(route) {
     case "analysis":
     case "analysis-game":
       return "analysis";
+    case "puzzle-round":
     case "puzzles":
       return "puzzles";
     case "openings":
@@ -9446,6 +10078,7 @@ function renderHeader(deps) {
 var routes = [
   { pattern: ["analysis", ":id"], name: "analysis-game" },
   { pattern: ["analysis"], name: "analysis" },
+  { pattern: ["puzzles", ":id"], name: "puzzle-round" },
   { pattern: ["puzzles"], name: "puzzles" },
   { pattern: ["openings"], name: "openings" },
   { pattern: ["stats"], name: "stats" },
@@ -9680,7 +10313,7 @@ function renderRetroEntry(deps) {
   }, retro ? "Close" : "Mistakes");
 }
 function renderRetroStrip(deps) {
-  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2, onRevealGuidance } = deps;
+  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan3, onRevealGuidance } = deps;
   if (!retro) return null;
   const feedback = retro.feedback();
   const cand = retro.current();
@@ -9732,7 +10365,7 @@ function renderRetroStrip(deps) {
       }, "Show answer")
     );
   } else if (feedback === "view") {
-    const bestSan = cand ? uciToSan2(cand.fenBefore, cand.bestMove) : null;
+    const bestSan = cand ? uciToSan3(cand.fenBefore, cand.bestMove) : null;
     if (bestSan) buttons.push(h("span.retro-strip__best", `Best: ${bestSan}`));
     buttons.push(
       h("button.retro-strip__btn.retro-strip__btn--next", {
@@ -9932,6 +10565,13 @@ function loadGame(pgn) {
   else evalCurrentPosition();
   redraw();
 }
+function loadGameById(gameId) {
+  const game = importedGames.find((g) => g.id === gameId);
+  if (!game) return false;
+  selectedGameId = game.id;
+  loadGame(game.pgn);
+  return true;
+}
 async function loadAndRestoreAnalysis(gameId, generation) {
   const stored = await loadAnalysisFromIdb(gameId);
   if (generation !== restoreGeneration || selectedGameId !== gameId) return;
@@ -10037,6 +10677,11 @@ function toggleRetro() {
   const first2 = ctrl.retro.current();
   if (first2) navigate(first2.parentPath);
   else redraw();
+}
+function clearRetroMode() {
+  if (!ctrl.retro) return;
+  delete ctrl.retro;
+  syncArrow();
 }
 function routeContent(route) {
   const deps = {
@@ -10152,6 +10797,7 @@ function routeContent(route) {
               savedPuzzles,
               navigate,
               savePuzzle,
+              puzzleHref: (c) => puzzleHrefForCandidate(c.gameId, c.path),
               uciToSan,
               redraw
             };
@@ -10188,31 +10834,9 @@ function routeContent(route) {
       ]);
     case "games":
       return renderGamesView(deps);
-    case "puzzles": {
-      if (savedPuzzles.length === 0) {
-        return h("div.puzzles-empty", [
-          h("h2", "Saved Puzzles"),
-          h("p", "No saved puzzles yet."),
-          h("p", "Review games with the engine to find missed tactics, then save them here."),
-          h("a", { attrs: { href: "#/games" } }, "Go to My Games")
-        ]);
-      }
-      return h("div.puzzles-list", [
-        h("h2", `Saved Puzzles (${savedPuzzles.length})`),
-        h("ul.puzzles-list__items", savedPuzzles.map((p) => {
-          const moveNum = Math.ceil(p.ply / 2);
-          const isWhite = p.ply % 2 === 1;
-          const moveTxt = `${moveNum}${isWhite ? "." : "\u2026"} ${p.san}`;
-          const lossPct = Math.round(p.loss * 100);
-          const href = p.gameId ? `#/analysis/${p.gameId}` : "#/analysis";
-          return h("li.puzzles-list__item", [
-            h("span.puzzles-list__move", moveTxt),
-            h("span.puzzles-list__loss", `\u2212${lossPct}%`),
-            p.gameId ? h("a.puzzles-list__link", { attrs: { href } }, "View in game") : null
-          ]);
-        }))
-      ]);
-    }
+    case "puzzles":
+    case "puzzle-round":
+      return renderPuzzlesRoute(route);
     case "openings":
       return h("h1", "Openings Page");
     case "stats":
@@ -10304,6 +10928,15 @@ initGround({
   getSelectedGameId: () => selectedGameId,
   redraw
 });
+initPuzzles({
+  getImportedGames: () => importedGames,
+  getRoute: () => currentRoute,
+  getCtrlPath: () => ctrl.path,
+  loadGameById,
+  navigate,
+  clearRetro: clearRetroMode,
+  redraw
+});
 initCevalView({
   getCtrl: () => ctrl,
   navigate,
@@ -10349,14 +10982,20 @@ onChange2((route) => {
     const game = importedGames.find((g) => g.id === id);
     if (game && game.id !== selectedGameId) {
       selectedGameId = game.id;
+      void syncPuzzleRoute(route);
       loadGame(game.pgn);
       return;
     }
   }
+  void syncPuzzleRoute(route);
   vnode2 = patch(vnode2, view(currentRoute));
 });
 vnode2 = patch(app, view(currentRoute));
-void loadPuzzlesFromIdb().then(setSavedPuzzles);
+void loadPuzzlesFromIdb().then((puzzles) => {
+  setSavedPuzzles(puzzles);
+  redraw();
+  void syncPuzzleRoute(currentRoute);
+});
 void loadGamesFromIdb().then((stored) => {
   gamesLibraryLoaded = true;
   if (!stored || stored.games.length === 0) {
@@ -10377,5 +11016,6 @@ void loadGamesFromIdb().then((stored) => {
   syncBoardAndArrow();
   redraw();
   void loadAndRestoreAnalysis(toLoad.id, restoreGeneration);
+  void syncPuzzleRoute(currentRoute);
 });
 //# sourceMappingURL=main.js.map

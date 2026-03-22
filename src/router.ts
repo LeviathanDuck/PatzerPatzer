@@ -7,6 +7,7 @@ export interface Route {
 const routes: { pattern: string[]; name: string }[] = [
   { pattern: ['analysis', ':id'], name: 'analysis-game' },
   { pattern: ['analysis'], name: 'analysis' },
+  { pattern: ['puzzles', ':id'], name: 'puzzle-round' },
   { pattern: ['puzzles'], name: 'puzzles' },
   { pattern: ['openings'], name: 'openings' },
   { pattern: ['stats'], name: 'stats' },
