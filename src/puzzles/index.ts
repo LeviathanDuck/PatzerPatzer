@@ -5,7 +5,6 @@ import {
   renderBoard,
   renderPlayerStrips,
   renderPromotionDialog,
-  uciToSan,
 } from '../board/index';
 import { syncArrow } from '../engine/ctrl';
 import {
@@ -16,8 +15,16 @@ import {
 } from '../idb/index';
 import type { ImportedGame } from '../import/types';
 import type { Route } from '../router';
-import { buildPuzzleRound, findSavedPuzzleByRouteId, puzzleRouteHref } from './round';
 import { makePuzzleCtrl } from './ctrl';
+import {
+  defaultImportedPuzzleQuery,
+  findImportedPuzzleRoundByRouteId,
+  importedPuzzleLibraryState,
+  initImportedPuzzles,
+  isImportedPuzzleRouteId,
+  requestImportedPuzzleLibrary,
+} from './imported';
+import { buildPuzzleRound, buildStandalonePuzzleRoot, findSavedPuzzleByRouteId, puzzleRouteHref } from './round';
 import { setActivePuzzleCtrl, getActivePuzzleCtrl } from './runtime';
 import {
   applyPuzzleSnapshot,
@@ -26,7 +33,12 @@ import {
   emptyPuzzleSession,
   recentPuzzleResult,
 } from './session';
-import type { PuzzleRound, StoredPuzzleSession } from './types';
+import type {
+  PuzzleLibrarySource,
+  PuzzleRound,
+  SavedPuzzleRound,
+  StoredPuzzleSession,
+} from './types';
 import { renderPuzzleLibrary, renderPuzzleRound } from './view';
 
 let _getImportedGames: () => ImportedGame[] = () => [];
@@ -36,6 +48,9 @@ let _loadGameById: (gameId: string) => boolean = () => false;
 let _navigate: (path: string) => void = () => {};
 let _clearRetro: () => void = () => {};
 let _redraw: () => void = () => {};
+let _openStandalonePuzzle: (fen: string) => void = () => {};
+let _restoreStandalonePuzzleBackground: () => void = () => {};
+let _hasStandalonePuzzleBackground: () => boolean = () => false;
 
 type PuzzleRouteState =
   | { status: 'idle' | 'library' }
@@ -45,6 +60,8 @@ type PuzzleRouteState =
 
 let routeState: PuzzleRouteState = { status: 'idle' };
 let puzzleSession: StoredPuzzleSession = emptyPuzzleSession();
+let librarySource: PuzzleLibrarySource = 'saved';
+let importedQuery = defaultImportedPuzzleQuery();
 
 function saveSessionSnapshot(): void {
   const active = getActivePuzzleCtrl();
@@ -58,7 +75,7 @@ function clearActivePuzzleRoute(): void {
   syncArrow();
 }
 
-function allPuzzleRounds(): PuzzleRound[] {
+function savedPuzzleRounds(): SavedPuzzleRound[] {
   const games = _getImportedGames();
   return savedPuzzles.map(candidate =>
     buildPuzzleRound(candidate, {
@@ -67,15 +84,50 @@ function allPuzzleRounds(): PuzzleRound[] {
   );
 }
 
-function nextPuzzleHref(currentKey: string): string {
-  const rounds = allPuzzleRounds();
-  const idx = rounds.findIndex(round => round.key === currentKey);
-  const next = idx >= 0 ? rounds[idx + 1] : null;
+function setLibrarySource(source: PuzzleLibrarySource): void {
+  if (librarySource === source) return;
+  librarySource = source;
+  if (source === 'lichess') requestImportedPuzzleLibrary(importedQuery);
+  _redraw();
+}
+
+function updateImportedFilters(patch: Partial<typeof importedQuery.filters>): void {
+  importedQuery = {
+    ...importedQuery,
+    page: 0,
+    filters: {
+      ...importedQuery.filters,
+      ...patch,
+    },
+  };
+  requestImportedPuzzleLibrary(importedQuery);
+}
+
+function stepImportedPage(delta: -1 | 1): void {
+  const nextPage = Math.max(0, importedQuery.page + delta);
+  if (nextPage === importedQuery.page) return;
+  importedQuery = {
+    ...importedQuery,
+    page: nextPage,
+  };
+  requestImportedPuzzleLibrary(importedQuery);
+}
+
+function nextPuzzleHref(round: PuzzleRound): string {
+  if (round.sourceKind === 'saved') {
+    const rounds = savedPuzzleRounds();
+    const idx = rounds.findIndex(candidate => candidate.key === round.key);
+    const next = idx >= 0 ? rounds[idx + 1] : null;
+    return next ? `#/puzzles/${next.routeId}` : '#/puzzles';
+  }
+  const importedState = importedPuzzleLibraryState();
+  const idx = importedState.items.findIndex(item => item.key === round.key);
+  const next = idx >= 0 ? importedState.items[idx + 1] : null;
   return next ? `#/puzzles/${next.routeId}` : '#/puzzles';
 }
 
 function openSourceGame(round: PuzzleRound): void {
-  if (!round.source.gameId) return;
+  if (round.sourceKind !== 'saved' || !round.source.gameId) return;
   if (!_loadGameById(round.source.gameId)) return;
   _clearRetro();
   _navigate(round.parentPath);
@@ -83,6 +135,16 @@ function openSourceGame(round: PuzzleRound): void {
 }
 
 function restoreRoundBoard(round: PuzzleRound, progressPly: number): void {
+  if (round.sourceKind === 'imported') {
+    _openStandalonePuzzle(round.startFen);
+    for (let i = 0; i < progressPly; i++) {
+      const move = round.solution[i];
+      if (!move) break;
+      playUciMove(move);
+    }
+    return;
+  }
+
   if (round.source.gameId) _loadGameById(round.source.gameId);
   _clearRetro();
   _navigate(round.parentPath);
@@ -101,6 +163,9 @@ export function initPuzzles(deps: {
   navigate: (path: string) => void;
   clearRetro: () => void;
   redraw: () => void;
+  openStandalonePuzzle: (fen: string) => void;
+  restoreStandalonePuzzleBackground: () => void;
+  hasStandalonePuzzleBackground: () => boolean;
 }): void {
   _getImportedGames = deps.getImportedGames;
   _getRoute = deps.getRoute;
@@ -109,6 +174,12 @@ export function initPuzzles(deps: {
   _navigate = deps.navigate;
   _clearRetro = deps.clearRetro;
   _redraw = deps.redraw;
+  _openStandalonePuzzle = deps.openStandalonePuzzle;
+  _restoreStandalonePuzzleBackground = deps.restoreStandalonePuzzleBackground;
+  _hasStandalonePuzzleBackground = deps.hasStandalonePuzzleBackground;
+
+  initImportedPuzzles({ redraw: deps.redraw });
+
   void loadPuzzleSessionFromIdb().then(session => {
     puzzleSession = session ?? emptyPuzzleSession();
     _redraw();
@@ -122,6 +193,9 @@ export async function syncPuzzleRoute(route: Route): Promise<void> {
       routeState = { status: 'library' };
     } else {
       routeState = { status: 'idle' };
+      if (_hasStandalonePuzzleBackground()) {
+        _restoreStandalonePuzzleBackground();
+      }
     }
     if (getActivePuzzleCtrl()) {
       saveSessionSnapshot();
@@ -144,30 +218,52 @@ export async function syncPuzzleRoute(route: Route): Promise<void> {
   clearActivePuzzleRoute();
   _redraw();
 
-  const candidate = findSavedPuzzleByRouteId(savedPuzzles, routeId);
-  if (!candidate) {
-    routeState = { status: 'missing', routeId, message: 'This saved puzzle was not found.' };
-    _redraw();
-    return;
-  }
-  if (!candidate.gameId) {
-    routeState = { status: 'missing', routeId, message: 'This puzzle has no saved source game to load.' };
-    _redraw();
-    return;
+  const importedRoute = isImportedPuzzleRouteId(routeId);
+  if (importedRoute) {
+    librarySource = 'lichess';
+  } else {
+    librarySource = 'saved';
+    if (_hasStandalonePuzzleBackground()) {
+      _restoreStandalonePuzzleBackground();
+    }
   }
 
-  const sourceGame = _getImportedGames().find(game => game.id === candidate.gameId) ?? null;
-  if (!sourceGame) {
-    routeState = { status: 'missing', routeId, message: 'The source game for this puzzle is no longer in the local library.' };
-    _redraw();
-    return;
+  let round: PuzzleRound | null = null;
+
+  if (importedRoute) {
+    round = await findImportedPuzzleRoundByRouteId(routeId);
+    if (!round) {
+      routeState = { status: 'missing', routeId, message: 'This imported puzzle could not be loaded from the generated Lichess shards.' };
+      _redraw();
+      return;
+    }
+  } else {
+    const candidate = findSavedPuzzleByRouteId(savedPuzzles, routeId);
+    if (!candidate) {
+      routeState = { status: 'missing', routeId, message: 'This saved puzzle was not found.' };
+      _redraw();
+      return;
+    }
+    if (!candidate.gameId) {
+      routeState = { status: 'missing', routeId, message: 'This puzzle has no saved source game to load.' };
+      _redraw();
+      return;
+    }
+
+    const sourceGame = _getImportedGames().find(game => game.id === candidate.gameId) ?? null;
+    if (!sourceGame) {
+      routeState = { status: 'missing', routeId, message: 'The source game for this puzzle is no longer in the local library.' };
+      _redraw();
+      return;
+    }
+
+    const storedAnalysis = await loadAnalysisFromIdb(candidate.gameId);
+    round = buildPuzzleRound(candidate, {
+      sourceGame,
+      ...(storedAnalysis !== undefined ? { storedAnalysis } : {}),
+    });
   }
 
-  const storedAnalysis = await loadAnalysisFromIdb(candidate.gameId);
-  const round = buildPuzzleRound(candidate, {
-    sourceGame,
-    ...(storedAnalysis !== undefined ? { storedAnalysis } : {}),
-  });
   const ctrl = makePuzzleCtrl(round, snapshot => {
     puzzleSession = applyPuzzleSnapshot(puzzleSession, snapshot);
     void savePuzzleSessionToIdb(puzzleSession);
@@ -189,13 +285,23 @@ export async function syncPuzzleRoute(route: Route): Promise<void> {
 
 export function renderPuzzlesRoute(route: Route): VNode {
   if (route.name === 'puzzles') {
-    const rounds = allPuzzleRounds();
+    if (librarySource === 'lichess') requestImportedPuzzleLibrary(importedQuery);
+    const rounds = savedPuzzleRounds();
     return renderPuzzleLibrary({
-      rounds,
+      source: librarySource,
+      onSourceChange: setLibrarySource,
+      savedRounds: rounds,
+      importedState: importedPuzzleLibraryState(),
       session: puzzleSession,
       currentPuzzleKey: getActivePuzzleCtrl()?.round().key ?? null,
       recentResultForKey: key => recentPuzzleResult(puzzleSession, key),
       isResumeKey: key => currentPuzzleIsActive(puzzleSession, key),
+      onImportedRatingMin: value => updateImportedFilters({ ratingMin: value }),
+      onImportedRatingMax: value => updateImportedFilters({ ratingMax: value }),
+      onImportedTheme: value => updateImportedFilters({ theme: value }),
+      onImportedOpening: value => updateImportedFilters({ opening: value }),
+      onImportedPrevPage: () => stepImportedPage(-1),
+      onImportedNextPage: () => stepImportedPage(1),
     });
   }
 
@@ -205,14 +311,14 @@ export function renderPuzzlesRoute(route: Route): VNode {
 
   if (routeState.status === 'loading') {
     return h('div.puzzle-library puzzle-library--empty', [
-      h('h2', 'Saved Puzzles'),
+      h('h2', 'Puzzles'),
       h('p', 'Loading puzzle…'),
     ]);
   }
 
   if (routeState.status === 'missing') {
     return h('div.puzzle-library puzzle-library--empty', [
-      h('h2', 'Saved Puzzles'),
+      h('h2', 'Puzzles'),
       h('p', routeState.message),
       h('a', { attrs: { href: '#/puzzles' } }, 'Back to puzzle library'),
     ]);
@@ -221,7 +327,7 @@ export function renderPuzzlesRoute(route: Route): VNode {
   const ctrl = getActivePuzzleCtrl();
   if (!ctrl) {
     return h('div.puzzle-library puzzle-library--empty', [
-      h('h2', 'Saved Puzzles'),
+      h('h2', 'Puzzles'),
       h('p', 'Loading puzzle…'),
     ]);
   }
@@ -245,7 +351,7 @@ export function renderPuzzlesRoute(route: Route): VNode {
       syncArrow();
       _redraw();
     },
-    onNext: () => { window.location.hash = nextPuzzleHref(ctrl.round().key); },
+    onNext: () => { window.location.hash = nextPuzzleHref(ctrl.round()); },
     onOpenSourceGame: () => openSourceGame(ctrl.round()),
     board: renderBoard(),
     promotionDialog: renderPromotionDialog(),
@@ -256,4 +362,8 @@ export function renderPuzzlesRoute(route: Route): VNode {
 
 export function puzzleHrefForCandidate(gameId: string | null, path: string): string {
   return puzzleRouteHref({ gameId, path });
+}
+
+export function importedPuzzleRootFromFen(fen: string) {
+  return buildStandalonePuzzleRoot(fen);
 }
