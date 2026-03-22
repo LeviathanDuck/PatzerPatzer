@@ -55,9 +55,10 @@ import {
   renderEvalBar, renderEvalGraph,
 } from './analyse/evalView';
 import {
-  clearPuzzleCandidates, renderPuzzleCandidates, renderFindPuzzlesButton,
+  clearPuzzleCandidates, renderPuzzleCandidates,
   type PuzzleRenderDeps,
 } from './puzzles/extract';
+import { initPuzzles, puzzleHrefForCandidate, renderPuzzlesRoute, syncPuzzleRoute } from './puzzles/index';
 import { renderHeader, type HeaderDeps } from './header/index';
 import {
   type ImportedGame, restoreGameIdCounter,
@@ -272,6 +273,14 @@ function loadGame(pgn: string | null): void {
   redraw();
 }
 
+function loadGameById(gameId: string): boolean {
+  const game = importedGames.find(g => g.id === gameId);
+  if (!game) return false;
+  selectedGameId = game.id;
+  loadGame(game.pgn);
+  return true;
+}
+
 /**
  * Load stored analysis for a game into evalCache and restore completion state.
  * Mirrors the IndexedDB restore pattern in lichess-org/lila: ui/analyse/src/idbTree.ts
@@ -470,6 +479,12 @@ function toggleRetro(): void {
   else redraw(); // no candidates — still redraw to update button state
 }
 
+function clearRetroMode(): void {
+  if (!ctrl.retro) return;
+  delete ctrl.retro;
+  syncArrow();
+}
+
 // --- Route views ---
 
 function routeContent(route: Route): VNode {
@@ -576,7 +591,12 @@ function routeContent(route: Route): VNode {
               gameId:      selectedGameId,
               currentPath: ctrl.path,
               engineEnabled, batchAnalyzing, batchState,
-              savedPuzzles, navigate, savePuzzle, uciToSan, redraw,
+              savedPuzzles,
+              navigate,
+              savePuzzle,
+              puzzleHref:  c => puzzleHrefForCandidate(c.gameId, c.path),
+              uciToSan,
+              redraw,
             };
             return renderPuzzleCandidates(puzzleDeps);
           })(),
@@ -613,35 +633,9 @@ function routeContent(route: Route): VNode {
         renderKeyboardHelp(),
       ]);
     case 'games':    return renderGamesView(deps);
-    case 'puzzles': {
-      // Minimal honest saved-puzzle list — displays existing saved puzzles from IDB.
-      // Full puzzle-solving session is a future task; this task makes the route honest.
-      if (savedPuzzles.length === 0) {
-        return h('div.puzzles-empty', [
-          h('h2', 'Saved Puzzles'),
-          h('p', 'No saved puzzles yet.'),
-          h('p', 'Review games with the engine to find missed tactics, then save them here.'),
-          h('a', { attrs: { href: '#/games' } }, 'Go to My Games'),
-        ]);
-      }
-      return h('div.puzzles-list', [
-        h('h2', `Saved Puzzles (${savedPuzzles.length})`),
-        h('ul.puzzles-list__items', savedPuzzles.map((p) => {
-          const moveNum  = Math.ceil(p.ply / 2);
-          const isWhite  = p.ply % 2 === 1;
-          const moveTxt  = `${moveNum}${isWhite ? '.' : '…'} ${p.san}`;
-          const lossPct  = Math.round(p.loss * 100);
-          const href     = p.gameId ? `#/analysis/${p.gameId}` : '#/analysis';
-          return h('li.puzzles-list__item', [
-            h('span.puzzles-list__move', moveTxt),
-            h('span.puzzles-list__loss', `−${lossPct}%`),
-            p.gameId
-              ? h('a.puzzles-list__link', { attrs: { href } }, 'View in game')
-              : null,
-          ]);
-        })),
-      ]);
-    }
+    case 'puzzles':
+    case 'puzzle-round':
+      return renderPuzzlesRoute(route);
     case 'openings': return h('h1', 'Openings Page');
     case 'stats':    return h('h1', 'Stats Page');
     default:         return h('h1', 'Home');
@@ -751,6 +745,15 @@ initGround({
   getSelectedGameId:() => selectedGameId,
   redraw,
 });
+initPuzzles({
+  getImportedGames:  () => importedGames,
+  getRoute:          () => currentRoute,
+  getCtrlPath:       () => ctrl.path,
+  loadGameById,
+  navigate,
+  clearRetro:        clearRetroMode,
+  redraw,
+});
 initCevalView({
   getCtrl:  () => ctrl,
   navigate,
@@ -802,10 +805,12 @@ onChange(route => {
     const game = importedGames.find(g => g.id === id);
     if (game && game.id !== selectedGameId) {
       selectedGameId = game.id;
+      void syncPuzzleRoute(route);
       loadGame(game.pgn); // calls redraw() which patches with the updated state
       return;
     }
   }
+  void syncPuzzleRoute(route);
   vnode = patch(vnode, view(currentRoute));
 });
 
@@ -813,7 +818,11 @@ onChange(route => {
 vnode = patch(app, view(currentRoute));
 
 // --- Startup: restore persisted puzzles ---
-void loadPuzzlesFromIdb().then(setSavedPuzzles);
+void loadPuzzlesFromIdb().then(puzzles => {
+  setSavedPuzzles(puzzles);
+  redraw();
+  void syncPuzzleRoute(currentRoute);
+});
 
 // --- Startup: restore persisted games ---
 // Runs after the initial render so the board already exists when syncBoard is called.
@@ -846,4 +855,5 @@ void loadGamesFromIdb().then(stored => {
   // Pass restoreGeneration so the guard in loadAndRestoreAnalysis can detect a rapid
   // game switch that occurs before this async restore completes.
   void loadAndRestoreAnalysis(toLoad.id, restoreGeneration);
+  void syncPuzzleRoute(currentRoute);
 });
