@@ -72,6 +72,7 @@ export interface PuzzleRenderDeps {
   savedPuzzles:   PuzzleCandidate[];
   navigate:       (p: string) => void;
   savePuzzle:     (c: PuzzleCandidate, redraw: () => void) => void;
+  puzzleHref:     (c: PuzzleCandidate) => string;
   uciToSan:       (fen: string, uci: string) => string;
   redraw:         () => void;
 }
@@ -150,6 +151,17 @@ export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
         },
         on: { click: () => { deps.savePuzzle(c, deps.redraw); } },
       }, isSaved ? '✓ Saved' : 'Save'),
+      h('a', {
+        attrs: {
+          href: deps.puzzleHref(c),
+          style: 'flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px',
+        },
+        on: {
+          click: () => {
+            if (!isSaved) deps.savePuzzle(c, deps.redraw);
+          },
+        },
+      }, isSaved ? 'Solve' : 'Save & Solve'),
     ]);
   });
 

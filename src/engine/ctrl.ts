@@ -5,6 +5,7 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { annotationShapes as buildBoardGlyphShapes } from '../analyse/boardGlyphs';
 import { StockfishProtocol } from '../ceval/protocol';
+import { puzzleHidesAnalysis } from '../puzzles/runtime';
 import { evalWinChances, classifyLoss, type MoveLabel } from './winchances';
 import { formatScore } from '../analyse/evalView';
 import { pathInit, pathIsMainline } from '../tree/ops';
@@ -143,6 +144,8 @@ let arrowDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let arrowSuppressUntil = 0;
 /** Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts — Lichess uses 500 ms delay. */
 const ARROW_SETTLE_MS = 500;
+let lastAutoShapesHash: string | null = null;
+let lastAutoShapesCg: CgApi | undefined;
 /** Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts onEmit throttle(200, ...) */
 const LIVE_ENGINE_UI_THROTTLE_MS = 200;
 let liveEngineUiTimer: ReturnType<typeof setTimeout> | null = null;
@@ -180,6 +183,7 @@ export function buildArrowShapes(): DrawShape[] {
   const shapes: DrawShape[] = [];
   const ctrl = _getCtrl();
   if (_isBatchActive()) return shapes;
+  if (puzzleHidesAnalysis()) return shapes;
 
   // Suppress engine-guidance arrows whenever retrospection is active and the user has not
   // manually revealed guidance for the current candidate.
@@ -367,7 +371,7 @@ export function syncArrow(): void {
   if (!cg) return;
   if (arrowDebounceTimer !== null) { clearTimeout(arrowDebounceTimer); arrowDebounceTimer = null; }
   arrowSuppressUntil = 0;
-  cg.set({ drawable: { autoShapes: buildArrowShapes() } });
+  applyAutoShapes(buildArrowShapes());
 }
 
 /**
@@ -384,7 +388,7 @@ export function syncArrowDebounced(): void {
       arrowDebounceTimer = setTimeout(() => {
         arrowDebounceTimer = null;
         arrowSuppressUntil = 0;
-        _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
+        applyAutoShapes(buildArrowShapes());
       }, arrowSuppressUntil - now);
     }
     return;
@@ -392,8 +396,34 @@ export function syncArrowDebounced(): void {
   if (arrowDebounceTimer !== null) { clearTimeout(arrowDebounceTimer); }
   arrowDebounceTimer = setTimeout(() => {
     arrowDebounceTimer = null;
-    _getCgInstance()?.set({ drawable: { autoShapes: buildArrowShapes() } });
+    applyAutoShapes(buildArrowShapes());
   }, 150);
+}
+
+function applyAutoShapes(shapes: DrawShape[]): void {
+  const cg = _getCgInstance();
+  if (!cg) return;
+  if (cg !== lastAutoShapesCg) {
+    lastAutoShapesCg = cg;
+    lastAutoShapesHash = null;
+  }
+  const nextHash = autoShapesHash(shapes);
+  if (nextHash === lastAutoShapesHash) return;
+  lastAutoShapesHash = nextHash;
+  cg.setAutoShapes(shapes);
+}
+
+function autoShapesHash(shapes: DrawShape[]): string {
+  return shapes.map(shape => [
+    shape.orig ?? '',
+    shape.dest ?? '',
+    shape.brush ?? '',
+    shape.piece ? `${shape.piece.color}|${shape.piece.role}|${shape.piece.scale ?? ''}` : '',
+    shape.modifiers ? `${shape.modifiers.lineWidth ?? ''}|${shape.modifiers.hilite ?? ''}` : '',
+    shape.customSvg ? `${shape.customSvg.center ?? ''}|${shape.customSvg.html}` : '',
+    shape.label ? `${shape.label.text}|${shape.label.fill ?? ''}` : '',
+    shape.below ? '1' : '',
+  ].join('~')).join(';');
 }
 
 function cancelLiveEngineUiRefresh(): void {
