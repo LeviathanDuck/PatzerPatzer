@@ -2690,6 +2690,19 @@ body[data-board=newspaper] cg-board::before {
   justify-content: space-between;
   gap: 12px;
 }
+.puzzle-library__sources {
+  display: flex;
+  gap: 8px;
+}
+.puzzle-library__sources button {
+  border: 1px solid var(--c-border);
+  background: color-mix(in srgb, var(--c-bg) 88%, white 12%);
+  color: var(--c-text);
+}
+.puzzle-library__sources button.active {
+  background: color-mix(in srgb, var(--c-link) 18%, var(--c-bg) 82%);
+  border-color: color-mix(in srgb, var(--c-link) 45%, var(--c-border) 55%);
+}
 .puzzle-library__list {
   list-style: none;
   margin: 0;
@@ -2733,6 +2746,52 @@ body[data-board=newspaper] cg-board::before {
   font-size: 0.8rem;
   text-transform: capitalize;
   color: var(--c-muted);
+}
+.puzzle-library__empty-body {
+  border: 1px dashed var(--c-border);
+  border-radius: 12px;
+  padding: 16px;
+  color: var(--c-muted);
+  background: color-mix(in srgb, var(--c-bg) 90%, white 10%);
+}
+.puzzle-library__imported {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.puzzle-library__filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.puzzle-library__filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: var(--c-muted);
+}
+.puzzle-library__filters input,
+.puzzle-library__filters select {
+  width: 100%;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--c-bg) 88%, white 12%);
+  color: var(--c-text);
+  padding: 8px 10px;
+}
+.puzzle-library__paging {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--c-muted);
+  font-size: 0.9rem;
+}
+.puzzle-library__paging-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .puzzle-round {
@@ -2792,6 +2851,28 @@ body[data-board=newspaper] cg-board::before {
     align-items: flex-start;
   }
   .puzzle-round {
+    grid-template-columns: 1fr;
+  }
+  .puzzle-library__filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .puzzle-library__item,
+  .puzzle-library__paging {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .puzzle-library__actions,
+  .puzzle-library__paging-actions {
+    width: 100%;
+  }
+  .puzzle-library__actions .button,
+  .puzzle-library__actions button,
+  .puzzle-library__paging-actions button {
+    width: 100%;
+  }
+  .puzzle-library__filters {
     grid-template-columns: 1fr;
   }
 }
