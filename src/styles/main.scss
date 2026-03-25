@@ -2722,6 +2722,24 @@ body[data-board='newspaper'] cg-board::before {
     color: var(--c-muted);
   }
 
+  // Feedback icon — ✓ for correct/win, ✗ for fail.
+  // Color rules scoped by the feedback state modifier class on the parent section.
+  // Adapted from lichess-org/lila: ui/puzzle/css/_tools.scss .good/.fail .icon rules.
+  &__feedback-icon {
+    font-size: 2rem;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  &__feedback.good &__feedback-icon,
+  &__feedback.win &__feedback-icon {
+    color: #4caf50;
+  }
+
+  &__feedback.fail &__feedback-icon {
+    color: #e53935;
+  }
+
   &__controls {
     display: flex;
     flex-wrap: wrap;

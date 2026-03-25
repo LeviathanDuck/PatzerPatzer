@@ -82,6 +82,16 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-092 - Cache Board Move Destinations
 - [x] CCP-093 - Narrow Board Auto-Shape Updates
 - [x] CCP-094 - Remove Board Overlay Fade Animation
+- [ ] CCP-111 - Phase 1 Puzzle Sprint Manager (CCP-103–106)
+- [ ] CCP-110 - Add Result History Dots
+- [ ] CCP-109 - Add Keyboard Navigation Shortcuts
+- [ ] CCP-108 - Add Move Navigation Controls
+- [ ] CCP-107 - Add Puzzle-Specific SCSS
+- [ ] CCP-106 - Add After-Puzzle Completion Panel
+- [ ] CCP-105 - Add Visual Feedback Icons
+- [ ] CCP-104 - Add Opponent Move Animation Delay
+- [ ] CCP-103 - Fix Wrong-Move Result State
+- [ ] CCP-102 - Puzzle Page Lichess Audit And Sprint Plan
 - [ ] CCP-095 - Establish Lichess Dataset Workspace
 - [ ] CCP-096 - Add Lichess Puzzle Download Script
 - [ ] CCP-097 - Build Lichess Puzzle Shard Pipeline
@@ -300,6 +310,176 @@ It should stay in sync with the detailed entry below.
   - Task: add basic rating, theme, and opening filters plus lazy shard paging for the imported Lichess library
   - Claude used: yes
   - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-111 - Phase 1 Puzzle Sprint Manager (CCP-103–106)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-111`
+  - Task ID: `CCP-111`
+  - Parent prompt ID: none
+  - Batch prompt IDs: CCP-103, CCP-104, CCP-105, CCP-106
+  - Source document: docs/prompts/manager-batch.md
+  - Source step: Phase 1 puzzle sprint execution
+  - Task: auto-run CCP-103 through CCP-106 in sequence
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-110 - Add Result History Dots
+
+```
+- [ ] Reviewed
+  - ID: `CCP-110`
+  - Task ID: `CCP-110`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: CCP-102 audit
+  - Source step: Sprint 8 — Add result history dots
+  - Task: render colored result dots from puzzleSession.recent in the puzzle round view
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-109 - Add Keyboard Navigation Shortcuts
+
+```
+- [ ] Reviewed
+  - ID: `CCP-109`
+  - Task ID: `CCP-109`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: CCP-102 audit
+  - Source step: Sprint 7 — Add keyboard navigation shortcuts
+  - Task: arrow keys navigate puzzle moves; Escape returns to library
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-108 - Add Move Navigation Controls
+
+```
+- [ ] Reviewed
+  - ID: `CCP-108`
+  - Task ID: `CCP-108`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: CCP-102 audit
+  - Source step: Sprint 5 — Add move navigation controls
+  - Task: add first/prev/next/last buttons to step through solution in terminal state
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-107 - Add Puzzle-Specific SCSS
+
+```
+- [ ] Reviewed
+  - ID: `CCP-107`
+  - Task ID: `CCP-107`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: CCP-102 audit
+  - Source step: Sprint 6 — Add puzzle-specific SCSS (layout + feedback)
+  - Task: extract puzzle-round SCSS, fix sidebar-left, add icon and after-panel styles
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-106 - Add After-Puzzle Completion Panel
+
+```
+- [ ] Reviewed
+  - ID: `CCP-106`
+  - Task ID: `CCP-106`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: CCP-102 audit
+  - Source step: Sprint 4 — Add after-puzzle completion panel
+  - Task: render distinct completion panel for solved/viewed terminal states
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-105 - Add Visual Feedback Icons
+
+```
+- [ ] Reviewed
+  - ID: `CCP-105`
+  - Task ID: `CCP-105`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: CCP-102 audit
+  - Source step: Sprint 3 — Add visual feedback icons
+  - Task: add ✓/✗ icons to puzzle feedback section for good/fail/win states
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-104 - Add Opponent Move Animation Delay
+
+```
+- [ ] Reviewed
+  - ID: `CCP-104`
+  - Task ID: `CCP-104`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: CCP-102 audit
+  - Source step: Sprint 2 — Add opponent move animation delay
+  - Task: delay opponent reply ~500ms and lock board during the window
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-103 - Fix Wrong-Move Result State
+
+```
+- [ ] Reviewed
+  - ID: `CCP-103`
+  - Task ID: `CCP-103`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: CCP-102 audit
+  - Source step: Sprint 1 — Fix wrong-move result state
+  - Task: wrong move sets feedback='fail' but leaves result='active'
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-102 - Puzzle Page Lichess Audit And Sprint Plan
+
+```
+- [ ] Reviewed
+  - ID: `CCP-102`
+  - Task ID: `CCP-102`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: none
+  - Source step: Puzzle page Lichess audit and sprint planning
+  - Task: audit puzzle page against Lichess and produce a sprint plan
+  - Claude used: yes
+  - Review outcome: pending
   - Review issues: none
   - Execution target: `Claude Code`
 ```

@@ -2824,6 +2824,17 @@ body[data-board=newspaper] cg-board::before {
   margin-top: 6px;
   color: var(--c-muted);
 }
+.puzzle-round__feedback-icon {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.puzzle-round__feedback.good .puzzle-round__feedback-icon, .puzzle-round__feedback.win .puzzle-round__feedback-icon {
+  color: #4caf50;
+}
+.puzzle-round__feedback.fail .puzzle-round__feedback-icon {
+  color: #e53935;
+}
 .puzzle-round__controls {
   display: flex;
   flex-wrap: wrap;
