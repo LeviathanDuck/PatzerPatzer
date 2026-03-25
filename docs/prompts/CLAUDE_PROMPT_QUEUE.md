@@ -36,6 +36,27 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 
 ## Queue Index
 
+- CCP-113: Add Training Queue State to Imported Puzzle Module
+  - Add training mode + cursor to `imported.ts`: startTraining(), advanceTrainingCursor(), getNextTrainingRouteId(), isTrainingMode().
+
+- CCP-114: Wire Training Queue into Continue-Training Navigation
+  - `onNext` for imported puzzles uses training cursor instead of page-bounded nextPuzzleHref; pre-fetches next page when approaching end.
+
+- CCP-115: Add "Start Training" Entry Point to Puzzle Library
+  - "Start Training →" button in imported library header calls startTraining() and navigates to first filtered puzzle.
+
+- CCP-116: Persist Filter Query State to IDB
+  - Save importedQuery to IDB when filters change; restore on startup so training resumes with the same filters.
+
+- CCP-117: Show Active Training Context in Puzzle Round Side Panel
+  - During an imported puzzle round, show the active theme/opening label in the side panel so the user knows what they are training on.
+
+- CCP-118: Phase 1 Puzzle Training Queue Manager (CCP-113–115)
+  - Manager prompt: run CCP-113, CCP-114, CCP-115 in order.
+
+- CCP-119: Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
+  - Manager prompt: run CCP-116, CCP-117 in order.
+
 - CCP-103: Fix Wrong-Move Result State
   - Wrong move should set feedback='fail' but leave result='active' so the user can retry without the round locking.
 
@@ -1085,4 +1106,303 @@ Deliverables:
 Validation:
 - run `npm run build`
 - report Prompt ID, Task ID, filter/paging behavior, runtime/console status, and remaining risks
+```
+
+## CCP-113 - Add Training Queue State to Imported Puzzle Module
+
+```
+Prompt ID: CCP-113
+Task ID: CCP-113
+Source Document: docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md
+Source Step: Puzzle training queue — sequential puzzle delivery within a filtered set
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Context:
+The current imported puzzle module (`src/puzzles/imported.ts`) is page-based: it shows 24 puzzles at a time and has no concept of "training through a filtered set continuously." When a user finishes the last puzzle on a page, `nextPuzzleHref()` returns `#/puzzles`, bouncing them back to the library. The user needs to be able to solve puzzles sequentially without ever leaving the training flow.
+
+Lichess reference:
+- Lichess puzzle training is server-driven: one puzzle is served at a time, chosen from the selected theme/difficulty pool
+- The client never manages a local puzzle list; it just requests "next puzzle" and the server responds
+- For Patzer (local-only), we replicate this by maintaining a training queue cursor across the local shard pages
+
+Task:
+Add a training queue abstraction to `src/puzzles/imported.ts` only. Do NOT change any other files in this prompt.
+
+Add the following to `src/puzzles/imported.ts`:
+
+1. A private training queue state:
+   - `trainingActive: boolean` — whether training mode is on
+   - `trainingQuery: ImportedPuzzleQuery | null` — the query filters locked in when training started
+   - `trainingPage: number` — the page currently loaded for training (may differ from the display page)
+   - `trainingItems: ImportedPuzzleRecord[]` — items loaded for the current training page
+   - `trainingIndex: number` — index within trainingItems pointing to the current puzzle being solved
+
+2. Export these functions:
+   - `startTraining(query: ImportedPuzzleQuery): void`
+     - sets trainingActive = true, trainingQuery = query, trainingPage = query.page, trainingIndex = 0
+     - loads the training page via the existing shard/manifest infrastructure
+     - stores the loaded items into trainingItems when they arrive
+   - `isTrainingMode(): boolean`
+     - returns trainingActive
+   - `currentTrainingRouteId(): string | null`
+     - returns trainingItems[trainingIndex]?.routeId ?? null
+   - `advanceTrainingCursor(): void`
+     - increments trainingIndex
+     - if trainingIndex >= trainingItems.length AND hasNext: increments trainingPage, reloads items into trainingItems, resets trainingIndex = 0
+     - if trainingIndex >= trainingItems.length AND !hasNext: sets trainingActive = false (training complete)
+   - `getNextTrainingRouteId(): string | null`
+     - returns trainingItems[trainingIndex + 1]?.routeId ?? null (next after current, without advancing)
+   - `stopTraining(): void`
+     - resets trainingActive = false, clears training state
+
+3. Training item loading:
+   - Re-use the existing shard cache and manifest infrastructure already in the module
+   - When `startTraining` or page advance is called, fetch the appropriate shards for the training page using the same filter logic
+   - Store results into trainingItems; call the existing `redraw` callback once loaded
+
+Constraints:
+- Touch ONLY `src/puzzles/imported.ts`
+- Do NOT change the display page state (importedQuery, items shown in library) — training queue is separate state
+- Do NOT change `src/puzzles/index.ts` or any view file in this prompt
+- Re-use existing shard loading and filter logic; do not duplicate it
+
+Validation:
+- run `npm run build`
+- report Prompt ID, Task ID, new exports, build status, and any risks
+```
+
+## CCP-114 - Wire Training Queue into Continue-Training Navigation
+
+```
+Prompt ID: CCP-114
+Task ID: CCP-114
+Parent Prompt ID: CCP-113
+Source Document: docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md
+Source Step: Post-completion continuation — "next puzzle" in training mode
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Context:
+After CCP-113, `src/puzzles/imported.ts` has a training queue with `isTrainingMode()`, `advanceTrainingCursor()`, and `getNextTrainingRouteId()`.
+
+Currently in `src/puzzles/index.ts`, `onNext` calls `nextPuzzleHref(ctrl.round())` which only looks at the current display page and returns `#/puzzles` when the last puzzle on that page is reached. This needs to be replaced for imported puzzles in training mode.
+
+Lichess reference:
+- After completing a puzzle, the player clicks "Continue" and the next puzzle loads automatically
+- The server picks the next puzzle; the client just navigates
+- For Patzer, the training queue cursor replaces the server
+
+Task:
+Modify `src/puzzles/index.ts` to use the training queue for imported puzzle navigation.
+
+Changes:
+1. In `renderPuzzlesRoute` / `onNext` callback (inside the puzzle-round render block):
+   - If `ctrl.round().sourceKind === 'imported'` AND `isTrainingMode()`:
+     - call `advanceTrainingCursor()`
+     - get the next route ID from `currentTrainingRouteId()`
+     - if a route ID is available: navigate to `#/puzzles/${routeId}`
+     - if null (queue exhausted): navigate to `#/puzzles` (training complete)
+   - Otherwise: fall through to existing `nextPuzzleHref(ctrl.round())` behavior (no change for saved puzzles)
+
+2. When `syncPuzzleRoute` loads an imported puzzle round:
+   - If training mode is active and the loaded puzzle's routeId matches `currentTrainingRouteId()`, no change needed
+   - If training mode is active but the routeId does NOT match (user navigated manually), call `stopTraining()` to exit training mode cleanly
+
+Constraints:
+- Touch ONLY `src/puzzles/index.ts`
+- Do NOT change saved puzzle navigation behavior
+- Do NOT change the library display filters or pagination
+
+Validation:
+- run `npm run build`
+- report Prompt ID, Task ID, navigation behavior description, build status, remaining risks
+```
+
+## CCP-115 - Add "Start Training" Entry Point to Puzzle Library
+
+```
+Prompt ID: CCP-115
+Task ID: CCP-115
+Parent Prompt ID: CCP-114
+Source Document: docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md
+Source Step: Training entry point — entering continuous solve mode from the library
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Context:
+After CCP-113 and CCP-114, training mode exists and navigation is wired. Now the user needs an entry point: a button in the library that starts training with the current filter set. Currently users must click "Solve" on a specific list item; there is no "just give me puzzles from this filter" action.
+
+Lichess reference:
+- The Lichess puzzle library shows a list with theme/filter selection
+- From any theme page, clicking into puzzles starts a continuous training session
+- The entry point is theme-first, not list-item-first
+
+Task:
+1. In `src/puzzles/view.ts`:
+   - Add `onStartTraining: () => void` to the `renderPuzzleLibrary` deps interface
+   - In `renderImportedPuzzleLibrary`, add a "Start Training →" button in the library header area (near the filters or paging section)
+   - The button should be visually prominent (use existing `.button` class or similar)
+   - Only show the button when `state.items.length > 0` (there are puzzles to train on)
+
+2. In `src/puzzles/index.ts`:
+   - Add `onStartTraining` to the `renderPuzzleLibrary` call
+   - Implementation: call `startTraining(importedQuery)` then navigate to the first puzzle's routeId
+   - `startTraining` is async (items may not be loaded yet); after calling it, wait for the training items to load then navigate
+   - If items are already available (cache hit), navigate immediately
+   - If items need to load, set a flag and navigate once the redraw fires with items loaded
+
+Constraints:
+- Touch ONLY `src/puzzles/view.ts` and `src/puzzles/index.ts`
+- Do NOT add training UI to saved puzzle library — saved puzzles are not paginated the same way
+- Keep the button label short: "Start Training →" or "Train on these puzzles"
+
+Validation:
+- run `npm run build`
+- report Prompt ID, Task ID, button presence/behavior, build status, remaining risks
+```
+
+## CCP-116 - Persist Filter Query State to IDB
+
+```
+Prompt ID: CCP-116
+Task ID: CCP-116
+Source Document: docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md
+Source Step: Filter persistence — filters survive page reload
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Context:
+The imported puzzle filter state (`importedQuery`: rating min/max, theme, opening, page) is currently module-level ephemeral state. Every page reload resets it to `defaultImportedPuzzleQuery()`. This means a user who has selected "Endgame / Rating 1200-1600" loses that selection on every reload and has to re-apply filters manually.
+
+Lichess reference:
+- Lichess stores puzzle difficulty and color preferences server-side in user preferences
+- For Patzer (local-only), IDB is the appropriate persistence layer
+- Lichess source: `ctrl.ts` reads prefs from `data.user.prefs`; Patzer equivalent is the IDB puzzle session store
+
+Task:
+1. In `src/idb/index.ts`:
+   - Add `savePuzzleQueryToIdb(query: ImportedPuzzleQuery): Promise<void>`
+     - Persist the query as JSON under a key like `'puzzleQuery'` in the existing puzzle IDB store (or create a separate key-value entry alongside the puzzle session)
+   - Add `loadPuzzleQueryFromIdb(): Promise<ImportedPuzzleQuery | null>`
+     - Return the stored query, or null if nothing is stored yet
+
+2. In `src/puzzles/index.ts`:
+   - When `updateImportedFilters()` or `stepImportedPage()` is called, save the new `importedQuery` to IDB via `savePuzzleQueryToIdb()`
+   - In `initPuzzles()`, after loading the puzzle session from IDB, also call `loadPuzzleQueryFromIdb()` and if a stored query exists, set `importedQuery` to it before the first `_redraw()`
+
+Constraints:
+- Touch ONLY `src/idb/index.ts` and `src/puzzles/index.ts`
+- Do NOT persist the `page` field — restore the query with `page: 0` so the user starts at the first page of their saved filters (not mid-library)
+- Do NOT change any view rendering
+
+Validation:
+- run `npm run build`
+- report Prompt ID, Task ID, IDB key used, save/restore behavior, build status, remaining risks
+```
+
+## CCP-117 - Show Active Training Context in Puzzle Round Side Panel
+
+```
+Prompt ID: CCP-117
+Task ID: CCP-117
+Parent Prompt ID: CCP-116
+Source Document: docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md
+Source Step: Side panel — puzzle metadata and active training context
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Context:
+When solving an imported puzzle, the user has no reminder of what filter/theme they are training on. The side panel shows puzzle ID, rating, themes, and opening — but not "you are currently training: Endgame / Medium difficulty." Adding a small training context label helps the user understand what set of puzzles they are working through.
+
+Lichess reference:
+- Lichess puzzle side panel shows the active theme angle prominently (e.g., "Endgame" as a heading)
+- Difficulty setting is visible in the side panel
+- Source: `ui/puzzle/src/view/side.ts` — `puzzleBox()` renders puzzle metadata; theme label shown near top
+
+Task:
+1. In `src/puzzles/view.ts`:
+   - Add `trainingContext: { theme: string; opening: string; ratingMin: string; ratingMax: string } | null` to the `renderPuzzleRound` deps interface
+   - In the side panel (`aside.puzzle-round__side`), if `deps.trainingContext` is non-null, render a small "Training context" block above the existing feedback section
+   - Show only non-empty filter values (e.g., if theme is empty string, omit it)
+   - Example display:
+     ```
+     Training: Endgame · 1200–1600
+     ```
+   - Use a `div.puzzle-round__training-context` element
+
+2. In `src/styles/_puzzle.scss`:
+   - Add minimal styling for `.puzzle-round__training-context`:
+     - small font, muted color (`var(--c-muted)`), padding to separate from feedback box below
+
+3. In `src/puzzles/index.ts`:
+   - Build the `trainingContext` object from `importedQuery.filters` when `sourceKind === 'imported'`
+   - Pass it to `renderPuzzleRound`
+   - If `sourceKind === 'saved'`, pass `null`
+
+Constraints:
+- Touch ONLY `src/puzzles/view.ts`, `src/styles/_puzzle.scss`, and `src/puzzles/index.ts`
+- Do NOT show training context for saved puzzles
+- Keep the UI minimal — one line of text, no extra panel/card
+- Only show fields that have non-empty/non-default values
+
+Validation:
+- run `npm run build`
+- report Prompt ID, Task ID, rendering behavior, build status, remaining risks
+```
+
+## CCP-118 - Phase 1 Puzzle Training Queue Manager (CCP-113–115)
+
+```
+Prompt ID: CCP-118
+Task ID: CCP-118
+Batch prompt IDs: CCP-113, CCP-114, CCP-115
+Source Document: docs/prompts/CLAUDE_PROMPT_QUEUE.md
+Execution Target: Claude Code manager session
+
+You are the manager for this batch. Run CCP-113, CCP-114, and CCP-115 in order.
+
+Before starting:
+- Read the full prompt for each CCP in docs/prompts/CLAUDE_PROMPT_QUEUE.md
+- Confirm each prompt's constraints and file scope
+
+Execution order:
+1. Run CCP-113 (Add Training Queue State to Imported Puzzle Module)
+   - Verify build passes before proceeding
+2. Run CCP-114 (Wire Training Queue into Continue-Training Navigation)
+   - Verify build passes before proceeding
+3. Run CCP-115 (Add "Start Training" Entry Point to Puzzle Library)
+   - Verify build passes
+
+After all three pass:
+- Run `npm run build` one final time
+- Report: which files were changed, final build status, any risks or open questions
+- Do NOT push to git
+```
+
+## CCP-119 - Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
+
+```
+Prompt ID: CCP-119
+Task ID: CCP-119
+Batch prompt IDs: CCP-116, CCP-117
+Source Document: docs/prompts/CLAUDE_PROMPT_QUEUE.md
+Execution Target: Claude Code manager session
+
+You are the manager for this batch. Run CCP-116 and CCP-117 in order.
+
+Before starting:
+- Read the full prompt for each CCP in docs/prompts/CLAUDE_PROMPT_QUEUE.md
+- Confirm each prompt's constraints and file scope
+
+Execution order:
+1. Run CCP-116 (Persist Filter Query State to IDB)
+   - Verify build passes before proceeding
+2. Run CCP-117 (Show Active Training Context in Puzzle Round Side Panel)
+   - Verify build passes
+
+After both pass:
+- Run `npm run build` one final time
+- Report: which files were changed, final build status, any risks or open questions
+- Do NOT push to git
 ```
