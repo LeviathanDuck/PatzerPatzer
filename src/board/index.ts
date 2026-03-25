@@ -611,3 +611,10 @@ export function syncBoardAndArrow(): void {
   syncBoard();
   syncArrow();
 }
+
+// Temporarily disable/re-enable Chessground piece animation.
+// Used during puzzle board setup to prevent intermediate FEN changes from
+// producing multiple overlapping piece animations (visible as board "vibration").
+export function setAnimationEnabled(enabled: boolean): void {
+  cgInstance?.set({ animation: { enabled } });
+}

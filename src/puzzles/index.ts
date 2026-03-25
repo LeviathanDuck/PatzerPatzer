@@ -5,6 +5,7 @@ import {
   renderBoard,
   renderPlayerStrips,
   renderPromotionDialog,
+  setAnimationEnabled,
 } from '../board/index';
 import { syncArrow } from '../engine/ctrl';
 import {
@@ -181,6 +182,11 @@ function openSourceGame(round: PuzzleRound): void {
 }
 
 function restoreRoundBoard(round: PuzzleRound, progressPly: number): void {
+  // Disable piece animation during board setup to prevent multiple rapid FEN
+  // changes (from loadGameById → navigate → playUciMove) from producing
+  // overlapping animations that appear as board "vibration".
+  setAnimationEnabled(false);
+
   if (round.sourceKind === 'imported') {
     _openStandalonePuzzle(round.startFen);
     for (let i = 0; i < progressPly; i++) {
@@ -188,6 +194,7 @@ function restoreRoundBoard(round: PuzzleRound, progressPly: number): void {
       if (!move) break;
       playUciMove(move);
     }
+    setAnimationEnabled(true);
     return;
   }
 
@@ -199,6 +206,7 @@ function restoreRoundBoard(round: PuzzleRound, progressPly: number): void {
     if (!move) break;
     playUciMove(move);
   }
+  setAnimationEnabled(true);
 }
 
 export function initPuzzles(deps: {

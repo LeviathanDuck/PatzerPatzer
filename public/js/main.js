@@ -6578,6 +6578,9 @@ function syncBoardAndArrow() {
   syncBoard();
   syncArrow();
 }
+function setAnimationEnabled(enabled) {
+  cgInstance?.set({ animation: { enabled } });
+}
 
 // src/ceval/view.ts
 var _getCtrl4 = () => {
@@ -8067,6 +8070,7 @@ function openSourceGame(round) {
   window.location.hash = `#/analysis/${round.source.gameId}`;
 }
 function restoreRoundBoard(round, progressPly) {
+  setAnimationEnabled(false);
   if (round.sourceKind === "imported") {
     _openStandalonePuzzle(round.startFen);
     for (let i = 0; i < progressPly; i++) {
@@ -8074,6 +8078,7 @@ function restoreRoundBoard(round, progressPly) {
       if (!move3) break;
       playUciMove(move3);
     }
+    setAnimationEnabled(true);
     return;
   }
   if (round.source.gameId) _loadGameById(round.source.gameId);
@@ -8084,6 +8089,7 @@ function restoreRoundBoard(round, progressPly) {
     if (!move3) break;
     playUciMove(move3);
   }
+  setAnimationEnabled(true);
 }
 function initPuzzles(deps) {
   _getImportedGames4 = deps.getImportedGames;
