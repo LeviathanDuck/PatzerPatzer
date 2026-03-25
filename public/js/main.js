@@ -6156,6 +6156,7 @@ function initGround(deps) {
 var cgInstance = void 0;
 var orientation = "white";
 var pendingPromotion = null;
+var PUZZLE_REPLY_DELAY_MS = 500;
 function setOrientation(v) {
   orientation = v;
   cgInstance?.set({ orientation: v });
@@ -6217,8 +6218,13 @@ function onUserMove(orig, dest) {
       return;
     }
     applyMoveToTree(normMove, pos);
-    for (const reply of outcome.replies) playUciMove(reply);
-    puzzleCtrl.setCurrentPath(_getCtrl3().path);
+    cgInstance?.set({ movable: { color: void 0 } });
+    setTimeout(() => {
+      for (const reply of outcome.replies) playUciMove(reply);
+      puzzleCtrl.setCurrentPath(_getCtrl3().path);
+      syncBoard();
+      _redraw3();
+    }, PUZZLE_REPLY_DELAY_MS);
     return;
   }
   const existingChild = ctrl2.node.children.find((c) => c.uci === normUci || c.uci?.startsWith(normUci));
@@ -6315,8 +6321,13 @@ function completePromotion(role) {
       return;
     }
     applyMoveToTree(move3, pos);
-    for (const reply of outcome.replies) playUciMove(reply);
-    puzzleCtrl.setCurrentPath(_getCtrl3().path);
+    cgInstance?.set({ movable: { color: void 0 } });
+    setTimeout(() => {
+      for (const reply of outcome.replies) playUciMove(reply);
+      puzzleCtrl.setCurrentPath(_getCtrl3().path);
+      syncBoard();
+      _redraw3();
+    }, PUZZLE_REPLY_DELAY_MS);
     return;
   }
   completeMove(orig, dest, role);
@@ -9255,7 +9266,6 @@ function makePuzzleCtrl(round, onChange3 = () => {
       const expected = round.solution[progressPly];
       if (!expected || path !== currentPath || result !== "active" || !sameMove(uci, expected)) {
         feedback = "fail";
-        result = "failed";
         emit();
         return { accepted: false, replies: [] };
       }
@@ -9898,16 +9908,24 @@ function renderPuzzleRound(deps) {
       deps.bottomStrip
     ]),
     h("aside.puzzle-round__side", [
-      h("section.puzzle-round__feedback", [
-        h("div.puzzle-round__status", label),
-        h("div.puzzle-round__progress", `${done} / ${total}`)
+      h(`section.puzzle-round__feedback.${feedback}`, [
+        result === "solved" || result === "viewed" ? h("div.puzzle-round__after", [
+          h(
+            "div.puzzle-round__complete",
+            result === "solved" ? "Puzzle solved!" : "Puzzle complete."
+          ),
+          h("button.puzzle-round__next", { on: { click: deps.onNext } }, "Continue training \u2192")
+        ]) : [
+          feedback === "good" || feedback === "win" ? h("div.puzzle-round__feedback-icon", "\u2713") : feedback === "fail" ? h("div.puzzle-round__feedback-icon", "\u2717") : null,
+          h("div.puzzle-round__status", label),
+          h("div.puzzle-round__progress", `${done} / ${total}`)
+        ]
       ]),
       h("section.puzzle-round__controls", [
         h("button", { on: { click: deps.onBack } }, "Back to library"),
         h("button", { on: { click: deps.onFlip } }, "Flip"),
-        feedback === "fail" ? h("button", { on: { click: deps.onRetry } }, "Retry") : null,
-        feedback === "find" || feedback === "good" || feedback === "fail" ? h("button", { on: { click: deps.onViewSolution } }, "View solution") : null,
-        result === "solved" || result === "viewed" ? h("button", { on: { click: deps.onNext } }, "Next puzzle") : null
+        result !== "solved" && result !== "viewed" && feedback === "fail" ? h("button", { on: { click: deps.onRetry } }, "Retry") : null,
+        result !== "solved" && result !== "viewed" && (feedback === "find" || feedback === "good" || feedback === "fail") ? h("button", { on: { click: deps.onViewSolution } }, "View solution") : null
       ]),
       h("section.puzzle-round__meta", [
         h("h3", "Puzzle context"),
