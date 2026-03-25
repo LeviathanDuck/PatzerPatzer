@@ -82,6 +82,13 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-092 - Cache Board Move Destinations
 - [x] CCP-093 - Narrow Board Auto-Shape Updates
 - [x] CCP-094 - Remove Board Overlay Fade Animation
+- [ ] CCP-119 - Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
+- [ ] CCP-118 - Phase 1 Puzzle Training Queue Manager (CCP-113–115)
+- [ ] CCP-117 - Show Active Training Context in Puzzle Round Side Panel
+- [ ] CCP-116 - Persist Filter Query State to IDB
+- [ ] CCP-115 - Add "Start Training" Entry Point to Puzzle Library
+- [ ] CCP-114 - Wire Training Queue into Continue-Training Navigation
+- [ ] CCP-113 - Add Training Queue State to Imported Puzzle Module
 - [ ] CCP-112 - Phase 2 Puzzle Sprint Manager (CCP-107–110)
 - [ ] CCP-111 - Phase 1 Puzzle Sprint Manager (CCP-103–106)
 - [ ] CCP-110 - Add Result History Dots
@@ -2166,4 +2173,116 @@ It should stay in sync with the detailed entry below.
   - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
+```
+
+## CCP-113 - Add Training Queue State to Imported Puzzle Module
+
+```
+- [ ] Reviewed
+  - ID: `CCP-113`
+  - Task ID: `CCP-113`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+  - Source step: Puzzle training queue — sequential puzzle delivery within a filtered set
+  - Task: add training mode + cursor state to imported.ts (startTraining, advanceTrainingCursor, getNextTrainingRouteId, isTrainingMode, stopTraining)
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-114 - Wire Training Queue into Continue-Training Navigation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-114`
+  - Task ID: `CCP-114`
+  - Parent prompt ID: CCP-113
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+  - Source step: Post-completion continuation — "next puzzle" in training mode
+  - Task: update onNext in index.ts to use training queue cursor for imported puzzles; stopTraining if user navigates off-queue
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-115 - Add "Start Training" Entry Point to Puzzle Library
+
+```
+- [ ] Reviewed
+  - ID: `CCP-115`
+  - Task ID: `CCP-115`
+  - Parent prompt ID: CCP-114
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+  - Source step: Training entry point — entering continuous solve mode from the library
+  - Task: add "Start Training →" button to imported library header in view.ts; wire onStartTraining callback in index.ts
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-116 - Persist Filter Query State to IDB
+
+```
+- [ ] Reviewed
+  - ID: `CCP-116`
+  - Task ID: `CCP-116`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+  - Source step: Filter persistence — filters survive page reload
+  - Task: add savePuzzleQueryToIdb/loadPuzzleQueryFromIdb to idb/index.ts; save on filter change, restore on initPuzzles
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-117 - Show Active Training Context in Puzzle Round Side Panel
+
+```
+- [ ] Reviewed
+  - ID: `CCP-117`
+  - Task ID: `CCP-117`
+  - Parent prompt ID: CCP-116
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+  - Source step: Side panel — puzzle metadata and active training context
+  - Task: render training context label (theme/rating range) in puzzle-round side panel for imported puzzles
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-118 - Phase 1 Puzzle Training Queue Manager (CCP-113–115)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-118`
+  - Task ID: `CCP-118`
+  - Parent prompt ID: none
+  - Batch prompt IDs: CCP-113, CCP-114, CCP-115
+  - Source document: `docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+  - Source step: Phase 1 — sequential training queue
+  - Task: manager prompt — run CCP-113, CCP-114, CCP-115 in order, verify build after each
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-119 - Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-119`
+  - Task ID: `CCP-119`
+  - Parent prompt ID: none
+  - Batch prompt IDs: CCP-116, CCP-117
+  - Source document: `docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+  - Source step: Phase 2 — filter persistence and training context
+  - Task: manager prompt — run CCP-116, CCP-117 in order, verify build after each
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
 ```
