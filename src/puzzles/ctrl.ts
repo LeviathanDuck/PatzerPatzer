@@ -77,7 +77,8 @@ export function makePuzzleCtrl(
       const expected = round.solution[progressPly];
       if (!expected || path !== currentPath || result !== 'active' || !sameMove(uci, expected)) {
         feedback = 'fail';
-        result = 'failed';
+        // result stays 'active' so the user can retry; 'failed' is reserved for
+        // an explicit give-up action added in a later sprint
         emit();
         return { accepted: false, replies: [] };
       }

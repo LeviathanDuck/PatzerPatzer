@@ -331,21 +331,32 @@ export function renderPuzzleRound(deps: {
       deps.bottomStrip,
     ]),
     h('aside.puzzle-round__side', [
-      h('section.puzzle-round__feedback', [
-        h('div.puzzle-round__status', label),
-        h('div.puzzle-round__progress', `${done} / ${total}`),
+      h(`section.puzzle-round__feedback.${feedback}`, [
+        (result === 'solved' || result === 'viewed')
+          ? h('div.puzzle-round__after', [
+              h('div.puzzle-round__complete',
+                result === 'solved' ? 'Puzzle solved!' : 'Puzzle complete.',
+              ),
+              h('button.puzzle-round__next', { on: { click: deps.onNext } }, 'Continue training →'),
+            ])
+          : [
+              (feedback === 'good' || feedback === 'win')
+                ? h('div.puzzle-round__feedback-icon', '✓')
+                : feedback === 'fail'
+                  ? h('div.puzzle-round__feedback-icon', '✗')
+                  : null,
+              h('div.puzzle-round__status', label),
+              h('div.puzzle-round__progress', `${done} / ${total}`),
+            ],
       ]),
       h('section.puzzle-round__controls', [
         h('button', { on: { click: deps.onBack } }, 'Back to library'),
         h('button', { on: { click: deps.onFlip } }, 'Flip'),
-        feedback === 'fail'
+        (result !== 'solved' && result !== 'viewed' && feedback === 'fail')
           ? h('button', { on: { click: deps.onRetry } }, 'Retry')
           : null,
-        (feedback === 'find' || feedback === 'good' || feedback === 'fail')
+        (result !== 'solved' && result !== 'viewed' && (feedback === 'find' || feedback === 'good' || feedback === 'fail'))
           ? h('button', { on: { click: deps.onViewSolution } }, 'View solution')
-          : null,
-        (result === 'solved' || result === 'viewed')
-          ? h('button', { on: { click: deps.onNext } }, 'Next puzzle')
           : null,
       ]),
       h('section.puzzle-round__meta', [
