@@ -93,6 +93,10 @@ export interface ImportedPuzzleRound extends PuzzleRoundBase {
   source: null;
   sourceGame: null;
   imported: ImportedPuzzleRecord;
+  /** The opponent's triggering move (moves[0] from the Lichess CSV).
+   *  Auto-played during board setup before the user gets control.
+   *  Excluded from `solution` so progressPly 0 maps to the user's first move. */
+  initialMove: string;
 }
 
 export type PuzzleRound = SavedPuzzleRound | ImportedPuzzleRound;
