@@ -2467,6 +2467,28 @@ async function loadPuzzleSessionFromIdb() {
     return void 0;
   }
 }
+async function savePuzzleQueryToIdb(filters) {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction("puzzle-library", "readwrite");
+    tx.objectStore("puzzle-library").put(filters, "puzzle-query-filters");
+  } catch (e) {
+    console.warn("[idb] puzzle query save failed", e);
+  }
+}
+async function loadPuzzleQueryFromIdb() {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("puzzle-library", "readonly").objectStore("puzzle-library").get("puzzle-query-filters");
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[idb] puzzle query load failed", e);
+    return null;
+  }
+}
 
 // src/engine/batch.ts
 var _getCtrl2 = () => {
@@ -7539,6 +7561,102 @@ function requestImportedPuzzleLibrary(query) {
     _redraw6();
   })();
 }
+async function loadTrainingPage(query, page) {
+  const loadedManifest = await loadManifest();
+  if (!loadedManifest) return { items: [], hasNext: false };
+  const { pageSize, filters } = query;
+  const matchingShards = loadedManifest.shards.filter((shard) => shardMayMatch(shard, filters));
+  const start4 = page * pageSize;
+  const end3 = start4 + pageSize;
+  const matches = [];
+  let hasMorePossible = false;
+  for (const shard of matchingShards) {
+    const rows = await loadShard(shard.file, shard.id);
+    for (const row of rows) {
+      if (!recordMatchesFilters(row, filters)) continue;
+      matches.push(row);
+      if (matches.length > end3) break;
+    }
+    if (matches.length > end3) {
+      hasMorePossible = true;
+      break;
+    }
+  }
+  return {
+    items: matches.slice(start4, end3),
+    hasNext: matches.length > end3 || hasMorePossible
+  };
+}
+var trainingActive = false;
+var trainingQuery = null;
+var trainingPage = 0;
+var trainingItems = [];
+var trainingIndex = 0;
+var trainingNextItems = null;
+var trainingNextHasNext = false;
+var trainingNextPage = -1;
+function prefetchNextTrainingPage() {
+  if (!trainingActive || !trainingQuery) return;
+  const nextPage = trainingPage + 1;
+  if (trainingNextPage === nextPage) return;
+  trainingNextPage = nextPage;
+  trainingNextItems = null;
+  void loadTrainingPage(trainingQuery, nextPage).then((result) => {
+    if (!trainingActive || trainingNextPage !== nextPage) return;
+    trainingNextItems = result.items;
+    trainingNextHasNext = result.hasNext;
+  });
+}
+function startTraining(query) {
+  trainingActive = true;
+  trainingQuery = { ...query, page: 0 };
+  trainingPage = 0;
+  trainingItems = [];
+  trainingIndex = 0;
+  trainingNextItems = null;
+  trainingNextHasNext = false;
+  trainingNextPage = -1;
+  void loadTrainingPage(trainingQuery, 0).then((result) => {
+    if (!trainingActive) return;
+    trainingItems = result.items;
+    if (result.hasNext) prefetchNextTrainingPage();
+    _redraw6();
+  });
+}
+function isTrainingMode() {
+  return trainingActive;
+}
+function currentTrainingRouteId() {
+  return trainingItems[trainingIndex]?.routeId ?? null;
+}
+function advanceTrainingCursor() {
+  if (!trainingActive) return;
+  trainingIndex++;
+  if (trainingIndex < trainingItems.length) {
+    if (trainingIndex >= trainingItems.length - 2) prefetchNextTrainingPage();
+    return;
+  }
+  if (trainingNextItems !== null && trainingNextItems.length > 0) {
+    trainingPage++;
+    trainingItems = trainingNextItems;
+    trainingIndex = 0;
+    trainingNextItems = null;
+    trainingNextPage = -1;
+    if (trainingNextHasNext) prefetchNextTrainingPage();
+  } else if (trainingNextItems !== null && trainingNextItems.length === 0) {
+    trainingActive = false;
+  }
+}
+function stopTraining() {
+  trainingActive = false;
+  trainingQuery = null;
+  trainingPage = 0;
+  trainingItems = [];
+  trainingIndex = 0;
+  trainingNextItems = null;
+  trainingNextHasNext = false;
+  trainingNextPage = -1;
+}
 async function findImportedPuzzleRoundByRouteId(routeId) {
   const parsed = parseImportedPuzzleRouteId(routeId);
   if (!parsed) return null;
@@ -7787,7 +7905,8 @@ function renderImportedPuzzleLibrary(deps) {
         h("button", { attrs: { disabled: !state.hasPrev }, on: { click: deps.onPrevPage } }, "\u2190 Prev"),
         h("span", pageLabel),
         h("button", { attrs: { disabled: !state.hasNext }, on: { click: deps.onNextPage } }, "Next \u2192")
-      ])
+      ]),
+      state.items.length > 0 ? h("button.puzzle-library__train-btn", { on: { click: deps.onStartTraining } }, "Start Training \u2192") : null
     ]),
     state.items.length === 0 ? h("div.puzzle-library__empty-body", [
       h("p", "No imported puzzles matched the current filters.")
@@ -7836,7 +7955,8 @@ function renderPuzzleLibrary(deps) {
       onTheme: deps.onImportedTheme,
       onOpening: deps.onImportedOpening,
       onPrevPage: deps.onImportedPrevPage,
-      onNextPage: deps.onImportedNextPage
+      onNextPage: deps.onImportedNextPage,
+      onStartTraining: deps.onStartTraining
     })
   ]);
 }
@@ -7908,6 +8028,18 @@ function renderPuzzleRound(deps) {
       ]) : null
     ]),
     h("aside.puzzle-round__side", [
+      deps.trainingContext ? (() => {
+        const ctx = deps.trainingContext;
+        const parts = [];
+        if (ctx.theme) parts.push(ctx.theme);
+        if (ctx.opening) parts.push(ctx.opening);
+        const ratingMin = ctx.ratingMin.trim();
+        const ratingMax = ctx.ratingMax.trim();
+        if (ratingMin || ratingMax) {
+          parts.push(ratingMin && ratingMax ? `${ratingMin}\u2013${ratingMax}` : ratingMin || ratingMax);
+        }
+        return parts.length > 0 ? h("div.puzzle-round__training-context", `Training: ${parts.join(" \xB7 ")}`) : null;
+      })() : null,
       h(`section.puzzle-round__feedback.${feedback}`, [
         result === "solved" || result === "viewed" ? h("div.puzzle-round__after", [
           h(
@@ -8040,6 +8172,7 @@ function updateImportedFilters(patch2) {
     }
   };
   requestImportedPuzzleLibrary(importedQuery);
+  void savePuzzleQueryToIdb(importedQuery.filters);
 }
 function stepImportedPage(delta) {
   const nextPage = Math.max(0, importedQuery.page + delta);
@@ -8056,6 +8189,13 @@ function nextPuzzleHref(round) {
     const idx2 = rounds.findIndex((candidate) => candidate.key === round.key);
     const next3 = idx2 >= 0 ? rounds[idx2 + 1] : null;
     return next3 ? `#/puzzles/${next3.routeId}` : "#/puzzles";
+  }
+  if (isTrainingMode()) {
+    advanceTrainingCursor();
+    const routeId = currentTrainingRouteId();
+    if (routeId) return `#/puzzles/${routeId}`;
+    if (!isTrainingMode()) return "#/puzzles";
+    return "#/puzzles";
   }
   const importedState = importedPuzzleLibraryState();
   const idx = importedState.items.findIndex((item) => item.key === round.key);
@@ -8103,6 +8243,9 @@ function initPuzzles(deps) {
   _restoreStandalonePuzzleBackground = deps.restoreStandalonePuzzleBackground;
   _hasStandalonePuzzleBackground = deps.hasStandalonePuzzleBackground;
   initImportedPuzzles({ redraw: deps.redraw });
+  void loadPuzzleQueryFromIdb().then((filters) => {
+    if (filters) importedQuery = { ...importedQuery, page: 0, filters };
+  });
   void loadPuzzleSessionFromIdb().then((session) => {
     puzzleSession = session ?? emptyPuzzleSession();
     _redraw7();
@@ -8130,6 +8273,9 @@ async function syncPuzzleRoute(route) {
   const active = getActivePuzzleCtrl();
   const activeSnapshot = active ? currentPuzzleSnapshot(puzzleSession, active.round().key) : null;
   if (active?.round().routeId === routeId && routeState.status === "ready" && (!activeSnapshot || active.progressPly() === activeSnapshot.progressPly)) return;
+  if (isTrainingMode() && isImportedPuzzleRouteId(routeId) && currentTrainingRouteId() !== routeId) {
+    stopTraining();
+  }
   routeState = { status: "loading", routeId };
   clearActivePuzzleRoute();
   _redraw7();
@@ -8209,7 +8355,25 @@ function renderPuzzlesRoute(route) {
       onImportedTheme: (value) => updateImportedFilters({ theme: value }),
       onImportedOpening: (value) => updateImportedFilters({ opening: value }),
       onImportedPrevPage: () => stepImportedPage(-1),
-      onImportedNextPage: () => stepImportedPage(1)
+      onImportedNextPage: () => stepImportedPage(1),
+      onStartTraining: () => {
+        startTraining(importedQuery);
+        const routeId = currentTrainingRouteId();
+        if (routeId) {
+          window.location.hash = `#/puzzles/${routeId}`;
+        } else {
+          const waitForTraining = () => {
+            const id = currentTrainingRouteId();
+            if (id) {
+              window.location.hash = `#/puzzles/${id}`;
+              return;
+            }
+            if (!isTrainingMode()) return;
+            setTimeout(waitForTraining, 50);
+          };
+          setTimeout(waitForTraining, 50);
+        }
+      }
     });
   }
   if (route.name !== "puzzle-round") {
@@ -8270,6 +8434,7 @@ function renderPuzzlesRoute(route) {
     onNavNext,
     onNavLast,
     recent: puzzleSession.recent,
+    trainingContext: ctrl2.round().sourceKind === "imported" && isTrainingMode() ? importedQuery.filters : null,
     board: renderBoard(),
     promotionDialog: renderPromotionDialog(),
     topStrip,
