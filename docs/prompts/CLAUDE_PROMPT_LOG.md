@@ -82,6 +82,7 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-092 - Cache Board Move Destinations
 - [x] CCP-093 - Narrow Board Auto-Shape Updates
 - [x] CCP-094 - Remove Board Overlay Fade Animation
+- [ ] CCP-112 - Phase 2 Puzzle Sprint Manager (CCP-107–110)
 - [ ] CCP-111 - Phase 1 Puzzle Sprint Manager (CCP-103–106)
 - [ ] CCP-110 - Add Result History Dots
 - [ ] CCP-109 - Add Keyboard Navigation Shortcuts
@@ -310,6 +311,23 @@ It should stay in sync with the detailed entry below.
   - Task: add basic rating, theme, and opening filters plus lazy shard paging for the imported Lichess library
   - Claude used: yes
   - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-112 - Phase 2 Puzzle Sprint Manager (CCP-107–110)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-112`
+  - Task ID: `CCP-112`
+  - Parent prompt ID: none
+  - Batch prompt IDs: CCP-107, CCP-108, CCP-109, CCP-110
+  - Source document: docs/prompts/manager-batch.md
+  - Source step: Phase 2 puzzle sprint execution
+  - Task: auto-run CCP-107 through CCP-110 in sequence
+  - Claude used: yes
+  - Review outcome: pending
   - Review issues: none
   - Execution target: `Claude Code`
 ```

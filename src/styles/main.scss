@@ -2685,97 +2685,13 @@ body[data-board='newspaper'] cg-board::before {
   }
 }
 
-.puzzle-round {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 18px;
-  padding: 16px;
-  align-items: start;
-
-  &__board-shell {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  &__side {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  &__feedback,
-  &__controls,
-  &__meta {
-    border: 1px solid var(--c-border);
-    border-radius: 12px;
-    padding: 12px;
-    background: color-mix(in srgb, var(--c-bg) 86%, white 14%);
-  }
-
-  &__status {
-    font-weight: 700;
-  }
-
-  &__progress {
-    margin-top: 6px;
-    color: var(--c-muted);
-  }
-
-  // Feedback icon — ✓ for correct/win, ✗ for fail.
-  // Color rules scoped by the feedback state modifier class on the parent section.
-  // Adapted from lichess-org/lila: ui/puzzle/css/_tools.scss .good/.fail .icon rules.
-  &__feedback-icon {
-    font-size: 2rem;
-    line-height: 1;
-    margin-bottom: 6px;
-  }
-
-  &__feedback.good &__feedback-icon,
-  &__feedback.win &__feedback-icon {
-    color: #4caf50;
-  }
-
-  &__feedback.fail &__feedback-icon {
-    color: #e53935;
-  }
-
-  &__controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  &__meta {
-    h3 {
-      margin: 0 0 10px;
-    }
-
-    dl {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: 6px 10px;
-      margin: 0 0 12px;
-    }
-
-    dt {
-      color: var(--c-muted);
-    }
-
-    dd {
-      margin: 0;
-    }
-  }
-}
+// Puzzle round and related styles are in _puzzle.scss
+@import 'puzzle';
 
 @media (max-width: 900px) {
   .puzzle-library__header {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .puzzle-round {
-    grid-template-columns: 1fr;
   }
 
   .puzzle-library__filters {

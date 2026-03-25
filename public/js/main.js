@@ -7210,11 +7210,1102 @@ function renderAnalysisControls(extraButtons) {
   ]);
 }
 
+// src/puzzles/ctrl.ts
+var altCastles = {
+  e1a1: "e1c1",
+  e1h1: "e1g1",
+  e8a8: "e8c8",
+  e8h8: "e8g8"
+};
+function isAltCastle(uci) {
+  return uci in altCastles;
+}
+function sameMove(played, expected) {
+  return played === expected || isAltCastle(played) && altCastles[played] === expected;
+}
+function makePuzzleCtrl(round, onChange3 = () => {
+}) {
+  let feedback = "find";
+  let result = "active";
+  let progressPly = 0;
+  let currentPath = round.parentPath;
+  const totalUserMoves = Math.ceil(round.solution.length / 2);
+  function emit() {
+    onChange3({
+      key: round.key,
+      progressPly,
+      currentPath,
+      feedback,
+      result,
+      updatedAt: Date.now()
+    });
+  }
+  return {
+    round: () => round,
+    feedback: () => feedback,
+    result: () => result,
+    progress: () => [Math.ceil(progressPly / 2), totalUserMoves],
+    progressPly: () => progressPly,
+    currentPath: () => currentPath,
+    currentExpectedMove: () => round.solution[progressPly] ?? null,
+    setCurrentPath(path) {
+      currentPath = path;
+      emit();
+    },
+    submitUserMove(uci, path) {
+      const expected = round.solution[progressPly];
+      if (!expected || path !== currentPath || result !== "active" || !sameMove(uci, expected)) {
+        feedback = "fail";
+        emit();
+        return { accepted: false, replies: [] };
+      }
+      progressPly += 1;
+      const replies = [];
+      while (progressPly < round.solution.length && progressPly % 2 === 1) {
+        replies.push(round.solution[progressPly]);
+        progressPly += 1;
+      }
+      if (progressPly >= round.solution.length) {
+        feedback = "win";
+        result = "solved";
+      } else {
+        feedback = "good";
+      }
+      emit();
+      return { accepted: true, replies };
+    },
+    retry() {
+      progressPly = 0;
+      feedback = "find";
+      result = "active";
+      currentPath = round.parentPath;
+      emit();
+    },
+    viewSolution() {
+      feedback = "view";
+      result = "viewed";
+      progressPly = round.solution.length;
+      emit();
+      return [...round.solution];
+    },
+    restore(snapshot) {
+      progressPly = Math.max(0, Math.min(snapshot.progressPly, round.solution.length));
+      feedback = snapshot.feedback;
+      result = snapshot.result;
+      currentPath = snapshot.currentPath;
+      emit();
+    },
+    snapshot() {
+      return {
+        key: round.key,
+        progressPly,
+        currentPath,
+        feedback,
+        result,
+        updatedAt: Date.now()
+      };
+    }
+  };
+}
+
+// src/puzzles/imported.ts
+var IMPORTED_PUZZLE_KEY_PREFIX = "lichess::";
+var IMPORTED_PUZZLE_BASE_URL = "/generated/lichess-puzzles";
+var DEFAULT_IMPORTED_PAGE_SIZE = 24;
+var _redraw6 = () => {
+};
+var manifest = null;
+var manifestPromise = null;
+var shardCache = /* @__PURE__ */ new Map();
+var libraryState = {
+  status: "idle",
+  query: defaultImportedPuzzleQuery(),
+  manifest: null,
+  items: [],
+  hasPrev: false,
+  hasNext: false,
+  loadedShardCount: 0
+};
+var libraryRequestKey = "";
+var libraryRequestToken = 0;
+function initImportedPuzzles(deps) {
+  _redraw6 = deps.redraw;
+}
+function defaultImportedPuzzleFilters() {
+  return {
+    ratingMin: "",
+    ratingMax: "",
+    theme: "",
+    opening: ""
+  };
+}
+function defaultImportedPuzzleQuery() {
+  return {
+    page: 0,
+    pageSize: DEFAULT_IMPORTED_PAGE_SIZE,
+    filters: defaultImportedPuzzleFilters()
+  };
+}
+function importedPuzzleLibraryState() {
+  return libraryState;
+}
+function importedPuzzleKey(shardId, id) {
+  return `${IMPORTED_PUZZLE_KEY_PREFIX}${shardId}::${id}`;
+}
+function importedPuzzleRouteId(shardId, id) {
+  return encodeURIComponent(importedPuzzleKey(shardId, id));
+}
+function isImportedPuzzleRouteId(routeId) {
+  return parseImportedPuzzleRouteId(routeId) !== null;
+}
+function parseImportedPuzzleRouteId(routeId) {
+  let decoded = routeId;
+  try {
+    decoded = decodeURIComponent(routeId);
+  } catch {
+    decoded = routeId;
+  }
+  if (!decoded.startsWith(IMPORTED_PUZZLE_KEY_PREFIX)) return null;
+  const body = decoded.slice(IMPORTED_PUZZLE_KEY_PREFIX.length);
+  const sep = body.indexOf("::");
+  if (sep < 0) return null;
+  const shardId = body.slice(0, sep);
+  const id = body.slice(sep + 2);
+  return shardId && id ? { shardId, id } : null;
+}
+function queryKey(query) {
+  return JSON.stringify(query);
+}
+async function loadManifest() {
+  if (manifest !== null) return manifest;
+  if (manifestPromise) return manifestPromise;
+  manifestPromise = (async () => {
+    try {
+      const response = await fetch(`${IMPORTED_PUZZLE_BASE_URL}/manifest.json`, { cache: "no-store" });
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`Manifest request failed with ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.warn("[puzzles] imported manifest load failed", error);
+      return null;
+    }
+  })();
+  manifest = await manifestPromise;
+  return manifest;
+}
+function annotateShardRecords(shardId, rows) {
+  return rows.map((row) => ({
+    ...row,
+    shardId,
+    key: importedPuzzleKey(shardId, row.id),
+    routeId: importedPuzzleRouteId(shardId, row.id)
+  }));
+}
+async function loadShard(file, shardId) {
+  const cached = shardCache.get(file);
+  if (cached) return cached;
+  const promise = (async () => {
+    const response = await fetch(`${IMPORTED_PUZZLE_BASE_URL}/${file}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Shard request failed with ${response.status}`);
+    const rows = await response.json();
+    return annotateShardRecords(shardId, rows);
+  })();
+  shardCache.set(file, promise);
+  return promise;
+}
+function normalizeTag(tag) {
+  return tag.trim().toLowerCase();
+}
+function toOptionalNumber(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const value = Number.parseInt(trimmed, 10);
+  return Number.isFinite(value) ? value : null;
+}
+function recordMatchesFilters(record, filters) {
+  const min = toOptionalNumber(filters.ratingMin);
+  const max = toOptionalNumber(filters.ratingMax);
+  if (min !== null && record.rating < min) return false;
+  if (max !== null && record.rating > max) return false;
+  if (filters.theme) {
+    const wanted = normalizeTag(filters.theme);
+    if (!record.themes.some((theme) => normalizeTag(theme) === wanted)) return false;
+  }
+  if (filters.opening) {
+    const wanted = normalizeTag(filters.opening);
+    if (!record.openingTags.some((opening) => normalizeTag(opening) === wanted)) return false;
+  }
+  return true;
+}
+function shardMayMatch(shard, filters) {
+  const min = toOptionalNumber(filters.ratingMin);
+  const max = toOptionalNumber(filters.ratingMax);
+  if (min !== null && shard.ratingMax !== void 0 && shard.ratingMax < min) return false;
+  if (max !== null && shard.ratingMin !== void 0 && shard.ratingMin > max) return false;
+  if (filters.theme) {
+    const wanted = normalizeTag(filters.theme);
+    if (!shard.themes.some((theme) => normalizeTag(theme) === wanted)) return false;
+  }
+  if (filters.opening) {
+    const wanted = normalizeTag(filters.opening);
+    if (!shard.openings.some((opening) => normalizeTag(opening) === wanted)) return false;
+  }
+  return true;
+}
+function requestImportedPuzzleLibrary(query) {
+  const nextKey = queryKey(query);
+  if (libraryRequestKey === nextKey && libraryState.status !== "idle") return;
+  libraryRequestKey = nextKey;
+  const token = ++libraryRequestToken;
+  libraryState = {
+    status: "loading",
+    query,
+    manifest,
+    items: [],
+    hasPrev: query.page > 0,
+    hasNext: false,
+    loadedShardCount: 0
+  };
+  _redraw6();
+  void (async () => {
+    const loadedManifest = await loadManifest();
+    if (token !== libraryRequestToken) return;
+    if (!loadedManifest) {
+      libraryState = {
+        status: "missing",
+        query,
+        manifest: null,
+        items: [],
+        hasPrev: query.page > 0,
+        hasNext: false,
+        loadedShardCount: 0
+      };
+      _redraw6();
+      return;
+    }
+    const matchingShards = loadedManifest.shards.filter((shard) => shardMayMatch(shard, query.filters));
+    const start4 = query.page * query.pageSize;
+    const end3 = start4 + query.pageSize;
+    const target = end3 + 1;
+    const matches = [];
+    let loadedShardCount = 0;
+    let hasMorePossible = false;
+    try {
+      for (let i = 0; i < matchingShards.length; i++) {
+        const shard = matchingShards[i];
+        const rows = await loadShard(shard.file, shard.id);
+        if (token !== libraryRequestToken) return;
+        loadedShardCount += 1;
+        for (const row of rows) {
+          if (!recordMatchesFilters(row, query.filters)) continue;
+          matches.push(row);
+          if (matches.length > target) break;
+        }
+        if (matches.length > target) {
+          hasMorePossible = true;
+          break;
+        }
+      }
+    } catch (error) {
+      console.warn("[puzzles] imported shard load failed", error);
+      if (token !== libraryRequestToken) return;
+      libraryState = {
+        status: "error",
+        query,
+        manifest: loadedManifest,
+        items: [],
+        hasPrev: query.page > 0,
+        hasNext: false,
+        loadedShardCount,
+        error: error instanceof Error ? error.message : "Imported shard load failed"
+      };
+      _redraw6();
+      return;
+    }
+    const pageItems = matches.slice(start4, end3);
+    const hasNext = matches.length > end3 || hasMorePossible;
+    libraryState = {
+      status: "ready",
+      query,
+      manifest: loadedManifest,
+      items: pageItems,
+      hasPrev: query.page > 0,
+      hasNext,
+      loadedShardCount
+    };
+    _redraw6();
+  })();
+}
+async function findImportedPuzzleRoundByRouteId(routeId) {
+  const parsed = parseImportedPuzzleRouteId(routeId);
+  if (!parsed) return null;
+  const loadedManifest = await loadManifest();
+  if (!loadedManifest) return null;
+  const shard = loadedManifest.shards.find((entry) => entry.id === parsed.shardId);
+  if (!shard) return null;
+  const rows = await loadShard(shard.file, shard.id);
+  const record = rows.find((row) => row.id === parsed.id);
+  if (!record) return null;
+  const toMove = record.fen.split(" ")[1] === "b" ? "black" : "white";
+  return {
+    key: record.key,
+    routeId: record.routeId,
+    sourceKind: "imported",
+    source: null,
+    sourceGame: null,
+    imported: record,
+    parentPath: "",
+    startFen: record.fen,
+    solution: [...record.moves],
+    toMove
+  };
+}
+
+// src/puzzles/round.ts
+var LOCAL_PUZZLE_GAME_ID = "local";
+function puzzleKey(candidate) {
+  return `${candidate.gameId ?? LOCAL_PUZZLE_GAME_ID}::${candidate.path}`;
+}
+function puzzleRouteIdFromKey(key) {
+  return encodeURIComponent(key);
+}
+function decodePuzzleRouteId(routeId) {
+  try {
+    return decodeURIComponent(routeId);
+  } catch {
+    return routeId;
+  }
+}
+function puzzleRouteHref(candidate) {
+  return `#/puzzles/${puzzleRouteIdFromKey(puzzleKey(candidate))}`;
+}
+function findSavedPuzzleByRouteId(puzzles, routeId) {
+  const decoded = decodePuzzleRouteId(routeId);
+  return puzzles.find((p) => puzzleKey(p) === decoded) ?? null;
+}
+function getPuzzleSolutionLine(candidate, storedAnalysis) {
+  const parentPath = pathInit(candidate.path);
+  const persisted = storedAnalysis?.nodes[parentPath]?.bestLine ?? [];
+  if (persisted.length === 0) return [candidate.bestMove];
+  if (persisted[0] === candidate.bestMove) return persisted;
+  return [candidate.bestMove, ...persisted];
+}
+function buildPuzzleRound(candidate, opts = {}) {
+  const key = puzzleKey(candidate);
+  return {
+    key,
+    routeId: puzzleRouteIdFromKey(key),
+    sourceKind: "saved",
+    source: candidate,
+    sourceGame: opts.sourceGame ?? null,
+    imported: null,
+    parentPath: pathInit(candidate.path),
+    startFen: candidate.fen,
+    solution: getPuzzleSolutionLine(candidate, opts.storedAnalysis),
+    toMove: candidate.ply % 2 === 1 ? "white" : "black"
+  };
+}
+function buildStandalonePuzzleRoot(fen) {
+  const setup = parseFen(fen).unwrap();
+  const initialPly = (setup.fullmoves - 1) * 2 + (setup.turn === "white" ? 0 : 1);
+  return {
+    id: "",
+    ply: initialPly,
+    fen,
+    children: []
+  };
+}
+
+// src/puzzles/session.ts
+var RECENT_PUZZLES_MAX = 16;
+function emptyPuzzleSession() {
+  return {
+    current: null,
+    recent: [],
+    updatedAt: Date.now()
+  };
+}
+function applyPuzzleSnapshot(session, snapshot) {
+  const next2 = {
+    current: snapshot,
+    recent: [...session.recent],
+    updatedAt: snapshot.updatedAt
+  };
+  if (snapshot.result !== "active") {
+    const result = snapshot.result;
+    next2.recent = [
+      { key: snapshot.key, result, updatedAt: snapshot.updatedAt },
+      ...next2.recent.filter((entry) => entry.key !== snapshot.key)
+    ].slice(0, RECENT_PUZZLES_MAX);
+  }
+  return next2;
+}
+function currentPuzzleSnapshot(session, key) {
+  return session.current?.key === key ? session.current : null;
+}
+function currentPuzzleIsActive(session, key) {
+  return session.current?.key === key && session.current.result === "active";
+}
+function recentPuzzleResult(session, key) {
+  if (session.current?.key === key && session.current.result !== "active") {
+    return session.current.result;
+  }
+  return session.recent.find((entry) => entry.key === key)?.result ?? null;
+}
+
+// src/puzzles/view.ts
+function formatLoss(loss) {
+  return `\u2212${Math.round(loss * 100)}%`;
+}
+function formatSavedMove(round) {
+  const moveNum = Math.ceil(round.source.ply / 2);
+  const prefix = round.source.ply % 2 === 1 ? `${moveNum}.` : `${moveNum}\u2026`;
+  return `${prefix} ${round.source.san}`;
+}
+function formatImportedOpening(record) {
+  return record.openingTags[0] ?? "No opening tag";
+}
+function renderSourceSwitch(current2, onChange3) {
+  return h("div.puzzle-library__sources", [
+    h("button", {
+      class: { active: current2 === "saved" },
+      on: { click: () => onChange3("saved") }
+    }, "Saved Puzzles"),
+    h("button", {
+      class: { active: current2 === "lichess" },
+      on: { click: () => onChange3("lichess") }
+    }, "Imported Lichess")
+  ]);
+}
+function renderSavedPuzzleLibrary(deps) {
+  const { rounds, currentPuzzleKey, recentResultForKey, isResumeKey } = deps;
+  if (rounds.length === 0) {
+    return h("div.puzzle-library__empty-body", [
+      h("p", "No saved puzzles yet."),
+      h("p", "Review games, save missed tactics, and they will appear here as local training rounds."),
+      h("a", { attrs: { href: "#/games" } }, "Go to My Games")
+    ]);
+  }
+  return h("ul.puzzle-library__list", rounds.map((round) => {
+    const result = recentResultForKey(round.key);
+    const resume = isResumeKey(round.key) || currentPuzzleKey === round.key;
+    const source = round.sourceGame ? `${round.sourceGame.white ?? "White"} vs ${round.sourceGame.black ?? "Black"}` : "Source game unavailable";
+    return h("li.puzzle-library__item", [
+      h("div.puzzle-library__main", [
+        h("div.puzzle-library__move", formatSavedMove(round)),
+        h("div.puzzle-library__meta", [
+          h("span", formatLoss(round.source.loss)),
+          h("span", `Best: ${uciToSan(round.startFen, round.source.bestMove)}`),
+          h("span", source)
+        ])
+      ]),
+      h("div.puzzle-library__actions", [
+        result ? h("span.puzzle-library__badge", result) : null,
+        round.sourceGame ? h("a.button", { attrs: { href: `#/puzzles/${round.routeId}` } }, resume ? "Resume" : "Solve") : h("span.puzzle-library__badge", "Unavailable")
+      ])
+    ]);
+  }));
+}
+function renderImportedPuzzleLibrary(deps) {
+  const { state } = deps;
+  if (state.status === "missing") {
+    return h("div.puzzle-library__empty-body", [
+      h("p", "No generated Lichess puzzle dataset was found in `public/generated/lichess-puzzles/`."),
+      h("p", "Run the local download and shard scripts first, then reload this page.")
+    ]);
+  }
+  if (state.status === "error") {
+    return h("div.puzzle-library__empty-body", [
+      h("p", "The imported puzzle dataset could not be loaded."),
+      state.error ? h("p", state.error) : null
+    ]);
+  }
+  const manifest2 = state.manifest;
+  const pageLabel = `Page ${state.query.page + 1}`;
+  const loadedLabel = manifest2 ? `Loaded ${state.loadedShardCount} / ${manifest2.shards.length} shards for this view` : "Loading manifest\u2026";
+  const filters = h("div.puzzle-library__filters", [
+    h("label", [
+      h("span", "Min rating"),
+      h("input", {
+        attrs: { type: "number", value: state.query.filters.ratingMin, placeholder: "All" },
+        on: { input: (e) => deps.onRatingMin(e.target.value) }
+      })
+    ]),
+    h("label", [
+      h("span", "Max rating"),
+      h("input", {
+        attrs: { type: "number", value: state.query.filters.ratingMax, placeholder: "All" },
+        on: { input: (e) => deps.onRatingMax(e.target.value) }
+      })
+    ]),
+    h("label", [
+      h("span", "Theme"),
+      h("select", {
+        on: { change: (e) => deps.onTheme(e.target.value) }
+      }, [
+        h("option", { attrs: { value: "" }, props: { selected: state.query.filters.theme === "" } }, "All themes"),
+        ...(manifest2?.themes ?? []).map(
+          (theme) => h("option", {
+            attrs: { value: theme },
+            props: { selected: state.query.filters.theme === theme }
+          }, theme)
+        )
+      ])
+    ]),
+    h("label", [
+      h("span", "Opening"),
+      h("select", {
+        on: { change: (e) => deps.onOpening(e.target.value) }
+      }, [
+        h("option", { attrs: { value: "" }, props: { selected: state.query.filters.opening === "" } }, "All openings"),
+        ...(manifest2?.openings ?? []).map(
+          (opening) => h("option", {
+            attrs: { value: opening },
+            props: { selected: state.query.filters.opening === opening }
+          }, opening)
+        )
+      ])
+    ])
+  ]);
+  if (state.status === "loading") {
+    return h("div", [
+      filters,
+      h("div.puzzle-library__empty-body", [
+        h("p", "Loading imported Lichess puzzles\u2026"),
+        h("p", loadedLabel)
+      ])
+    ]);
+  }
+  return h("div.puzzle-library__imported", [
+    filters,
+    h("div.puzzle-library__paging", [
+      h("span", loadedLabel),
+      h("div.puzzle-library__paging-actions", [
+        h("button", { attrs: { disabled: !state.hasPrev }, on: { click: deps.onPrevPage } }, "\u2190 Prev"),
+        h("span", pageLabel),
+        h("button", { attrs: { disabled: !state.hasNext }, on: { click: deps.onNextPage } }, "Next \u2192")
+      ])
+    ]),
+    state.items.length === 0 ? h("div.puzzle-library__empty-body", [
+      h("p", "No imported puzzles matched the current filters.")
+    ]) : h("ul.puzzle-library__list", state.items.map((item) => {
+      const themeLabel = item.themes.slice(0, 3).join(", ") || "No themes";
+      return h("li.puzzle-library__item", [
+        h("div.puzzle-library__main", [
+          h("div.puzzle-library__move", `Lichess Puzzle ${item.id}`),
+          h("div.puzzle-library__meta", [
+            h("span", `Rating ${item.rating}`),
+            item.plays !== void 0 ? h("span", `${item.plays.toLocaleString()} plays`) : null,
+            h("span", formatImportedOpening(item)),
+            h("span", themeLabel)
+          ])
+        ]),
+        h("div.puzzle-library__actions", [
+          h("span.puzzle-library__badge", "imported"),
+          h("a.button", { attrs: { href: `#/puzzles/${item.routeId}` } }, "Solve")
+        ])
+      ]);
+    }))
+  ]);
+}
+function renderPuzzleLibrary(deps) {
+  const resumeKey = deps.currentPuzzleKey ?? deps.session.current?.key ?? null;
+  const title = deps.source === "saved" ? `Saved Puzzles (${deps.savedRounds.length})` : `Imported Lichess Puzzles (${deps.importedState.manifest?.totalCount ?? "\u2026"})`;
+  const subtitle = deps.source === "saved" ? "Local tactics extracted from your reviewed games." : "Official Lichess puzzle export, preprocessed into local browser-ready shards.";
+  return h("div.puzzle-library", [
+    h("div.puzzle-library__header", [
+      h("div", [
+        h("h2", title),
+        h("p", subtitle)
+      ]),
+      resumeKey ? h("a.button", { attrs: { href: `#/puzzles/${encodeURIComponent(resumeKey)}` } }, "Resume Current Puzzle") : null
+    ]),
+    renderSourceSwitch(deps.source, deps.onSourceChange),
+    deps.source === "saved" ? renderSavedPuzzleLibrary({
+      rounds: deps.savedRounds,
+      currentPuzzleKey: deps.currentPuzzleKey,
+      recentResultForKey: deps.recentResultForKey,
+      isResumeKey: deps.isResumeKey
+    }) : renderImportedPuzzleLibrary({
+      state: deps.importedState,
+      onRatingMin: deps.onImportedRatingMin,
+      onRatingMax: deps.onImportedRatingMax,
+      onTheme: deps.onImportedTheme,
+      onOpening: deps.onImportedOpening,
+      onPrevPage: deps.onImportedPrevPage,
+      onNextPage: deps.onImportedNextPage
+    })
+  ]);
+}
+function renderPuzzleRound(deps) {
+  const round = deps.ctrl.round();
+  const [done, total] = deps.ctrl.progress();
+  const feedback = deps.ctrl.feedback();
+  const result = deps.ctrl.result();
+  let label = `Find the best move for ${round.toMove === "white" ? "White" : "Black"}`;
+  if (feedback === "good") label = "Correct. Keep going.";
+  else if (feedback === "fail") label = "Not the move. Try again or reveal the line.";
+  else if (feedback === "win") label = "Solved.";
+  else if (feedback === "view") label = "Solution shown.";
+  const metaRows = [];
+  if (round.sourceKind === "saved") {
+    const sourceGame = round.sourceGame;
+    const sourceLabel = sourceGame ? `${sourceGame.white ?? "White"} vs ${sourceGame.black ?? "Black"}` : "Source game unavailable";
+    metaRows.push(
+      h("dt", "Source game"),
+      h("dd", sourceLabel),
+      h("dt", "Mistake"),
+      h("dd", formatSavedMove(round)),
+      h("dt", "Loss"),
+      h("dd", formatLoss(round.source.loss)),
+      h("dt", "Best move"),
+      h("dd", uciToSan(round.startFen, round.source.bestMove))
+    );
+    if (sourceGame?.opening || sourceGame?.eco) {
+      metaRows.push(h("dt", "Opening"), h("dd", sourceGame.opening ?? sourceGame.eco ?? ""));
+    }
+    if (sourceGame?.date) {
+      metaRows.push(h("dt", "Date"), h("dd", sourceGame.date));
+    }
+    if (sourceGame?.timeClass) {
+      metaRows.push(h("dt", "Time control"), h("dd", sourceGame.timeClass));
+    }
+  } else {
+    const imported = round.imported;
+    metaRows.push(
+      h("dt", "Source"),
+      h("dd", "Imported Lichess puzzle"),
+      h("dt", "Puzzle ID"),
+      h("dd", imported.id),
+      h("dt", "Rating"),
+      h("dd", String(imported.rating)),
+      h("dt", "Themes"),
+      h("dd", imported.themes.join(", ") || "None"),
+      h("dt", "Opening"),
+      h("dd", formatImportedOpening(imported))
+    );
+    if (imported.plays !== void 0) {
+      metaRows.push(h("dt", "Plays"), h("dd", imported.plays.toLocaleString()));
+    }
+    if (imported.popularity !== void 0) {
+      metaRows.push(h("dt", "Popularity"), h("dd", String(imported.popularity)));
+    }
+  }
+  const isTerminal = result === "solved" || result === "viewed";
+  return h("div.puzzle-round", [
+    h("div.analyse__board.main-board.puzzle-round__board-shell", [
+      deps.topStrip,
+      h("div.analyse__board-inner", [deps.board, deps.promotionDialog]),
+      deps.bottomStrip,
+      isTerminal ? h("div.puzzle-round__nav", [
+        h("button", { on: { click: deps.onNavFirst }, attrs: { title: "First" } }, "|\u25C0"),
+        h("button", { on: { click: deps.onNavPrev }, attrs: { title: "Previous" } }, "\u25C0"),
+        h("button", { on: { click: deps.onNavNext }, attrs: { title: "Next" } }, "\u25B6"),
+        h("button", { on: { click: deps.onNavLast }, attrs: { title: "Last" } }, "\u25B6|")
+      ]) : null
+    ]),
+    h("aside.puzzle-round__side", [
+      h(`section.puzzle-round__feedback.${feedback}`, [
+        result === "solved" || result === "viewed" ? h("div.puzzle-round__after", [
+          h(
+            "div.puzzle-round__complete",
+            result === "solved" ? "Puzzle solved!" : "Puzzle complete."
+          ),
+          h("button.puzzle-round__next", { on: { click: deps.onNext } }, "Continue training \u2192")
+        ]) : [
+          feedback === "good" || feedback === "win" ? h("div.puzzle-round__feedback-icon", "\u2713") : feedback === "fail" ? h("div.puzzle-round__feedback-icon", "\u2717") : null,
+          h("div.puzzle-round__status", label),
+          h("div.puzzle-round__progress", `${done} / ${total}`)
+        ]
+      ]),
+      h("section.puzzle-round__controls", [
+        h("button", { on: { click: deps.onBack } }, "Back to library"),
+        h("button", { on: { click: deps.onFlip } }, "Flip"),
+        result !== "solved" && result !== "viewed" && feedback === "fail" ? h("button", { on: { click: deps.onRetry } }, "Retry") : null,
+        result !== "solved" && result !== "viewed" && (feedback === "find" || feedback === "good" || feedback === "fail") ? h("button", { on: { click: deps.onViewSolution } }, "View solution") : null,
+        deps.recent.length > 0 ? h(
+          "div.puzzle-round__session",
+          // Most-recent-first: index 0 is the most recent outcome
+          deps.recent.map((r) => h(`span.result-dot.result-dot--${r.result}`))
+        ) : null
+      ]),
+      h("section.puzzle-round__meta", [
+        h("h3", "Puzzle context"),
+        h("dl", metaRows),
+        round.sourceKind === "saved" && round.sourceGame ? h("button", { on: { click: deps.onOpenSourceGame } }, "Open source game") : null,
+        round.sourceKind === "imported" && round.imported.gameUrl ? h("a.button", {
+          attrs: {
+            href: round.imported.gameUrl,
+            target: "_blank",
+            rel: "noreferrer"
+          }
+        }, "Open source on Lichess") : null
+      ])
+    ])
+  ]);
+}
+
+// src/puzzles/index.ts
+var _getImportedGames4 = () => [];
+var _getRoute = () => ({ name: "home", params: {} });
+var _getCtrlPath = () => "";
+var _loadGameById = () => false;
+var _navigate3 = () => {
+};
+var _clearRetro = () => {
+};
+var _redraw7 = () => {
+};
+var _openStandalonePuzzle = () => {
+};
+var _restoreStandalonePuzzleBackground = () => {
+};
+var _hasStandalonePuzzleBackground = () => false;
+var routeState = { status: "idle" };
+var puzzleSession = emptyPuzzleSession();
+var librarySource = "saved";
+var importedQuery = defaultImportedPuzzleQuery();
+var viewPly = 0;
+function saveSessionSnapshot() {
+  const active = getActivePuzzleCtrl();
+  if (!active) return;
+  puzzleSession = applyPuzzleSnapshot(puzzleSession, active.snapshot());
+  void savePuzzleSessionToIdb(puzzleSession);
+}
+function clearActivePuzzleRoute() {
+  setActivePuzzleCtrl(void 0);
+  viewPly = 0;
+  syncArrow();
+}
+function onNavFirst() {
+  const ctrl2 = getActivePuzzleCtrl();
+  if (!ctrl2) return;
+  viewPly = 0;
+  restoreRoundBoard(ctrl2.round(), viewPly);
+  ctrl2.setCurrentPath(_getCtrlPath());
+  syncArrow();
+  _redraw7();
+}
+function onNavPrev() {
+  const ctrl2 = getActivePuzzleCtrl();
+  if (!ctrl2) return;
+  viewPly = Math.max(0, viewPly - 1);
+  restoreRoundBoard(ctrl2.round(), viewPly);
+  ctrl2.setCurrentPath(_getCtrlPath());
+  syncArrow();
+  _redraw7();
+}
+function onNavNext() {
+  const ctrl2 = getActivePuzzleCtrl();
+  if (!ctrl2) return;
+  viewPly = Math.min(ctrl2.round().solution.length, viewPly + 1);
+  restoreRoundBoard(ctrl2.round(), viewPly);
+  ctrl2.setCurrentPath(_getCtrlPath());
+  syncArrow();
+  _redraw7();
+}
+function onNavLast() {
+  const ctrl2 = getActivePuzzleCtrl();
+  if (!ctrl2) return;
+  viewPly = ctrl2.round().solution.length;
+  restoreRoundBoard(ctrl2.round(), viewPly);
+  ctrl2.setCurrentPath(_getCtrlPath());
+  syncArrow();
+  _redraw7();
+}
+function savedPuzzleRounds() {
+  const games = _getImportedGames4();
+  return savedPuzzles.map(
+    (candidate) => buildPuzzleRound(candidate, {
+      sourceGame: candidate.gameId ? games.find((game) => game.id === candidate.gameId) ?? null : null
+    })
+  );
+}
+function setLibrarySource(source) {
+  if (librarySource === source) return;
+  librarySource = source;
+  if (source === "lichess") requestImportedPuzzleLibrary(importedQuery);
+  _redraw7();
+}
+function updateImportedFilters(patch2) {
+  importedQuery = {
+    ...importedQuery,
+    page: 0,
+    filters: {
+      ...importedQuery.filters,
+      ...patch2
+    }
+  };
+  requestImportedPuzzleLibrary(importedQuery);
+}
+function stepImportedPage(delta) {
+  const nextPage = Math.max(0, importedQuery.page + delta);
+  if (nextPage === importedQuery.page) return;
+  importedQuery = {
+    ...importedQuery,
+    page: nextPage
+  };
+  requestImportedPuzzleLibrary(importedQuery);
+}
+function nextPuzzleHref(round) {
+  if (round.sourceKind === "saved") {
+    const rounds = savedPuzzleRounds();
+    const idx2 = rounds.findIndex((candidate) => candidate.key === round.key);
+    const next3 = idx2 >= 0 ? rounds[idx2 + 1] : null;
+    return next3 ? `#/puzzles/${next3.routeId}` : "#/puzzles";
+  }
+  const importedState = importedPuzzleLibraryState();
+  const idx = importedState.items.findIndex((item) => item.key === round.key);
+  const next2 = idx >= 0 ? importedState.items[idx + 1] : null;
+  return next2 ? `#/puzzles/${next2.routeId}` : "#/puzzles";
+}
+function openSourceGame(round) {
+  if (round.sourceKind !== "saved" || !round.source.gameId) return;
+  if (!_loadGameById(round.source.gameId)) return;
+  _clearRetro();
+  _navigate3(round.parentPath);
+  window.location.hash = `#/analysis/${round.source.gameId}`;
+}
+function restoreRoundBoard(round, progressPly) {
+  if (round.sourceKind === "imported") {
+    _openStandalonePuzzle(round.startFen);
+    for (let i = 0; i < progressPly; i++) {
+      const move3 = round.solution[i];
+      if (!move3) break;
+      playUciMove(move3);
+    }
+    return;
+  }
+  if (round.source.gameId) _loadGameById(round.source.gameId);
+  _clearRetro();
+  _navigate3(round.parentPath);
+  for (let i = 0; i < progressPly; i++) {
+    const move3 = round.solution[i];
+    if (!move3) break;
+    playUciMove(move3);
+  }
+}
+function initPuzzles(deps) {
+  _getImportedGames4 = deps.getImportedGames;
+  _getRoute = deps.getRoute;
+  _getCtrlPath = deps.getCtrlPath;
+  _loadGameById = deps.loadGameById;
+  _navigate3 = deps.navigate;
+  _clearRetro = deps.clearRetro;
+  _redraw7 = deps.redraw;
+  _openStandalonePuzzle = deps.openStandalonePuzzle;
+  _restoreStandalonePuzzleBackground = deps.restoreStandalonePuzzleBackground;
+  _hasStandalonePuzzleBackground = deps.hasStandalonePuzzleBackground;
+  initImportedPuzzles({ redraw: deps.redraw });
+  void loadPuzzleSessionFromIdb().then((session) => {
+    puzzleSession = session ?? emptyPuzzleSession();
+    _redraw7();
+    void syncPuzzleRoute(_getRoute());
+  });
+}
+async function syncPuzzleRoute(route) {
+  if (route.name !== "puzzle-round") {
+    if (route.name === "puzzles") {
+      routeState = { status: "library" };
+    } else {
+      routeState = { status: "idle" };
+      if (_hasStandalonePuzzleBackground()) {
+        _restoreStandalonePuzzleBackground();
+      }
+    }
+    if (getActivePuzzleCtrl()) {
+      saveSessionSnapshot();
+      clearActivePuzzleRoute();
+    }
+    _redraw7();
+    return;
+  }
+  const routeId = route.params["id"] ?? "";
+  const active = getActivePuzzleCtrl();
+  const activeSnapshot = active ? currentPuzzleSnapshot(puzzleSession, active.round().key) : null;
+  if (active?.round().routeId === routeId && routeState.status === "ready" && (!activeSnapshot || active.progressPly() === activeSnapshot.progressPly)) return;
+  routeState = { status: "loading", routeId };
+  clearActivePuzzleRoute();
+  _redraw7();
+  const importedRoute = isImportedPuzzleRouteId(routeId);
+  if (importedRoute) {
+    librarySource = "lichess";
+  } else {
+    librarySource = "saved";
+    if (_hasStandalonePuzzleBackground()) {
+      _restoreStandalonePuzzleBackground();
+    }
+  }
+  let round = null;
+  if (importedRoute) {
+    round = await findImportedPuzzleRoundByRouteId(routeId);
+    if (!round) {
+      routeState = { status: "missing", routeId, message: "This imported puzzle could not be loaded from the generated Lichess shards." };
+      _redraw7();
+      return;
+    }
+  } else {
+    const candidate = findSavedPuzzleByRouteId(savedPuzzles, routeId);
+    if (!candidate) {
+      routeState = { status: "missing", routeId, message: "This saved puzzle was not found." };
+      _redraw7();
+      return;
+    }
+    if (!candidate.gameId) {
+      routeState = { status: "missing", routeId, message: "This puzzle has no saved source game to load." };
+      _redraw7();
+      return;
+    }
+    const sourceGame = _getImportedGames4().find((game) => game.id === candidate.gameId) ?? null;
+    if (!sourceGame) {
+      routeState = { status: "missing", routeId, message: "The source game for this puzzle is no longer in the local library." };
+      _redraw7();
+      return;
+    }
+    const storedAnalysis = await loadAnalysisFromIdb(candidate.gameId);
+    round = buildPuzzleRound(candidate, {
+      sourceGame,
+      ...storedAnalysis !== void 0 ? { storedAnalysis } : {}
+    });
+  }
+  const ctrl2 = makePuzzleCtrl(round, (snapshot2) => {
+    puzzleSession = applyPuzzleSnapshot(puzzleSession, snapshot2);
+    void savePuzzleSessionToIdb(puzzleSession);
+    _redraw7();
+  });
+  setActivePuzzleCtrl(ctrl2);
+  syncArrow();
+  const snapshot = currentPuzzleSnapshot(puzzleSession, round.key);
+  const progressPly = snapshot?.progressPly ?? 0;
+  restoreRoundBoard(round, progressPly);
+  if (snapshot) ctrl2.restore(snapshot);
+  ctrl2.setCurrentPath(_getCtrlPath());
+  const restoredResult = ctrl2.result();
+  viewPly = restoredResult === "solved" || restoredResult === "viewed" ? round.solution.length : 0;
+  routeState = { status: "ready", routeId };
+  _redraw7();
+}
+function renderPuzzlesRoute(route) {
+  if (route.name === "puzzles") {
+    if (librarySource === "lichess") requestImportedPuzzleLibrary(importedQuery);
+    const rounds = savedPuzzleRounds();
+    return renderPuzzleLibrary({
+      source: librarySource,
+      onSourceChange: setLibrarySource,
+      savedRounds: rounds,
+      importedState: importedPuzzleLibraryState(),
+      session: puzzleSession,
+      currentPuzzleKey: getActivePuzzleCtrl()?.round().key ?? null,
+      recentResultForKey: (key) => recentPuzzleResult(puzzleSession, key),
+      isResumeKey: (key) => currentPuzzleIsActive(puzzleSession, key),
+      onImportedRatingMin: (value) => updateImportedFilters({ ratingMin: value }),
+      onImportedRatingMax: (value) => updateImportedFilters({ ratingMax: value }),
+      onImportedTheme: (value) => updateImportedFilters({ theme: value }),
+      onImportedOpening: (value) => updateImportedFilters({ opening: value }),
+      onImportedPrevPage: () => stepImportedPage(-1),
+      onImportedNextPage: () => stepImportedPage(1)
+    });
+  }
+  if (route.name !== "puzzle-round") {
+    return h("div");
+  }
+  if (routeState.status === "loading") {
+    return h("div.puzzle-library puzzle-library--empty", [
+      h("h2", "Puzzles"),
+      h("p", "Loading puzzle\u2026")
+    ]);
+  }
+  if (routeState.status === "missing") {
+    return h("div.puzzle-library puzzle-library--empty", [
+      h("h2", "Puzzles"),
+      h("p", routeState.message),
+      h("a", { attrs: { href: "#/puzzles" } }, "Back to puzzle library")
+    ]);
+  }
+  const ctrl2 = getActivePuzzleCtrl();
+  if (!ctrl2) {
+    return h("div.puzzle-library puzzle-library--empty", [
+      h("h2", "Puzzles"),
+      h("p", "Loading puzzle\u2026")
+    ]);
+  }
+  const [topStrip, bottomStrip] = renderPlayerStrips();
+  return renderPuzzleRound({
+    ctrl: ctrl2,
+    onBack: () => {
+      window.location.hash = "#/puzzles";
+    },
+    onFlip: () => {
+      flip();
+      _redraw7();
+    },
+    onRetry: () => {
+      ctrl2.retry();
+      viewPly = 0;
+      restoreRoundBoard(ctrl2.round(), 0);
+      ctrl2.setCurrentPath(_getCtrlPath());
+      syncArrow();
+      _redraw7();
+    },
+    onViewSolution: () => {
+      ctrl2.viewSolution();
+      viewPly = ctrl2.round().solution.length;
+      restoreRoundBoard(ctrl2.round(), viewPly);
+      ctrl2.setCurrentPath(_getCtrlPath());
+      syncArrow();
+      _redraw7();
+    },
+    onNext: () => {
+      window.location.hash = nextPuzzleHref(ctrl2.round());
+    },
+    onOpenSourceGame: () => openSourceGame(ctrl2.round()),
+    onNavFirst,
+    onNavPrev,
+    onNavNext,
+    onNavLast,
+    recent: puzzleSession.recent,
+    board: renderBoard(),
+    promotionDialog: renderPromotionDialog(),
+    topStrip,
+    bottomStrip
+  });
+}
+function puzzleHrefForCandidate(gameId, path) {
+  return puzzleRouteHref({ gameId, path });
+}
+function handlePuzzleKey(key) {
+  const ctrl2 = getActivePuzzleCtrl();
+  if (!ctrl2) return false;
+  const isTerminal = ctrl2.result() === "solved" || ctrl2.result() === "viewed";
+  if (key === "Escape") {
+    window.location.hash = "#/puzzles";
+    return true;
+  }
+  if (!isTerminal) return false;
+  if (key === "ArrowLeft") {
+    onNavPrev();
+    return true;
+  }
+  if (key === "ArrowRight") {
+    onNavNext();
+    return true;
+  }
+  if (key === "ArrowUp") {
+    onNavFirst();
+    return true;
+  }
+  if (key === "ArrowDown") {
+    onNavLast();
+    return true;
+  }
+  return false;
+}
+
 // src/keyboard.ts
 var _getCtrl6 = () => {
   throw new Error("keyboard not initialised");
 };
-var _navigate3 = () => {
+var _navigate4 = () => {
 };
 var _next = () => {
 };
@@ -7228,68 +8319,77 @@ var _flip = () => {
 };
 var _completeMove = () => {
 };
-var _redraw6 = () => {
+var _redraw8 = () => {
 };
 function bindKeyboardHandlers(deps) {
   _getCtrl6 = deps.getCtrl;
-  _navigate3 = deps.navigate;
+  _navigate4 = deps.navigate;
   _next = deps.next;
   _prev = deps.prev;
   _first = deps.first;
   _last = deps.last;
   _flip = deps.flip;
   _completeMove = deps.completeMove;
-  _redraw6 = deps.redraw;
+  _redraw8 = deps.redraw;
   document.addEventListener("keydown", (e) => {
     const tag = e.target.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (getActivePuzzleCtrl()) {
+      if (e.key !== "f" && e.key !== "F") {
+        const consumed = handlePuzzleKey(e.key);
+        if (consumed) {
+          e.preventDefault();
+          return;
+        }
+      }
+    }
     if (e.shiftKey) {
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         previousBranch();
-        _redraw6();
+        _redraw8();
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         nextBranch();
-        _redraw6();
+        _redraw8();
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         nextSibling2();
-        _redraw6();
+        _redraw8();
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         prevSibling();
-        _redraw6();
+        _redraw8();
       }
       return;
     }
     if (e.key === "ArrowRight") {
       _next();
-      _redraw6();
+      _redraw8();
     } else if (e.key === "ArrowLeft") {
       _prev();
-      _redraw6();
+      _redraw8();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       _first();
-      _redraw6();
+      _redraw8();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       _last();
-      _redraw6();
+      _redraw8();
     } else if (e.key === "f" || e.key === "F") _flip();
     else if (e.key === "x" || e.key === "X") toggleThreatMode();
     else if (e.key === "l" || e.key === "L") toggleEngine();
     else if (e.key === "a" || e.key === "A") {
       setShowEngineArrows(!showEngineArrows);
       syncArrow();
-      _redraw6();
+      _redraw8();
     } else if (e.key === " ") {
       e.preventDefault();
       playBestMove();
     } else if (e.key === "?") {
       showKeyboardHelp = !showKeyboardHelp;
-      _redraw6();
+      _redraw8();
     }
   });
 }
@@ -7309,12 +8409,12 @@ function previousBranch() {
       return p;
     })();
     if (parent && parent.children.length >= 2) {
-      _navigate3(path);
+      _navigate4(path);
       return;
     }
     path = pathInit(path);
   }
-  _navigate3("");
+  _navigate4("");
 }
 function nextBranch() {
   const ctrl2 = _getCtrl6();
@@ -7327,7 +8427,7 @@ function nextBranch() {
     node = onlyChild;
   }
   const firstChild = node.children[0];
-  if (node.children.length >= 2 && firstChild) _navigate3(path + firstChild.id);
+  if (node.children.length >= 2 && firstChild) _navigate4(path + firstChild.id);
   else _last();
 }
 function nextSibling2() {
@@ -7338,7 +8438,7 @@ function nextSibling2() {
   const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
   const next2 = parentNode2.children[(idx + 1) % parentNode2.children.length];
   if (!next2) return;
-  _navigate3(parentPath + next2.id);
+  _navigate4(parentPath + next2.id);
 }
 function prevSibling() {
   const ctrl2 = _getCtrl6();
@@ -7348,7 +8448,7 @@ function prevSibling() {
   const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
   const prev2 = parentNode2.children[(idx - 1 + parentNode2.children.length) % parentNode2.children.length];
   if (!prev2) return;
-  _navigate3(parentPath + prev2.id);
+  _navigate4(parentPath + prev2.id);
 }
 function playBestMove() {
   const best = currentEval.best;
@@ -7364,7 +8464,7 @@ function renderKeyboardHelp() {
   return h("div.keyboard-help", {
     on: { click: () => {
       showKeyboardHelp = false;
-      _redraw6();
+      _redraw8();
     } }
   }, [
     h("div.keyboard-help__box", { on: { click: (e) => e.stopPropagation() } }, [
@@ -7387,7 +8487,7 @@ function renderKeyboardHelp() {
       h("button.keyboard-help__close", {
         on: { click: () => {
           showKeyboardHelp = false;
-          _redraw6();
+          _redraw8();
         } }
       }, "\u2715")
     ])
@@ -9218,1011 +10318,6 @@ function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOn
   const nodes = [];
   renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu);
   return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes)]);
-}
-
-// src/puzzles/ctrl.ts
-var altCastles = {
-  e1a1: "e1c1",
-  e1h1: "e1g1",
-  e8a8: "e8c8",
-  e8h8: "e8g8"
-};
-function isAltCastle(uci) {
-  return uci in altCastles;
-}
-function sameMove(played, expected) {
-  return played === expected || isAltCastle(played) && altCastles[played] === expected;
-}
-function makePuzzleCtrl(round, onChange3 = () => {
-}) {
-  let feedback = "find";
-  let result = "active";
-  let progressPly = 0;
-  let currentPath = round.parentPath;
-  const totalUserMoves = Math.ceil(round.solution.length / 2);
-  function emit() {
-    onChange3({
-      key: round.key,
-      progressPly,
-      currentPath,
-      feedback,
-      result,
-      updatedAt: Date.now()
-    });
-  }
-  return {
-    round: () => round,
-    feedback: () => feedback,
-    result: () => result,
-    progress: () => [Math.ceil(progressPly / 2), totalUserMoves],
-    progressPly: () => progressPly,
-    currentPath: () => currentPath,
-    currentExpectedMove: () => round.solution[progressPly] ?? null,
-    setCurrentPath(path) {
-      currentPath = path;
-      emit();
-    },
-    submitUserMove(uci, path) {
-      const expected = round.solution[progressPly];
-      if (!expected || path !== currentPath || result !== "active" || !sameMove(uci, expected)) {
-        feedback = "fail";
-        emit();
-        return { accepted: false, replies: [] };
-      }
-      progressPly += 1;
-      const replies = [];
-      while (progressPly < round.solution.length && progressPly % 2 === 1) {
-        replies.push(round.solution[progressPly]);
-        progressPly += 1;
-      }
-      if (progressPly >= round.solution.length) {
-        feedback = "win";
-        result = "solved";
-      } else {
-        feedback = "good";
-      }
-      emit();
-      return { accepted: true, replies };
-    },
-    retry() {
-      progressPly = 0;
-      feedback = "find";
-      result = "active";
-      currentPath = round.parentPath;
-      emit();
-    },
-    viewSolution() {
-      feedback = "view";
-      result = "viewed";
-      progressPly = round.solution.length;
-      emit();
-      return [...round.solution];
-    },
-    restore(snapshot) {
-      progressPly = Math.max(0, Math.min(snapshot.progressPly, round.solution.length));
-      feedback = snapshot.feedback;
-      result = snapshot.result;
-      currentPath = snapshot.currentPath;
-      emit();
-    },
-    snapshot() {
-      return {
-        key: round.key,
-        progressPly,
-        currentPath,
-        feedback,
-        result,
-        updatedAt: Date.now()
-      };
-    }
-  };
-}
-
-// src/puzzles/imported.ts
-var IMPORTED_PUZZLE_KEY_PREFIX = "lichess::";
-var IMPORTED_PUZZLE_BASE_URL = "/generated/lichess-puzzles";
-var DEFAULT_IMPORTED_PAGE_SIZE = 24;
-var _redraw7 = () => {
-};
-var manifest = null;
-var manifestPromise = null;
-var shardCache = /* @__PURE__ */ new Map();
-var libraryState = {
-  status: "idle",
-  query: defaultImportedPuzzleQuery(),
-  manifest: null,
-  items: [],
-  hasPrev: false,
-  hasNext: false,
-  loadedShardCount: 0
-};
-var libraryRequestKey = "";
-var libraryRequestToken = 0;
-function initImportedPuzzles(deps) {
-  _redraw7 = deps.redraw;
-}
-function defaultImportedPuzzleFilters() {
-  return {
-    ratingMin: "",
-    ratingMax: "",
-    theme: "",
-    opening: ""
-  };
-}
-function defaultImportedPuzzleQuery() {
-  return {
-    page: 0,
-    pageSize: DEFAULT_IMPORTED_PAGE_SIZE,
-    filters: defaultImportedPuzzleFilters()
-  };
-}
-function importedPuzzleLibraryState() {
-  return libraryState;
-}
-function importedPuzzleKey(shardId, id) {
-  return `${IMPORTED_PUZZLE_KEY_PREFIX}${shardId}::${id}`;
-}
-function importedPuzzleRouteId(shardId, id) {
-  return encodeURIComponent(importedPuzzleKey(shardId, id));
-}
-function isImportedPuzzleRouteId(routeId) {
-  return parseImportedPuzzleRouteId(routeId) !== null;
-}
-function parseImportedPuzzleRouteId(routeId) {
-  let decoded = routeId;
-  try {
-    decoded = decodeURIComponent(routeId);
-  } catch {
-    decoded = routeId;
-  }
-  if (!decoded.startsWith(IMPORTED_PUZZLE_KEY_PREFIX)) return null;
-  const body = decoded.slice(IMPORTED_PUZZLE_KEY_PREFIX.length);
-  const sep = body.indexOf("::");
-  if (sep < 0) return null;
-  const shardId = body.slice(0, sep);
-  const id = body.slice(sep + 2);
-  return shardId && id ? { shardId, id } : null;
-}
-function queryKey(query) {
-  return JSON.stringify(query);
-}
-async function loadManifest() {
-  if (manifest !== null) return manifest;
-  if (manifestPromise) return manifestPromise;
-  manifestPromise = (async () => {
-    try {
-      const response = await fetch(`${IMPORTED_PUZZLE_BASE_URL}/manifest.json`, { cache: "no-store" });
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`Manifest request failed with ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.warn("[puzzles] imported manifest load failed", error);
-      return null;
-    }
-  })();
-  manifest = await manifestPromise;
-  return manifest;
-}
-function annotateShardRecords(shardId, rows) {
-  return rows.map((row) => ({
-    ...row,
-    shardId,
-    key: importedPuzzleKey(shardId, row.id),
-    routeId: importedPuzzleRouteId(shardId, row.id)
-  }));
-}
-async function loadShard(file, shardId) {
-  const cached = shardCache.get(file);
-  if (cached) return cached;
-  const promise = (async () => {
-    const response = await fetch(`${IMPORTED_PUZZLE_BASE_URL}/${file}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Shard request failed with ${response.status}`);
-    const rows = await response.json();
-    return annotateShardRecords(shardId, rows);
-  })();
-  shardCache.set(file, promise);
-  return promise;
-}
-function normalizeTag(tag) {
-  return tag.trim().toLowerCase();
-}
-function toOptionalNumber(raw) {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const value = Number.parseInt(trimmed, 10);
-  return Number.isFinite(value) ? value : null;
-}
-function recordMatchesFilters(record, filters) {
-  const min = toOptionalNumber(filters.ratingMin);
-  const max = toOptionalNumber(filters.ratingMax);
-  if (min !== null && record.rating < min) return false;
-  if (max !== null && record.rating > max) return false;
-  if (filters.theme) {
-    const wanted = normalizeTag(filters.theme);
-    if (!record.themes.some((theme) => normalizeTag(theme) === wanted)) return false;
-  }
-  if (filters.opening) {
-    const wanted = normalizeTag(filters.opening);
-    if (!record.openingTags.some((opening) => normalizeTag(opening) === wanted)) return false;
-  }
-  return true;
-}
-function shardMayMatch(shard, filters) {
-  const min = toOptionalNumber(filters.ratingMin);
-  const max = toOptionalNumber(filters.ratingMax);
-  if (min !== null && shard.ratingMax !== void 0 && shard.ratingMax < min) return false;
-  if (max !== null && shard.ratingMin !== void 0 && shard.ratingMin > max) return false;
-  if (filters.theme) {
-    const wanted = normalizeTag(filters.theme);
-    if (!shard.themes.some((theme) => normalizeTag(theme) === wanted)) return false;
-  }
-  if (filters.opening) {
-    const wanted = normalizeTag(filters.opening);
-    if (!shard.openings.some((opening) => normalizeTag(opening) === wanted)) return false;
-  }
-  return true;
-}
-function requestImportedPuzzleLibrary(query) {
-  const nextKey = queryKey(query);
-  if (libraryRequestKey === nextKey && libraryState.status !== "idle") return;
-  libraryRequestKey = nextKey;
-  const token = ++libraryRequestToken;
-  libraryState = {
-    status: "loading",
-    query,
-    manifest,
-    items: [],
-    hasPrev: query.page > 0,
-    hasNext: false,
-    loadedShardCount: 0
-  };
-  _redraw7();
-  void (async () => {
-    const loadedManifest = await loadManifest();
-    if (token !== libraryRequestToken) return;
-    if (!loadedManifest) {
-      libraryState = {
-        status: "missing",
-        query,
-        manifest: null,
-        items: [],
-        hasPrev: query.page > 0,
-        hasNext: false,
-        loadedShardCount: 0
-      };
-      _redraw7();
-      return;
-    }
-    const matchingShards = loadedManifest.shards.filter((shard) => shardMayMatch(shard, query.filters));
-    const start4 = query.page * query.pageSize;
-    const end3 = start4 + query.pageSize;
-    const target = end3 + 1;
-    const matches = [];
-    let loadedShardCount = 0;
-    let hasMorePossible = false;
-    try {
-      for (let i = 0; i < matchingShards.length; i++) {
-        const shard = matchingShards[i];
-        const rows = await loadShard(shard.file, shard.id);
-        if (token !== libraryRequestToken) return;
-        loadedShardCount += 1;
-        for (const row of rows) {
-          if (!recordMatchesFilters(row, query.filters)) continue;
-          matches.push(row);
-          if (matches.length > target) break;
-        }
-        if (matches.length > target) {
-          hasMorePossible = true;
-          break;
-        }
-      }
-    } catch (error) {
-      console.warn("[puzzles] imported shard load failed", error);
-      if (token !== libraryRequestToken) return;
-      libraryState = {
-        status: "error",
-        query,
-        manifest: loadedManifest,
-        items: [],
-        hasPrev: query.page > 0,
-        hasNext: false,
-        loadedShardCount,
-        error: error instanceof Error ? error.message : "Imported shard load failed"
-      };
-      _redraw7();
-      return;
-    }
-    const pageItems = matches.slice(start4, end3);
-    const hasNext = matches.length > end3 || hasMorePossible;
-    libraryState = {
-      status: "ready",
-      query,
-      manifest: loadedManifest,
-      items: pageItems,
-      hasPrev: query.page > 0,
-      hasNext,
-      loadedShardCount
-    };
-    _redraw7();
-  })();
-}
-async function findImportedPuzzleRoundByRouteId(routeId) {
-  const parsed = parseImportedPuzzleRouteId(routeId);
-  if (!parsed) return null;
-  const loadedManifest = await loadManifest();
-  if (!loadedManifest) return null;
-  const shard = loadedManifest.shards.find((entry) => entry.id === parsed.shardId);
-  if (!shard) return null;
-  const rows = await loadShard(shard.file, shard.id);
-  const record = rows.find((row) => row.id === parsed.id);
-  if (!record) return null;
-  const toMove = record.fen.split(" ")[1] === "b" ? "black" : "white";
-  return {
-    key: record.key,
-    routeId: record.routeId,
-    sourceKind: "imported",
-    source: null,
-    sourceGame: null,
-    imported: record,
-    parentPath: "",
-    startFen: record.fen,
-    solution: [...record.moves],
-    toMove
-  };
-}
-
-// src/puzzles/round.ts
-var LOCAL_PUZZLE_GAME_ID = "local";
-function puzzleKey(candidate) {
-  return `${candidate.gameId ?? LOCAL_PUZZLE_GAME_ID}::${candidate.path}`;
-}
-function puzzleRouteIdFromKey(key) {
-  return encodeURIComponent(key);
-}
-function decodePuzzleRouteId(routeId) {
-  try {
-    return decodeURIComponent(routeId);
-  } catch {
-    return routeId;
-  }
-}
-function puzzleRouteHref(candidate) {
-  return `#/puzzles/${puzzleRouteIdFromKey(puzzleKey(candidate))}`;
-}
-function findSavedPuzzleByRouteId(puzzles, routeId) {
-  const decoded = decodePuzzleRouteId(routeId);
-  return puzzles.find((p) => puzzleKey(p) === decoded) ?? null;
-}
-function getPuzzleSolutionLine(candidate, storedAnalysis) {
-  const parentPath = pathInit(candidate.path);
-  const persisted = storedAnalysis?.nodes[parentPath]?.bestLine ?? [];
-  if (persisted.length === 0) return [candidate.bestMove];
-  if (persisted[0] === candidate.bestMove) return persisted;
-  return [candidate.bestMove, ...persisted];
-}
-function buildPuzzleRound(candidate, opts = {}) {
-  const key = puzzleKey(candidate);
-  return {
-    key,
-    routeId: puzzleRouteIdFromKey(key),
-    sourceKind: "saved",
-    source: candidate,
-    sourceGame: opts.sourceGame ?? null,
-    imported: null,
-    parentPath: pathInit(candidate.path),
-    startFen: candidate.fen,
-    solution: getPuzzleSolutionLine(candidate, opts.storedAnalysis),
-    toMove: candidate.ply % 2 === 1 ? "white" : "black"
-  };
-}
-function buildStandalonePuzzleRoot(fen) {
-  const setup = parseFen(fen).unwrap();
-  const initialPly = (setup.fullmoves - 1) * 2 + (setup.turn === "white" ? 0 : 1);
-  return {
-    id: "",
-    ply: initialPly,
-    fen,
-    children: []
-  };
-}
-
-// src/puzzles/session.ts
-var RECENT_PUZZLES_MAX = 16;
-function emptyPuzzleSession() {
-  return {
-    current: null,
-    recent: [],
-    updatedAt: Date.now()
-  };
-}
-function applyPuzzleSnapshot(session, snapshot) {
-  const next2 = {
-    current: snapshot,
-    recent: [...session.recent],
-    updatedAt: snapshot.updatedAt
-  };
-  if (snapshot.result !== "active") {
-    const result = snapshot.result;
-    next2.recent = [
-      { key: snapshot.key, result, updatedAt: snapshot.updatedAt },
-      ...next2.recent.filter((entry) => entry.key !== snapshot.key)
-    ].slice(0, RECENT_PUZZLES_MAX);
-  }
-  return next2;
-}
-function currentPuzzleSnapshot(session, key) {
-  return session.current?.key === key ? session.current : null;
-}
-function currentPuzzleIsActive(session, key) {
-  return session.current?.key === key && session.current.result === "active";
-}
-function recentPuzzleResult(session, key) {
-  if (session.current?.key === key && session.current.result !== "active") {
-    return session.current.result;
-  }
-  return session.recent.find((entry) => entry.key === key)?.result ?? null;
-}
-
-// src/puzzles/view.ts
-function formatLoss(loss) {
-  return `\u2212${Math.round(loss * 100)}%`;
-}
-function formatSavedMove(round) {
-  const moveNum = Math.ceil(round.source.ply / 2);
-  const prefix = round.source.ply % 2 === 1 ? `${moveNum}.` : `${moveNum}\u2026`;
-  return `${prefix} ${round.source.san}`;
-}
-function formatImportedOpening(record) {
-  return record.openingTags[0] ?? "No opening tag";
-}
-function renderSourceSwitch(current2, onChange3) {
-  return h("div.puzzle-library__sources", [
-    h("button", {
-      class: { active: current2 === "saved" },
-      on: { click: () => onChange3("saved") }
-    }, "Saved Puzzles"),
-    h("button", {
-      class: { active: current2 === "lichess" },
-      on: { click: () => onChange3("lichess") }
-    }, "Imported Lichess")
-  ]);
-}
-function renderSavedPuzzleLibrary(deps) {
-  const { rounds, currentPuzzleKey, recentResultForKey, isResumeKey } = deps;
-  if (rounds.length === 0) {
-    return h("div.puzzle-library__empty-body", [
-      h("p", "No saved puzzles yet."),
-      h("p", "Review games, save missed tactics, and they will appear here as local training rounds."),
-      h("a", { attrs: { href: "#/games" } }, "Go to My Games")
-    ]);
-  }
-  return h("ul.puzzle-library__list", rounds.map((round) => {
-    const result = recentResultForKey(round.key);
-    const resume = isResumeKey(round.key) || currentPuzzleKey === round.key;
-    const source = round.sourceGame ? `${round.sourceGame.white ?? "White"} vs ${round.sourceGame.black ?? "Black"}` : "Source game unavailable";
-    return h("li.puzzle-library__item", [
-      h("div.puzzle-library__main", [
-        h("div.puzzle-library__move", formatSavedMove(round)),
-        h("div.puzzle-library__meta", [
-          h("span", formatLoss(round.source.loss)),
-          h("span", `Best: ${uciToSan(round.startFen, round.source.bestMove)}`),
-          h("span", source)
-        ])
-      ]),
-      h("div.puzzle-library__actions", [
-        result ? h("span.puzzle-library__badge", result) : null,
-        round.sourceGame ? h("a.button", { attrs: { href: `#/puzzles/${round.routeId}` } }, resume ? "Resume" : "Solve") : h("span.puzzle-library__badge", "Unavailable")
-      ])
-    ]);
-  }));
-}
-function renderImportedPuzzleLibrary(deps) {
-  const { state } = deps;
-  if (state.status === "missing") {
-    return h("div.puzzle-library__empty-body", [
-      h("p", "No generated Lichess puzzle dataset was found in `public/generated/lichess-puzzles/`."),
-      h("p", "Run the local download and shard scripts first, then reload this page.")
-    ]);
-  }
-  if (state.status === "error") {
-    return h("div.puzzle-library__empty-body", [
-      h("p", "The imported puzzle dataset could not be loaded."),
-      state.error ? h("p", state.error) : null
-    ]);
-  }
-  const manifest2 = state.manifest;
-  const pageLabel = `Page ${state.query.page + 1}`;
-  const loadedLabel = manifest2 ? `Loaded ${state.loadedShardCount} / ${manifest2.shards.length} shards for this view` : "Loading manifest\u2026";
-  const filters = h("div.puzzle-library__filters", [
-    h("label", [
-      h("span", "Min rating"),
-      h("input", {
-        attrs: { type: "number", value: state.query.filters.ratingMin, placeholder: "All" },
-        on: { input: (e) => deps.onRatingMin(e.target.value) }
-      })
-    ]),
-    h("label", [
-      h("span", "Max rating"),
-      h("input", {
-        attrs: { type: "number", value: state.query.filters.ratingMax, placeholder: "All" },
-        on: { input: (e) => deps.onRatingMax(e.target.value) }
-      })
-    ]),
-    h("label", [
-      h("span", "Theme"),
-      h("select", {
-        on: { change: (e) => deps.onTheme(e.target.value) }
-      }, [
-        h("option", { attrs: { value: "" }, props: { selected: state.query.filters.theme === "" } }, "All themes"),
-        ...(manifest2?.themes ?? []).map(
-          (theme) => h("option", {
-            attrs: { value: theme },
-            props: { selected: state.query.filters.theme === theme }
-          }, theme)
-        )
-      ])
-    ]),
-    h("label", [
-      h("span", "Opening"),
-      h("select", {
-        on: { change: (e) => deps.onOpening(e.target.value) }
-      }, [
-        h("option", { attrs: { value: "" }, props: { selected: state.query.filters.opening === "" } }, "All openings"),
-        ...(manifest2?.openings ?? []).map(
-          (opening) => h("option", {
-            attrs: { value: opening },
-            props: { selected: state.query.filters.opening === opening }
-          }, opening)
-        )
-      ])
-    ])
-  ]);
-  if (state.status === "loading") {
-    return h("div", [
-      filters,
-      h("div.puzzle-library__empty-body", [
-        h("p", "Loading imported Lichess puzzles\u2026"),
-        h("p", loadedLabel)
-      ])
-    ]);
-  }
-  return h("div.puzzle-library__imported", [
-    filters,
-    h("div.puzzle-library__paging", [
-      h("span", loadedLabel),
-      h("div.puzzle-library__paging-actions", [
-        h("button", { attrs: { disabled: !state.hasPrev }, on: { click: deps.onPrevPage } }, "\u2190 Prev"),
-        h("span", pageLabel),
-        h("button", { attrs: { disabled: !state.hasNext }, on: { click: deps.onNextPage } }, "Next \u2192")
-      ])
-    ]),
-    state.items.length === 0 ? h("div.puzzle-library__empty-body", [
-      h("p", "No imported puzzles matched the current filters.")
-    ]) : h("ul.puzzle-library__list", state.items.map((item) => {
-      const themeLabel = item.themes.slice(0, 3).join(", ") || "No themes";
-      return h("li.puzzle-library__item", [
-        h("div.puzzle-library__main", [
-          h("div.puzzle-library__move", `Lichess Puzzle ${item.id}`),
-          h("div.puzzle-library__meta", [
-            h("span", `Rating ${item.rating}`),
-            item.plays !== void 0 ? h("span", `${item.plays.toLocaleString()} plays`) : null,
-            h("span", formatImportedOpening(item)),
-            h("span", themeLabel)
-          ])
-        ]),
-        h("div.puzzle-library__actions", [
-          h("span.puzzle-library__badge", "imported"),
-          h("a.button", { attrs: { href: `#/puzzles/${item.routeId}` } }, "Solve")
-        ])
-      ]);
-    }))
-  ]);
-}
-function renderPuzzleLibrary(deps) {
-  const resumeKey = deps.currentPuzzleKey ?? deps.session.current?.key ?? null;
-  const title = deps.source === "saved" ? `Saved Puzzles (${deps.savedRounds.length})` : `Imported Lichess Puzzles (${deps.importedState.manifest?.totalCount ?? "\u2026"})`;
-  const subtitle = deps.source === "saved" ? "Local tactics extracted from your reviewed games." : "Official Lichess puzzle export, preprocessed into local browser-ready shards.";
-  return h("div.puzzle-library", [
-    h("div.puzzle-library__header", [
-      h("div", [
-        h("h2", title),
-        h("p", subtitle)
-      ]),
-      resumeKey ? h("a.button", { attrs: { href: `#/puzzles/${encodeURIComponent(resumeKey)}` } }, "Resume Current Puzzle") : null
-    ]),
-    renderSourceSwitch(deps.source, deps.onSourceChange),
-    deps.source === "saved" ? renderSavedPuzzleLibrary({
-      rounds: deps.savedRounds,
-      currentPuzzleKey: deps.currentPuzzleKey,
-      recentResultForKey: deps.recentResultForKey,
-      isResumeKey: deps.isResumeKey
-    }) : renderImportedPuzzleLibrary({
-      state: deps.importedState,
-      onRatingMin: deps.onImportedRatingMin,
-      onRatingMax: deps.onImportedRatingMax,
-      onTheme: deps.onImportedTheme,
-      onOpening: deps.onImportedOpening,
-      onPrevPage: deps.onImportedPrevPage,
-      onNextPage: deps.onImportedNextPage
-    })
-  ]);
-}
-function renderPuzzleRound(deps) {
-  const round = deps.ctrl.round();
-  const [done, total] = deps.ctrl.progress();
-  const feedback = deps.ctrl.feedback();
-  const result = deps.ctrl.result();
-  let label = `Find the best move for ${round.toMove === "white" ? "White" : "Black"}`;
-  if (feedback === "good") label = "Correct. Keep going.";
-  else if (feedback === "fail") label = "Not the move. Try again or reveal the line.";
-  else if (feedback === "win") label = "Solved.";
-  else if (feedback === "view") label = "Solution shown.";
-  const metaRows = [];
-  if (round.sourceKind === "saved") {
-    const sourceGame = round.sourceGame;
-    const sourceLabel = sourceGame ? `${sourceGame.white ?? "White"} vs ${sourceGame.black ?? "Black"}` : "Source game unavailable";
-    metaRows.push(
-      h("dt", "Source game"),
-      h("dd", sourceLabel),
-      h("dt", "Mistake"),
-      h("dd", formatSavedMove(round)),
-      h("dt", "Loss"),
-      h("dd", formatLoss(round.source.loss)),
-      h("dt", "Best move"),
-      h("dd", uciToSan(round.startFen, round.source.bestMove))
-    );
-    if (sourceGame?.opening || sourceGame?.eco) {
-      metaRows.push(h("dt", "Opening"), h("dd", sourceGame.opening ?? sourceGame.eco ?? ""));
-    }
-    if (sourceGame?.date) {
-      metaRows.push(h("dt", "Date"), h("dd", sourceGame.date));
-    }
-    if (sourceGame?.timeClass) {
-      metaRows.push(h("dt", "Time control"), h("dd", sourceGame.timeClass));
-    }
-  } else {
-    const imported = round.imported;
-    metaRows.push(
-      h("dt", "Source"),
-      h("dd", "Imported Lichess puzzle"),
-      h("dt", "Puzzle ID"),
-      h("dd", imported.id),
-      h("dt", "Rating"),
-      h("dd", String(imported.rating)),
-      h("dt", "Themes"),
-      h("dd", imported.themes.join(", ") || "None"),
-      h("dt", "Opening"),
-      h("dd", formatImportedOpening(imported))
-    );
-    if (imported.plays !== void 0) {
-      metaRows.push(h("dt", "Plays"), h("dd", imported.plays.toLocaleString()));
-    }
-    if (imported.popularity !== void 0) {
-      metaRows.push(h("dt", "Popularity"), h("dd", String(imported.popularity)));
-    }
-  }
-  return h("div.puzzle-round", [
-    h("div.analyse__board.main-board.puzzle-round__board-shell", [
-      deps.topStrip,
-      h("div.analyse__board-inner", [deps.board, deps.promotionDialog]),
-      deps.bottomStrip
-    ]),
-    h("aside.puzzle-round__side", [
-      h(`section.puzzle-round__feedback.${feedback}`, [
-        result === "solved" || result === "viewed" ? h("div.puzzle-round__after", [
-          h(
-            "div.puzzle-round__complete",
-            result === "solved" ? "Puzzle solved!" : "Puzzle complete."
-          ),
-          h("button.puzzle-round__next", { on: { click: deps.onNext } }, "Continue training \u2192")
-        ]) : [
-          feedback === "good" || feedback === "win" ? h("div.puzzle-round__feedback-icon", "\u2713") : feedback === "fail" ? h("div.puzzle-round__feedback-icon", "\u2717") : null,
-          h("div.puzzle-round__status", label),
-          h("div.puzzle-round__progress", `${done} / ${total}`)
-        ]
-      ]),
-      h("section.puzzle-round__controls", [
-        h("button", { on: { click: deps.onBack } }, "Back to library"),
-        h("button", { on: { click: deps.onFlip } }, "Flip"),
-        result !== "solved" && result !== "viewed" && feedback === "fail" ? h("button", { on: { click: deps.onRetry } }, "Retry") : null,
-        result !== "solved" && result !== "viewed" && (feedback === "find" || feedback === "good" || feedback === "fail") ? h("button", { on: { click: deps.onViewSolution } }, "View solution") : null
-      ]),
-      h("section.puzzle-round__meta", [
-        h("h3", "Puzzle context"),
-        h("dl", metaRows),
-        round.sourceKind === "saved" && round.sourceGame ? h("button", { on: { click: deps.onOpenSourceGame } }, "Open source game") : null,
-        round.sourceKind === "imported" && round.imported.gameUrl ? h("a.button", {
-          attrs: {
-            href: round.imported.gameUrl,
-            target: "_blank",
-            rel: "noreferrer"
-          }
-        }, "Open source on Lichess") : null
-      ])
-    ])
-  ]);
-}
-
-// src/puzzles/index.ts
-var _getImportedGames4 = () => [];
-var _getRoute = () => ({ name: "home", params: {} });
-var _getCtrlPath = () => "";
-var _loadGameById = () => false;
-var _navigate4 = () => {
-};
-var _clearRetro = () => {
-};
-var _redraw8 = () => {
-};
-var _openStandalonePuzzle = () => {
-};
-var _restoreStandalonePuzzleBackground = () => {
-};
-var _hasStandalonePuzzleBackground = () => false;
-var routeState = { status: "idle" };
-var puzzleSession = emptyPuzzleSession();
-var librarySource = "saved";
-var importedQuery = defaultImportedPuzzleQuery();
-function saveSessionSnapshot() {
-  const active = getActivePuzzleCtrl();
-  if (!active) return;
-  puzzleSession = applyPuzzleSnapshot(puzzleSession, active.snapshot());
-  void savePuzzleSessionToIdb(puzzleSession);
-}
-function clearActivePuzzleRoute() {
-  setActivePuzzleCtrl(void 0);
-  syncArrow();
-}
-function savedPuzzleRounds() {
-  const games = _getImportedGames4();
-  return savedPuzzles.map(
-    (candidate) => buildPuzzleRound(candidate, {
-      sourceGame: candidate.gameId ? games.find((game) => game.id === candidate.gameId) ?? null : null
-    })
-  );
-}
-function setLibrarySource(source) {
-  if (librarySource === source) return;
-  librarySource = source;
-  if (source === "lichess") requestImportedPuzzleLibrary(importedQuery);
-  _redraw8();
-}
-function updateImportedFilters(patch2) {
-  importedQuery = {
-    ...importedQuery,
-    page: 0,
-    filters: {
-      ...importedQuery.filters,
-      ...patch2
-    }
-  };
-  requestImportedPuzzleLibrary(importedQuery);
-}
-function stepImportedPage(delta) {
-  const nextPage = Math.max(0, importedQuery.page + delta);
-  if (nextPage === importedQuery.page) return;
-  importedQuery = {
-    ...importedQuery,
-    page: nextPage
-  };
-  requestImportedPuzzleLibrary(importedQuery);
-}
-function nextPuzzleHref(round) {
-  if (round.sourceKind === "saved") {
-    const rounds = savedPuzzleRounds();
-    const idx2 = rounds.findIndex((candidate) => candidate.key === round.key);
-    const next3 = idx2 >= 0 ? rounds[idx2 + 1] : null;
-    return next3 ? `#/puzzles/${next3.routeId}` : "#/puzzles";
-  }
-  const importedState = importedPuzzleLibraryState();
-  const idx = importedState.items.findIndex((item) => item.key === round.key);
-  const next2 = idx >= 0 ? importedState.items[idx + 1] : null;
-  return next2 ? `#/puzzles/${next2.routeId}` : "#/puzzles";
-}
-function openSourceGame(round) {
-  if (round.sourceKind !== "saved" || !round.source.gameId) return;
-  if (!_loadGameById(round.source.gameId)) return;
-  _clearRetro();
-  _navigate4(round.parentPath);
-  window.location.hash = `#/analysis/${round.source.gameId}`;
-}
-function restoreRoundBoard(round, progressPly) {
-  if (round.sourceKind === "imported") {
-    _openStandalonePuzzle(round.startFen);
-    for (let i = 0; i < progressPly; i++) {
-      const move3 = round.solution[i];
-      if (!move3) break;
-      playUciMove(move3);
-    }
-    return;
-  }
-  if (round.source.gameId) _loadGameById(round.source.gameId);
-  _clearRetro();
-  _navigate4(round.parentPath);
-  for (let i = 0; i < progressPly; i++) {
-    const move3 = round.solution[i];
-    if (!move3) break;
-    playUciMove(move3);
-  }
-}
-function initPuzzles(deps) {
-  _getImportedGames4 = deps.getImportedGames;
-  _getRoute = deps.getRoute;
-  _getCtrlPath = deps.getCtrlPath;
-  _loadGameById = deps.loadGameById;
-  _navigate4 = deps.navigate;
-  _clearRetro = deps.clearRetro;
-  _redraw8 = deps.redraw;
-  _openStandalonePuzzle = deps.openStandalonePuzzle;
-  _restoreStandalonePuzzleBackground = deps.restoreStandalonePuzzleBackground;
-  _hasStandalonePuzzleBackground = deps.hasStandalonePuzzleBackground;
-  initImportedPuzzles({ redraw: deps.redraw });
-  void loadPuzzleSessionFromIdb().then((session) => {
-    puzzleSession = session ?? emptyPuzzleSession();
-    _redraw8();
-    void syncPuzzleRoute(_getRoute());
-  });
-}
-async function syncPuzzleRoute(route) {
-  if (route.name !== "puzzle-round") {
-    if (route.name === "puzzles") {
-      routeState = { status: "library" };
-    } else {
-      routeState = { status: "idle" };
-      if (_hasStandalonePuzzleBackground()) {
-        _restoreStandalonePuzzleBackground();
-      }
-    }
-    if (getActivePuzzleCtrl()) {
-      saveSessionSnapshot();
-      clearActivePuzzleRoute();
-    }
-    _redraw8();
-    return;
-  }
-  const routeId = route.params["id"] ?? "";
-  const active = getActivePuzzleCtrl();
-  const activeSnapshot = active ? currentPuzzleSnapshot(puzzleSession, active.round().key) : null;
-  if (active?.round().routeId === routeId && routeState.status === "ready" && (!activeSnapshot || active.progressPly() === activeSnapshot.progressPly)) return;
-  routeState = { status: "loading", routeId };
-  clearActivePuzzleRoute();
-  _redraw8();
-  const importedRoute = isImportedPuzzleRouteId(routeId);
-  if (importedRoute) {
-    librarySource = "lichess";
-  } else {
-    librarySource = "saved";
-    if (_hasStandalonePuzzleBackground()) {
-      _restoreStandalonePuzzleBackground();
-    }
-  }
-  let round = null;
-  if (importedRoute) {
-    round = await findImportedPuzzleRoundByRouteId(routeId);
-    if (!round) {
-      routeState = { status: "missing", routeId, message: "This imported puzzle could not be loaded from the generated Lichess shards." };
-      _redraw8();
-      return;
-    }
-  } else {
-    const candidate = findSavedPuzzleByRouteId(savedPuzzles, routeId);
-    if (!candidate) {
-      routeState = { status: "missing", routeId, message: "This saved puzzle was not found." };
-      _redraw8();
-      return;
-    }
-    if (!candidate.gameId) {
-      routeState = { status: "missing", routeId, message: "This puzzle has no saved source game to load." };
-      _redraw8();
-      return;
-    }
-    const sourceGame = _getImportedGames4().find((game) => game.id === candidate.gameId) ?? null;
-    if (!sourceGame) {
-      routeState = { status: "missing", routeId, message: "The source game for this puzzle is no longer in the local library." };
-      _redraw8();
-      return;
-    }
-    const storedAnalysis = await loadAnalysisFromIdb(candidate.gameId);
-    round = buildPuzzleRound(candidate, {
-      sourceGame,
-      ...storedAnalysis !== void 0 ? { storedAnalysis } : {}
-    });
-  }
-  const ctrl2 = makePuzzleCtrl(round, (snapshot2) => {
-    puzzleSession = applyPuzzleSnapshot(puzzleSession, snapshot2);
-    void savePuzzleSessionToIdb(puzzleSession);
-    _redraw8();
-  });
-  setActivePuzzleCtrl(ctrl2);
-  syncArrow();
-  const snapshot = currentPuzzleSnapshot(puzzleSession, round.key);
-  const progressPly = snapshot?.progressPly ?? 0;
-  restoreRoundBoard(round, progressPly);
-  if (snapshot) ctrl2.restore(snapshot);
-  ctrl2.setCurrentPath(_getCtrlPath());
-  routeState = { status: "ready", routeId };
-  _redraw8();
-}
-function renderPuzzlesRoute(route) {
-  if (route.name === "puzzles") {
-    if (librarySource === "lichess") requestImportedPuzzleLibrary(importedQuery);
-    const rounds = savedPuzzleRounds();
-    return renderPuzzleLibrary({
-      source: librarySource,
-      onSourceChange: setLibrarySource,
-      savedRounds: rounds,
-      importedState: importedPuzzleLibraryState(),
-      session: puzzleSession,
-      currentPuzzleKey: getActivePuzzleCtrl()?.round().key ?? null,
-      recentResultForKey: (key) => recentPuzzleResult(puzzleSession, key),
-      isResumeKey: (key) => currentPuzzleIsActive(puzzleSession, key),
-      onImportedRatingMin: (value) => updateImportedFilters({ ratingMin: value }),
-      onImportedRatingMax: (value) => updateImportedFilters({ ratingMax: value }),
-      onImportedTheme: (value) => updateImportedFilters({ theme: value }),
-      onImportedOpening: (value) => updateImportedFilters({ opening: value }),
-      onImportedPrevPage: () => stepImportedPage(-1),
-      onImportedNextPage: () => stepImportedPage(1)
-    });
-  }
-  if (route.name !== "puzzle-round") {
-    return h("div");
-  }
-  if (routeState.status === "loading") {
-    return h("div.puzzle-library puzzle-library--empty", [
-      h("h2", "Puzzles"),
-      h("p", "Loading puzzle\u2026")
-    ]);
-  }
-  if (routeState.status === "missing") {
-    return h("div.puzzle-library puzzle-library--empty", [
-      h("h2", "Puzzles"),
-      h("p", routeState.message),
-      h("a", { attrs: { href: "#/puzzles" } }, "Back to puzzle library")
-    ]);
-  }
-  const ctrl2 = getActivePuzzleCtrl();
-  if (!ctrl2) {
-    return h("div.puzzle-library puzzle-library--empty", [
-      h("h2", "Puzzles"),
-      h("p", "Loading puzzle\u2026")
-    ]);
-  }
-  const [topStrip, bottomStrip] = renderPlayerStrips();
-  return renderPuzzleRound({
-    ctrl: ctrl2,
-    onBack: () => {
-      window.location.hash = "#/puzzles";
-    },
-    onFlip: () => {
-      flip();
-      _redraw8();
-    },
-    onRetry: () => {
-      ctrl2.retry();
-      restoreRoundBoard(ctrl2.round(), 0);
-      ctrl2.setCurrentPath(_getCtrlPath());
-      syncArrow();
-      _redraw8();
-    },
-    onViewSolution: () => {
-      ctrl2.viewSolution();
-      restoreRoundBoard(ctrl2.round(), ctrl2.round().solution.length);
-      ctrl2.setCurrentPath(_getCtrlPath());
-      syncArrow();
-      _redraw8();
-    },
-    onNext: () => {
-      window.location.hash = nextPuzzleHref(ctrl2.round());
-    },
-    onOpenSourceGame: () => openSourceGame(ctrl2.round()),
-    board: renderBoard(),
-    promotionDialog: renderPromotionDialog(),
-    topStrip,
-    bottomStrip
-  });
-}
-function puzzleHrefForCandidate(gameId, path) {
-  return puzzleRouteHref({ gameId, path });
 }
 
 // src/import/pgn.ts
