@@ -16,4 +16,4 @@ deployment:
       echo "Deploying prebuilt public/ contents:";
       /bin/ls -la "$SOURCEPATH";
       /bin/mkdir -p "$DEPLOYPATH";
-      /usr/bin/rsync -a --delete --exclude=".git" "$SOURCEPATH/" "$DEPLOYPATH/";'
+      /usr/bin/rsync -a --delete --exclude=".git" --exclude="generated/lichess-puzzles" "$SOURCEPATH/" "$DEPLOYPATH/";'
