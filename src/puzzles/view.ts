@@ -6,6 +6,7 @@ import type {
   ImportedPuzzleRecord,
   PuzzleLibrarySource,
   PuzzleRound,
+  PuzzleSessionRecent,
   SavedPuzzleRound,
   StoredPuzzleSession,
 } from './types';
@@ -260,6 +261,11 @@ export function renderPuzzleRound(deps: {
   onViewSolution: () => void;
   onNext: () => void;
   onOpenSourceGame: () => void;
+  onNavFirst: () => void;
+  onNavPrev: () => void;
+  onNavNext: () => void;
+  onNavLast: () => void;
+  recent: PuzzleSessionRecent[];
   board: VNode;
   promotionDialog: VNode | null;
   topStrip: VNode;
@@ -324,11 +330,21 @@ export function renderPuzzleRound(deps: {
     }
   }
 
+  const isTerminal = result === 'solved' || result === 'viewed';
+
   return h('div.puzzle-round', [
     h('div.analyse__board.main-board.puzzle-round__board-shell', [
       deps.topStrip,
       h('div.analyse__board-inner', [deps.board, deps.promotionDialog]),
       deps.bottomStrip,
+      isTerminal
+        ? h('div.puzzle-round__nav', [
+            h('button', { on: { click: deps.onNavFirst }, attrs: { title: 'First' } }, '|◀'),
+            h('button', { on: { click: deps.onNavPrev }, attrs: { title: 'Previous' } }, '◀'),
+            h('button', { on: { click: deps.onNavNext }, attrs: { title: 'Next' } }, '▶'),
+            h('button', { on: { click: deps.onNavLast }, attrs: { title: 'Last' } }, '▶|'),
+          ])
+        : null,
     ]),
     h('aside.puzzle-round__side', [
       h(`section.puzzle-round__feedback.${feedback}`, [
@@ -357,6 +373,12 @@ export function renderPuzzleRound(deps: {
           : null,
         (result !== 'solved' && result !== 'viewed' && (feedback === 'find' || feedback === 'good' || feedback === 'fail'))
           ? h('button', { on: { click: deps.onViewSolution } }, 'View solution')
+          : null,
+        deps.recent.length > 0
+          ? h('div.puzzle-round__session',
+              // Most-recent-first: index 0 is the most recent outcome
+              deps.recent.map(r => h(`span.result-dot.result-dot--${r.result}`))
+            )
           : null,
       ]),
       h('section.puzzle-round__meta', [

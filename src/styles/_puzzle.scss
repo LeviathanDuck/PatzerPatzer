@@ -1,0 +1,181 @@
+// Puzzle round layout and component styles.
+// Adapted from lichess-org/lila: ui/puzzle/css/_layout.scss, _tools.scss, _after.scss
+
+.puzzle-round {
+  display: grid;
+  // Sidebar left, board right — matches Lichess convention
+  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-areas: 'side board';
+  gap: 18px;
+  padding: 16px;
+  align-items: start;
+
+  &__board-shell {
+    grid-area: board;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__side {
+    grid-area: side;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  &__feedback,
+  &__controls,
+  &__meta {
+    border: 1px solid var(--c-border);
+    border-radius: 12px;
+    padding: 12px;
+    background: color-mix(in srgb, var(--c-bg) 86%, white 14%);
+  }
+
+  &__status {
+    font-weight: 700;
+  }
+
+  &__progress {
+    margin-top: 6px;
+    color: var(--c-muted);
+  }
+
+  // Feedback icon — ✓ for correct/win, ✗ for fail.
+  // Adapted from lichess-org/lila: ui/puzzle/css/_tools.scss .icon sizing rules.
+  &__feedback-icon {
+    display: block;
+    width: 64px;
+    height: 64px;
+    font-size: 50px;
+    line-height: 64px;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+
+  // Adapted from lichess-org/lila: ui/puzzle/css/_tools.scss .good/.fail .icon color rules.
+  &__feedback.good &__feedback-icon,
+  &__feedback.win &__feedback-icon {
+    color: #4caf50;
+  }
+
+  &__feedback.fail &__feedback-icon {
+    color: #e53935;
+  }
+
+  &__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  // After-panel: shown when puzzle is solved or solution is viewed.
+  // Adapted from lichess-org/lila: ui/puzzle/css/_after.scss .continue and .complete rules.
+  &__after {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0;
+  }
+
+  &__complete {
+    font-size: 1.2em;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  &__next {
+    display: block;
+    width: 100%;
+    padding: 0.75em 1.5em;
+    font-size: 1.1em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--c-primary, #4a90d9);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+
+    &:hover {
+      background: color-mix(in srgb, var(--c-primary, #4a90d9) 80%, white 20%);
+    }
+  }
+
+  // Nav controls — first/prev/next/last buttons rendered below the board shell
+  &__nav {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    padding: 4px 0;
+
+    button {
+      padding: 4px 10px;
+      font-size: 0.9em;
+    }
+  }
+
+  // Session history dots strip
+  &__session {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 8px 0 4px;
+  }
+
+  &__meta {
+    h3 {
+      margin: 0 0 10px;
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 6px 10px;
+      margin: 0 0 12px;
+    }
+
+    dt {
+      color: var(--c-muted);
+    }
+
+    dd {
+      margin: 0;
+    }
+  }
+}
+
+// Result history dots — colored circles indicating recent puzzle outcomes.
+// Adapted from lichess-org/lila: ui/puzzle/css/_session.scss color rules.
+.result-dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--c-muted, #888);
+
+  &--solved {
+    background: #4caf50;
+  }
+
+  &--failed {
+    background: #e53935;
+  }
+
+  &--viewed {
+    background: var(--c-muted, #888);
+  }
+}
+
+@media (max-width: 900px) {
+  .puzzle-round {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'board'
+      'side';
+  }
+}
