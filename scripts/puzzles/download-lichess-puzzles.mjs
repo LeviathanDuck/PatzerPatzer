@@ -10,7 +10,7 @@ const DATA_ROOT = path.join(ROOT, 'data/lichess');
 const RAW_DIR = path.join(DATA_ROOT, 'raw');
 const WORK_DIR = path.join(DATA_ROOT, 'work');
 const DEFAULT_DEST = path.join(RAW_DIR, 'lichess_db_puzzle.csv.zst');
-const DEFAULT_URL = 'https://database.lichess.org/puzzle/lichess_db_puzzle.csv.zst';
+const DEFAULT_URL = 'https://database.lichess.org/lichess_db_puzzle.csv.zst';
 
 function usage() {
   console.log(`Usage: node scripts/puzzles/download-lichess-puzzles.mjs [options]

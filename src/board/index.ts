@@ -51,6 +51,10 @@ export let orientation: 'white' | 'black' = 'white';
 /** Pending pawn promotion — set when a pawn reaches the back rank, cleared after piece selection. */
 let pendingPromotion: { orig: string; dest: string; color: 'white' | 'black' } | null = null;
 
+/** Delay (ms) before opponent reply plays in a puzzle round. Gives the user a moment to
+ *  see their move land before the automated response animates onto the board. */
+const PUZZLE_REPLY_DELAY_MS = 500;
+
 export function setOrientation(v: 'white' | 'black'): void {
   orientation = v;
   // Apply to the live board immediately so the orientation change takes effect
@@ -151,8 +155,15 @@ export function onUserMove(orig: string, dest: string): void {
       return;
     }
     applyMoveToTree(normMove as NormalMove, pos);
-    for (const reply of outcome.replies) playUciMove(reply);
-    puzzleCtrl.setCurrentPath(_getCtrl().path);
+    // Lock board during the reply window so the user cannot move opponent pieces.
+    // Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts reply delay pattern.
+    cgInstance?.set({ movable: { color: undefined } });
+    setTimeout(() => {
+      for (const reply of outcome.replies) playUciMove(reply);
+      puzzleCtrl.setCurrentPath(_getCtrl().path);
+      syncBoard();
+      _redraw();
+    }, PUZZLE_REPLY_DELAY_MS);
     return;
   }
 
@@ -280,8 +291,15 @@ export function completePromotion(role: Role): void {
       return;
     }
     applyMoveToTree(move, pos);
-    for (const reply of outcome.replies) playUciMove(reply);
-    puzzleCtrl.setCurrentPath(_getCtrl().path);
+    // Lock board during the reply window so the user cannot move opponent pieces.
+    // Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts reply delay pattern.
+    cgInstance?.set({ movable: { color: undefined } });
+    setTimeout(() => {
+      for (const reply of outcome.replies) playUciMove(reply);
+      puzzleCtrl.setCurrentPath(_getCtrl().path);
+      syncBoard();
+      _redraw();
+    }, PUZZLE_REPLY_DELAY_MS);
     return;
   }
   completeMove(orig, dest, role);
