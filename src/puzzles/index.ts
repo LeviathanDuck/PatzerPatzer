@@ -63,6 +63,11 @@ let puzzleSession: StoredPuzzleSession = emptyPuzzleSession();
 let librarySource: PuzzleLibrarySource = 'saved';
 let importedQuery = defaultImportedPuzzleQuery();
 
+// Presentational ply for solution replay after terminal state.
+// Tracks which solution step the board is currently showing.
+// Only meaningful when ctrl.result() is 'solved' or 'viewed'.
+let viewPly = 0;
+
 function saveSessionSnapshot(): void {
   const active = getActivePuzzleCtrl();
   if (!active) return;
@@ -72,7 +77,48 @@ function saveSessionSnapshot(): void {
 
 function clearActivePuzzleRoute(): void {
   setActivePuzzleCtrl(undefined);
+  viewPly = 0;
   syncArrow();
+}
+
+function onNavFirst(): void {
+  const ctrl = getActivePuzzleCtrl();
+  if (!ctrl) return;
+  viewPly = 0;
+  restoreRoundBoard(ctrl.round(), viewPly);
+  ctrl.setCurrentPath(_getCtrlPath());
+  syncArrow();
+  _redraw();
+}
+
+function onNavPrev(): void {
+  const ctrl = getActivePuzzleCtrl();
+  if (!ctrl) return;
+  viewPly = Math.max(0, viewPly - 1);
+  restoreRoundBoard(ctrl.round(), viewPly);
+  ctrl.setCurrentPath(_getCtrlPath());
+  syncArrow();
+  _redraw();
+}
+
+function onNavNext(): void {
+  const ctrl = getActivePuzzleCtrl();
+  if (!ctrl) return;
+  viewPly = Math.min(ctrl.round().solution.length, viewPly + 1);
+  restoreRoundBoard(ctrl.round(), viewPly);
+  ctrl.setCurrentPath(_getCtrlPath());
+  syncArrow();
+  _redraw();
+}
+
+function onNavLast(): void {
+  const ctrl = getActivePuzzleCtrl();
+  if (!ctrl) return;
+  viewPly = ctrl.round().solution.length;
+  restoreRoundBoard(ctrl.round(), viewPly);
+  ctrl.setCurrentPath(_getCtrlPath());
+  syncArrow();
+  _redraw();
 }
 
 function savedPuzzleRounds(): SavedPuzzleRound[] {
@@ -279,6 +325,13 @@ export async function syncPuzzleRoute(route: Route): Promise<void> {
   if (snapshot) ctrl.restore(snapshot);
   ctrl.setCurrentPath(_getCtrlPath());
 
+  // Initialize viewPly for solution replay navigation.
+  // In a terminal state (solved/viewed), start at the final position.
+  const restoredResult = ctrl.result();
+  viewPly = (restoredResult === 'solved' || restoredResult === 'viewed')
+    ? round.solution.length
+    : 0;
+
   routeState = { status: 'ready', routeId };
   _redraw();
 }
@@ -339,6 +392,7 @@ export function renderPuzzlesRoute(route: Route): VNode {
     onFlip: () => { flip(); _redraw(); },
     onRetry: () => {
       ctrl.retry();
+      viewPly = 0;
       restoreRoundBoard(ctrl.round(), 0);
       ctrl.setCurrentPath(_getCtrlPath());
       syncArrow();
@@ -346,13 +400,19 @@ export function renderPuzzlesRoute(route: Route): VNode {
     },
     onViewSolution: () => {
       ctrl.viewSolution();
-      restoreRoundBoard(ctrl.round(), ctrl.round().solution.length);
+      viewPly = ctrl.round().solution.length;
+      restoreRoundBoard(ctrl.round(), viewPly);
       ctrl.setCurrentPath(_getCtrlPath());
       syncArrow();
       _redraw();
     },
     onNext: () => { window.location.hash = nextPuzzleHref(ctrl.round()); },
     onOpenSourceGame: () => openSourceGame(ctrl.round()),
+    onNavFirst: onNavFirst,
+    onNavPrev: onNavPrev,
+    onNavNext: onNavNext,
+    onNavLast: onNavLast,
+    recent: puzzleSession.recent,
     board: renderBoard(),
     promotionDialog: renderPromotionDialog(),
     topStrip,
@@ -362,6 +422,28 @@ export function renderPuzzlesRoute(route: Route): VNode {
 
 export function puzzleHrefForCandidate(gameId: string | null, path: string): string {
   return puzzleRouteHref({ gameId, path });
+}
+
+/**
+ * Handle keyboard shortcuts on the puzzle route.
+ * Arrow keys navigate solution moves in terminal state.
+ * Escape returns to the puzzle library.
+ * Returns true if the key was consumed, false to fall through.
+ */
+export function handlePuzzleKey(key: string): boolean {
+  const ctrl = getActivePuzzleCtrl();
+  if (!ctrl) return false;
+  const isTerminal = ctrl.result() === 'solved' || ctrl.result() === 'viewed';
+  if (key === 'Escape') {
+    window.location.hash = '#/puzzles';
+    return true;
+  }
+  if (!isTerminal) return false;
+  if (key === 'ArrowLeft')  { onNavPrev();  return true; }
+  if (key === 'ArrowRight') { onNavNext();  return true; }
+  if (key === 'ArrowUp')    { onNavFirst(); return true; }
+  if (key === 'ArrowDown')  { onNavLast();  return true; }
+  return false;
 }
 
 export function importedPuzzleRootFromFen(fen: string) {
