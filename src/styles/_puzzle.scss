@@ -15,6 +15,12 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    // Cap board width so it never exceeds viewport height.
+    // Without this, the board can be tall enough to trigger a vertical scrollbar,
+    // which narrows the viewport, shrinks the board, hides the scrollbar, widens
+    // the viewport, grows the board — a rapid oscillation that looks like vibration.
+    // ~10rem accounts for header + player strips + padding above/below.
+    max-width: calc(100vh - 10rem);
   }
 
   &__side {
