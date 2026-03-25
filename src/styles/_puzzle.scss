@@ -30,6 +30,15 @@
     gap: 12px;
   }
 
+  // Training context label — shown when the user is in continuous training mode.
+  // Mirrors lichess-org/lila: ui/puzzle/src/view/side.ts theme angle display.
+  &__training-context {
+    font-size: 0.8em;
+    color: var(--c-muted);
+    padding: 4px 2px;
+    letter-spacing: 0.02em;
+  }
+
   &__feedback,
   &__controls,
   &__meta {

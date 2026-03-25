@@ -263,6 +263,147 @@ export function requestImportedPuzzleLibrary(query: ImportedPuzzleLibraryQuery):
   })();
 }
 
+// --- Training queue ---
+// Tracks a continuous training session through a filtered puzzle set, independent
+// of the display library page state. Pre-fetches the next page so page-boundary
+// transitions are seamless.
+// Adapted from lichess-org/lila: ui/puzzle/src/session.ts sequential delivery model
+
+interface TrainingPageResult {
+  items: ImportedPuzzleRecord[];
+  hasNext: boolean;
+}
+
+async function loadTrainingPage(
+  query: ImportedPuzzleLibraryQuery,
+  page: number,
+): Promise<TrainingPageResult> {
+  const loadedManifest = await loadManifest();
+  if (!loadedManifest) return { items: [], hasNext: false };
+
+  const { pageSize, filters } = query;
+  const matchingShards = loadedManifest.shards.filter(shard => shardMayMatch(shard, filters));
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const matches: ImportedPuzzleRecord[] = [];
+  let hasMorePossible = false;
+
+  for (const shard of matchingShards) {
+    const rows = await loadShard(shard.file, shard.id);
+    for (const row of rows) {
+      if (!recordMatchesFilters(row, filters)) continue;
+      matches.push(row);
+      if (matches.length > end) break;
+    }
+    if (matches.length > end) {
+      hasMorePossible = true;
+      break;
+    }
+  }
+
+  return {
+    items: matches.slice(start, end),
+    hasNext: matches.length > end || hasMorePossible,
+  };
+}
+
+let trainingActive = false;
+let trainingQuery: ImportedPuzzleLibraryQuery | null = null;
+let trainingPage = 0;
+let trainingItems: ImportedPuzzleRecord[] = [];
+let trainingIndex = 0;
+// Pre-fetched next page so page-boundary advances are instant.
+let trainingNextItems: ImportedPuzzleRecord[] | null = null;
+let trainingNextHasNext = false;
+let trainingNextPage = -1;
+
+function prefetchNextTrainingPage(): void {
+  if (!trainingActive || !trainingQuery) return;
+  const nextPage = trainingPage + 1;
+  if (trainingNextPage === nextPage) return; // already in flight or loaded
+  trainingNextPage = nextPage;
+  trainingNextItems = null;
+  void loadTrainingPage(trainingQuery, nextPage).then(result => {
+    if (!trainingActive || trainingNextPage !== nextPage) return;
+    trainingNextItems = result.items;
+    trainingNextHasNext = result.hasNext;
+  });
+}
+
+export function startTraining(query: ImportedPuzzleLibraryQuery): void {
+  trainingActive = true;
+  trainingQuery = { ...query, page: 0 };
+  trainingPage = 0;
+  trainingItems = [];
+  trainingIndex = 0;
+  trainingNextItems = null;
+  trainingNextHasNext = false;
+  trainingNextPage = -1;
+
+  void loadTrainingPage(trainingQuery, 0).then(result => {
+    if (!trainingActive) return;
+    trainingItems = result.items;
+    if (result.hasNext) prefetchNextTrainingPage();
+    _redraw();
+  });
+}
+
+export function isTrainingMode(): boolean {
+  return trainingActive;
+}
+
+export function currentTrainingRouteId(): string | null {
+  return trainingItems[trainingIndex]?.routeId ?? null;
+}
+
+export function getNextTrainingRouteId(): string | null {
+  // Peek one ahead — used by index.ts to decide whether to show "more coming"
+  if (trainingIndex + 1 < trainingItems.length) {
+    return trainingItems[trainingIndex + 1]!.routeId;
+  }
+  // Next page pre-fetched and ready
+  if (trainingNextItems && trainingNextItems.length > 0) {
+    return trainingNextItems[0]!.routeId;
+  }
+  return null;
+}
+
+export function advanceTrainingCursor(): void {
+  if (!trainingActive) return;
+  trainingIndex++;
+
+  if (trainingIndex < trainingItems.length) {
+    // Still within the current page — pre-fetch next page if near the end
+    if (trainingIndex >= trainingItems.length - 2) prefetchNextTrainingPage();
+    return;
+  }
+
+  // Past end of current page — swap in the pre-fetched next page
+  if (trainingNextItems !== null && trainingNextItems.length > 0) {
+    trainingPage++;
+    trainingItems = trainingNextItems;
+    trainingIndex = 0;
+    trainingNextItems = null;
+    trainingNextPage = -1;
+    if (trainingNextHasNext) prefetchNextTrainingPage();
+  } else if (trainingNextItems !== null && trainingNextItems.length === 0) {
+    // Pre-fetch returned empty — training is exhausted
+    trainingActive = false;
+  }
+  // else: pre-fetch still in flight — currentTrainingRouteId() returns null until it resolves
+}
+
+export function stopTraining(): void {
+  trainingActive = false;
+  trainingQuery = null;
+  trainingPage = 0;
+  trainingItems = [];
+  trainingIndex = 0;
+  trainingNextItems = null;
+  trainingNextHasNext = false;
+  trainingNextPage = -1;
+}
+
 export async function findImportedPuzzleRoundByRouteId(routeId: string): Promise<ImportedPuzzleRound | null> {
   const parsed = parseImportedPuzzleRouteId(routeId);
   if (!parsed) return null;
