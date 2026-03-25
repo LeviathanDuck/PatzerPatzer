@@ -86,6 +86,7 @@ function renderImportedPuzzleLibrary(deps: {
   onOpening: (value: string) => void;
   onPrevPage: () => void;
   onNextPage: () => void;
+  onStartTraining: () => void;
 }): VNode {
   const { state } = deps;
 
@@ -173,6 +174,9 @@ function renderImportedPuzzleLibrary(deps: {
         h('span', pageLabel),
         h('button', { attrs: { disabled: !state.hasNext }, on: { click: deps.onNextPage } }, 'Next →'),
       ]),
+      state.items.length > 0
+        ? h('button.puzzle-library__train-btn', { on: { click: deps.onStartTraining } }, 'Start Training →')
+        : null,
     ]),
     state.items.length === 0
       ? h('div.puzzle-library__empty-body', [
@@ -214,6 +218,7 @@ export function renderPuzzleLibrary(deps: {
   onImportedOpening: (value: string) => void;
   onImportedPrevPage: () => void;
   onImportedNextPage: () => void;
+  onStartTraining: () => void;
 }): VNode {
   const resumeKey = deps.currentPuzzleKey ?? deps.session.current?.key ?? null;
   const title = deps.source === 'saved'
@@ -249,6 +254,7 @@ export function renderPuzzleLibrary(deps: {
           onOpening: deps.onImportedOpening,
           onPrevPage: deps.onImportedPrevPage,
           onNextPage: deps.onImportedNextPage,
+          onStartTraining: deps.onStartTraining,
         }),
   ]);
 }
@@ -266,6 +272,7 @@ export function renderPuzzleRound(deps: {
   onNavNext: () => void;
   onNavLast: () => void;
   recent: PuzzleSessionRecent[];
+  trainingContext: { theme: string; opening: string; ratingMin: string; ratingMax: string } | null;
   board: VNode;
   promotionDialog: VNode | null;
   topStrip: VNode;
@@ -347,6 +354,22 @@ export function renderPuzzleRound(deps: {
         : null,
     ]),
     h('aside.puzzle-round__side', [
+      deps.trainingContext
+        ? (() => {
+            const ctx = deps.trainingContext;
+            const parts: string[] = [];
+            if (ctx.theme) parts.push(ctx.theme);
+            if (ctx.opening) parts.push(ctx.opening);
+            const ratingMin = ctx.ratingMin.trim();
+            const ratingMax = ctx.ratingMax.trim();
+            if (ratingMin || ratingMax) {
+              parts.push(ratingMin && ratingMax ? `${ratingMin}–${ratingMax}` : ratingMin || ratingMax);
+            }
+            return parts.length > 0
+              ? h('div.puzzle-round__training-context', `Training: ${parts.join(' · ')}`)
+              : null;
+          })()
+        : null,
       h(`section.puzzle-round__feedback.${feedback}`, [
         (result === 'solved' || result === 'viewed')
           ? h('div.puzzle-round__after', [

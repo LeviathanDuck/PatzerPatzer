@@ -10,7 +10,9 @@ import {
 import { syncArrow } from '../engine/ctrl';
 import {
   loadAnalysisFromIdb,
+  loadPuzzleQueryFromIdb,
   loadPuzzleSessionFromIdb,
+  savePuzzleQueryToIdb,
   savePuzzleSessionToIdb,
   savedPuzzles,
 } from '../idb/index';
@@ -18,12 +20,17 @@ import type { ImportedGame } from '../import/types';
 import type { Route } from '../router';
 import { makePuzzleCtrl } from './ctrl';
 import {
+  advanceTrainingCursor,
+  currentTrainingRouteId,
   defaultImportedPuzzleQuery,
   findImportedPuzzleRoundByRouteId,
   importedPuzzleLibraryState,
   initImportedPuzzles,
   isImportedPuzzleRouteId,
+  isTrainingMode,
   requestImportedPuzzleLibrary,
+  startTraining,
+  stopTraining,
 } from './imported';
 import { buildPuzzleRound, buildStandalonePuzzleRoot, findSavedPuzzleByRouteId, puzzleRouteHref } from './round';
 import { setActivePuzzleCtrl, getActivePuzzleCtrl } from './runtime';
@@ -148,6 +155,7 @@ function updateImportedFilters(patch: Partial<typeof importedQuery.filters>): vo
     },
   };
   requestImportedPuzzleLibrary(importedQuery);
+  void savePuzzleQueryToIdb(importedQuery.filters);
 }
 
 function stepImportedPage(delta: -1 | 1): void {
@@ -167,6 +175,17 @@ function nextPuzzleHref(round: PuzzleRound): string {
     const next = idx >= 0 ? rounds[idx + 1] : null;
     return next ? `#/puzzles/${next.routeId}` : '#/puzzles';
   }
+  // Training mode: use the queue cursor which spans page boundaries.
+  // Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts nextPuzzle sequential delivery.
+  if (isTrainingMode()) {
+    advanceTrainingCursor();
+    const routeId = currentTrainingRouteId();
+    if (routeId) return `#/puzzles/${routeId}`;
+    if (!isTrainingMode()) return '#/puzzles'; // queue exhausted
+    // Next page still loading — return to library; user will be prompted to continue
+    return '#/puzzles';
+  }
+  // Fallback: next item in the current display page
   const importedState = importedPuzzleLibraryState();
   const idx = importedState.items.findIndex(item => item.key === round.key);
   const next = idx >= 0 ? importedState.items[idx + 1] : null;
@@ -234,6 +253,11 @@ export function initPuzzles(deps: {
 
   initImportedPuzzles({ redraw: deps.redraw });
 
+  // Restore persisted filter selection (page resets to 0; only filters carry over).
+  void loadPuzzleQueryFromIdb().then(filters => {
+    if (filters) importedQuery = { ...importedQuery, page: 0, filters };
+  });
+
   void loadPuzzleSessionFromIdb().then(session => {
     puzzleSession = session ?? emptyPuzzleSession();
     _redraw();
@@ -267,6 +291,12 @@ export async function syncPuzzleRoute(route: Route): Promise<void> {
     routeState.status === 'ready' &&
     (!activeSnapshot || active.progressPly() === activeSnapshot.progressPly)
   ) return;
+
+  // If the user navigated to a puzzle that is not the current training cursor,
+  // they left the queue manually — exit training mode cleanly.
+  if (isTrainingMode() && isImportedPuzzleRouteId(routeId) && currentTrainingRouteId() !== routeId) {
+    stopTraining();
+  }
 
   routeState = { status: 'loading', routeId };
   clearActivePuzzleRoute();
@@ -363,6 +393,27 @@ export function renderPuzzlesRoute(route: Route): VNode {
       onImportedOpening: value => updateImportedFilters({ opening: value }),
       onImportedPrevPage: () => stepImportedPage(-1),
       onImportedNextPage: () => stepImportedPage(1),
+      onStartTraining: () => {
+        startTraining(importedQuery);
+        // Navigate as soon as the first training item is available.
+        // startTraining() triggers an async load and calls _redraw() when done;
+        // if items are already cached the route id may be available immediately.
+        const routeId = currentTrainingRouteId();
+        if (routeId) {
+          window.location.hash = `#/puzzles/${routeId}`;
+        } else {
+          // Items not yet loaded — redraw will fire and library will re-render;
+          // we need to watch for the training cursor becoming available.
+          // Set a one-shot listener via a small polling redraw loop.
+          const waitForTraining = (): void => {
+            const id = currentTrainingRouteId();
+            if (id) { window.location.hash = `#/puzzles/${id}`; return; }
+            if (!isTrainingMode()) return; // gave up
+            setTimeout(waitForTraining, 50);
+          };
+          setTimeout(waitForTraining, 50);
+        }
+      },
     });
   }
 
@@ -421,6 +472,9 @@ export function renderPuzzlesRoute(route: Route): VNode {
     onNavNext: onNavNext,
     onNavLast: onNavLast,
     recent: puzzleSession.recent,
+    trainingContext: (ctrl.round().sourceKind === 'imported' && isTrainingMode())
+      ? importedQuery.filters
+      : null,
     board: renderBoard(),
     promotionDialog: renderPromotionDialog(),
     topStrip,
