@@ -2,6 +2,7 @@ import { h, type VNode } from 'snabbdom';
 import { uciToSan } from '../board/index';
 import type { PuzzleCtrl } from './ctrl';
 import type {
+  ImportedPuzzleFilters,
   ImportedPuzzleLibraryState,
   ImportedPuzzleRecord,
   PuzzleLibrarySource,
@@ -10,6 +11,148 @@ import type {
   SavedPuzzleRound,
   StoredPuzzleSession,
 } from './types';
+
+// --- Theme taxonomy ---
+// Adapted from lichess-org/lila: ui/puzzle/src/interfaces.ts ThemeKey + PuzzleTheme.scala categories.
+// Only themes present in the manifest will be rendered.
+
+interface ThemeDef { key: string; name: string; }
+interface ThemeCategory { label: string; themes: ThemeDef[]; }
+
+const PUZZLE_THEME_CATEGORIES: ThemeCategory[] = [
+  {
+    label: 'Game Phase',
+    themes: [
+      { key: 'opening',          name: 'Opening' },
+      { key: 'middlegame',       name: 'Middlegame' },
+      { key: 'endgame',          name: 'Endgame' },
+      { key: 'rookEndgame',      name: 'Rook Endgame' },
+      { key: 'bishopEndgame',    name: 'Bishop Endgame' },
+      { key: 'pawnEndgame',      name: 'Pawn Endgame' },
+      { key: 'knightEndgame',    name: 'Knight Endgame' },
+      { key: 'queenEndgame',     name: 'Queen Endgame' },
+      { key: 'queenRookEndgame', name: 'Queen & Rook Endgame' },
+    ],
+  },
+  {
+    label: 'Tactics',
+    themes: [
+      { key: 'fork',              name: 'Fork' },
+      { key: 'pin',               name: 'Pin' },
+      { key: 'skewer',            name: 'Skewer' },
+      { key: 'discoveredAttack',  name: 'Discovered Attack' },
+      { key: 'discoveredCheck',   name: 'Discovered Check' },
+      { key: 'doubleCheck',       name: 'Double Check' },
+      { key: 'xRayAttack',        name: 'X-Ray Attack' },
+      { key: 'hangingPiece',      name: 'Hanging Piece' },
+      { key: 'capturingDefender', name: 'Capture the Defender' },
+      { key: 'trappedPiece',      name: 'Trapped Piece' },
+      { key: 'sacrifice',         name: 'Sacrifice' },
+      { key: 'clearance',         name: 'Clearance' },
+      { key: 'attraction',        name: 'Attraction' },
+      { key: 'deflection',        name: 'Deflection' },
+      { key: 'advancedPawn',      name: 'Advanced Pawn' },
+      { key: 'attackingF2F7',     name: 'Attack on f2/f7' },
+      { key: 'exposedKing',       name: 'Exposed King' },
+      { key: 'kingsideAttack',    name: 'Kingside Attack' },
+      { key: 'queensideAttack',   name: 'Queenside Attack' },
+      { key: 'promotion',         name: 'Promotion' },
+      { key: 'underPromotion',    name: 'Underpromotion' },
+      { key: 'crushing',          name: 'Crushing' },
+      { key: 'advantage',         name: 'Advantage' },
+    ],
+  },
+  {
+    label: 'Advanced Concepts',
+    themes: [
+      { key: 'defensiveMove',  name: 'Defensive Move' },
+      { key: 'interference',   name: 'Interference' },
+      { key: 'intermezzo',     name: 'Intermezzo' },
+      { key: 'quietMove',      name: 'Quiet Move' },
+      { key: 'zugzwang',       name: 'Zugzwang' },
+      { key: 'equality',       name: 'Equality' },
+      { key: 'collinear',      name: 'Collinear' },
+      { key: 'collinearMove',  name: 'Collinear Move' },
+    ],
+  },
+  {
+    label: 'Checkmate Patterns',
+    themes: [
+      { key: 'mate',             name: 'Checkmate' },
+      { key: 'mateIn1',          name: 'Mate in 1' },
+      { key: 'mateIn2',          name: 'Mate in 2' },
+      { key: 'mateIn3',          name: 'Mate in 3' },
+      { key: 'mateIn4',          name: 'Mate in 4' },
+      { key: 'mateIn5',          name: 'Mate in 5+' },
+      { key: 'anastasiaMate',    name: "Anastasia's Mate" },
+      { key: 'arabianMate',      name: 'Arabian Mate' },
+      { key: 'backRankMate',     name: 'Back Rank Mate' },
+      { key: 'balestraMate',     name: 'Balestra Mate' },
+      { key: 'blindSwineMate',   name: 'Blind Swine Mate' },
+      { key: 'bodenMate',        name: "Boden's Mate" },
+      { key: 'cornerMate',       name: 'Corner Mate' },
+      { key: 'doubleBishopMate', name: 'Double Bishop Mate' },
+      { key: 'dovetailMate',     name: 'Dovetail Mate' },
+      { key: 'epauletteMate',    name: 'Épaulette Mate' },
+      { key: 'hookMate',         name: 'Hook Mate' },
+      { key: 'killBoxMate',      name: 'Kill Box Mate' },
+      { key: 'morphysMate',      name: "Morphy's Mate" },
+      { key: 'operaMate',        name: 'Opera Mate' },
+      { key: 'pillsburysMate',   name: "Pillsbury's Mate" },
+      { key: 'smotheredMate',    name: 'Smothered Mate' },
+      { key: 'swallowstailMate', name: 'Swallowtail Mate' },
+      { key: 'triangleMate',     name: 'Triangle Mate' },
+      { key: 'vukovicMate',      name: 'Vukovic Mate' },
+    ],
+  },
+  {
+    label: 'Length',
+    themes: [
+      { key: 'oneMove',  name: 'One Move' },
+      { key: 'short',    name: 'Short (2–3)' },
+      { key: 'long',     name: 'Long (4–5)' },
+      { key: 'veryLong', name: 'Very Long (6+)' },
+    ],
+  },
+  {
+    label: 'Other',
+    themes: [
+      { key: 'castling',        name: 'Castling' },
+      { key: 'enPassant',       name: 'En Passant' },
+      { key: 'master',          name: 'Master Game' },
+      { key: 'masterVsMaster',  name: 'Master vs Master' },
+      { key: 'superGM',         name: 'Super GM' },
+    ],
+  },
+];
+
+// --- Difficulty presets ---
+// Maps named levels to fixed puzzle rating bands.
+// Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts difficulty settings,
+// adapted to absolute rating ranges (PatzerPatzer has no user puzzle rating).
+const DIFFICULTY_PRESETS = [
+  { key: 'easiest', label: 'Easiest', ratingMin: '',     ratingMax: '1200' },
+  { key: 'easier',  label: 'Easier',  ratingMin: '1200', ratingMax: '1500' },
+  { key: 'normal',  label: 'Normal',  ratingMin: '1500', ratingMax: '1800' },
+  { key: 'harder',  label: 'Harder',  ratingMin: '1800', ratingMax: '2100' },
+  { key: 'hardest', label: 'Hardest', ratingMin: '2100', ratingMax: ''     },
+] as const;
+
+function currentDifficulty(filters: ImportedPuzzleFilters): string {
+  for (const p of DIFFICULTY_PRESETS) {
+    if (filters.ratingMin === p.ratingMin && filters.ratingMax === p.ratingMax) return p.key;
+  }
+  return '';
+}
+
+function formatOpeningName(key: string): string {
+  // "Sicilian_Defense_Dragon_Variation" → "Sicilian Defense: Dragon Variation"
+  const parts = key.split('_');
+  if (parts.length <= 2) return parts.join(' ');
+  const family = parts.slice(0, 2).join(' ');
+  const variation = parts.slice(2).join(' ');
+  return `${family}: ${variation}`;
+}
 
 function formatLoss(loss: number): string {
   return `−${Math.round(loss * 100)}%`;
@@ -78,6 +221,87 @@ function renderSavedPuzzleLibrary(deps: {
   }));
 }
 
+// --- Difficulty strip ---
+// Adapted from lichess-org/lila: ui/puzzle/src/view/side.ts difficulty selector.
+function renderDifficultyStrip(
+  filters: ImportedPuzzleFilters,
+  onRatingMin: (v: string) => void,
+  onRatingMax: (v: string) => void,
+): VNode {
+  const active = currentDifficulty(filters);
+  return h('div.puzzle-difficulty', [
+    h('span.puzzle-difficulty__label', 'Difficulty'),
+    h('div.puzzle-difficulty__buttons',
+      DIFFICULTY_PRESETS.map(p =>
+        h('button.puzzle-difficulty__btn', {
+          class: { 'puzzle-difficulty__btn--active': active === p.key },
+          on: {
+            click: () => {
+              // Clicking the active preset deselects it (no difficulty filter).
+              if (active === p.key) { onRatingMin(''); onRatingMax(''); }
+              else { onRatingMin(p.ratingMin); onRatingMax(p.ratingMax); }
+            },
+          },
+        }, p.label),
+      ),
+    ),
+  ]);
+}
+
+// --- Opening selector ---
+function renderOpeningSelect(
+  openings: readonly string[],
+  currentOpening: string,
+  onOpening: (v: string) => void,
+): VNode {
+  return h('div.puzzle-opening-filter', [
+    h('label.puzzle-opening-filter__label', { attrs: { for: 'puzzle-opening-select' } }, 'Opening'),
+    h('select.puzzle-opening-filter__select', {
+      attrs: { id: 'puzzle-opening-select' },
+      on: { change: (e: Event) => onOpening((e.target as HTMLSelectElement).value) },
+    }, [
+      h('option', { attrs: { value: '' }, props: { selected: currentOpening === '' } }, 'All openings'),
+      ...openings.map(opening =>
+        h('option', {
+          attrs: { value: opening },
+          props: { selected: currentOpening === opening },
+        }, formatOpeningName(opening)),
+      ),
+    ]),
+  ]);
+}
+
+// --- Theme grid ---
+// Categorized card grid, adapted from lichess-org/lila: ui/puzzle/css/_themes.scss layout.
+function renderThemeGrid(
+  availableThemes: readonly string[],
+  currentTheme: string,
+  onTheme: (key: string) => void,
+): VNode {
+  const themeSet = new Set(availableThemes);
+  const categories = PUZZLE_THEME_CATEGORIES
+    .map(cat => {
+      const catThemes = cat.themes.filter(t => themeSet.has(t.key));
+      if (catThemes.length === 0) return null;
+      return h('div.puzzle-themes__category', [
+        h('h3.puzzle-themes__category-label', cat.label),
+        h('div.puzzle-themes__grid',
+          catThemes.map(theme =>
+            h('button.puzzle-theme-card', {
+              class: { 'puzzle-theme-card--active': currentTheme === theme.key },
+              on: {
+                click: () => onTheme(currentTheme === theme.key ? '' : theme.key),
+              },
+            }, theme.name),
+          ),
+        ),
+      ]);
+    })
+    .filter((n): n is VNode => n !== null);
+
+  return h('div.puzzle-themes', categories);
+}
+
 function renderImportedPuzzleLibrary(deps: {
   state: ImportedPuzzleLibraryState;
   onRatingMin: (value: string) => void;
@@ -105,88 +329,48 @@ function renderImportedPuzzleLibrary(deps: {
   }
 
   const manifest = state.manifest;
-  const pageLabel = `Page ${state.query.page + 1}`;
-  const loadedLabel = manifest
-    ? `Loaded ${state.loadedShardCount} / ${manifest.shards.length} shards for this view`
-    : 'Loading manifest…';
+  const filters = state.query.filters;
 
-  const filters = h('div.puzzle-library__filters', [
-    h('label', [
-      h('span', 'Min rating'),
-      h('input', {
-        attrs: { type: 'number', value: state.query.filters.ratingMin, placeholder: 'All' },
-        on: { input: (e: Event) => deps.onRatingMin((e.target as HTMLInputElement).value) },
-      }),
-    ]),
-    h('label', [
-      h('span', 'Max rating'),
-      h('input', {
-        attrs: { type: 'number', value: state.query.filters.ratingMax, placeholder: 'All' },
-        on: { input: (e: Event) => deps.onRatingMax((e.target as HTMLInputElement).value) },
-      }),
-    ]),
-    h('label', [
-      h('span', 'Theme'),
-      h('select', {
-        on: { change: (e: Event) => deps.onTheme((e.target as HTMLSelectElement).value) },
-      }, [
-        h('option', { attrs: { value: '' }, props: { selected: state.query.filters.theme === '' } }, 'All themes'),
-        ...(manifest?.themes ?? []).map(theme =>
-          h('option', {
-            attrs: { value: theme },
-            props: { selected: state.query.filters.theme === theme },
-          }, theme),
-        ),
-      ]),
-    ]),
-    h('label', [
-      h('span', 'Opening'),
-      h('select', {
-        on: { change: (e: Event) => deps.onOpening((e.target as HTMLSelectElement).value) },
-      }, [
-        h('option', { attrs: { value: '' }, props: { selected: state.query.filters.opening === '' } }, 'All openings'),
-        ...(manifest?.openings ?? []).map(opening =>
-          h('option', {
-            attrs: { value: opening },
-            props: { selected: state.query.filters.opening === opening },
-          }, opening),
-        ),
-      ]),
-    ]),
+  const filterPanel = h('div.puzzle-library__filter-panel', [
+    renderDifficultyStrip(filters, deps.onRatingMin, deps.onRatingMax),
+    manifest?.openings
+      ? renderOpeningSelect(manifest.openings, filters.opening, deps.onOpening)
+      : null,
+    manifest?.themes
+      ? renderThemeGrid(manifest.themes, filters.theme, deps.onTheme)
+      : h('div.puzzle-library__empty-body', 'Loading puzzle catalog…'),
   ]);
 
   if (state.status === 'loading') {
-    return h('div', [
-      filters,
-      h('div.puzzle-library__empty-body', [
-        h('p', 'Loading imported Lichess puzzles…'),
-        h('p', loadedLabel),
-      ]),
+    return h('div.puzzle-library__imported', [
+      filterPanel,
+      h('div.puzzle-library__status', 'Searching puzzles…'),
     ]);
   }
 
+  // Ready — show count, CTA, and browse list.
+  const pageLabel = `Page ${state.query.page + 1}`;
+  const countLabel = state.items.length === 0
+    ? 'No puzzles match the current filters.'
+    : `${state.items.length}${state.hasNext ? '+' : ''} puzzles`;
+
+  const ctaBar = h('div.puzzle-library__cta-bar', [
+    h('span.puzzle-library__count', countLabel),
+    state.items.length > 0
+      ? h('button.puzzle-library__train-btn', { on: { click: deps.onStartTraining } }, 'Start Training →')
+      : null,
+  ]);
+
   return h('div.puzzle-library__imported', [
-    filters,
-    h('div.puzzle-library__paging', [
-      h('span', loadedLabel),
-      h('div.puzzle-library__paging-actions', [
-        h('button', { attrs: { disabled: !state.hasPrev }, on: { click: deps.onPrevPage } }, '← Prev'),
-        h('span', pageLabel),
-        h('button', { attrs: { disabled: !state.hasNext }, on: { click: deps.onNextPage } }, 'Next →'),
-      ]),
-      state.items.length > 0
-        ? h('button.puzzle-library__train-btn', { on: { click: deps.onStartTraining } }, 'Start Training →')
-        : null,
-    ]),
+    filterPanel,
+    ctaBar,
     state.items.length === 0
-      ? h('div.puzzle-library__empty-body', [
-          h('p', 'No imported puzzles matched the current filters.'),
-        ])
+      ? null
       : h('ul.puzzle-library__list', state.items.map(item => {
           const themeLabel = item.themes.slice(0, 3).join(', ') || 'No themes';
           return h('li.puzzle-library__item', [
             h('div.puzzle-library__main', [
-              h('div.puzzle-library__move', `Lichess Puzzle ${item.id}`),
+              h('div.puzzle-library__move', `Lichess #${item.id}`),
               h('div.puzzle-library__meta', [
                 h('span', `Rating ${item.rating}`),
                 item.plays !== undefined ? h('span', `${item.plays.toLocaleString()} plays`) : null,
@@ -195,11 +379,19 @@ function renderImportedPuzzleLibrary(deps: {
               ]),
             ]),
             h('div.puzzle-library__actions', [
-              h('span.puzzle-library__badge', 'imported'),
               h('a.button', { attrs: { href: `#/puzzles/${item.routeId}` } }, 'Solve'),
             ]),
           ]);
         })),
+    state.items.length > 0
+      ? h('div.puzzle-library__paging', [
+          h('div.puzzle-library__paging-actions', [
+            h('button', { attrs: { disabled: !state.hasPrev }, on: { click: deps.onPrevPage } }, '← Prev'),
+            h('span', pageLabel),
+            h('button', { attrs: { disabled: !state.hasNext }, on: { click: deps.onNextPage } }, 'Next →'),
+          ]),
+        ])
+      : null,
   ]);
 }
 

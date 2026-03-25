@@ -2645,34 +2645,57 @@ body[data-board='newspaper'] cg-board::before {
     gap: 14px;
   }
 
-  &__filters {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
+  // Filter panel: difficulty + opening + theme grid
+  &__filter-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
 
-    label {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 0.9rem;
-      color: var(--c-muted);
-    }
+  // Primary "Start Training" CTA button.
+  // Mirrors lichess-org/lila: ui/puzzle/css/_after.scss .continue button style.
+  &__train-btn {
+    padding: 0.6em 1.6em;
+    font-size: 1rem;
+    font-weight: 700;
+    background: var(--c-primary, #4a90d9);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
 
-    input,
-    select {
-      width: 100%;
-      border: 1px solid var(--c-border);
-      border-radius: 8px;
-      background: color-mix(in srgb, var(--c-bg) 88%, white 12%);
-      color: var(--c-text);
-      padding: 8px 10px;
+    &:hover {
+      background: color-mix(in srgb, var(--c-primary, #4a90d9) 80%, white 20%);
     }
+  }
+
+  // CTA bar: count label + Start Training button
+  &__cta-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--c-border);
+    border-bottom: 1px solid var(--c-border);
+  }
+
+  &__count {
+    font-size: 0.95rem;
+    color: var(--c-muted);
+  }
+
+  &__status {
+    padding: 12px 0;
+    color: var(--c-muted);
   }
 
   &__paging {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 12px;
     color: var(--c-muted);
     font-size: 0.9rem;
@@ -2685,6 +2708,129 @@ body[data-board='newspaper'] cg-board::before {
   }
 }
 
+// --- Difficulty strip ---
+// Adapted from lichess-org/lila: ui/puzzle/src/view/side.ts difficulty selector.
+.puzzle-difficulty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  &__label {
+    font-size: 0.85rem;
+    color: var(--c-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    min-width: 6em;
+  }
+
+  &__buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  &__btn {
+    padding: 5px 14px;
+    font-size: 0.88rem;
+    border: 1px solid var(--c-border);
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--c-bg) 88%, white 12%);
+    color: var(--c-text);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+
+    &:hover {
+      background: color-mix(in srgb, var(--c-link) 12%, var(--c-bg) 88%);
+      border-color: color-mix(in srgb, var(--c-link) 40%, var(--c-border) 60%);
+    }
+
+    &--active {
+      background: color-mix(in srgb, var(--c-link) 20%, var(--c-bg) 80%);
+      border-color: var(--c-link);
+      color: var(--c-link);
+      font-weight: 600;
+    }
+  }
+}
+
+// --- Opening filter row ---
+.puzzle-opening-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  &__label {
+    font-size: 0.85rem;
+    color: var(--c-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    min-width: 6em;
+  }
+
+  &__select {
+    flex: 1 1 240px;
+    max-width: 480px;
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--c-bg) 88%, white 12%);
+    color: var(--c-text);
+    padding: 6px 10px;
+    font-size: 0.9rem;
+  }
+}
+
+// --- Theme card grid ---
+// Adapted from lichess-org/lila: ui/puzzle/css/_themes.scss categorized grid layout.
+.puzzle-themes {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  &__category-label {
+    margin: 0 0 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--c-muted);
+  }
+
+  &__grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+// Individual theme card — pill button style.
+// Active state mirrors lichess-org/lila: ui/puzzle/css/_themes.scss selected link.
+.puzzle-theme-card {
+  padding: 5px 14px;
+  font-size: 0.88rem;
+  border: 1px solid var(--c-border);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--c-bg) 88%, white 12%);
+  color: var(--c-text);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+
+  &:hover {
+    background: color-mix(in srgb, var(--c-link) 12%, var(--c-bg) 88%);
+    border-color: color-mix(in srgb, var(--c-link) 40%, var(--c-border) 60%);
+  }
+
+  &--active {
+    background: color-mix(in srgb, var(--c-primary, #4a90d9) 22%, var(--c-bg) 78%);
+    border-color: var(--c-primary, #4a90d9);
+    color: var(--c-primary, #4a90d9);
+    font-weight: 600;
+  }
+}
+
 // Puzzle round and related styles are in _puzzle.scss
 @import 'puzzle';
 
@@ -2694,8 +2840,18 @@ body[data-board='newspaper'] cg-board::before {
     align-items: flex-start;
   }
 
-  .puzzle-library__filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .puzzle-difficulty {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .puzzle-opening-filter {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+
+    &__select { max-width: 100%; width: 100%; }
   }
 }
 
