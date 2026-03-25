@@ -208,6 +208,10 @@ function restoreRoundBoard(round: PuzzleRound, progressPly: number): void {
 
   if (round.sourceKind === 'imported') {
     _openStandalonePuzzle(round.startFen);
+    // Always auto-play the opponent's triggering move so the user sees the
+    // position they need to respond to. This mirrors lichess-org/lila:
+    // ui/puzzle/src/ctrl.ts initialNode / opponent first-move playback.
+    if (round.initialMove) playUciMove(round.initialMove);
     for (let i = 0; i < progressPly; i++) {
       const move = round.solution[i];
       if (!move) break;

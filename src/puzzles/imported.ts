@@ -414,7 +414,13 @@ export async function findImportedPuzzleRoundByRouteId(routeId: string): Promise
   const rows = await loadShard(shard.file, shard.id);
   const record = rows.find(row => row.id === parsed.id);
   if (!record) return null;
-  const toMove = record.fen.split(' ')[1] === 'b' ? 'black' : 'white';
+  // In the Lichess puzzle CSV, moves[0] is the opponent's triggering move that sets
+  // up the tactical opportunity. The user plays moves[1] onwards.
+  // toMove is the user's color — opposite of the FEN's active side.
+  // Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts pov / initialNode logic.
+  const initialMove = record.moves[0] ?? '';
+  const solution = record.moves.slice(1);
+  const toMove = record.fen.split(' ')[1] === 'b' ? 'white' : 'black';
   return {
     key: record.key,
     routeId: record.routeId,
@@ -424,7 +430,8 @@ export async function findImportedPuzzleRoundByRouteId(routeId: string): Promise
     imported: record,
     parentPath: '',
     startFen: record.fen,
-    solution: [...record.moves],
+    initialMove,
+    solution,
     toMove,
   };
 }
