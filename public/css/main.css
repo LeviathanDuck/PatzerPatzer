@@ -2807,6 +2807,7 @@ body[data-board=newspaper] cg-board::before {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-width: calc(100vh - 10rem);
 }
 .puzzle-round__side {
   grid-area: side;
