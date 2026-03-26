@@ -2288,7 +2288,7 @@ function detectMissedMoments(mainline, cache, userColor, config = missedMomentCo
     if (config.missedMateMaxN > 0 && parentEval.best) {
       const userMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
       if (userMate !== void 0 && userMate > 0 && userMate <= config.missedMateMaxN && !nodeEval.mate) {
-        moments.push({ kind: "missed-mate", ply: node.ply, loss: nodeEval.loss ?? 0.5 });
+        moments.push({ kind: "missed-mate", ply: node.ply, loss: nodeEval.loss ?? 0.5, path });
         continue;
       }
     }
@@ -2298,12 +2298,12 @@ function detectMissedMoments(mainline, cache, userColor, config = missedMomentCo
     if (parentWc !== void 0) {
       const moverParentWc = isWhiteMove ? parentWc : -parentWc;
       if (moverParentWc >= config.collapseWcFloor && nodeEval.loss >= config.collapseDropMin) {
-        moments.push({ kind: "collapse", ply: node.ply, loss: nodeEval.loss });
+        moments.push({ kind: "collapse", ply: node.ply, loss: nodeEval.loss, path });
         continue;
       }
     }
     if (nodeEval.loss > config.swingThreshold && parentEval.best) {
-      moments.push({ kind: "swing", ply: node.ply, loss: nodeEval.loss });
+      moments.push({ kind: "swing", ply: node.ply, loss: nodeEval.loss, path });
     }
   }
   return moments;
@@ -11208,7 +11208,7 @@ var GLYPH_COLORS = {
   "!?": "hsl(307,80%,70%)"
   // interesting — pink/purple
 };
-function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu) {
+function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu, worstMissPath) {
   const cached = getEval(path);
   const parentCached = getEval(pathInit(path));
   const pgnGlyph = node.glyphs?.[0];
@@ -11229,7 +11229,8 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
   return h("move", {
     class: {
       active: path === currentPath,
-      "context-active": contextMenuPath2 === path
+      "context-active": contextMenuPath2 === path,
+      "worst-miss": worstMissPath !== void 0 && path === worstMissPath
     },
     attrs: { p: path },
     on: {
@@ -11241,36 +11242,36 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
     }
   }, inner);
 }
-function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu) {
+function renderInlineNodes(nodes, parentPath, parent, needsMoveNum, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu, worstMissPath) {
   if (nodes.length === 0) return [];
   const main = nodes[0];
   const variations = nodes.slice(1);
   const mainPath = parentPath + main.id;
   const out = [];
   const showIndex = needsMoveNum || main.ply % 2 === 1;
-  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu));
+  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu, worstMissPath));
   for (const variant of variations) {
-    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu)));
+    out.push(h("inline", renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu, worstMissPath)));
   }
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
   const contNeedsNum = hasVariations && firstCont !== void 0 && firstCont.ply % 2 === 0;
-  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu));
+  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu, worstMissPath));
   return out;
 }
-function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu) {
+function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu, worstMissPath) {
   if (nodes.length === 0) return;
   const main = nodes[0];
   const variations = nodes.slice(1);
   const mainPath = parentPath + main.id;
   const isWhite = main.ply % 2 === 1;
   if (isWhite) out.push(h("index", String(Math.ceil(main.ply / 2))));
-  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu));
+  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu, worstMissPath));
   if (variations.length > 0) {
     if (isWhite) out.push(h("move.empty", "\u2026"));
     const varLines = variations.map((v) => {
       const varPath = parentPath + v.id;
-      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu);
+      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu, worstMissPath);
       if (deleteVariation2) {
         return h("line", [
           h("button.variation-remove", {
@@ -11288,11 +11289,11 @@ function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval,
       out.push(h("move.empty", "\u2026"));
     }
   }
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu, worstMissPath);
 }
-function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu) {
+function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu, worstMissPath) {
   const nodes = [];
-  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu);
+  renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu, worstMissPath);
   return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes)]);
 }
 
@@ -12603,7 +12604,10 @@ function routeContent(route) {
           !ctrl.retro || ctrl.retro.guidanceRevealed() ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h("div.analyse__moves", [
-            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu)
+            renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu, (() => {
+              const moments = selectedGameId ? getMissedMoments(selectedGameId) : [];
+              return moments.length > 0 ? moments.reduce((a, b) => a.loss > b.loss ? a : b).path : void 0;
+            })())
           ]),
           // Active retrospection panel — placed after the move list, before analysis summaries.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts

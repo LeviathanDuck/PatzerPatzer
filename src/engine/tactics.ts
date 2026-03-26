@@ -80,6 +80,7 @@ export interface MissedMoment {
   kind: MissedMomentKind;
   ply:  number;
   loss: number;  // scaled win-chance drop: (moverParentWc − moverNodeWc) / 2, always ≥ 0
+  path: string;  // tree path to the node where the moment occurred
 }
 
 // Structural subset of PositionEval — avoids importing from engine/ctrl.ts
@@ -132,7 +133,7 @@ export function detectMissedMoments(
         userMate <= config.missedMateMaxN &&
         !nodeEval.mate
       ) {
-        moments.push({ kind: 'missed-mate', ply: node.ply, loss: nodeEval.loss ?? 0.5 });
+        moments.push({ kind: 'missed-mate', ply: node.ply, loss: nodeEval.loss ?? 0.5, path });
         continue;
       }
     }
@@ -153,7 +154,7 @@ export function detectMissedMoments(
         moverParentWc >= config.collapseWcFloor &&
         nodeEval.loss >= config.collapseDropMin
       ) {
-        moments.push({ kind: 'collapse', ply: node.ply, loss: nodeEval.loss });
+        moments.push({ kind: 'collapse', ply: node.ply, loss: nodeEval.loss, path });
         continue;
       }
     }
@@ -163,7 +164,7 @@ export function detectMissedMoments(
     // best-move so we only flag positions where the engine had a clear
     // alternative — mirrors hasCompChild() in Lichess nodeFinder.ts.
     if (nodeEval.loss > config.swingThreshold && parentEval.best) {
-      moments.push({ kind: 'swing', ply: node.ply, loss: nodeEval.loss });
+      moments.push({ kind: 'swing', ply: node.ply, loss: nodeEval.loss, path });
     }
   }
 
