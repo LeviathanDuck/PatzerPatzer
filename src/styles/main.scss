@@ -433,6 +433,105 @@ main {
     &.--ok   { color: #4a8; }
     &.--warn { color: #f84; }
   }
+
+  // ── Mobile nav ──────────────────────────────────────────────────────────────
+
+  // Container holds the hamburger button + dropdown; hidden on desktop
+  &__mobile-nav {
+    display: none;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  &__hamburger {
+    width: 38px;
+    height: 38px;
+    background: transparent;
+    border: none;
+    color: #aaa;
+    font-size: 1.25rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover, &.active { background: #1e1e1e; color: #e8e8e8; }
+  }
+
+  &__mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 299;
+  }
+
+  &__mobile-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 160px;
+    background: #181818;
+    border: 1px solid #333;
+    border-radius: 8px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7);
+    z-index: 300;
+    padding: 4px 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__mobile-link {
+    padding: 11px 18px;
+    color: #aaa;
+    text-decoration: none;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover { background: #222; color: #e8e8e8; }
+    &.active { color: #e8e8e8; background: #1a2a1a; }
+  }
+
+  // ── Mobile breakpoint ────────────────────────────────────────────────────────
+  @media (max-width: 600px) {
+    padding: 0 10px;
+    gap: 6px;
+
+    // Hide logo and desktop tool nav
+    &__brand { display: none; }
+    &__nav   { display: none; }
+
+    // Show hamburger
+    &__mobile-nav { display: block; }
+
+    // Search bar fills all remaining space
+    &__search {
+      max-width: none;
+      flex: 1;
+    }
+
+    // Tighten platform toggle on small screens
+    &__platform-toggle {
+      padding: 0 8px;
+      font-size: 0.75rem;
+    }
+
+    // Import button: shorten label handled in JS; tighten padding
+    &__import {
+      padding: 0 10px;
+      font-size: 0.75rem;
+    }
+
+    // Panel anchors to full viewport width on mobile
+    &__panel {
+      left: -48px; // align past hamburger to near-edge
+      right: 0;
+      min-width: 0;
+      max-width: none;
+      border-radius: 0 0 8px 8px;
+    }
+  }
 }
 
 .dev-reset {

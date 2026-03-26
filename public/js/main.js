@@ -11249,6 +11249,7 @@ var showImportPanel = false;
 var showGlobalMenu = false;
 var showBoardSettings = false;
 var showReviewMenu = false;
+var showMobileNav = false;
 function activeSection(route) {
   switch (route.name) {
     case "analysis":
@@ -11442,6 +11443,35 @@ function renderGlobalMenu(deps) {
     ]) : null
   ]);
 }
+function renderMobileNav(route, redraw2) {
+  const active = activeSection(route);
+  return h("div.header__mobile-nav", [
+    h("button.header__hamburger", {
+      class: { active: showMobileNav },
+      attrs: { title: "Menu", "aria-label": "Menu" },
+      on: { click: () => {
+        showMobileNav = !showMobileNav;
+        redraw2();
+      } }
+    }, "\u2630"),
+    showMobileNav ? h("div.header__mobile-backdrop", {
+      on: { click: () => {
+        showMobileNav = false;
+        redraw2();
+      } }
+    }) : null,
+    showMobileNav ? h("div.header__mobile-dropdown", navLinks.map(
+      ({ label, href, section }) => h("a.header__mobile-link", {
+        attrs: { href },
+        class: { active: active === section },
+        on: { click: () => {
+          showMobileNav = false;
+          redraw2();
+        } }
+      }, label)
+    )) : null
+  ]);
+}
 function renderHeader(deps) {
   const {
     route,
@@ -11582,6 +11612,7 @@ function renderHeader(deps) {
   }) : null;
   return h("header.header", [
     h("a.header__brand", { attrs: { href: "#/" } }, "Patzer Pro"),
+    renderMobileNav(route, redraw2),
     h("div.header__search", { key: "header-search" }, [
       h("div.header__bar", [
         h("button.header__platform-toggle", {
