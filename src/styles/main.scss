@@ -546,6 +546,139 @@ main {
   &:hover { opacity: 1; background: #3a1a1a; }
 }
 
+// Detection Settings modal — full-screen overlay with centered card.
+// Opened from the global settings menu; position: fixed so it covers the whole viewport
+// regardless of its DOM parent.
+.detection-modal {
+  &__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: rgba(0, 0, 0, 0.65);
+  }
+
+  &__card {
+    position: fixed;
+    z-index: 200;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(580px, 92vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    background: #1c1c1c;
+    border: 1px solid #484848;
+    border-radius: 10px;
+    padding: 28px 32px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+
+    h2 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #e8e8e8;
+    }
+  }
+
+  &__close {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #888;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 4px;
+    line-height: 1;
+
+    &:hover { color: #fff; border-color: #555; background: #2a2a2a; }
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  &__row-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  &__label {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #ddd;
+  }
+
+  &__value {
+    font-size: 0.9rem;
+    color: #aaa;
+    font-variant-numeric: tabular-nums;
+    min-width: 5em;
+    text-align: right;
+  }
+
+  &__desc {
+    margin: 0 0 12px;
+    font-size: 0.82rem;
+    color: #888;
+    line-height: 1.5;
+  }
+
+  &__slider-wrap {
+    position: relative;
+    padding-bottom: 18px; // room for the Lichess default marker + label below
+  }
+
+  input[type='range'] {
+    width: 100%;
+    cursor: pointer;
+    accent-color: #5a9de0;
+    height: 6px;
+
+    // Larger thumb in Webkit
+    &::-webkit-slider-thumb {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  // Red tick marking the Lichess default position on the slider track.
+  // position: absolute inside slider-wrap; left% set inline from renderDetectionModal.
+  &__default-mark {
+    position: absolute;
+    bottom: 2px;
+    width: 2px;
+    height: 10px;
+    background: #c44;
+    transform: translateX(-50%);
+    border-radius: 1px;
+    pointer-events: none;
+
+    // Small "L" label below the tick
+    &::after {
+      content: 'L';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.6rem;
+      color: #c44;
+      margin-top: 2px;
+      white-space: nowrap;
+    }
+  }
+}
+
 // Global settings menu — lives in the header right side, separate from engine controls.
 // Adapted from Lichess header action menu patterns.
 .global-menu {
