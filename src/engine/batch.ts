@@ -52,6 +52,7 @@ let _missedTacticGameIds: Set<string>;
 let _analyzedGameAccuracy: Map<string, { white: number | null; black: number | null }>;
 let _getUserColor: (game: ImportedGame) => 'white' | 'black' | null;
 let _redraw: () => void = () => {};
+let _onBatchComplete: (() => void) | null = null;
 
 export function initBatch(deps: {
   getCtrl:              () => AnalyseCtrl;
@@ -62,6 +63,7 @@ export function initBatch(deps: {
   analyzedGameAccuracy: Map<string, { white: number | null; black: number | null }>;
   getUserColor:         (game: ImportedGame) => 'white' | 'black' | null;
   redraw:               () => void;
+  onBatchComplete?:     () => void;
 }): void {
   _getCtrl              = deps.getCtrl;
   _getSelectedGameId    = deps.getSelectedGameId;
@@ -71,6 +73,7 @@ export function initBatch(deps: {
   _analyzedGameAccuracy = deps.analyzedGameAccuracy;
   _getUserColor         = deps.getUserColor;
   _redraw               = deps.redraw;
+  _onBatchComplete      = deps.onBatchComplete ?? null;
 
   // Register with ctrl.ts to avoid circular import.
   setIsBatchActive(() => batchAnalyzing);
@@ -247,6 +250,8 @@ export function advanceBatch(): void {
     resetCurrentEval();
     clearPendingLines();
     evalCurrentPosition();
+    // Notify caller so it can advance a multi-game analysis queue.
+    _onBatchComplete?.();
   }
 }
 

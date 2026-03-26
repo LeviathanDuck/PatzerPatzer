@@ -37,7 +37,7 @@ export function defaultImportedPuzzleFilters(): ImportedPuzzleFilters {
   return {
     ratingMin: '',
     ratingMax: '',
-    theme: '',
+    themes: [],
     opening: '',
   };
 }
@@ -145,9 +145,9 @@ function recordMatchesFilters(record: ImportedPuzzleRecord, filters: ImportedPuz
   const max = toOptionalNumber(filters.ratingMax);
   if (min !== null && record.rating < min) return false;
   if (max !== null && record.rating > max) return false;
-  if (filters.theme) {
-    const wanted = normalizeTag(filters.theme);
-    if (!record.themes.some(theme => normalizeTag(theme) === wanted)) return false;
+  if (filters.themes.length > 0) {
+    const wanted = filters.themes.map(normalizeTag);
+    if (!record.themes.some(t => wanted.includes(normalizeTag(t)))) return false;
   }
   if (filters.opening) {
     const wanted = normalizeTag(filters.opening);
@@ -164,9 +164,13 @@ function shardMayMatch(
   const max = toOptionalNumber(filters.ratingMax);
   if (min !== null && shard.ratingMax !== undefined && shard.ratingMax < min) return false;
   if (max !== null && shard.ratingMin !== undefined && shard.ratingMin > max) return false;
-  if (filters.theme) {
-    const wanted = normalizeTag(filters.theme);
-    if (!shard.themes.some(theme => normalizeTag(theme) === wanted)) return false;
+  if (filters.themes.length > 0) {
+    // Shard must contain at least one of the selected themes.
+    // If the shard has no theme metadata, don't skip it (treat as unknown).
+    if (shard.themes.length > 0) {
+      const wanted = filters.themes.map(normalizeTag);
+      if (!shard.themes.some(t => wanted.includes(normalizeTag(t)))) return false;
+    }
   }
   if (filters.opening) {
     const wanted = normalizeTag(filters.opening);

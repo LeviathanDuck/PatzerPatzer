@@ -258,8 +258,15 @@ export function initPuzzles(deps: {
   initImportedPuzzles({ redraw: deps.redraw });
 
   // Restore persisted filter selection (page resets to 0; only filters carry over).
+  // Migration guard: old stored data may have `theme: string` (single); convert to `themes: string[]`.
   void loadPuzzleQueryFromIdb().then(filters => {
-    if (filters) importedQuery = { ...importedQuery, page: 0, filters };
+    if (filters) {
+      const migratedFilters: typeof importedQuery.filters = {
+        ...filters,
+        themes: (filters as any).themes ?? ((filters as any).theme ? [(filters as any).theme] : []),
+      };
+      importedQuery = { ...importedQuery, page: 0, filters: migratedFilters };
+    }
   });
 
   void loadPuzzleSessionFromIdb().then(session => {
@@ -393,10 +400,11 @@ export function renderPuzzlesRoute(route: Route): VNode {
       isResumeKey: key => currentPuzzleIsActive(puzzleSession, key),
       onImportedRatingMin: value => updateImportedFilters({ ratingMin: value }),
       onImportedRatingMax: value => updateImportedFilters({ ratingMax: value }),
-      onImportedTheme: value => updateImportedFilters({ theme: value }),
+      onImportedThemes: values => updateImportedFilters({ themes: values }),
       onImportedOpening: value => updateImportedFilters({ opening: value }),
       onImportedPrevPage: () => stepImportedPage(-1),
       onImportedNextPage: () => stepImportedPage(1),
+      redraw: _redraw,
       onStartTraining: () => {
         startTraining(importedQuery);
         // Navigate as soon as the first training item is available.

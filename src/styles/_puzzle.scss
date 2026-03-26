@@ -19,8 +19,10 @@
     // Without this, the board can be tall enough to trigger a vertical scrollbar,
     // which narrows the viewport, shrinks the board, hides the scrollbar, widens
     // the viewport, grows the board — a rapid oscillation that looks like vibration.
-    // ~10rem accounts for header + player strips + padding above/below.
-    max-width: calc(100vh - 10rem);
+    // ~14rem accounts for header (~48px) + player strips (~80px) + padding/gaps (~48px).
+    // 10rem was insufficient — scrollbar would appear, narrow viewport, shrink board,
+    // hide scrollbar, widen viewport, grow board — a rapid oscillation (vibration).
+    max-width: calc(100vh - 14rem);
   }
 
   &__side {

@@ -57,6 +57,42 @@ Use this file to store Claude Code prompts that are ready to run in a future Cla
 - CCP-119: Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
   - Manager prompt: run CCP-116, CCP-117 in order.
 
+- CCP-120: Configurable StockfishProtocol Engine Options
+  - Add ProtocolConfig constructor param (threads?, hash?) to StockfishProtocol so the background engine can run at Threads=1, Hash=32.
+
+- CCP-121: Background Review Engine Module Skeleton
+  - Create src/engine/reviewQueue.ts with background StockfishProtocol instance, queue state types, and public API stubs. Engine init only — no analysis loop yet.
+
+- CCP-122: Per-Game Analysis Loop in reviewQueue.ts
+  - Implement enqueueBulkReview, per-game AnalyseCtrl/evalCache, the background batch analysis loop, and getReviewProgress export.
+
+- CCP-123: Route-Change Resilience in main.ts
+  - Guard loadGame() with source option, guard onChange() for isBulkRunning(), remove gameAnalysisQueue/onQueuedBatchComplete, wire reviewAllGames to enqueueBulkReview.
+
+- CCP-124: Per-Game Progress Display in Games List
+  - Add live progress percentage badges to game rows and a queue summary line above the list.
+
+- CCP-125: Bulk Review Settings Submenu in Header
+  - Add Review nav entry with running badge, and a dropdown submenu with depth selector, auto-review toggle, and queue controls (pause/resume/cancel).
+
+- CCP-127: Active Filter Summary Bar
+  - Add dismissible filter-chip summary row below the puzzle filter controls; "Clear all" resets all active filters at once.
+
+- CCP-128: Difficulty Preset Pills with Range Display
+  - Replace the difficulty `<select>` with five pill buttons (Easiest–Hardest) and a live numeric range label (e.g. "1500–1800").
+
+- CCP-129: Multi-Select Theme Filter Type and Logic
+  - Change `ImportedPuzzleFilters.theme: string` to `themes: string[]`; update `recordMatchesFilters`, `shardMayMatch`, IDB restore guard, and `index.ts` wiring.
+
+- CCP-130: Multi-Select Theme Tile Grid View Update
+  - Update `renderThemeGrid()` to accept `currentThemes: string[]`; tile clicks toggle membership; multiple tiles active simultaneously.
+
+- CCP-131: Custom Rating Range Number Inputs
+  - Add min/max number inputs below the preset pills (Sprint 2); typed values call the existing `onRatingMin`/`onRatingMax` callbacks.
+
+- CCP-132: Theme Category Collapse Toggle
+  - Add per-category expand/collapse in the theme grid; "Checkmate Patterns" defaults collapsed; headings become toggle buttons.
+
 - CCP-103: Fix Wrong-Move Result State
   - Wrong move should set feedback='fail' but leave result='active' so the user can retry without the round locking.
 
@@ -1405,4 +1441,1237 @@ After both pass:
 - Run `npm run build` one final time
 - Report: which files were changed, final build status, any risks or open questions
 - Do NOT push to git
+```
+
+---
+
+## CCP-120 - Configurable StockfishProtocol Engine Options
+
+```
+Prompt ID: CCP-120
+Task ID: CCP-120
+Source Document: docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md
+Source Step: Sprint 0 — Make StockfishProtocol configurable
+
+Before starting, check whether any other coding tool or agent is currently editing
+src/ceval/protocol.ts or any engine-related file in this repo. If so, resolve the
+conflict before proceeding.
+
+Read CLAUDE.md and confirm you understand the 1–3 file constraint and the pre-implementation
+checklist before writing any code.
+
+---
+
+TASK: Add a ProtocolConfig constructor parameter to StockfishProtocol.
+
+CONTEXT:
+The background bulk review system (see docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md)
+requires a second Stockfish engine instance that runs at Threads=1 and Hash=32 to minimise
+CPU and memory competition with the live analysis engine. Currently StockfishProtocol
+hardcodes Threads=cores-1 and Hash=256. This must be overridable.
+
+PRE-IMPLEMENTATION STEPS:
+1. Read src/ceval/protocol.ts in full.
+2. Locate the `received()` method where `setoption name Threads` and `setoption name Hash`
+   are sent.
+3. Confirm that the existing call site in src/engine/ctrl.ts uses
+   `new StockfishProtocol()` with no arguments — this must remain valid with no
+   behavior change after your edit.
+
+FILE CONSTRAINT:
+Touch exactly 1 file: src/ceval/protocol.ts
+
+IMPLEMENTATION:
+Add an optional ProtocolConfig interface and accept it in the constructor:
+
+  export interface ProtocolConfig {
+    threads?: number;  // if omitted: use Math.max(1, navigator.hardwareConcurrency - 1)
+    hash?:    number;  // if omitted: use 256
+  }
+
+  export class StockfishProtocol {
+    constructor(private config: ProtocolConfig = {}) {}
+    ...
+  }
+
+In received(), when uciok arrives, resolve threads and hash from config before sending:
+
+  const cores   = navigator.hardwareConcurrency ?? 2;
+  const threads = this.config.threads ?? Math.max(1, cores - 1);
+  const hash    = this.config.hash    ?? 256;
+  this.send(`setoption name Threads value ${threads}`);
+  this.send(`setoption name Hash value ${hash}`);
+
+DO NOT:
+- Change any other part of the protocol
+- Touch src/engine/ctrl.ts
+- Touch any other file
+
+ACCEPTANCE CRITERIA:
+- `new StockfishProtocol()` compiles and behaves identically to before
+- `new StockfishProtocol({ threads: 1, hash: 32 })` compiles without error
+- pnpm build passes with no new errors or warnings
+
+After completing, run pnpm build and confirm it passes.
+Report: Prompt ID CCP-120, Task ID CCP-120, files changed, build status.
+Do NOT push to git.
+```
+
+---
+
+## CCP-121 - Background Review Engine Module Skeleton
+
+```
+Prompt ID: CCP-121
+Task ID: CCP-121
+Source Document: docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md
+Source Step: Sprint 1-A — Background engine module skeleton
+
+Before starting, check whether any other coding tool or agent is currently editing
+src/engine/ or src/ceval/ files in this repo. If so, resolve before proceeding.
+
+Read CLAUDE.md and confirm you understand the 1–3 file constraint and the
+pre-implementation checklist before writing any code.
+
+PREREQUISITE: CCP-120 must be complete. Confirm that StockfishProtocol accepts a
+ProtocolConfig constructor argument before proceeding.
+
+---
+
+TASK: Create the src/engine/reviewQueue.ts module with background engine lifecycle
+and public API stubs. Do NOT implement the analysis loop yet — that is CCP-122.
+
+CONTEXT:
+See docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md, Sprint 1.
+The background review engine is a second StockfishProtocol instance that operates
+completely independently from the live analysis engine in src/engine/ctrl.ts.
+It is initialised lazily on first use and stays running for the session.
+
+PRE-IMPLEMENTATION STEPS:
+1. Read src/engine/ctrl.ts lines 1–120 — understand how protocol, engineEnabled,
+   engineReady, and the readyok handshake work.
+2. Read src/engine/batch.ts lines 57–110 — understand initBatch deps structure.
+3. Read src/ceval/protocol.ts — confirm ProtocolConfig is present (CCP-120 done).
+4. Read src/import/types.ts — confirm the ImportedGame type shape.
+5. Read src/analyse/ctrl.ts lines 1–50 — confirm AnalyseCtrl constructor signature.
+
+FILE CONSTRAINT:
+Create exactly 1 new file: src/engine/reviewQueue.ts
+Do not modify any existing file in this step.
+
+IMPLEMENTATION:
+
+Create src/engine/reviewQueue.ts with:
+
+1. A background engine instance:
+   const reviewProtocol = new StockfishProtocol({ threads: 1, hash: 32 });
+   let reviewEngineReady = false;
+   let reviewEngineInitStarted = false;
+
+2. ReviewQueueEntry type:
+   export interface ReviewQueueEntry {
+     game:    ImportedGame;
+     ctrl:    AnalyseCtrl;
+     cache:   Map<string, PositionEval>;
+     done:    number;
+     total:   number;
+     status:  'pending' | 'analyzing' | 'complete' | 'error';
+   }
+
+3. Module-level queue state:
+   let queue: ReviewQueueEntry[] = [];
+   let activeIndex = -1;
+   let queuePaused = false;
+
+4. Public API (stubs — bodies to be filled in CCP-122):
+   export function enqueueBulkReview(games: ImportedGame[]): void { /* stub */ }
+   export function isBulkRunning(): boolean { return ... }
+   export function isBulkPaused(): boolean { return queuePaused; }
+   export function cancelBulkReview(): void { /* stub */ }
+   export function pauseBulkReview(): void { /* stub */ }
+   export function resumeBulkReview(): void { /* stub */ }
+   export function getReviewProgress(gameId: string): number | undefined { /* stub */ }
+   export function getQueueSummary(): { total: number; done: number; running: boolean } { ... }
+
+5. Background engine init function (not exported — internal):
+   async function initReviewEngine(baseUrl: string): Promise<void>
+   This mirrors the pattern in src/engine/ctrl.ts initEngine() — wire reviewProtocol.onMessage()
+   to a local received() handler that sets reviewEngineReady = true when it sees 'readyok'.
+
+6. Export the reviewProtocol for use by the analysis loop in CCP-122:
+   export { reviewProtocol };
+
+DO NOT:
+- Implement the analysis loop (that is CCP-122)
+- Import from or modify src/engine/batch.ts
+- Import from or modify src/engine/ctrl.ts (except types)
+- Import from or modify src/main.ts
+
+ACCEPTANCE CRITERIA:
+- File compiles with no TypeScript errors
+- pnpm build passes
+- The module can be imported without side effects
+
+After completing, run pnpm build and confirm it passes.
+Report: Prompt ID CCP-121, Task ID CCP-121, files changed, build status.
+Do NOT push to git.
+```
+
+---
+
+## CCP-122 - Per-Game Analysis Loop in reviewQueue.ts
+
+```
+Prompt ID: CCP-122
+Task ID: CCP-122
+Source Document: docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md
+Source Step: Sprint 1-B — Per-game analysis loop
+
+Before starting, check whether any other coding tool or agent is currently editing
+src/engine/reviewQueue.ts or src/engine/batch.ts. If so, resolve before proceeding.
+
+Read CLAUDE.md and confirm you understand the 1–3 file constraint before writing any code.
+
+PREREQUISITE: CCP-121 must be complete. Confirm reviewQueue.ts exists and compiles.
+
+---
+
+TASK: Implement the per-game background analysis loop inside src/engine/reviewQueue.ts.
+This fills in the stubs created in CCP-121.
+
+CONTEXT:
+See docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md, Sprint 1.
+The background analysis loop mirrors what src/engine/batch.ts does for the live board,
+but uses the background engine (reviewProtocol), per-game AnalyseCtrl instances, and
+per-game eval caches. It must be self-contained in reviewQueue.ts — do not modify
+batch.ts or ctrl.ts.
+
+PRE-IMPLEMENTATION STEPS:
+1. Read src/engine/batch.ts in full — understand evalBatchItem(), onBatchBestmove(),
+   advanceBatch(), startBatchAnalysis(), and the BatchItem type.
+2. Read src/engine/ctrl.ts lines 60–200 — understand evalCache, currentEval,
+   PositionEval, and the parseEngineLine/bestmove handling pattern.
+3. Read src/engine/winchances.ts — understand evalWinChances() for loss computation.
+4. Read src/idb/index.ts lines 200–230 — understand saveAnalysisToIdb and
+   buildAnalysisNodes signatures.
+5. Read src/tree/ops.ts — understand pathInit and how mainline paths are constructed.
+6. Read src/engine/reviewQueue.ts in full (your CCP-121 output).
+
+FILE CONSTRAINT:
+Touch exactly 1 file: src/engine/reviewQueue.ts
+Do not modify batch.ts, ctrl.ts, main.ts, or any other file.
+
+IMPLEMENTATION:
+
+Implement the following inside reviewQueue.ts:
+
+1. enqueueBulkReview(games):
+   - Skip games already in the queue or already complete in analyzedGameIds.
+   - For each new game: build an AnalyseCtrl from pgnToTree(game.pgn).
+   - Compute total = mainline.length - 1 (positions to analyze, skip root).
+   - Push a ReviewQueueEntry with status 'pending'.
+   - If engine not yet initialised, call initReviewEngine(baseUrl) — use the same
+     baseUrl as the live engine ('/stockfish-web' or equivalent).
+   - Call advanceQueue() to start.
+
+2. advanceQueue():
+   - Find the first 'pending' entry, set it to 'analyzing', set activeIndex.
+   - Call startEntryBatch(entry).
+
+3. startEntryBatch(entry):
+   - Build a queue of { nodeId, nodePath, parentPath, fen, nodePly } for every
+     mainline position not already in entry.cache.
+   - If queue is empty, finishEntry(entry).
+   - Otherwise send the first position to reviewProtocol:
+       reviewProtocol.setPosition(fen)
+       reviewProtocol.go(reviewDepth)
+     (import reviewDepth from src/engine/batch.ts)
+
+4. onReviewBestmove(line):
+   - Called from the reviewProtocol onMessage handler when 'bestmove' is received.
+   - Read the current eval accumulated from 'info' lines (mirror the currentEval
+     accumulation pattern from src/engine/ctrl.ts parseEngineLine).
+   - Store to entry.cache using the same delta/loss computation as batch.ts
+     onBatchBestmove().
+   - Increment entry.done.
+   - Advance to the next position or call finishEntry(entry).
+
+5. finishEntry(entry):
+   - Set entry.status = 'complete'.
+   - Call saveAnalysisToIdb('complete', entry.game.id, buildAnalysisNodes(...), reviewDepth).
+   - Update _analyzedGameIds, _missedTacticGameIds, _analyzedGameAccuracy
+     (these must be injected via an initReviewQueue(deps) function, mirroring initBatch).
+   - Call _redraw().
+   - Call advanceQueue() to start the next game.
+
+6. getReviewProgress(gameId):
+   - Find entry by gameId.
+   - If not found: return undefined.
+   - If status 'complete': return 100.
+   - If total === 0: return undefined.
+   - Return Math.round((entry.done / entry.total) * 100).
+
+7. cancelBulkReview():
+   - Call reviewProtocol.stop() if active.
+   - Clear queue, reset activeIndex, queuePaused = false.
+
+8. pauseBulkReview() / resumeBulkReview():
+   - pause: set queuePaused = true, call reviewProtocol.stop().
+   - resume: set queuePaused = false, call advanceQueue() if there are pending entries.
+
+9. Add initReviewQueue(deps) function accepting the same shape as initBatch deps
+   (analyzedGameIds, missedTacticGameIds, analyzedGameAccuracy, getUserColor, redraw)
+   so main.ts can wire it at startup.
+
+INFO LINE ACCUMULATION:
+Maintain a module-level reviewCurrentEval: PositionEval = {} that is reset at the start
+of each position and populated from 'info' UCI lines in the onMessage handler, exactly
+mirroring the pattern in src/engine/ctrl.ts parseEngineLine() for the cp/mate/best/moves
+fields. On 'bestmove', snapshot it before resetting.
+
+DO NOT:
+- Modify src/engine/batch.ts
+- Modify src/engine/ctrl.ts
+- Modify src/main.ts
+- Implement anything related to UI rendering
+
+ACCEPTANCE CRITERIA:
+- pnpm build passes with no TypeScript errors
+- enqueueBulkReview([game]) starts the background engine and sends the first position
+- getReviewProgress(gameId) returns a number 0–100 while in progress
+- Completing a game calls saveAnalysisToIdb and advances the queue
+
+After completing, run pnpm build and confirm it passes.
+Report: Prompt ID CCP-122, Task ID CCP-122, files changed, build status, any open
+questions about the info-line parsing or loss computation.
+Do NOT push to git.
+```
+
+---
+
+## CCP-123 - Route-Change Resilience in main.ts
+
+```
+Prompt ID: CCP-123
+Task ID: CCP-123
+Source Document: docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md
+Source Step: Sprint 2 — Route-change resilience
+
+Before starting, check whether any other coding tool or agent is currently editing
+src/main.ts. If so, resolve before proceeding.
+
+Read CLAUDE.md and confirm you understand the 1–3 file constraint before writing any code.
+
+PREREQUISITE: CCP-122 must be complete. Confirm reviewQueue.ts exports enqueueBulkReview,
+isBulkRunning, and initReviewQueue before proceeding.
+
+---
+
+TASK: Make background bulk review survive route changes and user navigation in main.ts.
+
+CONTEXT:
+See docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md, Sprint 2.
+Currently loadGame() unconditionally calls resetBatchState() and clearEvalCache(),
+destroying any running bulk queue. The onChange() route handler calls loadGame() on
+analysis-game deep links regardless of queue state. Both must be guarded.
+
+PRE-IMPLEMENTATION STEPS:
+1. Read src/main.ts in full. Focus on:
+   - loadGame() and every place it is called
+   - onQueuedBatchComplete()
+   - gameAnalysisQueue
+   - reviewAllGames()
+   - the onChange() route handler (the hashchange listener)
+   - the initBatch() call and its deps
+2. Read src/engine/reviewQueue.ts — confirm initReviewQueue, enqueueBulkReview,
+   isBulkRunning exports exist.
+3. Read src/engine/batch.ts lines 126–133 — confirm resetBatchState().
+
+FILE CONSTRAINT:
+Touch exactly 1 file: src/main.ts
+
+CHANGES REQUIRED:
+
+1. Add `source?: 'queue' | 'user'` parameter to loadGame():
+   function loadGame(pgn: string, opts?: { source?: 'queue' | 'user' }): void
+
+   When opts?.source === 'queue':
+   - Rebuild ctrl from the new PGN
+   - Increment restoreGeneration
+   - Return immediately
+   - Do NOT call resetBatchState()
+   - Do NOT call clearEvalCache()
+   - Do NOT call loadAndRestoreAnalysis()
+   All other callers pass no opts and get the existing full-reset behavior unchanged.
+
+2. In the onChange() route handler:
+   After parsing the incoming route, add this guard before any loadGame() call:
+   if (isBulkRunning() && (route.name === 'analysis-game' || route.name === 'analysis')) {
+     selectedGameId = route.params?.id ?? selectedGameId;
+     vnode = patch(vnode, view(currentRoute));
+     return;
+   }
+
+3. Remove gameAnalysisQueue and onQueuedBatchComplete() from main.ts entirely.
+
+4. Update reviewAllGames() to call enqueueBulkReview(games) instead of managing the
+   queue itself:
+   function reviewAllGames(games: ImportedGame[]): void {
+     if (games.length === 0) return;
+     enqueueBulkReview(games);
+     window.location.hash = '#/games';
+   }
+   (Navigate to games tab so user can see progress — do not navigate to analysis board.)
+
+5. Add initReviewQueue() call at the same point where initBatch() is called,
+   passing the same shared state (analyzedGameIds, missedTacticGameIds,
+   analyzedGameAccuracy, getUserColor, redraw).
+
+6. Remove the onBatchComplete: onQueuedBatchComplete dep from the initBatch() call
+   (the queue is now self-managing via reviewQueue.ts).
+
+DO NOT:
+- Change any logic inside loadGame() for the normal 'user' path
+- Change the analysis board rendering
+- Touch src/engine/batch.ts or src/engine/reviewQueue.ts
+
+ACCEPTANCE CRITERIA:
+- pnpm build passes
+- reviewAllGames() calls enqueueBulkReview() and navigates to #/games
+- loadGame() called with { source: 'queue' } does not reset batch state or eval cache
+- onChange() does not call loadGame() while isBulkRunning() is true
+
+After completing, run pnpm build and confirm it passes.
+Report: Prompt ID CCP-123, Task ID CCP-123, files changed, build status.
+Do NOT push to git.
+```
+
+---
+
+## CCP-124 - Per-Game Progress Display in Games List
+
+```
+Prompt ID: CCP-124
+Task ID: CCP-124
+Source Document: docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md
+Source Step: Sprint 3 — Per-game progress display
+
+Before starting, check whether any other coding tool or agent is currently editing
+src/games/view.ts or src/styles/main.scss. If so, resolve before proceeding.
+
+Read CLAUDE.md and confirm you understand the 1–3 file constraint before writing any code.
+
+PREREQUISITE: CCP-123 must be complete. Confirm isBulkRunning, getReviewProgress,
+and getQueueSummary are exported from src/engine/reviewQueue.ts.
+
+---
+
+TASK: Show live progress percentages on game rows and a queue summary line above the
+game list while bulk review is running.
+
+CONTEXT:
+See docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md, Sprint 3.
+The background review engine calls _redraw() after each bestmove, which repaints
+the games list. No new redraw wiring is needed — only new rendering logic.
+
+PRE-IMPLEMENTATION STEPS:
+1. Read src/games/view.ts in full. Understand:
+   - renderGameRow / renderCompactGameRow and how badges are currently rendered
+   - renderGamesView and renderGameList — where the list container is built
+   - GamesViewDeps — what is currently injected
+2. Read src/engine/reviewQueue.ts — confirm the exports needed:
+   getReviewProgress(gameId): number | undefined
+   isBulkRunning(): boolean
+   getQueueSummary(): { total: number; done: number; running: boolean }
+3. Read src/styles/main.scss — find the existing .game-list__row and
+   .games-view__row styles to understand where to add new selectors.
+
+FILE CONSTRAINT:
+Touch exactly 2 files: src/games/view.ts, src/styles/main.scss
+
+CHANGES IN src/games/view.ts:
+
+1. Import getReviewProgress, isBulkRunning, getQueueSummary from
+   '../engine/reviewQueue'.
+
+2. In the game row renderer (both renderGameRow and renderCompactGameRow),
+   after the existing analyzed/missed-tactic badge logic, add:
+   const progress = getReviewProgress(game.id);
+   If progress is defined and < 100:
+   - Add class 'analyzing' to the row element
+   - Render a span.game-row__progress with text `${progress}%` in the badges area
+   If progress is 100 or analyzedIds has the game: render the existing analyzed badge.
+   Priority order: in-progress > analyzed > missed-tactic > none.
+
+3. In renderGamesView and renderGameList, immediately before the game list element,
+   conditionally render a queue summary line:
+   const summary = getQueueSummary();
+   if (summary.running) {
+     // h('div.games-view__queue-status', `Reviewing ${summary.total} games — ${summary.done} complete`)
+   }
+
+DO NOT:
+- Add new deps to GamesViewDeps
+- Change any existing badge rendering for non-bulk-review states
+- Modify any file other than the two listed
+
+CHANGES IN src/styles/main.scss:
+
+Add these styles near the existing .game-list__row and .games-view__row blocks:
+
+.game-list__row.analyzing,
+.games-view__row.analyzing {
+  background: #181d28;
+}
+
+.game-row__progress {
+  color: #7eb6d9;
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.8ch;
+  text-align: right;
+}
+
+.games-view__queue-status {
+  font-size: 0.82em;
+  color: var(--c-muted, #888);
+  padding: 4px 8px 8px;
+}
+
+ACCEPTANCE CRITERIA:
+- pnpm build passes
+- A game row shows "42%" in the badge area while that game is being reviewed
+- The percentage increments with each bestmove callback
+- The .analyzing background is visible on the active row
+- The queue summary line appears above the list while bulk is running
+- No visual regression on rows that are not being reviewed
+
+After completing, run pnpm build and confirm it passes.
+Report: Prompt ID CCP-124, Task ID CCP-124, files changed, build status.
+Do NOT push to git.
+```
+
+---
+
+## CCP-125 - Bulk Review Settings Submenu in Header
+
+```
+Prompt ID: CCP-125
+Task ID: CCP-125
+Source Document: docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md
+Source Step: Sprint 4 — Bulk Review settings submenu
+
+Before starting, check whether any other coding tool or agent is currently editing
+src/header/index.ts or src/styles/main.scss. If so, resolve before proceeding.
+
+Read CLAUDE.md and confirm you understand the 1–3 file constraint before writing any code.
+
+PREREQUISITE: CCP-124 must be complete.
+
+---
+
+TASK: Add a "Review" entry to the main nav with a submenu for bulk review settings
+and queue controls.
+
+CONTEXT:
+See docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md, Sprint 4.
+The submenu mirrors the pattern of the existing global settings menu in header/index.ts.
+Clicking "Review" in the nav opens a dropdown — it does not change the route.
+
+PRE-IMPLEMENTATION STEPS:
+1. Read src/header/index.ts in full. Understand:
+   - navLinks array and renderNav()
+   - showGlobalMenu / showBoardSettings toggle pattern
+   - How the existing global settings menu is rendered and closed on outside click
+   - HeaderDeps interface
+2. Read src/engine/reviewQueue.ts — confirm these exports:
+   isBulkRunning(): boolean
+   isBulkPaused(): boolean
+   pauseBulkReview(): void
+   resumeBulkReview(): void
+   cancelBulkReview(): void
+   getQueueSummary(): { total: number; done: number; running: boolean }
+3. Read src/engine/batch.ts — confirm setReviewDepth(v) and reviewDepth exports.
+4. Read src/styles/main.scss near the header section to understand existing
+   menu/dropdown styles before adding new ones.
+
+FILE CONSTRAINT:
+Touch exactly 2 files: src/header/index.ts, src/styles/main.scss
+
+CHANGES IN src/header/index.ts:
+
+1. Add module-level state:
+   let showReviewMenu = false;
+
+2. Do NOT add "Review" to the navLinks array (navLinks drives <a> tag nav items
+   that change the route). Instead render the Review button as a separate nav item
+   that toggles showReviewMenu, placed after the existing navLinks items.
+
+3. In renderNav(), append a Review button after the mapped navLinks:
+   h('button.header__review-btn', {
+     class: { active: showReviewMenu },
+     on: { click: (e) => {
+       e.stopPropagation();
+       showReviewMenu = !showReviewMenu;
+       showGlobalMenu = false;
+       showBoardSettings = false;
+       deps.redraw();
+     }},
+   }, [
+     'Review',
+     isBulkRunning() ? h('span.review-queue-badge', String(getQueueSummary().total - getQueueSummary().done)) : null,
+   ])
+
+4. When showReviewMenu is true, render a .header__review-menu dropdown containing:
+
+   a) Depth selector — a row of buttons for depths 12, 14, 16, 18, 20:
+      Current reviewDepth is highlighted. Clicking calls setReviewDepth(d) and redraws.
+
+   b) Auto-review toggle — a checkbox:
+      Label: "Auto-review new games after import"
+      Persists to localStorage key 'patzer.autoReview' (read/write directly).
+
+   c) Queue status section — shown only when isBulkRunning() or isBulkPaused():
+      Text: `${summary.done} of ${summary.total} games complete`
+      Pause button (if running): calls pauseBulkReview(), redraws
+      Resume button (if paused): calls resumeBulkReview(), redraws
+      Cancel button: calls cancelBulkReview(), redraws
+
+   d) When not running and not paused: text "No review in progress"
+
+5. Close showReviewMenu on outside click using the same document click listener
+   pattern already used by showGlobalMenu and showBoardSettings.
+
+6. Add redraw dep to any event handler that needs it, using deps.redraw.
+
+7. Export a getAutoReview(): boolean helper reading localStorage for use by the
+   import system in CCP-122/main.ts wiring later.
+
+DO NOT:
+- Change HeaderDeps interface (use the same existing redraw dep)
+- Change the existing global menu or board settings menu behavior
+- Add route-changing behavior to the Review button
+- Modify any file other than the two listed
+
+CHANGES IN src/styles/main.scss:
+
+Add near the header nav styles:
+
+.header__review-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0.8;
+  &:hover, &.active { opacity: 1; }
+}
+
+.review-queue-badge {
+  background: #3a6ea8;
+  border-radius: 8px;
+  font-size: 0.7em;
+  padding: 1px 6px;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+.header__review-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 260px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  h3 {
+    margin: 0 0 8px;
+    font-size: 0.9em;
+    color: var(--c-muted, #888);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+}
+
+.review-depth-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+
+  button {
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background: #222;
+    color: inherit;
+    cursor: pointer;
+    font-size: 0.88em;
+    &.active {
+      background: #3a6ea8;
+      border-color: #3a6ea8;
+      color: #fff;
+    }
+    &:hover:not(.active) { background: #2a2a2a; }
+  }
+}
+
+.review-queue-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+ACCEPTANCE CRITERIA:
+- pnpm build passes
+- Clicking "Review" in the nav toggles the submenu open/closed
+- Depth buttons update reviewDepth in batch.ts and persist to localStorage
+- Auto-review checkbox reads/writes patzer.autoReview in localStorage
+- Queue status shows correct counts while bulk is running
+- Pause/resume/cancel all call through to reviewQueue.ts correctly
+- Running badge count updates each redraw
+- Submenu closes when clicking outside it
+- No regression to existing global menu or board settings menu
+
+After completing, run pnpm build and confirm it passes.
+Report: Prompt ID CCP-125, Task ID CCP-125, files changed, build status.
+Do NOT push to git.
+```
+
+---
+
+## CCP-126 - Background Bulk Review Sprint Manager (CCP-120–125)
+
+```
+Prompt ID: CCP-126
+Task ID: CCP-126
+Source Document: docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md
+
+THIS IS A MANAGER/RUNNER PROMPT. CCP-126 is metadata for this runner only.
+Do NOT execute CCP-126 as one of the child prompts. Do NOT re-read or recurse into this prompt.
+
+---
+
+SETUP: Before running any child prompt, read:
+- /Users/leftcoast/Development/PatzerPatzer/CLAUDE.md
+- /Users/leftcoast/Development/PatzerPatzer/AGENTS.md
+- /Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md
+- /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md
+
+The child prompts to execute are, in this exact order:
+  1. CCP-120
+  2. CCP-121
+  3. CCP-122
+  4. CCP-123
+  5. CCP-124
+  6. CCP-125
+
+Read each prompt exactly as written from CLAUDE_PROMPT_QUEUE.md.
+Do not interpret, reorder, or skip any prompt in the sequence.
+Do not modify CLAUDE_PROMPT_QUEUE.md, CLAUDE_PROMPT_LOG.md, CLAUDE_PROMPT_HISTORY.md,
+or code-review.md at any point during the batch.
+
+---
+
+EXECUTION RULES:
+
+Execute each child prompt sequentially. After completing each one:
+- Run pnpm build
+- Confirm the build passes before moving to the next prompt
+- Report briefly:
+    Prompt ID: CCP-###
+    Task: <short title>
+    Build: passed / failed
+    Internal check: passed / issue found
+    Continue: yes / no
+
+Stop immediately and report if any of the following occur:
+- pnpm build fails
+- TypeScript reports new errors introduced by the change
+- A required file from the prompt spec does not exist
+- The implementation cannot be completed safely within the stated file constraint
+- Repo state becomes too uncertain to continue safely
+
+If the batch stops early, report:
+- which Prompt ID stopped the batch
+- why it stopped
+- what the exact failure or issue was
+- what state the repo is in
+
+Do not attempt to fix a failed build by expanding scope into unrequested files.
+Do not continue past a known build or validation failure.
+Do not create new prompts during the batch.
+Do not push to git at any point.
+
+---
+
+DEPENDENCY ORDER:
+
+CCP-120 has no dependencies.
+CCP-121 requires CCP-120 to be complete (StockfishProtocol must accept ProtocolConfig).
+CCP-122 requires CCP-121 to be complete (reviewQueue.ts skeleton must exist).
+CCP-123 requires CCP-122 to be complete (enqueueBulkReview and isBulkRunning must be exported).
+CCP-124 requires CCP-123 to be complete (getReviewProgress and getQueueSummary must be exported).
+CCP-125 requires CCP-124 to be complete.
+
+If any step's prerequisite is not met, stop and report before proceeding.
+
+---
+
+FINAL REPORT (when all 6 prompts complete):
+
+Report a compact summary:
+- List each completed Prompt ID and task title
+- Final build status
+- Any open questions or follow-up issues noted during the run
+- Do NOT push to git
+```
+
+## CCP-127 - Active Filter Summary Bar
+
+```
+Prompt ID: CCP-127
+Task ID: CCP-127
+Source Document: puzzle filter UI audit (planning session)
+Source Step: Sprint Prompt 1 — Active Filter Summary Bar
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Before editing any file, re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+
+Startup coordination step:
+Before editing, check whether any other tool, agent, or Claude Code session is actively
+touching `src/puzzles/view.ts` or `src/styles/main.scss`. If so, stop and report.
+
+---
+
+Task:
+Add a dismissible active-filter summary bar to the imported puzzle library view.
+
+Currently there is no visual indication of which filters are active. The user must inspect
+each control individually. The goal is a compact chip row that appears below the filter
+controls whenever one or more filters are set.
+
+Implementation steps:
+
+1. Read `src/puzzles/view.ts` and `src/styles/main.scss` fully before editing.
+
+2. In `src/puzzles/view.ts`, add a `renderActiveFilterSummary()` helper function.
+   - It accepts `filters: ImportedPuzzleFilters` and callback refs for clearing each filter.
+   - Returns a `VNode | null` — null when all filters are at their default state (empty strings).
+   - When any filter is active, renders a `div.puzzle-filter__active-summary` containing:
+     - One chip per active filter field:
+       - ratingMin or ratingMax set: show a chip with the numeric range text (e.g. "1500–1800" or ">1500" if only one is set)
+       - theme set: show a chip with the theme name
+       - opening set: show a chip with a shortened opening name (first two words is fine)
+     - Each chip: `span.puzzle-filter__chip` with an `×` button (`button.puzzle-filter__chip-clear`) that clears only that filter
+     - A "Clear all" button (`button.puzzle-filter__clear-all`) shown only when ≥2 filters are active
+   - The callbacks to call on clear:
+     - rating chip: call `onRatingMin('')` and `onRatingMax('')`
+     - theme chip: call `onTheme('')`
+     - opening chip: call `onOpening('')`
+
+3. In `renderImportedPuzzleLibrary()`, insert `renderActiveFilterSummary(...)` into the
+   `filterPanel` node immediately after the `div.puzzle-filter__settings` settings row.
+   Pass the filter values and the existing `deps.onRatingMin`, `deps.onRatingMax`,
+   `deps.onTheme`, `deps.onOpening` callbacks.
+
+4. In `src/styles/main.scss`, add styles for:
+   - `.puzzle-filter__active-summary`: flex row, flex-wrap, gap 6px, padding 4px 0
+   - `.puzzle-filter__chip`: inline-flex, align-items center, gap 4px, small padding, border, rounded
+   - `.puzzle-filter__chip-clear`: small ×-button appearance, no border, cursor pointer
+   - `.puzzle-filter__clear-all`: text button style, muted color, small font
+
+Do not modify `src/puzzles/types.ts`, `src/puzzles/imported.ts`, or `src/puzzles/index.ts`.
+Do not modify any files outside `src/puzzles/view.ts` and `src/styles/main.scss`.
+
+Validation:
+- Run `pnpm build` and confirm it passes with no type errors.
+- In the browser, set Difficulty to "Normal" and pick a theme tile — confirm chips appear.
+- Click the theme chip × — confirm only the theme clears, difficulty chip remains.
+- Click "Clear all" — confirm both chips disappear and filters reset.
+- Confirm no chips render when all filters are at default.
+
+Echo in final report:
+Prompt ID: CCP-127
+Task ID: CCP-127
+```
+
+## CCP-128 - Difficulty Preset Pills with Range Display
+
+```
+Prompt ID: CCP-128
+Task ID: CCP-128
+Source Document: puzzle filter UI audit (planning session)
+Source Step: Sprint Prompt 2 — Replace Difficulty Dropdown with Preset Pills
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Before editing any file, re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+
+Startup coordination step:
+Before editing, check whether any other tool, agent, or Claude Code session is actively
+touching `src/puzzles/view.ts` or `src/styles/main.scss`. If so, stop and report.
+
+---
+
+Task:
+Replace the difficulty `<select>` dropdown with five preset pill buttons plus a live
+numeric range display.
+
+The current `renderDifficultyStrip()` renders a `<select>` with named options. The user
+cannot see the numeric range without opening the dropdown. The goal is a pill-button row
+where the active preset is highlighted and the current numeric range is shown adjacent.
+
+Implementation steps:
+
+1. Read `src/puzzles/view.ts` and `src/styles/main.scss` fully before editing.
+
+2. In `src/puzzles/view.ts`, replace the body of `renderDifficultyStrip()` with a new
+   implementation (keep the function signature identical — same name and params):
+   - Render a `div.puzzle-filter__difficulty` containing:
+     - A label: `span.puzzle-filter__label` with text "Difficulty"
+     - A row of 5 pill buttons, one per entry in `DIFFICULTY_PRESETS`:
+       - each: `button.puzzle-filter__preset-pill` with `.active` class when the preset
+         matches the current `ratingMin`/`ratingMax` values (use the existing `currentDifficulty()` helper)
+       - clicking a pill calls `onRatingMin(preset.ratingMin)` and `onRatingMax(preset.ratingMax)`
+     - A range display: `span.puzzle-filter__range-display` showing:
+       - "All ratings" when both ratingMin and ratingMax are empty
+       - "< N" when only ratingMax is set
+       - "> N" when only ratingMin is set
+       - "N – M" when both are set
+   - Remove the old `h('select', ...)` and `h('option', ...)` nodes entirely.
+   - Do not add an "All difficulties" pill — the default state (all empty) is shown by the
+     range display text and the absence of any active pill highlight.
+
+3. In `src/styles/main.scss`, add or update styles:
+   - `.puzzle-filter__difficulty`: flex row, align-items center, flex-wrap wrap, gap 8px
+   - `.puzzle-filter__preset-pill`: small pill button, border, rounded, muted color;
+     `.active` state uses a highlighted border and text color
+   - `.puzzle-filter__range-display`: muted small text, font-variant-numeric tabular-nums
+
+4. Remove or replace the old `.puzzle-difficulty__selector` SCSS rule if it is now unused.
+   Only remove it if `renderDifficultyStrip` no longer renders that class.
+
+Do not modify `src/puzzles/types.ts`, `src/puzzles/imported.ts`, or `src/puzzles/index.ts`.
+Do not modify any file other than `src/puzzles/view.ts` and `src/styles/main.scss`.
+
+Validation:
+- Run `pnpm build` and confirm it passes.
+- In the browser, five preset pills appear where the dropdown was.
+- Clicking "Normal" highlights that pill and shows "1500 – 1800" in the range display.
+- Clicking "Easiest" changes active pill and range display to "< 1200".
+- No active pill is shown for default (all ratings) state.
+- The active-filter chip from CCP-127 (if already done) updates accordingly.
+
+Echo in final report:
+Prompt ID: CCP-128
+Task ID: CCP-128
+```
+
+## CCP-129 - Multi-Select Theme Filter Type and Logic
+
+```
+Prompt ID: CCP-129
+Task ID: CCP-129
+Source Document: puzzle filter UI audit (planning session)
+Source Step: Sprint Prompt 3 — Multi-Select Theme Filter Type + Logic
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Before editing any file, re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+
+Startup coordination step:
+Before editing, check whether any other tool, agent, or Claude Code session is actively
+touching `src/puzzles/types.ts`, `src/puzzles/imported.ts`, or `src/puzzles/index.ts`.
+If so, stop and report.
+
+---
+
+Task:
+Change the theme filter from single-select (`theme: string`) to multi-select (`themes: string[]`)
+in the filter types, filter logic, IDB restore path, and wiring in `index.ts`.
+
+This is a logic-only step. The view update for multi-select tiles is in the next prompt (CCP-130).
+
+Implementation steps:
+
+1. Read `src/puzzles/types.ts`, `src/puzzles/imported.ts`, and `src/puzzles/index.ts` fully.
+
+2. In `src/puzzles/types.ts`:
+   - Change `ImportedPuzzleFilters.theme: string` to `themes: string[]`.
+   - No other changes to this file.
+
+3. In `src/puzzles/imported.ts`:
+   - Update `defaultImportedPuzzleFilters()` to return `themes: []` instead of `theme: ''`.
+   - Update `recordMatchesFilters()`:
+     - If `filters.themes.length === 0`, skip the theme filter (all themes match).
+     - If `filters.themes.length > 0`, match if `record.themes` intersects any value in
+       `filters.themes` (OR semantics). Use normalizeTag on both sides.
+   - Update `shardMayMatch()` similarly:
+     - If `filters.themes.length === 0`, skip.
+     - If `filters.themes.length > 0`, the shard may match if any of `filters.themes`
+       appears in `shard.themes`. If `shard.themes` is empty, the shard may still match
+       (treat as unknown — do not skip it).
+   - Fix all TypeScript errors caused by the renamed field.
+
+4. In `src/puzzles/index.ts`:
+   - Update `updateImportedFilters()` call sites to use `themes: string[]` instead of `theme: string`.
+   - Change `onImportedTheme: value => updateImportedFilters({ theme: value })` to
+     `onImportedThemes: values => updateImportedFilters({ themes: values })`.
+   - Update the `renderPuzzleLibrary` call to pass `onImportedThemes` instead of `onImportedTheme`.
+   - Fix all TypeScript errors caused by the renamed field.
+
+5. IDB migration guard: In `index.ts`, in the `loadPuzzleQueryFromIdb()` restore block,
+   add a migration guard:
+   ```ts
+   if (filters) {
+     // Migrate old single-theme string to multi-select array.
+     const migratedFilters = {
+       ...filters,
+       themes: (filters as any).themes ?? ((filters as any).theme ? [(filters as any).theme] : []),
+     };
+     importedQuery = { ...importedQuery, page: 0, filters: migratedFilters };
+   }
+   ```
+   This handles stored data from before the rename without a hard IDB version bump.
+
+Do not modify `src/puzzles/view.ts` or `src/styles/main.scss` in this prompt.
+View changes for multi-select tiles are in CCP-130.
+
+Validation:
+- Run `pnpm build` and confirm it passes with no TypeScript errors.
+- There should be no remaining references to `filters.theme` (singular) in the three edited files.
+- Do not test in the browser yet — the view still passes a string to `onImportedTheme` until CCP-130 is done.
+
+Echo in final report:
+Prompt ID: CCP-129
+Task ID: CCP-129
+```
+
+## CCP-130 - Multi-Select Theme Tile Grid View Update
+
+```
+Prompt ID: CCP-130
+Task ID: CCP-130
+Source Document: puzzle filter UI audit (planning session)
+Source Step: Sprint Prompt 4 — Multi-Select Theme Tile Grid View Update
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Before editing any file, re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+
+Startup coordination step:
+Before editing, check whether any other tool, agent, or Claude Code session is actively
+touching `src/puzzles/view.ts` or `src/styles/main.scss`. If so, stop and report.
+
+---
+
+Task:
+Update the theme tile grid and its callers in `view.ts` to use `themes: string[]` (multi-select),
+following the logic change made in CCP-129.
+
+This prompt assumes CCP-129 has already been completed and the build passes.
+
+Implementation steps:
+
+1. Read `src/puzzles/view.ts` and `src/styles/main.scss` fully before editing.
+
+2. In `src/puzzles/view.ts`, update `renderThemeGrid()`:
+   - Change signature from:
+     `(availableThemes, currentTheme: string, onTheme: (key: string) => void)`
+     to:
+     `(availableThemes, currentThemes: string[], onThemes: (keys: string[]) => void)`
+   - A tile's `.active` class is set when `currentThemes.includes(theme.key)`.
+   - Clicking a tile toggles the key in/out of `currentThemes`:
+     ```ts
+     const next = currentThemes.includes(theme.key)
+       ? currentThemes.filter(k => k !== theme.key)
+       : [...currentThemes, theme.key];
+     onThemes(next);
+     ```
+   - No other changes to the tile rendering (same `h('button.puzzle-themes__link', ...)` shape).
+
+3. Update `renderImportedPuzzleLibrary()` to pass the new props:
+   - Change `onTheme: (value: string) => void` to `onThemes: (values: string[]) => void` in the deps type.
+   - Pass `manifest?.themes ? renderThemeGrid(manifest.themes, filters.themes, deps.onThemes) : ...`
+   - Fix all TypeScript errors.
+
+4. Update `renderPuzzleLibrary()` deps type:
+   - Change `onImportedTheme: (value: string) => void` to `onImportedThemes: (values: string[]) => void`.
+   - Pass through to `renderImportedPuzzleLibrary`.
+
+5. In `src/styles/main.scss`, confirm `.puzzle-themes__link.active` has a visually distinct
+   multi-select-friendly style (currently it uses a border/background highlight — verify it reads
+   well when multiple tiles are active simultaneously). No structural style changes needed unless
+   the existing active style is insufficient.
+
+Validation:
+- Run `pnpm build` and confirm it passes with no TypeScript errors.
+- In the browser:
+  - Click "Fork" tile — it highlights.
+  - Click "Pin" tile — both Fork and Pin highlight simultaneously.
+  - Click "Fork" again — Fork deselects, Pin remains highlighted.
+  - Active filter summary chips (from CCP-127, if done) update correctly.
+  - Results list updates to show Fork OR Pin puzzles.
+
+Echo in final report:
+Prompt ID: CCP-130
+Task ID: CCP-130
+```
+
+## CCP-131 - Custom Rating Range Number Inputs
+
+```
+Prompt ID: CCP-131
+Task ID: CCP-131
+Source Document: puzzle filter UI audit (planning session)
+Source Step: Sprint Prompt 5 — Custom Rating Range Number Inputs
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Before editing any file, re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+
+Startup coordination step:
+Before editing, check whether any other tool, agent, or Claude Code session is actively
+touching `src/puzzles/view.ts` or `src/styles/main.scss`. If so, stop and report.
+
+---
+
+Task:
+Add custom min/max number inputs below the difficulty preset pills (added in CCP-128) so
+the user can type an arbitrary rating range.
+
+This prompt assumes CCP-128 has already been completed and the build passes.
+`ImportedPuzzleFilters.ratingMin` and `ratingMax` are already `string` — no type changes needed.
+
+Implementation steps:
+
+1. Read `src/puzzles/view.ts` and `src/styles/main.scss` fully before editing.
+
+2. In `src/puzzles/view.ts`, extend `renderDifficultyStrip()`:
+   - Below the preset pill row, add a `div.puzzle-filter__range-inputs` containing:
+     - Label "Min": `span.puzzle-filter__range-label` + `input.puzzle-filter__range-input`
+       with `type: 'number'`, `min: 0`, `max: 3500`, `placeholder: '0'`,
+       `value: filters.ratingMin`
+       On `input` event: call `onRatingMin((e.target as HTMLInputElement).value)`
+     - Label "Max": same pattern with `placeholder: '3500'`, value: `filters.ratingMax`,
+       calling `onRatingMax`
+   - Keep the existing preset pills and range display from CCP-128 above the inputs.
+   - When both inputs are empty (`ratingMin === '' && ratingMax === ''`) and no preset is
+     active, no special state needed — the range display already shows "All ratings".
+   - When a preset pill is clicked, the inputs will update automatically on the next render
+     because Snabbdom re-renders `value` from `filters.ratingMin`/`ratingMax`.
+
+3. In `src/styles/main.scss`, add:
+   - `.puzzle-filter__range-inputs`: flex row, align-items center, gap 8px, margin-top 6px
+   - `.puzzle-filter__range-label`: small muted text
+   - `.puzzle-filter__range-input`: number input, width ~80px, padding 2px 6px
+
+Do not modify `src/puzzles/types.ts`, `src/puzzles/imported.ts`, or `src/puzzles/index.ts`.
+
+Validation:
+- Run `pnpm build` and confirm it passes.
+- In the browser:
+  - Type 1700 in Min, 1900 in Max — results update to that band.
+  - Click "Normal" preset — inputs update to 1500 / 1800 (Snabbdom re-renders from state).
+  - Clear Min input — filter becomes ≤1800 only.
+  - Active filter chips (CCP-127 if done) show the numeric range from the inputs.
+
+Echo in final report:
+Prompt ID: CCP-131
+Task ID: CCP-131
+```
+
+## CCP-132 - Theme Category Collapse Toggle
+
+```
+Prompt ID: CCP-132
+Task ID: CCP-132
+Source Document: puzzle filter UI audit (planning session)
+Source Step: Sprint Prompt 6 — Theme Grid Visual Hierarchy: Category Collapsing
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Before editing any file, re-read:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+
+Startup coordination step:
+Before editing, check whether any other tool, agent, or Claude Code session is actively
+touching `src/puzzles/view.ts` or `src/styles/main.scss`. If so, stop and report.
+
+---
+
+Task:
+Make each theme category heading a collapse/expand toggle. Default "Checkmate Patterns"
+to collapsed on first load to reduce initial scroll depth.
+
+Implementation steps:
+
+1. Read `src/puzzles/view.ts` and `src/styles/main.scss` fully before editing.
+
+2. In `src/puzzles/view.ts`, at module scope (not inside any function), add:
+   ```ts
+   const collapsedCategories = new Set<string>(['Checkmate Patterns']);
+   ```
+   This is module-local UI state — no prop drilling needed.
+
+3. Update `renderThemeGrid()`:
+   - For each category, render the `h2.puzzle-themes__category-label` as a
+     `button.puzzle-themes__category-toggle` instead of a plain heading.
+   - The button shows the category label plus a chevron: `▾` when expanded, `›` when collapsed.
+   - On click: toggle the category label in `collapsedCategories` and call the `redraw` function.
+   - Since `renderThemeGrid` does not currently receive a `redraw` callback, add it as a new
+     optional parameter: `redraw?: () => void`. Call it inside the toggle click handler if
+     provided. Update the two call sites in `renderImportedPuzzleLibrary` to pass `deps.redraw`
+     (which is already available in that scope via `deps` — confirm the deps object includes it,
+     or thread it through from `renderPuzzleLibrary`'s deps).
+   - When a category label is in `collapsedCategories`, render the category heading only —
+     do not render the `div.puzzle-themes__list` tile grid for that category.
+
+4. In `src/styles/main.scss`, add:
+   - `.puzzle-themes__category-toggle`: button reset (background none, border none, cursor pointer,
+     full width, text-align left, flex row with label + arrow, same font size as the old h2 label)
+   - `.puzzle-themes__category-arrow`: muted small span for the chevron
+
+Do not modify any file outside `src/puzzles/view.ts` and `src/styles/main.scss`.
+
+Validation:
+- Run `pnpm build` and confirm it passes.
+- In the browser:
+  - On load, "Checkmate Patterns" is collapsed (heading visible, no tiles).
+  - Click "Checkmate Patterns" heading — tiles expand.
+  - Click again — tiles collapse.
+  - All other categories default expanded.
+  - Multi-select theme state (from CCP-130, if done) is preserved across collapse/expand cycles.
+
+Echo in final report:
+Prompt ID: CCP-132
+Task ID: CCP-132
 ```

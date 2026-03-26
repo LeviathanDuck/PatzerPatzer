@@ -82,6 +82,20 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-092 - Cache Board Move Destinations
 - [x] CCP-093 - Narrow Board Auto-Shape Updates
 - [x] CCP-094 - Remove Board Overlay Fade Animation
+- [ ] CCP-133 - Puzzle Filter Redesign Sprint Manager (CCP-127–132)
+- [ ] CCP-132 - Theme Category Collapse Toggle
+- [ ] CCP-131 - Custom Rating Range Number Inputs
+- [ ] CCP-130 - Multi-Select Theme Tile Grid View Update
+- [ ] CCP-129 - Multi-Select Theme Filter Type and Logic
+- [ ] CCP-128 - Difficulty Preset Pills with Range Display
+- [ ] CCP-127 - Active Filter Summary Bar
+- [ ] CCP-126 - Background Bulk Review Sprint Manager (CCP-120–125)
+- [ ] CCP-125 - Bulk Review Settings Submenu in Header
+- [ ] CCP-124 - Per-Game Progress Display in Games List
+- [ ] CCP-123 - Route-Change Resilience in main.ts
+- [ ] CCP-122 - Per-Game Analysis Loop in reviewQueue.ts
+- [ ] CCP-121 - Background Review Engine Module Skeleton
+- [ ] CCP-120 - Configurable StockfishProtocol Engine Options
 - [ ] CCP-119 - Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
 - [ ] CCP-118 - Phase 1 Puzzle Training Queue Manager (CCP-113–115)
 - [ ] CCP-117 - Show Active Training Context in Puzzle Round Side Panel
@@ -2282,6 +2296,230 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/prompts/CLAUDE_PROMPT_QUEUE.md`
   - Source step: Phase 2 — filter persistence and training context
   - Task: manager prompt — run CCP-116, CCP-117 in order, verify build after each
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-120 - Configurable StockfishProtocol Engine Options
+
+```
+- [ ] Reviewed
+  - ID: `CCP-120`
+  - Task ID: `CCP-120`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+  - Source step: Sprint 0 — Make StockfishProtocol configurable
+  - Task: add ProtocolConfig constructor param (threads?, hash?) to StockfishProtocol
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-121 - Background Review Engine Module Skeleton
+
+```
+- [ ] Reviewed
+  - ID: `CCP-121`
+  - Task ID: `CCP-121`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+  - Source step: Sprint 1-A — Background engine module skeleton
+  - Task: create src/engine/reviewQueue.ts with background StockfishProtocol, queue types, public API stubs
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-122 - Per-Game Analysis Loop in reviewQueue.ts
+
+```
+- [ ] Reviewed
+  - ID: `CCP-122`
+  - Task ID: `CCP-122`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+  - Source step: Sprint 1-B — Per-game analysis loop
+  - Task: implement enqueueBulkReview, per-game ctrl/cache, background batch analysis loop, getReviewProgress
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-123 - Route-Change Resilience in main.ts
+
+```
+- [ ] Reviewed
+  - ID: `CCP-123`
+  - Task ID: `CCP-123`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+  - Source step: Sprint 2 — Route-change resilience
+  - Task: guard loadGame() and onChange(); remove gameAnalysisQueue; wire enqueueBulkReview
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-124 - Per-Game Progress Display in Games List
+
+```
+- [ ] Reviewed
+  - ID: `CCP-124`
+  - Task ID: `CCP-124`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+  - Source step: Sprint 3 — Per-game progress display
+  - Task: add live progress badges to game rows and queue summary line above list
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-125 - Bulk Review Settings Submenu in Header
+
+```
+- [ ] Reviewed
+  - ID: `CCP-125`
+  - Task ID: `CCP-125`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+  - Source step: Sprint 4 — Bulk Review settings submenu
+  - Task: add Review nav button with submenu for depth, auto-review, and queue controls
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-126 - Background Bulk Review Sprint Manager (CCP-120–125)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-126`
+  - Task ID: `CCP-126`
+  - Parent prompt ID: none
+  - Batch prompt IDs: CCP-120, CCP-121, CCP-122, CCP-123, CCP-124, CCP-125
+  - Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+  - Source step: full sprint — manager runs CCP-120 through CCP-125 in order
+  - Task: manager prompt — run CCP-120 through CCP-125 sequentially, verify build after each
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-127 - Active Filter Summary Bar
+
+```
+- [ ] Reviewed
+  - ID: `CCP-127`
+  - Task ID: `CCP-127`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: puzzle filter UI audit (planning session)
+  - Source step: Sprint Prompt 1 — Active Filter Summary Bar
+  - Task: add dismissible chip summary bar showing active puzzle filters
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-128 - Difficulty Preset Pills with Range Display
+
+```
+- [ ] Reviewed
+  - ID: `CCP-128`
+  - Task ID: `CCP-128`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: puzzle filter UI audit (planning session)
+  - Source step: Sprint Prompt 2 — Difficulty Preset Pills with Range Display
+  - Task: replace difficulty <select> with pill buttons and live numeric range label
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-129 - Multi-Select Theme Filter Type and Logic
+
+```
+- [ ] Reviewed
+  - ID: `CCP-129`
+  - Task ID: `CCP-129`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: puzzle filter UI audit (planning session)
+  - Source step: Sprint Prompt 3 — Multi-Select Theme Filter Type and Logic
+  - Task: change ImportedPuzzleFilters.theme:string to themes:string[]; update filter logic and IDB migration
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-130 - Multi-Select Theme Tile Grid View Update
+
+```
+- [ ] Reviewed
+  - ID: `CCP-130`
+  - Task ID: `CCP-130`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: puzzle filter UI audit (planning session)
+  - Source step: Sprint Prompt 4 — Multi-Select Theme Tile Grid View Update
+  - Task: update renderThemeGrid() for multi-select; tiles toggle membership in themes array
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-131 - Custom Rating Range Number Inputs
+
+```
+- [ ] Reviewed
+  - ID: `CCP-131`
+  - Task ID: `CCP-131`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: puzzle filter UI audit (planning session)
+  - Source step: Sprint Prompt 5 — Custom Rating Range Number Inputs
+  - Task: add min/max number inputs below preset pills for arbitrary rating bands
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-132 - Theme Category Collapse Toggle
+
+```
+- [ ] Reviewed
+  - ID: `CCP-132`
+  - Task ID: `CCP-132`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: puzzle filter UI audit (planning session)
+  - Source step: Sprint Prompt 6 — Theme Category Collapse Toggle
+  - Task: per-category expand/collapse; Checkmate Patterns defaults collapsed
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-133 - Puzzle Filter Redesign Sprint Manager (CCP-127–132)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-133`
+  - Task ID: `CCP-133`
+  - Parent prompt ID: none
+  - Batch prompt IDs: CCP-127, CCP-128, CCP-129, CCP-130, CCP-131, CCP-132
+  - Source document: puzzle filter UI audit (planning session)
+  - Source step: manager prompt — run CCP-127 through CCP-132 in order
+  - Task: manager prompt — puzzle filter redesign sprint, run all six child prompts sequentially
   - Claude used: no
   - Review outcome: pending
   - Review issues: none
