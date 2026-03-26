@@ -56,7 +56,12 @@ export function gameSourceUrl(game: ImportedGame): string | undefined {
  * Shared structured row children for compact game lists (header panel + underboard).
  * Fields: result dot · opponent name · date · time class icon · badges.
  */
-export function renderCompactGameRow(game: ImportedGame, isAnalyzed: boolean, hasMissedTactic: boolean): (VNode | null)[] {
+export function renderCompactGameRow(
+  game: ImportedGame,
+  isAnalyzed: boolean,
+  hasMissedTactic: boolean,
+  accuracy?: { user: number | null; opp: number | null },
+): (VNode | null)[] {
   const result    = gameResult(game);
   const userColor = getUserColor(game);
   const opponent  = userColor === 'white' ? (game.black ?? game.id)
@@ -83,10 +88,13 @@ export function renderCompactGameRow(game: ImportedGame, isAnalyzed: boolean, ha
   const oppChip   = oppColor ? h('span.color-chip.--' + oppColor) : null;
   const oppRating = userColor === 'white' ? game.blackRating : userColor === 'black' ? game.whiteRating : undefined;
   const oppLabel  = oppRating !== undefined ? `${opponent} (${oppRating})` : opponent;
+  const oppAccNode = accuracy?.opp !== null && accuracy?.opp !== undefined
+    ? h('span.grl__opp-accuracy', `${accuracy.opp}%`)
+    : null;
 
   return [
     h('span.grl__result.' + resultCls, '●'),
-    h('span.grl__opponent', [oppLabel, oppChip]),
+    h('span.grl__opponent', [oppLabel, oppChip, oppAccNode]),
     date ? h('span.grl__date', date) : null,
     tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, ...(game.timeClass ? { title: game.timeClass } : {}) } }) : null,
     (isNewImport || isAnalyzed || hasMissedTactic) ? h('span.grl__badges', [
@@ -111,7 +119,7 @@ export interface GamesViewDeps {
   gameResult:            (game: ImportedGame) => 'win' | 'loss' | 'draw' | null;
   getUserColor:          (game: ImportedGame) => 'white' | 'black' | null;
   gameSourceUrl:         (game: ImportedGame) => string | undefined;
-  renderCompactGameRow:  (game: ImportedGame, analyzed: boolean, missed: boolean) => (VNode | null)[];
+  renderCompactGameRow:  (game: ImportedGame, analyzed: boolean, missed: boolean, accuracy?: { user: number | null; opp: number | null }) => (VNode | null)[];
   /** Set selectedGameId + call loadGame (used for click-to-load in the game list). */
   selectGame:            (game: ImportedGame) => void;
   /** selectGame + navigate to analysis + startBatchWhenReady (used for Review button). */
@@ -426,24 +434,36 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const srcUrl          = deps.gameSourceUrl(game);
           const progress        = getReviewProgress(game.id);
           const isAnalyzing     = progress !== undefined && progress < 100;
-          const isQueued        = progress !== undefined;
+          const isPending       = progress !== undefined && !isAnalyzing && !isAnalyzed;
 
-          // Per-row review control: progress % while in queue/running, Review button otherwise.
-          // Skipped when already analyzed (✓ badge communicates that).
+          // Accuracy for this game (available once analyzed).
+          const rawAcc    = deps.analyzedGameAccuracy.get(game.id);
+          const userColor = deps.getUserColor(game);
+          const userAcc   = rawAcc && userColor ? (userColor === 'white' ? rawAcc.white : rawAcc.black) : null;
+          const oppAcc    = rawAcc && userColor ? (userColor === 'white' ? rawAcc.black : rawAcc.white) : null;
+          const accuracy  = rawAcc ? { user: userAcc, opp: oppAcc } : undefined;
+
+          // Per-row review control:
+          // - analyzing: show live % progress
+          // - pending in queue (not yet started): show "Queued"
+          // - analyzed: show user accuracy % (or nothing if unavailable)
+          // - not yet queued: show Review button
           const reviewControl = isAnalyzing
             ? h('span.game-list__row-progress', `${progress}%`)
-            : isQueued
+            : isPending
               ? h('span.game-list__row-progress.--queued', 'Queued')
-              : !isAnalyzed
-                ? h('button.game-list__row-review', {
+              : isAnalyzed
+                ? (userAcc !== null && userAcc !== undefined
+                    ? h('span.game-list__row-progress.--accuracy', `${userAcc}%`)
+                    : null)
+                : h('button.game-list__row-review', {
                     attrs: { title: 'Queue for background review' },
                     on: { click: (e: MouseEvent) => {
                       e.stopPropagation();
                       enqueueBulkReview([game]);
                       deps.redraw();
                     }},
-                  }, 'Review')
-                : null;
+                  }, 'Review');
 
           return h('li', [
             h('button.game-list__row', {
@@ -453,7 +473,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                 analyzing: isAnalyzing,
               },
               on: { click: (e: MouseEvent) => handleGameRowClick(game, visible, e, deps, () => deps.selectGame(game)) },
-            }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
+            }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy)),
             reviewControl,
             srcUrl ? h('a.game-ext-link', {
               attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
