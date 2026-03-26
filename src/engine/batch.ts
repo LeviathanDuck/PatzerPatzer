@@ -256,6 +256,7 @@ export function advanceBatch(): void {
 }
 
 export function startBatchAnalysis(): void {
+  console.log('[batch] startBatchAnalysis — engineEnabled:', engineEnabled, 'engineReady:', engineReady, 'batchAnalyzing:', batchAnalyzing);
   if (!engineEnabled || !engineReady || batchAnalyzing) return;
 
   const ctrl = _getCtrl();
@@ -289,6 +290,7 @@ export function startBatchAnalysis(): void {
  * via pendingBatchOnReady so it fires automatically on readyok.
  */
 export function startBatchWhenReady(): void {
+  console.log('[batch] startBatchWhenReady — engineEnabled:', engineEnabled, 'engineReady:', engineReady, 'batchAnalyzing:', batchAnalyzing);
   if (!engineEnabled) {
     pendingBatchOnReady = true;
     toggleEngine();

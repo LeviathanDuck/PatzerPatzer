@@ -359,8 +359,10 @@ function advanceQueue(): void {
 // --- Public API ---
 
 export function enqueueBulkReview(games: ImportedGame[]): void {
+  console.log('[reviewQueue] enqueueBulkReview called — games:', games.map(g => g.id), 'queue len:', queue.length, 'activeIndex:', activeIndex, 'engineInitStarted:', reviewEngineInitStarted);
   for (const game of games) {
     // Skip already analyzed or already queued games.
+    console.log('[reviewQueue]  game', game.id, '— alreadyAnalyzed:', _analyzedGameIds.has(game.id), 'alreadyQueued:', queue.some(e => e.game.id === game.id));
     if (_analyzedGameIds.has(game.id)) continue;
     if (queue.some(e => e.game.id === game.id)) continue;
 
