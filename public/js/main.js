@@ -1242,9 +1242,9 @@ function rawWinChances(cp) {
   return 2 / (1 + Math.exp(WIN_CHANCE_MULTIPLIER * cp)) - 1;
 }
 var LOSS_THRESHOLDS = {
-  inaccuracy: 0.025,
-  mistake: 0.06,
-  blunder: 0.14
+  inaccuracy: 0.05,
+  mistake: 0.1,
+  blunder: 0.15
 };
 function classifyLoss(loss) {
   if (loss >= LOSS_THRESHOLDS.blunder) return "blunder";
@@ -7226,12 +7226,12 @@ function renderAnalysisControls(extraButtons) {
     }
     if (analysisComplete) {
       if (selectedGameId2) _clearGameAnalysis(selectedGameId2);
-      clearEvalCache();
-      resetCurrentEval();
       clearPuzzleCandidates();
       resetBatchState();
       syncArrow();
     }
+    clearEvalCache();
+    resetCurrentEval();
     startBatchWhenReady();
   };
   const statusLine = batchAnalyzing && batchQueue.length > 0 ? h("div.analyse-review-controls__status", `Analyzing\u2026 ${batchDone} of ${batchQueue.length} moves`) : null;
