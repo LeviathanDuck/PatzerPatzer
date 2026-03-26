@@ -300,6 +300,22 @@ export function renderHeader(deps: HeaderDeps): VNode {
   const panel = showImportPanel ? h('div.header__panel', [
 
     h('div.header__panel-section', [
+      h('div.header__panel-label', 'Platform'),
+      h('div.header__panel-row', [
+        h('button.header__pill', {
+          class: { active: importPlatform === 'chesscom' },
+          on: { click: () => { importPlatform = 'chesscom'; redraw(); } },
+        }, 'Chess.com'),
+        h('button.header__pill', {
+          class: { active: importPlatform === 'lichess' },
+          on: { click: () => { importPlatform = 'lichess'; redraw(); } },
+        }, 'Lichess'),
+      ]),
+    ]),
+
+    h('div.header__panel-divider'),
+
+    h('div.header__panel-section', [
       h('div.header__panel-label', 'Time control'),
       h('div.header__panel-row', [
         h('button.header__pill', {
