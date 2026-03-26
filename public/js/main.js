@@ -2664,6 +2664,7 @@ function advanceBatch() {
   }
 }
 function startBatchAnalysis() {
+  console.log("[batch] startBatchAnalysis \u2014 engineEnabled:", engineEnabled, "engineReady:", engineReady, "batchAnalyzing:", batchAnalyzing);
   if (!engineEnabled || !engineReady || batchAnalyzing) return;
   const ctrl2 = _getCtrl2();
   const queue2 = [];
@@ -2688,6 +2689,7 @@ function startBatchAnalysis() {
   if (queue2.length > 0) evalBatchItem(queue2[0]);
 }
 function startBatchWhenReady() {
+  console.log("[batch] startBatchWhenReady \u2014 engineEnabled:", engineEnabled, "engineReady:", engineReady, "batchAnalyzing:", batchAnalyzing);
   if (!engineEnabled) {
     pendingBatchOnReady = true;
     toggleEngine();
@@ -10540,7 +10542,9 @@ function advanceQueue() {
   void startEntryBatch(entry);
 }
 function enqueueBulkReview(games) {
+  console.log("[reviewQueue] enqueueBulkReview called \u2014 games:", games.map((g) => g.id), "queue len:", queue.length, "activeIndex:", activeIndex, "engineInitStarted:", reviewEngineInitStarted);
   for (const game of games) {
+    console.log("[reviewQueue]  game", game.id, "\u2014 alreadyAnalyzed:", _analyzedGameIds2.has(game.id), "alreadyQueued:", queue.some((e) => e.game.id === game.id));
     if (_analyzedGameIds2.has(game.id)) continue;
     if (queue.some((e) => e.game.id === game.id)) continue;
     const ctrl2 = new AnalyseCtrl(pgnToTree(game.pgn));
