@@ -292,6 +292,13 @@ export function startBatchWhenReady(): void {
   if (!engineEnabled) {
     pendingBatchOnReady = true;
     toggleEngine();
+    // If the engine was already initialized and ready, toggleEngine() will not
+    // trigger another readyok — the _onEngineReady hook that consumes
+    // pendingBatchOnReady will never fire.  Start the batch directly.
+    if (engineReady) {
+      pendingBatchOnReady = false;
+      startBatchAnalysis();
+    }
     return;
   }
   if (!engineReady) {
