@@ -25,6 +25,7 @@ import {
   getEvalParentPath,
 } from './ctrl';
 import { evalWinChances } from './winchances';
+import { hasMissedMoments } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
 import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import type { AnalyseCtrl } from '../analyse/ctrl';
@@ -109,11 +110,6 @@ function storedInt(key: string, def: number, min: number, max: number): number {
 export let reviewDepth      = storedInt('patzer.reviewDepth', 16, 12, 20);
 export let pendingBatchOnReady = false;
 
-// Win-chance swing threshold for missed-tactic detection.
-// Mirrors lichess-org/lila: ui/analyse/src/nodeFinder.ts evalSwings (0.10).
-const MISSED_TACTIC_THRESHOLD = 0.10;
-// Ply cutoff for phase gating — only opening + middlegame misses are flagged.
-const MISSED_TACTIC_MAX_PLY   = 60;
 
 // --- Setters (used by main.ts render code and loadGame) ---
 
@@ -135,40 +131,15 @@ export function resetBatchState(): void {
 // --- Missed tactic detection ---
 
 /**
- * Scan the analyzed mainline for significant missed wins by the user.
- * Mirrors the evalSwings logic in lichess-org/lila: ui/analyse/src/nodeFinder.ts,
- * with a ply-based phase gate to exclude endgame / time-scramble positions.
+ * Returns true if the analyzed mainline contains any missed tactical moment
+ * for the given user color.  Delegates to engine/tactics.ts which holds all
+ * configurable thresholds and category logic.
+ *
+ * Exported so main.ts can call it when restoring previously-analyzed games
+ * from IDB (the evalCache is populated at that point).
  */
 export function detectMissedTactics(userColor: 'white' | 'black' | null): boolean {
-  const ctrl = _getCtrl();
-  let path = '';
-  for (let i = 1; i < ctrl.mainline.length; i++) {
-    const node = ctrl.mainline[i]!;
-    path += node.id;
-
-    const isWhiteMove = node.ply % 2 === 1;
-    const isUserMove  = userColor === null
-      || (userColor === 'white' && isWhiteMove)
-      || (userColor === 'black' && !isWhiteMove);
-    if (!isUserMove) continue;
-
-    const parentPath = path.slice(0, -2);
-    const nodeEval   = evalCache.get(path);
-    const parentEval = evalCache.get(parentPath);
-    if (!nodeEval || !parentEval || !parentEval.best) continue;
-
-    // Condition 2 (phase-agnostic): user had a forced mate in ≤ 3 but didn't play it.
-    const userParentMate = isWhiteMove
-      ? parentEval.mate
-      : (parentEval.mate !== undefined ? -parentEval.mate : undefined);
-    if (userParentMate !== undefined && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
-
-    if (node.ply >= MISSED_TACTIC_MAX_PLY) continue;
-
-    // Condition 1: significant win-chance loss for the user
-    if (nodeEval.loss !== undefined && nodeEval.loss > MISSED_TACTIC_THRESHOLD) return true;
-  }
-  return false;
+  return hasMissedMoments(_getCtrl().mainline, evalCache, userColor);
 }
 
 // --- Batch engine control ---
