@@ -45,6 +45,7 @@ function renderMoveSpan(
   userOnly:        boolean,
   contextMenuPath: string | null | undefined,
   onContextMenu:   ((path: string, e: MouseEvent) => void) | undefined,
+  worstMissPath:   string | undefined,
 ): VNode {
   const cached       = getEval(path);
   const parentCached = getEval(pathInit(path));
@@ -79,8 +80,9 @@ function renderMoveSpan(
 
   return h('move', {
     class: {
-      active:         path === currentPath,
+      active:           path === currentPath,
       'context-active': contextMenuPath === path,
+      'worst-miss':     worstMissPath !== undefined && path === worstMissPath,
     },
     attrs: { p: path },
     on: {
@@ -109,6 +111,7 @@ function renderInlineNodes(
   userOnly:        boolean,
   contextMenuPath: string | null | undefined,
   onContextMenu:   ((path: string, e: MouseEvent) => void) | undefined,
+  worstMissPath:   string | undefined,
 ): VNode[] {
   if (nodes.length === 0) return [];
   const main       = nodes[0]!;
@@ -117,16 +120,16 @@ function renderInlineNodes(
   const out: VNode[] = [];
 
   const showIndex = needsMoveNum || main.ply % 2 === 1;
-  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu));
+  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath));
 
   for (const variant of variations) {
-    out.push(h('inline', renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu)));
+    out.push(h('inline', renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath)));
   }
 
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
   const contNeedsNum = hasVariations && firstCont !== undefined && firstCont.ply % 2 === 0;
-  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu));
+  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath));
 
   return out;
 }
@@ -154,6 +157,7 @@ function renderColumnNodes(
   deleteVariation?: (path: string) => void,
   contextMenuPath?: string | null,
   onContextMenu?:   (path: string, e: MouseEvent) => void,
+  worstMissPath?:   string,
 ): void {
   if (nodes.length === 0) return;
   const main       = nodes[0]!;
@@ -166,7 +170,7 @@ function renderColumnNodes(
   if (isWhite) out.push(h('index', String(Math.ceil(main.ply / 2))));
 
   // The move — no embedded index for column view.
-  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu));
+  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath));
 
   // Variations — emit as full-width interrupt block.
   // Mirrors lichess-org/lila: columnView.ts interrupt > lines > line structure
@@ -177,7 +181,7 @@ function renderColumnNodes(
 
     const varLines = variations.map(v => {
       const varPath = parentPath + v.id;
-      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu);
+      const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath);
       // Variation remove affordance: small × button at start of each non-mainline line.
       // Mirrors lichess-org/lila: ui/analyse/src/treeView/contextMenu.ts deleteNode action.
       if (deleteVariation) {
@@ -202,7 +206,7 @@ function renderColumnNodes(
     }
   }
 
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath);
 }
 
 /**
@@ -223,10 +227,11 @@ export function renderMoveList(
   deleteVariation?: (path: string) => void,
   contextMenuPath?: string | null,
   onContextMenu?:   (path: string, e: MouseEvent) => void,
+  worstMissPath?:   string,
 ): VNode {
   // div.tview2.tview2-column: flex-wrap grid, index | white | black per row.
   // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts renderColumnView
   const nodes: VNode[] = [];
-  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu);
+  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath);
   return h('div.move-list-inner', [h('div.tview2.tview2-column', nodes)]);
 }
