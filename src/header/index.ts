@@ -32,6 +32,7 @@ let showImportPanel  = false;
 let showGlobalMenu   = false;
 let showBoardSettings = false;
 let showReviewMenu   = false;
+let showMobileNav    = false;
 
 export function setImportPlatform(p: ImportPlatform): void { importPlatform = p; }
 export function getImportPlatform(): ImportPlatform         { return importPlatform; }
@@ -245,6 +246,29 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
   ]);
 }
 
+// --- Mobile nav ---
+
+function renderMobileNav(route: Route, redraw: () => void): VNode {
+  const active = activeSection(route);
+  return h('div.header__mobile-nav', [
+    h('button.header__hamburger', {
+      class: { active: showMobileNav },
+      attrs: { title: 'Menu', 'aria-label': 'Menu' },
+      on: { click: () => { showMobileNav = !showMobileNav; redraw(); } },
+    }, '☰'),
+    showMobileNav ? h('div.header__mobile-backdrop', {
+      on: { click: () => { showMobileNav = false; redraw(); } },
+    }) : null,
+    showMobileNav ? h('div.header__mobile-dropdown', navLinks.map(({ label, href, section }) =>
+      h('a.header__mobile-link', {
+        attrs: { href },
+        class: { active: active === section },
+        on: { click: () => { showMobileNav = false; redraw(); } },
+      }, label)
+    )) : null,
+  ]);
+}
+
 // --- Main header ---
 
 /**
@@ -382,6 +406,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
   return h('header.header', [
     h('a.header__brand', { attrs: { href: '#/' } }, 'Patzer Pro'),
+    renderMobileNav(route, redraw),
 
     h('div.header__search', { key: 'header-search' }, [
       h('div.header__bar', [
