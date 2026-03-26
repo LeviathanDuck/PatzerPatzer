@@ -223,14 +223,18 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
       return;
     }
     if (analysisComplete) {
-      // Re-analyze: clear old data and start fresh.
+      // Re-analyze: clear persisted data and batch state.
       if (selectedGameId) _clearGameAnalysis(selectedGameId);
-      clearEvalCache();
-      resetCurrentEval();
       clearPuzzleCandidates();
       resetBatchState();
       syncArrow();
     }
+    // Always clear the eval cache before starting a batch review.
+    // The live analysis engine may have populated it at shallow depth; those
+    // values would be reused as-is (skipped in the batch queue), causing the
+    // accuracy formula to operate on noisy low-depth evals and inflate scores.
+    clearEvalCache();
+    resetCurrentEval();
     startBatchWhenReady();
   };
 

@@ -12,7 +12,7 @@
 // • cp clamped to [−1000, 1000] before the sigmoid
 // • Mate converted to cp equivalent: (21 − min(10, |mate|)) × 100
 // • povDiff formula: loss = (moverPrevWc − moverNodeWc) / 2
-// • Classification thresholds: 0.025 / 0.06 / 0.14
+// • Classification thresholds: 0.05 / 0.10 / 0.15  (analysis mode; ≡ Lichess 0.1/0.2/0.3 / 2)
 // • Best-move short-circuit: if played UCI equals parent engine best, no label
 //
 // ── Intentional divergence ──────────────────────────────────────────────────
@@ -35,11 +35,18 @@ export interface WinChancesEval {
   mate?: number;
 }
 
-// Classification thresholds match lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts verdict
+// Classification thresholds for post-game analysis.
+// Lichess game analysis (Advice.scala) uses 0.1 / 0.2 / 0.3 on the raw
+// win-chance delta.  Our loss field = delta / 2, so the equivalents are:
+//   inaccuracy: 0.05  (≡ Lichess 0.1)
+//   mistake:    0.10  (≡ Lichess 0.2)
+//   blunder:    0.15  (≡ Lichess 0.3)
+// Previous values (0.025 / 0.06 / 0.14) were ported from practice mode and
+// were too sensitive, over-classifying small inaccuracies.
 export const LOSS_THRESHOLDS = {
-  inaccuracy: 0.025,
-  mistake:    0.06,
-  blunder:    0.14,
+  inaccuracy: 0.05,
+  mistake:    0.10,
+  blunder:    0.15,
 } as const;
 
 export type MoveLabel = 'inaccuracy' | 'mistake' | 'blunder';
