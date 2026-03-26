@@ -1863,6 +1863,42 @@ body[data-board='newspaper'] cg-board::before {
     padding: 3px 0 4px;
     font-style: italic;
   }
+
+  // Per-row review button — shown beside each un-reviewed game row
+  &__row-review {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    background: #1e3a1e;
+    color: #6a9;
+    border: 1px solid #2a5a2a;
+    border-radius: 3px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover { background: #2a4a2a; color: #8fc; }
+  }
+
+  // Per-row review progress / queued state
+  &__row-progress {
+    flex-shrink: 0;
+    padding: 0 8px;
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    color: #5a9a5a;
+    white-space: nowrap;
+    min-width: 4ch;
+    text-align: right;
+
+    &.--queued { color: #666; font-style: italic; }
+  }
+
+  // On mobile: hide the NEW badge (space is tight); Review button takes that slot
+  @media (max-width: 600px) {
+    .grl__badge.--new { display: none; }
+  }
 }
 
 // In-progress review percentage shown in the review cell of the games table
@@ -1870,6 +1906,22 @@ body[data-board='newspaper'] cg-board::before {
   font-size: 0.8rem;
   color: #5a9a5a;
   font-variant-numeric: tabular-nums;
+}
+
+// "Select" toggle — activates tap-to-select mode for touch devices
+.games-view__select-toggle {
+  padding: 2px 9px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+
+  &:hover { background: #222; color: #ccc; }
+  &.active { background: #2a3a2a; color: #8f8; border-color: #4a7a4a; }
 }
 
 // "Review N" button — used inside .game-list__filter-pills and .games-view controls

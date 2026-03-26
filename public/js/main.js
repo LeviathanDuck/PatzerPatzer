@@ -10681,6 +10681,7 @@ var gameListFilterResults = /* @__PURE__ */ new Set();
 var gameListFilterSpeeds = /* @__PURE__ */ new Set();
 var selectedGameIds = /* @__PURE__ */ new Set();
 var lastClickedGameId = null;
+var selectModeActive = false;
 function toggleGamesSort(field, redraw2) {
   if (gamesSortField === field) {
     gamesSortDir = gamesSortDir === "desc" ? "asc" : "desc";
@@ -10769,7 +10770,7 @@ var SPEED_ICONS = {
   // licon.Turtle
 };
 function handleGameRowClick(game, visibleGames, e, deps, onPlainClick) {
-  if (e.ctrlKey || e.metaKey) {
+  if (e.ctrlKey || e.metaKey || selectModeActive) {
     const s = new Set(selectedGameIds);
     s.has(game.id) ? s.delete(game.id) : s.add(game.id);
     selectedGameIds = s;
@@ -10852,10 +10853,22 @@ function renderGameList(deps) {
         }, tc.charAt(0).toUpperCase() + tc.slice(1))
       ),
       anyFilter ? h("button.games-view__clear", { on: { click: clearAll } }, "\xD7") : null,
+      // Select mode toggle — primary way to multi-select on touch devices.
+      // On desktop, ctrl/cmd+click still works alongside this button.
+      h("button.games-view__select-toggle", {
+        class: { active: selectModeActive },
+        attrs: { title: selectModeActive ? "Exit select mode" : "Select games for bulk review" },
+        on: { click: () => {
+          selectModeActive = !selectModeActive;
+          if (!selectModeActive) selectedGameIds = /* @__PURE__ */ new Set();
+          deps.redraw();
+        } }
+      }, selectModeActive ? "Done" : "Select"),
       listSelectedCount > 1 ? h("button.games-view__review-all-btn", {
         on: { click: () => {
           const games = deps.importedGames.filter((g) => selectedGameIds.has(g.id));
           selectedGameIds = /* @__PURE__ */ new Set();
+          selectModeActive = false;
           deps.reviewAllGames(games);
         } },
         attrs: { title: `Analyze ${listSelectedCount} selected games sequentially` }
@@ -10873,6 +10886,15 @@ function renderGameList(deps) {
       const srcUrl = deps.gameSourceUrl(game);
       const progress = getReviewProgress(game.id);
       const isAnalyzing = progress !== void 0 && progress < 100;
+      const isQueued = progress !== void 0;
+      const reviewControl = isAnalyzing ? h("span.game-list__row-progress", `${progress}%`) : isQueued ? h("span.game-list__row-progress.--queued", "Queued") : !isAnalyzed ? h("button.game-list__row-review", {
+        attrs: { title: "Queue for background review" },
+        on: { click: (e) => {
+          e.stopPropagation();
+          enqueueBulkReview([game]);
+          deps.redraw();
+        } }
+      }, "Review") : null;
       return h("li", [
         h("button.game-list__row", {
           class: {
@@ -10881,10 +10903,8 @@ function renderGameList(deps) {
             analyzing: isAnalyzing
           },
           on: { click: (e) => handleGameRowClick(game, visible, e, deps, () => deps.selectGame(game)) }
-        }, [
-          ...deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic),
-          isAnalyzing ? h("span.game-list__progress", `${progress}%`) : null
-        ]),
+        }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
+        reviewControl,
         srcUrl ? h("a.game-ext-link", {
           attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" }
         }) : null
