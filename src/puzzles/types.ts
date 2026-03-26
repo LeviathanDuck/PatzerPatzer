@@ -51,7 +51,7 @@ export interface ImportedPuzzleManifest {
 export interface ImportedPuzzleFilters {
   ratingMin: string;
   ratingMax: string;
-  theme: string;
+  themes: string[];
   opening: string;
 }
 

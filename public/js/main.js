@@ -1126,6 +1126,9 @@ function sharedWasmMemory(lo, hi = 32767) {
   }
 }
 var StockfishProtocol = class {
+  constructor(config = {}) {
+    this.config = config;
+  }
   /**
    * Load Stockfish 18 (smallnet) from baseUrl and begin the UCI handshake.
    * baseUrl is the URL prefix where sf_18_smallnet.{js,wasm} and the NNUE
@@ -1209,10 +1212,11 @@ var StockfishProtocol = class {
       this.send("setoption name UCI_AnalyseMode value true");
       this.send("setoption name Analysis Contempt value Off");
       const cores = navigator.hardwareConcurrency ?? 2;
-      const threads = Math.max(1, cores - 1);
+      const threads = this.config.threads ?? Math.max(1, cores - 1);
+      const hash2 = this.config.hash ?? 256;
       this.send(`setoption name Threads value ${threads}`);
       console.log(`[ceval] Stockfish 18 \u2014 ${threads} threads`);
-      this.send("setoption name Hash value 256");
+      this.send(`setoption name Hash value ${hash2}`);
       this.send("ucinewgame");
       this.send("isready");
     }
@@ -2502,6 +2506,7 @@ var _analyzedGameAccuracy;
 var _getUserColor;
 var _redraw2 = () => {
 };
+var _onBatchComplete = null;
 function initBatch(deps) {
   _getCtrl2 = deps.getCtrl;
   _getSelectedGameId = deps.getSelectedGameId;
@@ -2511,6 +2516,7 @@ function initBatch(deps) {
   _analyzedGameAccuracy = deps.analyzedGameAccuracy;
   _getUserColor = deps.getUserColor;
   _redraw2 = deps.redraw;
+  _onBatchComplete = deps.onBatchComplete ?? null;
   setIsBatchActive(() => batchAnalyzing);
   setOnBatchBestmove(onBatchBestmove);
   setOnEngineReady(() => {
@@ -2654,12 +2660,13 @@ function advanceBatch() {
     resetCurrentEval();
     clearPendingLines();
     evalCurrentPosition();
+    _onBatchComplete?.();
   }
 }
 function startBatchAnalysis() {
   if (!engineEnabled || !engineReady || batchAnalyzing) return;
   const ctrl2 = _getCtrl2();
-  const queue = [];
+  const queue2 = [];
   let path = "";
   let prevPath = "";
   for (let i = 0; i < ctrl2.mainline.length; i++) {
@@ -2667,18 +2674,18 @@ function startBatchAnalysis() {
     prevPath = path;
     if (i > 0) path += node.id;
     if (!evalCache.has(path)) {
-      queue.push({ nodeId: node.id, nodePly: node.ply, nodePath: path, parentPath: prevPath, fen: node.fen });
+      queue2.push({ nodeId: node.id, nodePly: node.ply, nodePath: path, parentPath: prevPath, fen: node.fen });
     }
   }
-  batchQueue = queue;
+  batchQueue = queue2;
   batchDone = 0;
-  batchAnalyzing = queue.length > 0;
-  batchState = queue.length > 0 ? "analyzing" : "complete";
-  analysisRunning = queue.length > 0;
-  analysisComplete = queue.length === 0;
+  batchAnalyzing = queue2.length > 0;
+  batchState = queue2.length > 0 ? "analyzing" : "complete";
+  analysisRunning = queue2.length > 0;
+  analysisComplete = queue2.length === 0;
   syncArrow();
   _redraw2();
-  if (queue.length > 0) evalBatchItem(queue[0]);
+  if (queue2.length > 0) evalBatchItem(queue2[0]);
 }
 function startBatchWhenReady() {
   if (!engineEnabled) {
@@ -7360,7 +7367,7 @@ function defaultImportedPuzzleFilters() {
   return {
     ratingMin: "",
     ratingMax: "",
-    theme: "",
+    themes: [],
     opening: ""
   };
 }
@@ -7452,9 +7459,9 @@ function recordMatchesFilters(record, filters) {
   const max = toOptionalNumber(filters.ratingMax);
   if (min !== null && record.rating < min) return false;
   if (max !== null && record.rating > max) return false;
-  if (filters.theme) {
-    const wanted = normalizeTag(filters.theme);
-    if (!record.themes.some((theme) => normalizeTag(theme) === wanted)) return false;
+  if (filters.themes.length > 0) {
+    const wanted = filters.themes.map(normalizeTag);
+    if (!record.themes.some((t) => wanted.includes(normalizeTag(t)))) return false;
   }
   if (filters.opening) {
     const wanted = normalizeTag(filters.opening);
@@ -7467,9 +7474,11 @@ function shardMayMatch(shard, filters) {
   const max = toOptionalNumber(filters.ratingMax);
   if (min !== null && shard.ratingMax !== void 0 && shard.ratingMax < min) return false;
   if (max !== null && shard.ratingMin !== void 0 && shard.ratingMin > max) return false;
-  if (filters.theme) {
-    const wanted = normalizeTag(filters.theme);
-    if (!shard.themes.some((theme) => normalizeTag(theme) === wanted)) return false;
+  if (filters.themes.length > 0) {
+    if (shard.themes.length > 0) {
+      const wanted = filters.themes.map(normalizeTag);
+      if (!shard.themes.some((t) => wanted.includes(normalizeTag(t)))) return false;
+    }
   }
   if (filters.opening) {
     const wanted = normalizeTag(filters.opening);
@@ -7956,36 +7965,96 @@ function renderSavedPuzzleLibrary(deps) {
     ]);
   }));
 }
+function renderActiveFilterSummary(filters, onRatingMin, onRatingMax, onThemes, onOpening) {
+  const chips = [];
+  if (filters.ratingMin || filters.ratingMax) {
+    const min = filters.ratingMin.trim();
+    const max = filters.ratingMax.trim();
+    const label = min && max ? `${min}\u2013${max}` : min ? `>${min}` : `<${max}`;
+    chips.push(h("span.puzzle-filter__chip", [
+      h("span", label),
+      h("button.puzzle-filter__chip-clear", {
+        attrs: { title: "Clear rating filter" },
+        on: { click: () => {
+          onRatingMin("");
+          onRatingMax("");
+        } }
+      }, "\xD7")
+    ]));
+  }
+  if (filters.themes.length > 0) {
+    const label = filters.themes.length === 1 ? filters.themes[0] : `${filters.themes.length} themes`;
+    chips.push(h("span.puzzle-filter__chip", [
+      h("span", label),
+      h("button.puzzle-filter__chip-clear", {
+        attrs: { title: "Clear theme filter" },
+        on: { click: () => onThemes([]) }
+      }, "\xD7")
+    ]));
+  }
+  if (filters.opening) {
+    const shortName = filters.opening.split("_").slice(0, 2).join(" ");
+    chips.push(h("span.puzzle-filter__chip", [
+      h("span", shortName),
+      h("button.puzzle-filter__chip-clear", {
+        attrs: { title: "Clear opening filter" },
+        on: { click: () => onOpening("") }
+      }, "\xD7")
+    ]));
+  }
+  if (chips.length === 0) return null;
+  return h("div.puzzle-filter__active-summary", [
+    ...chips,
+    chips.length >= 2 ? h("button.puzzle-filter__clear-all", {
+      on: { click: () => {
+        onRatingMin("");
+        onRatingMax("");
+        onThemes([]);
+        onOpening("");
+      } }
+    }, "Clear all") : null
+  ]);
+}
 function renderDifficultyStrip(filters, onRatingMin, onRatingMax) {
   const active = currentDifficulty(filters);
-  return h("div.puzzle-difficulty", [
-    h("span.puzzle-difficulty__label", "Difficulty"),
-    h(
-      "div.puzzle-difficulty__buttons",
-      DIFFICULTY_PRESETS.map(
-        (p) => h("button.puzzle-difficulty__btn", {
-          class: { "puzzle-difficulty__btn--active": active === p.key },
-          on: {
-            click: () => {
-              if (active === p.key) {
-                onRatingMin("");
-                onRatingMax("");
-              } else {
-                onRatingMin(p.ratingMin);
-                onRatingMax(p.ratingMax);
-              }
-            }
-          }
+  const min = filters.ratingMin.trim();
+  const max = filters.ratingMax.trim();
+  const rangeLabel = !min && !max ? "All ratings" : min && max ? `${min}\u2013${max}` : min ? `>${min}` : `<${max}`;
+  return h("div.puzzle-filter__difficulty", [
+    h("span.puzzle-filter__label", "Difficulty"),
+    h("div.puzzle-filter__preset-row", [
+      ...DIFFICULTY_PRESETS.map(
+        (p) => h("button.puzzle-filter__preset-pill", {
+          class: { active: active === p.key },
+          on: { click: () => {
+            onRatingMin(p.ratingMin);
+            onRatingMax(p.ratingMax);
+          } },
+          attrs: { title: `${p.ratingMin || "0"}\u2013${p.ratingMax || "3500"}` }
         }, p.label)
       )
-    )
+    ]),
+    h("div.puzzle-filter__rating-inputs", [
+      h("input.puzzle-filter__rating-input", {
+        attrs: { type: "number", placeholder: "Min", min: "0", max: "3500", step: "50" },
+        props: { value: filters.ratingMin },
+        on: { change: (e) => onRatingMin(e.target.value.trim()) }
+      }),
+      h("span.puzzle-filter__rating-sep", "\u2013"),
+      h("input.puzzle-filter__rating-input", {
+        attrs: { type: "number", placeholder: "Max", min: "0", max: "3500", step: "50" },
+        props: { value: filters.ratingMax },
+        on: { change: (e) => onRatingMax(e.target.value.trim()) }
+      })
+    ]),
+    h("span.puzzle-filter__range-display", rangeLabel)
   ]);
 }
 function renderOpeningSelect(openings, currentOpening, onOpening) {
-  return h("div.puzzle-opening-filter", [
-    h("label.puzzle-opening-filter__label", { attrs: { for: "puzzle-opening-select" } }, "Opening"),
-    h("select.puzzle-opening-filter__select", {
-      attrs: { id: "puzzle-opening-select" },
+  return h("div.puzzle-filter__select", [
+    h("label.puzzle-filter__label", { attrs: { for: "puzzle-opening-sel" } }, "Opening"),
+    h("select.puzzle-opening__selector", {
+      attrs: { id: "puzzle-opening-sel" },
       on: { change: (e) => onOpening(e.target.value) }
     }, [
       h("option", { attrs: { value: "" }, props: { selected: currentOpening === "" } }, "All openings"),
@@ -7998,23 +8067,43 @@ function renderOpeningSelect(openings, currentOpening, onOpening) {
     ])
   ]);
 }
-function renderThemeGrid(availableThemes, currentTheme, onTheme) {
+var collapsedCategories = /* @__PURE__ */ new Set(["Checkmate Patterns"]);
+function renderThemeGrid(availableThemes, selectedThemes, onThemes, redraw2) {
   const themeSet = new Set(availableThemes);
+  const selectedSet = new Set(selectedThemes);
   const categories = PUZZLE_THEME_CATEGORIES.map((cat) => {
     const catThemes = cat.themes.filter((t) => themeSet.has(t.key));
     if (catThemes.length === 0) return null;
-    return h("div.puzzle-themes__category", [
-      h("h3.puzzle-themes__category-label", cat.label),
-      h(
-        "div.puzzle-themes__grid",
-        catThemes.map(
-          (theme) => h("button.puzzle-theme-card", {
-            class: { "puzzle-theme-card--active": currentTheme === theme.key },
+    const isCollapsed = collapsedCategories.has(cat.label);
+    return h("div.puzzle-themes__category", { class: { collapsed: isCollapsed } }, [
+      h("button.puzzle-themes__category-label", {
+        on: {
+          click: () => {
+            if (isCollapsed) collapsedCategories.delete(cat.label);
+            else collapsedCategories.add(cat.label);
+            redraw2();
+          }
+        }
+      }, [
+        h("span", cat.label),
+        h("span.puzzle-themes__collapse-icon", isCollapsed ? "\u25B6" : "\u25BC")
+      ]),
+      isCollapsed ? null : h(
+        "div.puzzle-themes__list",
+        catThemes.map((theme) => {
+          const isActive = selectedSet.has(theme.key);
+          return h("button.puzzle-themes__link", {
+            class: { active: isActive },
             on: {
-              click: () => onTheme(currentTheme === theme.key ? "" : theme.key)
+              click: () => {
+                const next2 = isActive ? selectedThemes.filter((k) => k !== theme.key) : [...selectedThemes, theme.key];
+                onThemes(next2);
+              }
             }
-          }, theme.name)
-        )
+          }, [
+            h("span", h("h3", theme.name))
+          ]);
+        })
       )
     ]);
   }).filter((n) => n !== null);
@@ -8037,9 +8126,12 @@ function renderImportedPuzzleLibrary(deps) {
   const manifest2 = state.manifest;
   const filters = state.query.filters;
   const filterPanel = h("div.puzzle-library__filter-panel", [
-    renderDifficultyStrip(filters, deps.onRatingMin, deps.onRatingMax),
-    manifest2?.openings ? renderOpeningSelect(manifest2.openings, filters.opening, deps.onOpening) : null,
-    manifest2?.themes ? renderThemeGrid(manifest2.themes, filters.theme, deps.onTheme) : h("div.puzzle-library__empty-body", "Loading puzzle catalog\u2026")
+    h("div.puzzle-filter__settings", [
+      renderDifficultyStrip(filters, deps.onRatingMin, deps.onRatingMax),
+      manifest2?.openings ? renderOpeningSelect(manifest2.openings, filters.opening, deps.onOpening) : null
+    ]),
+    renderActiveFilterSummary(filters, deps.onRatingMin, deps.onRatingMax, deps.onThemes, deps.onOpening),
+    manifest2?.themes ? renderThemeGrid(manifest2.themes, filters.themes, deps.onThemes, deps.redraw) : h("div.puzzle-library__empty-body", "Loading puzzle catalog\u2026")
   ]);
   if (state.status === "loading") {
     return h("div.puzzle-library__imported", [
@@ -8104,11 +8196,12 @@ function renderPuzzleLibrary(deps) {
       state: deps.importedState,
       onRatingMin: deps.onImportedRatingMin,
       onRatingMax: deps.onImportedRatingMax,
-      onTheme: deps.onImportedTheme,
+      onThemes: deps.onImportedThemes,
       onOpening: deps.onImportedOpening,
       onPrevPage: deps.onImportedPrevPage,
       onNextPage: deps.onImportedNextPage,
-      onStartTraining: deps.onStartTraining
+      onStartTraining: deps.onStartTraining,
+      redraw: deps.redraw
     })
   ]);
 }
@@ -8183,7 +8276,7 @@ function renderPuzzleRound(deps) {
       deps.trainingContext ? (() => {
         const ctx = deps.trainingContext;
         const parts = [];
-        if (ctx.theme) parts.push(ctx.theme);
+        if (ctx.themes.length > 0) parts.push(ctx.themes.join(", "));
         if (ctx.opening) parts.push(ctx.opening);
         const ratingMin = ctx.ratingMin.trim();
         const ratingMax = ctx.ratingMax.trim();
@@ -8397,7 +8490,13 @@ function initPuzzles(deps) {
   _hasStandalonePuzzleBackground = deps.hasStandalonePuzzleBackground;
   initImportedPuzzles({ redraw: deps.redraw });
   void loadPuzzleQueryFromIdb().then((filters) => {
-    if (filters) importedQuery = { ...importedQuery, page: 0, filters };
+    if (filters) {
+      const migratedFilters = {
+        ...filters,
+        themes: filters.themes ?? (filters.theme ? [filters.theme] : [])
+      };
+      importedQuery = { ...importedQuery, page: 0, filters: migratedFilters };
+    }
   });
   void loadPuzzleSessionFromIdb().then((session) => {
     puzzleSession = session ?? emptyPuzzleSession();
@@ -8505,10 +8604,11 @@ function renderPuzzlesRoute(route) {
       isResumeKey: (key) => currentPuzzleIsActive(puzzleSession, key),
       onImportedRatingMin: (value) => updateImportedFilters({ ratingMin: value }),
       onImportedRatingMax: (value) => updateImportedFilters({ ratingMax: value }),
-      onImportedTheme: (value) => updateImportedFilters({ theme: value }),
+      onImportedThemes: (values) => updateImportedFilters({ themes: values }),
       onImportedOpening: (value) => updateImportedFilters({ opening: value }),
       onImportedPrevPage: () => stepImportedPage(-1),
       onImportedNextPage: () => stepImportedPage(1),
+      redraw: _redraw7,
       onStartTraining: () => {
         startTraining(importedQuery);
         const routeId = currentTrainingRouteId();
@@ -10183,6 +10283,336 @@ async function importLichess(callbacks) {
   }
 }
 
+// src/engine/reviewQueue.ts
+var reviewProtocol = new StockfishProtocol({ threads: 1, hash: 32 });
+var reviewEngineReady = false;
+var reviewEngineInitStarted = false;
+var queue = [];
+var activeIndex = -1;
+var queuePaused = false;
+var reviewCurrentEval = {};
+var reviewNodePath = "";
+var reviewNodePly = 0;
+var reviewParentPath = "";
+var reviewSearchActive = false;
+var reviewPendingStopCount = 0;
+var reviewItemQueue = [];
+var reviewItemIndex = 0;
+var _analyzedGameIds2 = /* @__PURE__ */ new Set();
+var _missedTacticGameIds2 = /* @__PURE__ */ new Set();
+var _analyzedGameAccuracy2 = /* @__PURE__ */ new Map();
+var _getUserColor2 = () => null;
+var _redraw9 = () => {
+};
+function initReviewQueue(deps) {
+  _analyzedGameIds2 = deps.analyzedGameIds;
+  _missedTacticGameIds2 = deps.missedTacticGameIds;
+  _analyzedGameAccuracy2 = deps.analyzedGameAccuracy;
+  _getUserColor2 = deps.getUserColor;
+  _redraw9 = deps.redraw;
+}
+var MISSED_TACTIC_THRESHOLD2 = 0.1;
+var MISSED_TACTIC_MAX_PLY2 = 60;
+function detectMissedTacticsFromCache(mainline, cache, userColor) {
+  let path = "";
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i];
+    path += node.id;
+    const isWhiteMove = node.ply % 2 === 1;
+    const isUserMove = userColor === null || userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
+    if (!isUserMove) continue;
+    const parentPath = path.slice(0, -2);
+    const nodeEval = cache.get(path);
+    const parentEval = cache.get(parentPath);
+    if (!nodeEval || !parentEval || !parentEval.best) continue;
+    const userParentMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
+    if (userParentMate !== void 0 && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
+    if (node.ply >= MISSED_TACTIC_MAX_PLY2) continue;
+    if (nodeEval.loss !== void 0 && nodeEval.loss > MISSED_TACTIC_THRESHOLD2) return true;
+  }
+  return false;
+}
+async function initReviewEngine(baseUrl) {
+  if (reviewEngineInitStarted) return;
+  reviewEngineInitStarted = true;
+  reviewProtocol.onMessage((line) => {
+    if (line.trim() === "readyok") {
+      reviewEngineReady = true;
+      console.log("[review-engine] ready");
+      const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
+      if (entry && entry.status === "analyzing" && reviewItemQueue.length > 0) {
+        sendNextItem();
+      }
+      return;
+    }
+    parseReviewLine(line);
+  });
+  await reviewProtocol.init(baseUrl);
+}
+function parseReviewLine(line) {
+  const parts = line.trim().split(/\s+/);
+  if (parts[0] === "info") {
+    let isMate = false;
+    let score;
+    let best;
+    let pvMoves = [];
+    let pvIndex = 1;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i] === "multipv") {
+        const next2 = parts[i + 1];
+        if (next2 === void 0) break;
+        pvIndex = parseInt(next2, 10);
+        i++;
+      } else if (parts[i] === "score") {
+        const scoreType = parts[i + 1];
+        const scoreValue = parts[i + 2];
+        if (scoreType === void 0 || scoreValue === void 0) break;
+        isMate = scoreType === "mate";
+        score = parseInt(scoreValue, 10);
+        i += 2;
+        if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
+      } else if (parts[i] === "pv") {
+        pvMoves = parts.slice(i + 1);
+        best = pvMoves[0];
+        break;
+      }
+    }
+    if (pvIndex === 1 && score !== void 0) {
+      const s = reviewNodePly % 2 === 1 ? -score : score;
+      if (isMate) {
+        reviewCurrentEval.mate = s;
+        delete reviewCurrentEval.cp;
+      } else {
+        reviewCurrentEval.cp = s;
+        delete reviewCurrentEval.mate;
+      }
+    }
+    if (pvIndex === 1 && best) {
+      reviewCurrentEval.best = best;
+      reviewCurrentEval.moves = pvMoves;
+    }
+  } else if (parts[0] === "bestmove") {
+    if (reviewPendingStopCount > 0) {
+      reviewPendingStopCount--;
+      reviewCurrentEval = {};
+      return;
+    }
+    reviewSearchActive = false;
+    if (parts[1] && parts[1] !== "(none)") {
+      reviewCurrentEval.best = parts[1];
+    }
+    onReviewBestmove();
+  }
+}
+function onReviewBestmove() {
+  const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
+  if (!entry) return;
+  const stored = { ...reviewCurrentEval };
+  const nodePath = reviewNodePath;
+  const nodePly = reviewNodePly;
+  const parentPath = reviewParentPath;
+  if (stored.cp !== void 0 || stored.mate !== void 0) {
+    const parentEval = entry.cache.get(parentPath);
+    if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
+      stored.delta = stored.cp - parentEval.cp;
+    }
+    if (parentEval) {
+      const nodeWc = evalWinChances(stored);
+      const parentWc = evalWinChances(parentEval);
+      if (nodeWc !== void 0 && parentWc !== void 0) {
+        const whiteToMove = nodePly % 2 === 1;
+        const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
+        const moverParentWc = whiteToMove ? parentWc : -parentWc;
+        stored.loss = (moverParentWc - moverNodeWc) / 2;
+      }
+    }
+    entry.cache.set(nodePath, stored);
+  }
+  entry.done++;
+  reviewItemIndex++;
+  reviewCurrentEval = {};
+  void saveAnalysisToIdb(
+    "partial",
+    entry.game.id,
+    buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
+    reviewDepth
+  );
+  _redraw9();
+  if (reviewItemIndex < reviewItemQueue.length) {
+    sendNextItem();
+  } else {
+    finishEntry(entry);
+  }
+}
+function sendNextItem() {
+  const item = reviewItemQueue[reviewItemIndex];
+  if (!item) return;
+  reviewCurrentEval = {};
+  reviewNodePath = item.nodePath;
+  reviewNodePly = item.nodePly;
+  reviewParentPath = item.parentPath;
+  reviewSearchActive = true;
+  console.log(
+    "[review-batch]",
+    reviewItemIndex + 1,
+    "/",
+    reviewItemQueue.length,
+    "nodeId:",
+    item.nodeId,
+    "path:",
+    item.nodePath,
+    "ply:",
+    item.nodePly
+  );
+  reviewProtocol.setPosition(item.fen);
+  reviewProtocol.go(reviewDepth);
+}
+function finishEntry(entry) {
+  entry.status = "complete";
+  const userColor = _getUserColor2(entry.game);
+  _analyzedGameIds2.add(entry.game.id);
+  if (detectMissedTacticsFromCache(entry.ctrl.mainline, entry.cache, userColor)) {
+    _missedTacticGameIds2.add(entry.game.id);
+  }
+  const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
+  if (summary) {
+    _analyzedGameAccuracy2.set(entry.game.id, {
+      white: summary.white.accuracy,
+      black: summary.black.accuracy
+    });
+  }
+  void saveAnalysisToIdb(
+    "complete",
+    entry.game.id,
+    buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
+    reviewDepth
+  );
+  console.log("[review-engine] game complete:", entry.game.id);
+  _redraw9();
+  advanceQueue();
+}
+async function startEntryBatch(entry) {
+  const items = [];
+  let path = "";
+  let prevPath = "";
+  for (let i = 0; i < entry.ctrl.mainline.length; i++) {
+    const node = entry.ctrl.mainline[i];
+    prevPath = path;
+    if (i > 0) path += node.id;
+    if (!entry.cache.has(path)) {
+      items.push({
+        nodeId: node.id,
+        nodePly: node.ply,
+        nodePath: path,
+        parentPath: prevPath,
+        fen: node.fen
+      });
+    }
+  }
+  entry.total = entry.ctrl.mainline.length > 1 ? entry.ctrl.mainline.length - 1 : 0;
+  if (items.length === 0) {
+    finishEntry(entry);
+    return;
+  }
+  reviewItemQueue = items;
+  reviewItemIndex = 0;
+  reviewCurrentEval = {};
+  if (!reviewEngineReady) {
+    return;
+  }
+  sendNextItem();
+}
+function advanceQueue() {
+  if (queuePaused) return;
+  const nextIndex = queue.findIndex((e) => e.status === "pending");
+  if (nextIndex < 0) {
+    activeIndex = -1;
+    _redraw9();
+    return;
+  }
+  activeIndex = nextIndex;
+  const entry = queue[activeIndex];
+  entry.status = "analyzing";
+  void startEntryBatch(entry);
+}
+function enqueueBulkReview(games) {
+  for (const game of games) {
+    if (_analyzedGameIds2.has(game.id)) continue;
+    if (queue.some((e) => e.game.id === game.id)) continue;
+    const ctrl2 = new AnalyseCtrl(pgnToTree(game.pgn));
+    const total = ctrl2.mainline.length > 1 ? ctrl2.mainline.length - 1 : 0;
+    queue.push({
+      game,
+      ctrl: ctrl2,
+      cache: /* @__PURE__ */ new Map(),
+      done: 0,
+      total,
+      status: "pending"
+    });
+  }
+  if (!reviewEngineInitStarted) {
+    void initReviewEngine("/stockfish-web");
+  }
+  if (activeIndex < 0) {
+    advanceQueue();
+  }
+}
+function isBulkRunning() {
+  if (queuePaused) return false;
+  return queue.some((e) => e.status === "pending" || e.status === "analyzing");
+}
+function isBulkPaused() {
+  return queuePaused && queue.some((e) => e.status === "pending" || e.status === "analyzing");
+}
+function cancelBulkReview() {
+  if (reviewSearchActive) {
+    reviewPendingStopCount++;
+    reviewProtocol.stop();
+    reviewSearchActive = false;
+  }
+  queue = [];
+  activeIndex = -1;
+  queuePaused = false;
+  _redraw9();
+}
+function pauseBulkReview() {
+  if (!isBulkRunning()) return;
+  queuePaused = true;
+  if (reviewSearchActive) {
+    reviewPendingStopCount++;
+    reviewProtocol.stop();
+    reviewSearchActive = false;
+  }
+  _redraw9();
+}
+function resumeBulkReview() {
+  if (!queuePaused) return;
+  queuePaused = false;
+  const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
+  if (entry && entry.status === "analyzing" && reviewItemIndex < reviewItemQueue.length) {
+    sendNextItem();
+  } else {
+    advanceQueue();
+  }
+  _redraw9();
+}
+function getReviewProgress(gameId) {
+  const entry = queue.find((e) => e.game.id === gameId);
+  if (!entry) return void 0;
+  if (entry.status === "complete") return 100;
+  if (entry.total === 0) return void 0;
+  return Math.round(entry.done / entry.total * 100);
+}
+function getQueueSummary() {
+  const total = queue.length;
+  const done = queue.filter((e) => e.status === "complete").length;
+  const running = isBulkRunning();
+  return { total, done, running };
+}
+function getAutoReview() {
+  return localStorage.getItem("patzer.autoReview") === "true";
+}
+
 // src/games/view.ts
 var NEW_IMPORT_WINDOW_MS = 60 * 60 * 1e3;
 function isRecentlyImported(game) {
@@ -10246,6 +10676,11 @@ var gamesFilterOpponent = "";
 var gamesFilterColor = "";
 var gamesSortField = "date";
 var gamesSortDir = "desc";
+var gameListSearch = "";
+var gameListFilterResults = /* @__PURE__ */ new Set();
+var gameListFilterSpeeds = /* @__PURE__ */ new Set();
+var selectedGameIds = /* @__PURE__ */ new Set();
+var lastClickedGameId = null;
 function toggleGamesSort(field, redraw2) {
   if (gamesSortField === field) {
     gamesSortDir = gamesSortDir === "desc" ? "asc" : "desc";
@@ -10333,19 +10768,123 @@ var SPEED_ICONS = {
   classical: "\uE007"
   // licon.Turtle
 };
+function handleGameRowClick(game, visibleGames, e, deps, onPlainClick) {
+  if (e.ctrlKey || e.metaKey) {
+    const s = new Set(selectedGameIds);
+    s.has(game.id) ? s.delete(game.id) : s.add(game.id);
+    selectedGameIds = s;
+    lastClickedGameId = game.id;
+    deps.redraw();
+  } else if (e.shiftKey && lastClickedGameId) {
+    const lastIdx = visibleGames.findIndex((g) => g.id === lastClickedGameId);
+    const curIdx = visibleGames.findIndex((g) => g.id === game.id);
+    if (lastIdx >= 0 && curIdx >= 0) {
+      const from = Math.min(lastIdx, curIdx);
+      const to = Math.max(lastIdx, curIdx);
+      const s = new Set(selectedGameIds);
+      for (let i = from; i <= to; i++) s.add(visibleGames[i].id);
+      selectedGameIds = s;
+    }
+    deps.redraw();
+  } else {
+    selectedGameIds = /* @__PURE__ */ new Set();
+    lastClickedGameId = game.id;
+    onPlainClick();
+  }
+}
 function renderGameList(deps) {
   if (deps.importedGames.length === 0) return h("div");
+  const q = gameListSearch.trim().toLowerCase();
+  let visible = q ? deps.importedGames.filter((g) => {
+    const opp = opponentName(g, deps.getUserColor)?.toLowerCase() ?? "";
+    return opp.includes(q);
+  }) : [...deps.importedGames];
+  if (gameListFilterResults.size > 0) {
+    visible = visible.filter((g) => {
+      const r = deps.gameResult(g);
+      return r !== null && gameListFilterResults.has(r);
+    });
+  }
+  if (gameListFilterSpeeds.size > 0) {
+    visible = visible.filter((g) => g.timeClass !== void 0 && gameListFilterSpeeds.has(g.timeClass));
+  }
+  const anyFilter = q.length > 0 || gameListFilterResults.size > 0 || gameListFilterSpeeds.size > 0;
+  const countLabel = anyFilter ? `${visible.length} of ${deps.importedGames.length} game${deps.importedGames.length === 1 ? "" : "s"}` : `${deps.importedGames.length} imported game${deps.importedGames.length === 1 ? "" : "s"}`;
+  const toggleResult = (r) => {
+    const s = new Set(gameListFilterResults);
+    s.has(r) ? s.delete(r) : s.add(r);
+    gameListFilterResults = s;
+    deps.redraw();
+  };
+  const toggleSpeed = (tc) => {
+    const s = new Set(gameListFilterSpeeds);
+    s.has(tc) ? s.delete(tc) : s.add(tc);
+    gameListFilterSpeeds = s;
+    deps.redraw();
+  };
+  const clearAll = () => {
+    gameListSearch = "";
+    gameListFilterResults = /* @__PURE__ */ new Set();
+    gameListFilterSpeeds = /* @__PURE__ */ new Set();
+    deps.redraw();
+  };
+  const listSelectedCount = [...selectedGameIds].filter((id) => deps.importedGames.some((g) => g.id === id)).length;
+  const toolbar = h("div.game-list__toolbar", [
+    h("input.games-view__search", {
+      attrs: { type: "search", placeholder: "Search opponent\u2026", value: gameListSearch },
+      on: { input: (e) => {
+        gameListSearch = e.target.value;
+        deps.redraw();
+      } }
+    }),
+    h("div.game-list__filter-pills", [
+      ...["win", "loss", "draw"].map(
+        (r) => h("button.games-view__pill", {
+          class: { active: gameListFilterResults.has(r) },
+          on: { click: () => toggleResult(r) }
+        }, r.charAt(0).toUpperCase() + r.slice(1))
+      ),
+      ...["bullet", "blitz", "rapid"].map(
+        (tc) => h("button.games-view__pill", {
+          class: { active: gameListFilterSpeeds.has(tc) },
+          attrs: { "data-icon": SPEED_ICONS[tc] ?? "" },
+          on: { click: () => toggleSpeed(tc) }
+        }, tc.charAt(0).toUpperCase() + tc.slice(1))
+      ),
+      anyFilter ? h("button.games-view__clear", { on: { click: clearAll } }, "\xD7") : null,
+      listSelectedCount > 1 ? h("button.games-view__review-all-btn", {
+        on: { click: () => {
+          const games = deps.importedGames.filter((g) => selectedGameIds.has(g.id));
+          selectedGameIds = /* @__PURE__ */ new Set();
+          deps.reviewAllGames(games);
+        } },
+        attrs: { title: `Analyze ${listSelectedCount} selected games sequentially` }
+      }, `Review ${listSelectedCount}`) : null
+    ])
+  ]);
+  const queueSummary = isBulkRunning() ? getQueueSummary() : null;
   return h("div.game-list", [
-    h("div.game-list__header", `${deps.importedGames.length} imported game${deps.importedGames.length === 1 ? "" : "s"}`),
-    h("ul", deps.importedGames.map((game) => {
+    h("div.game-list__header", countLabel),
+    toolbar,
+    queueSummary ? h("div.game-list__queue-status", `Reviewing ${queueSummary.done} / ${queueSummary.total} games\u2026`) : null,
+    visible.length === 0 ? h("div.game-list__no-results", "No games match.") : h("ul", visible.map((game) => {
       const isAnalyzed = deps.analyzedGameIds.has(game.id);
       const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
       const srcUrl = deps.gameSourceUrl(game);
+      const progress = getReviewProgress(game.id);
+      const isAnalyzing = progress !== void 0 && progress < 100;
       return h("li", [
         h("button.game-list__row", {
-          class: { active: game.id === deps.selectedGameId },
-          on: { click: () => deps.selectGame(game) }
-        }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
+          class: {
+            active: game.id === deps.selectedGameId,
+            selected: selectedGameIds.has(game.id),
+            analyzing: isAnalyzing
+          },
+          on: { click: (e) => handleGameRowClick(game, visible, e, deps, () => deps.selectGame(game)) }
+        }, [
+          ...deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic),
+          isAnalyzing ? h("span.game-list__progress", `${progress}%`) : null
+        ]),
         srcUrl ? h("a.game-ext-link", {
           attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" }
         }) : null
@@ -10417,10 +10956,18 @@ function renderGamesView(deps) {
         } }
       })
     ]),
-    // Summary + clear
+    // Summary + clear + multi-select review
     h("div.games-view__filter-group.--right", [
       h("span.games-view__summary", `${games.length} of ${deps.importedGames.length} game${deps.importedGames.length === 1 ? "" : "s"}`),
-      gamesFilterActive() ? h("button.games-view__clear", { on: { click: () => clearGamesFilters(redraw2) } }, "Clear filters") : null
+      gamesFilterActive() ? h("button.games-view__clear", { on: { click: () => clearGamesFilters(redraw2) } }, "Clear filters") : null,
+      selectedGameIds.size > 1 ? h("button.games-view__review-all-btn", {
+        on: { click: () => {
+          const ordered = games.filter((g) => selectedGameIds.has(g.id));
+          selectedGameIds = /* @__PURE__ */ new Set();
+          deps.reviewAllGames(ordered);
+        } },
+        attrs: { title: `Analyze ${selectedGameIds.size} selected games sequentially` }
+      }, `Review Selected (${selectedGameIds.size})`) : null
     ])
   ]);
   if (deps.importedGames.length === 0) {
@@ -10484,10 +11031,14 @@ function renderGamesView(deps) {
               accuracyText = [w, b].filter(Boolean).join(" ") || null;
             }
           }
+          const reviewProgress = !isAnalyzed ? getReviewProgress(game.id) : void 0;
+          const isAnalyzing = reviewProgress !== void 0 && reviewProgress < 100;
           const reviewCell = isAnalyzed ? h("td.games-view__review-cell", [
             h("span.games-view__reviewed", { attrs: { title: "Reviewed" } }, "\u2713"),
             hasMissed ? h("span.games-view__missed", { attrs: { title: "Missed tactic detected" } }, "!") : null,
             accuracyText ? h("span.games-view__accuracy", { attrs: { title: "Your accuracy" } }, accuracyText) : null
+          ]) : isAnalyzing ? h("td.games-view__review-cell", [
+            h("span.games-view__analyzing-progress", { attrs: { title: "Reviewing\u2026" } }, `${reviewProgress}%`)
           ]) : h("td.games-view__review-cell", [
             h("button.games-view__review-btn", {
               on: { click: (e) => {
@@ -10503,11 +11054,14 @@ function renderGamesView(deps) {
             puzzleCount > 0 ? h("span.games-view__puzzle-count", { attrs: { title: `${puzzleCount} saved puzzle${puzzleCount !== 1 ? "s" : ""}` } }, String(puzzleCount)) : h("span.games-view__puzzle-none", "\u2013")
           );
           return h("tr.games-view__row", {
-            class: { active: game.id === deps.selectedGameId },
-            on: { click: () => {
+            class: {
+              active: game.id === deps.selectedGameId,
+              selected: selectedGameIds.has(game.id)
+            },
+            on: { click: (e) => handleGameRowClick(game, games, e, deps, () => {
               deps.selectGame(game);
               window.location.hash = "#/analysis";
-            } }
+            }) }
           }, [
             h("td", renderResultIcon(r)),
             h("td.games-view__opponent", [
@@ -10694,6 +11248,7 @@ var importPlatform = "chesscom";
 var showImportPanel = false;
 var showGlobalMenu = false;
 var showBoardSettings = false;
+var showReviewMenu = false;
 function activeSection(route) {
   switch (route.name) {
     case "analysis":
@@ -10724,6 +11279,79 @@ function renderNav(route) {
   return h("nav.header__nav", navLinks.map(
     ({ label, href, section }) => h("a", { attrs: { href }, class: { active: active === section } }, label)
   ));
+}
+var REVIEW_DEPTHS = [12, 14, 16, 18, 20];
+function renderReviewMenu(redraw2) {
+  const running = isBulkRunning();
+  const paused = isBulkPaused();
+  const active = running || paused;
+  const summary = active ? getQueueSummary() : null;
+  const auto = getAutoReview();
+  return h("div.review-menu", [
+    h("button.review-menu__trigger", {
+      class: { active: showReviewMenu || active },
+      attrs: { title: "Bulk Review settings" },
+      on: { click: () => {
+        showReviewMenu = !showReviewMenu;
+        redraw2();
+      } }
+    }, active ? `Review ${summary.done}/${summary.total}` : "Review"),
+    showReviewMenu ? h("div.review-menu__backdrop", {
+      on: { click: () => {
+        showReviewMenu = false;
+        redraw2();
+      } }
+    }) : null,
+    showReviewMenu ? h("div.review-menu__dropdown", [
+      // Queue status + controls
+      active ? h("div.review-menu__section", [
+        h("div.review-menu__label", summary ? `${summary.done} of ${summary.total} game${summary.total === 1 ? "" : "s"} analyzed` : "Idle"),
+        h("div.review-menu__row", [
+          paused ? h("button.review-menu__btn", {
+            on: { click: () => {
+              resumeBulkReview();
+              redraw2();
+            } }
+          }, "Resume") : h("button.review-menu__btn", {
+            on: { click: () => {
+              pauseBulkReview();
+              redraw2();
+            } }
+          }, "Pause"),
+          h("button.review-menu__btn.--cancel", {
+            on: { click: () => {
+              cancelBulkReview();
+              redraw2();
+            } }
+          }, "Cancel")
+        ])
+      ]) : null,
+      h("div.review-menu__section", [
+        h("div.review-menu__label", `Depth: ${reviewDepth}`),
+        h("div.review-menu__row", REVIEW_DEPTHS.map(
+          (d) => h("button.review-menu__pill", {
+            class: { active: reviewDepth === d },
+            on: { click: () => {
+              setReviewDepth(d);
+              redraw2();
+            } }
+          }, String(d))
+        ))
+      ]),
+      h("label.review-menu__toggle", [
+        h("span", "Auto-review on import"),
+        h("input", {
+          attrs: { type: "checkbox", checked: auto },
+          on: {
+            change: (e) => {
+              localStorage.setItem("patzer.autoReview", String(e.target.checked));
+              redraw2();
+            }
+          }
+        })
+      ])
+    ]) : null
+  ]);
 }
 function closeGlobalMenu(redraw2) {
   showGlobalMenu = false;
@@ -10956,24 +11584,13 @@ function renderHeader(deps) {
     h("a.header__brand", { attrs: { href: "#/" } }, "Patzer Pro"),
     h("div.header__search", { key: "header-search" }, [
       h("div.header__bar", [
-        h("div.header__platforms", [
-          h("button.header__platform", {
-            class: { active: importPlatform === "chesscom" },
-            attrs: { title: importPlatform === "chesscom" ? "Chess.com (active)" : "Switch to Chess.com" },
-            on: { click: () => {
-              importPlatform = "chesscom";
-              redraw2();
-            } }
-          }, "Chess.com"),
-          h("button.header__platform", {
-            class: { active: importPlatform === "lichess" },
-            attrs: { title: importPlatform === "lichess" ? "Lichess (active)" : "Switch to Lichess" },
-            on: { click: () => {
-              importPlatform = "lichess";
-              redraw2();
-            } }
-          }, "Lichess")
-        ]),
+        h("button.header__platform-toggle", {
+          attrs: { title: importPlatform === "chesscom" ? "Switch to Lichess" : "Switch to Chess.com" },
+          on: { click: () => {
+            importPlatform = importPlatform === "chesscom" ? "lichess" : "chesscom";
+            redraw2();
+          } }
+        }, importPlatform === "chesscom" ? "Chess.com" : "Lichess"),
         h("input.header__input", {
           key: `input-${importPlatform}`,
           attrs: {
@@ -11021,6 +11638,7 @@ function renderHeader(deps) {
       backdrop
     ]),
     renderNav(route),
+    renderReviewMenu(redraw2),
     renderGlobalMenu(deps)
   ]);
 }
@@ -11545,9 +12163,13 @@ function scheduleNavStateSave(path = ctrl.path) {
     void saveNavStateToIdb(selectedId, path);
   }, NAV_STATE_SAVE_MS);
 }
-function loadGame(pgn) {
+function loadGame(pgn, opts) {
   selectedGamePgn = pgn;
   ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+  if (opts?.source === "queue") {
+    restoreGeneration++;
+    return;
+  }
   clearEvalCache();
   resetCurrentEval();
   clearPuzzleCandidates();
@@ -11614,7 +12236,7 @@ function navigate(path) {
   ctrl.setPath(path);
   ctrl.retro?.onJump(path);
   syncBoard();
-  evalCurrentPosition();
+  if (!puzzleHidesAnalysis()) evalCurrentPosition();
   scheduleNavStateSave(ctrl.path);
   redraw();
   scrollActiveIntoView();
@@ -11684,6 +12306,11 @@ function clearRetroMode() {
   delete ctrl.retro;
   syncArrow();
 }
+function reviewAllGames(games) {
+  if (games.length === 0) return;
+  enqueueBulkReview(games);
+  window.location.hash = "#/games";
+}
 function routeContent(route) {
   const deps = {
     importedGames,
@@ -11706,6 +12333,7 @@ function routeContent(route) {
       window.location.hash = "#/analysis";
       startBatchWhenReady();
     },
+    reviewAllGames,
     redraw
   };
   switch (route.name) {
@@ -11968,6 +12596,13 @@ initBatch({
   getUserColor,
   redraw
 });
+initReviewQueue({
+  analyzedGameIds,
+  missedTacticGameIds,
+  analyzedGameAccuracy,
+  getUserColor,
+  redraw
+});
 bindKeyboardHandlers({
   getCtrl: () => ctrl,
   navigate,
@@ -11983,6 +12618,12 @@ onChange2((route) => {
   currentRoute = route;
   if (route.name === "analysis-game" && hasStandalonePuzzleBackground()) {
     restoreStandalonePuzzleBackground();
+  }
+  if (isBulkRunning() && (route.name === "analysis-game" || route.name === "analysis")) {
+    selectedGameId = route.params?.["id"] ?? selectedGameId;
+    void syncPuzzleRoute(route);
+    vnode2 = patch(vnode2, view(currentRoute));
+    return;
   }
   if (route.name === "analysis-game") {
     const id = route.params["id"] ?? "";

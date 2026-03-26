@@ -16,6 +16,12 @@ import {
   setBoardWheelNavEnabled,
   setReviewDotsUserOnly,
 } from '../board/cosmetics';
+import {
+  isBulkRunning, isBulkPaused,
+  pauseBulkReview, resumeBulkReview, cancelBulkReview,
+  getQueueSummary, getAutoReview,
+} from '../engine/reviewQueue';
+import { reviewDepth, setReviewDepth } from '../engine/batch';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 
@@ -25,6 +31,7 @@ let importPlatform: ImportPlatform = 'chesscom';
 let showImportPanel  = false;
 let showGlobalMenu   = false;
 let showBoardSettings = false;
+let showReviewMenu   = false;
 
 export function setImportPlatform(p: ImportPlatform): void { importPlatform = p; }
 export function getImportPlatform(): ImportPlatform         { return importPlatform; }
@@ -73,6 +80,76 @@ function renderNav(route: Route): VNode {
   return h('nav.header__nav', navLinks.map(({ label, href, section }) =>
     h('a', { attrs: { href }, class: { active: active === section } }, label)
   ));
+}
+
+// --- Bulk Review menu ---
+
+const REVIEW_DEPTHS = [12, 14, 16, 18, 20];
+
+function renderReviewMenu(redraw: () => void): VNode {
+  const running = isBulkRunning();
+  const paused  = isBulkPaused();
+  const active  = running || paused;
+  const summary = active ? getQueueSummary() : null;
+  const auto    = getAutoReview();
+
+  return h('div.review-menu', [
+    h('button.review-menu__trigger', {
+      class: { active: showReviewMenu || active },
+      attrs: { title: 'Bulk Review settings' },
+      on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
+    }, active ? `Review ${summary!.done}/${summary!.total}` : 'Review'),
+
+    showReviewMenu ? h('div.review-menu__backdrop', {
+      on: { click: () => { showReviewMenu = false; redraw(); } },
+    }) : null,
+
+    showReviewMenu ? h('div.review-menu__dropdown', [
+
+      // Queue status + controls
+      active ? h('div.review-menu__section', [
+        h('div.review-menu__label', summary
+          ? `${summary.done} of ${summary.total} game${summary.total === 1 ? '' : 's'} analyzed`
+          : 'Idle'),
+        h('div.review-menu__row', [
+          paused
+            ? h('button.review-menu__btn', {
+                on: { click: () => { resumeBulkReview(); redraw(); } },
+              }, 'Resume')
+            : h('button.review-menu__btn', {
+                on: { click: () => { pauseBulkReview(); redraw(); } },
+              }, 'Pause'),
+          h('button.review-menu__btn.--cancel', {
+            on: { click: () => { cancelBulkReview(); redraw(); } },
+          }, 'Cancel'),
+        ]),
+      ]) : null,
+
+      h('div.review-menu__section', [
+        h('div.review-menu__label', `Depth: ${reviewDepth}`),
+        h('div.review-menu__row', REVIEW_DEPTHS.map(d =>
+          h('button.review-menu__pill', {
+            class: { active: reviewDepth === d },
+            on: { click: () => { setReviewDepth(d); redraw(); } },
+          }, String(d)),
+        )),
+      ]),
+
+      h('label.review-menu__toggle', [
+        h('span', 'Auto-review on import'),
+        h('input', {
+          attrs: { type: 'checkbox', checked: auto },
+          on: {
+            change: (e: Event) => {
+              localStorage.setItem('patzer.autoReview', String((e.target as HTMLInputElement).checked));
+              redraw();
+            },
+          },
+        }),
+      ]),
+
+    ]) : null,
+  ]);
 }
 
 // --- Global settings menu ---
@@ -308,18 +385,10 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
     h('div.header__search', { key: 'header-search' }, [
       h('div.header__bar', [
-        h('div.header__platforms', [
-          h('button.header__platform', {
-            class: { active: importPlatform === 'chesscom' },
-            attrs: { title: importPlatform === 'chesscom' ? 'Chess.com (active)' : 'Switch to Chess.com' },
-            on: { click: () => { importPlatform = 'chesscom'; redraw(); } },
-          }, 'Chess.com'),
-          h('button.header__platform', {
-            class: { active: importPlatform === 'lichess' },
-            attrs: { title: importPlatform === 'lichess' ? 'Lichess (active)' : 'Switch to Lichess' },
-            on: { click: () => { importPlatform = 'lichess'; redraw(); } },
-          }, 'Lichess'),
-        ]),
+        h('button.header__platform-toggle', {
+          attrs: { title: importPlatform === 'chesscom' ? 'Switch to Lichess' : 'Switch to Chess.com' },
+          on: { click: () => { importPlatform = importPlatform === 'chesscom' ? 'lichess' : 'chesscom'; redraw(); } },
+        }, importPlatform === 'chesscom' ? 'Chess.com' : 'Lichess'),
 
         h('input.header__input', {
           key: `input-${importPlatform}`,
@@ -368,6 +437,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
     ]),
 
     renderNav(route),
+    renderReviewMenu(redraw),
     renderGlobalMenu(deps),
   ]);
 }

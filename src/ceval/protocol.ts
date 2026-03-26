@@ -10,6 +10,11 @@
 
 export type LineCallback = (line: string) => void;
 
+export interface ProtocolConfig {
+  threads?: number; // if omitted: Math.max(1, navigator.hardwareConcurrency - 1)
+  hash?:    number; // if omitted: 256
+}
+
 // Local interface — matches @lichess-org/stockfish-web's StockfishWeb interface.
 // Declared here to avoid a static bundle import of the package.
 interface StockfishWebModule {
@@ -41,6 +46,8 @@ function sharedWasmMemory(lo: number, hi = 32767): WebAssembly.Memory {
 export class StockfishProtocol {
   private module: StockfishWebModule | undefined;
   private onLine: LineCallback | undefined;
+
+  constructor(private config: ProtocolConfig = {}) {}
 
   /** Human-readable engine name received from the "id name" response. */
   engineName: string | undefined;
@@ -162,15 +169,16 @@ export class StockfishProtocol {
       this.send('setoption name UCI_AnalyseMode value true');
       this.send('setoption name Analysis Contempt value Off');
 
-      // Threads: all cores minus one (keep one free for the UI thread).
+      // Threads and hash are configurable so a background review engine can run
+      // at Threads=1, Hash=32 without competing with the live analysis engine.
       // Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts recommendedThreads
       const cores   = navigator.hardwareConcurrency ?? 2;
-      const threads = Math.max(1, cores - 1);
+      const threads = this.config.threads ?? Math.max(1, cores - 1);
+      const hash    = this.config.hash    ?? 256;
       this.send(`setoption name Threads value ${threads}`);
       console.log(`[ceval] Stockfish 18 — ${threads} threads`);
 
-      // 256 MB hash table; Lichess allows up to 512 MB on desktop.
-      this.send('setoption name Hash value 256');
+      this.send(`setoption name Hash value ${hash}`);
 
       this.send('ucinewgame');
       this.send('isready');
