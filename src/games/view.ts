@@ -8,6 +8,7 @@ import { h, type VNode } from 'snabbdom';
 import { parsePgnHeader, type ImportedGame } from '../import/types';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
+import { getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 
@@ -115,6 +116,8 @@ export interface GamesViewDeps {
   selectGame:            (game: ImportedGame) => void;
   /** selectGame + navigate to analysis + startBatchWhenReady (used for Review button). */
   reviewGame:            (game: ImportedGame) => void;
+  /** Run batch analysis on an ordered list of games sequentially. */
+  reviewAllGames:        (games: ImportedGame[]) => void;
   redraw:                () => void;
 }
 
@@ -131,6 +134,18 @@ let gamesFilterOpponent  = '';
 let gamesFilterColor:    '' | 'white' | 'black' = '';
 let gamesSortField: GamesSortField = 'date';
 let gamesSortDir:   'asc' | 'desc' = 'desc';
+
+// Separate filter state for the compact underboard game list.
+// Kept independent of the Games-tab filter state so the two views don't cross-contaminate.
+let gameListSearch = '';
+let gameListFilterResults: Set<'win' | 'loss' | 'draw'> = new Set();
+let gameListFilterSpeeds:  Set<string>                   = new Set();
+
+// Multi-select state shared across both game list views.
+// Tracks the set of selected game IDs and the last-clicked game for shift-range selection.
+// Mirrors the multi-select pattern in standard file-manager UIs.
+let selectedGameIds: Set<string> = new Set();
+let lastClickedGameId: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -243,31 +258,176 @@ const SPEED_ICONS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Multi-select helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle a game row click with optional modifier keys.
+ * - ctrl/cmd+click: toggle game in selection set without navigating
+ * - shift+click: range-select from last clicked to current in the visible list
+ * - plain click: clear selection, load the game (existing single-game behavior)
+ */
+function handleGameRowClick(
+  game: ImportedGame,
+  visibleGames: ImportedGame[],
+  e: MouseEvent,
+  deps: GamesViewDeps,
+  onPlainClick: () => void,
+): void {
+  if (e.ctrlKey || e.metaKey) {
+    const s = new Set(selectedGameIds);
+    s.has(game.id) ? s.delete(game.id) : s.add(game.id);
+    selectedGameIds = s;
+    lastClickedGameId = game.id;
+    deps.redraw();
+  } else if (e.shiftKey && lastClickedGameId) {
+    const lastIdx = visibleGames.findIndex(g => g.id === lastClickedGameId);
+    const curIdx  = visibleGames.findIndex(g => g.id === game.id);
+    if (lastIdx >= 0 && curIdx >= 0) {
+      const from = Math.min(lastIdx, curIdx);
+      const to   = Math.max(lastIdx, curIdx);
+      const s    = new Set(selectedGameIds);
+      for (let i = from; i <= to; i++) s.add(visibleGames[i]!.id);
+      selectedGameIds = s;
+    }
+    deps.redraw();
+  } else {
+    selectedGameIds   = new Set();
+    lastClickedGameId = game.id;
+    onPlainClick();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Exported render functions
 // ---------------------------------------------------------------------------
 
 /**
  * Compact game list shown in the analysis underboard.
+ * Includes an opponent-name search bar and result/time-control filter pills.
+ * Filter state is independent from the Games-tab state.
  * Adapted from docs/reference/GameImport/index.jsx.
  */
 export function renderGameList(deps: GamesViewDeps): VNode {
   if (deps.importedGames.length === 0) return h('div');
+
+  // Apply filters: opponent search → result → time class
+  const q = gameListSearch.trim().toLowerCase();
+  let visible: ImportedGame[] = q
+    ? deps.importedGames.filter(g => {
+        const opp = opponentName(g, deps.getUserColor)?.toLowerCase() ?? '';
+        return opp.includes(q);
+      })
+    : [...deps.importedGames];
+
+  if (gameListFilterResults.size > 0) {
+    visible = visible.filter(g => {
+      const r = deps.gameResult(g);
+      return r !== null && gameListFilterResults.has(r);
+    });
+  }
+
+  if (gameListFilterSpeeds.size > 0) {
+    visible = visible.filter(g => g.timeClass !== undefined && gameListFilterSpeeds.has(g.timeClass));
+  }
+
+  const anyFilter = q.length > 0 || gameListFilterResults.size > 0 || gameListFilterSpeeds.size > 0;
+
+  const countLabel = anyFilter
+    ? `${visible.length} of ${deps.importedGames.length} game${deps.importedGames.length === 1 ? '' : 's'}`
+    : `${deps.importedGames.length} imported game${deps.importedGames.length === 1 ? '' : 's'}`;
+
+  const toggleResult = (r: 'win' | 'loss' | 'draw') => {
+    const s = new Set(gameListFilterResults);
+    s.has(r) ? s.delete(r) : s.add(r);
+    gameListFilterResults = s;
+    deps.redraw();
+  };
+
+  const toggleSpeed = (tc: string) => {
+    const s = new Set(gameListFilterSpeeds);
+    s.has(tc) ? s.delete(tc) : s.add(tc);
+    gameListFilterSpeeds = s;
+    deps.redraw();
+  };
+
+  const clearAll = () => {
+    gameListSearch = '';
+    gameListFilterResults = new Set();
+    gameListFilterSpeeds = new Set();
+    deps.redraw();
+  };
+
+  const listSelectedCount = [...selectedGameIds].filter(id => deps.importedGames.some(g => g.id === id)).length;
+
+  const toolbar = h('div.game-list__toolbar', [
+    h('input.games-view__search', {
+      attrs: { type: 'search', placeholder: 'Search opponent…', value: gameListSearch },
+      on: { input: (e: Event) => { gameListSearch = (e.target as HTMLInputElement).value; deps.redraw(); } },
+    }),
+    h('div.game-list__filter-pills', [
+      ...(['win', 'loss', 'draw'] as const).map(r =>
+        h('button.games-view__pill', {
+          class: { active: gameListFilterResults.has(r) },
+          on: { click: () => toggleResult(r) },
+        }, r.charAt(0).toUpperCase() + r.slice(1)),
+      ),
+      ...(['bullet', 'blitz', 'rapid'] as const).map(tc =>
+        h('button.games-view__pill', {
+          class: { active: gameListFilterSpeeds.has(tc) },
+          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '' },
+          on: { click: () => toggleSpeed(tc) },
+        }, tc.charAt(0).toUpperCase() + tc.slice(1)),
+      ),
+      anyFilter
+        ? h('button.games-view__clear', { on: { click: clearAll } }, '×')
+        : null,
+      listSelectedCount > 1
+        ? h('button.games-view__review-all-btn', {
+            on: { click: () => {
+              const games = deps.importedGames.filter(g => selectedGameIds.has(g.id));
+              selectedGameIds = new Set();
+              deps.reviewAllGames(games);
+            }},
+            attrs: { title: `Analyze ${listSelectedCount} selected games sequentially` },
+          }, `Review ${listSelectedCount}`)
+        : null,
+    ]),
+  ]);
+
+  const queueSummary = isBulkRunning() ? getQueueSummary() : null;
+
   return h('div.game-list', [
-    h('div.game-list__header', `${deps.importedGames.length} imported game${deps.importedGames.length === 1 ? '' : 's'}`),
-    h('ul', deps.importedGames.map(game => {
-      const isAnalyzed      = deps.analyzedGameIds.has(game.id);
-      const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
-      const srcUrl          = deps.gameSourceUrl(game);
-      return h('li', [
-        h('button.game-list__row', {
-          class: { active: game.id === deps.selectedGameId },
-          on: { click: () => deps.selectGame(game) },
-        }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
-        srcUrl ? h('a.game-ext-link', {
-          attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
-        }) : null,
-      ]);
-    })),
+    h('div.game-list__header', countLabel),
+    toolbar,
+    queueSummary
+      ? h('div.game-list__queue-status', `Reviewing ${queueSummary.done} / ${queueSummary.total} games…`)
+      : null,
+    visible.length === 0
+      ? h('div.game-list__no-results', 'No games match.')
+      : h('ul', visible.map(game => {
+          const isAnalyzed      = deps.analyzedGameIds.has(game.id);
+          const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
+          const srcUrl          = deps.gameSourceUrl(game);
+          const progress        = getReviewProgress(game.id);
+          const isAnalyzing     = progress !== undefined && progress < 100;
+          return h('li', [
+            h('button.game-list__row', {
+              class: {
+                active:     game.id === deps.selectedGameId,
+                selected:   selectedGameIds.has(game.id),
+                analyzing:  isAnalyzing,
+              },
+              on: { click: (e: MouseEvent) => handleGameRowClick(game, visible, e, deps, () => deps.selectGame(game)) },
+            }, [
+              ...deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic),
+              isAnalyzing ? h('span.game-list__progress', `${progress}%`) : null,
+            ]),
+            srcUrl ? h('a.game-ext-link', {
+              attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+            }) : null,
+          ]);
+        })),
   ]);
 }
 
@@ -333,10 +493,20 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       }),
     ]),
 
-    // Summary + clear
+    // Summary + clear + multi-select review
     h('div.games-view__filter-group.--right', [
       h('span.games-view__summary', `${games.length} of ${deps.importedGames.length} game${deps.importedGames.length === 1 ? '' : 's'}`),
       gamesFilterActive() ? h('button.games-view__clear', { on: { click: () => clearGamesFilters(redraw) } }, 'Clear filters') : null,
+      selectedGameIds.size > 1
+        ? h('button.games-view__review-all-btn', {
+            on: { click: () => {
+              const ordered = games.filter(g => selectedGameIds.has(g.id));
+              selectedGameIds = new Set();
+              deps.reviewAllGames(ordered);
+            }},
+            attrs: { title: `Analyze ${selectedGameIds.size} selected games sequentially` },
+          }, `Review Selected (${selectedGameIds.size})`)
+        : null,
     ]),
   ]);
 
@@ -410,11 +580,17 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             }
 
             // Review status cell
+            const reviewProgress = !isAnalyzed ? getReviewProgress(game.id) : undefined;
+            const isAnalyzing    = reviewProgress !== undefined && reviewProgress < 100;
             const reviewCell = isAnalyzed
               ? h('td.games-view__review-cell', [
                   h('span.games-view__reviewed', { attrs: { title: 'Reviewed' } }, '✓'),
                   hasMissed ? h('span.games-view__missed', { attrs: { title: 'Missed tactic detected' } }, '!') : null,
                   accuracyText ? h('span.games-view__accuracy', { attrs: { title: 'Your accuracy' } }, accuracyText) : null,
+                ])
+              : isAnalyzing
+              ? h('td.games-view__review-cell', [
+                  h('span.games-view__analyzing-progress', { attrs: { title: 'Reviewing…' } }, `${reviewProgress}%`),
                 ])
               : h('td.games-view__review-cell', [
                   h('button.games-view__review-btn', {
@@ -432,11 +608,14 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             );
 
             return h('tr.games-view__row', {
-              class: { active: game.id === deps.selectedGameId },
-              on: { click: () => {
+              class: {
+                active:   game.id === deps.selectedGameId,
+                selected: selectedGameIds.has(game.id),
+              },
+              on: { click: (e: MouseEvent) => handleGameRowClick(game, games, e, deps, () => {
                 deps.selectGame(game);
                 window.location.hash = '#/analysis';
-              }},
+              })},
             }, [
               h('td', renderResultIcon(r)),
               h('td.games-view__opponent', [

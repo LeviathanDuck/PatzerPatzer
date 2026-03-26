@@ -59,7 +59,11 @@ import {
   type PuzzleRenderDeps,
 } from './puzzles/extract';
 import { initPuzzles, puzzleHrefForCandidate, renderPuzzlesRoute, syncPuzzleRoute } from './puzzles/index';
+import { puzzleHidesAnalysis } from './puzzles/runtime';
 import { buildStandalonePuzzleRoot } from './puzzles/round';
+import {
+  enqueueBulkReview, isBulkRunning, initReviewQueue,
+} from './engine/reviewQueue';
 import { renderHeader, type HeaderDeps } from './header/index';
 import {
   type ImportedGame, restoreGameIdCounter,
@@ -308,10 +312,19 @@ function scheduleNavStateSave(path = ctrl.path): void {
 /**
  * Load a game into the analysis board by PGN.
  * Resets analysis state and re-evaluates if engine is on.
+ * When called with source:'queue' the background review queue is driving the load —
+ * skip the full reset so the queue state and eval cache are not destroyed.
  */
-function loadGame(pgn: string | null): void {
+function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user' }): void {
   selectedGamePgn = pgn;
   ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
+
+  if (opts?.source === 'queue') {
+    // Background queue advance: rebuild ctrl only, do not reset batch or eval cache.
+    restoreGeneration++;
+    return;
+  }
+
   clearEvalCache();
   resetCurrentEval();
   clearPuzzleCandidates();
@@ -421,7 +434,9 @@ function navigate(path: string): void {
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts jump() retro.onJump() call.
   ctrl.retro?.onJump(path);
   syncBoard();
-  evalCurrentPosition(); // updates currentEval, arrow, and triggers threat eval if on
+  // Skip engine evaluation when a puzzle ctrl is active — puzzles manage
+  // their own board state and do not use the analysis engine.
+  if (!puzzleHidesAnalysis()) evalCurrentPosition();
   scheduleNavStateSave(ctrl.path);
   redraw();
   scrollActiveIntoView();
@@ -548,6 +563,18 @@ function clearRetroMode(): void {
   syncArrow();
 }
 
+// --- Multi-game analysis queue ---
+
+/**
+ * Hand the selected games to the background review queue.
+ * reviewQueue.ts drives all game loading and engine coordination independently.
+ */
+function reviewAllGames(games: ImportedGame[]): void {
+  if (games.length === 0) return;
+  enqueueBulkReview(games);
+  window.location.hash = '#/games';
+}
+
 // --- Route views ---
 
 function routeContent(route: Route): VNode {
@@ -562,6 +589,7 @@ function routeContent(route: Route): VNode {
       window.location.hash = '#/analysis';
       startBatchWhenReady();
     },
+    reviewAllGames,
     redraw,
   };
   switch (route.name) {
@@ -847,6 +875,13 @@ initBatch({
   getUserColor,
   redraw,
 });
+initReviewQueue({
+  analyzedGameIds,
+  missedTacticGameIds,
+  analyzedGameAccuracy,
+  getUserColor,
+  redraw,
+});
 bindKeyboardHandlers({
   getCtrl:     () => ctrl,
   navigate,
@@ -863,6 +898,14 @@ onChange(route => {
   currentRoute = route;
   if (route.name === 'analysis-game' && hasStandalonePuzzleBackground()) {
     restoreStandalonePuzzleBackground();
+  }
+  // While the background review queue is running, don't allow route changes to
+  // trigger loadGame() — the queue drives all game loading.
+  if (isBulkRunning() && (route.name === 'analysis-game' || route.name === 'analysis')) {
+    selectedGameId = route.params?.['id'] ?? selectedGameId;
+    void syncPuzzleRoute(route);
+    vnode = patch(vnode, view(currentRoute));
+    return;
   }
   // When deep-linking to a specific game, load it before rendering.
   // loadGame() calls redraw() which patches via currentRoute, so return early
