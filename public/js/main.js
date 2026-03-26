@@ -11519,6 +11519,26 @@ function renderHeader(deps) {
   const hasActiveFilters = importFilters.speeds.size > 0 || importFilters.dateRange !== "1month" || !importFilters.rated;
   const panel = showImportPanel ? h("div.header__panel", [
     h("div.header__panel-section", [
+      h("div.header__panel-label", "Platform"),
+      h("div.header__panel-row", [
+        h("button.header__pill", {
+          class: { active: importPlatform === "chesscom" },
+          on: { click: () => {
+            importPlatform = "chesscom";
+            redraw2();
+          } }
+        }, "Chess.com"),
+        h("button.header__pill", {
+          class: { active: importPlatform === "lichess" },
+          on: { click: () => {
+            importPlatform = "lichess";
+            redraw2();
+          } }
+        }, "Lichess")
+      ])
+    ]),
+    h("div.header__panel-divider"),
+    h("div.header__panel-section", [
       h("div.header__panel-label", "Time control"),
       h("div.header__panel-row", [
         h("button.header__pill", {

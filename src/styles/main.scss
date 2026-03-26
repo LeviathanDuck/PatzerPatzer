@@ -511,11 +511,8 @@ main {
       flex: 1;
     }
 
-    // Tighten platform toggle on small screens
-    &__platform-toggle {
-      padding: 0 8px;
-      font-size: 0.75rem;
-    }
+    // Hide platform toggle from bar — it lives in the filters panel on mobile
+    &__platform-toggle { display: none; }
 
     // Import button: shorten label handled in JS; tighten padding
     &__import {
@@ -646,6 +643,8 @@ main {
 // Bulk Review dropdown — trigger button + queue controls + depth selector
 .review-menu {
   position: relative;
+
+  @media (max-width: 600px) { display: none; }
 
   &__trigger {
     padding: 4px 10px;
