@@ -644,8 +644,6 @@ main {
 .review-menu {
   position: relative;
 
-  @media (max-width: 600px) { display: none; }
-
   &__trigger {
     padding: 4px 10px;
     background: transparent;

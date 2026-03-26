@@ -955,11 +955,6 @@ main {
 .review-menu {
   position: relative;
 }
-@media (max-width: 600px) {
-  .review-menu {
-    display: none;
-  }
-}
 .review-menu__trigger {
   padding: 4px 10px;
   background: transparent;
