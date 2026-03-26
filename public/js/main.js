@@ -2251,6 +2251,59 @@ function isEngineSearchActive() {
   return engineSearchActive;
 }
 
+// src/engine/tactics.ts
+var missedMomentConfig = {
+  swingThreshold: 0.05,
+  // Lichess inaccuracy floor — any real mistake is flagged
+  missedMateMaxN: 5,
+  // mate in 1–5 (was hardcoded 3; extend to longer forcing lines)
+  collapseWcFloor: 0.55,
+  // mover had > 55% win chances (~+50–100 cp)
+  collapseDropMin: 0.08,
+  // and dropped by ≥ 0.08 (mistake-sized in a winning position)
+  maxPly: 80
+  // up to move 40 (was 60 = move 30)
+};
+function detectMissedMoments(mainline, cache, userColor, config = missedMomentConfig) {
+  const moments = [];
+  let path = "";
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i];
+    path += node.id;
+    const isWhiteMove = node.ply % 2 === 1;
+    const isUserMove = userColor === null || userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
+    if (!isUserMove) continue;
+    const parentPath = path.slice(0, -2);
+    const nodeEval = cache.get(path);
+    const parentEval = cache.get(parentPath);
+    if (!nodeEval || !parentEval) continue;
+    if (config.missedMateMaxN > 0 && parentEval.best) {
+      const userMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
+      if (userMate !== void 0 && userMate > 0 && userMate <= config.missedMateMaxN && !nodeEval.mate) {
+        moments.push({ kind: "missed-mate", ply: node.ply });
+        continue;
+      }
+    }
+    if (config.maxPly > 0 && node.ply >= config.maxPly) continue;
+    if (nodeEval.loss === void 0) continue;
+    const parentWc = evalWinChances(parentEval);
+    if (parentWc !== void 0) {
+      const moverParentWc = isWhiteMove ? parentWc : -parentWc;
+      if (moverParentWc >= config.collapseWcFloor && nodeEval.loss >= config.collapseDropMin) {
+        moments.push({ kind: "collapse", ply: node.ply });
+        continue;
+      }
+    }
+    if (nodeEval.loss > config.swingThreshold && parentEval.best) {
+      moments.push({ kind: "swing", ply: node.ply });
+    }
+  }
+  return moments;
+}
+function hasMissedMoments(mainline, cache, userColor, config) {
+  return detectMissedMoments(mainline, cache, userColor, config).length > 0;
+}
+
 // src/idb/index.ts
 var ANALYSIS_VERSION = 2;
 function buildAnalysisNodes(mainline, getEval) {
@@ -2540,8 +2593,6 @@ function storedInt2(key, def, min, max) {
 }
 var reviewDepth = storedInt2("patzer.reviewDepth", 16, 12, 20);
 var pendingBatchOnReady = false;
-var MISSED_TACTIC_THRESHOLD = 0.1;
-var MISSED_TACTIC_MAX_PLY = 60;
 function setReviewDepth(v) {
   reviewDepth = v;
   localStorage.setItem("patzer.reviewDepth", String(v));
@@ -2567,24 +2618,7 @@ function resetBatchState() {
   analysisComplete = false;
 }
 function detectMissedTactics(userColor) {
-  const ctrl2 = _getCtrl2();
-  let path = "";
-  for (let i = 1; i < ctrl2.mainline.length; i++) {
-    const node = ctrl2.mainline[i];
-    path += node.id;
-    const isWhiteMove = node.ply % 2 === 1;
-    const isUserMove = userColor === null || userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
-    if (!isUserMove) continue;
-    const parentPath = path.slice(0, -2);
-    const nodeEval = evalCache.get(path);
-    const parentEval = evalCache.get(parentPath);
-    if (!nodeEval || !parentEval || !parentEval.best) continue;
-    const userParentMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
-    if (userParentMate !== void 0 && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
-    if (node.ply >= MISSED_TACTIC_MAX_PLY) continue;
-    if (nodeEval.loss !== void 0 && nodeEval.loss > MISSED_TACTIC_THRESHOLD) return true;
-  }
-  return false;
+  return hasMissedMoments(_getCtrl2().mainline, evalCache, userColor);
 }
 function evalBatchItem(item) {
   const wasActive = isEngineSearchActive();
@@ -10317,27 +10351,6 @@ function initReviewQueue(deps) {
   _getUserColor2 = deps.getUserColor;
   _redraw9 = deps.redraw;
 }
-var MISSED_TACTIC_THRESHOLD2 = 0.1;
-var MISSED_TACTIC_MAX_PLY2 = 60;
-function detectMissedTacticsFromCache(mainline, cache, userColor) {
-  let path = "";
-  for (let i = 1; i < mainline.length; i++) {
-    const node = mainline[i];
-    path += node.id;
-    const isWhiteMove = node.ply % 2 === 1;
-    const isUserMove = userColor === null || userColor === "white" && isWhiteMove || userColor === "black" && !isWhiteMove;
-    if (!isUserMove) continue;
-    const parentPath = path.slice(0, -2);
-    const nodeEval = cache.get(path);
-    const parentEval = cache.get(parentPath);
-    if (!nodeEval || !parentEval || !parentEval.best) continue;
-    const userParentMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
-    if (userParentMate !== void 0 && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
-    if (node.ply >= MISSED_TACTIC_MAX_PLY2) continue;
-    if (nodeEval.loss !== void 0 && nodeEval.loss > MISSED_TACTIC_THRESHOLD2) return true;
-  }
-  return false;
-}
 async function initReviewEngine(baseUrl) {
   if (reviewEngineInitStarted) return;
   reviewEngineInitStarted = true;
@@ -10477,7 +10490,7 @@ function finishEntry(entry) {
   entry.status = "complete";
   const userColor = _getUserColor2(entry.game);
   _analyzedGameIds2.add(entry.game.id);
-  if (detectMissedTacticsFromCache(entry.ctrl.mainline, entry.cache, userColor)) {
+  if (hasMissedMoments(entry.ctrl.mainline, entry.cache, userColor)) {
     _missedTacticGameIds2.add(entry.game.id);
   }
   const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
