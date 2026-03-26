@@ -302,15 +302,6 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       ]),
 
       h('div.global-menu__item.global-menu__item--has-sub', {
-        on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },
-      }, [
-        h('span', 'Board Settings'),
-        h('span.global-menu__arrow', showBoardSettings ? '▾' : '›'),
-      ]),
-
-      showBoardSettings ? renderBoardSettings(redraw) : null,
-
-      h('div.global-menu__item.global-menu__item--has-sub', {
         on: { click: () => { showDetectionSettings = !showDetectionSettings; redraw(); } },
       }, [
         h('span', 'Detection Settings'),
@@ -318,6 +309,15 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       ]),
 
       showDetectionSettings ? renderDetectionSettings(redraw) : null,
+
+      h('div.global-menu__item.global-menu__item--has-sub', {
+        on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },
+      }, [
+        h('span', 'Board Settings'),
+        h('span.global-menu__arrow', showBoardSettings ? '▾' : '›'),
+      ]),
+
+      showBoardSettings ? renderBoardSettings(redraw) : null,
     ]) : null,
   ]);
 }
