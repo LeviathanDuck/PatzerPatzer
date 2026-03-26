@@ -89,7 +89,7 @@ export function renderCompactGameRow(
   const oppRating = userColor === 'white' ? game.blackRating : userColor === 'black' ? game.whiteRating : undefined;
   const oppLabel  = oppRating !== undefined ? `${opponent} (${oppRating})` : opponent;
   const oppAccNode = accuracy?.opp !== null && accuracy?.opp !== undefined
-    ? h('span.grl__opp-accuracy', `${accuracy.opp}%`)
+    ? h('span.grl__opp-accuracy', `${Math.round(accuracy.opp)}%`)
     : null;
 
   return [
@@ -454,7 +454,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
               ? h('span.game-list__row-progress.--queued', 'Queued')
               : isAnalyzed
                 ? (userAcc !== null && userAcc !== undefined
-                    ? h('span.game-list__row-progress.--accuracy', `${userAcc}%`)
+                    ? h('span.game-list__row-progress.--accuracy', `${Math.round(userAcc)}%`)
                     : null)
                 : h('button.game-list__row-review', {
                     attrs: { title: 'Queue for background review' },
