@@ -1881,7 +1881,7 @@ body[data-board='newspaper'] cg-board::before {
     &:hover { background: #2a4a2a; color: #8fc; }
   }
 
-  // Per-row review progress / queued state
+  // Per-row review progress / queued / accuracy state
   &__row-progress {
     flex-shrink: 0;
     padding: 0 8px;
@@ -1892,7 +1892,8 @@ body[data-board='newspaper'] cg-board::before {
     min-width: 4ch;
     text-align: right;
 
-    &.--queued { color: #666; font-style: italic; }
+    &.--queued   { color: #666; font-style: italic; }
+    &.--accuracy { color: #7ab; }
   }
 
   // On mobile: hide the NEW badge (space is tight); Review button takes that slot
@@ -1993,6 +1994,15 @@ body[data-board='newspaper'] cg-board::before {
     &.--new  { color: #8fd36b; }
     &.--ok   { color: #4a8; }
     &.--warn { color: #f84; }
+  }
+
+  // Opponent accuracy shown after color chip inside the opponent cell
+  &__opp-accuracy {
+    font-size: 0.72em;
+    color: #555;
+    margin-left: 3px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
   }
 }
 

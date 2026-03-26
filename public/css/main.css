@@ -2085,6 +2085,9 @@ body[data-board=newspaper] cg-board::before {
   color: #666;
   font-style: italic;
 }
+.game-list__row-progress.--accuracy {
+  color: #7ab;
+}
 @media (max-width: 600px) {
   .game-list .grl__badge.--new {
     display: none;
@@ -2191,6 +2194,13 @@ body[data-board=newspaper] cg-board::before {
 }
 .grl__badge.--warn {
   color: #f84;
+}
+.grl__opp-accuracy {
+  font-size: 0.72em;
+  color: #555;
+  margin-left: 3px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .color-chip {

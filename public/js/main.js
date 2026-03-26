@@ -10640,7 +10640,7 @@ function gameSourceUrl(game) {
   if (site?.startsWith("https://lichess.org/")) return site;
   return void 0;
 }
-function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
+function renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy) {
   const result = gameResult(game);
   const userColor = getUserColor(game);
   const opponent = userColor === "white" ? game.black ?? game.id : userColor === "black" ? game.white ?? game.id : game.white && game.black ? `${game.white} vs ${game.black}` : game.id;
@@ -10658,9 +10658,10 @@ function renderCompactGameRow(game, isAnalyzed, hasMissedTactic) {
   const oppChip = oppColor ? h("span.color-chip.--" + oppColor) : null;
   const oppRating = userColor === "white" ? game.blackRating : userColor === "black" ? game.whiteRating : void 0;
   const oppLabel = oppRating !== void 0 ? `${opponent} (${oppRating})` : opponent;
+  const oppAccNode = accuracy?.opp !== null && accuracy?.opp !== void 0 ? h("span.grl__opp-accuracy", `${accuracy.opp}%`) : null;
   return [
     h("span.grl__result." + resultCls, "\u25CF"),
-    h("span.grl__opponent", [oppLabel, oppChip]),
+    h("span.grl__opponent", [oppLabel, oppChip, oppAccNode]),
     date ? h("span.grl__date", date) : null,
     tcIcon ? h("span.grl__tc", { attrs: { "data-icon": tcIcon, ...game.timeClass ? { title: game.timeClass } : {} } }) : null,
     isNewImport || isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
@@ -10886,15 +10887,20 @@ function renderGameList(deps) {
       const srcUrl = deps.gameSourceUrl(game);
       const progress = getReviewProgress(game.id);
       const isAnalyzing = progress !== void 0 && progress < 100;
-      const isQueued = progress !== void 0;
-      const reviewControl = isAnalyzing ? h("span.game-list__row-progress", `${progress}%`) : isQueued ? h("span.game-list__row-progress.--queued", "Queued") : !isAnalyzed ? h("button.game-list__row-review", {
+      const isPending = progress !== void 0 && !isAnalyzing && !isAnalyzed;
+      const rawAcc = deps.analyzedGameAccuracy.get(game.id);
+      const userColor = deps.getUserColor(game);
+      const userAcc = rawAcc && userColor ? userColor === "white" ? rawAcc.white : rawAcc.black : null;
+      const oppAcc = rawAcc && userColor ? userColor === "white" ? rawAcc.black : rawAcc.white : null;
+      const accuracy = rawAcc ? { user: userAcc, opp: oppAcc } : void 0;
+      const reviewControl = isAnalyzing ? h("span.game-list__row-progress", `${progress}%`) : isPending ? h("span.game-list__row-progress.--queued", "Queued") : isAnalyzed ? userAcc !== null && userAcc !== void 0 ? h("span.game-list__row-progress.--accuracy", `${userAcc}%`) : null : h("button.game-list__row-review", {
         attrs: { title: "Queue for background review" },
         on: { click: (e) => {
           e.stopPropagation();
           enqueueBulkReview([game]);
           deps.redraw();
         } }
-      }, "Review") : null;
+      }, "Review");
       return h("li", [
         h("button.game-list__row", {
           class: {
@@ -10903,7 +10909,7 @@ function renderGameList(deps) {
             analyzing: isAnalyzing
           },
           on: { click: (e) => handleGameRowClick(game, visible, e, deps, () => deps.selectGame(game)) }
-        }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
+        }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy)),
         reviewControl,
         srcUrl ? h("a.game-ext-link", {
           attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" }
