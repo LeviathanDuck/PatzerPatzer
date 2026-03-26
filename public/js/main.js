@@ -11595,16 +11595,6 @@ function renderGlobalMenu(deps) {
       ]),
       h("div.global-menu__item.global-menu__item--has-sub", {
         on: { click: () => {
-          showBoardSettings = !showBoardSettings;
-          redraw2();
-        } }
-      }, [
-        h("span", "Board Settings"),
-        h("span.global-menu__arrow", showBoardSettings ? "\u25BE" : "\u203A")
-      ]),
-      showBoardSettings ? renderBoardSettings(redraw2) : null,
-      h("div.global-menu__item.global-menu__item--has-sub", {
-        on: { click: () => {
           showDetectionSettings = !showDetectionSettings;
           redraw2();
         } }
@@ -11612,7 +11602,17 @@ function renderGlobalMenu(deps) {
         h("span", "Detection Settings"),
         h("span.global-menu__arrow", showDetectionSettings ? "\u25BE" : "\u203A")
       ]),
-      showDetectionSettings ? renderDetectionSettings(redraw2) : null
+      showDetectionSettings ? renderDetectionSettings(redraw2) : null,
+      h("div.global-menu__item.global-menu__item--has-sub", {
+        on: { click: () => {
+          showBoardSettings = !showBoardSettings;
+          redraw2();
+        } }
+      }, [
+        h("span", "Board Settings"),
+        h("span.global-menu__arrow", showBoardSettings ? "\u25BE" : "\u203A")
+      ]),
+      showBoardSettings ? renderBoardSettings(redraw2) : null
     ]) : null
   ]);
 }
