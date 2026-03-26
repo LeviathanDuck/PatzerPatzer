@@ -11354,7 +11354,7 @@ var importPlatform = "chesscom";
 var showImportPanel = false;
 var showGlobalMenu = false;
 var showBoardSettings = false;
-var showDetectionSettings = false;
+var showDetectionModal = false;
 var showReviewMenu = false;
 var showMobileNav = false;
 function activeSection(route) {
@@ -11464,61 +11464,108 @@ function renderReviewMenu(redraw2) {
 function closeGlobalMenu(redraw2) {
   showGlobalMenu = false;
   showBoardSettings = false;
-  showDetectionSettings = false;
   redraw2();
 }
-function renderDetectionSettings(redraw2) {
+var DETECTION_SLIDERS = [
+  {
+    key: "swingThreshold",
+    label: "Swing Threshold",
+    description: "Minimum win-chance drop required to flag a tactical mistake. Lower = more sensitive; flags smaller errors. 0.05 is the Lichess inaccuracy floor \u2014 any real mistake will be caught.",
+    min: 0.01,
+    max: 0.3,
+    step: 0.01,
+    format: (v) => v.toFixed(2),
+    lichessDefault: 0.05
+  },
+  {
+    key: "missedMateMaxN",
+    label: "Missed Mate in N",
+    description: "Flag a move when a forced checkmate in N moves or fewer was on the board but not played. Lichess flags missed mates in 3 or fewer. Set to 0 to disable this category entirely.",
+    min: 0,
+    max: 10,
+    step: 1,
+    format: (v) => v === 0 ? "off" : `in ${v}`,
+    lichessDefault: 3
+  },
+  {
+    key: "collapseWcFloor",
+    label: "Near-Win Floor",
+    description: "How dominant the mover must be (win chances %) before a near-win collapse can be flagged. 55% \u2248 +50\u2013100 centipawns advantage. Raise this to only flag collapses from clearly winning positions.",
+    min: 0.5,
+    max: 0.95,
+    step: 0.05,
+    format: (v) => `${Math.round(v * 100)}%`
+  },
+  {
+    key: "collapseDropMin",
+    label: "Collapse Drop",
+    description: "Minimum win-chance loss to flag a near-win collapse. Intentionally lower than the swing threshold \u2014 throwing away a won game is significant even when the raw drop is modest.",
+    min: 0.02,
+    max: 0.2,
+    step: 0.01,
+    format: (v) => v.toFixed(2)
+  },
+  {
+    key: "maxPly",
+    label: "Max Ply",
+    description: "Stop flagging tactical mistakes after this many half-moves (plies). Ply 60 = move 30. Set to 0 to check the entire game including the endgame. Lichess analysis covers up to ply 60.",
+    min: 0,
+    max: 120,
+    step: 10,
+    format: (v) => v === 0 ? "all" : `ply ${v} (move ${v / 2})`,
+    lichessDefault: 60
+  }
+];
+function renderDetectionModal(redraw2) {
   const cfg = missedMomentConfig;
-  return h("div.global-menu__sub", [
-    h("label.global-menu__sub-row", [
-      h("span", `Swing threshold: ${cfg.swingThreshold.toFixed(2)}`),
-      h("input", {
-        attrs: { type: "range", min: "0.01", max: "0.30", step: "0.01", value: cfg.swingThreshold },
-        on: { input: (e) => {
-          setMissedMomentConfig({ swingThreshold: parseFloat(e.target.value) });
-          redraw2();
-        } }
-      })
-    ]),
-    h("label.global-menu__sub-row", [
-      h("span", `Missed mate \u2264 N: ${cfg.missedMateMaxN}`),
-      h("input", {
-        attrs: { type: "range", min: "0", max: "10", step: "1", value: cfg.missedMateMaxN },
-        on: { input: (e) => {
-          setMissedMomentConfig({ missedMateMaxN: parseInt(e.target.value, 10) });
-          redraw2();
-        } }
-      })
-    ]),
-    h("label.global-menu__sub-row", [
-      h("span", `Near-win floor: ${Math.round(cfg.collapseWcFloor * 100)}%`),
-      h("input", {
-        attrs: { type: "range", min: "0.50", max: "0.95", step: "0.05", value: cfg.collapseWcFloor },
-        on: { input: (e) => {
-          setMissedMomentConfig({ collapseWcFloor: parseFloat(e.target.value) });
-          redraw2();
-        } }
-      })
-    ]),
-    h("label.global-menu__sub-row", [
-      h("span", `Collapse drop min: ${cfg.collapseDropMin.toFixed(2)}`),
-      h("input", {
-        attrs: { type: "range", min: "0.02", max: "0.20", step: "0.01", value: cfg.collapseDropMin },
-        on: { input: (e) => {
-          setMissedMomentConfig({ collapseDropMin: parseFloat(e.target.value) });
-          redraw2();
-        } }
-      })
-    ]),
-    h("label.global-menu__sub-row", [
-      h("span", `Max ply: ${cfg.maxPly === 0 ? "all" : cfg.maxPly}`),
-      h("input", {
-        attrs: { type: "range", min: "0", max: "120", step: "10", value: cfg.maxPly },
-        on: { input: (e) => {
-          setMissedMomentConfig({ maxPly: parseInt(e.target.value, 10) });
-          redraw2();
-        } }
-      })
+  const rows = DETECTION_SLIDERS.map((s) => {
+    const value = cfg[s.key];
+    const markerPct = s.lichessDefault !== void 0 ? (s.lichessDefault - s.min) / (s.max - s.min) * 100 : null;
+    return h("div.detection-modal__row", [
+      h("div.detection-modal__row-header", [
+        h("span.detection-modal__label", s.label),
+        h("span.detection-modal__value", s.format(value))
+      ]),
+      h("p.detection-modal__desc", s.description),
+      h("div.detection-modal__slider-wrap", [
+        h("input", {
+          attrs: { type: "range", min: s.min, max: s.max, step: s.step, value },
+          on: {
+            input: (e) => {
+              const raw = parseFloat(e.target.value);
+              setMissedMomentConfig({ [s.key]: s.step >= 1 ? Math.round(raw) : raw });
+              redraw2();
+            }
+          }
+        }),
+        markerPct !== null ? h("span.detection-modal__default-mark", {
+          attrs: {
+            style: `left: ${markerPct}%`,
+            title: `Lichess default: ${s.format(s.lichessDefault)}`
+          }
+        }) : null
+      ])
+    ]);
+  });
+  return h("div.detection-modal", [
+    h("div.detection-modal__backdrop", {
+      on: { click: () => {
+        showDetectionModal = false;
+        redraw2();
+      } }
+    }),
+    h("div.detection-modal__card", [
+      h("div.detection-modal__header", [
+        h("h2", "Detection Settings"),
+        h("button.detection-modal__close", {
+          attrs: { title: "Close" },
+          on: { click: () => {
+            showDetectionModal = false;
+            redraw2();
+          } }
+        }, "\u2715")
+      ]),
+      h("div.detection-modal__body", rows)
     ])
   ]);
 }
@@ -11538,8 +11585,9 @@ function renderGlobalMenu(deps) {
     showGlobalMenu ? h("div.global-menu__backdrop", {
       on: { click: () => closeGlobalMenu(redraw2) }
     }) : null,
+    showDetectionModal ? renderDetectionModal(redraw2) : null,
     showGlobalMenu ? h("div.global-menu__dropdown", {
-      class: { "board-open": showBoardSettings || showDetectionSettings }
+      class: { "board-open": showBoardSettings }
     }, [
       h("button.global-menu__item", {
         on: { click: () => {
@@ -11593,16 +11641,13 @@ function renderGlobalMenu(deps) {
           }
         })
       ]),
-      h("div.global-menu__item.global-menu__item--has-sub", {
+      h("button.global-menu__item", {
         on: { click: () => {
-          showDetectionSettings = !showDetectionSettings;
+          showDetectionModal = true;
+          showGlobalMenu = false;
           redraw2();
         } }
-      }, [
-        h("span", "Detection Settings"),
-        h("span.global-menu__arrow", showDetectionSettings ? "\u25BE" : "\u203A")
-      ]),
-      showDetectionSettings ? renderDetectionSettings(redraw2) : null,
+      }, "Detection Settings\u2026"),
       h("div.global-menu__item.global-menu__item--has-sub", {
         on: { click: () => {
           showBoardSettings = !showBoardSettings;
