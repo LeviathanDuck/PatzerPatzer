@@ -6,6 +6,7 @@
 import { StockfishProtocol } from '../ceval/protocol';
 import { AnalyseCtrl } from '../analyse/ctrl';
 import { evalWinChances } from './winchances';
+import { hasMissedMoments } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
 import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import { pgnToTree } from '../tree/pgn';
@@ -80,41 +81,6 @@ export function initReviewQueue(deps: {
   _redraw               = deps.redraw;
 }
 
-// --- Missed tactic detection ---
-// Local variant of batch.ts detectMissedTactics, reading from per-entry cache.
-
-const MISSED_TACTIC_THRESHOLD = 0.10;
-const MISSED_TACTIC_MAX_PLY   = 60;
-
-function detectMissedTacticsFromCache(
-  mainline: readonly import('../tree/types').TreeNode[],
-  cache:    Map<string, PositionEval>,
-  userColor: 'white' | 'black' | null,
-): boolean {
-  let path = '';
-  for (let i = 1; i < mainline.length; i++) {
-    const node = mainline[i]!;
-    path += node.id;
-    const isWhiteMove = node.ply % 2 === 1;
-    const isUserMove  = userColor === null
-      || (userColor === 'white' && isWhiteMove)
-      || (userColor === 'black' && !isWhiteMove);
-    if (!isUserMove) continue;
-
-    const parentPath = path.slice(0, -2);
-    const nodeEval   = cache.get(path);
-    const parentEval = cache.get(parentPath);
-    if (!nodeEval || !parentEval || !parentEval.best) continue;
-
-    const userParentMate = isWhiteMove
-      ? parentEval.mate
-      : (parentEval.mate !== undefined ? -parentEval.mate : undefined);
-    if (userParentMate !== undefined && userParentMate > 0 && userParentMate <= 3 && !nodeEval.mate) return true;
-    if (node.ply >= MISSED_TACTIC_MAX_PLY) continue;
-    if (nodeEval.loss !== undefined && nodeEval.loss > MISSED_TACTIC_THRESHOLD) return true;
-  }
-  return false;
-}
 
 // --- Background engine init ---
 
@@ -273,7 +239,7 @@ function finishEntry(entry: ReviewQueueEntry): void {
 
   const userColor = _getUserColor(entry.game);
   _analyzedGameIds.add(entry.game.id);
-  if (detectMissedTacticsFromCache(entry.ctrl.mainline, entry.cache, userColor)) {
+  if (hasMissedMoments(entry.ctrl.mainline, entry.cache, userColor)) {
     _missedTacticGameIds.add(entry.game.id);
   }
   const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
