@@ -2691,6 +2691,10 @@ function startBatchWhenReady() {
   if (!engineEnabled) {
     pendingBatchOnReady = true;
     toggleEngine();
+    if (engineReady) {
+      pendingBatchOnReady = false;
+      startBatchAnalysis();
+    }
     return;
   }
   if (!engineReady) {
