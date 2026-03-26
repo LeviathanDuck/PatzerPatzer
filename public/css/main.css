@@ -1768,6 +1768,10 @@ body[data-board=newspaper] cg-board::before {
   color: #fff;
   outline: 1px solid rgba(255, 255, 255, 0.25);
 }
+.tview2 move.worst-miss {
+  outline: 1px solid #9a3d44;
+  border-radius: 2px;
+}
 .tview2 move index {
   font-size: 90%;
   color: #888;

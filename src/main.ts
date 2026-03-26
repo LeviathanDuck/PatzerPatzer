@@ -63,7 +63,7 @@ import { puzzleHidesAnalysis } from './puzzles/runtime';
 import { buildStandalonePuzzleRoot } from './puzzles/round';
 import {
   enqueueBulkReview, isBulkRunning, initReviewQueue,
-  setMissedMoments, clearMissedMoments,
+  setMissedMoments, clearMissedMoments, getMissedMoments,
 } from './engine/reviewQueue';
 import { renderHeader, type HeaderDeps } from './header/index';
 import {
@@ -653,7 +653,10 @@ function routeContent(route: Route): VNode {
           (!ctrl.retro || ctrl.retro.guidanceRevealed()) ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves', [
-            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu),
+            renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu, (() => {
+              const moments = selectedGameId ? getMissedMoments(selectedGameId) : [];
+              return moments.length > 0 ? moments.reduce((a, b) => a.loss > b.loss ? a : b).path : undefined;
+            })()),
           ]),
           // Active retrospection panel — placed after the move list, before analysis summaries.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts

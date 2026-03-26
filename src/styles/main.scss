@@ -1510,6 +1510,12 @@ body[data-board='newspaper'] cg-board::before {
       outline: 1px solid rgba(255, 255, 255, 0.25);
     }
 
+    // Worst missed opportunity in the current game — red box matching the loser player strip.
+    &.worst-miss {
+      outline: 1px solid #9a3d44;
+      border-radius: 2px;
+    }
+
     // Move number prefix inside the move element.
     // Mirrors lichess-org/lila: .tview2 move index { font-size: 90%; color: dim; }
     index {
