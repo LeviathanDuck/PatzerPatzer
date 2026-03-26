@@ -10658,7 +10658,7 @@ function renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy) {
   const oppChip = oppColor ? h("span.color-chip.--" + oppColor) : null;
   const oppRating = userColor === "white" ? game.blackRating : userColor === "black" ? game.whiteRating : void 0;
   const oppLabel = oppRating !== void 0 ? `${opponent} (${oppRating})` : opponent;
-  const oppAccNode = accuracy?.opp !== null && accuracy?.opp !== void 0 ? h("span.grl__opp-accuracy", `${accuracy.opp}%`) : null;
+  const oppAccNode = accuracy?.opp !== null && accuracy?.opp !== void 0 ? h("span.grl__opp-accuracy", `${Math.round(accuracy.opp)}%`) : null;
   return [
     h("span.grl__result." + resultCls, "\u25CF"),
     h("span.grl__opponent", [oppLabel, oppChip, oppAccNode]),
@@ -10893,7 +10893,7 @@ function renderGameList(deps) {
       const userAcc = rawAcc && userColor ? userColor === "white" ? rawAcc.white : rawAcc.black : null;
       const oppAcc = rawAcc && userColor ? userColor === "white" ? rawAcc.black : rawAcc.white : null;
       const accuracy = rawAcc ? { user: userAcc, opp: oppAcc } : void 0;
-      const reviewControl = isAnalyzing ? h("span.game-list__row-progress", `${progress}%`) : isPending ? h("span.game-list__row-progress.--queued", "Queued") : isAnalyzed ? userAcc !== null && userAcc !== void 0 ? h("span.game-list__row-progress.--accuracy", `${userAcc}%`) : null : h("button.game-list__row-review", {
+      const reviewControl = isAnalyzing ? h("span.game-list__row-progress", `${progress}%`) : isPending ? h("span.game-list__row-progress.--queued", "Queued") : isAnalyzed ? userAcc !== null && userAcc !== void 0 ? h("span.game-list__row-progress.--accuracy", `${Math.round(userAcc)}%`) : null : h("button.game-list__row-review", {
         attrs: { title: "Queue for background review" },
         on: { click: (e) => {
           e.stopPropagation();
