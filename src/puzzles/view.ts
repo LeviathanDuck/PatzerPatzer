@@ -221,43 +221,120 @@ function renderSavedPuzzleLibrary(deps: {
   }));
 }
 
-// --- Difficulty strip ---
-// Adapted from lichess-org/lila: ui/puzzle/src/view/side.ts difficulty selector.
+// --- Active filter summary chips ---
+// Shows one dismissible chip per active filter; "Clear all" appears when ≥2 are active.
+function renderActiveFilterSummary(
+  filters: ImportedPuzzleFilters,
+  onRatingMin: (v: string) => void,
+  onRatingMax: (v: string) => void,
+  onThemes: (v: string[]) => void,
+  onOpening: (v: string) => void,
+): VNode | null {
+  const chips: VNode[] = [];
+
+  if (filters.ratingMin || filters.ratingMax) {
+    const min = filters.ratingMin.trim();
+    const max = filters.ratingMax.trim();
+    const label = min && max ? `${min}–${max}` : min ? `>${min}` : `<${max}`;
+    chips.push(h('span.puzzle-filter__chip', [
+      h('span', label),
+      h('button.puzzle-filter__chip-clear', {
+        attrs: { title: 'Clear rating filter' },
+        on: { click: () => { onRatingMin(''); onRatingMax(''); } },
+      }, '×'),
+    ]));
+  }
+
+  if (filters.themes.length > 0) {
+    const label = filters.themes.length === 1 ? filters.themes[0]! : `${filters.themes.length} themes`;
+    chips.push(h('span.puzzle-filter__chip', [
+      h('span', label),
+      h('button.puzzle-filter__chip-clear', {
+        attrs: { title: 'Clear theme filter' },
+        on: { click: () => onThemes([]) },
+      }, '×'),
+    ]));
+  }
+
+  if (filters.opening) {
+    const shortName = filters.opening.split('_').slice(0, 2).join(' ');
+    chips.push(h('span.puzzle-filter__chip', [
+      h('span', shortName),
+      h('button.puzzle-filter__chip-clear', {
+        attrs: { title: 'Clear opening filter' },
+        on: { click: () => onOpening('') },
+      }, '×'),
+    ]));
+  }
+
+  if (chips.length === 0) return null;
+
+  return h('div.puzzle-filter__active-summary', [
+    ...chips,
+    chips.length >= 2
+      ? h('button.puzzle-filter__clear-all', {
+          on: { click: () => { onRatingMin(''); onRatingMax(''); onThemes([]); onOpening(''); } },
+        }, 'Clear all')
+      : null,
+  ]);
+}
+
+// --- Difficulty preset pills ---
+// Replaces the <select> with pill buttons showing a live numeric range label.
+// Adapted from lichess-org/lila: ui/puzzle/src/view/side.ts renderDifficultyForm intent;
+// diverges to expose numeric bands directly rather than relative offset labels.
 function renderDifficultyStrip(
   filters: ImportedPuzzleFilters,
   onRatingMin: (v: string) => void,
   onRatingMax: (v: string) => void,
 ): VNode {
   const active = currentDifficulty(filters);
-  return h('div.puzzle-difficulty', [
-    h('span.puzzle-difficulty__label', 'Difficulty'),
-    h('div.puzzle-difficulty__buttons',
-      DIFFICULTY_PRESETS.map(p =>
-        h('button.puzzle-difficulty__btn', {
-          class: { 'puzzle-difficulty__btn--active': active === p.key },
-          on: {
-            click: () => {
-              // Clicking the active preset deselects it (no difficulty filter).
-              if (active === p.key) { onRatingMin(''); onRatingMax(''); }
-              else { onRatingMin(p.ratingMin); onRatingMax(p.ratingMax); }
-            },
-          },
+  const min = filters.ratingMin.trim();
+  const max = filters.ratingMax.trim();
+  const rangeLabel = !min && !max ? 'All ratings'
+    : min && max ? `${min}–${max}`
+    : min ? `>${min}`
+    : `<${max}`;
+
+  return h('div.puzzle-filter__difficulty', [
+    h('span.puzzle-filter__label', 'Difficulty'),
+    h('div.puzzle-filter__preset-row', [
+      ...DIFFICULTY_PRESETS.map(p =>
+        h('button.puzzle-filter__preset-pill', {
+          class: { active: active === p.key },
+          on: { click: () => { onRatingMin(p.ratingMin); onRatingMax(p.ratingMax); } },
+          attrs: { title: `${p.ratingMin || '0'}–${p.ratingMax || '3500'}` },
         }, p.label),
       ),
-    ),
+    ]),
+    h('div.puzzle-filter__rating-inputs', [
+      h('input.puzzle-filter__rating-input', {
+        attrs: { type: 'number', placeholder: 'Min', min: '0', max: '3500', step: '50' },
+        props: { value: filters.ratingMin },
+        on: { change: (e: Event) => onRatingMin((e.target as HTMLInputElement).value.trim()) },
+      }),
+      h('span.puzzle-filter__rating-sep', '–'),
+      h('input.puzzle-filter__rating-input', {
+        attrs: { type: 'number', placeholder: 'Max', min: '0', max: '3500', step: '50' },
+        props: { value: filters.ratingMax },
+        on: { change: (e: Event) => onRatingMax((e.target as HTMLInputElement).value.trim()) },
+      }),
+    ]),
+    h('span.puzzle-filter__range-display', rangeLabel),
   ]);
 }
 
 // --- Opening selector ---
+// Adapted from lichess-org/lila: ui/puzzle/src/view/side.ts renderColorForm (select pattern).
 function renderOpeningSelect(
   openings: readonly string[],
   currentOpening: string,
   onOpening: (v: string) => void,
 ): VNode {
-  return h('div.puzzle-opening-filter', [
-    h('label.puzzle-opening-filter__label', { attrs: { for: 'puzzle-opening-select' } }, 'Opening'),
-    h('select.puzzle-opening-filter__select', {
-      attrs: { id: 'puzzle-opening-select' },
+  return h('div.puzzle-filter__select', [
+    h('label.puzzle-filter__label', { attrs: { for: 'puzzle-opening-sel' } }, 'Opening'),
+    h('select.puzzle-opening__selector', {
+      attrs: { id: 'puzzle-opening-sel' },
       on: { change: (e: Event) => onOpening((e.target as HTMLSelectElement).value) },
     }, [
       h('option', { attrs: { value: '' }, props: { selected: currentOpening === '' } }, 'All openings'),
@@ -272,28 +349,60 @@ function renderOpeningSelect(
 }
 
 // --- Theme grid ---
-// Categorized card grid, adapted from lichess-org/lila: ui/puzzle/css/_themes.scss layout.
+// Adapted from lichess-org/lila: ui/puzzle/css/_themes.scss and view/theme.ts.
+// Cards use the .puzzle-themes__link layout (flex row, prominent h3) from Lichess's
+// /training/themes page. No SVG illustrations — name-only cards for the local dataset.
+// Multi-select theme grid — each tile toggles its key in/out of the selected set.
+// OR semantics: puzzles matching any selected theme are returned.
+// Adapted from lichess-org/lila: ui/puzzle/src/view/side.ts renderThemes multi-pick pattern.
+
+// Category collapse state: tracks which category labels are currently folded.
+// "Checkmate Patterns" starts collapsed (long list, users often want Tactics only).
+const collapsedCategories = new Set<string>(['Checkmate Patterns']);
+
 function renderThemeGrid(
   availableThemes: readonly string[],
-  currentTheme: string,
-  onTheme: (key: string) => void,
+  selectedThemes: string[],
+  onThemes: (keys: string[]) => void,
+  redraw: () => void,
 ): VNode {
   const themeSet = new Set(availableThemes);
+  const selectedSet = new Set(selectedThemes);
   const categories = PUZZLE_THEME_CATEGORIES
     .map(cat => {
       const catThemes = cat.themes.filter(t => themeSet.has(t.key));
       if (catThemes.length === 0) return null;
-      return h('div.puzzle-themes__category', [
-        h('h3.puzzle-themes__category-label', cat.label),
-        h('div.puzzle-themes__grid',
-          catThemes.map(theme =>
-            h('button.puzzle-theme-card', {
-              class: { 'puzzle-theme-card--active': currentTheme === theme.key },
+      const isCollapsed = collapsedCategories.has(cat.label);
+      return h('div.puzzle-themes__category', { class: { collapsed: isCollapsed } }, [
+        h('button.puzzle-themes__category-label', {
+          on: {
+            click: () => {
+              if (isCollapsed) collapsedCategories.delete(cat.label);
+              else collapsedCategories.add(cat.label);
+              redraw();
+            },
+          },
+        }, [
+          h('span', cat.label),
+          h('span.puzzle-themes__collapse-icon', isCollapsed ? '▶' : '▼'),
+        ]),
+        isCollapsed ? null : h('div.puzzle-themes__list',
+          catThemes.map(theme => {
+            const isActive = selectedSet.has(theme.key);
+            return h('button.puzzle-themes__link', {
+              class: { active: isActive },
               on: {
-                click: () => onTheme(currentTheme === theme.key ? '' : theme.key),
+                click: () => {
+                  const next = isActive
+                    ? selectedThemes.filter(k => k !== theme.key)
+                    : [...selectedThemes, theme.key];
+                  onThemes(next);
+                },
               },
-            }, theme.name),
-          ),
+            }, [
+              h('span', h('h3', theme.name)),
+            ]);
+          }),
         ),
       ]);
     })
@@ -306,11 +415,12 @@ function renderImportedPuzzleLibrary(deps: {
   state: ImportedPuzzleLibraryState;
   onRatingMin: (value: string) => void;
   onRatingMax: (value: string) => void;
-  onTheme: (value: string) => void;
+  onThemes: (values: string[]) => void;
   onOpening: (value: string) => void;
   onPrevPage: () => void;
   onNextPage: () => void;
   onStartTraining: () => void;
+  redraw: () => void;
 }): VNode {
   const { state } = deps;
 
@@ -331,13 +441,19 @@ function renderImportedPuzzleLibrary(deps: {
   const manifest = state.manifest;
   const filters = state.query.filters;
 
+  // Settings bar: compact horizontal row of <select> controls, like Lichess's
+  // puzzle__side__config section. Theme grid is the primary content below.
+  // Adapted from lichess-org/lila: ui/puzzle/src/view/side.ts config() layout.
   const filterPanel = h('div.puzzle-library__filter-panel', [
-    renderDifficultyStrip(filters, deps.onRatingMin, deps.onRatingMax),
-    manifest?.openings
-      ? renderOpeningSelect(manifest.openings, filters.opening, deps.onOpening)
-      : null,
+    h('div.puzzle-filter__settings', [
+      renderDifficultyStrip(filters, deps.onRatingMin, deps.onRatingMax),
+      manifest?.openings
+        ? renderOpeningSelect(manifest.openings, filters.opening, deps.onOpening)
+        : null,
+    ]),
+    renderActiveFilterSummary(filters, deps.onRatingMin, deps.onRatingMax, deps.onThemes, deps.onOpening),
     manifest?.themes
-      ? renderThemeGrid(manifest.themes, filters.theme, deps.onTheme)
+      ? renderThemeGrid(manifest.themes, filters.themes, deps.onThemes, deps.redraw)
       : h('div.puzzle-library__empty-body', 'Loading puzzle catalog…'),
   ]);
 
@@ -406,11 +522,12 @@ export function renderPuzzleLibrary(deps: {
   isResumeKey: (key: string) => boolean;
   onImportedRatingMin: (value: string) => void;
   onImportedRatingMax: (value: string) => void;
-  onImportedTheme: (value: string) => void;
+  onImportedThemes: (values: string[]) => void;
   onImportedOpening: (value: string) => void;
   onImportedPrevPage: () => void;
   onImportedNextPage: () => void;
   onStartTraining: () => void;
+  redraw: () => void;
 }): VNode {
   const resumeKey = deps.currentPuzzleKey ?? deps.session.current?.key ?? null;
   const title = deps.source === 'saved'
@@ -442,11 +559,12 @@ export function renderPuzzleLibrary(deps: {
           state: deps.importedState,
           onRatingMin: deps.onImportedRatingMin,
           onRatingMax: deps.onImportedRatingMax,
-          onTheme: deps.onImportedTheme,
+          onThemes: deps.onImportedThemes,
           onOpening: deps.onImportedOpening,
           onPrevPage: deps.onImportedPrevPage,
           onNextPage: deps.onImportedNextPage,
           onStartTraining: deps.onStartTraining,
+          redraw: deps.redraw,
         }),
   ]);
 }
@@ -464,7 +582,7 @@ export function renderPuzzleRound(deps: {
   onNavNext: () => void;
   onNavLast: () => void;
   recent: PuzzleSessionRecent[];
-  trainingContext: { theme: string; opening: string; ratingMin: string; ratingMax: string } | null;
+  trainingContext: { themes: string[]; opening: string; ratingMin: string; ratingMax: string } | null;
   board: VNode;
   promotionDialog: VNode | null;
   topStrip: VNode;
@@ -550,7 +668,7 @@ export function renderPuzzleRound(deps: {
         ? (() => {
             const ctx = deps.trainingContext;
             const parts: string[] = [];
-            if (ctx.theme) parts.push(ctx.theme);
+            if (ctx.themes.length > 0) parts.push(ctx.themes.join(', '));
             if (ctx.opening) parts.push(ctx.opening);
             const ratingMin = ctx.ratingMin.trim();
             const ratingMax = ctx.ratingMax.trim();
