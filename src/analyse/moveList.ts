@@ -4,6 +4,7 @@
 import { h, type VNode } from 'snabbdom';
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import { showReviewLabels } from '../engine/ctrl';
+import { missedMomentConfig } from '../engine/tactics';
 import { pathInit } from '../tree/ops';
 import type { TreeNode, TreePath } from '../tree/types';
 
@@ -25,12 +26,13 @@ function shouldShowReviewAnnotation(
 // Annotation glyph colors — mirrors lichess-org/lila: ui/lib/css/theme/_theme.default.scss
 // $c-blunder / $c-mistake / $c-inaccuracy / $c-brilliant / $c-secondary / $c-interesting
 const GLYPH_COLORS: Record<string, string> = {
-  '??': 'hsl(0,69%,60%)',    // blunder     — muted red
-  '?':  'hsl(41,100%,45%)',  // mistake     — amber
-  '?!': 'hsl(202,78%,62%)',  // inaccuracy  — steel blue
-  '!!': 'hsl(129,71%,45%)',  // brilliant   — green
-  '!':  'hsl(88,62%,37%)',   // good        — olive green
-  '!?': 'hsl(307,80%,70%)',  // interesting — pink/purple
+  '??':  'hsl(0,69%,60%)',    // blunder     — muted red
+  '?':   'hsl(41,100%,45%)',  // mistake     — amber
+  '?!':  'hsl(202,78%,62%)',  // inaccuracy  — steel blue
+  '!!':  'hsl(129,71%,45%)',  // brilliant   — green
+  '!':   'hsl(88,62%,37%)',   // good        — olive green
+  '!?':  'hsl(307,80%,70%)',  // interesting — pink/purple
+  'M?!': '#a855f7',           // missed forced mate — purple (matches games-list M?! badge)
 };
 
 function renderMoveSpan(
@@ -55,12 +57,30 @@ function renderMoveSpan(
   // a saved-and-restored analysis session shows exactly the labels that were persisted.
   // Falls back to classifyLoss(loss) for live analysis sessions and older records without label.
   // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode glyph priority.
-  const pgnGlyph     = node.glyphs?.[0];
-  const playedBest   = node.uci !== undefined && node.uci === parentCached?.best;
+  const pgnGlyph   = node.glyphs?.[0];
+  const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
+
+  // Missed forced mate: the parent position had a short forced mate for the mover,
+  // but the played move does not maintain it. Always shown for both players regardless
+  // of the userOnly filter, so the opponent's missed mates are never hidden.
+  const isWhiteMove  = node.ply % 2 === 1;
+  const parentMate   = parentCached?.mate;
+  const moverHadMate = parentMate !== undefined
+    && (isWhiteMove ? parentMate > 0 : parentMate < 0)
+    && Math.abs(parentMate) <= missedMomentConfig.missedMateMaxN
+    && parentCached?.best !== undefined;
+  const mateWasLost  = cached?.mate === undefined
+    || (isWhiteMove ? (cached.mate <= 0) : (cached.mate >= 0));
+  const isMissedMate = showReviewLabels && !playedBest && moverHadMate && mateWasLost;
+
   const computedLabel: MoveLabel | null = (showReviewLabels && !playedBest && cached !== undefined && shouldShowReviewAnnotation(userColor, node.ply, userOnly))
     ? (cached.label ?? (cached.loss !== undefined ? classifyLoss(cached.loss) : null))
     : null;
-  const computedSymbol = computedLabel === 'blunder' ? '??' : computedLabel === 'mistake' ? '?' : computedLabel === 'inaccuracy' ? '?!' : null;
+  const computedSymbol = isMissedMate ? 'M?!'
+    : computedLabel === 'blunder'    ? '??'
+    : computedLabel === 'mistake'    ? '?'
+    : computedLabel === 'inaccuracy' ? '?!'
+    : null;
 
   const symbol = pgnGlyph?.symbol ?? computedSymbol;
   const color  = symbol ? (GLYPH_COLORS[symbol] ?? '#aaa') : undefined;

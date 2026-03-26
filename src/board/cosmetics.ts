@@ -18,7 +18,9 @@ export function setBoardWheelNavEnabled(enabled: boolean): void {
 }
 
 const REVIEW_DOTS_USER_ONLY_KEY = 'reviewDotsUserOnly';
-export let reviewDotsUserOnly: boolean = localStorage.getItem(REVIEW_DOTS_USER_ONLY_KEY) === 'true';
+// Default ON — show annotations only for the user's moves.
+// Stored as 'false' to opt out; absent key = true.
+export let reviewDotsUserOnly: boolean = localStorage.getItem(REVIEW_DOTS_USER_ONLY_KEY) !== 'false';
 
 export function setReviewDotsUserOnly(enabled: boolean): void {
   reviewDotsUserOnly = enabled;
