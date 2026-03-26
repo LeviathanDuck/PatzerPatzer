@@ -2054,11 +2054,68 @@ body[data-board=newspaper] cg-board::before {
   padding: 3px 0 4px;
   font-style: italic;
 }
+.game-list__row-review {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  background: #1e3a1e;
+  color: #6a9;
+  border: 1px solid #2a5a2a;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+.game-list__row-review:hover {
+  background: #2a4a2a;
+  color: #8fc;
+}
+.game-list__row-progress {
+  flex-shrink: 0;
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: #5a9a5a;
+  white-space: nowrap;
+  min-width: 4ch;
+  text-align: right;
+}
+.game-list__row-progress.--queued {
+  color: #666;
+  font-style: italic;
+}
+@media (max-width: 600px) {
+  .game-list .grl__badge.--new {
+    display: none;
+  }
+}
 
 .games-view__analyzing-progress {
   font-size: 0.8rem;
   color: #5a9a5a;
   font-variant-numeric: tabular-nums;
+}
+
+.games-view__select-toggle {
+  padding: 2px 9px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.games-view__select-toggle:hover {
+  background: #222;
+  color: #ccc;
+}
+.games-view__select-toggle.active {
+  background: #2a3a2a;
+  color: #8f8;
+  border-color: #4a7a4a;
 }
 
 .games-view__review-all-btn {
