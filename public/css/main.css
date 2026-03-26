@@ -2415,6 +2415,13 @@ body[data-board=newspaper] cg-board::before {
   position: fixed;
   z-index: 50;
   pointer-events: none;
+}
+@media (max-width: 600px) {
+  .pv-board-float {
+    display: none;
+  }
+}
+.pv-board-float {
   width: 384px;
   height: 384px;
   border-radius: 4px;
