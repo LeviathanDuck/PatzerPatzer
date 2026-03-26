@@ -12,7 +12,7 @@ const routes: { pattern: string[]; name: string }[] = [
   { pattern: ['openings'], name: 'openings' },
   { pattern: ['stats'], name: 'stats' },
   { pattern: ['games'], name: 'games' },
-  { pattern: [], name: 'home' },
+  { pattern: [], name: 'analysis' },
 ];
 
 function parse(hash: string): Route {
@@ -39,7 +39,7 @@ function parse(hash: string): Route {
     if (matched) return { name, params };
   }
 
-  return { name: 'home', params: {} };
+  return { name: 'analysis', params: {} };
 }
 
 export function current(): Route {

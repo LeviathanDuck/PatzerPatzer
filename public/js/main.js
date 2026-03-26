@@ -758,7 +758,7 @@ function setBoardWheelNavEnabled(enabled) {
   localStorage.setItem(BOARD_WHEEL_NAV_KEY, String(enabled));
 }
 var REVIEW_DOTS_USER_ONLY_KEY = "reviewDotsUserOnly";
-var reviewDotsUserOnly = localStorage.getItem(REVIEW_DOTS_USER_ONLY_KEY) === "true";
+var reviewDotsUserOnly = localStorage.getItem(REVIEW_DOTS_USER_ONLY_KEY) !== "false";
 function setReviewDotsUserOnly(enabled) {
   reviewDotsUserOnly = enabled;
   localStorage.setItem(REVIEW_DOTS_USER_ONLY_KEY, String(enabled));
@@ -11205,16 +11205,23 @@ var GLYPH_COLORS = {
   // brilliant   — green
   "!": "hsl(88,62%,37%)",
   // good        — olive green
-  "!?": "hsl(307,80%,70%)"
+  "!?": "hsl(307,80%,70%)",
   // interesting — pink/purple
+  "M?!": "#a855f7"
+  // missed forced mate — purple (matches games-list M?! badge)
 };
 function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, navigate2, userColor, userOnly, contextMenuPath2, onContextMenu, worstMissPath) {
   const cached = getEval(path);
   const parentCached = getEval(pathInit(path));
   const pgnGlyph = node.glyphs?.[0];
   const playedBest = node.uci !== void 0 && node.uci === parentCached?.best;
+  const isWhiteMove = node.ply % 2 === 1;
+  const parentMate = parentCached?.mate;
+  const moverHadMate = parentMate !== void 0 && (isWhiteMove ? parentMate > 0 : parentMate < 0) && Math.abs(parentMate) <= missedMomentConfig.missedMateMaxN && parentCached?.best !== void 0;
+  const mateWasLost = cached?.mate === void 0 || (isWhiteMove ? cached.mate <= 0 : cached.mate >= 0);
+  const isMissedMate = showReviewLabels && !playedBest && moverHadMate && mateWasLost;
   const computedLabel = showReviewLabels && !playedBest && cached !== void 0 && shouldShowReviewAnnotation(userColor, node.ply, userOnly) ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
-  const computedSymbol = computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
+  const computedSymbol = isMissedMate ? "M?!" : computedLabel === "blunder" ? "??" : computedLabel === "mistake" ? "?" : computedLabel === "inaccuracy" ? "?!" : null;
   const symbol = pgnGlyph?.symbol ?? computedSymbol;
   const color = symbol ? GLYPH_COLORS[symbol] ?? "#aaa" : void 0;
   const mate = cached?.mate;
@@ -11869,7 +11876,7 @@ var routes = [
   { pattern: ["openings"], name: "openings" },
   { pattern: ["stats"], name: "stats" },
   { pattern: ["games"], name: "games" },
-  { pattern: [], name: "home" }
+  { pattern: [], name: "analysis" }
 ];
 function parse(hash2) {
   const path = hash2.replace(/^#\/?/, "");
@@ -11893,7 +11900,7 @@ function parse(hash2) {
     }
     if (matched) return { name, params };
   }
-  return { name: "home", params: {} };
+  return { name: "analysis", params: {} };
 }
 function current() {
   return parse(window.location.hash);
