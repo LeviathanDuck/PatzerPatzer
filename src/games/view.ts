@@ -8,7 +8,7 @@ import { h, type VNode } from 'snabbdom';
 import { parsePgnHeader, type ImportedGame } from '../import/types';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
-import { getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
+import { enqueueBulkReview, getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 
@@ -146,6 +146,9 @@ let gameListFilterSpeeds:  Set<string>                   = new Set();
 // Mirrors the multi-select pattern in standard file-manager UIs.
 let selectedGameIds: Set<string> = new Set();
 let lastClickedGameId: string | null = null;
+// Select mode: when true, plain taps toggle selection instead of loading the game.
+// Enables multi-select on touch devices where ctrl/shift+click is unavailable.
+let selectModeActive = false;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -274,7 +277,7 @@ function handleGameRowClick(
   deps: GamesViewDeps,
   onPlainClick: () => void,
 ): void {
-  if (e.ctrlKey || e.metaKey) {
+  if (e.ctrlKey || e.metaKey || selectModeActive) {
     const s = new Set(selectedGameIds);
     s.has(game.id) ? s.delete(game.id) : s.add(game.id);
     selectedGameIds = s;
@@ -382,11 +385,23 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       anyFilter
         ? h('button.games-view__clear', { on: { click: clearAll } }, '×')
         : null,
+      // Select mode toggle — primary way to multi-select on touch devices.
+      // On desktop, ctrl/cmd+click still works alongside this button.
+      h('button.games-view__select-toggle', {
+        class: { active: selectModeActive },
+        attrs: { title: selectModeActive ? 'Exit select mode' : 'Select games for bulk review' },
+        on: { click: () => {
+          selectModeActive = !selectModeActive;
+          if (!selectModeActive) selectedGameIds = new Set();
+          deps.redraw();
+        }},
+      }, selectModeActive ? 'Done' : 'Select'),
       listSelectedCount > 1
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
               const games = deps.importedGames.filter(g => selectedGameIds.has(g.id));
               selectedGameIds = new Set();
+              selectModeActive = false;
               deps.reviewAllGames(games);
             }},
             attrs: { title: `Analyze ${listSelectedCount} selected games sequentially` },
@@ -411,18 +426,35 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const srcUrl          = deps.gameSourceUrl(game);
           const progress        = getReviewProgress(game.id);
           const isAnalyzing     = progress !== undefined && progress < 100;
+          const isQueued        = progress !== undefined;
+
+          // Per-row review control: progress % while in queue/running, Review button otherwise.
+          // Skipped when already analyzed (✓ badge communicates that).
+          const reviewControl = isAnalyzing
+            ? h('span.game-list__row-progress', `${progress}%`)
+            : isQueued
+              ? h('span.game-list__row-progress.--queued', 'Queued')
+              : !isAnalyzed
+                ? h('button.game-list__row-review', {
+                    attrs: { title: 'Queue for background review' },
+                    on: { click: (e: MouseEvent) => {
+                      e.stopPropagation();
+                      enqueueBulkReview([game]);
+                      deps.redraw();
+                    }},
+                  }, 'Review')
+                : null;
+
           return h('li', [
             h('button.game-list__row', {
               class: {
-                active:     game.id === deps.selectedGameId,
-                selected:   selectedGameIds.has(game.id),
-                analyzing:  isAnalyzing,
+                active:    game.id === deps.selectedGameId,
+                selected:  selectedGameIds.has(game.id),
+                analyzing: isAnalyzing,
               },
               on: { click: (e: MouseEvent) => handleGameRowClick(game, visible, e, deps, () => deps.selectGame(game)) },
-            }, [
-              ...deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic),
-              isAnalyzing ? h('span.game-list__progress', `${progress}%`) : null,
-            ]),
+            }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic)),
+            reviewControl,
             srcUrl ? h('a.game-ext-link', {
               attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
             }) : null,
