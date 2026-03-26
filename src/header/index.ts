@@ -31,9 +31,9 @@ type ImportPlatform = 'chesscom' | 'lichess';
 let importPlatform: ImportPlatform = 'chesscom';
 let showImportPanel  = false;
 let showGlobalMenu   = false;
-let showBoardSettings      = false;
-let showDetectionSettings  = false;
-let showReviewMenu         = false;
+let showBoardSettings     = false;
+let showDetectionModal    = false;
+let showReviewMenu        = false;
 let showMobileNav    = false;
 
 export function setImportPlatform(p: ImportPlatform): void { importPlatform = p; }
@@ -158,73 +158,117 @@ function renderReviewMenu(redraw: () => void): VNode {
 // --- Global settings menu ---
 
 function closeGlobalMenu(redraw: () => void): void {
-  showGlobalMenu        = false;
-  showBoardSettings     = false;
-  showDetectionSettings = false;
+  showGlobalMenu    = false;
+  showBoardSettings = false;
   redraw();
 }
 
-// --- Detection Settings sub-menu ---
+// --- Detection Settings modal ---
 
-function renderDetectionSettings(redraw: () => void): VNode {
+interface SliderDef {
+  key:             keyof typeof missedMomentConfig;
+  label:           string;
+  description:     string;
+  min:             number;
+  max:             number;
+  step:            number;
+  format:          (v: number) => string;
+  lichessDefault?: number;
+}
+
+const DETECTION_SLIDERS: SliderDef[] = [
+  {
+    key: 'swingThreshold',
+    label: 'Swing Threshold',
+    description: 'Minimum win-chance drop required to flag a tactical mistake. Lower = more sensitive; flags smaller errors. 0.05 is the Lichess inaccuracy floor — any real mistake will be caught.',
+    min: 0.01, max: 0.30, step: 0.01,
+    format: v => v.toFixed(2),
+    lichessDefault: 0.05,
+  },
+  {
+    key: 'missedMateMaxN',
+    label: 'Missed Mate in N',
+    description: 'Flag a move when a forced checkmate in N moves or fewer was on the board but not played. Lichess flags missed mates in 3 or fewer. Set to 0 to disable this category entirely.',
+    min: 0, max: 10, step: 1,
+    format: v => v === 0 ? 'off' : `in ${v}`,
+    lichessDefault: 3,
+  },
+  {
+    key: 'collapseWcFloor',
+    label: 'Near-Win Floor',
+    description: 'How dominant the mover must be (win chances %) before a near-win collapse can be flagged. 55% ≈ +50–100 centipawns advantage. Raise this to only flag collapses from clearly winning positions.',
+    min: 0.50, max: 0.95, step: 0.05,
+    format: v => `${Math.round(v * 100)}%`,
+  },
+  {
+    key: 'collapseDropMin',
+    label: 'Collapse Drop',
+    description: 'Minimum win-chance loss to flag a near-win collapse. Intentionally lower than the swing threshold — throwing away a won game is significant even when the raw drop is modest.',
+    min: 0.02, max: 0.20, step: 0.01,
+    format: v => v.toFixed(2),
+  },
+  {
+    key: 'maxPly',
+    label: 'Max Ply',
+    description: 'Stop flagging tactical mistakes after this many half-moves (plies). Ply 60 = move 30. Set to 0 to check the entire game including the endgame. Lichess analysis covers up to ply 60.',
+    min: 0, max: 120, step: 10,
+    format: v => v === 0 ? 'all' : `ply ${v} (move ${v / 2})`,
+    lichessDefault: 60,
+  },
+];
+
+function renderDetectionModal(redraw: () => void): VNode {
   const cfg = missedMomentConfig;
-  return h('div.global-menu__sub', [
 
-    h('label.global-menu__sub-row', [
-      h('span', `Swing threshold: ${cfg.swingThreshold.toFixed(2)}`),
-      h('input', {
-        attrs: { type: 'range', min: '0.01', max: '0.30', step: '0.01', value: cfg.swingThreshold },
-        on: { input: (e: Event) => {
-          setMissedMomentConfig({ swingThreshold: parseFloat((e.target as HTMLInputElement).value) });
-          redraw();
-        }},
-      }),
+  const rows = DETECTION_SLIDERS.map(s => {
+    const value = cfg[s.key] as number;
+    const markerPct = s.lichessDefault !== undefined
+      ? ((s.lichessDefault - s.min) / (s.max - s.min)) * 100
+      : null;
+
+    return h('div.detection-modal__row', [
+      h('div.detection-modal__row-header', [
+        h('span.detection-modal__label', s.label),
+        h('span.detection-modal__value', s.format(value)),
+      ]),
+      h('p.detection-modal__desc', s.description),
+      h('div.detection-modal__slider-wrap', [
+        h('input', {
+          attrs: { type: 'range', min: s.min, max: s.max, step: s.step, value },
+          on: {
+            input: (e: Event) => {
+              const raw = parseFloat((e.target as HTMLInputElement).value);
+              setMissedMomentConfig({ [s.key]: s.step >= 1 ? Math.round(raw) : raw });
+              redraw();
+            },
+          },
+        }),
+        markerPct !== null
+          ? h('span.detection-modal__default-mark', {
+              attrs: {
+                style: `left: ${markerPct}%`,
+                title: `Lichess default: ${s.format(s.lichessDefault!)}`,
+              },
+            })
+          : null,
+      ]),
+    ]);
+  });
+
+  return h('div.detection-modal', [
+    h('div.detection-modal__backdrop', {
+      on: { click: () => { showDetectionModal = false; redraw(); } },
+    }),
+    h('div.detection-modal__card', [
+      h('div.detection-modal__header', [
+        h('h2', 'Detection Settings'),
+        h('button.detection-modal__close', {
+          attrs: { title: 'Close' },
+          on: { click: () => { showDetectionModal = false; redraw(); } },
+        }, '✕'),
+      ]),
+      h('div.detection-modal__body', rows),
     ]),
-
-    h('label.global-menu__sub-row', [
-      h('span', `Missed mate ≤ N: ${cfg.missedMateMaxN}`),
-      h('input', {
-        attrs: { type: 'range', min: '0', max: '10', step: '1', value: cfg.missedMateMaxN },
-        on: { input: (e: Event) => {
-          setMissedMomentConfig({ missedMateMaxN: parseInt((e.target as HTMLInputElement).value, 10) });
-          redraw();
-        }},
-      }),
-    ]),
-
-    h('label.global-menu__sub-row', [
-      h('span', `Near-win floor: ${Math.round(cfg.collapseWcFloor * 100)}%`),
-      h('input', {
-        attrs: { type: 'range', min: '0.50', max: '0.95', step: '0.05', value: cfg.collapseWcFloor },
-        on: { input: (e: Event) => {
-          setMissedMomentConfig({ collapseWcFloor: parseFloat((e.target as HTMLInputElement).value) });
-          redraw();
-        }},
-      }),
-    ]),
-
-    h('label.global-menu__sub-row', [
-      h('span', `Collapse drop min: ${cfg.collapseDropMin.toFixed(2)}`),
-      h('input', {
-        attrs: { type: 'range', min: '0.02', max: '0.20', step: '0.01', value: cfg.collapseDropMin },
-        on: { input: (e: Event) => {
-          setMissedMomentConfig({ collapseDropMin: parseFloat((e.target as HTMLInputElement).value) });
-          redraw();
-        }},
-      }),
-    ]),
-
-    h('label.global-menu__sub-row', [
-      h('span', `Max ply: ${cfg.maxPly === 0 ? 'all' : cfg.maxPly}`),
-      h('input', {
-        attrs: { type: 'range', min: '0', max: '120', step: '10', value: cfg.maxPly },
-        on: { input: (e: Event) => {
-          setMissedMomentConfig({ maxPly: parseInt((e.target as HTMLInputElement).value, 10) });
-          redraw();
-        }},
-      }),
-    ]),
-
   ]);
 }
 
@@ -246,8 +290,10 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       on: { click: () => closeGlobalMenu(redraw) },
     }) : null,
 
+    showDetectionModal ? renderDetectionModal(redraw) : null,
+
     showGlobalMenu ? h('div.global-menu__dropdown', {
-      class: { 'board-open': showBoardSettings || showDetectionSettings },
+      class: { 'board-open': showBoardSettings },
     }, [
       h('button.global-menu__item', {
         on: { click: () => {
@@ -301,14 +347,9 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         }),
       ]),
 
-      h('div.global-menu__item.global-menu__item--has-sub', {
-        on: { click: () => { showDetectionSettings = !showDetectionSettings; redraw(); } },
-      }, [
-        h('span', 'Detection Settings'),
-        h('span.global-menu__arrow', showDetectionSettings ? '▾' : '›'),
-      ]),
-
-      showDetectionSettings ? renderDetectionSettings(redraw) : null,
+      h('button.global-menu__item', {
+        on: { click: () => { showDetectionModal = true; showGlobalMenu = false; redraw(); } },
+      }, 'Detection Settings…'),
 
       h('div.global-menu__item.global-menu__item--has-sub', {
         on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },
