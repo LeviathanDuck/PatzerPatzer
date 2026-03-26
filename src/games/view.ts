@@ -8,7 +8,9 @@ import { h, type VNode } from 'snabbdom';
 import { parsePgnHeader, type ImportedGame } from '../import/types';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
-import { enqueueBulkReview, getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
+import { enqueueBulkReview, getReviewProgress, isBulkRunning, getQueueSummary, getMissedMoments } from '../engine/reviewQueue';
+import { LOSS_THRESHOLDS } from '../engine/winchances';
+import type { MissedMoment } from '../engine/tactics';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 
@@ -56,6 +58,37 @@ export function gameSourceUrl(game: ImportedGame): string | undefined {
  * Shared structured row children for compact game lists (header panel + underboard).
  * Fields: result dot · opponent name · date · time class icon · badges.
  */
+// Returns a badge (or null) reflecting the severity of missed moments.
+// - Swing/collapse severity maps to ! count via LOSS_THRESHOLDS (same thresholds as per-move glyphs).
+// - Missed forced mate shows a separate purple M?! badge.
+// - Falls back to a single ! when moment detail is unavailable (e.g. previous-session IDB restore).
+function renderMissedBadge(gameId: string, hasMissedTactic: boolean): VNode | null {
+  if (!hasMissedTactic) return null;
+
+  const moments = getMissedMoments(gameId);
+  const hasMate = moments.some((m: MissedMoment) => m.kind === 'missed-mate');
+  const swingMoments = moments.filter((m: MissedMoment) => m.kind !== 'missed-mate');
+  const worstLoss = swingMoments.length > 0 ? Math.max(...swingMoments.map((m: MissedMoment) => m.loss)) : 0;
+
+  const exclamCount = worstLoss >= LOSS_THRESHOLDS.blunder    ? 3
+    : worstLoss >= LOSS_THRESHOLDS.mistake    ? 2
+    : worstLoss >= LOSS_THRESHOLDS.inaccuracy ? 1
+    : 0;
+
+  const badges: (VNode | null)[] = [];
+  if (hasMate) {
+    badges.push(h('span.grl__badge.--missed-mate', { attrs: { title: 'Missed forced mate' } }, 'M?!'));
+  }
+  if (exclamCount > 0) {
+    badges.push(h('span.grl__badge.--warn', { attrs: { title: 'Missed tactic' } }, '!'.repeat(exclamCount)));
+  } else if (!hasMate) {
+    // No rich data (IDB-restored from a previous session) — show single fallback !
+    badges.push(h('span.grl__badge.--warn', { attrs: { title: 'Missed tactic' } }, '!'));
+  }
+
+  return h('span.grl__missed-indicators', badges);
+}
+
 export function renderCompactGameRow(
   game: ImportedGame,
   isAnalyzed: boolean,
@@ -98,9 +131,9 @@ export function renderCompactGameRow(
     date ? h('span.grl__date', date) : null,
     tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, ...(game.timeClass ? { title: game.timeClass } : {}) } }) : null,
     (isNewImport || isAnalyzed || hasMissedTactic) ? h('span.grl__badges', [
-      isNewImport     ? h('span.grl__badge.--new',  { attrs: { title: 'Newly imported' } }, 'NEW') : null,
-      isAnalyzed      ? h('span.grl__badge.--ok',   { attrs: { title: 'Analyzed' } },       '✓') : null,
-      hasMissedTactic ? h('span.grl__badge.--warn', { attrs: { title: 'Missed tactic' } },  '!') : null,
+      isNewImport ? h('span.grl__badge.--new', { attrs: { title: 'Newly imported' } }, 'NEW') : null,
+      isAnalyzed  ? h('span.grl__badge.--ok',  { attrs: { title: 'Analyzed' } },       '✓') : null,
+      renderMissedBadge(game.id, hasMissedTactic),
     ]) : null,
   ];
 }
@@ -637,7 +670,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const reviewCell = isAnalyzed
               ? h('td.games-view__review-cell', [
                   h('span.games-view__reviewed', { attrs: { title: 'Reviewed' } }, '✓'),
-                  hasMissed ? h('span.games-view__missed', { attrs: { title: 'Missed tactic detected' } }, '!') : null,
+                  renderMissedBadge(game.id, hasMissed),
                   accuracyText ? h('span.games-view__accuracy', { attrs: { title: 'Your accuracy' } }, accuracyText) : null,
                 ])
               : isAnalyzing

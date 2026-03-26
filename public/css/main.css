@@ -760,6 +760,9 @@ main {
 .header__game-badge.--warn {
   color: #f84;
 }
+.header__game-badge.--missed-mate {
+  color: #a855f7;
+}
 .header__mobile-nav {
   display: none;
   position: relative;
@@ -2193,6 +2196,9 @@ body[data-board=newspaper] cg-board::before {
 }
 .grl__badge.--warn {
   color: #f84;
+}
+.grl__badge.--missed-mate {
+  color: #a855f7;
 }
 .grl__opp-accuracy {
   font-size: 0.72em;

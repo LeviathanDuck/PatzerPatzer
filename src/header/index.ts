@@ -22,6 +22,7 @@ import {
   getQueueSummary, getAutoReview,
 } from '../engine/reviewQueue';
 import { reviewDepth, setReviewDepth } from '../engine/batch';
+import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 
@@ -30,8 +31,9 @@ type ImportPlatform = 'chesscom' | 'lichess';
 let importPlatform: ImportPlatform = 'chesscom';
 let showImportPanel  = false;
 let showGlobalMenu   = false;
-let showBoardSettings = false;
-let showReviewMenu   = false;
+let showBoardSettings      = false;
+let showDetectionSettings  = false;
+let showReviewMenu         = false;
 let showMobileNav    = false;
 
 export function setImportPlatform(p: ImportPlatform): void { importPlatform = p; }
@@ -156,9 +158,74 @@ function renderReviewMenu(redraw: () => void): VNode {
 // --- Global settings menu ---
 
 function closeGlobalMenu(redraw: () => void): void {
-  showGlobalMenu    = false;
-  showBoardSettings = false;
+  showGlobalMenu        = false;
+  showBoardSettings     = false;
+  showDetectionSettings = false;
   redraw();
+}
+
+// --- Detection Settings sub-menu ---
+
+function renderDetectionSettings(redraw: () => void): VNode {
+  const cfg = missedMomentConfig;
+  return h('div.global-menu__sub', [
+
+    h('label.global-menu__sub-row', [
+      h('span', `Swing threshold: ${cfg.swingThreshold.toFixed(2)}`),
+      h('input', {
+        attrs: { type: 'range', min: '0.01', max: '0.30', step: '0.01', value: cfg.swingThreshold },
+        on: { input: (e: Event) => {
+          setMissedMomentConfig({ swingThreshold: parseFloat((e.target as HTMLInputElement).value) });
+          redraw();
+        }},
+      }),
+    ]),
+
+    h('label.global-menu__sub-row', [
+      h('span', `Missed mate ≤ N: ${cfg.missedMateMaxN}`),
+      h('input', {
+        attrs: { type: 'range', min: '0', max: '10', step: '1', value: cfg.missedMateMaxN },
+        on: { input: (e: Event) => {
+          setMissedMomentConfig({ missedMateMaxN: parseInt((e.target as HTMLInputElement).value, 10) });
+          redraw();
+        }},
+      }),
+    ]),
+
+    h('label.global-menu__sub-row', [
+      h('span', `Near-win floor: ${Math.round(cfg.collapseWcFloor * 100)}%`),
+      h('input', {
+        attrs: { type: 'range', min: '0.50', max: '0.95', step: '0.05', value: cfg.collapseWcFloor },
+        on: { input: (e: Event) => {
+          setMissedMomentConfig({ collapseWcFloor: parseFloat((e.target as HTMLInputElement).value) });
+          redraw();
+        }},
+      }),
+    ]),
+
+    h('label.global-menu__sub-row', [
+      h('span', `Collapse drop min: ${cfg.collapseDropMin.toFixed(2)}`),
+      h('input', {
+        attrs: { type: 'range', min: '0.02', max: '0.20', step: '0.01', value: cfg.collapseDropMin },
+        on: { input: (e: Event) => {
+          setMissedMomentConfig({ collapseDropMin: parseFloat((e.target as HTMLInputElement).value) });
+          redraw();
+        }},
+      }),
+    ]),
+
+    h('label.global-menu__sub-row', [
+      h('span', `Max ply: ${cfg.maxPly === 0 ? 'all' : cfg.maxPly}`),
+      h('input', {
+        attrs: { type: 'range', min: '0', max: '120', step: '10', value: cfg.maxPly },
+        on: { input: (e: Event) => {
+          setMissedMomentConfig({ maxPly: parseInt((e.target as HTMLInputElement).value, 10) });
+          redraw();
+        }},
+      }),
+    ]),
+
+  ]);
 }
 
 function renderGlobalMenu(deps: HeaderDeps): VNode {
@@ -180,7 +247,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
     }) : null,
 
     showGlobalMenu ? h('div.global-menu__dropdown', {
-      class: { 'board-open': showBoardSettings },
+      class: { 'board-open': showBoardSettings || showDetectionSettings },
     }, [
       h('button.global-menu__item', {
         on: { click: () => {
@@ -242,6 +309,15 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       ]),
 
       showBoardSettings ? renderBoardSettings(redraw) : null,
+
+      h('div.global-menu__item.global-menu__item--has-sub', {
+        on: { click: () => { showDetectionSettings = !showDetectionSettings; redraw(); } },
+      }, [
+        h('span', 'Detection Settings'),
+        h('span.global-menu__arrow', showDetectionSettings ? '▾' : '›'),
+      ]),
+
+      showDetectionSettings ? renderDetectionSettings(redraw) : null,
     ]) : null,
   ]);
 }
