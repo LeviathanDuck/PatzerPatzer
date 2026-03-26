@@ -430,8 +430,9 @@ main {
     font-weight: 700;
     flex-shrink: 0;
 
-    &.--ok   { color: #4a8; }
-    &.--warn { color: #f84; }
+    &.--ok          { color: #4a8; }
+    &.--warn        { color: #f84; }
+    &.--missed-mate { color: #a855f7; }
   }
 
   // ── Mobile nav ──────────────────────────────────────────────────────────────
@@ -1988,9 +1989,10 @@ body[data-board='newspaper'] cg-board::before {
     font-size: 0.7em;
     font-weight: 700;
 
-    &.--new  { color: #8fd36b; }
-    &.--ok   { color: #4a8; }
-    &.--warn { color: #f84; }
+    &.--new         { color: #8fd36b; }
+    &.--ok          { color: #4a8; }
+    &.--warn        { color: #f84; }
+    &.--missed-mate { color: #a855f7; }
   }
 
   // Opponent accuracy shown after color chip inside the opponent cell

@@ -6,7 +6,7 @@
 import { StockfishProtocol } from '../ceval/protocol';
 import { AnalyseCtrl } from '../analyse/ctrl';
 import { evalWinChances } from './winchances';
-import { hasMissedMoments } from './tactics';
+import { hasMissedMoments, detectMissedMoments, onMissedMomentConfigChange, type MissedMoment } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
 import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import { pgnToTree } from '../tree/pgn';
@@ -67,6 +67,23 @@ let _analyzedGameAccuracy: Map<string, { white: number | null; black: number | n
 let _getUserColor:         (game: ImportedGame) => 'white' | 'black' | null            = () => null;
 let _redraw:               () => void                                                   = () => {};
 
+// Rich missed-moment data per game — independent of _missedTacticGameIds (boolean).
+// Populated at review completion and on config change via recomputeMissedTactics().
+// Accessed by games/view.ts via getMissedMoments() for gradient display.
+const _missedMomentsMap: Map<string, MissedMoment[]> = new Map();
+
+export function getMissedMoments(gameId: string): MissedMoment[] {
+  return _missedMomentsMap.get(gameId) ?? [];
+}
+
+export function setMissedMoments(gameId: string, moments: MissedMoment[]): void {
+  _missedMomentsMap.set(gameId, moments);
+}
+
+export function clearMissedMoments(gameId: string): void {
+  _missedMomentsMap.delete(gameId);
+}
+
 export function initReviewQueue(deps: {
   analyzedGameIds:      Set<string>;
   missedTacticGameIds:  Set<string>;
@@ -79,6 +96,29 @@ export function initReviewQueue(deps: {
   _analyzedGameAccuracy = deps.analyzedGameAccuracy;
   _getUserColor         = deps.getUserColor;
   _redraw               = deps.redraw;
+
+  // Re-run missed-moment detection for all completed queue entries whenever
+  // the detection config is changed via the Detection Settings menu.
+  // Only covers games reviewed in the current session — IDB-restored games
+  // from previous sessions are not in the queue and keep their stored result.
+  onMissedMomentConfigChange(recomputeMissedTactics);
+}
+
+function recomputeMissedTactics(): void {
+  // Only update entries that are in the current session's queue — IDB-restored
+  // games are not present and their flags are left untouched.
+  for (const entry of queue) {
+    if (entry.status !== 'complete') continue;
+    const userColor = _getUserColor(entry.game);
+    const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
+    _missedMomentsMap.set(entry.game.id, moments);
+    if (moments.length > 0) {
+      _missedTacticGameIds.add(entry.game.id);
+    } else {
+      _missedTacticGameIds.delete(entry.game.id);
+    }
+  }
+  _redraw();
 }
 
 
@@ -239,9 +279,9 @@ function finishEntry(entry: ReviewQueueEntry): void {
 
   const userColor = _getUserColor(entry.game);
   _analyzedGameIds.add(entry.game.id);
-  if (hasMissedMoments(entry.ctrl.mainline, entry.cache, userColor)) {
-    _missedTacticGameIds.add(entry.game.id);
-  }
+  const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
+  _missedMomentsMap.set(entry.game.id, moments);
+  if (moments.length > 0) _missedTacticGameIds.add(entry.game.id);
   const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
   if (summary) {
     _analyzedGameAccuracy.set(entry.game.id, {

@@ -2264,6 +2264,14 @@ var missedMomentConfig = {
   maxPly: 80
   // up to move 40 (was 60 = move 30)
 };
+var _configChangeCallbacks = [];
+function onMissedMomentConfigChange(cb) {
+  _configChangeCallbacks.push(cb);
+}
+function setMissedMomentConfig(patch2) {
+  Object.assign(missedMomentConfig, patch2);
+  _configChangeCallbacks.forEach((cb) => cb());
+}
 function detectMissedMoments(mainline, cache, userColor, config = missedMomentConfig) {
   const moments = [];
   let path = "";
@@ -2280,7 +2288,7 @@ function detectMissedMoments(mainline, cache, userColor, config = missedMomentCo
     if (config.missedMateMaxN > 0 && parentEval.best) {
       const userMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
       if (userMate !== void 0 && userMate > 0 && userMate <= config.missedMateMaxN && !nodeEval.mate) {
-        moments.push({ kind: "missed-mate", ply: node.ply });
+        moments.push({ kind: "missed-mate", ply: node.ply, loss: nodeEval.loss ?? 0.5 });
         continue;
       }
     }
@@ -2290,12 +2298,12 @@ function detectMissedMoments(mainline, cache, userColor, config = missedMomentCo
     if (parentWc !== void 0) {
       const moverParentWc = isWhiteMove ? parentWc : -parentWc;
       if (moverParentWc >= config.collapseWcFloor && nodeEval.loss >= config.collapseDropMin) {
-        moments.push({ kind: "collapse", ply: node.ply });
+        moments.push({ kind: "collapse", ply: node.ply, loss: nodeEval.loss });
         continue;
       }
     }
     if (nodeEval.loss > config.swingThreshold && parentEval.best) {
-      moments.push({ kind: "swing", ply: node.ply });
+      moments.push({ kind: "swing", ply: node.ply, loss: nodeEval.loss });
     }
   }
   return moments;
@@ -10344,12 +10352,37 @@ var _analyzedGameAccuracy2 = /* @__PURE__ */ new Map();
 var _getUserColor2 = () => null;
 var _redraw9 = () => {
 };
+var _missedMomentsMap = /* @__PURE__ */ new Map();
+function getMissedMoments(gameId) {
+  return _missedMomentsMap.get(gameId) ?? [];
+}
+function setMissedMoments(gameId, moments) {
+  _missedMomentsMap.set(gameId, moments);
+}
+function clearMissedMoments(gameId) {
+  _missedMomentsMap.delete(gameId);
+}
 function initReviewQueue(deps) {
   _analyzedGameIds2 = deps.analyzedGameIds;
   _missedTacticGameIds2 = deps.missedTacticGameIds;
   _analyzedGameAccuracy2 = deps.analyzedGameAccuracy;
   _getUserColor2 = deps.getUserColor;
   _redraw9 = deps.redraw;
+  onMissedMomentConfigChange(recomputeMissedTactics);
+}
+function recomputeMissedTactics() {
+  for (const entry of queue) {
+    if (entry.status !== "complete") continue;
+    const userColor = _getUserColor2(entry.game);
+    const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
+    _missedMomentsMap.set(entry.game.id, moments);
+    if (moments.length > 0) {
+      _missedTacticGameIds2.add(entry.game.id);
+    } else {
+      _missedTacticGameIds2.delete(entry.game.id);
+    }
+  }
+  _redraw9();
 }
 async function initReviewEngine(baseUrl) {
   if (reviewEngineInitStarted) return;
@@ -10490,9 +10523,9 @@ function finishEntry(entry) {
   entry.status = "complete";
   const userColor = _getUserColor2(entry.game);
   _analyzedGameIds2.add(entry.game.id);
-  if (hasMissedMoments(entry.ctrl.mainline, entry.cache, userColor)) {
-    _missedTacticGameIds2.add(entry.game.id);
-  }
+  const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
+  _missedMomentsMap.set(entry.game.id, moments);
+  if (moments.length > 0) _missedTacticGameIds2.add(entry.game.id);
   const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
   if (summary) {
     _analyzedGameAccuracy2.set(entry.game.id, {
@@ -10661,6 +10694,24 @@ function gameSourceUrl(game) {
   if (site?.startsWith("https://lichess.org/")) return site;
   return void 0;
 }
+function renderMissedBadge(gameId, hasMissedTactic) {
+  if (!hasMissedTactic) return null;
+  const moments = getMissedMoments(gameId);
+  const hasMate = moments.some((m) => m.kind === "missed-mate");
+  const swingMoments = moments.filter((m) => m.kind !== "missed-mate");
+  const worstLoss = swingMoments.length > 0 ? Math.max(...swingMoments.map((m) => m.loss)) : 0;
+  const exclamCount = worstLoss >= LOSS_THRESHOLDS.blunder ? 3 : worstLoss >= LOSS_THRESHOLDS.mistake ? 2 : worstLoss >= LOSS_THRESHOLDS.inaccuracy ? 1 : 0;
+  const badges = [];
+  if (hasMate) {
+    badges.push(h("span.grl__badge.--missed-mate", { attrs: { title: "Missed forced mate" } }, "M?!"));
+  }
+  if (exclamCount > 0) {
+    badges.push(h("span.grl__badge.--warn", { attrs: { title: "Missed tactic" } }, "!".repeat(exclamCount)));
+  } else if (!hasMate) {
+    badges.push(h("span.grl__badge.--warn", { attrs: { title: "Missed tactic" } }, "!"));
+  }
+  return h("span.grl__missed-indicators", badges);
+}
 function renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy) {
   const result = gameResult(game);
   const userColor = getUserColor(game);
@@ -10688,7 +10739,7 @@ function renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy) {
     isNewImport || isAnalyzed || hasMissedTactic ? h("span.grl__badges", [
       isNewImport ? h("span.grl__badge.--new", { attrs: { title: "Newly imported" } }, "NEW") : null,
       isAnalyzed ? h("span.grl__badge.--ok", { attrs: { title: "Analyzed" } }, "\u2713") : null,
-      hasMissedTactic ? h("span.grl__badge.--warn", { attrs: { title: "Missed tactic" } }, "!") : null
+      renderMissedBadge(game.id, hasMissedTactic)
     ]) : null
   ];
 }
@@ -11082,7 +11133,7 @@ function renderGamesView(deps) {
           const isAnalyzing = reviewProgress !== void 0 && reviewProgress < 100;
           const reviewCell = isAnalyzed ? h("td.games-view__review-cell", [
             h("span.games-view__reviewed", { attrs: { title: "Reviewed" } }, "\u2713"),
-            hasMissed ? h("span.games-view__missed", { attrs: { title: "Missed tactic detected" } }, "!") : null,
+            renderMissedBadge(game.id, hasMissed),
             accuracyText ? h("span.games-view__accuracy", { attrs: { title: "Your accuracy" } }, accuracyText) : null
           ]) : isAnalyzing ? h("td.games-view__review-cell", [
             h("span.games-view__analyzing-progress", { attrs: { title: "Reviewing\u2026" } }, `${reviewProgress}%`)
@@ -11295,6 +11346,7 @@ var importPlatform = "chesscom";
 var showImportPanel = false;
 var showGlobalMenu = false;
 var showBoardSettings = false;
+var showDetectionSettings = false;
 var showReviewMenu = false;
 var showMobileNav = false;
 function activeSection(route) {
@@ -11404,7 +11456,63 @@ function renderReviewMenu(redraw2) {
 function closeGlobalMenu(redraw2) {
   showGlobalMenu = false;
   showBoardSettings = false;
+  showDetectionSettings = false;
   redraw2();
+}
+function renderDetectionSettings(redraw2) {
+  const cfg = missedMomentConfig;
+  return h("div.global-menu__sub", [
+    h("label.global-menu__sub-row", [
+      h("span", `Swing threshold: ${cfg.swingThreshold.toFixed(2)}`),
+      h("input", {
+        attrs: { type: "range", min: "0.01", max: "0.30", step: "0.01", value: cfg.swingThreshold },
+        on: { input: (e) => {
+          setMissedMomentConfig({ swingThreshold: parseFloat(e.target.value) });
+          redraw2();
+        } }
+      })
+    ]),
+    h("label.global-menu__sub-row", [
+      h("span", `Missed mate \u2264 N: ${cfg.missedMateMaxN}`),
+      h("input", {
+        attrs: { type: "range", min: "0", max: "10", step: "1", value: cfg.missedMateMaxN },
+        on: { input: (e) => {
+          setMissedMomentConfig({ missedMateMaxN: parseInt(e.target.value, 10) });
+          redraw2();
+        } }
+      })
+    ]),
+    h("label.global-menu__sub-row", [
+      h("span", `Near-win floor: ${Math.round(cfg.collapseWcFloor * 100)}%`),
+      h("input", {
+        attrs: { type: "range", min: "0.50", max: "0.95", step: "0.05", value: cfg.collapseWcFloor },
+        on: { input: (e) => {
+          setMissedMomentConfig({ collapseWcFloor: parseFloat(e.target.value) });
+          redraw2();
+        } }
+      })
+    ]),
+    h("label.global-menu__sub-row", [
+      h("span", `Collapse drop min: ${cfg.collapseDropMin.toFixed(2)}`),
+      h("input", {
+        attrs: { type: "range", min: "0.02", max: "0.20", step: "0.01", value: cfg.collapseDropMin },
+        on: { input: (e) => {
+          setMissedMomentConfig({ collapseDropMin: parseFloat(e.target.value) });
+          redraw2();
+        } }
+      })
+    ]),
+    h("label.global-menu__sub-row", [
+      h("span", `Max ply: ${cfg.maxPly === 0 ? "all" : cfg.maxPly}`),
+      h("input", {
+        attrs: { type: "range", min: "0", max: "120", step: "10", value: cfg.maxPly },
+        on: { input: (e) => {
+          setMissedMomentConfig({ maxPly: parseInt(e.target.value, 10) });
+          redraw2();
+        } }
+      })
+    ])
+  ]);
 }
 function renderGlobalMenu(deps) {
   const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
@@ -11423,7 +11531,7 @@ function renderGlobalMenu(deps) {
       on: { click: () => closeGlobalMenu(redraw2) }
     }) : null,
     showGlobalMenu ? h("div.global-menu__dropdown", {
-      class: { "board-open": showBoardSettings }
+      class: { "board-open": showBoardSettings || showDetectionSettings }
     }, [
       h("button.global-menu__item", {
         on: { click: () => {
@@ -11486,7 +11594,17 @@ function renderGlobalMenu(deps) {
         h("span", "Board Settings"),
         h("span.global-menu__arrow", showBoardSettings ? "\u25BE" : "\u203A")
       ]),
-      showBoardSettings ? renderBoardSettings(redraw2) : null
+      showBoardSettings ? renderBoardSettings(redraw2) : null,
+      h("div.global-menu__item.global-menu__item--has-sub", {
+        on: { click: () => {
+          showDetectionSettings = !showDetectionSettings;
+          redraw2();
+        } }
+      }, [
+        h("span", "Detection Settings"),
+        h("span.global-menu__arrow", showDetectionSettings ? "\u25BE" : "\u203A")
+      ]),
+      showDetectionSettings ? renderDetectionSettings(redraw2) : null
     ]) : null
   ]);
 }
@@ -12317,7 +12435,9 @@ async function loadAndRestoreAnalysis(gameId, generation) {
     setBatchState("complete");
     const game = importedGames.find((g) => g.id === gameId);
     const userColor = game ? getUserColor(game) : null;
-    if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
+    const moments = detectMissedMoments(ctrl.mainline, evalCache, userColor);
+    setMissedMoments(gameId, moments);
+    if (moments.length > 0) missedTacticGameIds.add(gameId);
     const restoredSummary = computeAnalysisSummary(ctrl.mainline, evalCache);
     if (restoredSummary) {
       analyzedGameAccuracy.set(gameId, { white: restoredSummary.white.accuracy, black: restoredSummary.black.accuracy });
@@ -12647,6 +12767,7 @@ function clearGameAnalysis(gameId) {
   void clearAnalysisFromIdb(gameId);
   analyzedGameIds.delete(gameId);
   missedTacticGameIds.delete(gameId);
+  clearMissedMoments(gameId);
 }
 initGround({
   getCtrl: () => ctrl,

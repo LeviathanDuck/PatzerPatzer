@@ -27,9 +27,9 @@ import {
   reviewDepth,
   resetBatchState,
   startBatchWhenReady,
-  detectMissedTactics,
   initBatch,
 } from './engine/batch';
+import { detectMissedMoments } from './engine/tactics';
 import {
   cgInstance, setOrientation,
   syncBoard, syncBoardAndArrow, flip,
@@ -63,6 +63,7 @@ import { puzzleHidesAnalysis } from './puzzles/runtime';
 import { buildStandalonePuzzleRoot } from './puzzles/round';
 import {
   enqueueBulkReview, isBulkRunning, initReviewQueue,
+  setMissedMoments, clearMissedMoments,
 } from './engine/reviewQueue';
 import { renderHeader, type HeaderDeps } from './header/index';
 import {
@@ -397,7 +398,9 @@ async function loadAndRestoreAnalysis(gameId: string, generation: number): Promi
     setBatchState('complete');
     const game = importedGames.find(g => g.id === gameId);
     const userColor = game ? getUserColor(game) : null;
-    if (detectMissedTactics(userColor)) missedTacticGameIds.add(gameId);
+    const moments = detectMissedMoments(ctrl.mainline, evalCache, userColor);
+    setMissedMoments(gameId, moments);
+    if (moments.length > 0) missedTacticGameIds.add(gameId);
     // Capture accuracy while evalCache is populated for this game.
     const restoredSummary = computeAnalysisSummary(ctrl.mainline, evalCache);
     if (restoredSummary) {
@@ -825,6 +828,7 @@ function clearGameAnalysis(gameId: string): void {
   void clearAnalysisFromIdb(gameId);
   analyzedGameIds.delete(gameId);
   missedTacticGameIds.delete(gameId);
+  clearMissedMoments(gameId);
 }
 
 // Wire all modules before the first render so that view() never calls an
