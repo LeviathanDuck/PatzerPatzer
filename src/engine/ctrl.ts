@@ -345,6 +345,19 @@ function labelToBoardReviewSymbol(label: MoveLabel | null | undefined): string |
   return null;
 }
 
+// SVG content (injected into Chessground's 100×100 viewBox wrapper) for the KO
+// overlay placed on the losing king's square at checkmate.
+// Drop shadow added here; ko_purple.svg already has a soft inner glow baked in.
+const KO_SVG_HTML = [
+  '<defs>',
+  '<filter id="ko-ds" x="-25%" y="-25%" width="150%" height="150%">',
+  '<feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="rgba(0,0,0,0.85)"/>',
+  '</filter>',
+  '</defs>',
+  '<image href="/images/ko_purple.svg" x="4" y="4" width="92" height="92"',
+  ' filter="url(#ko-ds)" preserveAspectRatio="xMidYMid meet"/>',
+].join('');
+
 function buildKoOverlayShape(fen: string): DrawShape | null {
   if (currentEval.mate !== 0) return null;
   const losingColor = fen.split(' ')[1] === 'b' ? 'black' : 'white';
@@ -352,7 +365,7 @@ function buildKoOverlayShape(fen: string): DrawShape | null {
   if (!kingSquare) return null;
   return {
     orig: kingSquare as any,
-    label: { text: 'KO', fill: '#c04ccf' },
+    customSvg: { html: KO_SVG_HTML },
   };
 }
 

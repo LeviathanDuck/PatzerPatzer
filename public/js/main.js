@@ -758,6 +758,9 @@ function setBoardWheelNavEnabled(enabled) {
   localStorage.setItem(BOARD_WHEEL_NAV_KEY, String(enabled));
 }
 var REVIEW_DOTS_USER_ONLY_KEY = "reviewDotsUserOnly";
+if (localStorage.getItem(REVIEW_DOTS_USER_ONLY_KEY) === null) {
+  localStorage.setItem(REVIEW_DOTS_USER_ONLY_KEY, "true");
+}
 var reviewDotsUserOnly = localStorage.getItem(REVIEW_DOTS_USER_ONLY_KEY) !== "false";
 function setReviewDotsUserOnly(enabled) {
   reviewDotsUserOnly = enabled;
@@ -1905,6 +1908,15 @@ function labelToBoardReviewSymbol(label) {
   if (label === "inaccuracy") return "?!";
   return null;
 }
+var KO_SVG_HTML = [
+  "<defs>",
+  '<filter id="ko-ds" x="-25%" y="-25%" width="150%" height="150%">',
+  '<feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="rgba(0,0,0,0.85)"/>',
+  "</filter>",
+  "</defs>",
+  '<image href="/images/ko_purple.svg" x="4" y="4" width="92" height="92"',
+  ' filter="url(#ko-ds)" preserveAspectRatio="xMidYMid meet"/>'
+].join("");
 function buildKoOverlayShape(fen) {
   if (currentEval.mate !== 0) return null;
   const losingColor = fen.split(" ")[1] === "b" ? "black" : "white";
@@ -1912,7 +1924,7 @@ function buildKoOverlayShape(fen) {
   if (!kingSquare) return null;
   return {
     orig: kingSquare,
-    label: { text: "KO", fill: "#c04ccf" }
+    customSvg: { html: KO_SVG_HTML }
   };
 }
 function findKingSquare(fen, color) {
@@ -11841,7 +11853,8 @@ function renderGlobalMenu(deps) {
       h("label.global-menu__item.global-menu__item--toggle", [
         h("span", "Review Dots: User Only"),
         h("input", {
-          attrs: { type: "checkbox", checked: reviewDotsUserOnly },
+          attrs: { type: "checkbox" },
+          props: { checked: reviewDotsUserOnly },
           on: {
             change: (e) => {
               setReviewDotsUserOnly(e.target.checked);
