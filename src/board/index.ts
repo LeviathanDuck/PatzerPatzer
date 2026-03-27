@@ -42,6 +42,76 @@ export function initGround(deps: {
   _redraw            = deps.redraw;
 }
 
+// --- Board-consumer move hook seam ---
+// Product owners (analysis, puzzles, etc.) register callbacks to observe user moves.
+// Two hook phases are provided:
+//   - before-move: fires BEFORE tree navigation, with the UCI and current path.
+//     Use this when interception must happen before onJump() (e.g. retro onWin).
+//   - after-move: fires AFTER the move is applied and the board navigated.
+// Mirrors the pattern in lichess-org/lila where ground.ts events.move
+// delegates to ctrl.userMove, allowing different controllers to observe moves.
+
+export interface MoveHookInfo {
+  /** UCI string of the played move (normalized, e.g. "e2e4", "e7e8q"). */
+  uci: string;
+  /** FEN of the position before the move was played. */
+  fenBefore: string;
+  /** FEN of the position after the move was played. */
+  fenAfter: string;
+  /** SAN notation of the played move (e.g. "e4", "Nf3"). */
+  san: string;
+}
+
+/**
+ * Info available before navigation occurs.
+ * Allows handlers to inspect the move and current tree path before onJump fires.
+ */
+export interface BeforeMoveHookInfo {
+  /** UCI string of the played move (normalized). */
+  uci: string;
+  /** FEN of the position before the move was played. */
+  fenBefore: string;
+  /** Current tree path at the moment of the move (before navigation). */
+  path: string;
+}
+
+type MoveHookCallback = (info: MoveHookInfo) => void;
+type BeforeMoveHookCallback = (info: BeforeMoveHookInfo) => void;
+
+const _moveHooks: Set<MoveHookCallback> = new Set();
+const _beforeMoveHooks: Set<BeforeMoveHookCallback> = new Set();
+
+/**
+ * Register a callback to be notified after the user makes a move on the board.
+ * Returns an unsubscribe function.
+ */
+export function onBoardUserMove(cb: MoveHookCallback): () => void {
+  _moveHooks.add(cb);
+  return () => { _moveHooks.delete(cb); };
+}
+
+/**
+ * Register a callback to be notified BEFORE tree navigation occurs.
+ * Use for logic that must run before onJump() (e.g. retro win detection).
+ * Returns an unsubscribe function.
+ */
+export function onBeforeBoardUserMove(cb: BeforeMoveHookCallback): () => void {
+  _beforeMoveHooks.add(cb);
+  return () => { _beforeMoveHooks.delete(cb); };
+}
+
+function fireMoveHooks(info: MoveHookInfo): void {
+  for (const cb of _moveHooks) {
+    try { cb(info); } catch (e) { console.error('[board] move hook error', e); }
+  }
+}
+
+function fireBeforeMoveHooks(info: BeforeMoveHookInfo): void {
+  for (const cb of _beforeMoveHooks) {
+    try { cb(info); } catch (e) { console.error('[board] before-move hook error', e); }
+  }
+}
+
 // --- Board state ---
 
 export let cgInstance:  CgApi | undefined = undefined;
@@ -131,32 +201,16 @@ export function onUserMove(orig: string, dest: string): void {
   const normMove = normalizeMove(pos, { from: fromSq, to: toSq });
   const normUci  = makeUci(normMove);
 
-  // Retro move interception: establish context BEFORE any navigation so both the
-  // "existing child" fast path and the "new node" path are covered.
-  // Timing rules:
-  //   - onWin() must run BEFORE navigate so onJump() sees 'win' and skips offTrack.
-  //   - setFeedback('eval') must run AFTER navigate to overwrite the transient
-  //     'offTrack' that onJump() sets when the path leaves c.parentPath.
-  // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts onWin / onFail.
-  const retro = ctrl.retro?.isSolving() ? ctrl.retro : undefined;
-  const retroCand = retro ? retro.current() : null;
-  const atRetroExercise = !!(retro && retroCand && ctrl.path === retroCand.parentPath);
-
-  if (atRetroExercise && retro && retroCand && normUci === retroCand.bestMove) {
-    retro.onWin(); // pre-win: sets 'win' before navigate, suppresses offTrack
-  }
+  // Fire before-move hooks so analysis-owned handlers (e.g. retro solve interception)
+  // can act before navigation. This preserves the timing rule: retro onWin() must
+  // run BEFORE navigate so onJump() sees 'win' and skips offTrack detection.
+  fireBeforeMoveHooks({ uci: normUci, fenBefore: ctrl.node.fen, path: ctrl.path });
 
   // Check existing children — follow the tree if this move is already there.
-  // Must come AFTER retro pre-win so the win signal is in place before onJump fires.
   const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
   if (existingChild) {
     _navigate(ctrl.path + existingChild.id);
-    // Handle retro eval state for wrong moves through existing children.
-    // This covers the common case of the user replaying the game mistake (children[0]).
-    if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
-      retro.setFeedback('eval');
-      retro.onCeval();
-    }
+    fireMoveHooks({ uci: normUci, fenBefore: ctrl.node.fen, fenAfter: existingChild.fen, san: existingChild.san ?? normUci });
     return;
   }
 
@@ -168,16 +222,10 @@ export function onUserMove(orig: string, dest: string): void {
     return;
   }
 
+  const fenBefore = ctrl.node.fen;
   completeMove(orig, dest);
-
-  if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
-    // Enter eval state so ceval can judge whether the played move is near-best.
-    // Mirrors lichess-org/lila: retroCtrl.ts feedback('eval') + checkCeval.
-    // If near-best (povDiff > -0.04): onCeval → onWin().
-    // If not near-best: onCeval → onFail() + navigate back to parentPath via navigateTo callback.
-    retro.setFeedback('eval');
-    retro.onCeval(); // may resolve synchronously if batch eval is already in cache
-  }
+  const afterCtrl = _getCtrl();
+  fireMoveHooks({ uci: normUci, fenBefore, fenAfter: afterCtrl.node.fen, san: afterCtrl.node.san ?? normUci });
 }
 
 /**
@@ -246,7 +294,11 @@ export function completePromotion(role: Role): void {
   if (!pendingPromotion) return;
   const { orig, dest } = pendingPromotion;
   pendingPromotion = null;
+  const fenBefore = _getCtrl().node.fen;
   completeMove(orig, dest, role);
+  const afterCtrl = _getCtrl();
+  const promoUci = afterCtrl.node.uci ?? `${orig}${dest}${role[0]}`;
+  fireMoveHooks({ uci: promoUci, fenBefore, fenAfter: afterCtrl.node.fen, san: afterCtrl.node.san ?? promoUci });
 }
 
 const PROMOTION_ROLES: Role[] = ['queen', 'knight', 'rook', 'bishop'];
