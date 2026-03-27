@@ -454,6 +454,8 @@ function navigate(path: string): void {
 // Adapted from lichess-org/lila: ui/analyse/src/treeView/treeView.ts autoScroll()
 // Uses getBoundingClientRect geometry to compute exact scroll offset so the active
 // move sits in the middle of the visible list area, not just scrolled into view.
+// On mobile the move list is not a scroll container (the page scrolls instead),
+// so falls back to scrollIntoView on the active element.
 let _scrollRaf = 0;
 function scrollActiveIntoView(behavior: ScrollBehavior = 'instant'): void {
   cancelAnimationFrame(_scrollRaf);
@@ -462,6 +464,11 @@ function scrollActiveIntoView(behavior: ScrollBehavior = 'instant'): void {
     const moveEl     = scrollView?.querySelector<HTMLElement>('.move.active');
     if (!scrollView) return;
     if (!moveEl) { scrollView.scrollTo({ top: 0, behavior }); return; }
+    // If the container has no overflow (mobile: page scrolls instead), use scrollIntoView.
+    if (scrollView.scrollHeight <= scrollView.clientHeight + 2) {
+      moveEl.scrollIntoView({ behavior, block: 'center' });
+      return;
+    }
     const move = moveEl.getBoundingClientRect();
     const view = scrollView.getBoundingClientRect();
     const visibleHeight = Math.min(view.bottom, window.innerHeight) - Math.max(view.top, 0);
