@@ -6232,6 +6232,38 @@ function initGround(deps) {
   _getSelectedGameId2 = deps.getSelectedGameId;
   _redraw3 = deps.redraw;
 }
+var _moveHooks = /* @__PURE__ */ new Set();
+var _beforeMoveHooks = /* @__PURE__ */ new Set();
+function onBoardUserMove(cb) {
+  _moveHooks.add(cb);
+  return () => {
+    _moveHooks.delete(cb);
+  };
+}
+function onBeforeBoardUserMove(cb) {
+  _beforeMoveHooks.add(cb);
+  return () => {
+    _beforeMoveHooks.delete(cb);
+  };
+}
+function fireMoveHooks(info) {
+  for (const cb of _moveHooks) {
+    try {
+      cb(info);
+    } catch (e) {
+      console.error("[board] move hook error", e);
+    }
+  }
+}
+function fireBeforeMoveHooks(info) {
+  for (const cb of _beforeMoveHooks) {
+    try {
+      cb(info);
+    } catch (e) {
+      console.error("[board] before-move hook error", e);
+    }
+  }
+}
 var cgInstance = void 0;
 var orientation = "white";
 var pendingPromotion = null;
@@ -6277,19 +6309,11 @@ function onUserMove(orig, dest) {
   if (fromSq === void 0 || toSq === void 0) return;
   const normMove = normalizeMove(pos, { from: fromSq, to: toSq });
   const normUci = makeUci(normMove);
-  const retro = ctrl2.retro?.isSolving() ? ctrl2.retro : void 0;
-  const retroCand = retro ? retro.current() : null;
-  const atRetroExercise = !!(retro && retroCand && ctrl2.path === retroCand.parentPath);
-  if (atRetroExercise && retro && retroCand && normUci === retroCand.bestMove) {
-    retro.onWin();
-  }
+  fireBeforeMoveHooks({ uci: normUci, fenBefore: ctrl2.node.fen, path: ctrl2.path });
   const existingChild = ctrl2.node.children.find((c) => c.uci === normUci || c.uci?.startsWith(normUci));
   if (existingChild) {
     _navigate(ctrl2.path + existingChild.id);
-    if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
-      retro.setFeedback("eval");
-      retro.onCeval();
-    }
+    fireMoveHooks({ uci: normUci, fenBefore: ctrl2.node.fen, fenAfter: existingChild.fen, san: existingChild.san ?? normUci });
     return;
   }
   const piece = pos.board.get(fromSq);
@@ -6298,11 +6322,10 @@ function onUserMove(orig, dest) {
     _redraw3();
     return;
   }
+  const fenBefore = ctrl2.node.fen;
   completeMove(orig, dest);
-  if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
-    retro.setFeedback("eval");
-    retro.onCeval();
-  }
+  const afterCtrl = _getCtrl3();
+  fireMoveHooks({ uci: normUci, fenBefore, fenAfter: afterCtrl.node.fen, san: afterCtrl.node.san ?? normUci });
 }
 function completeMove(orig, dest, promotion) {
   const ctrl2 = _getCtrl3();
@@ -6350,7 +6373,11 @@ function completePromotion(role) {
   if (!pendingPromotion) return;
   const { orig, dest } = pendingPromotion;
   pendingPromotion = null;
+  const fenBefore = _getCtrl3().node.fen;
   completeMove(orig, dest, role);
+  const afterCtrl = _getCtrl3();
+  const promoUci = afterCtrl.node.uci ?? `${orig}${dest}${role[0]}`;
+  fireMoveHooks({ uci: promoUci, fenBefore, fenAfter: afterCtrl.node.fen, san: afterCtrl.node.san ?? promoUci });
 }
 var PROMOTION_ROLES = ["queen", "knight", "rook", "bishop"];
 function renderPromotionDialog() {
@@ -7089,6 +7116,21 @@ var LEARNABLE_REASONS = {
     code: "missed-mate",
     label: "Missed forced mate",
     summary: "A forced checkmate sequence was available but was not played."
+  },
+  "collapse": {
+    code: "collapse",
+    label: "Blown win",
+    summary: "A clearly winning position was squandered in a single move."
+  },
+  "defensive": {
+    code: "defensive",
+    label: "Missed defense",
+    summary: "A saving resource was available in a losing position but was not played."
+  },
+  "punish": {
+    code: "punish",
+    label: "Missed punishment",
+    summary: "The opponent blundered but the advantage was not exploited."
   }
 };
 
@@ -9972,7 +10014,16 @@ function importPgn(callbacks) {
 // src/analyse/retroConfig.ts
 var RETRO_CONFIG_DEFAULTS = {
   minClassification: "mistake",
-  missedMateDistance: 3
+  missedMateDistance: 3,
+  collapseEnabled: false,
+  collapseWcFloor: 0.65,
+  collapseDropMin: 0.15,
+  defensiveEnabled: false,
+  defensiveWcCeiling: 0.35,
+  defensiveSalvageMin: 0.15,
+  punishEnabled: false,
+  punishOpponentSwingMin: 0.15,
+  punishExploitDropMin: 0.1
 };
 var RETRO_CONFIG_LS_KEY = "retroConfig";
 var VALID_CLASSIFICATIONS = /* @__PURE__ */ new Set(["inaccuracy", "mistake", "blunder"]);
@@ -9983,7 +10034,16 @@ function loadFromStorage() {
     const p = JSON.parse(stored);
     return {
       minClassification: VALID_CLASSIFICATIONS.has(p.minClassification) ? p.minClassification : RETRO_CONFIG_DEFAULTS.minClassification,
-      missedMateDistance: typeof p.missedMateDistance === "number" && p.missedMateDistance >= 0 ? Math.floor(p.missedMateDistance) : RETRO_CONFIG_DEFAULTS.missedMateDistance
+      missedMateDistance: typeof p.missedMateDistance === "number" && p.missedMateDistance >= 0 ? Math.floor(p.missedMateDistance) : RETRO_CONFIG_DEFAULTS.missedMateDistance,
+      collapseEnabled: typeof p.collapseEnabled === "boolean" ? p.collapseEnabled : RETRO_CONFIG_DEFAULTS.collapseEnabled,
+      collapseWcFloor: typeof p.collapseWcFloor === "number" && p.collapseWcFloor >= 0 && p.collapseWcFloor <= 1 ? p.collapseWcFloor : RETRO_CONFIG_DEFAULTS.collapseWcFloor,
+      collapseDropMin: typeof p.collapseDropMin === "number" && p.collapseDropMin >= 0 ? p.collapseDropMin : RETRO_CONFIG_DEFAULTS.collapseDropMin,
+      defensiveEnabled: typeof p.defensiveEnabled === "boolean" ? p.defensiveEnabled : RETRO_CONFIG_DEFAULTS.defensiveEnabled,
+      defensiveWcCeiling: typeof p.defensiveWcCeiling === "number" && p.defensiveWcCeiling >= 0 && p.defensiveWcCeiling <= 1 ? p.defensiveWcCeiling : RETRO_CONFIG_DEFAULTS.defensiveWcCeiling,
+      defensiveSalvageMin: typeof p.defensiveSalvageMin === "number" && p.defensiveSalvageMin >= 0 ? p.defensiveSalvageMin : RETRO_CONFIG_DEFAULTS.defensiveSalvageMin,
+      punishEnabled: typeof p.punishEnabled === "boolean" ? p.punishEnabled : RETRO_CONFIG_DEFAULTS.punishEnabled,
+      punishOpponentSwingMin: typeof p.punishOpponentSwingMin === "number" && p.punishOpponentSwingMin >= 0 ? p.punishOpponentSwingMin : RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin,
+      punishExploitDropMin: typeof p.punishExploitDropMin === "number" && p.punishExploitDropMin >= 0 ? p.punishExploitDropMin : RETRO_CONFIG_DEFAULTS.punishExploitDropMin
     };
   } catch {
     return { ...RETRO_CONFIG_DEFAULTS };
@@ -10225,7 +10285,7 @@ var CLASSIFICATION_OPTIONS = [
 ];
 function renderRetroModal(redraw2) {
   const cfg = retroConfig;
-  const isDefault = cfg.minClassification === RETRO_CONFIG_DEFAULTS.minClassification && cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance;
+  const isDefault = cfg.minClassification === RETRO_CONFIG_DEFAULTS.minClassification && cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance && cfg.collapseEnabled === RETRO_CONFIG_DEFAULTS.collapseEnabled && cfg.collapseWcFloor === RETRO_CONFIG_DEFAULTS.collapseWcFloor && cfg.collapseDropMin === RETRO_CONFIG_DEFAULTS.collapseDropMin && cfg.defensiveEnabled === RETRO_CONFIG_DEFAULTS.defensiveEnabled && cfg.defensiveWcCeiling === RETRO_CONFIG_DEFAULTS.defensiveWcCeiling && cfg.defensiveSalvageMin === RETRO_CONFIG_DEFAULTS.defensiveSalvageMin && cfg.punishEnabled === RETRO_CONFIG_DEFAULTS.punishEnabled && cfg.punishOpponentSwingMin === RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin && cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin;
   return h("div.detection-modal", [
     h("div.detection-modal__backdrop", {
       on: { click: () => {
@@ -10296,6 +10356,150 @@ function renderRetroModal(redraw2) {
               attrs: { style: "left: 30%", title: "Lichess default: in 3" }
             })
           ])
+        ]),
+        // ── Collapse (blown win) family ──────────────────────────────────
+        h("div.detection-modal__row", [
+          h("div.detection-modal__row-header", [
+            h("span.detection-modal__label", "Blown Wins")
+          ]),
+          h(
+            "p.detection-modal__desc",
+            "Flag positions where you were clearly winning but squandered the advantage. Reuses the same thresholds as the engine's collapse detection."
+          ),
+          h("label.detection-modal__toggle", [
+            h("input", {
+              attrs: { type: "checkbox", checked: cfg.collapseEnabled },
+              on: { change: (e) => {
+                setRetroConfig({ collapseEnabled: e.target.checked });
+                redraw2();
+              } }
+            }),
+            h("span", "Enabled")
+          ]),
+          ...cfg.collapseEnabled ? [
+            h("div.detection-modal__row-header", [
+              h("span.detection-modal__label", "Win Chance Floor"),
+              h("span.detection-modal__value", cfg.collapseWcFloor.toFixed(2))
+            ]),
+            h("div.detection-modal__slider-wrap", [
+              h("input", {
+                attrs: { type: "range", min: 0.5, max: 0.95, step: 0.05, value: cfg.collapseWcFloor },
+                on: { input: (e) => {
+                  setRetroConfig({ collapseWcFloor: parseFloat(e.target.value) });
+                  redraw2();
+                } }
+              })
+            ]),
+            h("div.detection-modal__row-header", [
+              h("span.detection-modal__label", "Minimum Drop"),
+              h("span.detection-modal__value", cfg.collapseDropMin.toFixed(2))
+            ]),
+            h("div.detection-modal__slider-wrap", [
+              h("input", {
+                attrs: { type: "range", min: 0.02, max: 0.3, step: 0.01, value: cfg.collapseDropMin },
+                on: { input: (e) => {
+                  setRetroConfig({ collapseDropMin: parseFloat(e.target.value) });
+                  redraw2();
+                } }
+              })
+            ])
+          ] : []
+        ]),
+        // ── Defensive resource family ────────────────────────────────────
+        h("div.detection-modal__row", [
+          h("div.detection-modal__row-header", [
+            h("span.detection-modal__label", "Missed Defenses")
+          ]),
+          h(
+            "p.detection-modal__desc",
+            "Flag positions where you were losing but had a significantly better defensive move available."
+          ),
+          h("label.detection-modal__toggle", [
+            h("input", {
+              attrs: { type: "checkbox", checked: cfg.defensiveEnabled },
+              on: { change: (e) => {
+                setRetroConfig({ defensiveEnabled: e.target.checked });
+                redraw2();
+              } }
+            }),
+            h("span", "Enabled")
+          ]),
+          ...cfg.defensiveEnabled ? [
+            h("div.detection-modal__row-header", [
+              h("span.detection-modal__label", "Position Ceiling"),
+              h("span.detection-modal__value", cfg.defensiveWcCeiling.toFixed(2))
+            ]),
+            h("div.detection-modal__slider-wrap", [
+              h("input", {
+                attrs: { type: "range", min: 0.1, max: 0.5, step: 0.05, value: cfg.defensiveWcCeiling },
+                on: { input: (e) => {
+                  setRetroConfig({ defensiveWcCeiling: parseFloat(e.target.value) });
+                  redraw2();
+                } }
+              })
+            ]),
+            h("div.detection-modal__row-header", [
+              h("span.detection-modal__label", "Salvage Gap"),
+              h("span.detection-modal__value", cfg.defensiveSalvageMin.toFixed(2))
+            ]),
+            h("div.detection-modal__slider-wrap", [
+              h("input", {
+                attrs: { type: "range", min: 0.05, max: 0.3, step: 0.01, value: cfg.defensiveSalvageMin },
+                on: { input: (e) => {
+                  setRetroConfig({ defensiveSalvageMin: parseFloat(e.target.value) });
+                  redraw2();
+                } }
+              })
+            ])
+          ] : []
+        ]),
+        // ── Punish-the-blunder family ────────────────────────────────────
+        h("div.detection-modal__row", [
+          h("div.detection-modal__row-header", [
+            h("span.detection-modal__label", "Missed Punishments")
+          ]),
+          h(
+            "p.detection-modal__desc",
+            "Flag positions where the opponent blundered but you failed to exploit the mistake."
+          ),
+          h("label.detection-modal__toggle", [
+            h("input", {
+              attrs: { type: "checkbox", checked: cfg.punishEnabled },
+              on: { change: (e) => {
+                setRetroConfig({ punishEnabled: e.target.checked });
+                redraw2();
+              } }
+            }),
+            h("span", "Enabled")
+          ]),
+          ...cfg.punishEnabled ? [
+            h("div.detection-modal__row-header", [
+              h("span.detection-modal__label", "Opponent Swing"),
+              h("span.detection-modal__value", cfg.punishOpponentSwingMin.toFixed(2))
+            ]),
+            h("div.detection-modal__slider-wrap", [
+              h("input", {
+                attrs: { type: "range", min: 0.05, max: 0.3, step: 0.01, value: cfg.punishOpponentSwingMin },
+                on: { input: (e) => {
+                  setRetroConfig({ punishOpponentSwingMin: parseFloat(e.target.value) });
+                  redraw2();
+                } }
+              })
+            ]),
+            h("div.detection-modal__row-header", [
+              h("span.detection-modal__label", "Exploit Drop"),
+              h("span.detection-modal__value", cfg.punishExploitDropMin.toFixed(2))
+            ]),
+            h("div.detection-modal__slider-wrap", [
+              h("input", {
+                attrs: { type: "range", min: 0.02, max: 0.2, step: 0.01, value: cfg.punishExploitDropMin },
+                on: { input: (e) => {
+                  setRetroConfig({ punishExploitDropMin: parseFloat(e.target.value) });
+                  redraw2();
+                } }
+              })
+            ])
+          ] : []
         ]),
         // Reset row
         !isDefault ? h("div.detection-modal__row", [
@@ -10777,16 +10981,21 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null, getOp
     const classification = loss !== void 0 ? classifyLoss(loss) : null;
     const minRank = CLASSIFICATION_RANK[retroConfig.minClassification];
     const qualifiesByLoss = classification !== null && CLASSIFICATION_RANK[classification] >= minRank;
-    if (!qualifiesByLoss && !isMissedMate) continue;
+    const parentWc = evalWinChances(parentEval);
+    const moverParentWc = parentWc !== void 0 ? isWhiteMove ? parentWc : -parentWc : void 0;
+    const isCollapse = retroConfig.collapseEnabled && moverParentWc !== void 0 && moverParentWc >= retroConfig.collapseWcFloor && loss !== void 0 && loss >= retroConfig.collapseDropMin;
+    if (!qualifiesByLoss && !isMissedMate && !isCollapse) continue;
     const openingUcis = getOpeningUcis(parent.fen);
     if (openingUcis && node.uci && openingUcis.includes(node.uci)) continue;
     let finalClassification;
     if (classification === "blunder" || classification === "mistake") {
       finalClassification = classification;
-    } else {
+    } else if (isMissedMate) {
       finalClassification = "blunder";
+    } else {
+      finalClassification = classification ?? "inaccuracy";
     }
-    const reason = isMissedMate && !qualifiesByLoss ? LEARNABLE_REASONS["missed-mate"] : LEARNABLE_REASONS["swing"];
+    const reason = isMissedMate && !qualifiesByLoss ? LEARNABLE_REASONS["missed-mate"] : isCollapse && !qualifiesByLoss ? LEARNABLE_REASONS["collapse"] : isCollapse ? LEARNABLE_REASONS["collapse"] : LEARNABLE_REASONS["swing"];
     const candidate = {
       gameId,
       path,
@@ -10806,6 +11015,105 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null, getOp
       candidate.bestLine = parentEval.moves;
     }
     candidates.push(candidate);
+  }
+  if (retroConfig.defensiveEnabled) {
+    const existingPaths = new Set(candidates.map((c) => c.path));
+    let defPath = "";
+    for (let i = 1; i < mainline.length; i++) {
+      const node = mainline[i];
+      const parent = mainline[i - 1];
+      defPath += node.id;
+      const defParentPath = defPath.slice(0, -2);
+      const isWhiteMove = node.ply % 2 === 1;
+      const playerColor = isWhiteMove ? "white" : "black";
+      if (userColor !== null && playerColor !== userColor) continue;
+      if (!node.uci) continue;
+      if (existingPaths.has(defPath)) continue;
+      const nodeEv = getEval(defPath);
+      const parentEv = getEval(defParentPath);
+      if (!nodeEv || !parentEv || !parentEv.best) continue;
+      if (nodeEv.loss === void 0) continue;
+      const pWc = evalWinChances(parentEv);
+      if (pWc === void 0) continue;
+      const moverPWc = isWhiteMove ? pWc : -pWc;
+      if (moverPWc > retroConfig.defensiveWcCeiling) continue;
+      if (nodeEv.loss < retroConfig.defensiveSalvageMin) continue;
+      const openingUcis = getOpeningUcis(parent.fen);
+      if (openingUcis && openingUcis.includes(node.uci)) continue;
+      const defClassification = classifyLoss(nodeEv.loss) ?? "inaccuracy";
+      candidates.push({
+        gameId,
+        path: defPath,
+        parentPath: defParentPath,
+        fenBefore: parent.fen,
+        playedMove: node.uci,
+        playedMoveSan: node.san ?? "",
+        bestMove: parentEv.best,
+        bestLine: parentEv.moves?.length ? parentEv.moves : void 0,
+        classification: defClassification,
+        loss: nodeEv.loss,
+        isMissedMate: false,
+        playerColor,
+        ply: node.ply,
+        reason: LEARNABLE_REASONS["defensive"]
+      });
+    }
+  }
+  if (retroConfig.punishEnabled) {
+    const existingPaths = new Set(candidates.map((c) => c.path));
+    const pathArr = [""];
+    for (let i = 1; i < mainline.length; i++) {
+      pathArr.push(pathArr[i - 1] + mainline[i].id);
+    }
+    for (let i = 2; i < mainline.length; i++) {
+      const node = mainline[i];
+      const parent = mainline[i - 1];
+      const nodePath = pathArr[i];
+      if (existingPaths.has(nodePath)) continue;
+      const isWhiteMove = node.ply % 2 === 1;
+      const playerColor = isWhiteMove ? "white" : "black";
+      if (userColor !== null && playerColor !== userColor) continue;
+      if (!node.uci) continue;
+      const gpPath = pathArr[i - 2];
+      const parentPath = pathArr[i - 1];
+      const gpEval = getEval(gpPath);
+      const parentEval = getEval(parentPath);
+      const nodeEval = getEval(nodePath);
+      if (!gpEval || !parentEval || !nodeEval) continue;
+      if (!parentEval.best) continue;
+      const gpWc = evalWinChances(gpEval);
+      const parentWc = evalWinChances(parentEval);
+      const nodeWc = evalWinChances(nodeEval);
+      if (gpWc === void 0 || parentWc === void 0 || nodeWc === void 0) continue;
+      const userSign = isWhiteMove ? 1 : -1;
+      const userGpWc = gpWc * userSign;
+      const userParentWc = parentWc * userSign;
+      const userNodeWc = nodeWc * userSign;
+      const opponentSwing = (userParentWc - userGpWc) / 2;
+      if (opponentSwing < retroConfig.punishOpponentSwingMin) continue;
+      const exploitDrop = (userParentWc - userNodeWc) / 2;
+      if (exploitDrop < retroConfig.punishExploitDropMin) continue;
+      const openingUcis = getOpeningUcis(parent.fen);
+      if (openingUcis && node.uci && openingUcis.includes(node.uci)) continue;
+      const punishLoss = nodeEval.loss ?? exploitDrop;
+      const punishClassification = classifyLoss(punishLoss) ?? "inaccuracy";
+      candidates.push({
+        gameId,
+        path: nodePath,
+        parentPath,
+        fenBefore: parent.fen,
+        playedMove: node.uci,
+        playedMoveSan: node.san ?? "",
+        bestMove: parentEval.best,
+        bestLine: parentEval.moves?.length ? parentEval.moves : void 0,
+        classification: punishClassification,
+        loss: punishLoss,
+        isMissedMate: false,
+        playerColor,
+        ply: node.ply,
+        reason: LEARNABLE_REASONS["punish"]
+      });
+    }
   }
   return candidates;
 }
@@ -10941,6 +11249,41 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
     reset() {
       solvedPlies = [];
       jumpToNext();
+    }
+  };
+}
+
+// src/analyse/retroMoveHandler.ts
+function initRetroMoveHandler(getCtrl) {
+  const unsubBefore = onBeforeBoardUserMove((info) => {
+    const ctrl2 = getCtrl();
+    const retro = ctrl2.retro?.isSolving() ? ctrl2.retro : void 0;
+    if (!retro) return;
+    const cand = retro.current();
+    if (!cand) return;
+    if (info.path !== cand.parentPath) return;
+    if (info.uci === cand.bestMove) {
+      retro.onWin();
+    }
+  });
+  const unsubAfter = onBoardUserMove((info) => {
+    const ctrl2 = getCtrl();
+    const retro = ctrl2.retro?.isSolving() ? ctrl2.retro : void 0;
+    if (!retro) return;
+    const cand = retro.current();
+    if (!cand) return;
+    if (retro.feedback() === "win") return;
+    const atRetroExercise = ctrl2.path.length === cand.parentPath.length + 2 && ctrl2.path.startsWith(cand.parentPath);
+    if (!atRetroExercise) return;
+    if (info.uci !== cand.bestMove) {
+      retro.setFeedback("eval");
+      retro.onCeval();
+    }
+  });
+  return {
+    unsubscribe() {
+      unsubBefore();
+      unsubAfter();
     }
   };
 }
@@ -11794,6 +12137,7 @@ initGround({
   getSelectedGameId: () => selectedGameId,
   redraw
 });
+initRetroMoveHandler(() => ctrl);
 initCevalView({
   getCtrl: () => ctrl,
   navigate,

@@ -141,12 +141,23 @@ That includes:
 
 Each queue-index item should include:
 
-- first line: `- CCP-###: Short Task Title`
+- first line: `- [ ] CCP-###: Short Task Title`
 - second line: an indented bullet with a brief one-line description of the prompt's target
 - one blank line between queue-index items for readability
 
-When review removes a prompt from the queue, the matching item must also be removed from the top
-queue index so the index only reflects still-pending prompts.
+Queue-index checkbox rules:
+
+- new prompts enter the queue index as `- [ ]`
+- when a queued prompt is actually run, the executing agent should update only that queue-index item to `- [x]`
+- the checked queue item and full queued prompt block must remain present until formal review removes them
+- when review removes a prompt from the queue, the matching item must also be removed from the top
+  queue index so the index only reflects still-pending prompts
+
+Important queue boundary:
+
+- `CLAUDE_PROMPT_QUEUE.md` should contain created prompts that are still pending review
+- if prompts are drafted early for later phases and the user wants them available, add them to `CLAUDE_PROMPT_QUEUE.md`
+- only remove prompts from `CLAUDE_PROMPT_QUEUE.md` after actual use and review
 
 If the generated prompt is for Codex rather than Claude Code, Codex may still reuse the same prompt
 ID/logging structure for consistency, but should label the execution target clearly so the prompt's
