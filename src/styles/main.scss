@@ -1454,7 +1454,13 @@ body.resizing {
     min-width: 0;
   }
 
+  // Hide the standalone eval graph from the underboard — it lives behind controls on mobile.
+  .analyse__underboard .eval-graph {
+    display: none;
+  }
+
   // Controls bar: fixed 5rem height, flush against the bottom of tools column.
+  // Eval graph renders as an absolute background layer behind the buttons.
   // Adapted from lichess-org/lila: ui/analyse/css/_tools-mobile.scss .analyse__controls
   .analyse__controls {
     padding: 4px 4px 0;
@@ -1462,6 +1468,8 @@ body.resizing {
     height: 5rem;
     align-items: stretch;
     touch-action: pan-y;
+    position: relative;
+    overflow: hidden;
     flex-wrap: nowrap;
 
     // Review controls take left portion, jumps take right ~40%
@@ -1506,6 +1514,26 @@ body.resizing {
         border-bottom: none;
       }
     }
+  }
+
+  // Eval graph background layer — absolutely fills controls bar, no pointer events.
+  .eval-graph--bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  // Raise all controls content above the background graph layer.
+  .analyse__controls > :not(.eval-graph--bg) {
+    position: relative;
+    z-index: 1;
   }
 
   .eval-bar,

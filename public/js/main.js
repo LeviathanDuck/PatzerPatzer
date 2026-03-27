@@ -1414,10 +1414,11 @@ function setEvalGraphHeightPct(value) {
   graphHeightPct = Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, Math.round(value)));
   localStorage.setItem("patzer.evalGraphHeightPct", String(graphHeightPct));
 }
-function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, userColor, userOnly) {
+function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, userColor, userOnly, bg) {
   const n = mainline.length - 1;
   const renderedGraphHeight = Math.round(GRAPH_H * graphHeightPct / 100);
   if (n < 2) {
+    if (bg) return h("div.eval-graph.eval-graph--bg");
     return h("div.eval-graph", [
       h("div.eval-graph__empty", {
         attrs: { style: `height:${renderedGraphHeight}px` }
@@ -1469,6 +1470,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
   }
   const valid = pts.filter((p) => p !== null);
   if (valid.length < 2) {
+    if (bg) return h("div.eval-graph.eval-graph--bg");
     return h("div.eval-graph", [
       h("div.eval-graph__empty", "Analyze game to see graph.")
     ]);
@@ -1520,16 +1522,17 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
   svgNodes.push(h("polygon", {
     attrs: {
       points: polyPts,
-      fill: "rgba(255,255,255,0.3)",
+      fill: bg ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.3)",
       stroke: "none"
     }
   }));
-  svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#444", "stroke-width": 1 } }));
+  svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#444", "stroke-width": 1, opacity: bg ? "0.5" : "1" } }));
   svgNodes.push(h("polyline", { attrs: {
     points: valid.map((p) => `${p.x},${p.y}`).join(" "),
     fill: "none",
     stroke: "#d85000",
-    "stroke-width": 1,
+    "stroke-width": bg ? 1.5 : 1,
+    opacity: bg ? "0.5" : "1",
     "stroke-linejoin": "round",
     "stroke-linecap": "round"
   } }));
@@ -1545,7 +1548,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       opacity: "0.55"
     } }));
   }
-  svgNodes.push(h("line", {
+  if (!bg) svgNodes.push(h("line", {
     attrs: {
       "data-hover": "1",
       x1: 0,
@@ -1558,7 +1561,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       "pointer-events": "none"
     }
   }));
-  for (const pt of valid) {
+  if (!bg) for (const pt of valid) {
     const isCurrent = pt.path === currentPath;
     const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "hsl(307,80%,70%)" : pt.label === "blunder" ? "hsl(0,69%,60%)" : pt.label === "mistake" ? "hsl(41,100%,45%)" : pt.label === "inaccuracy" ? "hsl(202,78%,62%)" : "#888";
     const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
@@ -1572,7 +1575,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       "pointer-events": "none"
     } }));
   }
-  svgNodes.push(h("rect", {
+  if (!bg) svgNodes.push(h("rect", {
     attrs: {
       x: 0,
       y: 0,
@@ -1610,6 +1613,16 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       }
     }
   }));
+  if (bg) {
+    return h("div.eval-graph.eval-graph--bg", [
+      h("svg", { attrs: {
+        viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
+        width: "100%",
+        height: "100%",
+        preserveAspectRatio: "none"
+      } }, svgNodes)
+    ]);
+  }
   return h("div.eval-graph", {
     on: {
       mouseleave: (e) => hideHover(e.currentTarget.querySelector("svg"))
@@ -13065,6 +13078,9 @@ function routeContent(route) {
         h("div.analyse__controls", {
           hook: { insert: (vnode3) => attachScrubListener(vnode3.elm) }
         }, [
+          // Eval graph rendered as background behind controls on mobile.
+          // bg:true strips interactivity — graph still tracks current move position.
+          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, redraw, currentUserColor, reviewDotsUserOnly, true),
           renderAnalysisControls([
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.

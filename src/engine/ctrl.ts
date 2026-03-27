@@ -227,16 +227,28 @@ export function buildArrowShapes(): DrawShape[] {
     shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'red' });
   }
 
-  if (showBoardReviewGlyphs) {
+  // Board review glyphs: suppress during retro so the opponent's previous move
+  // (ctrl.node.uci) does not draw a confusing ?/??  arrow on the exercise position.
+  if (showBoardReviewGlyphs && !retroHidden) {
     shapes.push(...buildCurrentNodeReviewGlyphShapes(ctrl));
   }
 
-  // Only show the played-move arrow when the current path is on the original
-  // game mainline.  Inside a side variation, children[0] is the first child of
-  // the variation node — not the played game move — so the arrow is semantically
-  // wrong and should be suppressed.
+  // During retro solving, show the user's game mistake as a red arrow so they
+  // know which move they need to improve upon.  This replaces the generic
+  // played-move arrow (which showed children[0] — the opponent's next move from
+  // the perspective of the parent position) with the specific candidate move.
+  if (retroHidden && ctrl.retro!.isSolving()) {
+    const c = ctrl.retro!.current();
+    if (c && ctrl.path === c.parentPath) {
+      shapes.push(buildArrowShape(c.playedMove, 'red'));
+    }
+  }
+
+  // Only show the generic played-move arrow (children[0]) when NOT in retro mode,
+  // on the original game mainline.  Suppressed during retro to avoid showing the
+  // opponent's reply as if it were the candidate mistake.
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onMainline gate.
-  if (showPlayedArrow && pathIsMainline(ctrl.root, ctrl.path)) {
+  if (showPlayedArrow && pathIsMainline(ctrl.root, ctrl.path) && !retroHidden) {
     const nextNode = ctrl.node.children[0];
     if (nextNode?.uci) {
       const uci = nextNode.uci;

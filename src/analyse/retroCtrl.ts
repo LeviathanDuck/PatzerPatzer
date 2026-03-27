@@ -28,13 +28,27 @@ import { evalWinChances } from '../engine/winchances';
 /**
  * Mirrors Lichess Feedback union type from retroCtrl.ts.
  * 'find'     — waiting for the user to find the best move
- * 'eval'     — ceval running to judge the played move (deferred)
- * 'win'      — user found the best move
- * 'fail'     — user played a bad move
+ * 'eval'     — ceval running to judge the played move
+ * 'win'      — user found a good move (exact best or near-best)
+ * 'fail'     — user played a suboptimal move
  * 'view'     — viewing the solution after skip/viewSolution
  * 'offTrack' — user navigated away from the exercise position
  */
 export type RetroFeedback = 'find' | 'eval' | 'win' | 'fail' | 'view' | 'offTrack';
+
+/**
+ * Distinguishes how a win was achieved.
+ * 'exact'     — user played the engine's exact best move
+ * 'near-best' — user played a different move accepted as good enough by ceval (povDiff > -0.04)
+ */
+export type WinKind = 'exact' | 'near-best';
+
+/**
+ * Distinguishes the quality of a failed move relative to the game mistake.
+ * 'better' — played move is better than the actual game mistake, but still not good enough
+ * 'worse'  — played move is equal to or worse than the actual game mistake
+ */
+export type FailKind = 'better' | 'worse';
 
 export interface RetroCtrl {
   /** Currently active candidate, or null if the session is exhausted. */
@@ -45,6 +59,18 @@ export interface RetroCtrl {
 
   /** Set feedback state directly (used by board wiring in a later task). */
   setFeedback(f: RetroFeedback): void;
+
+  /**
+   * How the most recent win was achieved.
+   * null when feedback is not 'win' or before any win has occurred.
+   */
+  winKind(): WinKind | null;
+
+  /**
+   * Quality of the most recently failed move relative to the game mistake.
+   * null when feedback is not 'fail' or before any fail has occurred.
+   */
+  failKind(): FailKind | null;
 
   /** True when the user is expected to play a move ('find' or 'fail'). */
   isSolving(): boolean;
@@ -176,6 +202,11 @@ export function makeRetroCtrl(
   // Reset on every candidate transition (jumpToNext).
   let _guidanceRevealed = false;
 
+  // Win/fail sub-classification — set when feedback transitions to 'win' or 'fail'.
+  // Reset on each candidate transition.
+  let _winKind:  WinKind  | null = null;
+  let _failKind: FailKind | null = null;
+
   const isPlySolved = (ply: number): boolean => solvedPlies.includes(ply);
 
   // Mirrors retroCtrl.ts findNextNode: find the first unsolved candidate.
@@ -192,6 +223,8 @@ export function makeRetroCtrl(
   function jumpToNext(): void {
     _feedback = 'find';
     _guidanceRevealed = false;
+    _winKind  = null;
+    _failKind = null;
     currentIdx = findNextIdx();
   }
 
@@ -219,6 +252,8 @@ export function makeRetroCtrl(
 
     feedback(): RetroFeedback { return _feedback; },
     setFeedback(f: RetroFeedback): void { _feedback = f; },
+    winKind():  WinKind  | null { return _winKind; },
+    failKind(): FailKind | null { return _failKind; },
 
     isSolving(): boolean { return _feedback === 'find' || _feedback === 'fail'; },
     guidanceRevealed(): boolean { return _guidanceRevealed; },
@@ -291,13 +326,26 @@ export function makeRetroCtrl(
         if (diff > -0.04) {
           // Near-best: accept. Mirrors lichess-org/lila: retroCtrl.ts onWin().
           solveCurrent();
+          _winKind  = 'near-best';
           _feedback = 'win';
         } else {
+          // Classify fail: compare played move against the actual game mistake.
+          // 'better' = played move is better than what they played in the game
+          //            (nodeWc > gameNodeWc) but still not good enough.
+          // 'worse'  = played move is equal to or worse than the game mistake.
+          const gameEv = getEval(c.path);
+          if (gameEv) {
+            const gameNodeWc = toColor(evalWinChances(gameEv) ?? 0);
+            _failKind = nodeWc > gameNodeWc ? 'better' : 'worse';
+          } else {
+            _failKind = 'worse'; // no game eval to compare — treat as worse
+          }
           _feedback = 'fail';
           navigateTo(c.parentPath); // return user to exercise start for retry
         }
       } else {
         // No parent eval available — cannot compute povDiff; fall back to fail.
+        _failKind = null;
         _feedback = 'fail';
         navigateTo(c.parentPath);
       }
@@ -307,6 +355,7 @@ export function makeRetroCtrl(
       // Mark solved BEFORE navigate so onJump sees 'win' and skips offTrack detection.
       // Mirrors lichess-org/lila: retroCtrl.ts onWin → solveCurrent() + feedback('win').
       solveCurrent();
+      _winKind  = 'exact';
       _feedback = 'win';
     },
 
