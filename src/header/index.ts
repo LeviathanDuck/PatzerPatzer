@@ -16,6 +16,7 @@ import {
   setBoardWheelNavEnabled,
   setReviewDotsUserOnly,
 } from '../board/cosmetics';
+import { boardSoundEnabled, setBoardSoundEnabled } from '../board/sound';
 import {
   isBulkRunning, isBulkPaused,
   pauseBulkReview, resumeBulkReview, cancelBulkReview,
@@ -341,6 +342,19 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
           on: {
             change: (e: Event) => {
               setReviewDotsUserOnly((e.target as HTMLInputElement).checked);
+              redraw();
+            },
+          },
+        }),
+      ]),
+
+      h('label.global-menu__item.global-menu__item--toggle', [
+        h('span', 'Board Sounds'),
+        h('input', {
+          attrs: { type: 'checkbox', checked: boardSoundEnabled },
+          on: {
+            change: (e: Event) => {
+              setBoardSoundEnabled((e.target as HTMLInputElement).checked);
               redraw();
             },
           },

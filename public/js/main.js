@@ -6659,6 +6659,96 @@ function setAnimationEnabled(enabled) {
   cgInstance?.set({ animation: { enabled } });
 }
 
+// src/board/sound.ts
+var SOUND_ENABLED_KEY = "boardSoundEnabled";
+var SOUND_ENABLED_DEFAULT = true;
+var boardSoundEnabled = (() => {
+  const stored = localStorage.getItem(SOUND_ENABLED_KEY);
+  return stored === null ? SOUND_ENABLED_DEFAULT : stored === "true";
+})();
+function setBoardSoundEnabled(enabled) {
+  boardSoundEnabled = enabled;
+  localStorage.setItem(SOUND_ENABLED_KEY, String(enabled));
+}
+var audioCtx;
+function getAudioCtx() {
+  if (audioCtx) return audioCtx;
+  try {
+    const win = window;
+    audioCtx = typeof AudioContext !== "undefined" ? new AudioContext({ latencyHint: "interactive" }) : win.webkitAudioContext ? new win.webkitAudioContext({ latencyHint: "interactive" }) : void 0;
+  } catch {
+    audioCtx = void 0;
+  }
+  return audioCtx;
+}
+function attachPrimer() {
+  const primerEvents = ["touchend", "pointerup", "pointerdown", "mousedown", "keydown"];
+  const primer = () => {
+    audioCtx?.resume();
+    for (const e of primerEvents) window.removeEventListener(e, primer, { capture: true });
+  };
+  for (const e of primerEvents) window.addEventListener(e, primer, { capture: true });
+}
+var buffers = /* @__PURE__ */ new Map();
+async function loadBuffer(name, path) {
+  const c = getAudioCtx();
+  if (!c) return;
+  try {
+    const res = await fetch(path);
+    if (!res.ok) return;
+    const arrayBuf = await res.arrayBuffer();
+    const audioBuf = await new Promise((resolve, reject) => {
+      if (c.decodeAudioData.length === 1)
+        c.decodeAudioData(arrayBuf).then(resolve).catch(reject);
+      else
+        c.decodeAudioData(arrayBuf, resolve, reject);
+    });
+    buffers.set(name, audioBuf);
+  } catch {
+  }
+}
+function playBuffer(name) {
+  const c = getAudioCtx();
+  const buf = buffers.get(name);
+  if (!c || !buf) return;
+  if (c.state === "suspended") {
+    void c.resume();
+    return;
+  }
+  try {
+    const gain = c.createGain();
+    gain.connect(c.destination);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.connect(gain);
+    src.start(0);
+  } catch {
+  }
+}
+var SOUND_FILES = {
+  Move: "/sounds/Move.mp3",
+  Capture: "/sounds/Capture.mp3",
+  Castles: "/sounds/Castles.mp3",
+  Check: "/sounds/Check.mp3",
+  Checkmate: "/sounds/Checkmate.mp3"
+};
+function preloadBoardSounds() {
+  attachPrimer();
+  for (const [name, path] of Object.entries(SOUND_FILES)) {
+    void loadBuffer(name, path);
+  }
+}
+function playMoveSound(san) {
+  if (!boardSoundEnabled || !san) return;
+  let name;
+  if (san.includes("#")) name = "Checkmate";
+  else if (san.includes("+")) name = "Check";
+  else if (san.startsWith("O-O")) name = "Castles";
+  else if (san.includes("x")) name = "Capture";
+  else name = "Move";
+  playBuffer(name);
+}
+
 // src/ceval/view.ts
 var _getCtrl4 = () => {
   throw new Error("cevalView not initialised");
@@ -11641,6 +11731,18 @@ function renderGlobalMenu(deps) {
           }
         })
       ]),
+      h("label.global-menu__item.global-menu__item--toggle", [
+        h("span", "Board Sounds"),
+        h("input", {
+          attrs: { type: "checkbox", checked: boardSoundEnabled },
+          on: {
+            change: (e) => {
+              setBoardSoundEnabled(e.target.checked);
+              redraw2();
+            }
+          }
+        })
+      ]),
       h("button.global-menu__item", {
         on: { click: () => {
           showDetectionModal = true;
@@ -12504,7 +12606,9 @@ async function loadAndRestoreAnalysis(gameId, generation) {
 }
 function navigate(path) {
   if (path === ctrl.path) return;
+  const isForwardStep = path.length === ctrl.path.length + 2;
   ctrl.setPath(path);
+  if (isForwardStep) playMoveSound(ctrl.node.san);
   ctrl.retro?.onJump(path);
   syncBoard();
   if (!puzzleHidesAnalysis()) evalCurrentPosition();
@@ -12878,6 +12982,7 @@ initReviewQueue({
   getUserColor,
   redraw
 });
+preloadBoardSounds();
 bindKeyboardHandlers({
   getCtrl: () => ctrl,
   navigate,
