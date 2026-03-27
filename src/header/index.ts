@@ -52,6 +52,7 @@ export interface HeaderDeps {
   gameSourceUrl:       (game: ImportedGame) => string | undefined;
   downloadPgn:         (annotated: boolean) => void;
   resetAllData:        () => void;
+  onFlipBoard:         () => void;
   redraw:              () => void;
 }
 
@@ -275,7 +276,7 @@ function renderDetectionModal(redraw: () => void): VNode {
 }
 
 function renderGlobalMenu(deps: HeaderDeps): VNode {
-  const { downloadPgn, resetAllData, selectedGameId, redraw } = deps;
+  const { downloadPgn, resetAllData, onFlipBoard, selectedGameId, redraw } = deps;
   const hasGame = selectedGameId !== null;
   return h('div.global-menu', [
     h('button.global-menu__trigger', {
@@ -312,6 +313,10 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
           window.location.hash = '#/analysis';
         }},
       }, 'Game Review'),
+
+      h('button.global-menu__item', {
+        on: { click: () => { onFlipBoard(); closeGlobalMenu(redraw); } },
+      }, 'Flip Board'),
 
       h('button.global-menu__item', {
         on: { click: () => { closeGlobalMenu(redraw); downloadPgn(true); } },
