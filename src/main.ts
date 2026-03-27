@@ -80,6 +80,7 @@ import { deleteNodeAt, nodeAtPath, pathInit, promoteAt, pruneVariations } from '
 import { pgnToTree } from './tree/pgn';
 import { buildMainlineOpeningProvider, buildRetroCandidates } from './analyse/retro';
 import { makeRetroCtrl } from './analyse/retroCtrl';
+import { onRetroConfigChange } from './analyse/retroConfig';
 import { renderRetroEntry, renderRetroStrip } from './analyse/retroView';
 
 console.log('Patzer Pro');
@@ -649,6 +650,43 @@ function clearRetroMode(): void {
   syncArrow();
 }
 
+/**
+ * Rebuild the active retrospection session using the current retroConfig.
+ * Called when mistake-detection settings change while a session is running.
+ * Re-runs candidate building with the new parameters and restarts from the
+ * first unsolved candidate — preserving color filter and eval cache.
+ *
+ * When no session is active this is a no-op; the next toggleRetro() call
+ * will build candidates with the updated config automatically.
+ */
+function rebuildRetroSession(): void {
+  if (!ctrl.retro) return;
+  const game = importedGames.find(g => g.id === selectedGameId);
+  const userColor = game ? getUserColor(game) : null;
+  const openingProvider = buildMainlineOpeningProvider(
+    ctrl.mainline,
+    Boolean(game?.opening || game?.eco),
+  );
+  const candidates = buildRetroCandidates(
+    ctrl.mainline,
+    p => evalCache.get(p),
+    selectedGameId,
+    userColor ?? null,
+    openingProvider,
+  );
+  ctrl.retro = makeRetroCtrl(
+    candidates,
+    userColor ?? null,
+    () => currentEval,
+    (path) => evalCache.get(path),
+    navigate,
+  );
+  syncArrow();
+  const first = ctrl.retro.current();
+  if (first) navigate(first.parentPath);
+  else redraw();
+}
+
 // --- Multi-game analysis queue ---
 
 /**
@@ -1090,3 +1128,7 @@ void loadGamesFromIdb().then(stored => {
   void loadAndRestoreAnalysis(toLoad.id, restoreGeneration);
   void syncPuzzleRoute(currentRoute);
 });
+
+// When mistake-detection settings change, rebuild the active retro session so
+// the new parameters take effect immediately without requiring a page reload.
+onRetroConfigChange(rebuildRetroSession);
