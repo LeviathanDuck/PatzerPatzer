@@ -1678,7 +1678,7 @@ body.resizing {
     display: none !important;
   }
   .analyse__tools {
-    align-self: auto;
+    align-self: stretch;
     min-height: 0;
   }
   .ceval {
