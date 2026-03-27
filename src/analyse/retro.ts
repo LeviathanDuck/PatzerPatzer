@@ -5,7 +5,7 @@
 // This module is intentionally rendering-free. It exposes a pure builder that
 // later UI and session steps can consume without coupling to the puzzle subsystem.
 
-import { classifyLoss, type MoveLabel } from '../engine/winchances';
+import { classifyLoss, evalWinChances, type MoveLabel } from '../engine/winchances';
 import { retroConfig } from './retroConfig';
 import { LEARNABLE_REASONS, type LearnableReason, type TreeNode } from '../tree/types';
 
@@ -205,7 +205,22 @@ export function buildRetroCandidates(
       CLASSIFICATION_RANK[classification] >= minRank
     );
 
-    if (!qualifiesByLoss && !isMissedMate) continue;
+    // --- Condition 3: collapse (blown win) ---
+    // User was clearly winning but squandered advantage in one move.
+    // Reuses the same semantics as src/engine/tactics.ts collapse detection.
+    const parentWc = evalWinChances(parentEval);
+    const moverParentWc = parentWc !== undefined
+      ? (isWhiteMove ? parentWc : -parentWc)
+      : undefined;
+    const isCollapse = (
+      retroConfig.collapseEnabled &&
+      moverParentWc !== undefined &&
+      moverParentWc >= retroConfig.collapseWcFloor &&
+      loss !== undefined &&
+      loss >= retroConfig.collapseDropMin
+    );
+
+    if (!qualifiesByLoss && !isMissedMate && !isCollapse) continue;
 
     // --- Opening cancellation ---
     // Mirrors lichess-org/lila: retroCtrl.ts findNextNode openingUcis check:
@@ -219,22 +234,26 @@ export function buildRetroCandidates(
     // Resolve final classification.
     // Missed-mate cases that do not already reach the mistake threshold are labelled
     // blunder (a forced mate was available and was missed — that is a blunder by definition).
+    // Collapse-only cases use actual loss classification or fall back to 'inaccuracy'.
     let finalClassification: MoveLabel;
     if (classification === 'blunder' || classification === 'mistake') {
       finalClassification = classification;
-    } else {
-      // isMissedMate must be true to reach here
+    } else if (isMissedMate) {
       finalClassification = 'blunder';
+    } else {
+      // collapse-only: use actual classification if available, else inaccuracy
+      finalClassification = classification ?? 'inaccuracy';
     }
 
     // Derive reason code from detection conditions.
-    // 'missed-mate' takes priority when it is the primary reason for inclusion —
-    // i.e. when the win-chance loss alone would not have qualified but the missed mate did,
-    // or when the missed mate is the dominant signal (blunder classification with isMissedMate).
-    // 'swing' covers all other qualified positions.
+    // Priority: missed-mate > collapse > swing.
     const reason: LearnableReason = isMissedMate && !qualifiesByLoss
       ? LEARNABLE_REASONS['missed-mate']
-      : LEARNABLE_REASONS['swing'];
+      : isCollapse && !qualifiesByLoss
+        ? LEARNABLE_REASONS['collapse']
+        : isCollapse
+          ? LEARNABLE_REASONS['collapse']
+          : LEARNABLE_REASONS['swing'];
 
     const candidate: RetroCandidate = {
       gameId,
@@ -257,6 +276,139 @@ export function buildRetroCandidates(
       candidate.bestLine = parentEval.moves;
     }
     candidates.push(candidate);
+  }
+
+  // ── Defensive-resource pass ────────────────────────────────────────────
+  // When enabled, scan for positions where the user was worse but missed a
+  // saving move.  Added as a separate family with reason='defensive'.
+  if (retroConfig.defensiveEnabled) {
+    const existingPaths = new Set(candidates.map(c => c.path));
+    let defPath = '';
+
+    for (let i = 1; i < mainline.length; i++) {
+      const node   = mainline[i]!;
+      const parent = mainline[i - 1]!;
+      defPath += node.id;
+
+      const defParentPath = defPath.slice(0, -2);
+      const isWhiteMove   = node.ply % 2 === 1;
+      const playerColor: 'white' | 'black' = isWhiteMove ? 'white' : 'black';
+      if (userColor !== null && playerColor !== userColor) continue;
+      if (!node.uci) continue;
+      if (existingPaths.has(defPath)) continue;
+
+      const nodeEv   = getEval(defPath);
+      const parentEv = getEval(defParentPath);
+      if (!nodeEv || !parentEv || !parentEv.best) continue;
+      if (nodeEv.loss === undefined) continue;
+
+      const pWc = evalWinChances(parentEv);
+      if (pWc === undefined) continue;
+      const moverPWc = isWhiteMove ? pWc : -pWc;
+
+      // User must be in a losing/worse position.
+      if (moverPWc > retroConfig.defensiveWcCeiling) continue;
+      // Gap between best and played must be significant.
+      if (nodeEv.loss < retroConfig.defensiveSalvageMin) continue;
+
+      // Opening cancellation
+      const openingUcis = getOpeningUcis(parent.fen);
+      if (openingUcis && openingUcis.includes(node.uci)) continue;
+
+      const defClassification = classifyLoss(nodeEv.loss) ?? 'inaccuracy';
+
+      candidates.push({
+        gameId,
+        path:            defPath,
+        parentPath:      defParentPath,
+        fenBefore:       parent.fen,
+        playedMove:      node.uci,
+        playedMoveSan:   node.san ?? '',
+        bestMove:        parentEv.best,
+        bestLine:        parentEv.moves?.length ? parentEv.moves : undefined,
+        classification:  defClassification,
+        loss:            nodeEv.loss,
+        isMissedMate:    false,
+        playerColor,
+        ply:             node.ply,
+        reason:          LEARNABLE_REASONS['defensive'],
+      });
+    }
+  }
+
+  // ── Punish-the-blunder pass ────────────────────────────────────────────
+  // When enabled, scan for positions where the opponent blundered but the
+  // user failed to exploit it.  Added as a separate family with reason='punish'.
+  if (retroConfig.punishEnabled) {
+    const existingPaths = new Set(candidates.map(c => c.path));
+    const pathArr: string[] = [''];
+    for (let i = 1; i < mainline.length; i++) {
+      pathArr.push(pathArr[i - 1]! + mainline[i]!.id);
+    }
+
+    for (let i = 2; i < mainline.length; i++) {
+      const node   = mainline[i]!;
+      const parent = mainline[i - 1]!;
+      const nodePath = pathArr[i]!;
+
+      if (existingPaths.has(nodePath)) continue;
+
+      const isWhiteMove = node.ply % 2 === 1;
+      const playerColor: 'white' | 'black' = isWhiteMove ? 'white' : 'black';
+      if (userColor !== null && playerColor !== userColor) continue;
+      if (!node.uci) continue;
+
+      const gpPath     = pathArr[i - 2]!;
+      const parentPath = pathArr[i - 1]!;
+
+      const gpEval     = getEval(gpPath);
+      const parentEval = getEval(parentPath);
+      const nodeEval   = getEval(nodePath);
+      if (!gpEval || !parentEval || !nodeEval) continue;
+      if (!parentEval.best) continue;
+
+      const gpWc     = evalWinChances(gpEval);
+      const parentWc = evalWinChances(parentEval);
+      const nodeWc   = evalWinChances(nodeEval);
+      if (gpWc === undefined || parentWc === undefined || nodeWc === undefined) continue;
+
+      const userSign     = isWhiteMove ? 1 : -1;
+      const userGpWc     = gpWc * userSign;
+      const userParentWc = parentWc * userSign;
+      const userNodeWc   = nodeWc * userSign;
+
+      // Opponent blunder: swing in user's favor (scaled 0–0.5).
+      const opponentSwing = (userParentWc - userGpWc) / 2;
+      if (opponentSwing < retroConfig.punishOpponentSwingMin) continue;
+
+      // User failure: advantage decreased (scaled 0–0.5).
+      const exploitDrop = (userParentWc - userNodeWc) / 2;
+      if (exploitDrop < retroConfig.punishExploitDropMin) continue;
+
+      // Opening cancellation
+      const openingUcis = getOpeningUcis(parent.fen);
+      if (openingUcis && node.uci && openingUcis.includes(node.uci)) continue;
+
+      const punishLoss = nodeEval.loss ?? exploitDrop;
+      const punishClassification = classifyLoss(punishLoss) ?? 'inaccuracy';
+
+      candidates.push({
+        gameId,
+        path:            nodePath,
+        parentPath:      parentPath,
+        fenBefore:       parent.fen,
+        playedMove:      node.uci,
+        playedMoveSan:   node.san ?? '',
+        bestMove:        parentEval.best,
+        bestLine:        parentEval.moves?.length ? parentEval.moves : undefined,
+        classification:  punishClassification,
+        loss:            punishLoss,
+        isMissedMate:    false,
+        playerColor,
+        ply:             node.ply,
+        reason:          LEARNABLE_REASONS['punish'],
+      });
+    }
   }
 
   return candidates;
