@@ -922,10 +922,11 @@ main {
 }
 
 // Board zoom CSS custom property — set on body by JS (boardZoom state).
-// Default 85 matches Lichess default. Formula mirrors Lichess ---board-scale.
+// Default 70 — sized so eval graph and games list bottom are visible on a fresh
+// browser at 1080p.  Formula mirrors Lichess ---board-scale.
 // Adapted from lichess-org/lila: ui/lib/css/layout/_uniboard.scss
 body {
-  ---zoom: 85;
+  ---zoom: 70;
   ---board-scale: calc((var(---zoom) / 100) * 0.75 + 0.25);
 }
 
@@ -1452,6 +1453,11 @@ body.resizing {
   align-items: center;
   gap: 6px;
   padding-top: 8px;
+
+  // The background eval graph is mobile-only; hide it on desktop.
+  .eval-graph--bg {
+    display: none;
+  }
 }
 
 // Content below the board (eval graph, review controls, import sections).
@@ -1558,7 +1564,9 @@ body.resizing {
   }
 
   // Eval graph background layer — absolutely fills controls bar, no pointer events.
+  // Override desktop `display: none` so the mobile bg graph is visible.
   .eval-graph--bg {
+    display: block;
     position: absolute;
     inset: 0;
     z-index: 0;
