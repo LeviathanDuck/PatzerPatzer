@@ -1652,7 +1652,7 @@ body.resizing {
     display: none;
   }
   .analyse__controls .jumps {
-    flex: 1 1 0;
+    flex: 0 0 40%;
     padding: 0;
     background: transparent;
     border: none;
