@@ -602,7 +602,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
 
     // Tactics severity filter
     h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Tactics'),
+      h('span.games-view__filter-label', 'Misses'),
       ...(['!', '!!', '!!!', 'M?!'] as string[]).map(sev =>
         h('button.games-view__pill.--tactics', {
           class: { active: gamesFilterTactics.has(sev) },
