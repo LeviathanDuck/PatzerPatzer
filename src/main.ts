@@ -62,6 +62,9 @@ import {
 } from './puzzles/extract';
 import { initPuzzlePage, loadLibraryCounts, openPuzzleRound } from './puzzles/ctrl';
 import { renderPuzzleLibrary, renderPuzzleRound } from './puzzles/view';
+import { savePuzzleDefinition } from './puzzles/puzzleDb';
+import { simpleHash } from './puzzles/adapters';
+import type { UserLibraryPuzzleDefinition } from './puzzles/types';
 import {
   enqueueBulkReview, isBulkRunning, initReviewQueue,
 } from './engine/reviewQueue';
@@ -77,7 +80,7 @@ import {
   savedPuzzles, savePuzzle, setSavedPuzzles,
 } from './idb/index';
 import { current, onChange, type Route } from './router';
-import { deleteNodeAt, nodeAtPath, pathInit, promoteAt, pruneVariations } from './tree/ops';
+import { deleteNodeAt, nodeAtPath, parentAtPath, pathInit, promoteAt, pruneVariations } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
 import { buildMainlineOpeningProvider, buildRetroCandidates } from './analyse/retro';
 import { makeRetroCtrl } from './analyse/retroCtrl';
@@ -224,7 +227,118 @@ function renderContextMenu(): VNode | null {
         redraw();
       } },
     }, 'Make main line') : null,
+    // --- Create Puzzle actions (CCP-167) ---
+    // Only shown when a game is loaded (selectedGameId present).
+    // Branch 1: right-clicked move IS the solution; puzzle starts at parent position.
+    selectedGameId && node?.uci ? h('a.ctx-puzzle', {
+      on: { click: () => {
+        const path = contextMenuPath!;
+        contextMenuPath = null; contextMenuPos = null;
+        createPuzzleFromSolution(path);
+      } },
+    }, 'Create Puzzle (solution)') : null,
+    // Branch 2: right-clicked position IS the puzzle start; engine best move is the solution.
+    selectedGameId ? h('a.ctx-puzzle', {
+      on: { click: () => {
+        const path = contextMenuPath!;
+        contextMenuPath = null; contextMenuPos = null;
+        createPuzzleFromStart(path);
+      } },
+    }, 'Create Puzzle (start)') : null,
   ]);
+}
+
+// --- Create Puzzle helpers (CCP-167) ---
+// These wire the two context-menu authoring branches into puzzle persistence.
+
+/** Transient confirmation message shown after puzzle creation. */
+let puzzleCreateMsg: string | null = null;
+let puzzleCreateMsgTimer: ReturnType<typeof setTimeout> | undefined;
+
+function flashPuzzleMsg(msg: string): void {
+  puzzleCreateMsg = msg;
+  clearTimeout(puzzleCreateMsgTimer);
+  puzzleCreateMsgTimer = setTimeout(() => { puzzleCreateMsg = null; redraw(); }, 2500);
+  redraw();
+}
+
+/**
+ * Branch 1 — "Use as puzzle solution":
+ * The right-clicked move IS the answer. Puzzle starts at the parent position.
+ */
+function createPuzzleFromSolution(path: string): void {
+  const node = nodeAtPath(ctrl.root, path);
+  const parent = parentAtPath(ctrl.root, path);
+  if (!node?.uci || !parent?.fen) {
+    flashPuzzleMsg('Cannot create puzzle: invalid position');
+    return;
+  }
+  const parentPath = pathInit(path);
+  const parentEval = evalCache.get(parentPath);
+
+  const idBase = selectedGameId
+    ? `${selectedGameId}_sol_${path}`
+    : `user_sol_${simpleHash(parent.fen + node.uci)}`;
+
+  const def: UserLibraryPuzzleDefinition = {
+    id: idBase,
+    sourceKind: 'user-library',
+    startFen: parent.fen,
+    solutionLine: parentEval?.moves && parentEval.moves.length > 0
+      ? parentEval.moves
+      : [node.uci],
+    strictSolutionMove: node.uci,
+    createdAt: Date.now(),
+    sourcePath: parentPath,
+    sourceReason: 'manual',
+  };
+  if (selectedGameId) def.sourceGameId = selectedGameId;
+
+  void savePuzzleDefinition(def).then(() => {
+    flashPuzzleMsg(`Puzzle saved — solution: ${node.san ?? node.uci}`);
+  });
+}
+
+/**
+ * Branch 2 — "Use as puzzle start":
+ * The right-clicked position IS where the puzzle begins.
+ * Engine best move from evalCache becomes the solution.
+ */
+function createPuzzleFromStart(path: string): void {
+  const node = nodeAtPath(ctrl.root, path);
+  if (!node?.fen) {
+    flashPuzzleMsg('Cannot create puzzle: invalid position');
+    return;
+  }
+  const cached = evalCache.get(path);
+  if (!cached?.best) {
+    flashPuzzleMsg('No engine data for this position — run analysis first');
+    return;
+  }
+
+  const solutionLine = cached.moves && cached.moves.length > 0
+    ? cached.moves
+    : [cached.best];
+
+  const idBase = selectedGameId
+    ? `${selectedGameId}_start_${path}`
+    : `user_start_${simpleHash(node.fen + cached.best)}`;
+
+  const def: UserLibraryPuzzleDefinition = {
+    id: idBase,
+    sourceKind: 'user-library',
+    startFen: node.fen,
+    solutionLine,
+    strictSolutionMove: cached.best,
+    createdAt: Date.now(),
+    sourcePath: path,
+    sourceReason: 'manual',
+  };
+  if (selectedGameId) def.sourceGameId = selectedGameId;
+
+  void savePuzzleDefinition(def).then(() => {
+    flashPuzzleMsg(`Puzzle saved — start position after ${node.san ?? '...'}`);
+  });
 }
 
 const analyzedGameIds:      Set<string>                                              = new Set();
@@ -868,6 +982,7 @@ function view(route: Route): VNode {
     } satisfies HeaderDeps),
     h('main', [routeContent(route)]),
     renderContextMenu(),
+    puzzleCreateMsg ? h('div.puzzle-create-toast', puzzleCreateMsg) : null,
     h('footer.app-legal', [
       h('span', 'Patzer Pro source is available under AGPL.'),
       h('a', {

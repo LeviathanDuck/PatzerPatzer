@@ -8,6 +8,8 @@
 import { h, type VNode } from 'snabbdom';
 import type { RetroCtrl } from './retroCtrl';
 import type { RetroCandidate } from './retro';
+import { retroCandidateToDefinition } from '../puzzles/adapters';
+import { savePuzzleDefinition } from '../puzzles/puzzleDb';
 
 // --- Entry button ---
 
@@ -128,6 +130,111 @@ function renderReasonNote(cand: RetroCandidate | null): VNode | null {
   ]);
 }
 
+// --- Save to Library ---
+
+// Tracks which candidates have been saved during this page session to prevent duplicates.
+// Keyed by candidate path (unique per game position).
+const _savedPaths = new Set<string>();
+
+// Tracks paths that are currently showing the "Saved!" confirmation, to revert after timeout.
+const _savingConfirm = new Set<string>();
+
+/**
+ * Renders a "Save to Library" / "Saved!" button for the current retro candidate.
+ * Shown on win, fail, and view feedback states so the user can persist the exercise.
+ */
+function renderSaveToLibrary(
+  cand: RetroCandidate,
+  redraw: () => void,
+): VNode {
+  const alreadySaved = _savedPaths.has(cand.path);
+  const showingConfirm = _savingConfirm.has(cand.path);
+
+  if (alreadySaved && !showingConfirm) {
+    return h('div.retro-save', h('span.retro-save__done', 'Saved'));
+  }
+  if (showingConfirm) {
+    return h('div.retro-save', h('span.retro-save__confirm', 'Saved!'));
+  }
+  return h('div.retro-save', h('button.retro-save__btn', {
+    on: { click: () => {
+      const def = retroCandidateToDefinition(cand);
+      savePuzzleDefinition(def).then(() => {
+        _savedPaths.add(cand.path);
+        _savingConfirm.add(cand.path);
+        redraw();
+        // Clear the "Saved!" flash after 2 seconds, settle to quiet "Saved" label.
+        setTimeout(() => {
+          _savingConfirm.delete(cand.path);
+          redraw();
+        }, 2000);
+      });
+    }},
+  }, 'Save to Library'));
+}
+
+// --- Bulk Save to Library (session-end) ---
+
+// Tracks bulk-save state: 'idle' | 'saving' | 'done'
+let _bulkSaveState: 'idle' | 'saving' | 'done' = 'idle';
+let _bulkSaveCount = 0;
+
+/**
+ * Renders a "Save N failed to Library" button at session end.
+ * Bulk-saves all candidates the user got wrong, viewed, or skipped.
+ * Reuses _savedPaths to skip individually-saved candidates.
+ */
+function renderBulkSaveToLibrary(
+  retro: RetroCtrl,
+  redraw: () => void,
+): VNode | null {
+  const failed = retro.getFailedCandidates();
+  // Filter out candidates that were already individually saved during the session.
+  const unsaved = failed.filter(c => !_savedPaths.has(c.path));
+
+  if (_bulkSaveState === 'done') {
+    return h('div.retro-bulk-save', h('span.retro-save__confirm',
+      `Saved ${_bulkSaveCount} puzzle${_bulkSaveCount === 1 ? '' : 's'}!`,
+    ));
+  }
+
+  if (unsaved.length === 0) {
+    // Nothing to save — either no failures or all already saved individually.
+    if (failed.length > 0) {
+      return h('div.retro-bulk-save', h('span.retro-save__done', 'All missed positions saved'));
+    }
+    return null;
+  }
+
+  if (_bulkSaveState === 'saving') {
+    return h('div.retro-bulk-save', h('span.retro-save__confirm', 'Saving\u2026'));
+  }
+
+  const count = unsaved.length;
+  return h('div.retro-bulk-save', h('button.retro-save__btn', {
+    on: { click: () => {
+      _bulkSaveState = 'saving';
+      redraw();
+      const saves = unsaved.map(c => {
+        const def = retroCandidateToDefinition(c);
+        return savePuzzleDefinition(def).then(() => {
+          _savedPaths.add(c.path);
+        });
+      });
+      Promise.all(saves).then(() => {
+        _bulkSaveCount = count;
+        _bulkSaveState = 'done';
+        redraw();
+        // Revert to quiet state after 3 seconds.
+        setTimeout(() => {
+          _bulkSaveState = 'idle';
+          redraw();
+        }, 3000);
+      });
+    }},
+  }, `Save ${count} failed position${count === 1 ? '' : 's'} to Library`));
+}
+
 /**
  * Renders the active-session feedback box shown while retrospection is running.
  * Returns null when no retro session is active.
@@ -162,7 +269,8 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('div.retro-choices', [
             total > 0 && h('a', { on: { click: () => { retro.reset(); const f = retro.current(); if (f) navigate(f.parentPath); else redraw(); } } }, 'Do it again'),
           ].filter(Boolean) as VNode[]),
-        ]),
+          total > 0 ? renderBulkSaveToLibrary(retro, redraw) : null,
+        ].filter(Boolean) as VNode[]),
       ]),
     ];
   } else if (feedback === 'find') {
@@ -221,6 +329,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('strong', strongText),
           h('em', `Try another move for ${color}`),
           renderSkipOrView(retro, navigate, redraw),
+          renderSaveToLibrary(cand, redraw),
         ]),
       ]),
     ];
@@ -250,6 +359,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('div.retro-instruction', [
             h('strong', msg),
             renderReasonNote(cand),
+            renderSaveToLibrary(cand, redraw),
           ]),
         ]),
       ),
@@ -267,6 +377,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
             h('strong', 'Solution'),
             h('em', ['Best was ', h('strong', bestSan)]),
             renderReasonNote(cand),
+            renderSaveToLibrary(cand, redraw),
           ]),
         ]),
       ),
