@@ -16,11 +16,14 @@
 import http from 'http';
 import fs   from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC    = path.join(__dirname, 'public');
+const DOCS      = path.join(__dirname, 'docs');
 const PORT      = parseInt(process.argv[2] ?? '3001', 10);
+const DASHBOARD_PATH = path.join(DOCS, 'prompts', 'dashboard.html');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -41,6 +44,33 @@ http.createServer((req, res) => {
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
 
   const url      = (req.url ?? '/').split('?')[0];
+
+  // Prompt dashboard: regenerate from registry and redirect back.
+  if (url === '/api/refresh-dashboard') {
+    try {
+      execSync('node scripts/generate-prompt-dashboard.mjs', { cwd: __dirname, timeout: 10000 });
+      res.writeHead(302, { Location: '/dashboard' });
+      res.end();
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Dashboard generation failed: ' + (e.message ?? e));
+    }
+    return;
+  }
+
+  // Serve the prompt dashboard at /dashboard
+  if (url === '/dashboard') {
+    if (fs.existsSync(DASHBOARD_PATH)) {
+      res.setHeader('Content-Type', MIME['.html']);
+      res.writeHead(200);
+      fs.createReadStream(DASHBOARD_PATH).pipe(res);
+    } else {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Dashboard not generated yet. Run: npm run prompts:dashboard');
+    }
+    return;
+  }
+
   const filePath = path.normalize(path.join(PUBLIC, url === '/' ? 'index.html' : url));
 
   // Prevent path traversal outside public/
