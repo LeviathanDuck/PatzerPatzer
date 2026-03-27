@@ -25,6 +25,7 @@ import {
   showArrowLabels, setShowArrowLabels,
   showReviewLabels, setShowReviewLabels,
   showBoardReviewGlyphs, setShowBoardReviewGlyphs,
+  arrowLabelSize, setArrowLabelSize,
   syncArrow, toggleEngine, evalCurrentPosition,
   type EvalLine, type PositionEval,
 } from '../engine/ctrl';
@@ -470,6 +471,20 @@ export function renderEngineSettings(): VNode | null {
           },
         },
       }),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-label-size' } }, 'Label size'),
+      h('input#ceval-label-size', {
+        attrs: { type: 'range', min: 6, max: 18, step: 1, value: arrowLabelSize },
+        on: {
+          input: (e: Event) => {
+            setArrowLabelSize(parseInt((e.target as HTMLInputElement).value));
+            syncArrow();
+            _redraw();
+          },
+        },
+      }),
+      h('span.ceval-settings__val', `${arrowLabelSize}px`),
     ]),
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-review-labels' } }, 'Review'),

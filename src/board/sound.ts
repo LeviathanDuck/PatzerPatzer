@@ -19,6 +19,20 @@ export function setBoardSoundEnabled(enabled: boolean): void {
   localStorage.setItem(SOUND_ENABLED_KEY, String(enabled));
 }
 
+const SOUND_VOLUME_KEY = 'boardSoundVolume';
+const SOUND_VOLUME_DEFAULT = 0.6;
+
+export let soundVolume: number = (() => {
+  const stored = localStorage.getItem(SOUND_VOLUME_KEY);
+  const v = stored !== null ? parseFloat(stored) : NaN;
+  return !isNaN(v) && v >= 0 && v <= 1 ? v : SOUND_VOLUME_DEFAULT;
+})();
+
+export function setSoundVolume(v: number): void {
+  soundVolume = Math.max(0, Math.min(1, v));
+  localStorage.setItem(SOUND_VOLUME_KEY, String(soundVolume));
+}
+
 // --- AudioContext + buffer loading ---
 // Adapted from lichess-org/lila: ui/site/src/sound.ts makeAudioContext + Sound class
 
@@ -86,6 +100,7 @@ function playBuffer(name: string): void {
   }
   try {
     const gain = c.createGain();
+    gain.gain.setValueAtTime(soundVolume, c.currentTime);
     gain.connect(c.destination);
     const src = c.createBufferSource();
     src.buffer = buf;

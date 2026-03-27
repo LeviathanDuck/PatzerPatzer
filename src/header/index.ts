@@ -16,7 +16,7 @@ import {
   setBoardWheelNavEnabled,
   setReviewDotsUserOnly,
 } from '../board/cosmetics';
-import { boardSoundEnabled, setBoardSoundEnabled } from '../board/sound';
+import { boardSoundEnabled, setBoardSoundEnabled, soundVolume, setSoundVolume } from '../board/sound';
 import {
   isBulkRunning, isBulkPaused,
   pauseBulkReview, resumeBulkReview, cancelBulkReview,
@@ -291,8 +291,6 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       on: { click: () => closeGlobalMenu(redraw) },
     }) : null,
 
-    showDetectionModal ? renderDetectionModal(redraw) : null,
-
     showGlobalMenu ? h('div.global-menu__dropdown', {
       class: { 'board-open': showBoardSettings },
     }, [
@@ -355,6 +353,19 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
           on: {
             change: (e: Event) => {
               setBoardSoundEnabled((e.target as HTMLInputElement).checked);
+              redraw();
+            },
+          },
+        }),
+      ]),
+
+      h('div.global-menu__item.global-menu__item--slider', [
+        h('span', `Volume: ${Math.round(soundVolume * 100)}%`),
+        h('input', {
+          attrs: { type: 'range', min: 0, max: 1, step: 0.05, value: soundVolume },
+          on: {
+            input: (e: Event) => {
+              setSoundVolume(parseFloat((e.target as HTMLInputElement).value));
               redraw();
             },
           },
@@ -611,5 +622,6 @@ export function renderHeader(deps: HeaderDeps): VNode {
     renderNav(route),
     renderReviewMenu(redraw),
     renderGlobalMenu(deps),
+    showDetectionModal ? renderDetectionModal(redraw) : null,
   ]);
 }
