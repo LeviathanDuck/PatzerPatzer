@@ -8,6 +8,33 @@ import { missedMomentConfig } from '../engine/tactics';
 import { pathInit } from '../tree/ops';
 import type { TreeNode, TreePath } from '../tree/types';
 
+// True on touch/stylus devices — used to decide which context-menu trigger to attach.
+// Mirrors lichess-org/lila: ui/lib/src/device.ts isTouchDevice()
+const isTouchDevice = (): boolean => window.matchMedia('(hover: none)').matches;
+
+// Build context-menu event handlers for a move element.
+// Desktop: right-click (contextmenu event).
+// Touch:   long-press (pointerdown hold ≥ 400ms) + double-tap (dblclick).
+// Adapted from lichess-org/lila: ui/analyse/src/treeView/treeView.ts touch handler block.
+function buildContextHandlers(
+  path: string,
+  onContextMenu: (path: string, e: MouseEvent) => void,
+): Record<string, (e: MouseEvent | PointerEvent) => void> {
+  const handlers: Record<string, (e: MouseEvent | PointerEvent) => void> = {
+    contextmenu: (e: MouseEvent) => { e.preventDefault(); onContextMenu(path, e); },
+  };
+  if (isTouchDevice()) {
+    let holdTimer: ReturnType<typeof setTimeout> | undefined;
+    handlers['dblclick'] = (e: MouseEvent) => { e.preventDefault(); onContextMenu(path, e); };
+    handlers['pointerdown'] = (e: PointerEvent) => {
+      holdTimer = setTimeout(() => { onContextMenu(path, e as unknown as MouseEvent); }, 400);
+    };
+    handlers['pointerup']    = () => clearTimeout(holdTimer);
+    handlers['pointerleave'] = () => clearTimeout(holdTimer);
+  }
+  return handlers;
+}
+
 // Eval lookup: returns { loss, best, mate, label } for a given path, or undefined.
 // Typed structurally so callers don't need to import PositionEval.
 // label is present when analysis was saved and restored from IDB; absent during live analysis.
@@ -107,9 +134,7 @@ function renderMoveSpan(
     attrs: { p: path },
     on: {
       click: () => navigate(path),
-      ...(onContextMenu
-        ? { contextmenu: (e: MouseEvent) => { e.preventDefault(); onContextMenu(path, e); } }
-        : {}),
+      ...(onContextMenu ? buildContextHandlers(path, onContextMenu) : {}),
     },
   }, inner);
 }

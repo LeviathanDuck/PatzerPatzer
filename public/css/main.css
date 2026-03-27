@@ -1620,6 +1620,7 @@ body.resizing {
   .analyse {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "board" "controls" "tools" "under";
+    grid-template-rows: auto auto minmax(18em, 40vh) auto;
     padding: 12px 10px 18px;
     gap: 8px 0;
     overflow-x: hidden;
@@ -1631,32 +1632,45 @@ body.resizing {
     min-width: 0;
   }
   .analyse__controls {
-    padding-top: 0;
-    gap: 8px;
+    padding: 4px 4px 0;
+    gap: 4px;
+    height: 5rem;
     align-items: stretch;
     touch-action: pan-y;
-  }
-  .analyse__controls .jumps,
-  .analyse__controls .analyse-review-controls {
-    flex: 1 1 calc(50% - 8px);
-  }
-  .analyse__controls .jumps .fbt {
-    min-height: 44px;
-    font-size: 1.4rem;
-    padding: 8px 6px;
+    flex-wrap: nowrap;
   }
   .analyse__controls .analyse-review-controls {
+    flex: 1 1 0;
     min-width: 0;
   }
+  .analyse__controls .jumps {
+    flex: 0 0 40%;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    gap: 2px;
+  }
+  .analyse__controls .jumps .fbt {
+    font-size: 1.4rem;
+    padding: 6px 4px;
+    border-radius: 6px 6px 0 0;
+    border: 1px solid #2e2e2e;
+    border-bottom: none;
+    background: #1a1a1a;
+    height: 100%;
+  }
   .analyse__controls .analyse-review-controls__row {
-    width: 100%;
-    flex-wrap: wrap;
-    gap: 8px;
+    height: 100%;
+    flex-wrap: nowrap;
+    gap: 4px;
   }
   .analyse__controls .analyse-review-controls__row > button {
-    flex: 1 1 calc(50% - 8px);
-    min-height: 44px;
-    font-size: 0.88rem;
+    flex: 1 1 0;
+    height: 100%;
+    font-size: 0.82rem;
+    border-radius: 6px 6px 0 0;
+    border-bottom: none;
   }
   .eval-bar,
   .analyse__player_strip,
@@ -1665,16 +1679,14 @@ body.resizing {
   }
   .analyse__tools {
     align-self: auto;
-    min-height: auto;
-    overflow: visible;
+    min-height: 0;
   }
   .ceval {
     min-height: 40px;
     column-gap: 4px;
   }
   .analyse__moves {
-    flex: 0 1 auto;
-    max-height: 36vh;
+    flex: 1 1 0;
     overflow-y: auto;
   }
   .retro-box {
