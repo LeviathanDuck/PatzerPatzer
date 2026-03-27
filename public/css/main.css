@@ -2722,7 +2722,7 @@ body[data-board=newspaper] cg-board::before {
   font-variant-numeric: tabular-nums;
 }
 .ceval pearl.ceval__ko {
-  color: hsl(307, 80%, 70%);
+  color: #a855f7;
 }
 .ceval .engine {
   flex: 2 1 auto;
