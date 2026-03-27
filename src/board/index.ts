@@ -17,7 +17,6 @@ import type { AnalyseCtrl } from '../analyse/ctrl';
 import { boardZoom, applyBoardZoom, saveBoardZoom } from './cosmetics';
 import { syncArrow } from '../engine/ctrl';
 import type { ImportedGame } from '../import/types';
-import { getActivePuzzleCtrl } from '../puzzles/runtime';
 import { addNode } from '../tree/ops';
 import type { TreeNode } from '../tree/types';
 
@@ -50,10 +49,6 @@ export let orientation: 'white' | 'black' = 'white';
 
 /** Pending pawn promotion — set when a pawn reaches the back rank, cleared after piece selection. */
 let pendingPromotion: { orig: string; dest: string; color: 'white' | 'black' } | null = null;
-
-/** Delay (ms) before opponent reply plays in a puzzle round. Gives the user a moment to
- *  see their move land before the automated response animates onto the board. */
-const PUZZLE_REPLY_DELAY_MS = 500;
 
 export function setOrientation(v: 'white' | 'black'): void {
   orientation = v;
@@ -135,37 +130,6 @@ export function onUserMove(orig: string, dest: string): void {
   // Adapted from lichess-org/lila: ui/lib/src/game/ground.ts
   const normMove = normalizeMove(pos, { from: fromSq, to: toSq });
   const normUci  = makeUci(normMove);
-  const puzzleCtrl = getActivePuzzleCtrl();
-
-  if (puzzleCtrl) {
-    const piece = pos.board.get(fromSq);
-    const reachesBackRank = piece?.role === 'pawn' && ((pos.turn === 'white' && toSq >= 56) || (pos.turn === 'black' && toSq < 8));
-    if (reachesBackRank) {
-      const expected = puzzleCtrl.currentExpectedMove();
-      if (expected?.startsWith(normUci)) {
-        pendingPromotion = { orig, dest, color: pos.turn };
-        _redraw();
-        return;
-      }
-    }
-    const outcome = puzzleCtrl.submitUserMove(normUci, ctrl.path);
-    if (!outcome.accepted) {
-      syncBoard();
-      _redraw();
-      return;
-    }
-    applyMoveToTree(normMove as NormalMove, pos);
-    // Lock board during the reply window so the user cannot move opponent pieces.
-    // Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts reply delay pattern.
-    cgInstance?.set({ movable: { color: 'both' as const, dests: new Map() } });
-    setTimeout(() => {
-      for (const reply of outcome.replies) playUciMove(reply);
-      puzzleCtrl.setCurrentPath(_getCtrl().path);
-      syncBoard();
-      _redraw();
-    }, PUZZLE_REPLY_DELAY_MS);
-    return;
-  }
 
   // Retro move interception: establish context BEFORE any navigation so both the
   // "existing child" fast path and the "new node" path are covered.
@@ -282,33 +246,6 @@ export function completePromotion(role: Role): void {
   if (!pendingPromotion) return;
   const { orig, dest } = pendingPromotion;
   pendingPromotion = null;
-  const puzzleCtrl = getActivePuzzleCtrl();
-  if (puzzleCtrl) {
-    const ctrl = _getCtrl();
-    const setup = parseFen(ctrl.node.fen).unwrap();
-    const pos = Chess.fromSetup(setup).unwrap();
-    const fromSq = parseSquare(orig);
-    const toSq = parseSquare(dest);
-    if (fromSq === undefined || toSq === undefined) return;
-    const move = normalizeMove(pos, { from: fromSq, to: toSq, promotion: role }) as NormalMove;
-    const outcome = puzzleCtrl.submitUserMove(makeUci(move), ctrl.path);
-    if (!outcome.accepted) {
-      syncBoard();
-      _redraw();
-      return;
-    }
-    applyMoveToTree(move, pos);
-    // Lock board during the reply window so the user cannot move opponent pieces.
-    // Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts reply delay pattern.
-    cgInstance?.set({ movable: { color: 'both' as const, dests: new Map() } });
-    setTimeout(() => {
-      for (const reply of outcome.replies) playUciMove(reply);
-      puzzleCtrl.setCurrentPath(_getCtrl().path);
-      syncBoard();
-      _redraw();
-    }, PUZZLE_REPLY_DELAY_MS);
-    return;
-  }
   completeMove(orig, dest, role);
 }
 

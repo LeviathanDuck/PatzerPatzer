@@ -10,8 +10,6 @@ import {
   toggleEngine, toggleThreatMode,
   showEngineArrows, setShowEngineArrows, syncArrow,
 } from './engine/ctrl';
-import { getActivePuzzleCtrl } from './puzzles/runtime';
-import { handlePuzzleKey } from './puzzles/index';
 import { pathInit } from './tree/ops';
 
 // --- Injected deps ---
@@ -53,15 +51,6 @@ export function bindKeyboardHandlers(deps: {
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement).tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-
-    // When a puzzle is active, delegate to the puzzle key handler first.
-    // 'f' (flip) is not intercepted — it falls through to the standard handler below.
-    if (getActivePuzzleCtrl()) {
-      if (e.key !== 'f' && e.key !== 'F') {
-        const consumed = handlePuzzleKey(e.key);
-        if (consumed) { e.preventDefault(); return; }
-      }
-    }
 
     if (e.shiftKey) {
       if (e.key === 'ArrowLeft')       { e.preventDefault(); previousBranch(); _redraw(); }

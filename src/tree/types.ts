@@ -79,6 +79,47 @@ export interface TreeNode extends TreeNodeBase {
   children: TreeNode[];
 }
 
+// ---- Learnable-moment reason metadata ----
+//
+// A stable machine-readable code for why a position was flagged as a learnable moment.
+// Carried by both RetroCandidate (in retro.ts) and PuzzleCandidate (persisted to IDB).
+//
+// This schema is intentionally small and explicit. Before new candidate families are added
+// (blown wins, missed defenses, punish-the-blunder, etc.) each new family should define its
+// own ReasonCode rather than overloading the existing ones.
+//
+// Detection confidence:
+//   'swing'       — confirmed: win-chance loss meets or exceeds the configured threshold.
+//                   Matches the evalSwings |povDiff| > 0.1 branch in nodeFinder.ts.
+//   'missed-mate' — confirmed: parent position had a forced mate available within the
+//                   configured distance but the played move did not deliver or maintain it.
+//                   Matches the prev.eval.mate && !curr.eval.mate branch in nodeFinder.ts.
+
+export type LearnableReasonCode = 'swing' | 'missed-mate';
+
+export interface LearnableReason {
+  /** Stable machine-readable identifier. Used for filtering and drill routing. */
+  code:    LearnableReasonCode;
+  /** Short user-facing label. */
+  label:   string;
+  /** One-sentence plain-language explanation. */
+  summary: string;
+}
+
+// Canonical reason instances — one per code so they can be compared by reference.
+export const LEARNABLE_REASONS: Readonly<Record<LearnableReasonCode, LearnableReason>> = {
+  'swing': {
+    code:    'swing',
+    label:   'Missed opportunity',
+    summary: 'The move played gave up a significant advantage.',
+  },
+  'missed-mate': {
+    code:    'missed-mate',
+    label:   'Missed forced mate',
+    summary: 'A forced checkmate sequence was available but was not played.',
+  },
+};
+
 // A position where the user missed a strong engine move.
 // Extracted from batch analysis; persisted in the puzzle-library IDB store.
 export interface PuzzleCandidate {
@@ -89,4 +130,11 @@ export interface PuzzleCandidate {
   san:      string;        // the mistake move that was played
   loss:     number;        // win-chance shift from mover's perspective
   ply:      number;        // ply of the mistake node (for move-number display)
+  /**
+   * Why this position was flagged as a learnable moment.
+   * Optional for backward compatibility with IDB records written before this field existed.
+   * Callers should default to LEARNABLE_REASONS['swing'] when absent (all pre-existing
+   * extractions used the win-chance swing path only).
+   */
+  reason?:  LearnableReason;
 }

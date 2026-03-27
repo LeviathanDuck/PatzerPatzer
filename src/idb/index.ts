@@ -3,7 +3,6 @@
 // Mirrors the pattern of lichess-org/lila: ui/analyse/src/idbTree.ts
 
 import type { ImportedGame } from '../import/types';
-import type { ImportedPuzzleFilters, StoredPuzzleSession } from '../puzzles/types';
 import type { PuzzleCandidate, TreeNode } from '../tree/types';
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
 
@@ -308,57 +307,4 @@ export function savePuzzle(c: PuzzleCandidate, redraw: () => void): void {
   savedPuzzles = [...savedPuzzles, c];
   void savePuzzlesToIdb();
   redraw();
-}
-
-export async function savePuzzleSessionToIdb(session: StoredPuzzleSession): Promise<void> {
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction('puzzle-library', 'readwrite');
-    tx.objectStore('puzzle-library').put(session, 'puzzle-session');
-  } catch (e) {
-    console.warn('[idb] puzzle session save failed', e);
-  }
-}
-
-export async function loadPuzzleSessionFromIdb(): Promise<StoredPuzzleSession | undefined> {
-  try {
-    const db = await openGameDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('puzzle-library', 'readonly')
-        .objectStore('puzzle-library').get('puzzle-session');
-      req.onsuccess = () => resolve(req.result as StoredPuzzleSession | undefined);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn('[idb] puzzle session load failed', e);
-    return undefined;
-  }
-}
-
-// Persists the active import filter selection (theme, opening, rating range) so
-// it survives page reload. Page is intentionally NOT persisted — always restore
-// to page 0 so the user starts at the beginning of their saved filter set.
-export async function savePuzzleQueryToIdb(filters: ImportedPuzzleFilters): Promise<void> {
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction('puzzle-library', 'readwrite');
-    tx.objectStore('puzzle-library').put(filters, 'puzzle-query-filters');
-  } catch (e) {
-    console.warn('[idb] puzzle query save failed', e);
-  }
-}
-
-export async function loadPuzzleQueryFromIdb(): Promise<ImportedPuzzleFilters | null> {
-  try {
-    const db = await openGameDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('puzzle-library', 'readonly')
-        .objectStore('puzzle-library').get('puzzle-query-filters');
-      req.onsuccess = () => resolve((req.result as ImportedPuzzleFilters | undefined) ?? null);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn('[idb] puzzle query load failed', e);
-    return null;
-  }
 }
