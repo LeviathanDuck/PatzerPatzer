@@ -64,8 +64,8 @@ import { puzzleHidesAnalysis } from './puzzles/runtime';
 import { buildStandalonePuzzleRoot } from './puzzles/round';
 import {
   enqueueBulkReview, isBulkRunning, initReviewQueue,
-  setMissedMoments, clearMissedMoments, getMissedMoments,
 } from './engine/reviewQueue';
+import { setMissedMoments, clearMissedMoments, getMissedMoments } from './engine/tactics';
 import { renderHeader, type HeaderDeps } from './header/index';
 import {
   type ImportedGame, restoreGameIdCounter,
@@ -580,7 +580,8 @@ function clearRetroMode(): void {
 function reviewAllGames(games: ImportedGame[]): void {
   if (games.length === 0) return;
   enqueueBulkReview(games);
-  window.location.hash = '#/games';
+  // Stay on the current page — only navigate to games if not already there.
+  if (currentRoute.name !== 'games') window.location.hash = '#/games';
 }
 
 // --- Route views ---
@@ -774,8 +775,7 @@ function view(route: Route): VNode {
     h('main', [routeContent(route)]),
     renderContextMenu(),
     h('footer.app-legal', [
-      h('span', 'Patzer Pro source is available under AGPL-3.0-or-later.'),
-      h('span', 'No warranty.'),
+      h('span', 'Patzer Pro source is available under AGPL.'),
       h('a', {
         attrs: {
           href: PUBLIC_SOURCE_URL,

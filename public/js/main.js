@@ -1712,10 +1712,11 @@ var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
 var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
-var showArrowLabels = localStorage.getItem("patzer.showArrowLabels") === "true";
+var showArrowLabels = localStorage.getItem("patzer.showArrowLabels") !== "false";
 var showReviewLabels = localStorage.getItem("patzer.showReviewLabels") !== "false";
 var showBoardReviewGlyphs = localStorage.getItem("patzer.showBoardReviewGlyphs") !== "false";
-var arrowLabelSize = storedInt("patzer.arrowLabelSize", 10, 6, 18);
+var ARROW_LABEL_SIZE_DEFAULT = window.matchMedia("(pointer: coarse)").matches ? 18 : 10;
+var arrowLabelSize = storedInt("patzer.arrowLabelSize", ARROW_LABEL_SIZE_DEFAULT, 6, 18);
 var pendingLines = [];
 var arrowDebounceTimer = null;
 var arrowSuppressUntil = 0;
@@ -2313,8 +2314,15 @@ function detectMissedMoments(mainline, cache, userColor, config = missedMomentCo
   }
   return moments;
 }
-function hasMissedMoments(mainline, cache, userColor, config) {
-  return detectMissedMoments(mainline, cache, userColor, config).length > 0;
+var _missedMomentsMap = /* @__PURE__ */ new Map();
+function getMissedMoments(gameId) {
+  return _missedMomentsMap.get(gameId) ?? [];
+}
+function setMissedMoments(gameId, moments) {
+  _missedMomentsMap.set(gameId, moments);
+}
+function clearMissedMoments(gameId) {
+  _missedMomentsMap.delete(gameId);
 }
 
 // src/idb/index.ts
@@ -2630,9 +2638,6 @@ function resetBatchState() {
   analysisRunning = false;
   analysisComplete = false;
 }
-function detectMissedTactics(userColor) {
-  return hasMissedMoments(_getCtrl2().mainline, evalCache, userColor);
-}
 function evalBatchItem(item) {
   const wasActive = isEngineSearchActive();
   if (wasActive) incrementPendingStopCount();
@@ -2696,7 +2701,9 @@ function advanceBatch() {
       _analyzedGameIds.add(gameId);
       const game = _getImportedGames().find((g) => g.id === gameId);
       const userColor = game ? _getUserColor(game) : null;
-      if (detectMissedTactics(userColor)) _missedTacticGameIds.add(gameId);
+      const moments = detectMissedMoments(_getCtrl2().mainline, evalCache, userColor);
+      setMissedMoments(gameId, moments);
+      if (moments.length > 0) _missedTacticGameIds.add(gameId);
       const liveSummary = computeAnalysisSummary(_getCtrl2().mainline, evalCache);
       if (liveSummary) {
         _analyzedGameAccuracy.set(gameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });
@@ -10473,16 +10480,6 @@ var _analyzedGameAccuracy2 = /* @__PURE__ */ new Map();
 var _getUserColor2 = () => null;
 var _redraw9 = () => {
 };
-var _missedMomentsMap = /* @__PURE__ */ new Map();
-function getMissedMoments(gameId) {
-  return _missedMomentsMap.get(gameId) ?? [];
-}
-function setMissedMoments(gameId, moments) {
-  _missedMomentsMap.set(gameId, moments);
-}
-function clearMissedMoments(gameId) {
-  _missedMomentsMap.delete(gameId);
-}
 function initReviewQueue(deps) {
   _analyzedGameIds2 = deps.analyzedGameIds;
   _missedTacticGameIds2 = deps.missedTacticGameIds;
@@ -10496,7 +10493,7 @@ function recomputeMissedTactics() {
     if (entry.status !== "complete") continue;
     const userColor = _getUserColor2(entry.game);
     const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
-    _missedMomentsMap.set(entry.game.id, moments);
+    setMissedMoments(entry.game.id, moments);
     if (moments.length > 0) {
       _missedTacticGameIds2.add(entry.game.id);
     } else {
@@ -10645,7 +10642,7 @@ function finishEntry(entry) {
   const userColor = _getUserColor2(entry.game);
   _analyzedGameIds2.add(entry.game.id);
   const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
-  _missedMomentsMap.set(entry.game.id, moments);
+  setMissedMoments(entry.game.id, moments);
   if (moments.length > 0) _missedTacticGameIds2.add(entry.game.id);
   const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
   if (summary) {
@@ -12727,7 +12724,7 @@ function clearRetroMode() {
 function reviewAllGames(games) {
   if (games.length === 0) return;
   enqueueBulkReview(games);
-  window.location.hash = "#/games";
+  if (currentRoute.name !== "games") window.location.hash = "#/games";
 }
 function routeContent(route) {
   const deps = {
