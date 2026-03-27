@@ -11,7 +11,12 @@
     "build": "node build.mjs",
     "serve": "node server.mjs",
     "typecheck": "tsc --noEmit",
-    "audit:prompts": "node scripts/audit-prompt-tracking.mjs"
+    "prompts:generate": "node scripts/generate-prompt-docs.mjs",
+    "prompts:refresh": "npm run prompts:generate && npm run prompts:dashboard && npm run audit:prompts",
+    "prompts:migrate": "node scripts/migrate-prompt-registry.mjs && npm run prompts:generate",
+    "audit:prompts": "node scripts/audit-prompt-tracking.mjs",
+    "prompts:dashboard": "node scripts/generate-prompt-dashboard.mjs",
+    "prompt:start": "node scripts/prompt-start.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.0",
