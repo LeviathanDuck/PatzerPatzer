@@ -650,6 +650,12 @@ main {
   margin-right: 2px;
   flex-shrink: 0;
 }
+.header__panel-warn {
+  font-size: 0.75rem;
+  color: #c9a227;
+  margin: 4px 0 0;
+  line-height: 1.35;
+}
 .header__panel-btn {
   padding: 4px 12px;
   background: #222;
