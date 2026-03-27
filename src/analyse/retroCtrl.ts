@@ -50,6 +50,15 @@ export type WinKind = 'exact' | 'near-best';
  */
 export type FailKind = 'better' | 'worse';
 
+/**
+ * Outcome of a single retro candidate after the user has interacted with it.
+ * 'win'  — user found a good move (exact or near-best)
+ * 'fail' — user played a suboptimal move (may have retried or given up)
+ * 'view' — user revealed the solution without solving it
+ * 'skip' — user skipped the candidate entirely
+ */
+export type RetroOutcome = 'win' | 'fail' | 'view' | 'skip';
+
 export interface RetroCtrl {
   /** Currently active candidate, or null if the session is exhausted. */
   current(): RetroCandidate | null;
@@ -165,6 +174,18 @@ export interface RetroCtrl {
    */
   reset(): void;
 
+  /**
+   * Returns candidates that the user failed, viewed the solution for, or skipped.
+   * These are the "missed" positions suitable for bulk-saving to the puzzle library
+   * after a session ends.
+   */
+  getFailedCandidates(): RetroCandidate[];
+
+  /**
+   * Returns the recorded outcome for a candidate (by ply), or undefined if not yet resolved.
+   */
+  getOutcome(ply: number): RetroOutcome | undefined;
+
   /** The full ordered candidate list for this session. */
   readonly candidates: readonly RetroCandidate[];
 
@@ -190,6 +211,10 @@ export function makeRetroCtrl(
 ): RetroCtrl {
   // Mirrors retroCtrl.ts: solvedPlies (tracks which plies have been resolved)
   let solvedPlies: number[] = [];
+
+  // Per-candidate outcome tracking, keyed by ply.
+  // Records how each candidate was resolved during the session.
+  let outcomes = new Map<number, RetroOutcome>();
 
   // Index into candidates of the active exercise, or -1 if exhausted.
   let currentIdx = -1;
@@ -229,12 +254,18 @@ export function makeRetroCtrl(
   }
 
   function skip(): void {
+    const c = candidates[currentIdx];
+    if (c) outcomes.set(c.ply, 'skip');
     solveCurrent();
     jumpToNext();
   }
 
   function viewSolution(): void {
     _feedback = 'view';
+    const c = candidates[currentIdx];
+    // Only record 'view' if not already recorded as 'fail' (fail takes priority —
+    // viewing the solution after failing is still a fail for bulk-save purposes).
+    if (c && !outcomes.has(c.ply)) outcomes.set(c.ply, 'view');
     solveCurrent();
   }
 
@@ -326,6 +357,7 @@ export function makeRetroCtrl(
         if (diff > -0.04) {
           // Near-best: accept. Mirrors lichess-org/lila: retroCtrl.ts onWin().
           solveCurrent();
+          if (c) outcomes.set(c.ply, 'win');
           _winKind  = 'near-best';
           _feedback = 'win';
         } else {
@@ -340,11 +372,13 @@ export function makeRetroCtrl(
           } else {
             _failKind = 'worse'; // no game eval to compare — treat as worse
           }
+          if (c) outcomes.set(c.ply, 'fail');
           _feedback = 'fail';
           navigateTo(c.parentPath); // return user to exercise start for retry
         }
       } else {
         // No parent eval available — cannot compute povDiff; fall back to fail.
+        if (c) outcomes.set(c.ply, 'fail');
         _failKind = null;
         _feedback = 'fail';
         navigateTo(c.parentPath);
@@ -355,6 +389,8 @@ export function makeRetroCtrl(
       // Mark solved BEFORE navigate so onJump sees 'win' and skips offTrack detection.
       // Mirrors lichess-org/lila: retroCtrl.ts onWin → solveCurrent() + feedback('win').
       solveCurrent();
+      const c = candidates[currentIdx];
+      if (c) outcomes.set(c.ply, 'win');
       _winKind  = 'exact';
       _feedback = 'win';
     },
@@ -362,6 +398,8 @@ export function makeRetroCtrl(
     onFail(): void {
       // Set fail AFTER navigate — overwrites the transient 'offTrack' set by onJump.
       // Mirrors lichess-org/lila: retroCtrl.ts onFail → feedback('fail').
+      const c = candidates[currentIdx];
+      if (c) outcomes.set(c.ply, 'fail');
       _feedback = 'fail';
     },
 
@@ -377,7 +415,21 @@ export function makeRetroCtrl(
 
     reset(): void {
       solvedPlies = [];
+      outcomes = new Map();
       jumpToNext();
+    },
+
+    getFailedCandidates(): RetroCandidate[] {
+      // Return candidates where the user failed, viewed the solution, or skipped.
+      // These are all "missed" moments suitable for saving to the puzzle library.
+      return candidates.filter(c => {
+        const o = outcomes.get(c.ply);
+        return o === 'fail' || o === 'view' || o === 'skip';
+      });
+    },
+
+    getOutcome(ply: number): RetroOutcome | undefined {
+      return outcomes.get(ply);
     },
   };
 }

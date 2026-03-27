@@ -82,6 +82,31 @@ export type PuzzleDefinition =
   | ImportedLichessPuzzleDefinition
   | UserLibraryPuzzleDefinition;
 
+// --- Session mode ---
+
+/**
+ * Whether a puzzle session is practice (default) or rated.
+ * 'rated' mode is reserved for a future rating progression feature.
+ * Currently all sessions are 'practice'.
+ */
+export type PuzzleSessionMode = 'practice' | 'rated';
+
+// --- Rating snapshot (future hook) ---
+
+/**
+ * Shape of a per-attempt rating snapshot for the future rated puzzle mode.
+ * Not populated yet — defined here so the PuzzleAttempt schema is forward-compatible
+ * and existing IDB records won't need migration when rating support lands.
+ */
+export interface PuzzleRatingSnapshot {
+  /** Glicko-2 rating value. */
+  rating: number;
+  /** Glicko-2 rating deviation. */
+  deviation: number;
+  /** Epoch ms when this snapshot was recorded. */
+  timestamp: number;
+}
+
 // --- Solve result model ---
 
 /**
@@ -136,14 +161,63 @@ export interface PuzzleAttempt {
   openedNotesDuringSolve: boolean;
   /** Whether the attempt ended via the skip action. */
   skipped: boolean;
+
+  // --- Rated-mode hooks (future) ---
+  // These fields are not populated yet. They exist so the PuzzleAttempt shape
+  // is forward-compatible with a future rated puzzle mode. When the rating
+  // algorithm is implemented, rated-mode attempts will populate ratingBefore
+  // and ratingAfter; practice-mode attempts will leave them undefined.
+
+  /** Whether this attempt was recorded in practice or rated mode. */
+  sessionMode?: PuzzleSessionMode;
+  /** User's puzzle rating snapshot immediately before this attempt. */
+  ratingBefore?: PuzzleRatingSnapshot;
+  /** User's puzzle rating snapshot immediately after this attempt. */
+  ratingAfter?: PuzzleRatingSnapshot;
+}
+
+// --- Move quality evaluation (engine assist layer) ---
+
+/**
+ * Engine-based quality assessment of a move played during a puzzle solve.
+ * This is SEPARATE from strict solution-line correctness — a move can be
+ * wrong (didn't match the solution) but still be objectively good, or right
+ * (matched the solution) but only marginally better than alternatives.
+ *
+ * Used by the UI to show contextual feedback like "your move was actually
+ * fine" or "your move lost 2 pawns". Reusable by both the puzzle product
+ * and Learn From Your Mistakes.
+ *
+ * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts post-solve ceval concepts
+ * and ui/analyse/src/retrospect/retroCtrl.ts povDiff threshold model.
+ */
+export interface PuzzleMoveQuality {
+  /** The UCI move that was actually played. */
+  playedUci: string;
+  /** The UCI move the solution line expected. */
+  expectedUci: string;
+  /** Whether the played move matched the solution (from strict check). */
+  matched: boolean;
+  /** Engine eval of the position before the move (white-perspective cp). */
+  evalBefore?: { cp?: number; mate?: number };
+  /** Engine eval of the position after the move (white-perspective cp). */
+  evalAfter?: { cp?: number; mate?: number };
+  /** Centipawn loss from the solver's perspective (positive = worse). */
+  cpLoss?: number;
+  /** Win-chance loss from the solver's perspective (0–0.5 scale, positive = worse). */
+  wcLoss?: number;
+  /**
+   * Quality classification of the move.
+   * 'best' — matched the solution line (or engine best).
+   * 'good' — did not match but within inaccuracy threshold.
+   * 'inaccuracy' / 'mistake' / 'blunder' — classified by win-chance loss thresholds
+   * from src/engine/winchances.ts (LOSS_THRESHOLDS).
+   */
+  quality: 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 }
 
 // --- Per-puzzle user metadata ---
 
-/**
- * Mutable user-owned metadata attached to a puzzle definition.
- * Separated from solve-attempt state per the V1 plan.
- */
 export interface PuzzleUserMeta {
   /** References PuzzleDefinition.id. */
   puzzleId: string;
@@ -154,4 +228,15 @@ export interface PuzzleUserMeta {
   favorite: boolean;
   /** Timestamp of last metadata edit. */
   updatedAt: number; // epoch ms
+
+  // --- Simple review-interval metadata ---
+  // These fields support a lightweight "due for review" concept based on
+  // fixed intervals per result type. This is NOT spaced repetition — just a
+  // simple interval heuristic so the library can surface puzzles that are
+  // due for another attempt.
+
+  /** Epoch ms when the puzzle should next be retried. Absent = no schedule. */
+  dueAt?: number;
+  /** Cached result from the most recent attempt, for quick filtering. */
+  lastAttemptResult?: SolveResult;
 }
