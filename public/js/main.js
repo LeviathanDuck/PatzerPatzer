@@ -12824,6 +12824,10 @@ function scrollActiveIntoView(behavior = "instant") {
       scrollView.scrollTo({ top: 0, behavior });
       return;
     }
+    if (scrollView.scrollHeight <= scrollView.clientHeight + 2) {
+      moveEl.scrollIntoView({ behavior, block: "center" });
+      return;
+    }
     const move3 = moveEl.getBoundingClientRect();
     const view2 = scrollView.getBoundingClientRect();
     const visibleHeight = Math.min(view2.bottom, window.innerHeight) - Math.max(view2.top, 0);

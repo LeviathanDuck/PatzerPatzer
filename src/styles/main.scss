@@ -1376,17 +1376,10 @@ body.resizing {
   display: none;
 }
 
-.analyse__controls {
-  grid-area: controls;
-  align-self: start;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding-top: 8px;
-
-  // Action buttons (Review, Mistakes) — share fbt spirit but with a border for visual grouping
-  // Targets .btn-review and the Mistakes/Close button inside .analyse-review-controls__row
+// Action buttons (Review, Mistakes) — shared style for both desktop controls and mobile actions row.
+// Targets .btn-review and the Mistakes/Close button inside .analyse-review-controls__row
+.analyse__controls,
+.analyse__actions {
   .analyse-review-controls__row > button {
     background: #1e1e1e;
     color: #bbb;
@@ -1423,6 +1416,16 @@ body.resizing {
       color: #9cc9f5;
     }
   }
+}
+
+.analyse__controls {
+  grid-area: controls;
+  align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
 }
 
 // Content below the board (eval graph, review controls, import sections).
