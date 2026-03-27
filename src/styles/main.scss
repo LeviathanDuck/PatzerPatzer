@@ -3125,6 +3125,14 @@ body[data-board='newspaper'] cg-board::before {
     &:hover  { background: #2a2a2a; color: #ccc; }
     &.active { background: #1e3a1e; color: #6f6; border-color: #3a7a3a; }
 
+    // Tactics severity pills — amber label to match the badge warning color.
+    &.--tactics {
+      color: #f84;
+      font-weight: 600;
+      &:hover  { background: #2a1a0a; color: #ffa060; }
+      &.active { background: #2e1500; color: #ffa060; border-color: #8b3a00; }
+    }
+
     &[data-icon]::before {
       font-family: 'lichess';
       content: attr(data-icon);

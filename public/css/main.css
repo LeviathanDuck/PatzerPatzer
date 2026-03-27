@@ -3183,6 +3183,19 @@ body[data-board=newspaper] cg-board::before {
   color: #6f6;
   border-color: #3a7a3a;
 }
+.games-view__pill.--tactics {
+  color: #f84;
+  font-weight: 600;
+}
+.games-view__pill.--tactics:hover {
+  background: #2a1a0a;
+  color: #ffa060;
+}
+.games-view__pill.--tactics.active {
+  background: #2e1500;
+  color: #ffa060;
+  border-color: #8b3a00;
+}
 .games-view__pill[data-icon]::before {
   font-family: "lichess";
   content: attr(data-icon);
