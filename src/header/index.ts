@@ -90,11 +90,12 @@ function renderNav(route: Route): VNode {
 
 const REVIEW_DEPTHS = [12, 14, 16, 18, 20];
 
-function renderReviewMenu(redraw: () => void): VNode {
+function renderReviewMenu(redraw: () => void): VNode | null {
   const running = isBulkRunning();
   const paused  = isBulkPaused();
   const active  = running || paused;
-  const summary = active ? getQueueSummary() : null;
+  if (!active) return null;
+  const summary = getQueueSummary();
   const auto    = getAutoReview();
 
   return h('div.review-menu', [
@@ -102,7 +103,7 @@ function renderReviewMenu(redraw: () => void): VNode {
       class: { active: showReviewMenu || active },
       attrs: { title: 'Bulk Review settings' },
       on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
-    }, active ? `Review ${summary!.done}/${summary!.total}` : 'Review'),
+    }, summary ? `Reviewing ${summary.done}/${summary.total}` : 'Reviewing…'),
 
     showReviewMenu ? h('div.review-menu__backdrop', {
       on: { click: () => { showReviewMenu = false; redraw(); } },
@@ -111,10 +112,10 @@ function renderReviewMenu(redraw: () => void): VNode {
     showReviewMenu ? h('div.review-menu__dropdown', [
 
       // Queue status + controls
-      active ? h('div.review-menu__section', [
+      h('div.review-menu__section', [
         h('div.review-menu__label', summary
           ? `${summary.done} of ${summary.total} game${summary.total === 1 ? '' : 's'} analyzed`
-          : 'Idle'),
+          : 'Reviewing…'),
         h('div.review-menu__row', [
           paused
             ? h('button.review-menu__btn', {
@@ -127,7 +128,7 @@ function renderReviewMenu(redraw: () => void): VNode {
             on: { click: () => { cancelBulkReview(); redraw(); } },
           }, 'Cancel'),
         ]),
-      ]) : null,
+      ]),
 
       h('div.review-menu__section', [
         h('div.review-menu__label', `Depth: ${reviewDepth}`),
