@@ -14,10 +14,11 @@ import {
 import {
   evalCache,
   currentEval, resetCurrentEval, setCurrentEval, clearEvalCache,
-  engineEnabled,
+  engineEnabled, analysisDepth,
   evalCurrentPosition,
   syncArrow,
   initEngine,
+  setOnLiveEvalImproved,
   type PositionEval,
 } from './engine/ctrl';
 import {
@@ -59,6 +60,8 @@ import {
   clearPuzzleCandidates, renderPuzzleCandidates,
   type PuzzleRenderDeps,
 } from './puzzles/extract';
+import { initPuzzlePage, loadLibraryCounts, openPuzzleRound } from './puzzles/ctrl';
+import { renderPuzzleLibrary, renderPuzzleRound } from './puzzles/view';
 import {
   enqueueBulkReview, isBulkRunning, initReviewQueue,
 } from './engine/reviewQueue';
@@ -68,9 +71,10 @@ import {
   type ImportedGame, restoreGameIdCounter,
 } from './import/types';
 import {
-  ANALYSIS_VERSION, clearAllIdbData, clearAnalysisFromIdb, loadAnalysisFromIdb, loadGamesFromIdb,
-  loadPuzzlesFromIdb, saveGamesToIdb, saveNavStateToIdb, savedPuzzles, savePuzzle,
-  setSavedPuzzles,
+  ANALYSIS_VERSION, buildAnalysisNodes, clearAllIdbData, clearAnalysisFromIdb,
+  loadAnalysisFromIdb, loadGamesFromIdb,
+  loadPuzzlesFromIdb, saveAnalysisToIdb, saveGamesToIdb, saveNavStateToIdb,
+  savedPuzzles, savePuzzle, setSavedPuzzles,
 } from './idb/index';
 import { current, onChange, type Route } from './router';
 import { deleteNodeAt, nodeAtPath, pathInit, promoteAt, pruneVariations } from './tree/ops';
@@ -814,6 +818,16 @@ function routeContent(route: Route): VNode {
         renderKeyboardHelp(),
       ]);
     case 'games':    return renderGamesView(deps);
+    case 'puzzles':
+      initPuzzlePage('library');
+      void loadLibraryCounts(redraw);
+      return renderPuzzleLibrary(redraw);
+    case 'puzzle-round': {
+      const puzzleId = route.params.id ?? '';
+      initPuzzlePage('round', puzzleId);
+      void openPuzzleRound(puzzleId, redraw);
+      return renderPuzzleRound(redraw);
+    }
     case 'openings': return h('h1', 'Openings Page');
     case 'stats':    return h('h1', 'Stats Page');
     default:         return h('h1', 'Home');
@@ -954,6 +968,21 @@ initBatch({
   getUserColor,
   redraw,
 });
+// When live eval produces a deeper result than what's cached, debounce an IDB save
+// so the improved evaluation persists across page reloads.
+let _liveEvalSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const LIVE_EVAL_SAVE_DELAY_MS = 3000;
+setOnLiveEvalImproved(() => {
+  if (_liveEvalSaveTimer) clearTimeout(_liveEvalSaveTimer);
+  _liveEvalSaveTimer = setTimeout(() => {
+    _liveEvalSaveTimer = null;
+    const gameId = selectedGameId;
+    if (!gameId) return;
+    const nodes = buildAnalysisNodes(ctrl.mainline, p => evalCache.get(p));
+    void saveAnalysisToIdb('complete', gameId, nodes, analysisDepth);
+  }, LIVE_EVAL_SAVE_DELAY_MS);
+});
+
 initReviewQueue({
   analyzedGameIds,
   missedTacticGameIds,
