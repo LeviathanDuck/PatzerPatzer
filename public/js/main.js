@@ -6589,7 +6589,8 @@ function renderPlayerStrips() {
   const bottomColor = orientation === "white" ? "white" : "black";
   return [strip(topColor), strip(bottomColor)];
 }
-function bindBoardResizeHandle(container) {
+function bindBoardResizeHandle(wrap) {
+  const container = wrap.querySelector("cg-container") ?? wrap;
   const el = document.createElement("cg-resize");
   container.appendChild(el);
   const eventPos = (e) => {
