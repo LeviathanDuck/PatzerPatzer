@@ -95,6 +95,8 @@ For normal runnable prompts:
   - `createdAt` set to the current ISO datetime
 - generated prompt bodies should instruct the executing model to:
   - run `npm run prompt:start -- <PROMPT_ID>` as the first execution step
+  - use that exact command form, including the `--` argument separator
+  - not wrap the required startup command in shell piping or truncation helpers such as `| tail -5`
   - only continue implementation work after that command succeeds
 
 For manager prompts:

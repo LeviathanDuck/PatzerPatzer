@@ -47,6 +47,7 @@ The prompt you generate must instruct Claude Code to:
 - echo a `Prompt ID` field in the final report, matching the exact prompt instance metadata
 - keep the `Task ID` field in the final report too
 - as the first execution step, run `npm run prompt:start -- <PROMPT_ID>`
+- keep that startup command exact: include `--` and do not replace it with a piped or truncated variant
 - only continue implementation work after that command succeeds so the registry, markdown reports, and HTML dashboard are updated before coding begins
 
 The final prompt should include near the top:

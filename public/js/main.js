@@ -10131,6 +10131,113 @@ async function getMeta(puzzleId) {
   }
 }
 
+// src/puzzles/shardLoader.ts
+var BASE_PATH = "/generated/lichess-puzzles";
+var _manifest = null;
+var _manifestLoading = false;
+var _shardCache = /* @__PURE__ */ new Map();
+async function loadManifest() {
+  if (_manifest) return _manifest;
+  if (_manifestLoading) {
+    return new Promise((resolve, reject) => {
+      const check = setInterval(() => {
+        if (_manifest) {
+          clearInterval(check);
+          resolve(_manifest);
+        }
+        if (!_manifestLoading) {
+          clearInterval(check);
+          reject(new Error("manifest load failed"));
+        }
+      }, 50);
+    });
+  }
+  _manifestLoading = true;
+  try {
+    const res = await fetch(`${BASE_PATH}/manifest.json`);
+    if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`);
+    _manifest = await res.json();
+    return _manifest;
+  } catch (e) {
+    _manifestLoading = false;
+    throw e;
+  }
+}
+async function loadShard(shardId) {
+  const cached = _shardCache.get(shardId);
+  if (cached) return cached;
+  const manifest = await loadManifest();
+  const meta = manifest.shards.find((s) => s.id === shardId);
+  if (!meta) throw new Error(`shard ${shardId} not found in manifest`);
+  const res = await fetch(`${BASE_PATH}/${meta.file}`);
+  if (!res.ok) throw new Error(`shard fetch failed: ${res.status}`);
+  const records = await res.json();
+  _shardCache.set(shardId, records);
+  return records;
+}
+async function loadFilteredShard(shardId, filters) {
+  const records = await loadShard(shardId);
+  return records.filter((r) => {
+    if (filters.ratingMin !== void 0 && r.rating < filters.ratingMin) return false;
+    if (filters.ratingMax !== void 0 && r.rating > filters.ratingMax) return false;
+    if (filters.theme && !r.themes.includes(filters.theme)) return false;
+    return true;
+  });
+}
+function getManifestThemes() {
+  return _manifest?.themes ?? [];
+}
+
+// src/puzzles/adapters.ts
+function retroCandidateToDefinition(candidate, opts) {
+  const idBase = candidate.gameId ? `${candidate.gameId}_${candidate.path}` : `user_${simpleHash(candidate.fenBefore + candidate.bestMove)}`;
+  const solutionLine = candidate.bestLine && candidate.bestLine.length > 0 ? candidate.bestLine : [candidate.bestMove];
+  const def = {
+    id: idBase,
+    sourceKind: "user-library",
+    startFen: candidate.fenBefore,
+    solutionLine,
+    strictSolutionMove: candidate.bestMove,
+    createdAt: Date.now(),
+    sourcePath: candidate.parentPath,
+    sourceReason: candidate.reason.code
+  };
+  if (candidate.gameId != null) def.sourceGameId = candidate.gameId;
+  if (opts?.title != null) def.title = opts.title;
+  if (opts?.notes != null) def.notes = opts.notes;
+  if (opts?.tags != null) def.tags = opts.tags;
+  if (opts?.sourcePgn != null) def.sourcePgn = opts.sourcePgn;
+  return def;
+}
+function lichessShardRecordToDefinition(record) {
+  if (record.moves.length < 2) return void 0;
+  const solutionLine = record.moves.slice(1);
+  const def = {
+    id: `lichess_${record.id}`,
+    sourceKind: "imported-lichess",
+    startFen: record.fen,
+    solutionLine,
+    strictSolutionMove: solutionLine[0],
+    createdAt: Date.now(),
+    lichessPuzzleId: record.id,
+    rating: record.rating,
+    themes: record.themes,
+    openingTags: record.openingTags
+  };
+  if (record.ratingDeviation != null) def.ratingDeviation = record.ratingDeviation;
+  if (record.popularity != null) def.popularity = record.popularity;
+  if (record.plays != null) def.plays = record.plays;
+  if (record.gameUrl != null) def.gameUrl = record.gameUrl;
+  return def;
+}
+function simpleHash(input) {
+  let h2 = 0;
+  for (let i = 0; i < input.length; i++) {
+    h2 = (h2 << 5) - h2 + input.charCodeAt(i) | 0;
+  }
+  return (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
 // src/puzzles/ctrl.ts
 var altCastles = {
   e1a1: "e1c1",
@@ -10716,6 +10823,20 @@ function destroyPuzzleBoard() {
   puzzleCg?.destroy();
   puzzleCg = void 0;
 }
+function mountIdleBoard(el) {
+  if (puzzleCg) {
+    puzzleCg.destroy();
+    puzzleCg = void 0;
+  }
+  puzzleCg = Chessground(el, {
+    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    orientation: "white",
+    viewOnly: true,
+    coordinates: true,
+    animation: { enabled: false },
+    drawable: { enabled: false }
+  });
+}
 var metaCache = /* @__PURE__ */ new Map();
 function defaultMeta(puzzleId) {
   return { puzzleId, folders: [], favorite: false, updatedAt: Date.now() };
@@ -10756,11 +10877,16 @@ function getOrCreateMeta(puzzleId) {
 async function loadLibraryCounts(redraw2) {
   try {
     const all = await listPuzzleDefinitions();
-    let imported = 0;
     let user = 0;
     for (const p of all) {
-      if (p.sourceKind === "imported-lichess") imported++;
-      else if (p.sourceKind === "user-library") user++;
+      if (p.sourceKind === "user-library") user++;
+    }
+    let imported = 0;
+    try {
+      const manifest = await loadManifest();
+      imported = manifest.totalCount;
+    } catch {
+      imported = all.filter((p) => p.sourceKind === "imported-lichess").length;
     }
     libraryCounts = { imported, user };
   } catch (e) {
@@ -10800,6 +10926,8 @@ function applyListFilters(ls) {
   ls.page = 1;
   ls.visible = filtered.slice(0, ls.pageSize);
 }
+var _importedShards = [];
+var _importedShardIndex = 0;
 async function openPuzzleList(source, redraw2) {
   puzzleListState = {
     source,
@@ -10814,35 +10942,65 @@ async function openPuzzleList(source, redraw2) {
   };
   redraw2();
   try {
-    const all = await listPuzzleDefinitions();
-    const forSource = all.filter((p) => p.sourceKind === source);
     if (source === "imported-lichess") {
-      forSource.sort((a, b) => {
-        const ra = a.sourceKind === "imported-lichess" ? a.rating : 0;
-        const rb = b.sourceKind === "imported-lichess" ? b.rating : 0;
-        return ra - rb;
-      });
+      await openImportedList(redraw2);
     } else {
-      forSource.sort((a, b) => b.createdAt - a.createdAt);
+      await openUserLibraryList(redraw2);
     }
-    const themeSet = /* @__PURE__ */ new Set();
-    for (const p of forSource) {
-      if (p.sourceKind === "imported-lichess") {
-        for (const t of p.themes) themeSet.add(t);
-      }
-    }
-    const themes = Array.from(themeSet).sort();
-    puzzleListState.allForSource = forSource;
-    puzzleListState.availableThemes = themes;
-    puzzleListState.loading = false;
-    applyListFilters(puzzleListState);
   } catch (e) {
     console.warn("[puzzle-ctrl] openPuzzleList failed", e);
-    if (puzzleListState) {
-      puzzleListState.loading = false;
-    }
+    if (puzzleListState) puzzleListState.loading = false;
   }
   redraw2();
+}
+async function openUserLibraryList(redraw2) {
+  const all = await listPuzzleDefinitions();
+  const forSource = all.filter((p) => p.sourceKind === "user-library");
+  forSource.sort((a, b) => b.createdAt - a.createdAt);
+  puzzleListState.allForSource = forSource;
+  puzzleListState.availableThemes = [];
+  puzzleListState.loading = false;
+  applyListFilters(puzzleListState);
+}
+async function openImportedList(redraw2) {
+  const manifest = await loadManifest();
+  _importedShards = manifest.shards;
+  _importedShardIndex = 0;
+  puzzleListState.availableThemes = getManifestThemes();
+  if (_importedShards.length > 0) {
+    await loadNextImportedShard();
+  }
+  puzzleListState.loading = false;
+  applyListFilters(puzzleListState);
+  redraw2();
+}
+async function loadNextImportedShard() {
+  if (_importedShardIndex >= _importedShards.length) return false;
+  const shard = _importedShards[_importedShardIndex];
+  _importedShardIndex++;
+  const filters = puzzleListState?.filters ?? {};
+  const records = await loadFilteredShard(shard.id, filters);
+  const defs = records.map((r) => lichessShardRecordToDefinition(r)).filter((d) => d !== void 0);
+  puzzleListState.allForSource.push(...defs);
+  puzzleListState.allForSource.sort((a, b) => {
+    const ra = a.sourceKind === "imported-lichess" ? a.rating : 0;
+    const rb = b.sourceKind === "imported-lichess" ? b.rating : 0;
+    return ra - rb;
+  });
+  applyListFilters(puzzleListState);
+  return true;
+}
+async function loadMoreImportedShards(redraw2) {
+  if (!puzzleListState || puzzleListState.source !== "imported-lichess") return;
+  puzzleListState.loading = true;
+  redraw2();
+  const loaded = await loadNextImportedShard();
+  puzzleListState.loading = false;
+  if (!loaded) console.log("[puzzle-ctrl] all shards loaded");
+  redraw2();
+}
+function hasMoreImportedShards() {
+  return _importedShardIndex < _importedShards.length;
 }
 function filterPuzzleList(filters, redraw2) {
   if (!puzzleListState) return;
@@ -10859,6 +11017,12 @@ function loadMorePuzzles(redraw2) {
   redraw2();
 }
 async function selectPuzzleFromList(id, redraw2) {
+  if (puzzleListState) {
+    const def = puzzleListState.allForSource.find((p) => p.id === id);
+    if (def) {
+      await savePuzzleDefinition(def);
+    }
+  }
   roundState = null;
   activeRoundCtrl = null;
   await openPuzzleRound(id, redraw2);
@@ -11098,90 +11262,85 @@ function sourceCard(title, description, count, sourceKind, redraw2) {
     )
   ]);
 }
+function renderLibrarySidebar(redraw2) {
+  const counts = getLibraryCounts();
+  const rCount = getRetryCount();
+  const dCount = getDueCount();
+  if (rCount === void 0) loadRetryCount(redraw2);
+  if (dCount === void 0) loadDueCount(redraw2);
+  return h("aside.puzzle__side.puzzle-library__sidebar", [
+    h("h2.puzzle-library__title", "Puzzle Library"),
+    // Source cards
+    sourceCard(
+      "Imported Puzzles",
+      "Puzzles from the Lichess database.",
+      counts?.imported,
+      "imported-lichess",
+      redraw2
+    ),
+    sourceCard(
+      "User Library",
+      "Puzzles from your reviewed games.",
+      counts?.user,
+      "user-library",
+      redraw2
+    ),
+    // Due for Review
+    h("div.puzzle-library__section", [
+      h("div.puzzle-library__section-header", [
+        h("h3", "Due for Review"),
+        h(
+          "span.puzzle-library__count",
+          dCount !== void 0 ? `${dCount}` : "\u2026"
+        )
+      ]),
+      h("button.button.puzzle-library__action", {
+        attrs: { disabled: dCount === void 0 || dCount === 0 },
+        on: { click: () => {
+          startDueSession(redraw2);
+        } }
+      }, "Review Due")
+    ]),
+    // Retry Failed
+    h("div.puzzle-library__section", [
+      h("div.puzzle-library__section-header", [
+        h("h3", "Retry Failed"),
+        h(
+          "span.puzzle-library__count",
+          rCount !== void 0 ? `${rCount}` : "\u2026"
+        )
+      ]),
+      h("button.button.puzzle-library__action", {
+        attrs: { disabled: rCount === void 0 || rCount === 0 },
+        on: { click: () => {
+          startRetrySession(redraw2);
+        } }
+      }, "Start Retry")
+    ])
+  ]);
+}
 function renderPuzzleLibrary(redraw2) {
   const listState = getPuzzleListState();
   if (listState) {
     return renderPuzzleList(listState, redraw2);
   }
-  const counts = getLibraryCounts();
-  const rCount = getRetryCount();
-  const dCount = getDueCount();
-  if (rCount === void 0) {
-    loadRetryCount(redraw2);
-  }
-  if (dCount === void 0) {
-    loadDueCount(redraw2);
-  }
   return h("div.puzzle-page", [
-    h("div.puzzle-library", [
-      h("h2.puzzle-library__title", "Puzzle Library"),
-      h("div.puzzle-library__sources", [
-        sourceCard(
-          "Imported Puzzles",
-          "Puzzles imported from the Lichess puzzle database.",
-          counts?.imported,
-          "imported-lichess",
-          redraw2
-        ),
-        sourceCard(
-          "User Library",
-          "Puzzles created from your reviewed games.",
-          counts?.user,
-          "user-library",
-          redraw2
-        )
-      ]),
-      // Due for Review section — simple interval-based review scheduling
-      h("div.puzzle-library__due", [
-        h("div.puzzle-library__due-header", [
-          h("h3.puzzle-library__due-title", "Due for Review"),
-          h(
-            "span.puzzle-library__due-count",
-            dCount !== void 0 ? `${dCount} puzzle${dCount === 1 ? "" : "s"} due` : "loading\u2026"
-          )
-        ]),
-        h(
-          "p.puzzle-library__due-desc",
-          "Puzzles due for another attempt based on simple review intervals. Clean solves are due after 7 days, recovered solves after 3 days, and others after 1 day."
-        ),
-        h(
-          "button.button.puzzle-library__due-action",
-          {
-            attrs: { disabled: dCount === void 0 || dCount === 0 },
-            on: {
-              click: () => {
-                startDueSession(redraw2);
-              }
+    h("div.puzzle.puzzle--library", [
+      // Library sidebar (left)
+      renderLibrarySidebar(redraw2),
+      // Board area — idle decorative board, always visible
+      h("div.puzzle__board.main-board", [
+        h("div.cg-wrap", {
+          key: "puzzle-idle-board",
+          hook: {
+            insert: (vnode3) => {
+              mountIdleBoard(vnode3.elm);
+            },
+            destroy: () => {
+              destroyPuzzleBoard();
             }
-          },
-          "Review Due Puzzles"
-        )
-      ]),
-      // Retry Failed queue launcher
-      h("div.puzzle-library__retry", [
-        h("div.puzzle-library__retry-header", [
-          h("h3.puzzle-library__retry-title", "Retry Failed"),
-          h(
-            "span.puzzle-library__retry-count",
-            rCount !== void 0 ? `${rCount} puzzle${rCount === 1 ? "" : "s"} to retry` : "loading\u2026"
-          )
-        ]),
-        h(
-          "p.puzzle-library__retry-desc",
-          "Practice puzzles you previously failed, skipped, solved with assistance, or haven\u2019t tried yet."
-        ),
-        h(
-          "button.button.puzzle-library__retry-action",
-          {
-            attrs: { disabled: rCount === void 0 || rCount === 0 },
-            on: {
-              click: () => {
-                startRetrySession(redraw2);
-              }
-            }
-          },
-          "Start Retry Session"
-        )
+          }
+        })
       ])
     ])
   ]);
@@ -11211,7 +11370,8 @@ function renderPuzzleListFilterBar(ls, redraw2) {
           change: (e) => {
             const val = parseInt(e.target.value, 10);
             const newFilters = { ...filters };
-            newFilters.ratingMin = isNaN(val) ? void 0 : val;
+            if (isNaN(val)) delete newFilters.ratingMin;
+            else newFilters.ratingMin = val;
             filterPuzzleList(newFilters, redraw2);
           }
         }
@@ -11235,7 +11395,8 @@ function renderPuzzleListFilterBar(ls, redraw2) {
           change: (e) => {
             const val = parseInt(e.target.value, 10);
             const newFilters = { ...filters };
-            newFilters.ratingMax = isNaN(val) ? void 0 : val;
+            if (isNaN(val)) delete newFilters.ratingMax;
+            else newFilters.ratingMax = val;
             filterPuzzleList(newFilters, redraw2);
           }
         }
@@ -11251,7 +11412,8 @@ function renderPuzzleListFilterBar(ls, redraw2) {
             change: (e) => {
               const val = e.target.value;
               const newFilters = { ...filters };
-              newFilters.theme = val || void 0;
+              if (val) newFilters.theme = val;
+              else delete newFilters.theme;
               filterPuzzleList(newFilters, redraw2);
             }
           }
@@ -11327,7 +11489,12 @@ function renderPuzzleList(ls, redraw2) {
       ]),
       hasMore ? h("button.button.puzzle-list__load-more", {
         on: { click: () => loadMorePuzzles(redraw2) }
-      }, `Load More (${ls.visible.length} of ${ls.filtered.length})`) : null
+      }, `Load More (${ls.visible.length} of ${ls.filtered.length})`) : null,
+      // For imported puzzles: load more shards from the database
+      ls.source === "imported-lichess" && hasMoreImportedShards() ? h("button.button.button-empty.puzzle-list__load-shards", {
+        attrs: { disabled: ls.loading },
+        on: { click: () => loadMoreImportedShards(redraw2) }
+      }, ls.loading ? "Loading shard\u2026" : "Load More Puzzles from Database") : null
     ])
   ]);
 }
@@ -11616,7 +11783,8 @@ function renderMetaPanel(puzzleId, redraw2) {
           blur: (e) => {
             const val = e.target.value.trim();
             if ((meta.notes ?? "") !== val) {
-              meta.notes = val || void 0;
+              if (val) meta.notes = val;
+              else delete meta.notes;
               savePuzzleMeta(meta);
             }
           }
@@ -11637,7 +11805,8 @@ function renderMetaPanel(puzzleId, redraw2) {
           blur: (e) => {
             const raw = e.target.value;
             const tags = raw.split(",").map((t) => t.trim()).filter(Boolean);
-            meta.tags = tags.length > 0 ? tags : void 0;
+            if (tags.length > 0) meta.tags = tags;
+            else delete meta.tags;
             savePuzzleMeta(meta);
           }
         }
@@ -11739,35 +11908,6 @@ function renderPuzzleRound(redraw2) {
       ])
     ])
   ]);
-}
-
-// src/puzzles/adapters.ts
-function retroCandidateToDefinition(candidate, opts) {
-  const idBase = candidate.gameId ? `${candidate.gameId}_${candidate.path}` : `user_${simpleHash(candidate.fenBefore + candidate.bestMove)}`;
-  const solutionLine = candidate.bestLine && candidate.bestLine.length > 0 ? candidate.bestLine : [candidate.bestMove];
-  const def = {
-    id: idBase,
-    sourceKind: "user-library",
-    startFen: candidate.fenBefore,
-    solutionLine,
-    strictSolutionMove: candidate.bestMove,
-    createdAt: Date.now(),
-    sourcePath: candidate.parentPath,
-    sourceReason: candidate.reason.code
-  };
-  if (candidate.gameId != null) def.sourceGameId = candidate.gameId;
-  if (opts?.title != null) def.title = opts.title;
-  if (opts?.notes != null) def.notes = opts.notes;
-  if (opts?.tags != null) def.tags = opts.tags;
-  if (opts?.sourcePgn != null) def.sourcePgn = opts.sourcePgn;
-  return def;
-}
-function simpleHash(input) {
-  let h2 = 0;
-  for (let i = 0; i < input.length; i++) {
-    h2 = (h2 << 5) - h2 + input.charCodeAt(i) | 0;
-  }
-  return (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
 // src/import/pgn.ts
@@ -13196,7 +13336,7 @@ function renderReasonNote(cand) {
 }
 var _savedPaths = /* @__PURE__ */ new Set();
 var _savingConfirm = /* @__PURE__ */ new Set();
-function renderSaveToLibrary(cand, redraw2) {
+function renderSaveToLibrary(cand, retro, redraw2) {
   const alreadySaved = _savedPaths.has(cand.path);
   const showingConfirm = _savingConfirm.has(cand.path);
   if (alreadySaved && !showingConfirm) {
@@ -13208,6 +13348,7 @@ function renderSaveToLibrary(cand, redraw2) {
   return h("div.retro-save", h("button.retro-save__btn", {
     on: { click: () => {
       const def = retroCandidateToDefinition(cand);
+      const outcome = retro.getOutcome(cand.ply);
       savePuzzleDefinition(def).then(() => {
         _savedPaths.add(cand.path);
         _savingConfirm.add(cand.path);
@@ -13216,12 +13357,53 @@ function renderSaveToLibrary(cand, redraw2) {
           _savingConfirm.delete(cand.path);
           redraw2();
         }, 2e3);
+        if (outcome) {
+          saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(
+            (e) => console.warn("[retro-save] attempt save failed", e)
+          );
+        }
       });
     } }
   }, "Save to Library"));
 }
 var _bulkSaveState = "idle";
 var _bulkSaveCount = 0;
+function retroOutcomeToAttempt(puzzleId, outcome) {
+  const now = Date.now();
+  let result;
+  const failureReasons = [];
+  let skipped = false;
+  switch (outcome) {
+    case "win":
+      result = "clean-solve";
+      break;
+    case "fail":
+      result = "failed";
+      failureReasons.push("wrong-first-move");
+      break;
+    case "view":
+      result = "failed";
+      failureReasons.push("solution-revealed");
+      break;
+    case "skip":
+      result = "skipped";
+      failureReasons.push("skip-pressed");
+      skipped = true;
+      break;
+  }
+  return {
+    puzzleId,
+    startedAt: now,
+    completedAt: now,
+    result,
+    failureReasons,
+    usedHint: false,
+    usedEngineReveal: false,
+    revealedSolution: outcome === "view",
+    openedNotesDuringSolve: false,
+    skipped
+  };
+}
 function renderBulkSaveToLibrary(retro, redraw2) {
   const failed = retro.getFailedCandidates();
   const unsaved = failed.filter((c) => !_savedPaths.has(c.path));
@@ -13247,8 +13429,14 @@ function renderBulkSaveToLibrary(retro, redraw2) {
       redraw2();
       const saves = unsaved.map((c) => {
         const def = retroCandidateToDefinition(c);
+        const outcome = retro.getOutcome(c.ply);
         return savePuzzleDefinition(def).then(() => {
           _savedPaths.add(c.path);
+          if (outcome) {
+            return saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(
+              (e) => console.warn("[retro-bulk-save] attempt save failed", e)
+            );
+          }
         });
       });
       Promise.all(saves).then(() => {
@@ -13340,7 +13528,7 @@ function renderRetroStrip(deps) {
           h("strong", strongText),
           h("em", `Try another move for ${color}`),
           renderSkipOrView(retro, navigate2, redraw2),
-          renderSaveToLibrary(cand, redraw2)
+          renderSaveToLibrary(cand, retro, redraw2)
         ])
       ])
     ];
@@ -13368,7 +13556,7 @@ function renderRetroStrip(deps) {
           h("div.retro-instruction", [
             h("strong", msg),
             renderReasonNote(cand),
-            renderSaveToLibrary(cand, redraw2)
+            renderSaveToLibrary(cand, retro, redraw2)
           ])
         ])
       ),
@@ -13385,7 +13573,7 @@ function renderRetroStrip(deps) {
             h("strong", "Solution"),
             h("em", ["Best was ", h("strong", bestSan)]),
             renderReasonNote(cand),
-            renderSaveToLibrary(cand, redraw2)
+            renderSaveToLibrary(cand, retro, redraw2)
           ])
         ])
       ),

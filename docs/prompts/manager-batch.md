@@ -73,6 +73,7 @@ The final manager prompt must tell Claude Code:
 - do not create new prompts during the batch
 - do not execute, re-queue, or otherwise recurse into the manager prompt itself
 - before starting each child prompt's startup coordination or real work, run `npm run prompt:start -- <CHILD_PROMPT_ID>`
+- use that exact command form for each child prompt; do not omit `--` and do not pipe it through helpers like `tail`
 - only continue into the child prompt after that command succeeds
 
 ## Reusable Codex Request Template
