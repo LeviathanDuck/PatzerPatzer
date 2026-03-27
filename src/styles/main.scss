@@ -1515,10 +1515,11 @@ body.resizing {
   }
 
   .analyse__tools {
-    align-self: auto;
+    // stretch so the element fills the minmax(18em, 40vh) grid row — otherwise align-items: start
+    // on the parent grid causes it to collapse to content height and the move list disappears.
+    align-self: stretch;
     min-height: 0;
     // Keep overflow: hidden (inherited from desktop) — required for inner scroll container to work.
-    // Mirrors lichess-org/lila: tools column never sets overflow: visible on mobile.
   }
 
   .ceval {
