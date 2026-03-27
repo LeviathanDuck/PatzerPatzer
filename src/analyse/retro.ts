@@ -5,8 +5,16 @@
 // This module is intentionally rendering-free. It exposes a pure builder that
 // later UI and session steps can consume without coupling to the puzzle subsystem.
 
-import { classifyLoss, LOSS_THRESHOLDS, type MoveLabel } from '../engine/winchances';
+import { classifyLoss, type MoveLabel } from '../engine/winchances';
+import { retroConfig } from './retroConfig';
 import type { TreeNode } from '../tree/types';
+
+// Classification rank: higher = stricter. Used to compare against retroConfig.minClassification.
+const CLASSIFICATION_RANK: Readonly<Record<MoveLabel, number>> = {
+  inaccuracy: 1,
+  mistake:    2,
+  blunder:    3,
+};
 
 /**
  * Opening/book lookup boundary.
@@ -112,15 +120,15 @@ export interface RetroCandidate {
  * Scan the reviewed mainline and return retrospection candidates.
  *
  * Inclusion criteria mirror lichess-org/lila: ui/analyse/src/nodeFinder.ts evalSwings:
- *   1. Win-chance loss for the mover is at or above the mistake threshold (≥ 0.06), OR
- *   2. The parent position had a forced mate in ≤ 3 available, but the played move
- *      did not deliver or maintain that mate.
+ *   1. Win-chance loss for the mover meets or exceeds retroConfig.minClassification, OR
+ *   2. The parent position had a forced mate in ≤ retroConfig.missedMateDistance available,
+ *      but the played move did not deliver or maintain that mate.
  *
  * Threshold note: Lichess evalSwings uses |povDiff| > 0.1 (un-halved scale). Patzer Pro
- * stores loss = (moverPrevWc − moverNodeWc) / 2, so the equivalent threshold is
- * loss > 0.05. We use LOSS_THRESHOLDS.mistake (0.06) instead, which is the nearest named
- * boundary and produces functionally equivalent candidate sets in practice. Deviations
- * occur only for moves in the 0.05–0.06 loss band, which are marginal and rare.
+ * stores loss = (moverPrevWc − moverNodeWc) / 2, so the equivalent inaccuracy floor is
+ * loss > 0.05 (= LOSS_THRESHOLDS.inaccuracy). The default minClassification of 'mistake'
+ * corresponds to loss >= 0.10 (= LOSS_THRESHOLDS.mistake), which is somewhat stricter
+ * than the raw Lichess floor. Setting minClassification to 'inaccuracy' matches Lichess parity.
  *
  * The `userColor` parameter mirrors the per-color filter in retroCtrl.ts findNextNode
  * (`n.ply % 2 === colorModulo`). Pass a color to restrict to one player's mistakes,
@@ -168,21 +176,26 @@ export function buildRetroCandidates(
     // --- Condition 2: missed forced mate ---
     // Mirrors nodeFinder.ts: `prev.eval.mate && !curr.eval.mate && |prev.eval.mate| <= 3`
     // parentMatePov: mate count from the mover's perspective (positive = mover wins).
+    // Threshold is retroConfig.missedMateDistance (default: 3, matching Lichess).
     const parentMatePov = isWhiteMove
       ? parentEval.mate
       : (parentEval.mate !== undefined ? -parentEval.mate : undefined);
     const isMissedMate = (
+      retroConfig.missedMateDistance > 0 &&
       parentMatePov !== undefined &&
       parentMatePov > 0 &&
-      parentMatePov <= 3 &&
+      parentMatePov <= retroConfig.missedMateDistance &&
       !nodeEval.mate
     );
 
     // --- Condition 1: significant win-chance loss ---
+    // Floor is retroConfig.minClassification (default: 'mistake' = loss >= 0.10).
     const loss           = nodeEval.loss;
     const classification = loss !== undefined ? classifyLoss(loss) : null;
+    const minRank        = CLASSIFICATION_RANK[retroConfig.minClassification];
     const qualifiesByLoss = (
-      classification === 'mistake' || classification === 'blunder'
+      classification !== null &&
+      CLASSIFICATION_RANK[classification] >= minRank
     );
 
     if (!qualifiesByLoss && !isMissedMate) continue;
