@@ -24,6 +24,7 @@ import {
 } from '../engine/reviewQueue';
 import { reviewDepth, setReviewDepth } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
+import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 
@@ -34,6 +35,7 @@ let showImportPanel  = false;
 let showGlobalMenu   = false;
 let showBoardSettings     = false;
 let showDetectionModal    = false;
+let showRetroModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
 
@@ -275,6 +277,95 @@ function renderDetectionModal(redraw: () => void): VNode {
   ]);
 }
 
+// --- Mistake Detection modal ---
+// Controls retroConfig (Learn From Your Mistakes candidate-selection parameters).
+// Uses the same detection-modal card structure and CSS classes as renderDetectionModal.
+
+const CLASSIFICATION_OPTIONS: { value: RetroConfig['minClassification']; label: string }[] = [
+  { value: 'inaccuracy', label: 'Inaccuracy' },
+  { value: 'mistake',    label: 'Mistake' },
+  { value: 'blunder',    label: 'Blunder' },
+];
+
+function renderRetroModal(redraw: () => void): VNode {
+  const cfg = retroConfig;
+  const isDefault =
+    cfg.minClassification  === RETRO_CONFIG_DEFAULTS.minClassification &&
+    cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance;
+
+  return h('div.detection-modal', [
+    h('div.detection-modal__backdrop', {
+      on: { click: () => { showRetroModal = false; redraw(); } },
+    }),
+    h('div.detection-modal__card', [
+      h('div.detection-modal__header', [
+        h('h2', 'Mistake Detection'),
+        h('button.detection-modal__close', {
+          attrs: { title: 'Close' },
+          on: { click: () => { showRetroModal = false; redraw(); } },
+        }, '✕'),
+      ]),
+      h('div.detection-modal__body', [
+
+        // minClassification — pill picker
+        h('div.detection-modal__row', [
+          h('div.detection-modal__row-header', [
+            h('span.detection-modal__label', 'Minimum Severity'),
+            h('span.detection-modal__value', cfg.minClassification),
+          ]),
+          h('p.detection-modal__desc',
+            'Minimum move classification to include as a Learn From Your Mistakes candidate. ' +
+            'Inaccuracy catches all real errors (Lichess parity). Mistake is the default. Blunder shows only large drops.'),
+          h('div.detection-modal__pills',
+            CLASSIFICATION_OPTIONS.map(opt =>
+              h('button', {
+                class: { active: cfg.minClassification === opt.value },
+                on: { click: () => { setRetroConfig({ minClassification: opt.value }); redraw(); } },
+              }, opt.label),
+            ),
+          ),
+        ]),
+
+        // missedMateDistance — slider
+        h('div.detection-modal__row', [
+          h('div.detection-modal__row-header', [
+            h('span.detection-modal__label', 'Missed Mate in N'),
+            h('span.detection-modal__value',
+              cfg.missedMateDistance === 0 ? 'off' : `in ${cfg.missedMateDistance}`),
+          ]),
+          h('p.detection-modal__desc',
+            'Flag a move when a forced mate of this distance (or shorter) was available but not played. ' +
+            'Lichess default: mate in 3. Set to 0 to disable this category entirely.'),
+          h('div.detection-modal__slider-wrap', [
+            h('input', {
+              attrs: { type: 'range', min: 0, max: 10, step: 1, value: cfg.missedMateDistance },
+              on: {
+                input: (e: Event) => {
+                  setRetroConfig({ missedMateDistance: parseInt((e.target as HTMLInputElement).value, 10) });
+                  redraw();
+                },
+              },
+            }),
+            // Lichess default marker at position 3 (30% of 0–10 range)
+            h('span.detection-modal__default-mark', {
+              attrs: { style: 'left: 30%', title: 'Lichess default: in 3' },
+            }),
+          ]),
+        ]),
+
+        // Reset row
+        !isDefault ? h('div.detection-modal__row', [
+          h('button', {
+            class: { 'detection-modal__close': true },
+            on: { click: () => { setRetroConfig({ ...RETRO_CONFIG_DEFAULTS }); redraw(); } },
+          }, 'Reset to defaults'),
+        ]) : null,
+
+      ]),
+    ]),
+  ]);
+}
+
 function renderGlobalMenu(deps: HeaderDeps): VNode {
   const { downloadPgn, resetAllData, onFlipBoard, selectedGameId, redraw } = deps;
   const hasGame = selectedGameId !== null;
@@ -382,6 +473,10 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       h('button.global-menu__item', {
         on: { click: () => { showDetectionModal = true; showGlobalMenu = false; redraw(); } },
       }, 'Detection Settings…'),
+
+      h('button.global-menu__item', {
+        on: { click: () => { showRetroModal = true; showGlobalMenu = false; redraw(); } },
+      }, 'Mistake Detection…'),
 
       h('div.global-menu__item.global-menu__item--has-sub', {
         on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },
@@ -630,5 +725,6 @@ export function renderHeader(deps: HeaderDeps): VNode {
     renderReviewMenu(redraw),
     renderGlobalMenu(deps),
     showDetectionModal ? renderDetectionModal(redraw) : null,
+    showRetroModal     ? renderRetroModal(redraw)     : null,
   ]);
 }
