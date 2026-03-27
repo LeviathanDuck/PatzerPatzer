@@ -11581,12 +11581,44 @@ function importPgn(callbacks) {
   }
 }
 
+// src/analyse/retroConfig.ts
+var RETRO_CONFIG_DEFAULTS = {
+  minClassification: "mistake",
+  missedMateDistance: 3
+};
+var RETRO_CONFIG_LS_KEY = "retroConfig";
+var VALID_CLASSIFICATIONS = /* @__PURE__ */ new Set(["inaccuracy", "mistake", "blunder"]);
+function loadFromStorage() {
+  try {
+    const stored = localStorage.getItem(RETRO_CONFIG_LS_KEY);
+    if (stored === null) return { ...RETRO_CONFIG_DEFAULTS };
+    const p = JSON.parse(stored);
+    return {
+      minClassification: VALID_CLASSIFICATIONS.has(p.minClassification) ? p.minClassification : RETRO_CONFIG_DEFAULTS.minClassification,
+      missedMateDistance: typeof p.missedMateDistance === "number" && p.missedMateDistance >= 0 ? Math.floor(p.missedMateDistance) : RETRO_CONFIG_DEFAULTS.missedMateDistance
+    };
+  } catch {
+    return { ...RETRO_CONFIG_DEFAULTS };
+  }
+}
+var retroConfig = loadFromStorage();
+var _changeCallbacks = [];
+function onRetroConfigChange(cb) {
+  _changeCallbacks.push(cb);
+}
+function setRetroConfig(patch2) {
+  Object.assign(retroConfig, patch2);
+  localStorage.setItem(RETRO_CONFIG_LS_KEY, JSON.stringify(retroConfig));
+  _changeCallbacks.forEach((cb) => cb());
+}
+
 // src/header/index.ts
 var importPlatform = "chesscom";
 var showImportPanel = false;
 var showGlobalMenu = false;
 var showBoardSettings = false;
 var showDetectionModal = false;
+var showRetroModal = false;
 var showReviewMenu = false;
 var showMobileNav = false;
 function activeSection(route) {
@@ -11802,6 +11834,99 @@ function renderDetectionModal(redraw2) {
     ])
   ]);
 }
+var CLASSIFICATION_OPTIONS = [
+  { value: "inaccuracy", label: "Inaccuracy" },
+  { value: "mistake", label: "Mistake" },
+  { value: "blunder", label: "Blunder" }
+];
+function renderRetroModal(redraw2) {
+  const cfg = retroConfig;
+  const isDefault = cfg.minClassification === RETRO_CONFIG_DEFAULTS.minClassification && cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance;
+  return h("div.detection-modal", [
+    h("div.detection-modal__backdrop", {
+      on: { click: () => {
+        showRetroModal = false;
+        redraw2();
+      } }
+    }),
+    h("div.detection-modal__card", [
+      h("div.detection-modal__header", [
+        h("h2", "Mistake Detection"),
+        h("button.detection-modal__close", {
+          attrs: { title: "Close" },
+          on: { click: () => {
+            showRetroModal = false;
+            redraw2();
+          } }
+        }, "\u2715")
+      ]),
+      h("div.detection-modal__body", [
+        // minClassification — pill picker
+        h("div.detection-modal__row", [
+          h("div.detection-modal__row-header", [
+            h("span.detection-modal__label", "Minimum Severity"),
+            h("span.detection-modal__value", cfg.minClassification)
+          ]),
+          h(
+            "p.detection-modal__desc",
+            "Minimum move classification to include as a Learn From Your Mistakes candidate. Inaccuracy catches all real errors (Lichess parity). Mistake is the default. Blunder shows only large drops."
+          ),
+          h(
+            "div.detection-modal__pills",
+            CLASSIFICATION_OPTIONS.map(
+              (opt) => h("button", {
+                class: { active: cfg.minClassification === opt.value },
+                on: { click: () => {
+                  setRetroConfig({ minClassification: opt.value });
+                  redraw2();
+                } }
+              }, opt.label)
+            )
+          )
+        ]),
+        // missedMateDistance — slider
+        h("div.detection-modal__row", [
+          h("div.detection-modal__row-header", [
+            h("span.detection-modal__label", "Missed Mate in N"),
+            h(
+              "span.detection-modal__value",
+              cfg.missedMateDistance === 0 ? "off" : `in ${cfg.missedMateDistance}`
+            )
+          ]),
+          h(
+            "p.detection-modal__desc",
+            "Flag a move when a forced mate of this distance (or shorter) was available but not played. Lichess default: mate in 3. Set to 0 to disable this category entirely."
+          ),
+          h("div.detection-modal__slider-wrap", [
+            h("input", {
+              attrs: { type: "range", min: 0, max: 10, step: 1, value: cfg.missedMateDistance },
+              on: {
+                input: (e) => {
+                  setRetroConfig({ missedMateDistance: parseInt(e.target.value, 10) });
+                  redraw2();
+                }
+              }
+            }),
+            // Lichess default marker at position 3 (30% of 0–10 range)
+            h("span.detection-modal__default-mark", {
+              attrs: { style: "left: 30%", title: "Lichess default: in 3" }
+            })
+          ])
+        ]),
+        // Reset row
+        !isDefault ? h("div.detection-modal__row", [
+          h("button", {
+            class: { "detection-modal__close": true },
+            on: { click: () => {
+              setRetroConfig({ ...RETRO_CONFIG_DEFAULTS });
+              redraw2();
+            } }
+          }, "Reset to defaults")
+        ]) : null
+      ])
+    ])
+  ]);
+}
 function renderGlobalMenu(deps) {
   const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, onFlipBoard, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
   const hasGame = selectedGameId2 !== null;
@@ -11911,6 +12036,13 @@ function renderGlobalMenu(deps) {
           redraw2();
         } }
       }, "Detection Settings\u2026"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          showRetroModal = true;
+          showGlobalMenu = false;
+          redraw2();
+        } }
+      }, "Mistake Detection\u2026"),
       h("div.global-menu__item.global-menu__item--has-sub", {
         on: { click: () => {
           showBoardSettings = !showBoardSettings;
@@ -12172,7 +12304,8 @@ function renderHeader(deps) {
     renderNav(route),
     renderReviewMenu(redraw2),
     renderGlobalMenu(deps),
-    showDetectionModal ? renderDetectionModal(redraw2) : null
+    showDetectionModal ? renderDetectionModal(redraw2) : null,
+    showRetroModal ? renderRetroModal(redraw2) : null
   ]);
 }
 
@@ -12219,6 +12352,11 @@ function onChange2(fn) {
 }
 
 // src/analyse/retro.ts
+var CLASSIFICATION_RANK = {
+  inaccuracy: 1,
+  mistake: 2,
+  blunder: 3
+};
 var STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 var RETRO_OPENING_CANCEL_MAX_PLY = 20;
 function buildMainlineOpeningProvider(mainline, hasOpeningMetadata) {
@@ -12252,10 +12390,11 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null, getOp
     if (!nodeEval || !parentEval || !parentEval.best) continue;
     if (!node.uci) continue;
     const parentMatePov = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
-    const isMissedMate = parentMatePov !== void 0 && parentMatePov > 0 && parentMatePov <= 3 && !nodeEval.mate;
+    const isMissedMate = retroConfig.missedMateDistance > 0 && parentMatePov !== void 0 && parentMatePov > 0 && parentMatePov <= retroConfig.missedMateDistance && !nodeEval.mate;
     const loss = nodeEval.loss;
     const classification = loss !== void 0 ? classifyLoss(loss) : null;
-    const qualifiesByLoss = classification === "mistake" || classification === "blunder";
+    const minRank = CLASSIFICATION_RANK[retroConfig.minClassification];
+    const qualifiesByLoss = classification !== null && CLASSIFICATION_RANK[classification] >= minRank;
     if (!qualifiesByLoss && !isMissedMate) continue;
     const openingUcis = getOpeningUcis(parent.fen);
     if (openingUcis && node.uci && openingUcis.includes(node.uci)) continue;
@@ -13015,6 +13154,33 @@ function clearRetroMode() {
   delete ctrl.retro;
   syncArrow();
 }
+function rebuildRetroSession() {
+  if (!ctrl.retro) return;
+  const game = importedGames.find((g) => g.id === selectedGameId);
+  const userColor = game ? getUserColor(game) : null;
+  const openingProvider = buildMainlineOpeningProvider(
+    ctrl.mainline,
+    Boolean(game?.opening || game?.eco)
+  );
+  const candidates = buildRetroCandidates(
+    ctrl.mainline,
+    (p) => evalCache.get(p),
+    selectedGameId,
+    userColor ?? null,
+    openingProvider
+  );
+  ctrl.retro = makeRetroCtrl(
+    candidates,
+    userColor ?? null,
+    () => currentEval,
+    (path) => evalCache.get(path),
+    navigate
+  );
+  syncArrow();
+  const first2 = ctrl.retro.current();
+  if (first2) navigate(first2.parentPath);
+  else redraw();
+}
 function reviewAllGames(games) {
   if (games.length === 0) return;
   enqueueBulkReview(games);
@@ -13408,4 +13574,5 @@ void loadGamesFromIdb().then((stored) => {
   void loadAndRestoreAnalysis(toLoad.id, restoreGeneration);
   void syncPuzzleRoute(currentRoute);
 });
+onRetroConfigChange(rebuildRetroSession);
 //# sourceMappingURL=main.js.map
