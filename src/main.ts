@@ -37,6 +37,7 @@ import {
   renderBoard, renderPromotionDialog, renderPlayerStrips,
   initGround,
 } from './board/index';
+import { preloadBoardSounds, playMoveSound } from './board/sound';
 import {
   renderCeval, renderPvBox, renderPvBoard, renderEngineSettings,
   initCevalView,
@@ -432,7 +433,11 @@ function navigate(path: string): void {
   // when the caller passes the current path (e.g. clicking the active move in the
   // move list, clicking the current position in the eval graph).
   if (path === ctrl.path) return;
+  // Play move sound when stepping forward one ply (new path is exactly 2 chars longer).
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts jump() isForwardStep + site.sound.move().
+  const isForwardStep = path.length === ctrl.path.length + 2;
   ctrl.setPath(path);
+  if (isForwardStep) playMoveSound(ctrl.node.san);
   // Notify retrospection of the path change — offTrack detection, later win/fail.
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts jump() retro.onJump() call.
   ctrl.retro?.onJump(path);
@@ -889,6 +894,8 @@ initReviewQueue({
   getUserColor,
   redraw,
 });
+preloadBoardSounds();
+
 bindKeyboardHandlers({
   getCtrl:     () => ctrl,
   navigate,
