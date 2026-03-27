@@ -76,6 +76,11 @@ let _onBatchBestmove: (() => void) | null = null;
 export function setIsBatchActive(fn: () => boolean): void   { _isBatchActive = fn; }
 export function setOnBatchBestmove(fn: () => void): void    { _onBatchBestmove = fn; }
 
+// Callback fired when live eval writes an improved result to evalCache.
+// Registered by main.ts to debounce IDB persistence.
+let _onLiveEvalImproved: (() => void) | null = null;
+export function setOnLiveEvalImproved(fn: (() => void) | null): void { _onLiveEvalImproved = fn; }
+
 // --- Engine state ---
 
 export const protocol = new StockfishProtocol();
@@ -637,6 +642,34 @@ function parseEngineLine(line: string): void {
         // Route to batch for review-eval storage and queue advance.
         _onBatchBestmove?.();
       } else {
+        // Live eval: if this result is deeper than what's cached, promote it
+        // into evalCache so the eval graph and persistence stay up to date.
+        if (stored.depth !== undefined && (stored.cp !== undefined || stored.mate !== undefined)) {
+          const nodePath   = evalNodePath;
+          const cached     = evalCache.get(nodePath);
+          if (!cached || !cached.depth || stored.depth > cached.depth) {
+            // Compute delta and loss — same logic as batch.ts onBatchBestmove.
+            const parentPath = evalParentPath;
+            const parentEval = evalCache.get(parentPath);
+            if (parentEval?.cp !== undefined && stored.cp !== undefined) {
+              stored.delta = stored.cp - parentEval.cp;
+            }
+            if (parentEval) {
+              const nodeWc   = evalWinChances(stored);
+              const parentWc = evalWinChances(parentEval);
+              if (nodeWc !== undefined && parentWc !== undefined) {
+                const whiteToMove   = evalNodePly % 2 === 1;
+                const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
+                const moverParentWc = whiteToMove ? parentWc : -parentWc;
+                stored.loss = (moverParentWc - moverNodeWc) / 2;
+              }
+            }
+            // Preserve existing label from review if present and we don't have one.
+            if (cached?.label && !stored.label) stored.label = cached.label;
+            evalCache.set(nodePath, stored);
+            _onLiveEvalImproved?.();
+          }
+        }
         syncArrowDebounced();
         _redraw();
         if (pendingEval) {
