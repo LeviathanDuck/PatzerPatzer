@@ -291,11 +291,14 @@ export function renderEvalGraph(
   redraw:      () => void,
   userColor:   'white' | 'black' | null,
   userOnly:    boolean,
+  bg?:         boolean,
 ): VNode {
   const n = mainline.length - 1; // non-root move count
   const renderedGraphHeight = Math.round((GRAPH_H * graphHeightPct) / 100);
 
   if (n < 2) {
+    // Background mode: render nothing when there is no data — empty transparent div
+    if (bg) return h('div.eval-graph.eval-graph--bg');
     return h('div.eval-graph', [
       h('div.eval-graph__empty', {
         attrs: { style: `height:${renderedGraphHeight}px` },
@@ -358,6 +361,7 @@ export function renderEvalGraph(
   const valid = pts.filter((p): p is Pt => p !== null);
 
   if (valid.length < 2) {
+    if (bg) return h('div.eval-graph.eval-graph--bg');
     return h('div.eval-graph', [
       h('div.eval-graph__empty', 'Analyze game to see graph.'),
     ]);
@@ -416,20 +420,21 @@ export function renderEvalGraph(
   svgNodes.push(h('polygon', {
     attrs: {
       points: polyPts,
-      fill: 'rgba(255,255,255,0.3)',
+      fill: bg ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.3)',
       stroke: 'none',
     },
   }));
 
   // Center line (eval = 0)
-  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#444', 'stroke-width': 1 } }));
+  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#444', 'stroke-width': 1, opacity: bg ? '0.5' : '1' } }));
 
   // Eval trace
   svgNodes.push(h('polyline', { attrs: {
     points: valid.map(p => `${p.x},${p.y}`).join(' '),
     fill: 'none',
     stroke: '#d85000',
-    'stroke-width': 1,
+    'stroke-width': bg ? 1.5 : 1,
+    opacity: bg ? '0.5' : '1',
     'stroke-linejoin': 'round',
     'stroke-linecap': 'round',
   } }));
@@ -443,10 +448,8 @@ export function renderEvalGraph(
     } }));
   }
 
-  // Hover indicator line — positioned by mouseenter on each strip, hidden on mouseleave.
-  // Drawn before strips+dots so dots remain on top.
-  // Mirrors lichess-org/lila: ui/chart/src/acpl.ts interaction.mode = 'nearest' hover behavior.
-  svgNodes.push(h('line', {
+  // Hover indicator line and dots — skipped in background mode (no interaction).
+  if (!bg) svgNodes.push(h('line', {
     attrs: {
       'data-hover': '1',
       x1: 0, y1: 0, x2: 0, y2: GRAPH_H,
@@ -455,8 +458,8 @@ export function renderEvalGraph(
     },
   }));
 
-  // Dots
-  for (const pt of valid) {
+  // Dots — skipped in background mode
+  if (!bg) for (const pt of valid) {
     const isCurrent = pt.path === currentPath;
     // Visible dot — current position overrides to green; mate opportunity → purple;
     // otherwise colored by move classification.
@@ -478,10 +481,8 @@ export function renderEvalGraph(
     } }));
   }
 
-  // Full-width interaction layer for nearest-x hover and pointer scrubbing.
-  // Mirrors the usability of lichess-org/lila: ui/chart/src/acpl.ts
-  // interaction.mode = 'nearest' / axis = 'x' / intersect = false.
-  svgNodes.push(h('rect', {
+  // Full-width interaction layer — skipped in background mode (pointer-events: none on container).
+  if (!bg) svgNodes.push(h('rect', {
     attrs: {
       x: 0,
       y: 0,
@@ -519,6 +520,18 @@ export function renderEvalGraph(
       },
     },
   }));
+
+  // Background mode: no interaction handlers, SVG fills 100% of the container.
+  if (bg) {
+    return h('div.eval-graph.eval-graph--bg', [
+      h('svg', { attrs: {
+        viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
+        width: '100%',
+        height: '100%',
+        preserveAspectRatio: 'none',
+      } }, svgNodes),
+    ]);
+  }
 
   return h('div.eval-graph', {
     on: {

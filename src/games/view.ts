@@ -8,9 +8,9 @@ import { h, type VNode } from 'snabbdom';
 import { parsePgnHeader, type ImportedGame } from '../import/types';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
-import { enqueueBulkReview, getReviewProgress, isBulkRunning, getQueueSummary, getMissedMoments } from '../engine/reviewQueue';
+import { enqueueBulkReview, getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
 import { LOSS_THRESHOLDS } from '../engine/winchances';
-import type { MissedMoment } from '../engine/tactics';
+import { getMissedMoments, type MissedMoment } from '../engine/tactics';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 
