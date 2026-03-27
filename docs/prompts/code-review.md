@@ -34,7 +34,7 @@ Workflow:
    - missing validation
 10. If the reviewed change corresponds to a queued prompt, complete prompt-tracking closeout as one atomic step:
    - remove that prompt from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-   - remove its matching item from the top `Queue Index` in that same file
+   - remove its matching item from the top `Queue Index` in that same file, whether the queue checkbox is `[ ]` or `[x]`
    - update its existing detailed entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
    - update the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` from `- [ ] CCP-### - Short Task Title` to `- [x] CCP-### - Short Task Title`
    - update `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md` if the workflow calls for a reviewed/archive entry
@@ -84,6 +84,7 @@ Prompt log status rules:
 - keep the top checklist index in `CLAUDE_PROMPT_LOG.md` synchronized with the detailed log entry status
 - keep the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md` synchronized with the actual queued prompt blocks
 - do not leave a reviewed prompt in either the queue index or the queue body
+- do not treat a checked queue-index item in `CLAUDE_PROMPT_QUEUE.md` as reviewed; queue `[x]` means run, not reviewed
 - do not leave the detailed log entry at `Review outcome: pending` once the prompt is reviewed
 - keep queue/log fenced blocks untagged; do not add a language label such as `text`
 - if the matching prompt is still present in `CLAUDE_PROMPT_QUEUE.md`, say it should be removed from the queue after review

@@ -11,7 +11,8 @@ Generate a guarded automatic batch-manager prompt for Claude Code that:
 - executes a contiguous queued range in order
 - performs internal validation/self-check after each prompt
 - stops immediately on a real issue
-- does **not** modify queue/log/history/review docs
+- may mark child prompt queue-index checkboxes as run in `CLAUDE_PROMPT_QUEUE.md`
+- does **not** remove prompts from queue/log/history/review docs
 - is itself tracked as a prompt artifact in the prompt-log workflow without being re-queued into the runnable batch range
 
 ## Important manager-prompt rules
@@ -79,7 +80,7 @@ The final manager prompt must tell Claude Code:
 - execute queued prompts one after another automatically
 - read each queued prompt exactly as written from `CLAUDE_PROMPT_QUEUE.md`
 - do not modify:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change child prompt queue-index items from `- [ ]` to `- [x]` when those child prompts are actually run
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
@@ -94,6 +95,7 @@ The final manager prompt must tell Claude Code:
 - do not reorder prompts
 - do not create new prompts during the batch
 - do not execute, re-queue, or otherwise recurse into the manager prompt itself
+- do not remove child prompts from the queue; review still owns removal
 
 ## Required progress reporting inside the manager prompt
 
@@ -137,12 +139,13 @@ Requirements for the manager prompt:
 - The manager prompt must tell Claude to read the queued prompts exactly as written from CLAUDE_PROMPT_QUEUE.md.
 - Claude must execute the selected queued prompts sequentially in the exact order provided.
 - Claude must not modify:
-  - /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md
+  - /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md, except to mark a child prompt's queue-index checkbox from `- [ ]` to `- [x]` once that child prompt is actually run
   - /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md
   - /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md
   - /Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md
 - Claude must do internal validation/self-check only.
 - External review and tracking are handled separately in Codex.
+- Claude must leave the queued prompt blocks and queue-index entries present after checking them off; formal review removes them later.
 - Claude must stop immediately if:
   - build fails
   - required validation fails
