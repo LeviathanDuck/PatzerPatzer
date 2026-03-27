@@ -12808,6 +12808,7 @@ function navigate(path) {
   if (isForwardStep) playMoveSound(ctrl.node.san);
   ctrl.retro?.onJump(path);
   syncBoard();
+  syncArrow();
   if (!puzzleHidesAnalysis()) evalCurrentPosition();
   scheduleNavStateSave(ctrl.path);
   redraw();
