@@ -1715,6 +1715,7 @@ var showPlayedArrow = true;
 var showArrowLabels = localStorage.getItem("patzer.showArrowLabels") === "true";
 var showReviewLabels = localStorage.getItem("patzer.showReviewLabels") !== "false";
 var showBoardReviewGlyphs = localStorage.getItem("patzer.showBoardReviewGlyphs") !== "false";
+var arrowLabelSize = storedInt("patzer.arrowLabelSize", 10, 6, 18);
 var pendingLines = [];
 var arrowDebounceTimer = null;
 var arrowSuppressUntil = 0;
@@ -1768,6 +1769,10 @@ function setShowReviewLabels(v) {
 function setShowBoardReviewGlyphs(v) {
   showBoardReviewGlyphs = v;
   localStorage.setItem("patzer.showBoardReviewGlyphs", String(v));
+}
+function setArrowLabelSize(v) {
+  arrowLabelSize = v;
+  localStorage.setItem("patzer.arrowLabelSize", String(v));
 }
 function incrementPendingStopCount() {
   pendingStopCount++;
@@ -1847,7 +1852,7 @@ function buildArrowLabelSvg(ev) {
   if (!showArrowLabels || !ev) return null;
   if (ev.cp === void 0 && ev.mate === void 0) return null;
   const text = formatScore(ev);
-  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="10" font-weight="400" fill="#fff" stroke="rgba(0,0,0,0.72)" stroke-width="2" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="${arrowLabelSize}" font-weight="400" fill="#fff" stroke="rgba(0,0,0,0.72)" stroke-width="2" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
 }
 function escapeArrowLabelText(text) {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -6670,6 +6675,17 @@ function setBoardSoundEnabled(enabled) {
   boardSoundEnabled = enabled;
   localStorage.setItem(SOUND_ENABLED_KEY, String(enabled));
 }
+var SOUND_VOLUME_KEY = "boardSoundVolume";
+var SOUND_VOLUME_DEFAULT = 0.6;
+var soundVolume = (() => {
+  const stored = localStorage.getItem(SOUND_VOLUME_KEY);
+  const v = stored !== null ? parseFloat(stored) : NaN;
+  return !isNaN(v) && v >= 0 && v <= 1 ? v : SOUND_VOLUME_DEFAULT;
+})();
+function setSoundVolume(v) {
+  soundVolume = Math.max(0, Math.min(1, v));
+  localStorage.setItem(SOUND_VOLUME_KEY, String(soundVolume));
+}
 var audioCtx;
 function getAudioCtx() {
   if (audioCtx) return audioCtx;
@@ -6717,6 +6733,7 @@ function playBuffer(name) {
   }
   try {
     const gain = c.createGain();
+    gain.gain.setValueAtTime(soundVolume, c.currentTime);
     gain.connect(c.destination);
     const src = c.createBufferSource();
     src.buffer = buf;
@@ -7082,6 +7099,20 @@ function renderEngineSettings() {
           }
         }
       })
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-label-size" } }, "Label size"),
+      h("input#ceval-label-size", {
+        attrs: { type: "range", min: 6, max: 18, step: 1, value: arrowLabelSize },
+        on: {
+          input: (e) => {
+            setArrowLabelSize(parseInt(e.target.value));
+            syncArrow();
+            _redraw4();
+          }
+        }
+      }),
+      h("span.ceval-settings__val", `${arrowLabelSize}px`)
     ]),
     h("div.ceval-settings__row", [
       h("label.ceval-settings__label", { attrs: { for: "ceval-review-labels" } }, "Review"),
@@ -11675,7 +11706,6 @@ function renderGlobalMenu(deps) {
     showGlobalMenu ? h("div.global-menu__backdrop", {
       on: { click: () => closeGlobalMenu(redraw2) }
     }) : null,
-    showDetectionModal ? renderDetectionModal(redraw2) : null,
     showGlobalMenu ? h("div.global-menu__dropdown", {
       class: { "board-open": showBoardSettings }
     }, [
@@ -11738,6 +11768,18 @@ function renderGlobalMenu(deps) {
           on: {
             change: (e) => {
               setBoardSoundEnabled(e.target.checked);
+              redraw2();
+            }
+          }
+        })
+      ]),
+      h("div.global-menu__item.global-menu__item--slider", [
+        h("span", `Volume: ${Math.round(soundVolume * 100)}%`),
+        h("input", {
+          attrs: { type: "range", min: 0, max: 1, step: 0.05, value: soundVolume },
+          on: {
+            input: (e) => {
+              setSoundVolume(parseFloat(e.target.value));
               redraw2();
             }
           }
@@ -12010,7 +12052,8 @@ function renderHeader(deps) {
     ]),
     renderNav(route),
     renderReviewMenu(redraw2),
-    renderGlobalMenu(deps)
+    renderGlobalMenu(deps),
+    showDetectionModal ? renderDetectionModal(redraw2) : null
   ]);
 }
 
@@ -12880,8 +12923,7 @@ function view(route) {
     h("main", [routeContent(route)]),
     renderContextMenu(),
     h("footer.app-legal", [
-      h("span", "Patzer Pro source is available under AGPL-3.0-or-later."),
-      h("span", "No warranty."),
+      h("span", "Patzer Pro source is available under AGPL."),
       h("a", {
         attrs: {
           href: PUBLIC_SOURCE_URL,

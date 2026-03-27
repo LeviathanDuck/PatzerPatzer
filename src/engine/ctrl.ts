@@ -134,6 +134,7 @@ export let showPlayedArrow  = true;
 export let showArrowLabels  = localStorage.getItem('patzer.showArrowLabels') === 'true';
 export let showReviewLabels = localStorage.getItem('patzer.showReviewLabels') !== 'false';
 export let showBoardReviewGlyphs = localStorage.getItem('patzer.showBoardReviewGlyphs') !== 'false';
+export let arrowLabelSize   = storedInt('patzer.arrowLabelSize', 10, 6, 18);
 
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 export let pendingLines: EvalLine[] = [];
@@ -173,6 +174,7 @@ export function setShowPlayedArrow(v: boolean): void  { showPlayedArrow = v; }
 export function setShowArrowLabels(v: boolean): void  { showArrowLabels = v; localStorage.setItem('patzer.showArrowLabels', String(v)); }
 export function setShowReviewLabels(v: boolean): void { showReviewLabels = v; localStorage.setItem('patzer.showReviewLabels', String(v)); }
 export function setShowBoardReviewGlyphs(v: boolean): void { showBoardReviewGlyphs = v; localStorage.setItem('patzer.showBoardReviewGlyphs', String(v)); }
+export function setArrowLabelSize(v: number): void    { arrowLabelSize = v; localStorage.setItem('patzer.arrowLabelSize', String(v)); }
 export function incrementPendingStopCount(): void { pendingStopCount++; }
 export function stopProtocol(): void              { protocol.stop(); }
 
@@ -284,7 +286,7 @@ function buildArrowLabelSvg(ev?: Pick<PositionEval, 'cp' | 'mate'> | Pick<EvalLi
   if (!showArrowLabels || !ev) return null;
   if (ev.cp === undefined && ev.mate === undefined) return null;
   const text = formatScore(ev);
-  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="10" font-weight="400" fill="#fff" stroke="rgba(0,0,0,0.72)" stroke-width="2" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
+  return `<text x="50" y="54" text-anchor="middle" font-family="Noto Sans, sans-serif" font-size="${arrowLabelSize}" font-weight="400" fill="#fff" stroke="rgba(0,0,0,0.72)" stroke-width="2" paint-order="stroke">${escapeArrowLabelText(text)}</text>`;
 }
 
 function escapeArrowLabelText(text: string): string {
