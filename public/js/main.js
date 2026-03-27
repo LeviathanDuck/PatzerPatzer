@@ -11317,6 +11317,30 @@ function renderGamesView(deps) {
 }
 
 // src/analyse/moveList.ts
+var isTouchDevice = () => window.matchMedia("(hover: none)").matches;
+function buildContextHandlers(path, onContextMenu) {
+  const handlers = {
+    contextmenu: (e) => {
+      e.preventDefault();
+      onContextMenu(path, e);
+    }
+  };
+  if (isTouchDevice()) {
+    let holdTimer;
+    handlers["dblclick"] = (e) => {
+      e.preventDefault();
+      onContextMenu(path, e);
+    };
+    handlers["pointerdown"] = (e) => {
+      holdTimer = setTimeout(() => {
+        onContextMenu(path, e);
+      }, 400);
+    };
+    handlers["pointerup"] = () => clearTimeout(holdTimer);
+    handlers["pointerleave"] = () => clearTimeout(holdTimer);
+  }
+  return handlers;
+}
 function shouldShowReviewAnnotation(userColor, nodePly, userOnly) {
   if (!userOnly || userColor === null) return true;
   const isWhiteMove = nodePly % 2 === 1;
@@ -11370,10 +11394,7 @@ function renderMoveSpan(node, path, parent, showIndex, currentPath, getEval, nav
     attrs: { p: path },
     on: {
       click: () => navigate2(path),
-      ...onContextMenu ? { contextmenu: (e) => {
-        e.preventDefault();
-        onContextMenu(path, e);
-      } } : {}
+      ...onContextMenu ? buildContextHandlers(path, onContextMenu) : {}
     }
   }, inner);
 }
@@ -12779,9 +12800,24 @@ function navigate(path) {
   redraw();
   scrollActiveIntoView();
 }
-function scrollActiveIntoView() {
-  requestAnimationFrame(() => {
-    document.querySelector(".move.active")?.scrollIntoView({ block: "nearest" });
+var _scrollRaf = 0;
+function scrollActiveIntoView(behavior = "instant") {
+  cancelAnimationFrame(_scrollRaf);
+  _scrollRaf = requestAnimationFrame(() => {
+    const scrollView = document.querySelector(".analyse__moves");
+    const moveEl = scrollView?.querySelector(".move.active");
+    if (!scrollView) return;
+    if (!moveEl) {
+      scrollView.scrollTo({ top: 0, behavior });
+      return;
+    }
+    const move3 = moveEl.getBoundingClientRect();
+    const view2 = scrollView.getBoundingClientRect();
+    const visibleHeight = Math.min(view2.bottom, window.innerHeight) - Math.max(view2.top, 0);
+    scrollView.scrollTo({
+      top: scrollView.scrollTop + move3.top - view2.top - (visibleHeight - move3.height) / 2,
+      behavior
+    });
   });
 }
 function next() {
@@ -12792,6 +12828,52 @@ function next() {
 function prev() {
   if (ctrl.path === "") return;
   navigate(pathInit(ctrl.path));
+}
+function jumpToStart() {
+  navigate("");
+}
+function jumpToLast() {
+  let node = ctrl.root;
+  let path = "";
+  while (node.children.length > 0) {
+    path += node.children[0].id;
+    node = node.children[0];
+  }
+  navigate(path);
+}
+var _scrubLast = [];
+var _scrubStartX = 0;
+var _scrubActive = false;
+function attachScrubListener(el) {
+  if (!window.matchMedia("(hover: none)").matches) return;
+  el.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button")) return;
+    _scrubStartX = e.clientX;
+    _scrubLast = [];
+    _scrubActive = true;
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!_scrubActive) return;
+    const dx = e.clientX - _scrubStartX;
+    if (Math.abs(dx) < 8) return;
+    _scrubStartX = e.clientX;
+    if (dx > 0) next();
+    else prev();
+    _scrubLast.push(dx);
+    redraw();
+  });
+  el.addEventListener("pointerup", () => {
+    if (!_scrubActive) return;
+    _scrubActive = false;
+    const recent = _scrubLast.slice(-3);
+    if (recent.length > 0) {
+      const v = recent.reduce((a, b) => a + b, 0) / recent.length;
+      if (v > 16) jumpToLast();
+      else if (v < -16) jumpToStart();
+    }
+    _scrubLast = [];
+  });
 }
 function deleteVariation(path) {
   deleteNodeAt(ctrl.root, path);
@@ -12922,7 +13004,7 @@ function routeContent(route) {
           //   showCeval && !ctrl.retro?.isSolving() && cevalView.renderPvs(ctrl)
           !ctrl.retro || ctrl.retro.guidanceRevealed() ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
-          h("div.analyse__moves", [
+          h("div.analyse__moves.areplay", [
             renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu, (() => {
               const moments = selectedGameId ? getMissedMoments(selectedGameId) : [];
               return moments.length > 0 ? moments.reduce((a, b) => a.loss > b.loss ? a : b).path : void 0;
@@ -12980,7 +13062,9 @@ function routeContent(route) {
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
         // Controls — navigation only; engine toggle + settings moved to renderCeval() header
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls (jump buttons)
-        h("div.analyse__controls", [
+        h("div.analyse__controls", {
+          hook: { insert: (vnode3) => attachScrubListener(vnode3.elm) }
+        }, [
           renderAnalysisControls([
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.

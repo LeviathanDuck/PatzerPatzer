@@ -450,11 +450,25 @@ function navigate(path: string): void {
   scrollActiveIntoView();
 }
 
-// Keep the active move visible in the move list after each navigation step.
-// Mirrors lichess-org/lila: ui/analyse/src/view/moves.ts (tree scroll helper)
-function scrollActiveIntoView(): void {
-  requestAnimationFrame(() => {
-    document.querySelector<HTMLElement>('.move.active')?.scrollIntoView({ block: 'nearest' });
+// Center the active move vertically in the visible portion of the move list.
+// Adapted from lichess-org/lila: ui/analyse/src/treeView/treeView.ts autoScroll()
+// Uses getBoundingClientRect geometry to compute exact scroll offset so the active
+// move sits in the middle of the visible list area, not just scrolled into view.
+let _scrollRaf = 0;
+function scrollActiveIntoView(behavior: ScrollBehavior = 'instant'): void {
+  cancelAnimationFrame(_scrollRaf);
+  _scrollRaf = requestAnimationFrame(() => {
+    const scrollView = document.querySelector<HTMLElement>('.analyse__moves');
+    const moveEl     = scrollView?.querySelector<HTMLElement>('.move.active');
+    if (!scrollView) return;
+    if (!moveEl) { scrollView.scrollTo({ top: 0, behavior }); return; }
+    const move = moveEl.getBoundingClientRect();
+    const view = scrollView.getBoundingClientRect();
+    const visibleHeight = Math.min(view.bottom, window.innerHeight) - Math.max(view.top, 0);
+    scrollView.scrollTo({
+      top: scrollView.scrollTop + move.top - view.top - (visibleHeight - move.height) / 2,
+      behavior,
+    });
   });
 }
 
@@ -467,6 +481,62 @@ function next(): void {
 function prev(): void {
   if (ctrl.path === '') return;
   navigate(pathInit(ctrl.path));
+}
+
+function jumpToStart(): void {
+  navigate('');
+}
+
+function jumpToLast(): void {
+  let node = ctrl.root;
+  let path = '';
+  while (node.children.length > 0) {
+    path += node.children[0].id;
+    node = node.children[0];
+  }
+  navigate(path);
+}
+
+// Horizontal scrub gesture on the controls bar — swipe left/right to navigate moves.
+// Fast swipe (high velocity) jumps to game start or end.
+// Adapted from lichess-org/lila: ui/analyse/src/view/controls.ts scrubControl()
+let _scrubLast: number[] = [];
+let _scrubStartX = 0;
+let _scrubActive = false;
+
+function attachScrubListener(el: HTMLElement): void {
+  // Touch/stylus devices only — pointer with no fine hover
+  if (!window.matchMedia('(hover: none)').matches) return;
+
+  el.addEventListener('pointerdown', (e: PointerEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    _scrubStartX = e.clientX;
+    _scrubLast   = [];
+    _scrubActive = true;
+    el.setPointerCapture(e.pointerId);
+  });
+
+  el.addEventListener('pointermove', (e: PointerEvent) => {
+    if (!_scrubActive) return;
+    const dx = e.clientX - _scrubStartX;
+    if (Math.abs(dx) < 8) return;
+    _scrubStartX = e.clientX;
+    if (dx > 0) next(); else prev();
+    _scrubLast.push(dx);
+    redraw();
+  });
+
+  el.addEventListener('pointerup', () => {
+    if (!_scrubActive) return;
+    _scrubActive = false;
+    const recent = _scrubLast.slice(-3);
+    if (recent.length > 0) {
+      const v = recent.reduce((a, b) => a + b, 0) / recent.length;
+      if (v > 16) jumpToLast();
+      else if (v < -16) jumpToStart();
+    }
+    _scrubLast = [];
+  });
 }
 
 /**
@@ -658,7 +728,7 @@ function routeContent(route: Route): VNode {
           //   showCeval && !ctrl.retro?.isSolving() && cevalView.renderPvs(ctrl)
           (!ctrl.retro || ctrl.retro.guidanceRevealed()) ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
-          h('div.analyse__moves', [
+          h('div.analyse__moves.areplay', [
             renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu, (() => {
               const moments = selectedGameId ? getMissedMoments(selectedGameId) : [];
               return moments.length > 0 ? moments.reduce((a, b) => a.loss > b.loss ? a : b).path : undefined;
@@ -711,7 +781,9 @@ function routeContent(route: Route): VNode {
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
         // Controls — navigation only; engine toggle + settings moved to renderCeval() header
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls (jump buttons)
-        h('div.analyse__controls', [
+        h('div.analyse__controls', {
+          hook: { insert: vnode => attachScrubListener(vnode.elm as HTMLElement) },
+        }, [
           renderAnalysisControls([
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.
