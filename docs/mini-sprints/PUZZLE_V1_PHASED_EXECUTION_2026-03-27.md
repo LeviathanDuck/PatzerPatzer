@@ -92,6 +92,22 @@ Gate before promotion:
 
 ## Phase 2 — Strict Puzzle Solve Loop
 
+## Phase 1.5 — Restore Puzzle Header Entry
+
+Goal:
+- reintroduce the top-level `Puzzles` header entry only after the minimal puzzle product shell is real
+
+Prompt candidate for later creation:
+
+1. `CCP-175` — Restore Puzzles Header Entry
+
+Gate before promotion:
+- Phase 1 route owner, top-level source navigator, minimal round opening, and puzzle board layout shell must all be reviewed and accepted
+- the `#/puzzles` surface must be a real usable product shell, not a placeholder or dead route
+- the header change must stay scoped to navigation visibility and active-state behavior, not broader puzzle UX expansion
+
+## Phase 2 — Strict Puzzle Solve Loop
+
 Goal:
 - make one puzzle round honestly playable using strict stored-solution validation
 

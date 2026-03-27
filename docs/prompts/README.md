@@ -1,15 +1,14 @@
 # Prompt Workflow
 
-This directory holds the repo-local prompt workflow for Patzer Pro.
+This directory holds the repo-local Claude prompt workflow for Patzer Pro.
 
-Use this README as the canonical starting point for:
-- prompt creation
-- prompt queueing
-- prompt review
-- follow-up fix prompts
-- manager/batch-runner prompts
+This workflow now uses:
+- one canonical registry file
+- one prompt body file per prompt
+- generated Markdown reports for human browsing
+- a generated HTML dashboard for easier local browsing
 
-If another prompt doc seems to conflict with this file, update the other doc so the workflow stays consistent.
+Do not hand-edit the generated reports.
 
 ## Start Here
 
@@ -28,72 +27,163 @@ If the action is review, also re-read:
 If the action is manager-prompt creation, also re-read:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/manager-batch.md`
 
-This re-read is mandatory.
-Do not rely on memory alone when mutating queue/log/history files.
+## Coordination Gate
 
-## Core Rule
+For any non-trivial implementation, refactor, or review task in this thread:
+- the first assistant message must be only:
+  - `Is Claude Code currently running, and if so reply with the exact Claude Code prompt; otherwise reply ready.`
+- send that question as a normal visible assistant chat message, not commentary and not a collapsible work update
+- do not inspect files, run tools, review code, or edit the repo before the user answers
+- do not bury that question inside a progress update or any other mixed message
+- if the user has not replied with either the active Claude Code prompt or `ready`, remain blocked
 
-Prompt-workflow actions are operational actions, not just writing tasks.
+## Canonical Files
 
-That means:
-- creating a prompt must update the tracking files
-- reviewing a prompt must update the tracking files
-- changing the prompt workflow must update this README and any supporting docs that now disagree
+The source of truth is:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-###.md`
 
-If the workflow changes and the docs are not updated, the workflow is incomplete.
-
-## Prompt Files
-
-The tracked prompt files are:
+Generated user-facing reports are:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/dashboard.html`
 
-Their responsibilities are:
+Meaning:
+- the registry is the canonical machine-readable state
+- each prompt body lives once in `docs/prompts/items/`
+- queue/log/history are generated browsing reports for humans
 
-- `CLAUDE_PROMPT_QUEUE.md`
-  - holds created prompts that have not yet been reviewed
-  - remains the main available queue of prompts to run later
-  - includes a top `Queue Index` listing only still-pending queued prompts
-  - uses queue-index checkboxes to show whether a queued prompt has already been run
+The user-viewable list works like this:
+- `CLAUDE_PROMPT_QUEUE.md` shows prompts whose `queueState` is still pending or run-but-unreviewed
+- `CLAUDE_PROMPT_LOG.md` shows the full registry as a review-status dashboard
+- `CLAUDE_PROMPT_HISTORY.md` shows the full archived prompt text plus status metadata
+- `dashboard.html` shows the same registry in a local browser-friendly view with index-plus-detail browsing
 
-- `CLAUDE_PROMPT_LOG.md`
-  - tracks prompt provenance from creation through review
-  - includes a top `Prompt Index` checklist showing review state
-  - also stores manager-prompt entries
+If the generated reports disagree with the registry, fix the registry and regenerate. Do not patch the generated reports directly.
 
-- `CLAUDE_PROMPT_HISTORY.md`
-  - stores historical full prompt text when the workflow calls for it
+## Commands
 
-Status ownership rule:
-- `CLAUDE_PROMPT_LOG.md` is the canonical review-status record
-- `CLAUDE_PROMPT_QUEUE.md` is a pending-only working set
-- `CLAUDE_PROMPT_HISTORY.md` is an archive/audit trail, not the canonical status source
+Use:
 
-That means:
-- if a prompt has been reviewed, it must not remain in `CLAUDE_PROMPT_QUEUE.md`
-- if queue and log disagree, fix the queue/log mismatch immediately before doing more prompt work
+```sh
+npm run prompt:start -- CCP-###
+```
 
-Queue-state rule:
-- `CLAUDE_PROMPT_QUEUE.md` now tracks two pending sub-states in the top queue index:
-  - `- [ ] CCP-###: ...` means created and still queued, but not yet run
-  - `- [x] CCP-###: ...` means the prompt has been run and is waiting for formal review closeout
-- a checked queue-index item is still pending and must remain in the queue until review removes it
-- only review removes a prompt from the queue body and queue index
+to atomically mark a prompt as started:
+- set `queueState` to `queued-started`
+- set `startedAt` if it is missing
+- set `claudeUsed` to `true`
+- regenerate queue/log/history
+- regenerate the HTML dashboard
+- run the prompt audit
+
+Use:
+
+```sh
+npm run prompts:generate
+```
+
+to regenerate the queue/log/history reports from the registry.
+
+Use:
+
+```sh
+npm run prompts:dashboard
+```
+
+to regenerate the standalone HTML dashboard from the same registry.
+
+Use:
+
+```sh
+npm run prompts:refresh
+```
+
+to run the standard full refresh:
+- regenerate queue/log/history
+- regenerate the HTML dashboard
+- run the prompt audit
+
+Use:
+
+```sh
+npm run audit:prompts
+```
+
+to verify:
+- registry structure is valid
+- prompt body files exist
+- manager/child relationships are valid
+- generated docs match the checked-in docs exactly
+
+Use:
+
+```sh
+npm run prompts:migrate
+```
+
+only for one-time migration or repair work when converting old markdown-tracked prompt state into the registry model.
+
+## Prompt Data Model
+
+Each prompt record in `prompt-registry.json` should include the fields the generator and audit expect, including:
+- `id`
+- `title`
+- `taskId`
+- `parentPromptId`
+- `batchPromptIds`
+- `sourceDocument`
+- `sourceStep`
+- `task`
+- `executionTarget`
+- `createdBy`
+- `createdAt`
+- `startedAt`
+- `claudeUsed`
+- `status`
+- `reviewOutcome`
+- `reviewIssues`
+- `queueState`
+- `queueSummary`
+- `promptFile`
+- `commit`
+- `notes`
+- `kind`
+
+Important state fields:
+- `status`
+  - `created`
+  - `reviewed`
+- `reviewOutcome`
+  - `pending`
+  - `passed`
+  - `passed with notes`
+  - `issues found`
+  - `needs rework`
+- `queueState`
+  - `not-queued`
+  - `queued-pending`
+  - `queued-started`
+  - `queued-run`
+
+State ownership rules:
+- canonical review status lives in `prompt-registry.json`
+- queue/log/history derive from the registry
+- prompt body text lives in the per-prompt item file, not in the registry itself
 
 ## Prompt Types
 
 There are two main tracked prompt categories:
 
 - Normal runnable prompts
-  - these are implementation prompts meant to be executed later
-  - they go in the queue
-  - they also get logged
+  - implementation prompts meant to be executed later
+  - usually appear in the queue when pending review
 
 - Manager prompts
-  - these are runner/controller prompts that launch a batch of other prompts
-  - they get logged
-  - by default they do not go in the runnable queue unless the user explicitly asks for that
+  - controller prompts that run a batch of child prompts
+  - tracked in the registry like any other prompt
+  - not normally added to the runnable queue unless the user explicitly wants that
 
 ## ID Rules
 
@@ -118,124 +208,41 @@ Rules:
   - `Task ID` stays on the root family id
   - `Parent Prompt ID` points to the prompt being fixed
 
-## Metadata Rules
-
-Generated prompts should include near the top:
-- `Prompt ID`
-- `Task ID`
-- `Parent Prompt ID`, if applicable
-- `Source Document`, if applicable
-- `Source Step`, if applicable
-- `Execution Target`, when useful
-
-Claude execution prompts should also instruct Claude to echo:
-- `Prompt ID`
-- `Task ID`
-
-in its final report.
-
-## Queue Format
-
-Normal runnable prompts belong in:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-
-Queue rules:
-- use a scan-friendly heading immediately before each prompt block:
-  - `## CCP-### - Short Task Title`
-- use a plain fenced Markdown block with no language tag
-- maintain the top `Queue Index`
-
-Each queue-index item must use this format:
-
-```md
-- [ ] CCP-###: Short Task Title
-  - Brief one-line description of the prompt target.
-```
-
-Leave one blank line between queue-index items for readability.
-
-The queue index must list only prompts still present in the queue.
-
-Queue-index checkbox rules:
-- when a prompt is created, add it as `- [ ]`
-- when a prompt is actually run, change only the queue-index checkbox from `- [ ]` to `- [x]` as the first execution step
-- do not remove the queue item or prompt block at run time
-- review is the only step that removes the queued prompt from `CLAUDE_PROMPT_QUEUE.md`
-
-## Log Format
-
-Every created prompt gets a detailed log entry in:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-
-The log also has a top checklist index.
-
-Prompt-index format:
-
-```md
-- [ ] CCP-### - Short Task Title
-```
-
-Detailed log-entry format:
-
-```md
-- [ ] Reviewed
-  - ID: `CCP-###`
-  - Task ID: `CCP-###`
-  - Parent prompt ID: none
-  - Batch prompt IDs: none
-  - Source document: `docs/...`
-  - Source step: `...`
-  - Task: short task title
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
-```
-
-For manager prompts:
-- `Batch prompt IDs` should list the child prompt ids the manager is intended to run
-- unless the user explicitly says `manager-only`, reviewing a manager prompt means reviewing the manager and its child prompts as one batch
-
-For normal prompts:
-- `Batch prompt IDs: none`
-
-## Normal Prompt Creation Workflow
+## Prompt Creation Workflow
 
 When creating a normal runnable prompt:
 
 1. Re-read the workflow docs listed in `Start Here`
 2. Ground the prompt in the real repo first
 3. Assign the next correct `Prompt ID` and `Task ID`
-4. Add the full prompt to `CLAUDE_PROMPT_QUEUE.md`
-5. Add the matching unchecked item to the top `Queue Index`
-6. Add the detailed unchecked entry to `CLAUDE_PROMPT_LOG.md`
-7. Add the matching unchecked item to the top `Prompt Index` in the log
-8. If needed, update history according to the active workflow
-9. Double-check that queue index, queue body, prompt log index, and detailed log entry all match
+4. Create or update the prompt body file in `docs/prompts/items/`
+5. Add or update the prompt record in `prompt-registry.json`
+6. Set:
+   - `status: created`
+   - `reviewOutcome: pending`
+   - `queueState: queued-pending` for normal queued prompts
+   - `createdBy` to the creating tool or person, for example `Codex`
+   - `createdAt` to the creation timestamp in ISO datetime form
+7. Run `npm run prompts:refresh`
 
 Do not stop after only generating prompt text in chat.
 
-If the user asks to prebuild prompts for later phases:
-
-1. Create the prompt artifacts in queue/log/history
-2. Keep them available in `CLAUDE_PROMPT_QUEUE.md` until they are reviewed
-3. Only remove them from the queue after actual use and review
-
-## Prompt Execution Queue Update Workflow
+## Prompt Execution Workflow
 
 When a queued prompt is actually run:
 
-1. As the first execution step, find the matching `CCP-###` item in the top `Queue Index`
-2. Change only that queue-index checkbox from `- [ ]` to `- [x]`
-3. Re-read the workflow docs listed in `Start Here`
-4. Leave the prompt block itself in `CLAUDE_PROMPT_QUEUE.md`
-5. Leave the detailed log entry in `CLAUDE_PROMPT_LOG.md` pending until review
-6. Do not remove the prompt from the queue during execution
+1. Re-read the workflow docs listed in `Start Here`
+2. Run:
+   - `npm run prompt:start -- <PROMPT_ID>`
+3. Leave:
+   - `status: created`
+   - `reviewOutcome: pending`
+4. Continue implementation only after the prompt-start command succeeds
 
 Execution-state rule:
-- queue checkbox state is an execution marker, not a review marker
-- the checkbox update should happen immediately, even if the prompt later fails or stops midway
-- reviewed prompts are still removed only by the review workflow
-- queue index, queue body, and log must still refer to the same prompt ids after the checkbox update
+- `queued-started` means the prompt has officially begun and should show up as started in the dashboard
+- `queued-run` remains a valid legacy state for older prompt records that were marked as run before this workflow change
+- review is the only step that removes a prompt from the queue
 
 ## Manager Prompt Creation Workflow
 
@@ -244,11 +251,14 @@ When creating a manager prompt:
 1. Re-read the workflow docs listed in `Start Here`
 2. Ground the manager in the real queue/log state
 3. Assign the next correct `Prompt ID` and `Task ID`
-4. Add a detailed unchecked entry to `CLAUDE_PROMPT_LOG.md`
-5. Add the matching unchecked item to the top `Prompt Index` in the log
-6. Record `Batch prompt IDs` in the detailed log entry
-7. Do not add the manager prompt to `CLAUDE_PROMPT_QUEUE.md` unless the user explicitly asks for manager prompts to live there
-8. Double-check that the manager prompt cannot accidentally include itself in the batch it launches
+4. Create the prompt body file in `docs/prompts/items/`
+5. Add a registry entry with:
+   - `kind: manager`
+   - exact `batchPromptIds`
+   - `status: created`
+   - `reviewOutcome: pending`
+   - `queueState: not-queued`, unless the user explicitly asked to queue manager prompts
+6. Run `npm run prompts:refresh`
 
 Manager prompts are tracked artifacts, but not normal queued child prompts by default.
 
@@ -257,49 +267,40 @@ Manager prompts are tracked artifacts, but not normal queued child prompts by de
 When reviewing a prompt:
 
 1. Re-read the workflow docs listed in `Start Here`
-2. Find the matching `CCP-###` entry in queue/log/history
-3. Review the actual changes using `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
-4. Complete prompt-tracking closeout as one atomic step:
-   - remove the prompt block from `CLAUDE_PROMPT_QUEUE.md`
-  - remove the matching queue-index item from `CLAUDE_PROMPT_QUEUE.md`, whether it is `[ ]` or `[x]`
-  - update the detailed log entry in `CLAUDE_PROMPT_LOG.md`
-  - flip the matching top prompt-index item in `CLAUDE_PROMPT_LOG.md` from `[ ]` to `[x]`
-  - record `Review outcome`
-  - record any short `Review issues`
-  - update `CLAUDE_PROMPT_HISTORY.md` if the active workflow expects a reviewed/archive entry
-5. If the review found a real repository issue, ask whether it should be added to `docs/KNOWN_ISSUES.md`
-6. Run the required invariant verification
-7. Only after that verification passes is the review complete
+2. Find the matching registry entry and prompt body file
+3. Review the actual code changes using `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+4. Complete prompt closeout as one atomic registry update:
+   - set `status: reviewed`
+   - set `reviewOutcome`
+   - set `reviewIssues`
+   - set `queueState: not-queued`
+   - update `notes`, `commit`, or `claudeUsed` if needed
+5. Run `npm run prompts:refresh`
+7. Only after the audit passes is review complete
 
 Manager review rule:
-- if the reviewed prompt is a manager prompt with `Batch prompt IDs`, treat review of that manager as review of the listed child prompts too, unless the user explicitly asks for a manager-only review
-- for manager reviews, review and close out the child prompts first, then review and close out the manager prompt itself
-- do not mark the manager prompt passed while its child prompts in that batch remain unreviewed
+- if the reviewed prompt is a manager prompt with `batchPromptIds`, treat review of that manager as review of the listed child prompts too, unless the user explicitly asks for `manager-only`
+- review and close out the child prompts first
+- only then review and close out the manager prompt itself
+- do not mark a manager prompt reviewed while its child prompts remain unreviewed
 
-Required invariant verification after review:
+## Follow-Up Fix Workflow
 
-```sh
-rg -n "CCP-###" docs/prompts/CLAUDE_PROMPT_QUEUE.md docs/prompts/CLAUDE_PROMPT_LOG.md
-```
+If a reviewed prompt needs another fix pass:
 
-Expected result after a completed review:
-- no match in `CLAUDE_PROMPT_QUEUE.md`
-- reviewed match in `CLAUDE_PROMPT_LOG.md`
+1. Re-read the workflow docs listed in `Start Here`
+2. Reuse the same root `Task ID`
+3. Assign the next `-F#` `Prompt ID`
+4. Set `Parent Prompt ID` to the prompt being fixed
+5. Treat the new prompt as a fresh created prompt in:
+   - `docs/prompts/items/`
+   - `prompt-registry.json`
+6. Run `npm run prompts:refresh`
 
-Recommended full audit after review:
-
-```sh
-npm run audit:prompts
-```
-
-Atomic closeout rule:
-- a prompt review is incomplete if any of the following are still true after review:
-  - the prompt id still appears anywhere in `CLAUDE_PROMPT_QUEUE.md`
-  - the top log checklist still shows `[ ]`
-  - the detailed log entry still says `Review outcome: pending`
-  - the queue index and queue body disagree about pending prompt ids
-
-Do not describe a review as complete until those invariants pass.
+Natural-language requests like these should usually trigger this workflow:
+- `I have a bug to fix with CCP-013`
+- `I want to fix something from this task`
+- `this needs a follow-up fix`
 
 ## Review Outcome Labels
 
@@ -319,50 +320,16 @@ Meaning:
 - `needs rework`
   - not ready to accept as-is
 
-The checkbox means only whether review happened:
-- `[ ]` = not reviewed yet
-- `[x]` = reviewed
-
-## Follow-Up Fix Workflow
-
-If a reviewed prompt needs another fix pass:
-
-1. Re-read the workflow docs listed in `Start Here`
-2. Reuse the same root `Task ID`
-3. Assign the next `-F#` `Prompt ID`
-4. Set `Parent Prompt ID` to the prompt being fixed
-5. Treat the new prompt as a fresh created prompt for queue/log purposes
-
-Natural-language requests like these should usually trigger this workflow:
-- `I have a bug to fix with CCP-013`
-- `I want to fix something from this task`
-- `this needs a follow-up fix`
-
 ## Documentation Sync Rule
 
-Any time the prompt-id process, queue structure, log structure, manager behavior, review behavior, or indexing rules change:
+Any time the prompt-id process, registry structure, generation flow, manager behavior, review behavior, or indexing rules change:
 
 1. Update this README
 2. Update every supporting prompt doc that now disagrees
 3. Re-read the updated docs
-4. Confirm the workflow is consistent again
+4. Regenerate and audit
 
 Do not leave the new rule documented in only one place.
-
-## Double-Check Rule
-
-Every workflow action should trigger a documentation double-check before file mutation.
-
-That means:
-- before creating a prompt, re-read the workflow docs
-- before reviewing a prompt, re-read the workflow docs
-- before creating a manager prompt, re-read the workflow docs
-- after mutating queue/log/history files, quickly verify the files still match the documented workflow
-
-If the current docs and the intended action disagree:
-- stop
-- update the docs first
-- then perform the workflow action
 
 ## Template Map
 

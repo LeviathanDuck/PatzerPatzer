@@ -2,48 +2,37 @@
 
 You are writing a single paste-ready prompt for Claude Code.
 
-Your job is not to solve the coding task.
-Your job is to inspect the real Patzer Pro codebase first, then compile the user's rough task into a grounded, executable Claude Code prompt.
-
-Assume Claude Code will have access to:
-- the full Patzer Pro codebase
-- the local Lichess source
-- the repo instruction files:
-  - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-  - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+Your job is not to solve the coding task. Your job is to inspect the real Patzer Pro codebase first, then compile the user's rough task into a grounded, executable Claude Code prompt.
 
 Before writing the prompt:
-- re-read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md` and `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md` before mutating any prompt-tracking files
+- re-read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- re-read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
 - inspect the relevant Patzer Pro area so the prompt is grounded in the current repo
 - resolve rough or slightly wrong terminology into the real files, modules, and subsystem owner
 - determine whether the task touches Lichess-aligned behavior
 - include Lichess inspection instructions only when that comparison is actually relevant
-- assign the prompt a stable identifier in the form `CCP-###`
-- if the new prompt is fixing or following up on a previously reviewed prompt, keep the same task family id and create a follow-up prompt id using `-F#`, for example:
-  - original: `CCP-013`
-  - follow-up fix: `CCP-013-F1`
-  - next follow-up fix: `CCP-013-F2`
-- if the user uses natural language that clearly means "fix the reviewed task" rather than "start a new task", interpret it as a follow-up fix prompt by default, including phrasings like:
-  - `I have a bug to fix with this`
-  - `I want to fix something from this task`
-  - `this needs a follow-up fix`
-  - `I have a bug to fix with CCP-013`
-- when that intent is clear:
-  - use the next `-F#` prompt id in the same family
-  - keep `Task ID` as the root family id
-  - set `Parent Prompt ID` to the prompt being fixed
-- identify the source planning document and exact step/task the prompt comes from
-- for normal runnable Claude prompts, add the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
-- for normal runnable Claude prompts, add a matching queue-index item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when the prompt is created
-- make each queue-index item include:
-  - first line: `- [ ] CCP-###: Short Task Title`
-  - second line: an indented bullet with a brief one-line description of the target behavior or fix
-  - one blank line between queue-index items for readability
-- when adding the prompt to the queue file, place a scan-friendly `## prompt-id - short task title` heading immediately before the fenced prompt block
-- add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
-- add a matching unchecked prompt-id-plus-title checklist item to the top index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` when the prompt is created
-- if the prompt being created is a manager/batch-runner prompt, log it with `Batch prompt IDs` but do not add it to the runnable queue unless the user explicitly asks for that
-- after updating queue/log files, double-check that the files still match the workflow documented in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+
+Prompt tracking rules:
+- assign a stable identifier in the form `CCP-###`
+- if the task is a follow-up fix, reuse the root family and use the next `-F#` id
+- create or update the prompt body in `docs/prompts/items/CCP-###.md`
+- create or update the prompt record in `docs/prompts/prompt-registry.json`
+- for normal runnable Claude prompts, set:
+  - `status: created`
+  - `reviewOutcome: pending`
+  - `queueState: queued-pending`
+  - `createdBy: Codex`
+  - `createdAt` to the current ISO datetime
+- for manager prompts:
+  - include `batchPromptIds`
+  - do not queue them unless the user explicitly asks for that
+- after updating prompt tracking, run:
+  - `npm run prompts:refresh`
+
+Do not hand-edit:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
 
 The prompt you generate must instruct Claude Code to:
 - inspect the current code first and search for actual implementation points instead of guessing file paths
@@ -56,63 +45,21 @@ The prompt you generate must instruct Claude Code to:
 - validate with build plus the most relevant task-specific checks
 - provide a short manual test checklist with concrete user actions and expected results
 - echo a `Prompt ID` field in the final report, matching the exact prompt instance metadata
-- keep the `Task ID` field in the final report too, but use it only as the root task-family identifier
-- report remaining risks, limitations, or unvalidated areas clearly
-- when the prompt is actually run, update its own top queue-index item in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` from `- [ ]` to `- [x]` as the first execution step before startup coordination or implementation work, but do not remove the prompt from the queue; review removes it later
+- keep the `Task ID` field in the final report too
+- as the first execution step, run `npm run prompt:start -- <PROMPT_ID>`
+- only continue implementation work after that command succeeds so the registry, markdown reports, and HTML dashboard are updated before coding begins
 
-The final prompt must be concise, direct, and action-oriented.
-Do not pad it with general coaching, duplicated policy, or explanations of why prompts matter.
-
-When possible, the final prompt should name the actual Patzer Pro files or directories you found while inspecting.
-If relevant Lichess files are identifiable from inspection, name them too.
-If they are not yet identifiable, instruct Claude Code to locate them before deciding implementation details.
-
-The final prompt should tell Claude Code to use this output shape:
-- prompt id
-- task id
-- parent prompt id, if applicable
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files, if applicable
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-
-For the manual test checklist, the final prompt should tell Claude Code to:
-- list concrete actions a human can perform in the app
-- state the expected result for each action
-- keep the checklist tightly scoped to the implemented change
-- include edge-case checks only when they are directly relevant
+The final prompt should include near the top:
+- `Prompt ID`
+- `Task ID`
+- `Parent Prompt ID`, if applicable
+- `Source Document`, if applicable
+- `Source Step`, if applicable
+- `Execution Target: Claude Code`
 
 Output requirements:
 - output only the final Claude Code prompt
 - wrap the entire prompt in a single fenced Markdown code block
 - do not include commentary or explanation before or after the code block
-- treat the user's task description as intent, not as guaranteed implementation truth
-- place the prompt identifier near the top so it can be copied into `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-- place the source document and source step near the top so the prompt can be traced back to the planning record it came from
-- use this metadata header shape near the top of the prompt:
-  - `Prompt ID: CCP-###`
-  - `Task ID: CCP-###`
-  - `Parent Prompt ID: CCP-###` if this is a follow-up fix prompt
-  - `Source Document: docs/...`
-  - `Source Step: ...`
-- for follow-up fix prompts:
-  - `Prompt ID` is the unique follow-up id, such as `CCP-013-F1`
-  - `Task ID` remains the root task family id, such as `CCP-013`
-  - `Parent Prompt ID` should point to the reviewed prompt being fixed
-- tell Claude Code to repeat the same `Prompt ID` field in its final report
-- tell Claude Code to include the `Task ID` field in its final report as the root task family id
-- for normal runnable Claude prompts, append the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when generating it
-- for normal runnable Claude prompts, add a matching item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` at creation time
-- tell Claude Code that when it actually runs the prompt, it should first change only that queue-index item from `- [ ]` to `- [x]` before startup coordination or implementation work, leave the prompt queued until review, and keep that run marker even if execution stops midway
-- add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
-- add a matching unchecked `- [ ] CCP-### - Short Task Title` line to the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 
 My rough task description follows:
