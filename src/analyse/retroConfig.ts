@@ -27,13 +27,55 @@ export interface RetroConfig {
    * Lichess default: 3.  Mirrors nodeFinder.ts: |prev.eval.mate| <= 3.
    */
   missedMateDistance: number;
+
+  // ── Collapse (blown win) family ─────────────────────────────────────────
+  // Patzer extension: surfaces positions where the user was clearly winning
+  // but squandered the advantage in one move.  Default: OFF.
+
+  /** Master toggle for the collapse family. */
+  collapseEnabled: boolean;
+  /** Minimum mover win-chances before the move for collapse to trigger. Range [0, 1]. */
+  collapseWcFloor: number;
+  /** Minimum win-chance loss to trigger a collapse flag. */
+  collapseDropMin: number;
+
+  // ── Defensive resource family ───────────────────────────────────────────
+  // Patzer extension: surfaces positions where the user was worse but missed
+  // a saving move or significantly better defense.  Default: OFF.
+
+  /** Master toggle for the defensive-resource family. */
+  defensiveEnabled: boolean;
+  /** Maximum mover win-chances before the move (must be losing/worse). Range [0, 1]. */
+  defensiveWcCeiling: number;
+  /** Minimum gap between best move and played move to qualify as a salvage. */
+  defensiveSalvageMin: number;
+
+  // ── Punish-the-blunder family ───────────────────────────────────────────
+  // Patzer extension: surfaces positions where the opponent blundered and
+  // the user failed to exploit it.  Default: OFF.
+
+  /** Master toggle for the punish-the-blunder family. */
+  punishEnabled: boolean;
+  /** Minimum win-chance swing created by the opponent's blunder (scaled 0–0.5). */
+  punishOpponentSwingMin: number;
+  /** Minimum win-chance loss in the user's reply (failure to exploit). */
+  punishExploitDropMin: number;
 }
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
 // Values that reproduce today's buildRetroCandidates behavior exactly.
 export const RETRO_CONFIG_DEFAULTS: Readonly<RetroConfig> = {
-  minClassification:  'mistake',
-  missedMateDistance: 3,
+  minClassification:      'mistake',
+  missedMateDistance:      3,
+  collapseEnabled:        false,
+  collapseWcFloor:        0.65,
+  collapseDropMin:        0.15,
+  defensiveEnabled:       false,
+  defensiveWcCeiling:     0.35,
+  defensiveSalvageMin:    0.15,
+  punishEnabled:          false,
+  punishOpponentSwingMin: 0.15,
+  punishExploitDropMin:   0.10,
 };
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -54,6 +96,30 @@ function loadFromStorage(): RetroConfig {
         typeof p.missedMateDistance === 'number' && p.missedMateDistance >= 0
           ? Math.floor(p.missedMateDistance)
           : RETRO_CONFIG_DEFAULTS.missedMateDistance,
+      collapseEnabled:
+        typeof p.collapseEnabled === 'boolean' ? p.collapseEnabled : RETRO_CONFIG_DEFAULTS.collapseEnabled,
+      collapseWcFloor:
+        typeof p.collapseWcFloor === 'number' && p.collapseWcFloor >= 0 && p.collapseWcFloor <= 1
+          ? p.collapseWcFloor : RETRO_CONFIG_DEFAULTS.collapseWcFloor,
+      collapseDropMin:
+        typeof p.collapseDropMin === 'number' && p.collapseDropMin >= 0
+          ? p.collapseDropMin : RETRO_CONFIG_DEFAULTS.collapseDropMin,
+      defensiveEnabled:
+        typeof p.defensiveEnabled === 'boolean' ? p.defensiveEnabled : RETRO_CONFIG_DEFAULTS.defensiveEnabled,
+      defensiveWcCeiling:
+        typeof p.defensiveWcCeiling === 'number' && p.defensiveWcCeiling >= 0 && p.defensiveWcCeiling <= 1
+          ? p.defensiveWcCeiling : RETRO_CONFIG_DEFAULTS.defensiveWcCeiling,
+      defensiveSalvageMin:
+        typeof p.defensiveSalvageMin === 'number' && p.defensiveSalvageMin >= 0
+          ? p.defensiveSalvageMin : RETRO_CONFIG_DEFAULTS.defensiveSalvageMin,
+      punishEnabled:
+        typeof p.punishEnabled === 'boolean' ? p.punishEnabled : RETRO_CONFIG_DEFAULTS.punishEnabled,
+      punishOpponentSwingMin:
+        typeof p.punishOpponentSwingMin === 'number' && p.punishOpponentSwingMin >= 0
+          ? p.punishOpponentSwingMin : RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin,
+      punishExploitDropMin:
+        typeof p.punishExploitDropMin === 'number' && p.punishExploitDropMin >= 0
+          ? p.punishExploitDropMin : RETRO_CONFIG_DEFAULTS.punishExploitDropMin,
     };
   } catch {
     return { ...RETRO_CONFIG_DEFAULTS };

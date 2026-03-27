@@ -94,8 +94,11 @@ export interface TreeNode extends TreeNodeBase {
 //   'missed-mate' — confirmed: parent position had a forced mate available within the
 //                   configured distance but the played move did not deliver or maintain it.
 //                   Matches the prev.eval.mate && !curr.eval.mate branch in nodeFinder.ts.
+//   'collapse'    — Patzer extension: user was clearly winning but squandered the advantage.
+//   'defensive'   — Patzer extension: user was worse but missed a saving resource.
+//   'punish'      — Patzer extension: opponent blundered but user failed to exploit it.
 
-export type LearnableReasonCode = 'swing' | 'missed-mate';
+export type LearnableReasonCode = 'swing' | 'missed-mate' | 'collapse' | 'defensive' | 'punish';
 
 export interface LearnableReason {
   /** Stable machine-readable identifier. Used for filtering and drill routing. */
@@ -117,6 +120,21 @@ export const LEARNABLE_REASONS: Readonly<Record<LearnableReasonCode, LearnableRe
     code:    'missed-mate',
     label:   'Missed forced mate',
     summary: 'A forced checkmate sequence was available but was not played.',
+  },
+  'collapse': {
+    code:    'collapse',
+    label:   'Blown win',
+    summary: 'A clearly winning position was squandered in a single move.',
+  },
+  'defensive': {
+    code:    'defensive',
+    label:   'Missed defense',
+    summary: 'A saving resource was available in a losing position but was not played.',
+  },
+  'punish': {
+    code:    'punish',
+    label:   'Missed punishment',
+    summary: 'The opponent blundered but the advantage was not exploited.',
   },
 };
 

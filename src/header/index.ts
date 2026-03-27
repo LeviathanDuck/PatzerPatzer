@@ -287,8 +287,17 @@ const CLASSIFICATION_OPTIONS: { value: RetroConfig['minClassification']; label: 
 function renderRetroModal(redraw: () => void): VNode {
   const cfg = retroConfig;
   const isDefault =
-    cfg.minClassification  === RETRO_CONFIG_DEFAULTS.minClassification &&
-    cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance;
+    cfg.minClassification     === RETRO_CONFIG_DEFAULTS.minClassification &&
+    cfg.missedMateDistance    === RETRO_CONFIG_DEFAULTS.missedMateDistance &&
+    cfg.collapseEnabled      === RETRO_CONFIG_DEFAULTS.collapseEnabled &&
+    cfg.collapseWcFloor      === RETRO_CONFIG_DEFAULTS.collapseWcFloor &&
+    cfg.collapseDropMin      === RETRO_CONFIG_DEFAULTS.collapseDropMin &&
+    cfg.defensiveEnabled     === RETRO_CONFIG_DEFAULTS.defensiveEnabled &&
+    cfg.defensiveWcCeiling   === RETRO_CONFIG_DEFAULTS.defensiveWcCeiling &&
+    cfg.defensiveSalvageMin  === RETRO_CONFIG_DEFAULTS.defensiveSalvageMin &&
+    cfg.punishEnabled        === RETRO_CONFIG_DEFAULTS.punishEnabled &&
+    cfg.punishOpponentSwingMin === RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin &&
+    cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin;
 
   return h('div.detection-modal', [
     h('div.detection-modal__backdrop', {
@@ -348,6 +357,121 @@ function renderRetroModal(redraw: () => void): VNode {
               attrs: { style: 'left: 30%', title: 'Lichess default: in 3' },
             }),
           ]),
+        ]),
+
+        // ── Collapse (blown win) family ──────────────────────────────────
+        h('div.detection-modal__row', [
+          h('div.detection-modal__row-header', [
+            h('span.detection-modal__label', 'Blown Wins'),
+          ]),
+          h('p.detection-modal__desc',
+            'Flag positions where you were clearly winning but squandered the advantage. ' +
+            'Reuses the same thresholds as the engine\'s collapse detection.'),
+          h('label.detection-modal__toggle', [
+            h('input', {
+              attrs: { type: 'checkbox', checked: cfg.collapseEnabled },
+              on: { change: (e: Event) => { setRetroConfig({ collapseEnabled: (e.target as HTMLInputElement).checked }); redraw(); } },
+            }),
+            h('span', 'Enabled'),
+          ]),
+          ...(cfg.collapseEnabled ? [
+            h('div.detection-modal__row-header', [
+              h('span.detection-modal__label', 'Win Chance Floor'),
+              h('span.detection-modal__value', cfg.collapseWcFloor.toFixed(2)),
+            ]),
+            h('div.detection-modal__slider-wrap', [
+              h('input', {
+                attrs: { type: 'range', min: 0.50, max: 0.95, step: 0.05, value: cfg.collapseWcFloor },
+                on: { input: (e: Event) => { setRetroConfig({ collapseWcFloor: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+              }),
+            ]),
+            h('div.detection-modal__row-header', [
+              h('span.detection-modal__label', 'Minimum Drop'),
+              h('span.detection-modal__value', cfg.collapseDropMin.toFixed(2)),
+            ]),
+            h('div.detection-modal__slider-wrap', [
+              h('input', {
+                attrs: { type: 'range', min: 0.02, max: 0.30, step: 0.01, value: cfg.collapseDropMin },
+                on: { input: (e: Event) => { setRetroConfig({ collapseDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+              }),
+            ]),
+          ] : []),
+        ]),
+
+        // ── Defensive resource family ────────────────────────────────────
+        h('div.detection-modal__row', [
+          h('div.detection-modal__row-header', [
+            h('span.detection-modal__label', 'Missed Defenses'),
+          ]),
+          h('p.detection-modal__desc',
+            'Flag positions where you were losing but had a significantly better defensive move available.'),
+          h('label.detection-modal__toggle', [
+            h('input', {
+              attrs: { type: 'checkbox', checked: cfg.defensiveEnabled },
+              on: { change: (e: Event) => { setRetroConfig({ defensiveEnabled: (e.target as HTMLInputElement).checked }); redraw(); } },
+            }),
+            h('span', 'Enabled'),
+          ]),
+          ...(cfg.defensiveEnabled ? [
+            h('div.detection-modal__row-header', [
+              h('span.detection-modal__label', 'Position Ceiling'),
+              h('span.detection-modal__value', cfg.defensiveWcCeiling.toFixed(2)),
+            ]),
+            h('div.detection-modal__slider-wrap', [
+              h('input', {
+                attrs: { type: 'range', min: 0.10, max: 0.50, step: 0.05, value: cfg.defensiveWcCeiling },
+                on: { input: (e: Event) => { setRetroConfig({ defensiveWcCeiling: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+              }),
+            ]),
+            h('div.detection-modal__row-header', [
+              h('span.detection-modal__label', 'Salvage Gap'),
+              h('span.detection-modal__value', cfg.defensiveSalvageMin.toFixed(2)),
+            ]),
+            h('div.detection-modal__slider-wrap', [
+              h('input', {
+                attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.defensiveSalvageMin },
+                on: { input: (e: Event) => { setRetroConfig({ defensiveSalvageMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+              }),
+            ]),
+          ] : []),
+        ]),
+
+        // ── Punish-the-blunder family ────────────────────────────────────
+        h('div.detection-modal__row', [
+          h('div.detection-modal__row-header', [
+            h('span.detection-modal__label', 'Missed Punishments'),
+          ]),
+          h('p.detection-modal__desc',
+            'Flag positions where the opponent blundered but you failed to exploit the mistake.'),
+          h('label.detection-modal__toggle', [
+            h('input', {
+              attrs: { type: 'checkbox', checked: cfg.punishEnabled },
+              on: { change: (e: Event) => { setRetroConfig({ punishEnabled: (e.target as HTMLInputElement).checked }); redraw(); } },
+            }),
+            h('span', 'Enabled'),
+          ]),
+          ...(cfg.punishEnabled ? [
+            h('div.detection-modal__row-header', [
+              h('span.detection-modal__label', 'Opponent Swing'),
+              h('span.detection-modal__value', cfg.punishOpponentSwingMin.toFixed(2)),
+            ]),
+            h('div.detection-modal__slider-wrap', [
+              h('input', {
+                attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.punishOpponentSwingMin },
+                on: { input: (e: Event) => { setRetroConfig({ punishOpponentSwingMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+              }),
+            ]),
+            h('div.detection-modal__row-header', [
+              h('span.detection-modal__label', 'Exploit Drop'),
+              h('span.detection-modal__value', cfg.punishExploitDropMin.toFixed(2)),
+            ]),
+            h('div.detection-modal__slider-wrap', [
+              h('input', {
+                attrs: { type: 'range', min: 0.02, max: 0.20, step: 0.01, value: cfg.punishExploitDropMin },
+                on: { input: (e: Event) => { setRetroConfig({ punishExploitDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+              }),
+            ]),
+          ] : []),
         ]),
 
         // Reset row
