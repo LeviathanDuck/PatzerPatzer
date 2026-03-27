@@ -532,6 +532,27 @@ main {
   }
 }
 
+// Review menu trigger — larger touch target on mobile
+@media (max-width: 600px) {
+  .review-menu__trigger {
+    min-height: 34px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+  }
+}
+
+// Board settings panel — constrain width on very narrow screens and tighten slider label column
+@media (max-width: 600px) {
+  .global-menu__dropdown.board-open {
+    width: min(264px, calc(100vw - 20px));
+  }
+
+  .board-settings__slider-row {
+    grid-template-columns: 68px 1fr 32px;
+    gap: 4px;
+  }
+}
+
 .dev-reset {
   margin-left: auto;
   padding: 4px 10px;
@@ -1069,50 +1090,204 @@ body.resizing {
   overflow: hidden;
 }
 
-// Retrospection active-session panel — inside the tools column, below the move list.
-// Mirrors lichess-org/lila: ui/analyse/css/_retro.scss .retro-box placement in tools column.
-// Adapted from lichess-org/lila: ui/analyse/css/_training.scss .training-box
-.retro-strip {
-  padding: 10px 12px;
+// Retrospection feedback box — inside the tools column, below the move list.
+// Adapted from lichess-org/lila: ui/analyse/css/_retro.scss + _training.scss
+
+.retro-box {
+  display: flex;
+  flex-direction: column;
+  flex: 1.5 1 0;
   border-top: 1px solid #333;
   background: #1e1e1e;
-  flex-shrink: 0;
+  min-height: 0;
 
-  .retro-strip__label {
-    font-size: 0.9em;
-    color: #ccc;
-    margin-bottom: 6px;
-  }
-
-  .retro-strip__actions {
+  // Title bar
+  .retro-box__title {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
     align-items: center;
+    justify-content: space-between;
+    font-size: 0.88em;
+    line-height: 2em;
+    background: rgba(255,255,255,0.06);
+    padding: 0 8px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #2a2a2a;
+    color: #ccc;
   }
 
-  .retro-strip__btn {
-    font-size: 0.82em;
-    padding: 3px 8px;
-    cursor: pointer;
-  }
-
-  .retro-strip__btn--next {
-    background: rgba(56, 147, 232, 0.8);
-    color: #fff;
-    border: none;
-    &:hover { background: rgba(56, 147, 232, 1); }
-  }
-
-  .retro-strip__best {
-    font-size: 0.85em;
-    color: #aaa;
-  }
-
-  .retro-strip__progress {
-    font-size: 0.8em;
+  .retro-box__progress {
     color: #888;
-    margin-left: auto;
+    font-size: 0.95em;
+  }
+
+  .retro-box__close {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 1em;
+    padding: 0 2px;
+    line-height: 1;
+    &:hover { color: #ccc; }
+  }
+
+  // Feedback area — fills remaining vertical space
+  .retro-feedback {
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100px;
+
+    // win/view use a split row layout on wider viewports
+    &.win,
+    &.view {
+      flex-direction: row;
+    }
+  }
+
+  // Player row: icon/king + instruction text side by side
+  // Mirrors lichess-org/lila: _training.scss .player
+  .retro-player {
+    display: flex;
+    align-items: center;
+    margin: 0 1em;
+    flex: 1;
+
+    &.retro-player--center {
+      justify-content: center;
+    }
+  }
+
+  // Large king glyph standing in for the piece graphic
+  .retro-king {
+    font-size: 48px;
+    line-height: 1;
+    width: 56px;
+    text-align: center;
+    flex-shrink: 0;
+    margin-inline-end: 10px;
+    opacity: 0.85;
+  }
+
+  // ✓ / ✗ / ! icon — mirrors Lichess .icon (64px)
+  .retro-icon {
+    font-size: 52px;
+    line-height: 1;
+    width: 56px;
+    text-align: center;
+    flex-shrink: 0;
+    margin-inline-end: 10px;
+
+    &.retro-icon--win  { color: #759900; }
+    &.retro-icon--fail { color: #dc322f; }
+    &.retro-icon--off  { color: #e0a030; }
+  }
+
+  // Instruction column: strong heading + em sub-label + choices
+  // Mirrors lichess-org/lila: _training.scss .instruction
+  .retro-instruction {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+
+    strong {
+      font-weight: normal;
+      font-size: 1.1em;
+      line-height: 1.35;
+    }
+
+    em {
+      font-style: normal;
+      font-size: 0.88em;
+      color: #aaa;
+      margin-top: 2px;
+    }
+  }
+
+  // "View the solution" / "Skip this move" links
+  // Mirrors lichess-org/lila: _training.scss .choices
+  .retro-choices {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    line-height: 1.6em;
+    font-size: 0.85em;
+
+    a {
+      color: #7cb5e8;
+      cursor: pointer;
+      &:hover { color: #aad4f5; }
+    }
+
+    &.retro-choices--off {
+      justify-content: flex-start;
+    }
+  }
+
+  // Eval progress bar — mirrors lichess-org/lila: _training.scss .progress
+  .retro-progress {
+    margin-top: 6px;
+    width: 100%;
+    height: 4px;
+    background: #2a2a2a;
+
+    div {
+      background: #759900;
+      height: 4px;
+      transition: width 0.5s;
+      max-width: 100%;
+    }
+  }
+
+  // Half panels for win/view split layout
+  // Mirrors lichess-org/lila: _retro.scss .half
+  .retro-half {
+    flex: 1 1 50%;
+    display: flex;
+    align-items: center;
+
+    &.retro-half--top {
+      flex-direction: column;
+      justify-content: center;
+    }
+  }
+
+  // Blue "▶ Next" continue button — mirrors lichess-org/lila: _retro.scss .continue
+  .retro-continue {
+    display: flex;
+    flex: 1 1 50%;
+    align-items: center;
+    justify-content: center;
+    background: rgba(56, 147, 232, 0.85);
+    color: #fff;
+    font-size: 1.2em;
+    text-transform: uppercase;
+    gap: 8px;
+    cursor: pointer;
+    padding: 0 12px;
+    min-height: 60px;
+    user-select: none;
+
+    &:hover { background: rgba(56, 147, 232, 1); }
+
+    .retro-continue__icon {
+      font-size: 1.6em;
+    }
+  }
+
+  // "Show engine" link shown below feedback
+  .retro-engine-reveal {
+    text-align: center;
+    padding: 6px 0 8px;
+    border-top: 1px solid #2a2a2a;
+    font-size: 0.82em;
+
+    a {
+      color: #888;
+      cursor: pointer;
+      &:hover { color: #aaa; }
+    }
   }
 }
 
@@ -1165,8 +1340,7 @@ body.resizing {
     touch-action: pan-y;
 
     > button,
-    .btn-review,
-    .retro-strip__btn {
+    .btn-review {
       min-height: 44px;
       padding: 10px 12px;
       font-size: 0.92rem;
@@ -1215,8 +1389,36 @@ body.resizing {
     overflow-y: auto;
   }
 
-  .retro-strip {
-    margin-top: 0;
+  .retro-box {
+    flex: 0 0 auto;
+
+    // Scale icons down — 52px is too dominant in the narrow single-column layout
+    .retro-icon {
+      font-size: 38px;
+      width: 42px;
+      margin-inline-end: 8px;
+    }
+
+    // Tighten player row margins on narrow screens
+    .retro-player {
+      margin: 0 0.6em;
+    }
+
+    // Smaller min-height — less whitespace on short phone viewports
+    .retro-feedback {
+      min-height: 76px;
+    }
+
+    // Slightly smaller heading to fit single-column width comfortably
+    .retro-instruction strong {
+      font-size: 1em;
+    }
+
+    // Win/view split: shorten the continue button on mobile — still a big tap target
+    .retro-continue {
+      min-height: 52px;
+      font-size: 1.05em;
+    }
   }
 
   .analyse__underboard {
