@@ -152,6 +152,17 @@ Claude must:
 - follow instructions exactly
 - not add extra features
 
+## Prompt Tracking Rule
+
+Before implementing any CCP prompt, Claude must run:
+
+```
+npm run prompt:start <CCP-ID>
+```
+
+This marks the prompt as started in the registry, sets the timestamp, and regenerates
+tracking docs. This applies whether the prompt was read from the queue file, pasted by
+the user, or dispatched by a manager prompt. No exceptions.
 
 ## Stop Condition
 
