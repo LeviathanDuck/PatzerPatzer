@@ -53,9 +53,6 @@ Use this file to store Claude Code prompts that are available for future use and
 - [ ] CCP-159: Puzzle V1 Phase 2 Batch Manager
   - execute Puzzle V1 phase batch manager for `CCP-155`, `CCP-156`, `CCP-157`, `CCP-158`.
 
-- [ ] CCP-154: Puzzle V1 Phase 1 Batch Manager
-  - execute Puzzle V1 phase batch manager for `CCP-150`, `CCP-151`, `CCP-152`, `CCP-153`.
-
 - [ ] CCP-173: Add Future Hooks For Rated Puzzle Mode
   - add non-user-facing rated-mode hooks without implementing rating progression yet.
 
@@ -104,18 +101,6 @@ Use this file to store Claude Code prompts that are available for future use and
 - [ ] CCP-155: Add Puzzle Round Controller
   - introduce the smallest real controller for puzzle-round state and transitions.
 
-- [ ] CCP-153: Add Puzzle Board Layout Shell
-  - add the dedicated puzzle board page shell on top of the shared board subsystem.
-
-- [ ] CCP-152: Open Minimal Puzzle Round From Canonical Puzzle Definition
-  - make selecting a canonical puzzle open a minimal dedicated round context.
-
-- [ ] CCP-151: Render Top-Level Puzzle Source Navigator
-  - render the first real puzzle-library surface with Imported Puzzles and User Library source sections.
-
-- [ ] CCP-150: Add Puzzle Library Route Owner
-  - add a dedicated puzzle product route owner without rebuilding the full round UI.
-
 - [ ] CCP-143: Add Board Consumer Move Hook
   - add a board-consumer move hook seam so board core can notify product owners without hardcoding future puzzle behavior.
 
@@ -160,6 +145,10 @@ Manager-prompt rule:
 - `CCP-174` is the manager prompt id only
 - do not execute or recurse into `CCP-174` as if it were one of the child prompts
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
 - If overlapping work exists, stop and report it before editing.
@@ -171,7 +160,7 @@ Task:
 - stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
 
 Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change this manager prompt's own queue-index item from `- [ ]` to `- [x]` and to change a child prompt's queue-index item from `- [ ]` to `- [x]` immediately before that child prompt begins real work
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
@@ -181,6 +170,8 @@ Execution rules:
 - do not create new prompts during the batch
 - do not continue past a known issue just to finish the phase
 - if an earlier phase prerequisite proves missing, stop and report it clearly
+- before starting each child prompt's real work, mark that child prompt's queue-index item from `- [ ]` to `- [x]`
+- leave checked queue items and full prompt blocks present even if the batch later stops
 - use internal validation/self-check only; external prompt review and queue/log closeout happen separately
 
 After each completed child prompt, report briefly:
@@ -228,6 +219,10 @@ Manager-prompt rule:
 - `CCP-169` is the manager prompt id only
 - do not execute or recurse into `CCP-169` as if it were one of the child prompts
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
 - If overlapping work exists, stop and report it before editing.
@@ -239,7 +234,7 @@ Task:
 - stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
 
 Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change this manager prompt's own queue-index item from `- [ ]` to `- [x]` and to change a child prompt's queue-index item from `- [ ]` to `- [x]` immediately before that child prompt begins real work
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
@@ -249,6 +244,8 @@ Execution rules:
 - do not create new prompts during the batch
 - do not continue past a known issue just to finish the phase
 - if an earlier phase prerequisite proves missing, stop and report it clearly
+- before starting each child prompt's real work, mark that child prompt's queue-index item from `- [ ]` to `- [x]`
+- leave checked queue items and full prompt blocks present even if the batch later stops
 - use internal validation/self-check only; external prompt review and queue/log closeout happen separately
 
 After each completed child prompt, report briefly:
@@ -296,6 +293,10 @@ Manager-prompt rule:
 - `CCP-164` is the manager prompt id only
 - do not execute or recurse into `CCP-164` as if it were one of the child prompts
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
 - If overlapping work exists, stop and report it before editing.
@@ -307,7 +308,7 @@ Task:
 - stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
 
 Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change this manager prompt's own queue-index item from `- [ ]` to `- [x]` and to change a child prompt's queue-index item from `- [ ]` to `- [x]` immediately before that child prompt begins real work
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
@@ -317,6 +318,8 @@ Execution rules:
 - do not create new prompts during the batch
 - do not continue past a known issue just to finish the phase
 - if an earlier phase prerequisite proves missing, stop and report it clearly
+- before starting each child prompt's real work, mark that child prompt's queue-index item from `- [ ]` to `- [x]`
+- leave checked queue items and full prompt blocks present even if the batch later stops
 - use internal validation/self-check only; external prompt review and queue/log closeout happen separately
 
 After each completed child prompt, report briefly:
@@ -364,6 +367,10 @@ Manager-prompt rule:
 - `CCP-159` is the manager prompt id only
 - do not execute or recurse into `CCP-159` as if it were one of the child prompts
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
 - If overlapping work exists, stop and report it before editing.
@@ -375,7 +382,7 @@ Task:
 - stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
 
 Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change this manager prompt's own queue-index item from `- [ ]` to `- [x]` and to change a child prompt's queue-index item from `- [ ]` to `- [x]` immediately before that child prompt begins real work
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
@@ -385,6 +392,8 @@ Execution rules:
 - do not create new prompts during the batch
 - do not continue past a known issue just to finish the phase
 - if an earlier phase prerequisite proves missing, stop and report it clearly
+- before starting each child prompt's real work, mark that child prompt's queue-index item from `- [ ]` to `- [x]`
+- leave checked queue items and full prompt blocks present even if the batch later stops
 - use internal validation/self-check only; external prompt review and queue/log closeout happen separately
 
 After each completed child prompt, report briefly:
@@ -405,74 +414,6 @@ If the batch finishes, report a compact summary of completed Prompt IDs.
 Begin with `CCP-155`, `CCP-156`, `CCP-157`, `CCP-158`.
 ```
 
-## CCP-154 - Puzzle V1 Phase 1 Batch Manager
-
-```
-Prompt ID: CCP-154
-Task ID: CCP-154
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 1 — Minimal Puzzle Product Shell / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-
-Batch prompt IDs to execute in order:
-- `CCP-150`
-- `CCP-151`
-- `CCP-152`
-- `CCP-153`
-
-Manager-prompt rule:
-- `CCP-154` is the manager prompt id only
-- do not execute or recurse into `CCP-154` as if it were one of the child prompts
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- read the queued child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-
-Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during the batch
-- do not continue past a known issue just to finish the phase
-- if an earlier phase prerequisite proves missing, stop and report it clearly
-- use internal validation/self-check only; external prompt review and queue/log closeout happen separately
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build result
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, report:
-- which Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-Begin with `CCP-150`, `CCP-151`, `CCP-152`, `CCP-153`.
-```
-
 ## CCP-173 - Add Future Hooks For Rated Puzzle Mode
 
 ```
@@ -483,6 +424,10 @@ Source Step: Phase 5 — Repetition And Imported-Library Scale / Task 4
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-attempt / session / future-mode files.
@@ -556,6 +501,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same imported-library / filter / loading files.
 - If overlapping work exists, stop and report it before editing.
@@ -627,6 +576,10 @@ Source Step: Phase 5 — Repetition And Imported-Library Scale / Task 2
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / repetition-metadata / filter files.
@@ -700,6 +653,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-attempt / library-filter / queue-selection files.
 - If overlapping work exists, stop and report it before editing.
@@ -771,6 +728,10 @@ Source Step: Phase 4 — User Library Authoring / Task 4
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / metadata / collection files.
@@ -844,6 +805,10 @@ Source Step: Phase 4 — User Library Authoring / Task 3
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same move-list / context-menu / puzzle-authoring files.
@@ -919,6 +884,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection-session / save-flow / puzzle-library files.
 - If overlapping work exists, stop and report it before editing.
@@ -990,6 +959,10 @@ Source Step: Phase 4 — User Library Authoring / Task 1
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection / puzzle-library / save-flow files.
@@ -1063,6 +1036,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-view / assist-feedback / engine-display files.
 - If overlapping work exists, stop and report it before editing.
@@ -1134,6 +1111,10 @@ Source Step: Phase 3 — Engine Assist Layer / Task 3
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-attempt / persistence / assist-state files.
@@ -1207,6 +1188,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-engine / retro / move-quality files.
 - If overlapping work exists, stop and report it before editing.
@@ -1278,6 +1263,10 @@ Source Step: Phase 3 — Engine Assist Layer / Task 1
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / engine / ceval files.
@@ -1352,6 +1341,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-view / result-state / navigation-control files.
 - If overlapping work exists, stop and report it before editing.
@@ -1423,6 +1416,10 @@ Source Step: Phase 2 — Strict Puzzle Solve Loop / Task 3
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / persistence / attempt-history files.
@@ -1497,6 +1494,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / move-validation / board-move files.
 - If overlapping work exists, stop and report it before editing.
@@ -1570,6 +1571,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / puzzle-view / board-integration files.
 - If overlapping work exists, stop and report it before editing.
@@ -1632,272 +1637,6 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-153 - Add Puzzle Board Layout Shell
-
-```
-Prompt ID: CCP-153
-Task ID: CCP-153
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 1 — Minimal Puzzle Product Shell / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-view / board-layout / shared-board files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add the dedicated puzzle board layout shell on top of the shared board subsystem, without yet implementing the full strict solve loop.
-
-Inspect first:
-- Patzer: the Phase 1 route/round work, `src/board/index.ts`, any board-layout or player-strip helpers currently reused by analysis
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`, `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`, `~/Development/lichess-source/lila/ui/puzzle/src/view/chessground.ts`
-
-Constraints:
-- scope this to layout shell only
-- reuse the shared board subsystem instead of copying the analysis page wholesale
-- do not re-introduce puzzle-specific ownership into board core
-- do not add full result/feedback widgets yet
-- be explicit about what is shared-board reuse versus puzzle-only layout
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for the puzzle page shell
-- explicitly report:
-  - build result
-  - what shared board pieces are reused
-  - what puzzle-only layout shell was added
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-152 - Open Minimal Puzzle Round From Canonical Puzzle Definition
-
-```
-Prompt ID: CCP-152
-Task ID: CCP-152
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 1 — Minimal Puzzle Product Shell / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-selection / route / round-state files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to make selecting a canonical Puzzle V1 definition open a minimal dedicated puzzle-round context, without implementing the full solve loop yet.
-
-Inspect first:
-- Patzer: the Phase 1 route owner, library navigator, canonical puzzle types, puzzle persistence owner
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`, `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`
-
-Constraints:
-- scope this to opening a round context only
-- do not implement strict move validation yet
-- do not add engine-assist behavior yet
-- make source identity explicit so imported and user-library puzzles open through one round seam without becoming one shallow object
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for opening a round context
-- explicitly report:
-  - build result
-  - how a canonical puzzle now opens
-  - what round behavior is still intentionally absent
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-151 - Render Top-Level Puzzle Source Navigator
-
-```
-Prompt ID: CCP-151
-Task ID: CCP-151
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 1 — Minimal Puzzle Product Shell / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-route / library-view / layout files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to render the first real puzzle-library surface with the two top-level Puzzle V1 source distinctions: `Imported Puzzles` and `User Library`.
-
-Inspect first:
-- Patzer: the Phase 1 route owner, canonical puzzle model, puzzle persistence owner, puzzle source adapters
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/PuzzlePlanNotes.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`, `~/Development/lichess-source/lila/ui/puzzle/src/view/side.ts`
-
-Constraints:
-- scope this to top-level source navigation only
-- do not build the full filter system yet
-- do not build solve-loop UI yet
-- keep Imported Puzzles and User Library distinct at the UI and data level
-- prefer a minimal but honest navigator over a fake finished library
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for the new navigator
-- explicitly report:
-  - build result
-  - how Imported Puzzles and User Library are rendered
-  - what library behavior is still intentionally deferred
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-150 - Add Puzzle Library Route Owner
-
-```
-Prompt ID: CCP-150
-Task ID: CCP-150
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 1 — Minimal Puzzle Product Shell / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same router / main / puzzle-owner files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add a dedicated puzzle product route owner for Puzzle V1, without rebuilding the full round UI yet.
-
-Inspect first:
-- Patzer: `src/main.ts`, `src/router.ts`, the canonical puzzle model/persistence/adapter files created in Phase 0
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/PRODUCT_MAP.md`, `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`, `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
-
-Constraints:
-- scope this to route ownership and entry wiring only
-- do not add the full puzzle board layout yet
-- avoid growing `src/main.ts` with medium-sized puzzle logic
-- if a new puzzle owner module is safer, prefer that
-- keep future imported/user-library source distinctions intact
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for route ownership
-- explicitly report:
-  - build result
   - what route owner or route seam was added
   - what behavior stayed intentionally minimal
   - whether behavior changed intentionally
@@ -1933,6 +1672,10 @@ Source Step: Phase 0 — Ownership And Data Foundations / Task 1
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board / analysis / move-handling files.
@@ -2008,6 +1751,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board / retrospection / analysis lifecycle files.
 - If overlapping work exists, stop and report it before editing.
@@ -2080,6 +1827,10 @@ Source Step: Phase 0 — Ownership And Data Foundations / Task 3
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-model / tree-type / persistence files.
@@ -2155,6 +1906,10 @@ Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same IDB / persistence / puzzle-model files.
 - If overlapping work exists, stop and report it before editing.
@@ -2227,6 +1982,10 @@ Source Step: Phase 0 — Ownership And Data Foundations / Task 5
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
+- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-source / adapter / generated-data files.

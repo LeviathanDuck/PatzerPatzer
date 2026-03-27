@@ -58,7 +58,7 @@ The prompt you generate must instruct Claude Code to:
 - echo a `Prompt ID` field in the final report, matching the exact prompt instance metadata
 - keep the `Task ID` field in the final report too, but use it only as the root task-family identifier
 - report remaining risks, limitations, or unvalidated areas clearly
-- when the prompt is actually run, update its own top queue-index item in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` from `- [ ]` to `- [x]`, but do not remove the prompt from the queue; review removes it later
+- when the prompt is actually run, update its own top queue-index item in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` from `- [ ]` to `- [x]` as the first execution step before startup coordination or implementation work, but do not remove the prompt from the queue; review removes it later
 
 The final prompt must be concise, direct, and action-oriented.
 Do not pad it with general coaching, duplicated policy, or explanations of why prompts matter.
@@ -111,7 +111,7 @@ Output requirements:
 - tell Claude Code to include the `Task ID` field in its final report as the root task family id
 - for normal runnable Claude prompts, append the full prompt to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` when generating it
 - for normal runnable Claude prompts, add a matching item to the top `Queue Index` in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` at creation time
-- tell Claude Code that when it actually runs the prompt, it should change only that queue-index item from `- [ ]` to `- [x]` and leave the prompt queued until review
+- tell Claude Code that when it actually runs the prompt, it should first change only that queue-index item from `- [ ]` to `- [x]` before startup coordination or implementation work, leave the prompt queued until review, and keep that run marker even if execution stops midway
 - add a matching unchecked entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 - add a matching unchecked `- [ ] CCP-### - Short Task Title` line to the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` at creation time
 

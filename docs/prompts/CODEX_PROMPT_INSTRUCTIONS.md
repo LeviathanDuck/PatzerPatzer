@@ -148,7 +148,7 @@ Each queue-index item should include:
 Queue-index checkbox rules:
 
 - new prompts enter the queue index as `- [ ]`
-- when a queued prompt is actually run, the executing agent should update only that queue-index item to `- [x]`
+- when a queued prompt is actually run, the executing agent should update only that queue-index item to `- [x]` as its first execution step
 - the checked queue item and full queued prompt block must remain present until formal review removes them
 - when review removes a prompt from the queue, the matching item must also be removed from the top
   queue index so the index only reflects still-pending prompts
@@ -170,6 +170,7 @@ For manager/batch-runner prompts:
 - include `Batch prompt IDs` listing the exact child prompts the manager will run
 - do not add the manager prompt to `CLAUDE_PROMPT_QUEUE.md` unless the user explicitly asks for manager prompts to live in the runnable queue
 - make sure the generated manager instructions explicitly forbid running or recursing into the manager prompt itself
+- when later reviewing a manager prompt, default to reviewing its child prompts too unless the user explicitly asks for `manager-only`
 
 After mutating queue/log/history files, Codex should do a quick documentation-consistency check:
 
