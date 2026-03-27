@@ -38,3 +38,19 @@ Current code paths:
 
 Likely current cause:
 - the reveal action currently navigates to the candidate mistake path (`cand.path`) instead of a path that actually shows the solution move on the board
+
+## [MEDIUM] Import-panel auto-review checkbox does not appear to reliably trigger review on import
+
+The auto-review checkbox in the import UI does not appear to work reliably. Users can enable it
+but imported games still may not enter review automatically.
+
+Impact:
+- import automation is not trustworthy
+- users can believe new games will be reviewed automatically when that follow-up never starts
+
+Current code paths:
+- `src/header/index.ts` renders the import-panel auto-review checkbox and the review-menu auto-review toggle
+- `src/main.ts` checks `importFilters.autoReview` after import completion to decide whether to enqueue review
+
+Likely current cause:
+- auto-review state appears split between `importFilters.autoReview` and a separate persisted review-queue setting, so the visible checkbox state and the actual post-import review trigger may not stay in sync

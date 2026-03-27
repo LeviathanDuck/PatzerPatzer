@@ -12,41 +12,48 @@ Your job:
 - inspect relevant Lichess source when the changed behavior is Lichess-aligned
 - report findings first, summary second
 
+Prompt-tracking model:
+- `docs/prompts/prompt-registry.json` is the canonical status source
+- `docs/prompts/items/CCP-###.md` stores the prompt body
+- `CLAUDE_PROMPT_QUEUE.md`, `CLAUDE_PROMPT_LOG.md`, and `CLAUDE_PROMPT_HISTORY.md` are generated reports
+- do not hand-edit the generated reports during review
+
 Workflow:
-1. Re-read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md` before mutating any prompt-tracking files
-2. Detect what changed locally using git
-3. Check `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` for the relevant `CCP-###` item
-4. Determine whether the changes are:
+1. Before any repo inspection or review work, ask only: `Is Claude Code currently running, and if so reply with the exact Claude Code prompt; otherwise reply ready.`
+2. Send that question as a normal visible assistant chat message, not commentary and not a collapsible work update
+3. Do not inspect files, run tools, or review code until the user answers with the active Claude Code prompt or `ready`
+4. Re-read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md` before mutating prompt-tracking state
+5. Detect what changed locally using git
+6. Find the relevant prompt in:
+   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+7. Determine whether the changes are:
    - unstaged
    - staged
    - committed locally but not pushed
    - already pushed, if this can be confirmed against the remote
-5. Use local git information first, then fetch the tracked remote when network access is available to verify push/public status
-6. If remote verification cannot be performed, say clearly that push/public status is unverified and do not guess
-7. Review the actual diff, not just filenames
-8. Keep the review scoped to the actual changes unless surrounding code creates risk
-9. Prioritize:
+8. Use local git information first, then fetch the tracked remote when network access is available to verify push/public status
+9. If remote verification cannot be performed, say clearly that push/public status is unverified and do not guess
+10. Review the actual diff, not just filenames
+11. Keep the review scoped to the actual changes unless surrounding code creates risk
+12. Prioritize:
    - correctness bugs
    - regressions
    - Lichess behavior mismatches
    - architectural drift
    - hidden coupling
    - missing validation
-10. If the reviewed change corresponds to a queued prompt, complete prompt-tracking closeout as one atomic step:
-   - remove that prompt from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-   - remove its matching item from the top `Queue Index` in that same file, whether the queue checkbox is `[ ]` or `[x]`
-   - update its existing detailed entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-   - update the top checklist index in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` from `- [ ] CCP-### - Short Task Title` to `- [x] CCP-### - Short Task Title`
-   - update `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md` if the workflow calls for a reviewed/archive entry
-11. After updating queue/log/history state, explicitly verify that the reviewed `CCP-###` no longer appears anywhere in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-12. Explicitly verify that the detailed log entry no longer says `Review outcome: pending`
-13. Run the repo audit command `npm run audit:prompts` when practical; if you do not run it, say so explicitly
-14. After those checks, quickly confirm the tracking state still matches `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+13. If the reviewed change corresponds to a tracked prompt, complete prompt closeout as one atomic registry update:
+   - set `status` to `reviewed`
+   - set `reviewOutcome`
+   - set `reviewIssues`
+   - set `queueState` to `not-queued`
+   - update other metadata fields if the review establishes better truth, including `createdBy`, `createdAt`, or `startedAt` when those must be inferred
+14. Run `npm run prompts:refresh`
 15. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
-16. If the review shows the task needs a follow-up fix prompt, note that the next prompt should reuse the same root `Task ID` with the next `-F#` `Prompt ID` modifier
-17. If the reviewed prompt is a manager prompt with `Batch prompt IDs`, treat that as a batch review by default:
+16. If the reviewed prompt is a manager prompt with `batchPromptIds`, treat that as a batch review by default:
    - review the listed child prompts too unless the user explicitly asked for `manager-only`
-   - complete queue/log/history closeout for the child prompts first
+   - close out the child prompts first
    - only then close out the manager prompt itself
    - do not mark the manager prompt reviewed/passed while its child prompts are still unreviewed
 
@@ -57,7 +64,6 @@ When checking git state, use local information first:
 - `git diff`
 - `git diff --cached`
 - `git diff @{upstream}...HEAD` if upstream exists
-- `rg -n "CCP-###" /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md /Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 
 When verifying push/public status, prefer:
 - `git fetch --prune`
@@ -70,7 +76,7 @@ Important rules:
 - do not assume code was pushed/public unless verified against the remote, or clearly mark it as unverified
 - do not guess file paths; search first
 - pay special attention to unnecessary growth in `src/main.ts`
-- do not call a prompt reviewed until queue/log invariants pass
+- do not call a prompt reviewed until `npm run prompts:refresh` passes
 
 Review output format:
 - Prompt log status
@@ -82,24 +88,14 @@ Review output format:
 - Suggested manual tests
 
 Prompt log status rules:
-- if a matching `CCP-###` item is identifiable and no review findings exist, say it should be recorded in `CLAUDE_PROMPT_LOG.md` as `[x] Reviewed` with `Review outcome: passed`
-- if the change is acceptable but has minor caveats, say it should be recorded in `CLAUDE_PROMPT_LOG.md` as `[x] Reviewed` with `Review outcome: passed with notes`
-- if review findings exist, say it should be recorded in `CLAUDE_PROMPT_LOG.md` as `[x] Reviewed`, but with `Review outcome: issues found` or `Review outcome: needs rework`, and the issue summary should be recorded beside that log entry
-- keep the existing `## prompt-id - short task title` heading and fenced log-entry block format when updating the log
-- keep the top checklist index in `CLAUDE_PROMPT_LOG.md` synchronized with the detailed log entry status
-- keep the top `Queue Index` in `CLAUDE_PROMPT_QUEUE.md` synchronized with the actual queued prompt blocks
-- do not leave a reviewed prompt in either the queue index or the queue body
-- do not treat a checked queue-index item in `CLAUDE_PROMPT_QUEUE.md` as reviewed; queue `[x]` means run, not reviewed
-- do not leave the detailed log entry at `Review outcome: pending` once the prompt is reviewed
-- keep queue/log fenced blocks untagged; do not add a language label such as `text`
-- if the matching prompt is still present in `CLAUDE_PROMPT_QUEUE.md`, say it should be removed from the queue after review
-- if no prompt item is identifiable, say `No prompt queue/log item identified`
-- if a reviewed change has a `CCP-###` id but no log entry exists yet, say that explicitly and create the missing log entry before updating its review fields
-- if a reviewed change needs a follow-up fix prompt, include the recommended next prompt id in the prompt-log status, for example `CCP-013-F1`
+- if a matching `CCP-###` item is identifiable and no review findings exist, say it should be recorded as reviewed with `Review outcome: passed`
+- if the change is acceptable but has minor caveats, say it should be recorded as reviewed with `Review outcome: passed with notes`
+- if review findings exist, say it should be recorded as reviewed, but with `Review outcome: issues found` or `Review outcome: needs rework`
+- if no prompt item is identifiable, say `No prompt registry item identified`
+- if a reviewed change needs a follow-up fix prompt, include the recommended next prompt id, for example `CCP-013-F1`
 
 Known-issues follow-up rules:
 - if review finds a real current issue that belongs in the repo bug log, explicitly ask: `Do you want me to add this to docs/KNOWN_ISSUES.md?`
-- only do this for real, current issues worth tracking at the repository level
 - do not silently add items to `docs/KNOWN_ISSUES.md` during review unless the user explicitly asks
 - if no such issue exists, say `No known-issues log follow-up needed`
 
@@ -118,8 +114,9 @@ If there are no findings:
 - include missing validation, if any
 
 Review closeout is incomplete if:
-- the reviewed prompt id still appears anywhere in `CLAUDE_PROMPT_QUEUE.md`
-- the top prompt index and queue body disagree
-- the top prompt index says `[x]` but the detailed log block still says `Review outcome: pending`
-- queue/log/history edits were only partially applied
-- a manager prompt is marked reviewed while one or more of its `Batch prompt IDs` remain unreviewed
+- the prompt still has `queueState` other than `not-queued`
+- the prompt still has `Review outcome: pending`
+- generated queue/log/history docs do not match the registry
+- the dashboard is not regenerated
+- `npm run prompts:refresh` fails
+- a manager prompt is marked reviewed while one or more of its `batchPromptIds` remain unreviewed
