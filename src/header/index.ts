@@ -342,7 +342,8 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       h('label.global-menu__item.global-menu__item--toggle', [
         h('span', 'Review Dots: User Only'),
         h('input', {
-          attrs: { type: 'checkbox', checked: reviewDotsUserOnly },
+          attrs: { type: 'checkbox' },
+          props: { checked: reviewDotsUserOnly },
           on: {
             change: (e: Event) => {
               setReviewDotsUserOnly((e.target as HTMLInputElement).checked);
