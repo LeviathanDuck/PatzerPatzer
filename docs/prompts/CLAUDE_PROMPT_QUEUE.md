@@ -1,122 +1,340 @@
 # Claude Prompt Queue
+
+> Generated from `docs/prompts/prompt-registry.json` and `docs/prompts/items/`. Do not hand-edit this file.
+
 Use this file to store Claude Code prompts that are available for future use and have not yet been reviewed.
-## How to use it
-- Keep all created, still-unreviewed prompts here so they remain available to run later.
-- Remove prompts from this file only after they have actually been used and then reviewed.
-- Do not remove unreviewed prompts just because they belong to a later phase.
-- When the user explicitly wants manager prompts available too, manager prompts may also live in this file.
-- Do not add review status here.
-- Use queue-index checkboxes to show execution state:
-  - `- [ ]` means created and queued, but not yet run
-  - `- [x]` means run and waiting for review closeout
-- Keep a top-of-file queue index that lists only the prompts currently still queued.
-- In that queue index, format each item as:
-  - first line: `- [ ] CCP-###: Short Task Title`
-  - second line: an indented bullet with a brief target description
-- Leave one blank line between queue-index items for readability.
-- Keep the queue index concise and scan-friendly.
-- Keep the queue index in sync with the prompt blocks below:
-  - add a new index item when a prompt is created
-  - change the matching index item from `- [ ]` to `- [x]` when the prompt is actually run
-  - remove the matching index item only when the prompt is removed from this file during review
-- Add a scan-friendly Markdown heading immediately before each prompt block:
-  - format: `## prompt-id - short task title`
-  - keep this heading outside the fenced prompt block
-- Use plain fenced Markdown blocks with no language tag for queued prompts.
-- Keep the prompt metadata header near the top of each prompt:
-  - `Prompt ID: CCP-###`
-  - `Task ID: CCP-###`
-  - `Parent Prompt ID: CCP-###` if this is a follow-up fix prompt
-  - `Source Document: docs/...`
-  - `Source Step: ...`
-- For a follow-up fix prompt:
-  - `Prompt ID` must use the next `-F#` modifier, such as `CCP-013-F1`
-  - `Task ID` must stay the root family id, such as `CCP-013`
-  - `Parent Prompt ID` should point to the reviewed prompt being fixed
-- Once a queued prompt has actually been used in Claude Code and then reviewed:
-  - mark its queue-index item as `- [x]` when it is run
-  - keep the queue block and queue-index item present until review
-  - remove it from this file during review
-  - add or update its reviewed entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 
 ## Queue Index
 
-- [ ] CCP-174: Puzzle V1 Phase 5 Batch Manager
+- [ ] CCP-153-F1: Center Puzzle Board And Add Left Library Pane
+  - refine the puzzle page so the board is immediately present and centered, with source and library navigation in a left pane.
+
+- [ ] CCP-166-F1: Preserve Retro Bulk-Save First-Attempt Outcome
+  - preserve first-attempt outcome information when retrospection bulk-save writes failed, viewed, or skipped moments into the puzzle library.
+
+- [ ] CCP-168-F1: Fix Puzzle Metadata Editor exactOptionalPropertyTypes Gap
+  - fix the puzzle metadata editor so notes and tags editing is type-safe under exactOptionalPropertyTypes.
+
+- [x] CCP-174: Puzzle V1 Phase 5 Batch Manager
   - execute Puzzle V1 phase batch manager for `CCP-170`, `CCP-171`, `CCP-172`, `CCP-173`.
 
-- [ ] CCP-169: Puzzle V1 Phase 4 Batch Manager
-  - execute Puzzle V1 phase batch manager for `CCP-165`, `CCP-166`, `CCP-167`, `CCP-168`.
-
-- [ ] CCP-164: Puzzle V1 Phase 3 Batch Manager
-  - execute Puzzle V1 phase batch manager for `CCP-160`, `CCP-161`, `CCP-162`, `CCP-163`.
-
-- [ ] CCP-159: Puzzle V1 Phase 2 Batch Manager
-  - execute Puzzle V1 phase batch manager for `CCP-155`, `CCP-156`, `CCP-157`, `CCP-158`.
-
-- [ ] CCP-173: Add Future Hooks For Rated Puzzle Mode
+- [x] CCP-173: Add Future Hooks For Rated Puzzle Mode
   - add non-user-facing rated-mode hooks without implementing rating progression yet.
 
-- [ ] CCP-172: Improve Imported Puzzle Library Filtering And Loading Scale
+- [x] CCP-172: Improve Imported Puzzle Library Filtering And Loading Scale
   - improve imported-library loading and filter behavior once the product shell is stable.
 
-- [ ] CCP-171: Add Minimal Due-Again Metadata And Filters
+- [x] CCP-171: Add Minimal Due-Again Metadata And Filters
   - add lightweight due-again metadata and filtering without a full scheduler.
 
-- [ ] CCP-170: Add Retry-Failed-Earlier Queue
+- [x] CCP-170: Add Retry-Failed-Earlier Queue
   - add the first repetition-oriented queue using failed/assisted puzzle outcomes.
 
-- [ ] CCP-168: Add Flat Collections, Notes, Tags, And Favorites
-  - add the first user-library organization layer on top of canonical puzzle records.
-
-- [ ] CCP-167: Add Move-List Create-Puzzle Flow
-  - add the right-click move-list flow for creating user puzzles from analysis positions.
-
-- [ ] CCP-166: Bulk-Save Missed Moments After Review
-  - add the focused bulk-save path for failed or missed Learn From Your Mistakes moments.
-
-- [ ] CCP-165: Save Learn From Your Mistakes Moments Into User Library
-  - save selected retrospection moments into the canonical user puzzle library.
-
-- [ ] CCP-163: Render Eval-Delta Feedback For Non-Best Moves
-  - show solver-perspective eval deltas and better/worse/best feedback on the puzzle board.
-
-- [ ] CCP-162: Log Assisted-Solve And Reveal Reasons
-  - record engine-reveal, hint, and other assist reasons in puzzle attempt history.
-
-- [ ] CCP-161: Add PuzzleMoveQuality Evaluation Layer
-  - compute Patzer-specific move-quality feedback separately from strict solution validation.
-
-- [ ] CCP-160: Add Puzzle-Mode Engine Runtime Owner
-  - introduce a puzzle-owned engine runtime seam without replacing strict puzzle correctness.
-
-- [ ] CCP-158: Render Puzzle Result States And Navigation
-  - show clean/recovered/assisted/skipped result UI and next-navigation controls.
-
-- [ ] CCP-157: Persist Puzzle Attempt Results
-  - persist puzzle-round outcomes into the canonical attempt-history model.
-
-- [ ] CCP-156: Validate Strict Solution Moves And Auto-Reply
-  - enforce stored-solution move validation and scripted opponent replies.
-
-- [ ] CCP-155: Add Puzzle Round Controller
-  - introduce the smallest real controller for puzzle-round state and transitions.
-
-- [ ] CCP-143: Add Board Consumer Move Hook
-  - add a board-consumer move hook seam so board core can notify product owners without hardcoding future puzzle behavior.
-
-- [ ] CCP-144: Move Retrospection Solve Logic Out Of Board Core
-  - move analysis-owned retrospection solve interception out of `src/board/index.ts`.
-
-- [ ] CCP-145: Add Canonical Puzzle Domain Types
-  - add canonical Puzzle V1 model types separately from the legacy analysis-side `PuzzleCandidate`.
-
-- [ ] CCP-146: Add Puzzle Library Persistence Owner
-  - add persistence ownership for puzzle definitions, user metadata, and attempt history.
-
-- [ ] CCP-147: Add Puzzle Source Adapter Seams
-  - add adapter seams from Patzer saved moments and imported Lichess records into the canonical puzzle model.
-
 ## Queue
+
+## CCP-153-F1 - Center Puzzle Board And Add Left Library Pane
+
+```
+Prompt ID: CCP-153-F1
+Task ID: CCP-153
+Parent Prompt ID: CCP-153
+Source Document: docs/PUZZLE_V1_PLAN.md
+Source Step: Puzzle Board Layout
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup state step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-153-F1`
+- Only continue implementation work after that command succeeds.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-view / layout / board-shell / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: refine the Puzzle V1 page shell so the chessboard is the immediate centered focal point when the user opens the puzzles page, and the library/source navigation lives as a left-side window/pane beside it.
+
+Source-backed intent to preserve:
+- `docs/PUZZLE_V1_PLAN.md` already says the desired V1 layout includes:
+  - centered chessboard
+  - left sidebar for source and library selection
+- the board should therefore be present immediately on the puzzles page, not hidden behind a library-first shell that delays board presence
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/index.ts`
+  - any current shared board mounting used by the puzzle route
+  - any puzzle-specific styles currently controlling page layout
+- Patzer references:
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/chessground.ts`
+  - any closely related Lichess puzzle layout/CSS files you need to confirm board-vs-side-column structure
+
+Current problem to confirm:
+- the existing Patzer puzzle page shell does not yet reflect the intended product layout strongly enough
+- the page should open with the board already present as the visual center
+- source/library navigation should read as a left window/pane, not as the primary page replacing the board
+
+Implementation goal:
+- keep this as a layout-shell refinement, not a full puzzle-product redesign
+- the board should be mounted and visible immediately on the puzzles page
+- the board should be visually centered as the main content area
+- source/library navigation should sit in a left-side pane/window
+- preserve the current shared-board ownership direction and avoid analysis-page copy/paste drift
+
+Constraints:
+- scope this to puzzle-page layout and initial board presence only
+- do not bundle strict solve-loop work
+- do not redesign puzzle persistence, filtering, or attempt history
+- do not add new medium-sized puzzle logic to `src/main.ts`
+- do not let the left library pane become a full separate app shell rewrite
+- if a minimal route/view split is needed to keep the board present immediately, keep it small and explicit
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for puzzle-page layout behavior
+- explicitly report:
+  - whether the board is now present immediately on the puzzles page
+  - how the centered-board layout is achieved
+  - how the left library/source pane is structured
+  - what current puzzle/library behavior remains intentionally deferred
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-166-F1 - Preserve Retro Bulk-Save First-Attempt Outcome
+
+```
+Prompt ID: CCP-166-F1
+Task ID: CCP-166
+Parent Prompt ID: CCP-166
+Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
+Source Step: Phase 4 — User Library Authoring / Task 2 / follow-up fix
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-166-F1`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection-session, puzzle-library, or puzzle-attempt persistence files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix the Phase 4 bulk-save path so it preserves first-attempt outcome information when failed, viewed, or skipped Learn From Your Mistakes moments are saved into the canonical puzzle library.
+
+Grounding:
+- Current gap from review: `src/analyse/retroView.ts` bulk-save writes only puzzle definitions via `retroCandidateToDefinition(...)` and `savePuzzleDefinition(...)`
+- Current retro outcome source: `src/analyse/retroCtrl.ts`
+- Current canonical puzzle persistence: `src/puzzles/puzzleDb.ts`
+- Current puzzle attempt model: `src/puzzles/types.ts`
+
+Inspect first:
+- Patzer:
+  - `src/analyse/retroView.ts`
+  - `src/analyse/retroCtrl.ts`
+  - `src/puzzles/puzzleDb.ts`
+  - `src/puzzles/types.ts`
+  - `src/puzzles/adapters.ts`
+- Patzer references:
+  - `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - current review finding for `CCP-166`
+- Lichess references:
+  - inspect only if a retrospection-to-puzzle outcome mapping question genuinely needs confirmation
+
+Constraints:
+- keep this scoped to preserving first-attempt outcome information during bulk-save
+- do not redesign the broader puzzle repetition system
+- do not invent a large new retrospection export model
+- use the canonical puzzle attempt / metadata owners that already exist
+- preserve current bulk-save UX unless a tiny honest label tweak is required
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run `npm run typecheck -- --pretty false`
+- run the most relevant task-specific check you can for retro bulk-save attempt persistence
+- explicitly report:
+  - how first-attempt outcome information is now preserved
+  - what puzzle-library records are written during bulk-save
+  - whether any solve-result mapping was inferred rather than directly proven
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-168-F1 - Fix Puzzle Metadata Editor exactOptionalPropertyTypes Gap
+
+```
+Prompt ID: CCP-168-F1
+Task ID: CCP-168
+Parent Prompt ID: CCP-168
+Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
+Source Step: Phase 4 — User Library Authoring / Task 4 / follow-up fix
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-168-F1`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle metadata, puzzle view, or puzzle types files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix the Phase 4 puzzle metadata editor so the notes and tags editing surface is compatible with `exactOptionalPropertyTypes` without redesigning the metadata UI.
+
+Grounding:
+- Current gap from review: `src/puzzles/view.ts` still assigns explicit `undefined` into optional `PuzzleUserMeta.notes` and `PuzzleUserMeta.tags`
+- Canonical metadata model lives in `src/puzzles/types.ts`
+- Persistence owner lives in `src/puzzles/puzzleDb.ts`
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/types.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/puzzles/puzzleDb.ts`
+- Patzer references:
+  - `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - current review finding for `CCP-168`
+- Lichess references:
+  - none required unless you find a UI-shape question that truly benefits from comparison
+
+Constraints:
+- keep this scoped to the metadata editor type-safety gap
+- do not redesign favorites, collections, notes, or tags UX
+- do not weaken the canonical metadata types just to silence the compiler
+- prefer constructing metadata updates without optional keys when values are absent
+- preserve current user-visible metadata behavior unless a tiny correctness fix is required
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run `npm run typecheck -- --pretty false`
+- run the most relevant task-specific check you can for the metadata editing flow
+- explicitly report:
+  - which `exactOptionalPropertyTypes` failures were fixed
+  - whether any puzzle metadata types changed
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
 
 ## CCP-174 - Puzzle V1 Phase 5 Batch Manager
 
@@ -128,6 +346,12 @@ Source Step: Phase 5 — Repetition And Imported-Library Scale / manager prompt
 Execution Target: Claude Code
 
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-174`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
 
 Read and follow:
 - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
@@ -145,10 +369,6 @@ Manager-prompt rule:
 - `CCP-174` is the manager prompt id only
 - do not execute or recurse into `CCP-174` as if it were one of the child prompts
 
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
 - If overlapping work exists, stop and report it before editing.
@@ -160,7 +380,7 @@ Task:
 - stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
 
 Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change this manager prompt's own queue-index item from `- [ ]` to `- [x]` and to change a child prompt's queue-index item from `- [ ]` to `- [x]` immediately before that child prompt begins real work
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
@@ -170,9 +390,9 @@ Execution rules:
 - do not create new prompts during the batch
 - do not continue past a known issue just to finish the phase
 - if an earlier phase prerequisite proves missing, stop and report it clearly
-- before starting each child prompt's real work, mark that child prompt's queue-index item from `- [ ]` to `- [x]`
-- leave checked queue items and full prompt blocks present even if the batch later stops
 - use internal validation/self-check only; external prompt review and queue/log closeout happen separately
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>`
+- only continue into a child prompt after that command succeeds
 
 After each completed child prompt, report briefly:
 - Prompt ID
@@ -192,228 +412,6 @@ If the batch finishes, report a compact summary of completed Prompt IDs.
 Begin with `CCP-170`, `CCP-171`, `CCP-172`, `CCP-173`.
 ```
 
-## CCP-169 - Puzzle V1 Phase 4 Batch Manager
-
-```
-Prompt ID: CCP-169
-Task ID: CCP-169
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 4 — User Library Authoring / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-
-Batch prompt IDs to execute in order:
-- `CCP-165`
-- `CCP-166`
-- `CCP-167`
-- `CCP-168`
-
-Manager-prompt rule:
-- `CCP-169` is the manager prompt id only
-- do not execute or recurse into `CCP-169` as if it were one of the child prompts
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- read the queued child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-
-Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change this manager prompt's own queue-index item from `- [ ]` to `- [x]` and to change a child prompt's queue-index item from `- [ ]` to `- [x]` immediately before that child prompt begins real work
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during the batch
-- do not continue past a known issue just to finish the phase
-- if an earlier phase prerequisite proves missing, stop and report it clearly
-- before starting each child prompt's real work, mark that child prompt's queue-index item from `- [ ]` to `- [x]`
-- leave checked queue items and full prompt blocks present even if the batch later stops
-- use internal validation/self-check only; external prompt review and queue/log closeout happen separately
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build result
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, report:
-- which Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-Begin with `CCP-165`, `CCP-166`, `CCP-167`, `CCP-168`.
-```
-
-## CCP-164 - Puzzle V1 Phase 3 Batch Manager
-
-```
-Prompt ID: CCP-164
-Task ID: CCP-164
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 3 — Engine Assist Layer / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-
-Batch prompt IDs to execute in order:
-- `CCP-160`
-- `CCP-161`
-- `CCP-162`
-- `CCP-163`
-
-Manager-prompt rule:
-- `CCP-164` is the manager prompt id only
-- do not execute or recurse into `CCP-164` as if it were one of the child prompts
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- read the queued child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-
-Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change this manager prompt's own queue-index item from `- [ ]` to `- [x]` and to change a child prompt's queue-index item from `- [ ]` to `- [x]` immediately before that child prompt begins real work
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during the batch
-- do not continue past a known issue just to finish the phase
-- if an earlier phase prerequisite proves missing, stop and report it clearly
-- before starting each child prompt's real work, mark that child prompt's queue-index item from `- [ ]` to `- [x]`
-- leave checked queue items and full prompt blocks present even if the batch later stops
-- use internal validation/self-check only; external prompt review and queue/log closeout happen separately
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build result
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, report:
-- which Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-Begin with `CCP-160`, `CCP-161`, `CCP-162`, `CCP-163`.
-```
-
-## CCP-159 - Puzzle V1 Phase 2 Batch Manager
-
-```
-Prompt ID: CCP-159
-Task ID: CCP-159
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 2 — Strict Puzzle Solve Loop / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-
-Batch prompt IDs to execute in order:
-- `CCP-155`
-- `CCP-156`
-- `CCP-157`
-- `CCP-158`
-
-Manager-prompt rule:
-- `CCP-159` is the manager prompt id only
-- do not execute or recurse into `CCP-159` as if it were one of the child prompts
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- read the queued child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-
-Do not modify:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`, except to change this manager prompt's own queue-index item from `- [ ]` to `- [x]` and to change a child prompt's queue-index item from `- [ ]` to `- [x]` immediately before that child prompt begins real work
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during the batch
-- do not continue past a known issue just to finish the phase
-- if an earlier phase prerequisite proves missing, stop and report it clearly
-- before starting each child prompt's real work, mark that child prompt's queue-index item from `- [ ]` to `- [x]`
-- leave checked queue items and full prompt blocks present even if the batch later stops
-- use internal validation/self-check only; external prompt review and queue/log closeout happen separately
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build result
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, report:
-- which Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-Begin with `CCP-155`, `CCP-156`, `CCP-157`, `CCP-158`.
-```
-
 ## CCP-173 - Add Future Hooks For Rated Puzzle Mode
 
 ```
@@ -426,8 +424,10 @@ Execution Target: Claude Code
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
 Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-173`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-attempt / session / future-mode files.
@@ -502,8 +502,10 @@ Execution Target: Claude Code
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
 Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-172`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same imported-library / filter / loading files.
@@ -578,8 +580,10 @@ Execution Target: Claude Code
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
 Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-171`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / repetition-metadata / filter files.
@@ -654,8 +658,10 @@ Execution Target: Claude Code
 You are working in `/Users/leftcoast/Development/PatzerPatzer`.
 
 Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-170`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
 
 Startup coordination step:
 - Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-attempt / library-filter / queue-selection files.
@@ -695,1338 +701,6 @@ Validation is required after coding:
   - build result
   - how the retry-failed-earlier queue is built
   - what attempt states it uses
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-168 - Add Flat Collections, Notes, Tags, And Favorites
-
-```
-Prompt ID: CCP-168
-Task ID: CCP-168
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 4 — User Library Authoring / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / metadata / collection files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add the first user-library organization layer: flat collections, notes, tags, and favorites on top of canonical puzzle records.
-
-Inspect first:
-- Patzer: canonical puzzle model, user puzzle metadata model, puzzle persistence owner, puzzle library UI
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/PuzzlePlanNotes.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: none required for notes/tags/favorites parity; inspect only if a library interaction pattern clearly benefits from it
-
-Constraints:
-- keep collections flat, not nested
-- preserve global completion state per puzzle
-- allow multi-collection membership
-- do not introduce cloud/user-account assumptions
-- if the full UI is too large, choose the smallest honest metadata editing surface that still establishes the model cleanly
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for metadata/collection behavior
-- explicitly report:
-  - build result
-  - what collection and metadata behavior now exists
-  - how multi-collection membership works
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-167 - Add Move-List Create-Puzzle Flow
-
-```
-Prompt ID: CCP-167
-Task ID: CCP-167
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 4 — User Library Authoring / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same move-list / context-menu / puzzle-authoring files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add the move-list right-click flow for creating user puzzles from analysis positions, including the two explicit authoring branches defined in the product plan.
-
-Inspect first:
-- Patzer: `src/analyse/moveList.ts`, existing context-menu actions, puzzle persistence owner, canonical puzzle model
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/PuzzlePlanNotes.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: inspect only where move-list interaction patterns are relevant; this is a Patzer-specific authoring feature, not Lichess parity work
-
-Constraints:
-- support the two explicit branches:
-  - selected move is the puzzle solution move
-  - selected move is the puzzle start position
-- keep the answer-key logic explicit and reviewable
-- do not broaden this into arbitrary desktop import
-- prefer a minimal honest authoring dialog over a large authoring UI system
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for the move-list authoring flow
-- explicitly report:
-  - build result
-  - how the two authoring branches now work
-  - what puzzle data is created from each branch
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-166 - Bulk-Save Missed Moments After Review
-
-```
-Prompt ID: CCP-166
-Task ID: CCP-166
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 4 — User Library Authoring / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection-session / save-flow / puzzle-library files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add the focused post-session bulk-save path for failed or missed Learn From Your Mistakes moments.
-
-Inspect first:
-- Patzer: retrospection controller/view, puzzle persistence owner, user-library save flow from prior task
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/NEXT_STEPS.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-retrospection-ux/README.md`
-
-Constraints:
-- scope this to the post-session bulk-save path
-- do not redesign the whole retrospection end-state UI
-- keep the save target inside the canonical puzzle library
-- preserve first-attempt outcome information instead of flattening it away during save
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for the bulk-save flow
-- explicitly report:
-  - build result
-  - how failed or missed moments are now bulk-saved
-  - what still remains deferred in library authoring
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-165 - Save Learn From Your Mistakes Moments Into User Library
-
-```
-Prompt ID: CCP-165
-Task ID: CCP-165
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 4 — User Library Authoring / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection / puzzle-library / save-flow files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to save selected Learn From Your Mistakes moments into the canonical user puzzle library.
-
-Inspect first:
-- Patzer: `src/analyse/retroCtrl.ts`, `src/analyse/retroView.ts`, puzzle persistence owner, puzzle source adapters, any existing saved-moment UI
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/NEXT_STEPS.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-retrospection-ux/README.md`, `docs/reference/lichess-puzzle-ux/README.md`
-
-Constraints:
-- scope this to saving selected retro moments only
-- do not bundle bulk-save at session end yet
-- keep the saved record canonical and source-aware
-- do not invent a separate storage model for retrospection-only puzzles
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for retro-to-library save flow
-- explicitly report:
-  - build result
-  - how a Learn From Your Mistakes moment is now saved
-  - what user-library data is written
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-163 - Render Eval-Delta Feedback For Non-Best Moves
-
-```
-Prompt ID: CCP-163
-Task ID: CCP-163
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 3 — Engine Assist Layer / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-view / assist-feedback / engine-display files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to render solver-perspective eval-delta feedback and better/worse/best messaging for non-best moves on the puzzle board.
-
-Inspect first:
-- Patzer: the puzzle engine runtime seam, `PuzzleMoveQuality`, puzzle result/feedback UI
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/PuzzlePlanNotes.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`
-
-Constraints:
-- scope this to the feedback UI layer
-- do not override strict correctness
-- display eval deltas from the solver’s perspective, not raw white-centric score direction
-- only reveal the best move when the user explicitly asks, not as part of generic feedback
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for eval-delta feedback
-- explicitly report:
-  - build result
-  - what better/worse/best feedback is now shown
-  - how solver-perspective eval deltas are displayed
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-162 - Log Assisted-Solve And Reveal Reasons
-
-```
-Prompt ID: CCP-162
-Task ID: CCP-162
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 3 — Engine Assist Layer / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-attempt / persistence / assist-state files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to log assisted-solve and reveal reasons in puzzle attempt history, so clean/recovered/assisted outcomes are backed by actual recorded reasons.
-
-Inspect first:
-- Patzer: puzzle attempt model, persistence owner, puzzle engine runtime seam, any reveal/hint UI already introduced
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/PuzzlePlanNotes.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`
-
-Constraints:
-- scope this to reason logging only
-- do not redesign the entire result-state UI
-- keep assistance reasons explicit instead of burying them in generic booleans where possible
-- preserve append-only attempt-history semantics
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for assist-reason logging
-- explicitly report:
-  - build result
-  - what assist reasons are now recorded
-  - how attempt history changed
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-161 - Add PuzzleMoveQuality Evaluation Layer
-
-```
-Prompt ID: CCP-161
-Task ID: CCP-161
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 3 — Engine Assist Layer / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-engine / retro / move-quality files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add the shared `PuzzleMoveQuality` evaluation concept for Patzer’s assist layer, keeping it separate from strict solution validation.
-
-Inspect first:
-- Patzer: the puzzle engine runtime seam, puzzle round controller, `src/analyse/retroCtrl.ts`, any move-quality or eval-delta helpers already present
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/PuzzlePlanNotes.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-retrospection-ux/README.md`
-
-Constraints:
-- scope this to the move-quality model only
-- do not let it override strict correctness
-- keep it reusable by both puzzle board and Learn From Your Mistakes
-- avoid vague labels; define explicit data fields the UI can later render honestly
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for the new move-quality layer
-- explicitly report:
-  - build result
-  - what `PuzzleMoveQuality` now contains
-  - how it stays separate from strict correctness
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-160 - Add Puzzle-Mode Engine Runtime Owner
-
-```
-Prompt ID: CCP-160
-Task ID: CCP-160
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 3 — Engine Assist Layer / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / engine / ceval files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add a puzzle-owned engine runtime seam for Patzer’s assist layer, without replacing strict puzzle correctness.
-
-Inspect first:
-- Patzer: puzzle round/view files, `src/engine/ctrl.ts`, `src/ceval/view.ts`, any engine integration introduced by prior phases
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`, `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`
-
-Constraints:
-- scope this to engine runtime ownership only
-- do not let engine feedback become the correctness model
-- do not regress analysis-board engine behavior
-- keep the puzzle-owned engine seam separate from board core
-- prefer an explicit puzzle owner over ad hoc checks scattered across engine code
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for the puzzle engine seam
-- explicitly report:
-  - build result
-  - what puzzle-owned engine seam was added
-  - how strict correctness remains separate
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-158 - Render Puzzle Result States And Navigation
-
-```
-Prompt ID: CCP-158
-Task ID: CCP-158
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 2 — Strict Puzzle Solve Loop / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-view / result-state / navigation-control files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to render puzzle result-state UI for clean / recovered / assisted / skipped outcomes, plus the minimal navigation controls needed to continue through a puzzle session.
-
-Inspect first:
-- Patzer: the puzzle round controller, attempt persistence, current puzzle view/layout files
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/PuzzlePlanNotes.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`, `~/Development/lichess-source/lila/ui/puzzle/src/view/feedback.ts`, `~/Development/lichess-source/lila/ui/puzzle/src/view/after.ts`
-
-Constraints:
-- scope this to result-state and session navigation UI
-- do not add engine-assist overlays yet
-- do not add spaced-repetition queue behavior yet
-- keep the result-state language aligned with Patzer’s defined solve states
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for result-state rendering and navigation
-- explicitly report:
-  - build result
-  - what result states are now shown
-  - what navigation controls were added
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-157 - Persist Puzzle Attempt Results
-
-```
-Prompt ID: CCP-157
-Task ID: CCP-157
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 2 — Strict Puzzle Solve Loop / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / persistence / attempt-history files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to persist puzzle-round outcomes into the canonical attempt-history model.
-
-Inspect first:
-- Patzer: the puzzle round controller, canonical puzzle attempt types, puzzle persistence owner
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `~/Development/lichess-source/lila/ui/puzzle/src/session.ts`
-
-Constraints:
-- scope this to attempt persistence only
-- do not add spaced-repetition queue behavior yet
-- keep append-only attempt history semantics
-- do not collapse clean/recovered/assisted/skipped into one boolean
-- do not bundle new library filtering UI
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for attempt persistence
-- explicitly report:
-  - build result
-  - what attempt records are now persisted
-  - what result states are recorded
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-156 - Validate Strict Solution Moves And Auto-Reply
-
-```
-Prompt ID: CCP-156
-Task ID: CCP-156
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 2 — Strict Puzzle Solve Loop / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / move-validation / board-move files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to enforce strict stored-solution move validation and scripted opponent replies for puzzle rounds.
-
-Inspect first:
-- Patzer: the puzzle round controller, board integration seam, canonical puzzle definition model
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`, `~/Development/lichess-source/lila/ui/puzzle/src/moveTest.ts`, `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`
-
-Constraints:
-- scope this to strict correctness only
-- stored solution must win over engine preference
-- do not add graded engine feedback yet
-- do not add result persistence yet
-- keep auto-reply behavior driven by stored solution line, not by live ceval
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for strict validation and auto-reply
-- explicitly report:
-  - build result
-  - how strict solution validation now works
-  - how opponent auto-reply now works
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-155 - Add Puzzle Round Controller
-
-```
-Prompt ID: CCP-155
-Task ID: CCP-155
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 2 — Strict Puzzle Solve Loop / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / puzzle-view / board-integration files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to introduce a real puzzle round controller that owns round state and transitions for the dedicated puzzle board.
-
-Inspect first:
-- Patzer: the Phase 1 route/round/layout files, canonical puzzle types, puzzle persistence owner
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`, `~/Development/lichess-source/lila/ui/puzzle/src/ctrl.ts`, `~/Development/lichess-source/lila/ui/puzzle/src/moveTree.ts`
-
-Constraints:
-- scope this to round-state ownership only
-- do not add engine-assist behavior yet
-- do not conflate round state with persistence state
-- keep strict-solution ownership explicit
-- keep board-core ownership separate from puzzle-round controller ownership
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for round-state transitions
-- explicitly report:
-  - build result
-  - what the new puzzle round controller owns
-  - what is still intentionally deferred
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-  - what route owner or route seam was added
-  - what behavior stayed intentionally minimal
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-143 - Add Board Consumer Move Hook
-
-```
-Prompt ID: CCP-143
-Task ID: CCP-143
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 0 — Ownership And Data Foundations / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board / analysis / move-handling files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to introduce a board-consumer move hook seam so `src/board/index.ts` can notify product owners about user move handling without forcing future puzzle or analysis-only behavior to live inside board core.
-
-Inspect first:
-- Patzer: `src/board/index.ts`, `src/main.ts`, `src/analyse/ctrl.ts`, `src/analyse/retroCtrl.ts`
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`, `docs/reference/lichess-retrospection-ux/README.md`, `docs/reference/lichess-retrospection-ux/BOARD_INTERACTION_AND_STATE_EFFECTS.md`, `~/Development/lichess-source/lila/ui/analyse/src/ground.ts`, `~/Development/lichess-source/lila/ui/puzzle/src/view/chessground.ts`
-
-Constraints:
-- scope this to the seam only
-- preserve current analysis-board behavior
-- do not rebuild puzzle mode
-- do not silently expand `src/main.ts`
-- do not move retrospection ownership fully in this task if doing so would make the change materially larger
-- prefer a small callback / hook / event seam over a broad board-mode framework
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for board move handling / hook wiring
-- explicitly report:
-  - build result
-  - what new board-consumer seam was added
-  - what behavior stayed unchanged
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-144 - Move Retrospection Solve Logic Out Of Board Core
-
-```
-Prompt ID: CCP-144
-Task ID: CCP-144
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 0 — Ownership And Data Foundations / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same board / retrospection / analysis lifecycle files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: using the new board-consumer seam, take the smallest safe step to move analysis-owned retrospection solve interception out of `src/board/index.ts` and into an analysis-owned module.
-
-Inspect first:
-- Patzer: `src/board/index.ts`, `src/main.ts`, `src/analyse/ctrl.ts`, `src/analyse/retroCtrl.ts`, `src/analyse/retroView.ts`
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-retrospection-ux/README.md`, `docs/reference/lichess-retrospection-ux/BOARD_INTERACTION_AND_STATE_EFFECTS.md`, `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroCtrl.ts`, `~/Development/lichess-source/lila/ui/analyse/src/ground.ts`
-
-Constraints:
-- preserve current Learn From Your Mistakes behavior
-- keep this scoped to ownership cleanup, not feature expansion
-- do not add puzzle runtime work
-- do not introduce a generic framework unless inspection proves a tiny adapter is necessary
-- avoid moving substantial new ownership into `src/main.ts`
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for retrospection move handling
-- explicitly report:
-  - build result
-  - what retrospection logic left board core
-  - what owner now handles it
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-145 - Add Canonical Puzzle Domain Types
-
-```
-Prompt ID: CCP-145
-Task ID: CCP-145
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 0 — Ownership And Data Foundations / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-model / tree-type / persistence files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add canonical Puzzle V1 domain types that are richer than the legacy analysis-side `PuzzleCandidate`, while keeping existing saved-candidate behavior intact.
-
-Inspect first:
-- Patzer: `src/tree/types.ts`, `src/puzzles/extract.ts`, `src/idb/index.ts`
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/PuzzlePlanNotes.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`, `~/Development/lichess-source/lila/ui/puzzle/src/interfaces.ts`
-
-Constraints:
-- add canonical puzzle types only
-- do not rebuild the puzzle page
-- do not remove or rename the legacy `PuzzleCandidate` type yet
-- keep source distinction explicit (`imported-lichess` vs `user-library`)
-- include solve-result and failure-reason concepts needed by the Puzzle V1 plan
-- avoid speculative fields that the current product plan does not need yet
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for the new type/module boundary
-- explicitly report:
-  - build result
-  - what new canonical types were added
-  - what legacy type was intentionally left in place
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-146 - Add Puzzle Library Persistence Owner
-
-```
-Prompt ID: CCP-146
-Task ID: CCP-146
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 0 — Ownership And Data Foundations / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same IDB / persistence / puzzle-model files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add a persistence owner for Puzzle V1 definitions, user metadata, and attempt history, while preserving the current legacy saved-candidate storage path until the rebuild is ready to consume the new model.
-
-Inspect first:
-- Patzer: `src/idb/index.ts`, `src/tree/types.ts`, the new canonical puzzle type module, `src/main.ts`
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
-
-Constraints:
-- scope this to persistence ownership and schema only
-- do not rebuild puzzle UI
-- do not silently break the current saved-candidate flow in analysis
-- keep the new canonical puzzle data separate from the legacy candidate list
-- choose the smallest honest storage shape that can support definitions, user metadata, and append-only attempts
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for the new persistence owner
-- explicitly report:
-  - build result
-  - what new persistence records or stores were added
-  - what legacy path was preserved
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Also include a short manual test checklist with concrete user actions and expected results.
-
-Output shape:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-- implementation
-- validation
-- manual test checklist
-- remaining risks
-```
-
-## CCP-147 - Add Puzzle Source Adapter Seams
-
-```
-Prompt ID: CCP-147
-Task ID: CCP-147
-Source Document: docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md
-Source Step: Phase 0 — Ownership And Data Foundations / Task 5
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before any startup coordination, real implementation, or batch work, find this prompt's own `Prompt ID` item in the top `Queue Index` of `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md` and change only that checkbox from `- [ ]` to `- [x]`.
-- Leave this prompt queued after checking it off, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-source / adapter / generated-data files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: take the smallest safe step to add adapter seams that can turn both Patzer saved learnable moments and imported Lichess records into the canonical Puzzle V1 model, without rebuilding library UI or round runtime yet.
-
-Inspect first:
-- Patzer: `src/puzzles/extract.ts`, `src/tree/types.ts`, the new canonical puzzle type module, the new puzzle persistence owner, `src/games/view.ts`
-- Local imported data: `public/generated/lichess-puzzles/manifest.json` and one representative shard file
-- Patzer references: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
-- Lichess references: `docs/reference/lichess-puzzle-ux/README.md`, `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
-
-Constraints:
-- scope this to adapters only
-- do not add puzzle routes or page UI
-- do not force imported and user-library sources into one shallow object
-- preserve the current analysis-side saved-candidate behavior while adding the new canonical conversion path
-- if imported Lichess records do not contain full PGN, do not invent it
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run the most relevant task-specific check you can for both adapter paths
-- explicitly report:
-  - build result
-  - what user-library adapter was added
-  - what imported-puzzle adapter was added
   - whether behavior changed intentionally
   - whether there are console/runtime errors
   - remaining risks and limitations
