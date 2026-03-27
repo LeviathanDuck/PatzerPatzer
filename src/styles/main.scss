@@ -1371,6 +1371,11 @@ body.resizing {
   }
 }
 
+// Mobile-only action buttons row — hidden on desktop.
+.analyse__actions {
+  display: none;
+}
+
 .analyse__controls {
   grid-area: controls;
   align-self: start;
@@ -1438,10 +1443,11 @@ body.resizing {
       'board'
       'controls'
       'tools'
+      'actions'
       'under';
-    // Constrain tools row so move list scrolls inside rather than stretching the page.
-    // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss grid-template-rows mobile value.
-    grid-template-rows: auto auto minmax(18em, 40vh) auto;
+    // Tools row is auto height — expands when engine panel is visible rather than
+    // compressing the move list. Move list holds its own min-height.
+    grid-template-rows: auto auto auto auto auto;
     padding: 12px 10px 18px;
     gap: 8px 0;
     overflow-x: hidden;
@@ -1459,8 +1465,8 @@ body.resizing {
     display: none;
   }
 
-  // Controls bar: fixed 5rem height, flush against the bottom of tools column.
-  // Eval graph renders as an absolute background layer behind the buttons.
+  // Controls bar: nav arrows + eval graph bg only on mobile.
+  // Action buttons have moved to .analyse__actions below the move list.
   // Adapted from lichess-org/lila: ui/analyse/css/_tools-mobile.scss .analyse__controls
   .analyse__controls {
     padding: 4px 4px 0;
@@ -1472,15 +1478,14 @@ body.resizing {
     overflow: hidden;
     flex-wrap: nowrap;
 
-    // Review controls take left portion, jumps take right ~40%
-    // Mirrors lichess-org/lila: _tools-mobile.scss .jumps { flex: 40% }
+    // Hide desktop action buttons — shown via .analyse__actions below the move list.
     .analyse-review-controls {
-      flex: 1 1 0;
-      min-width: 0;
+      display: none;
     }
 
+    // Jumps fill the full width now that action buttons are gone.
     .jumps {
-      flex: 0 0 40%;
+      flex: 1 1 0;
       padding: 0;
       background: transparent;
       border: none;
@@ -1499,19 +1504,27 @@ body.resizing {
         height: 100%;
       }
     }
+  }
 
-    // Action buttons fill the available height
+  // Mobile action buttons row — below the move list.
+  .analyse__actions {
+    grid-area: actions;
+    display: flex;
+    padding: 4px 4px;
+    gap: 4px;
+
+    .analyse-review-controls {
+      width: 100%;
+    }
+
     .analyse-review-controls__row {
-      height: 100%;
       flex-wrap: nowrap;
       gap: 4px;
 
       > button {
         flex: 1 1 0;
-        height: 100%;
+        height: 2.8rem;
         font-size: 0.82rem;
-        border-radius: 6px 6px 0 0;
-        border-bottom: none;
       }
     }
   }
@@ -1543,11 +1556,9 @@ body.resizing {
   }
 
   .analyse__tools {
-    // stretch so the element fills the minmax(18em, 40vh) grid row — otherwise align-items: start
-    // on the parent grid causes it to collapse to content height and the move list disappears.
-    align-self: stretch;
+    align-self: start;
     min-height: 0;
-    // Keep overflow: hidden (inherited from desktop) — required for inner scroll container to work.
+    overflow: visible;
   }
 
   .ceval {
@@ -1555,10 +1566,10 @@ body.resizing {
     column-gap: 4px;
   }
 
-  // Move list fills the constrained tools row and scrolls inside it.
-  // Mirrors lichess-org/lila: .analyse__moves { flex: 2 1 0; overflow-y: auto }
+  // Move list holds its own height — engine panel above pushes it down rather than compressing it.
   .analyse__moves {
-    flex: 1 1 0;
+    flex: 0 0 auto;
+    min-height: max(18em, 40vh);
     overflow-y: auto;
   }
 
