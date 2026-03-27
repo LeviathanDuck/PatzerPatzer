@@ -442,6 +442,7 @@ function navigate(path: string): void {
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts jump() retro.onJump() call.
   ctrl.retro?.onJump(path);
   syncBoard();
+  syncArrow();
   // Skip engine evaluation when a puzzle ctrl is active — puzzles manage
   // their own board state and do not use the analysis engine.
   if (!puzzleHidesAnalysis()) evalCurrentPosition();
