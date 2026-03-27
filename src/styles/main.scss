@@ -2712,7 +2712,7 @@ body[data-board='newspaper'] cg-board::before {
 
   &__score--white { color: #d4d4a0; }
   &__score--black { color: #8fb8d4; }
-  &__score--ko { color: hsl(307, 80%, 70%); font-weight: 700; }
+  &__score--ko { color: #a855f7; font-weight: 700; }
   // Massive improvement — engine found ≥ 2-pawn advantage for the side to move.
   // Overrides white/black base color with a brighter signal.
   &__score--massive { color: hsl(129, 71%, 55%); font-weight: 700; }
