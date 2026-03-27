@@ -16,7 +16,7 @@ const matches = (text, regex) => [...text.matchAll(regex)].map(m => m[1]);
 const difference = (a, b) => sorted(a.filter(id => !b.includes(id)));
 const intersection = (a, b) => sorted(a.filter(id => b.includes(id)));
 
-const queueIndexIds = uniq(matches(queue, /^- (CCP-[A-Z0-9-]+): /gm));
+const queueIndexIds = uniq(matches(queue, /^- \[(?: |x)\] (CCP-[A-Z0-9-]+): /gm));
 const queueBlockIds = uniq(matches(queue, /^## (CCP-[A-Z0-9-]+) - /gm));
 const logChecklistChecked = uniq(matches(log, /^- \[x\] (CCP-[A-Z0-9-]+) - /gm));
 const logChecklistPending = uniq(matches(log, /^- \[ \] (CCP-[A-Z0-9-]+) - /gm));

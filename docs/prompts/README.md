@@ -52,8 +52,10 @@ The tracked prompt files are:
 Their responsibilities are:
 
 - `CLAUDE_PROMPT_QUEUE.md`
-  - holds runnable queued prompts that have not yet been reviewed
+  - holds created prompts that have not yet been reviewed
+  - remains the main available queue of prompts to run later
   - includes a top `Queue Index` listing only still-pending queued prompts
+  - uses queue-index checkboxes to show whether a queued prompt has already been run
 
 - `CLAUDE_PROMPT_LOG.md`
   - tracks prompt provenance from creation through review
@@ -71,6 +73,13 @@ Status ownership rule:
 That means:
 - if a prompt has been reviewed, it must not remain in `CLAUDE_PROMPT_QUEUE.md`
 - if queue and log disagree, fix the queue/log mismatch immediately before doing more prompt work
+
+Queue-state rule:
+- `CLAUDE_PROMPT_QUEUE.md` now tracks two pending sub-states in the top queue index:
+  - `- [ ] CCP-###: ...` means created and still queued, but not yet run
+  - `- [x] CCP-###: ...` means the prompt has been run and is waiting for formal review closeout
+- a checked queue-index item is still pending and must remain in the queue until review removes it
+- only review removes a prompt from the queue body and queue index
 
 ## Prompt Types
 
@@ -139,13 +148,19 @@ Queue rules:
 Each queue-index item must use this format:
 
 ```md
-- CCP-###: Short Task Title
+- [ ] CCP-###: Short Task Title
   - Brief one-line description of the prompt target.
 ```
 
 Leave one blank line between queue-index items for readability.
 
 The queue index must list only prompts still present in the queue.
+
+Queue-index checkbox rules:
+- when a prompt is created, add it as `- [ ]`
+- when a prompt is actually run, change only the queue-index checkbox from `- [ ]` to `- [x]`
+- do not remove the queue item or prompt block at run time
+- review is the only step that removes the queued prompt from `CLAUDE_PROMPT_QUEUE.md`
 
 ## Log Format
 
@@ -190,13 +205,35 @@ When creating a normal runnable prompt:
 2. Ground the prompt in the real repo first
 3. Assign the next correct `Prompt ID` and `Task ID`
 4. Add the full prompt to `CLAUDE_PROMPT_QUEUE.md`
-5. Add the matching item to the top `Queue Index`
+5. Add the matching unchecked item to the top `Queue Index`
 6. Add the detailed unchecked entry to `CLAUDE_PROMPT_LOG.md`
 7. Add the matching unchecked item to the top `Prompt Index` in the log
 8. If needed, update history according to the active workflow
 9. Double-check that queue index, queue body, prompt log index, and detailed log entry all match
 
 Do not stop after only generating prompt text in chat.
+
+If the user asks to prebuild prompts for later phases:
+
+1. Create the prompt artifacts in queue/log/history
+2. Keep them available in `CLAUDE_PROMPT_QUEUE.md` until they are reviewed
+3. Only remove them from the queue after actual use and review
+
+## Prompt Execution Queue Update Workflow
+
+When a queued prompt is actually run:
+
+1. Re-read the workflow docs listed in `Start Here`
+2. Find the matching `CCP-###` item in the top `Queue Index`
+3. Change only that queue-index checkbox from `- [ ]` to `- [x]`
+4. Leave the prompt block itself in `CLAUDE_PROMPT_QUEUE.md`
+5. Leave the detailed log entry in `CLAUDE_PROMPT_LOG.md` pending until review
+6. Do not remove the prompt from the queue during execution
+
+Execution-state rule:
+- queue checkbox state is an execution marker, not a review marker
+- reviewed prompts are still removed only by the review workflow
+- queue index, queue body, and log must still refer to the same prompt ids after the checkbox update
 
 ## Manager Prompt Creation Workflow
 
@@ -221,8 +258,8 @@ When reviewing a prompt:
 2. Find the matching `CCP-###` entry in queue/log/history
 3. Review the actual changes using `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
 4. Complete prompt-tracking closeout as one atomic step:
-  - remove the prompt block from `CLAUDE_PROMPT_QUEUE.md`
-  - remove the matching queue-index item from `CLAUDE_PROMPT_QUEUE.md`
+   - remove the prompt block from `CLAUDE_PROMPT_QUEUE.md`
+  - remove the matching queue-index item from `CLAUDE_PROMPT_QUEUE.md`, whether it is `[ ]` or `[x]`
   - update the detailed log entry in `CLAUDE_PROMPT_LOG.md`
   - flip the matching top prompt-index item in `CLAUDE_PROMPT_LOG.md` from `[ ]` to `[x]`
   - record `Review outcome`

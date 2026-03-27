@@ -1,11 +1,22 @@
 # Patzer Pro — Next Steps
 
-Date: 2026-03-20
-Status: analysis-board-first roadmap
+Date: 2026-03-27
+Status: Puzzle V1 rebuild and stabilization roadmap
 
 This list is intentionally small and ordered for safety. It reflects the current repo, where the
-next phase should focus on making game analysis and review trustworthy enough to support later
-puzzle tooling. Full puzzle work should follow, not lead, the stabilization of the analysis board.
+next phase has changed: Puzzle V1 is now the main active focus, but it must start with ownership
+cleanup, data-model work, and controlled foundations rather than jumping straight to page UI.
+
+Bug fixes and minor features still matter, but they should be selected based on whether they:
+
+- unblock Puzzle V1
+- reduce architectural risk
+- improve analysis-board correctness without distracting from the rebuild
+
+Current planning references for this track:
+
+- [docs/PUZZLE_V1_PLAN.md](/Users/leftcoast/Development/PatzerPatzer/docs/PUZZLE_V1_PLAN.md)
+- [docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md](/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md)
 
 For any roadmap item involving:
 - Learn From Your Mistakes
@@ -29,7 +40,69 @@ Rule:
 
 ---
 
-## Priority 0 — Restore trustworthy validation
+## Primary Track — Puzzle V1 Phase 0 Foundations
+
+Puzzle V1 is now the main next project direction.
+
+Important constraint:
+- the current repo does not yet have a clean standalone puzzle product boundary
+- the first safe phase is foundation work, not route/UI-first implementation
+
+Current active puzzle phase:
+- Phase 0 in `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+
+Phase 0 goals:
+- formalize a cleaner board-consumer seam
+- move analysis-owned retrospection solve interception out of board core
+- introduce canonical Puzzle V1 domain types
+- add puzzle-library persistence ownership for definitions, metadata, and attempt history
+- add source adapters for:
+  - Patzer user-library puzzles derived from review
+  - imported Lichess puzzle records already stored in the repo
+
+Current queued execution order:
+- `CCP-143` Add Board Consumer Move Hook
+- `CCP-144` Move Retrospection Solve Logic Out Of Board Core
+- `CCP-145` Add Canonical Puzzle Domain Types
+- `CCP-146` Add Puzzle Library Persistence Owner
+- `CCP-147` Add Puzzle Source Adapter Seams
+
+Why this is first:
+- starting with puzzle page UI would force the product to guess at ownership and data structures
+- imported and user-library puzzle sources should not be forced into one shallow model
+- Puzzle V1 needs honest foundations before a new page build can stay stable
+
+Later puzzle phases in this track should explicitly preserve these product linkages:
+- the analysis board and Learn From Your Mistakes flow should be able to save selected moments into the user puzzle library
+- the end of a Learn From Your Mistakes session should support a focused follow-up path for failed moments
+- the puzzle product should become a dedicated training surface that the user can move into from analysis-driven review work, not a disconnected second system
+
+### Cloud persistence and auth timing recommendation
+
+This is not the current implementation track, but it should guide sequencing once the Puzzle V1
+foundation work is stable.
+
+Recommended order:
+- Now: keep focusing on review/puzzle ownership and persistence shape
+- Soon: design the cloud-owned data model and sync boundary
+- Next major step after Phase 0 foundations: implement Supabase + Google sign-in + user-owned tables
+- Later: broaden from “your/admin account” to normal user accounts
+
+Important constraint:
+- do not treat login as a standalone UI feature
+- the real work is introducing the first honest backend/data ownership model for games, review data,
+  puzzle library data, and later attempt history
+- auth should follow stable data ownership, not come before it
+
+Current recommendation:
+- if a bootstrap private account path is needed first, start with a restricted allowlisted Google
+  login rather than inventing a separate temporary admin-auth system that would need to be replaced
+  later
+- keep IndexedDB as the local fast cache even after cloud persistence is introduced
+
+---
+
+## Secondary Track — Restore trustworthy validation and fix blocking bugs
 
 ### 1. ✓ Make `npm run typecheck` real — DONE
 
@@ -181,6 +254,18 @@ MVP checklist:
   - defer Lichess-style "close enough by eval margin" acceptance until the feature loop itself is stable
 - after success, show the stored best line and advance to the next candidate
 - after failure, show the expected move and line, then allow continue / retry
+- when the user plays a move that is better than the game move but still not best, show how much better it was than the move actually played in the game instead of only saying "Better, but not the best move available"
+- distinguish exact-best from merely-better retro feedback clearly:
+  - if the user plays the engine best move, say `Best Move`
+  - if the user plays a move that is better than the game move but still worse than the best move, say `Good Move, but better was available`
+- make the "how much better" messaging data-driven rather than fixed wording, and report the eval swing improvement in the user's favor for the stronger move that was still available
+- add a hint action alongside `View the solution` in Learn From Mistakes mode that reveals which piece should be moved without fully giving the move away
+- if the user takes that hint, treat the current mistake as failed state rather than a clean solve, so hint usage is not counted the same as finding the move unaided
+- treat solved / failed Learn From Mistakes moments as puzzle-like outcomes rather than disposable session state
+- when a Learn From Mistakes session ends, offer a focused follow-up flow to:
+  - redo only the moments the user got wrong on the first attempt
+  - save selected failed moments into the personal puzzle library for later review
+- keep this explicitly connected to the existing review-derived puzzle path instead of inventing a totally separate storage model for retrospection mistakes
 - support sequential navigation through candidates inside the current game
 - persist enough state to resume the reviewed game later, but do not yet design a cross-game training inbox around it
 

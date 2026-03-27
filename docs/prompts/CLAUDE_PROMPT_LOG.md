@@ -70,15 +70,47 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
-- [ ] CCP-134 - Add Mistake Detection Config Owner
-- [ ] CCP-135 - Add Mistake Detection Menu Modal
-- [ ] CCP-136 - Wire Mistake Detection Config Into Retrospection
-- [ ] CCP-137 - Apply Mistake Detection Changes To The Active Analysis Session
-- [ ] CCP-138 - Add Learn-Moment Reason Metadata
-- [ ] CCP-139 - Show Learn-Moment Reason In Success UI
-- [ ] CCP-140 - Add Collapse Family To Mistake Detection
-- [ ] CCP-141 - Add Defensive Resource Family To Mistake Detection
-- [ ] CCP-142 - Add Punish-The-Blunder Family To Mistake Detection
+- [ ] CCP-174 - Puzzle V1 Phase 5 Batch Manager
+- [ ] CCP-169 - Puzzle V1 Phase 4 Batch Manager
+- [ ] CCP-164 - Puzzle V1 Phase 3 Batch Manager
+- [ ] CCP-159 - Puzzle V1 Phase 2 Batch Manager
+- [ ] CCP-154 - Puzzle V1 Phase 1 Batch Manager
+- [ ] CCP-173 - Add Future Hooks For Rated Puzzle Mode
+- [ ] CCP-172 - Improve Imported Puzzle Library Filtering And Loading Scale
+- [ ] CCP-171 - Add Minimal Due-Again Metadata And Filters
+- [ ] CCP-170 - Add Retry-Failed-Earlier Queue
+- [ ] CCP-168 - Add Flat Collections, Notes, Tags, And Favorites
+- [ ] CCP-167 - Add Move-List Create-Puzzle Flow
+- [ ] CCP-166 - Bulk-Save Missed Moments After Review
+- [ ] CCP-165 - Save Learn From Your Mistakes Moments Into User Library
+- [ ] CCP-163 - Render Eval-Delta Feedback For Non-Best Moves
+- [ ] CCP-162 - Log Assisted-Solve And Reveal Reasons
+- [ ] CCP-161 - Add PuzzleMoveQuality Evaluation Layer
+- [ ] CCP-160 - Add Puzzle-Mode Engine Runtime Owner
+- [ ] CCP-158 - Render Puzzle Result States And Navigation
+- [ ] CCP-157 - Persist Puzzle Attempt Results
+- [ ] CCP-156 - Validate Strict Solution Moves And Auto-Reply
+- [ ] CCP-155 - Add Puzzle Round Controller
+- [ ] CCP-153 - Add Puzzle Board Layout Shell
+- [ ] CCP-152 - Open Minimal Puzzle Round From Canonical Puzzle Definition
+- [ ] CCP-151 - Render Top-Level Puzzle Source Navigator
+- [ ] CCP-150 - Add Puzzle Library Route Owner
+- [x] CCP-149 - Review Puzzle V1 Planning Docs
+- [x] CCP-148 - Review Puzzle Phase 0 Prompts Before Execution
+- [ ] CCP-143 - Add Board Consumer Move Hook
+- [ ] CCP-144 - Move Retrospection Solve Logic Out Of Board Core
+- [ ] CCP-145 - Add Canonical Puzzle Domain Types
+- [ ] CCP-146 - Add Puzzle Library Persistence Owner
+- [ ] CCP-147 - Add Puzzle Source Adapter Seams
+- [x] CCP-134 - Add Mistake Detection Config Owner
+- [x] CCP-135 - Add Mistake Detection Menu Modal
+- [x] CCP-136 - Wire Mistake Detection Config Into Retrospection
+- [x] CCP-137 - Apply Mistake Detection Changes To The Active Analysis Session
+- [x] CCP-138 - Add Learn-Moment Reason Metadata
+- [x] CCP-139 - Show Learn-Moment Reason In Success UI
+- [x] CCP-140 - Add Collapse Family To Mistake Detection
+- [x] CCP-141 - Add Defensive Resource Family To Mistake Detection
+- [x] CCP-142 - Add Punish-The-Blunder Family To Mistake Detection
 - [x] CCP-083 - Establish Puzzle Route Ownership
 - [x] CCP-084 - Add Puzzle Round Model
 - [x] CCP-085 - Render Saved Puzzle Library
@@ -218,6 +250,118 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-044-F1 - Refine Engine Arrow Eval Labels
 - [x] CCP-043-F2 - Tighten Player-Strip Winner Box Sizing
 - [x] CCP-044-F2 - Match Arrow Label Styling To Eval Bar
+
+## CCP-148 - Review Puzzle Phase 0 Prompts Before Execution
+
+```
+- [x] Reviewed
+  - ID: `CCP-148`
+  - Task ID: `CCP-148`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-143`, `CCP-144`, `CCP-145`, `CCP-146`, `CCP-147`
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Data Foundations / pre-execution prompt review`
+  - Task: review Puzzle V1 Phase 0 Claude prompts before execution and update them if they need scope or wording fixes
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-149 - Review Puzzle V1 Planning Docs
+
+```
+- [x] Reviewed
+  - ID: `CCP-149`
+  - Task ID: `CCP-149`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/PUZZLE_V1_PLAN.md`, `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `planning-doc review before later prompt drafting`
+  - Task: review the Puzzle V1 product plan and phased execution plan for ordering, gaps, and out-of-order assumptions
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-143 - Add Board Consumer Move Hook
+
+```
+- [ ] Reviewed
+  - ID: `CCP-143`
+  - Task ID: `CCP-143`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Data Foundations / Task 1`
+  - Task: add a board-consumer move hook seam so board core can notify product owners without embedding future puzzle behavior
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-144 - Move Retrospection Solve Logic Out Of Board Core
+
+```
+- [ ] Reviewed
+  - ID: `CCP-144`
+  - Task ID: `CCP-144`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Data Foundations / Task 2`
+  - Task: move analysis-owned retrospection solve interception out of `src/board/index.ts`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-145 - Add Canonical Puzzle Domain Types
+
+```
+- [ ] Reviewed
+  - ID: `CCP-145`
+  - Task ID: `CCP-145`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Data Foundations / Task 3`
+  - Task: add canonical Puzzle V1 model types separately from the legacy analysis-side `PuzzleCandidate`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-146 - Add Puzzle Library Persistence Owner
+
+```
+- [ ] Reviewed
+  - ID: `CCP-146`
+  - Task ID: `CCP-146`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Data Foundations / Task 4`
+  - Task: add persistence ownership for puzzle definitions, user metadata, and attempt history
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+## CCP-147 - Add Puzzle Source Adapter Seams
+
+```
+- [ ] Reviewed
+  - ID: `CCP-147`
+  - Task ID: `CCP-147`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Data Foundations / Task 5`
+  - Task: add adapter seams from Patzer saved moments and imported Lichess records into the canonical puzzle model
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
 - [x] CCP-044-F3 - Reduce Arrow Label Weight And Size
 - [x] CCP-035-F1 - Fix Arrowhead Loss After Engine Line Changes
 - [x] CCP-066 - Add Search To Underboard And Games Lists
@@ -2537,7 +2681,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-134 - Add Mistake Detection Config Owner
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-134`
   - Task ID: `CCP-134`
   - Parent prompt ID: none
@@ -2545,8 +2689,8 @@ It should stay in sync with the detailed entry below.
   - Source document: inferred from user request in chat
   - Source step: `add a configurable Learn From Your Mistakes parameter model in Patzer`
   - Task: introduce a dedicated persisted config owner for Learn From Your Mistakes candidate selection without adding the menu yet
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2554,7 +2698,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-135 - Add Mistake Detection Menu Modal
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-135`
   - Task ID: `CCP-135`
   - Parent prompt ID: none
@@ -2562,8 +2706,8 @@ It should stay in sync with the detailed entry below.
   - Source document: inferred from user request in chat
   - Source step: `add a main-menu Mistake Detection modal for Learn From Your Mistakes settings`
   - Task: add a main-menu `Mistake Detection` modal using the same style as the existing detection settings UI
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2571,7 +2715,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-136 - Wire Mistake Detection Config Into Retrospection
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-136`
   - Task ID: `CCP-136`
   - Parent prompt ID: none
@@ -2579,8 +2723,8 @@ It should stay in sync with the detailed entry below.
   - Source document: inferred from user request in chat
   - Source step: `apply configurable mistake-detection parameters to Learn From Your Mistakes candidate selection`
   - Task: make Learn From Your Mistakes candidate selection read the new configurable parameters instead of hard-coded rules
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2588,7 +2732,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-137 - Apply Mistake Detection Changes To The Active Analysis Session
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-137`
   - Task ID: `CCP-137`
   - Parent prompt ID: none
@@ -2596,8 +2740,8 @@ It should stay in sync with the detailed entry below.
   - Source document: inferred from user request in chat
   - Source step: `apply mistake-detection setting changes immediately on the active analysis board`
   - Task: make Mistake Detection setting changes apply coherently to the current analysis-board retrospection context
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2605,7 +2749,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-138 - Add Learn-Moment Reason Metadata
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-138`
   - Task ID: `CCP-138`
   - Parent prompt ID: none
@@ -2613,8 +2757,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
   - Source step: `Best next implementation direction — add reason metadata before expanding learnable-moment families`
   - Task: carry backend reason codes and human labels through retrospection and saved local puzzle candidates
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2622,7 +2766,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-139 - Show Learn-Moment Reason In Success UI
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-139`
   - Task ID: `CCP-139`
   - Parent prompt ID: none
@@ -2630,8 +2774,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
   - Source step: `Best next implementation direction — explain why a learnable moment was chosen`
   - Task: show backend learn-moment reasons in retrospection and saved-puzzle terminal feedback using parameter language
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2639,7 +2783,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-140 - Add Collapse Family To Mistake Detection
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-140`
   - Task ID: `CCP-140`
   - Parent prompt ID: none
@@ -2647,8 +2791,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
   - Source step: `Best next implementation direction — promote blown wins / failed conversion into a first-class training lane`
   - Task: extend Mistake Detection with an optional blown-win / failed-conversion family, defaulting it off
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2656,7 +2800,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-141 - Add Defensive Resource Family To Mistake Detection
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-141`
   - Task ID: `CCP-141`
   - Parent prompt ID: none
@@ -2664,8 +2808,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
   - Source step: `Best next implementation direction — add missed defensive resources as a separate learnable-moment family`
   - Task: add a narrow optional defensive-resource detector to Mistake Detection so missed saves can become learnable moments
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2673,7 +2817,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-142 - Add Punish-The-Blunder Family To Mistake Detection
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-142`
   - Task ID: `CCP-142`
   - Parent prompt ID: none
@@ -2681,8 +2825,433 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
   - Source step: `Best next implementation direction — add punish-the-blunder moments as a separate learnable family`
   - Task: add an optional family for moments where the opponent erred and the user failed to exploit it
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+
+## CCP-150 - Add Puzzle Library Route Owner
+
+```
+- [ ] Reviewed
+  - ID: `CCP-150`
+  - Task ID: `CCP-150`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 1`
+  - Task: add a dedicated puzzle product route owner without rebuilding the full round UI
   - Claude used: no
   - Review outcome: pending
   - Review issues: none
-  - Execution target: `Claude Code`
+```
+
+
+## CCP-151 - Render Top-Level Puzzle Source Navigator
+
+```
+- [ ] Reviewed
+  - ID: `CCP-151`
+  - Task ID: `CCP-151`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 2`
+  - Task: render the first real puzzle-library surface with Imported Puzzles and User Library source sections
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-152 - Open Minimal Puzzle Round From Canonical Puzzle Definition
+
+```
+- [ ] Reviewed
+  - ID: `CCP-152`
+  - Task ID: `CCP-152`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 3`
+  - Task: make selecting a canonical puzzle open a minimal dedicated round context
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-153 - Add Puzzle Board Layout Shell
+
+```
+- [ ] Reviewed
+  - ID: `CCP-153`
+  - Task ID: `CCP-153`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 4`
+  - Task: add the dedicated puzzle board page shell on top of the shared board subsystem
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-155 - Add Puzzle Round Controller
+
+```
+- [ ] Reviewed
+  - ID: `CCP-155`
+  - Task ID: `CCP-155`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 2 — Strict Puzzle Solve Loop / Task 1`
+  - Task: introduce the smallest real controller for puzzle-round state and transitions
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-156 - Validate Strict Solution Moves And Auto-Reply
+
+```
+- [ ] Reviewed
+  - ID: `CCP-156`
+  - Task ID: `CCP-156`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 2 — Strict Puzzle Solve Loop / Task 2`
+  - Task: enforce stored-solution move validation and scripted opponent replies
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-157 - Persist Puzzle Attempt Results
+
+```
+- [ ] Reviewed
+  - ID: `CCP-157`
+  - Task ID: `CCP-157`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 2 — Strict Puzzle Solve Loop / Task 3`
+  - Task: persist puzzle-round outcomes into the canonical attempt-history model
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-158 - Render Puzzle Result States And Navigation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-158`
+  - Task ID: `CCP-158`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 2 — Strict Puzzle Solve Loop / Task 4`
+  - Task: show clean/recovered/assisted/skipped result UI and next-navigation controls
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-160 - Add Puzzle-Mode Engine Runtime Owner
+
+```
+- [ ] Reviewed
+  - ID: `CCP-160`
+  - Task ID: `CCP-160`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 3 — Engine Assist Layer / Task 1`
+  - Task: introduce a puzzle-owned engine runtime seam without replacing strict puzzle correctness
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-161 - Add PuzzleMoveQuality Evaluation Layer
+
+```
+- [ ] Reviewed
+  - ID: `CCP-161`
+  - Task ID: `CCP-161`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 3 — Engine Assist Layer / Task 2`
+  - Task: compute Patzer-specific move-quality feedback separately from strict solution validation
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-162 - Log Assisted-Solve And Reveal Reasons
+
+```
+- [ ] Reviewed
+  - ID: `CCP-162`
+  - Task ID: `CCP-162`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 3 — Engine Assist Layer / Task 3`
+  - Task: record engine-reveal, hint, and other assist reasons in puzzle attempt history
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-163 - Render Eval-Delta Feedback For Non-Best Moves
+
+```
+- [ ] Reviewed
+  - ID: `CCP-163`
+  - Task ID: `CCP-163`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 3 — Engine Assist Layer / Task 4`
+  - Task: show solver-perspective eval deltas and better/worse/best feedback on the puzzle board
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-165 - Save Learn From Your Mistakes Moments Into User Library
+
+```
+- [ ] Reviewed
+  - ID: `CCP-165`
+  - Task ID: `CCP-165`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 4 — User Library Authoring / Task 1`
+  - Task: save selected retrospection moments into the canonical user puzzle library
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-166 - Bulk-Save Missed Moments After Review
+
+```
+- [ ] Reviewed
+  - ID: `CCP-166`
+  - Task ID: `CCP-166`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 4 — User Library Authoring / Task 2`
+  - Task: add the focused bulk-save path for failed or missed Learn From Your Mistakes moments
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-167 - Add Move-List Create-Puzzle Flow
+
+```
+- [ ] Reviewed
+  - ID: `CCP-167`
+  - Task ID: `CCP-167`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 4 — User Library Authoring / Task 3`
+  - Task: add the right-click move-list flow for creating user puzzles from analysis positions
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-168 - Add Flat Collections, Notes, Tags, And Favorites
+
+```
+- [ ] Reviewed
+  - ID: `CCP-168`
+  - Task ID: `CCP-168`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 4 — User Library Authoring / Task 4`
+  - Task: add the first user-library organization layer on top of canonical puzzle records
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-170 - Add Retry-Failed-Earlier Queue
+
+```
+- [ ] Reviewed
+  - ID: `CCP-170`
+  - Task ID: `CCP-170`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 5 — Repetition And Imported-Library Scale / Task 1`
+  - Task: add the first repetition-oriented queue using failed/assisted puzzle outcomes
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-171 - Add Minimal Due-Again Metadata And Filters
+
+```
+- [ ] Reviewed
+  - ID: `CCP-171`
+  - Task ID: `CCP-171`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 5 — Repetition And Imported-Library Scale / Task 2`
+  - Task: add lightweight due-again metadata and filtering without a full scheduler
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-172 - Improve Imported Puzzle Library Filtering And Loading Scale
+
+```
+- [ ] Reviewed
+  - ID: `CCP-172`
+  - Task ID: `CCP-172`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 5 — Repetition And Imported-Library Scale / Task 3`
+  - Task: improve imported-library loading and filter behavior once the product shell is stable
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-173 - Add Future Hooks For Rated Puzzle Mode
+
+```
+- [ ] Reviewed
+  - ID: `CCP-173`
+  - Task ID: `CCP-173`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 5 — Repetition And Imported-Library Scale / Task 4`
+  - Task: add non-user-facing rated-mode hooks without implementing rating progression yet
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-154 - Puzzle V1 Phase 1 Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-154`
+  - Task ID: `CCP-154`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-150`, `CCP-151`, `CCP-152`, `CCP-153`
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 1 — Minimal Puzzle Product Shell / manager prompt`
+  - Task: execute Puzzle V1 phase batch manager for `CCP-150`, `CCP-151`, `CCP-152`, `CCP-153`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-159 - Puzzle V1 Phase 2 Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-159`
+  - Task ID: `CCP-159`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-155`, `CCP-156`, `CCP-157`, `CCP-158`
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 2 — Strict Puzzle Solve Loop / manager prompt`
+  - Task: execute Puzzle V1 phase batch manager for `CCP-155`, `CCP-156`, `CCP-157`, `CCP-158`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-164 - Puzzle V1 Phase 3 Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-164`
+  - Task ID: `CCP-164`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-160`, `CCP-161`, `CCP-162`, `CCP-163`
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 3 — Engine Assist Layer / manager prompt`
+  - Task: execute Puzzle V1 phase batch manager for `CCP-160`, `CCP-161`, `CCP-162`, `CCP-163`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-169 - Puzzle V1 Phase 4 Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-169`
+  - Task ID: `CCP-169`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-165`, `CCP-166`, `CCP-167`, `CCP-168`
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 4 — User Library Authoring / manager prompt`
+  - Task: execute Puzzle V1 phase batch manager for `CCP-165`, `CCP-166`, `CCP-167`, `CCP-168`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+```
+
+
+## CCP-174 - Puzzle V1 Phase 5 Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-174`
+  - Task ID: `CCP-174`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-170`, `CCP-171`, `CCP-172`, `CCP-173`
+  - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - Source step: `Phase 5 — Repetition And Imported-Library Scale / manager prompt`
+  - Task: execute Puzzle V1 phase batch manager for `CCP-170`, `CCP-171`, `CCP-172`, `CCP-173`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
 ```
