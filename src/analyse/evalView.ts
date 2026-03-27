@@ -420,7 +420,7 @@ export function renderEvalGraph(
   svgNodes.push(h('polygon', {
     attrs: {
       points: polyPts,
-      fill: bg ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.3)',
+      fill: bg ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.85)',
       stroke: 'none',
     },
   }));
