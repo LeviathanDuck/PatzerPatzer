@@ -2356,6 +2356,26 @@ function detectMissedMoments(mainline, cache, userColor, config = missedMomentCo
     if (config.missedMateMaxN > 0 && parentEval.best) {
       const userMate = isWhiteMove ? parentEval.mate : parentEval.mate !== void 0 ? -parentEval.mate : void 0;
       if (userMate !== void 0 && userMate > 0 && userMate <= config.missedMateMaxN && !nodeEval.mate) {
+        if (node.uci === parentEval.best) continue;
+        const lookAheadPlies = userMate * 4;
+        let deliveredMate = false;
+        let lookPath = path;
+        for (let j = i + 1; j < mainline.length && j <= i + lookAheadPlies; j++) {
+          lookPath += mainline[j].id;
+          if (j === mainline.length - 1 && mainline[j].children.length === 0) {
+            deliveredMate = true;
+            break;
+          }
+          const futureEval = cache.get(lookPath);
+          if (futureEval?.mate !== void 0) {
+            const futureMoverMate = isWhiteMove ? futureEval.mate : -futureEval.mate;
+            if (futureMoverMate > 0) {
+              deliveredMate = true;
+              break;
+            }
+          }
+        }
+        if (deliveredMate) continue;
         moments.push({ kind: "missed-mate", ply: node.ply, loss: nodeEval.loss ?? 0.5, path });
         continue;
       }
