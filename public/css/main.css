@@ -1216,7 +1216,7 @@ main {
 }
 
 body {
-  ---zoom: 85;
+  ---zoom: 70;
   ---board-scale: calc((var(---zoom) / 100) * 0.75 + 0.25);
 }
 
@@ -1640,6 +1640,9 @@ body.resizing {
   gap: 6px;
   padding-top: 8px;
 }
+.analyse__controls .eval-graph--bg {
+  display: none;
+}
 
 .analyse__underboard {
   grid-area: under;
@@ -1717,6 +1720,7 @@ body.resizing {
     font-size: 0.82rem;
   }
   .eval-graph--bg {
+    display: block;
     position: absolute;
     inset: 0;
     z-index: 0;

@@ -74,7 +74,7 @@ It should stay in sync with the detailed entry below.
 - [ ] CCP-169 - Puzzle V1 Phase 4 Batch Manager
 - [ ] CCP-164 - Puzzle V1 Phase 3 Batch Manager
 - [ ] CCP-159 - Puzzle V1 Phase 2 Batch Manager
-- [ ] CCP-154 - Puzzle V1 Phase 1 Batch Manager
+- [x] CCP-154 - Puzzle V1 Phase 1 Batch Manager
 - [ ] CCP-173 - Add Future Hooks For Rated Puzzle Mode
 - [ ] CCP-172 - Improve Imported Puzzle Library Filtering And Loading Scale
 - [ ] CCP-171 - Add Minimal Due-Again Metadata And Filters
@@ -91,10 +91,10 @@ It should stay in sync with the detailed entry below.
 - [ ] CCP-157 - Persist Puzzle Attempt Results
 - [ ] CCP-156 - Validate Strict Solution Moves And Auto-Reply
 - [ ] CCP-155 - Add Puzzle Round Controller
-- [ ] CCP-153 - Add Puzzle Board Layout Shell
-- [ ] CCP-152 - Open Minimal Puzzle Round From Canonical Puzzle Definition
-- [ ] CCP-151 - Render Top-Level Puzzle Source Navigator
-- [ ] CCP-150 - Add Puzzle Library Route Owner
+- [x] CCP-153 - Add Puzzle Board Layout Shell
+- [x] CCP-152 - Open Minimal Puzzle Round From Canonical Puzzle Definition
+- [x] CCP-151 - Render Top-Level Puzzle Source Navigator
+- [x] CCP-150 - Add Puzzle Library Route Owner
 - [x] CCP-149 - Review Puzzle V1 Planning Docs
 - [x] CCP-148 - Review Puzzle Phase 0 Prompts Before Execution
 - [ ] CCP-143 - Add Board Consumer Move Hook
@@ -2835,7 +2835,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-150 - Add Puzzle Library Route Owner
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-150`
   - Task ID: `CCP-150`
   - Parent prompt ID: none
@@ -2843,8 +2843,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
   - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 1`
   - Task: add a dedicated puzzle product route owner without rebuilding the full round UI
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
 ```
 
@@ -2852,7 +2852,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-151 - Render Top-Level Puzzle Source Navigator
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-151`
   - Task ID: `CCP-151`
   - Parent prompt ID: none
@@ -2860,8 +2860,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
   - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 2`
   - Task: render the first real puzzle-library surface with Imported Puzzles and User Library source sections
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
 ```
 
@@ -2869,7 +2869,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-152 - Open Minimal Puzzle Round From Canonical Puzzle Definition
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-152`
   - Task ID: `CCP-152`
   - Parent prompt ID: none
@@ -2877,8 +2877,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
   - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 3`
   - Task: make selecting a canonical puzzle open a minimal dedicated round context
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
 ```
 
@@ -2886,7 +2886,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-153 - Add Puzzle Board Layout Shell
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-153`
   - Task ID: `CCP-153`
   - Parent prompt ID: none
@@ -2894,8 +2894,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
   - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 4`
   - Task: add the dedicated puzzle board page shell on top of the shared board subsystem
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
 ```
 
@@ -3175,7 +3175,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-154 - Puzzle V1 Phase 1 Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-154`
   - Task ID: `CCP-154`
   - Parent prompt ID: none
@@ -3183,8 +3183,8 @@ It should stay in sync with the detailed entry below.
   - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
   - Source step: `Phase 1 — Minimal Puzzle Product Shell / manager prompt`
   - Task: execute Puzzle V1 phase batch manager for `CCP-150`, `CCP-151`, `CCP-152`, `CCP-153`
-  - Claude used: no
-  - Review outcome: pending
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
 ```
 

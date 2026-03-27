@@ -766,7 +766,7 @@ function setReviewDotsUserOnly(enabled) {
   reviewDotsUserOnly = enabled;
   localStorage.setItem(REVIEW_DOTS_USER_ONLY_KEY, String(enabled));
 }
-var ZOOM_DEFAULT = 85;
+var ZOOM_DEFAULT = 70;
 var ZOOM_KEY = "boardZoom";
 var boardZoom = (() => {
   const stored = localStorage.getItem(ZOOM_KEY);
@@ -1694,6 +1694,10 @@ function setIsBatchActive(fn) {
 function setOnBatchBestmove(fn) {
   _onBatchBestmove = fn;
 }
+var _onLiveEvalImproved = null;
+function setOnLiveEvalImproved(fn) {
+  _onLiveEvalImproved = fn;
+}
 var protocol = new StockfishProtocol();
 var engineEnabled = false;
 var engineReady = false;
@@ -2141,6 +2145,30 @@ function parseEngineLine(line) {
       if (_isBatchActive()) {
         _onBatchBestmove?.();
       } else {
+        if (stored.depth !== void 0 && (stored.cp !== void 0 || stored.mate !== void 0)) {
+          const nodePath = evalNodePath;
+          const cached = evalCache.get(nodePath);
+          if (!cached || !cached.depth || stored.depth > cached.depth) {
+            const parentPath = evalParentPath;
+            const parentEval = evalCache.get(parentPath);
+            if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
+              stored.delta = stored.cp - parentEval.cp;
+            }
+            if (parentEval) {
+              const nodeWc = evalWinChances(stored);
+              const parentWc = evalWinChances(parentEval);
+              if (nodeWc !== void 0 && parentWc !== void 0) {
+                const whiteToMove = evalNodePly % 2 === 1;
+                const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
+                const moverParentWc = whiteToMove ? parentWc : -parentWc;
+                stored.loss = (moverParentWc - moverNodeWc) / 2;
+              }
+            }
+            if (cached?.label && !stored.label) stored.label = cached.label;
+            evalCache.set(nodePath, stored);
+            _onLiveEvalImproved?.();
+          }
+        }
         syncArrowDebounced();
         _redraw();
         if (pendingEval) {
@@ -2878,12 +2906,12 @@ var rook = (ctx) => rookDir(...ctx.orig.pos, ...ctx.dest.pos);
 var queen = (ctx) => bishop(ctx) || rook(ctx);
 var king = (ctx) => kingDirNonCastling(...ctx.orig.pos, ...ctx.dest.pos) || ctx.orig.pos[1] === ctx.dest.pos[1] && ctx.orig.pos[1] === (ctx.color === "white" ? 0 : 7) && (ctx.orig.pos[0] === 4 && (ctx.dest.pos[0] === 2 && ctx.rookFilesFriendlies.includes(0) || ctx.dest.pos[0] === 6 && ctx.rookFilesFriendlies.includes(7)) || ctx.rookFilesFriendlies.includes(ctx.dest.pos[0]));
 var mobilityByRole = { pawn, knight, bishop, rook, queen, king };
-function premove(state, key) {
-  const pieces = state.pieces;
+function premove(state2, key) {
+  const pieces = state2.pieces;
   const piece = pieces.get(key);
-  if (!piece || piece.color === state.turnColor)
+  if (!piece || piece.color === state2.turnColor)
     return [];
-  const color = piece.color, friendlies = new Map([...pieces].filter(([_, p]) => p.color === color)), enemies = new Map([...pieces].filter(([_, p]) => p.color === opposite2(color))), orig = { key, pos: key2pos(key) }, mobility = (ctx) => mobilityByRole[piece.role](ctx) && state.premovable.additionalPremoveRequirements(ctx), partialCtx = {
+  const color = piece.color, friendlies = new Map([...pieces].filter(([_, p]) => p.color === color)), enemies = new Map([...pieces].filter(([_, p]) => p.color === opposite2(color))), orig = { key, pos: key2pos(key) }, mobility = (ctx) => mobilityByRole[piece.role](ctx) && state2.premovable.additionalPremoveRequirements(ctx), partialCtx = {
     orig,
     role: piece.role,
     allPieces: pieces,
@@ -2891,7 +2919,7 @@ function premove(state, key) {
     enemies,
     color,
     rookFilesFriendlies: Array.from(pieces).filter(([k, p]) => k[1] === (color === "white" ? "1" : "8") && p.color === color && p.role === "rook").map(([k]) => key2pos(k)[0]),
-    lastMove: state.lastMove
+    lastMove: state2.lastMove
   };
   return allPosAndKey.filter((dest) => mobility({ ...partialCtx, dest })).map((pk) => pk.key);
 }
@@ -2901,270 +2929,270 @@ function callUserFunction(f, ...args) {
   if (f)
     setTimeout(() => f(...args), 1);
 }
-function toggleOrientation(state) {
-  state.orientation = opposite2(state.orientation);
-  state.animation.current = state.draggable.current = state.selected = void 0;
+function toggleOrientation(state2) {
+  state2.orientation = opposite2(state2.orientation);
+  state2.animation.current = state2.draggable.current = state2.selected = void 0;
 }
-function setPieces(state, pieces) {
+function setPieces(state2, pieces) {
   for (const [key, piece] of pieces) {
     if (piece)
-      state.pieces.set(key, piece);
+      state2.pieces.set(key, piece);
     else
-      state.pieces.delete(key);
+      state2.pieces.delete(key);
   }
 }
-function setCheck(state, color) {
-  state.check = void 0;
+function setCheck(state2, color) {
+  state2.check = void 0;
   if (color === true)
-    color = state.turnColor;
+    color = state2.turnColor;
   if (color)
-    for (const [k, p] of state.pieces) {
+    for (const [k, p] of state2.pieces) {
       if (p.role === "king" && p.color === color) {
-        state.check = k;
+        state2.check = k;
       }
     }
 }
-function setPremove(state, orig, dest, meta) {
-  unsetPredrop(state);
-  state.premovable.current = [orig, dest];
-  callUserFunction(state.premovable.events.set, orig, dest, meta);
+function setPremove(state2, orig, dest, meta) {
+  unsetPredrop(state2);
+  state2.premovable.current = [orig, dest];
+  callUserFunction(state2.premovable.events.set, orig, dest, meta);
 }
-function unsetPremove(state) {
-  if (state.premovable.current) {
-    state.premovable.current = void 0;
-    callUserFunction(state.premovable.events.unset);
+function unsetPremove(state2) {
+  if (state2.premovable.current) {
+    state2.premovable.current = void 0;
+    callUserFunction(state2.premovable.events.unset);
   }
 }
-function setPredrop(state, role, key) {
-  unsetPremove(state);
-  state.predroppable.current = { role, key };
-  callUserFunction(state.predroppable.events.set, role, key);
+function setPredrop(state2, role, key) {
+  unsetPremove(state2);
+  state2.predroppable.current = { role, key };
+  callUserFunction(state2.predroppable.events.set, role, key);
 }
-function unsetPredrop(state) {
-  const pd = state.predroppable;
+function unsetPredrop(state2) {
+  const pd = state2.predroppable;
   if (pd.current) {
     pd.current = void 0;
     callUserFunction(pd.events.unset);
   }
 }
-function tryAutoCastle(state, orig, dest) {
-  if (!state.autoCastle)
+function tryAutoCastle(state2, orig, dest) {
+  if (!state2.autoCastle)
     return false;
-  const king2 = state.pieces.get(orig);
+  const king2 = state2.pieces.get(orig);
   if (!king2 || king2.role !== "king")
     return false;
   const origPos = key2pos(orig);
   const destPos = key2pos(dest);
   if (origPos[1] !== 0 && origPos[1] !== 7 || origPos[1] !== destPos[1])
     return false;
-  if (origPos[0] === 4 && !state.pieces.has(dest)) {
+  if (origPos[0] === 4 && !state2.pieces.has(dest)) {
     if (destPos[0] === 6)
       dest = pos2keyUnsafe([7, destPos[1]]);
     else if (destPos[0] === 2)
       dest = pos2keyUnsafe([0, destPos[1]]);
   }
-  const rook2 = state.pieces.get(dest);
+  const rook2 = state2.pieces.get(dest);
   if (!rook2 || rook2.color !== king2.color || rook2.role !== "rook")
     return false;
-  state.pieces.delete(orig);
-  state.pieces.delete(dest);
+  state2.pieces.delete(orig);
+  state2.pieces.delete(dest);
   if (origPos[0] < destPos[0]) {
-    state.pieces.set(pos2keyUnsafe([6, destPos[1]]), king2);
-    state.pieces.set(pos2keyUnsafe([5, destPos[1]]), rook2);
+    state2.pieces.set(pos2keyUnsafe([6, destPos[1]]), king2);
+    state2.pieces.set(pos2keyUnsafe([5, destPos[1]]), rook2);
   } else {
-    state.pieces.set(pos2keyUnsafe([2, destPos[1]]), king2);
-    state.pieces.set(pos2keyUnsafe([3, destPos[1]]), rook2);
+    state2.pieces.set(pos2keyUnsafe([2, destPos[1]]), king2);
+    state2.pieces.set(pos2keyUnsafe([3, destPos[1]]), rook2);
   }
   return true;
 }
-function baseMove(state, orig, dest) {
-  const origPiece = state.pieces.get(orig), destPiece = state.pieces.get(dest);
+function baseMove(state2, orig, dest) {
+  const origPiece = state2.pieces.get(orig), destPiece = state2.pieces.get(dest);
   if (orig === dest || !origPiece)
     return false;
   const captured = destPiece && destPiece.color !== origPiece.color ? destPiece : void 0;
-  if (dest === state.selected)
-    unselect(state);
-  callUserFunction(state.events.move, orig, dest, captured);
-  if (!tryAutoCastle(state, orig, dest)) {
-    state.pieces.set(dest, origPiece);
-    state.pieces.delete(orig);
+  if (dest === state2.selected)
+    unselect(state2);
+  callUserFunction(state2.events.move, orig, dest, captured);
+  if (!tryAutoCastle(state2, orig, dest)) {
+    state2.pieces.set(dest, origPiece);
+    state2.pieces.delete(orig);
   }
-  state.lastMove = [orig, dest];
-  state.check = void 0;
-  callUserFunction(state.events.change);
+  state2.lastMove = [orig, dest];
+  state2.check = void 0;
+  callUserFunction(state2.events.change);
   return captured || true;
 }
-function baseNewPiece(state, piece, key, force) {
-  if (state.pieces.has(key)) {
+function baseNewPiece(state2, piece, key, force) {
+  if (state2.pieces.has(key)) {
     if (force)
-      state.pieces.delete(key);
+      state2.pieces.delete(key);
     else
       return false;
   }
-  callUserFunction(state.events.dropNewPiece, piece, key);
-  state.pieces.set(key, piece);
-  state.lastMove = [key];
-  state.check = void 0;
-  callUserFunction(state.events.change);
-  state.movable.dests = void 0;
-  state.turnColor = opposite2(state.turnColor);
+  callUserFunction(state2.events.dropNewPiece, piece, key);
+  state2.pieces.set(key, piece);
+  state2.lastMove = [key];
+  state2.check = void 0;
+  callUserFunction(state2.events.change);
+  state2.movable.dests = void 0;
+  state2.turnColor = opposite2(state2.turnColor);
   return true;
 }
-function baseUserMove(state, orig, dest) {
-  const result = baseMove(state, orig, dest);
+function baseUserMove(state2, orig, dest) {
+  const result = baseMove(state2, orig, dest);
   if (result) {
-    state.movable.dests = void 0;
-    state.turnColor = opposite2(state.turnColor);
-    state.animation.current = void 0;
+    state2.movable.dests = void 0;
+    state2.turnColor = opposite2(state2.turnColor);
+    state2.animation.current = void 0;
   }
   return result;
 }
-function userMove(state, orig, dest) {
-  if (canMove(state, orig, dest)) {
-    const result = baseUserMove(state, orig, dest);
+function userMove(state2, orig, dest) {
+  if (canMove(state2, orig, dest)) {
+    const result = baseUserMove(state2, orig, dest);
     if (result) {
-      const holdTime = state.hold.stop();
-      unselect(state);
+      const holdTime = state2.hold.stop();
+      unselect(state2);
       const metadata = {
         premove: false,
-        ctrlKey: state.stats.ctrlKey,
+        ctrlKey: state2.stats.ctrlKey,
         holdTime
       };
       if (result !== true)
         metadata.captured = result;
-      callUserFunction(state.movable.events.after, orig, dest, metadata);
+      callUserFunction(state2.movable.events.after, orig, dest, metadata);
       return true;
     }
-  } else if (canPremove(state, orig, dest)) {
-    setPremove(state, orig, dest, {
-      ctrlKey: state.stats.ctrlKey
+  } else if (canPremove(state2, orig, dest)) {
+    setPremove(state2, orig, dest, {
+      ctrlKey: state2.stats.ctrlKey
     });
-    unselect(state);
+    unselect(state2);
     return true;
   }
-  unselect(state);
+  unselect(state2);
   return false;
 }
-function dropNewPiece(state, orig, dest, force) {
-  const piece = state.pieces.get(orig);
-  if (piece && (canDrop(state, orig, dest) || force)) {
-    state.pieces.delete(orig);
-    baseNewPiece(state, piece, dest, force);
-    callUserFunction(state.movable.events.afterNewPiece, piece.role, dest, {
+function dropNewPiece(state2, orig, dest, force) {
+  const piece = state2.pieces.get(orig);
+  if (piece && (canDrop(state2, orig, dest) || force)) {
+    state2.pieces.delete(orig);
+    baseNewPiece(state2, piece, dest, force);
+    callUserFunction(state2.movable.events.afterNewPiece, piece.role, dest, {
       premove: false,
       predrop: false
     });
-  } else if (piece && canPredrop(state, orig, dest)) {
-    setPredrop(state, piece.role, dest);
+  } else if (piece && canPredrop(state2, orig, dest)) {
+    setPredrop(state2, piece.role, dest);
   } else {
-    unsetPremove(state);
-    unsetPredrop(state);
+    unsetPremove(state2);
+    unsetPredrop(state2);
   }
-  state.pieces.delete(orig);
-  unselect(state);
+  state2.pieces.delete(orig);
+  unselect(state2);
 }
-function selectSquare(state, key, force) {
-  callUserFunction(state.events.select, key);
-  if (state.selected) {
-    if (state.selected === key && !state.draggable.enabled) {
-      unselect(state);
-      state.hold.cancel();
+function selectSquare(state2, key, force) {
+  callUserFunction(state2.events.select, key);
+  if (state2.selected) {
+    if (state2.selected === key && !state2.draggable.enabled) {
+      unselect(state2);
+      state2.hold.cancel();
       return;
-    } else if ((state.selectable.enabled || force) && state.selected !== key) {
-      if (userMove(state, state.selected, key)) {
-        state.stats.dragged = false;
+    } else if ((state2.selectable.enabled || force) && state2.selected !== key) {
+      if (userMove(state2, state2.selected, key)) {
+        state2.stats.dragged = false;
         return;
       }
     }
   }
-  if ((state.selectable.enabled || state.draggable.enabled) && (isMovable(state, key) || isPremovable(state, key))) {
-    setSelected(state, key);
-    state.hold.start();
+  if ((state2.selectable.enabled || state2.draggable.enabled) && (isMovable(state2, key) || isPremovable(state2, key))) {
+    setSelected(state2, key);
+    state2.hold.start();
   }
 }
-function setSelected(state, key) {
-  state.selected = key;
-  if (!isPremovable(state, key))
-    state.premovable.dests = void 0;
-  else if (!state.premovable.customDests)
-    state.premovable.dests = premove(state, key);
+function setSelected(state2, key) {
+  state2.selected = key;
+  if (!isPremovable(state2, key))
+    state2.premovable.dests = void 0;
+  else if (!state2.premovable.customDests)
+    state2.premovable.dests = premove(state2, key);
 }
-function unselect(state) {
-  state.selected = void 0;
-  state.premovable.dests = void 0;
-  state.hold.cancel();
+function unselect(state2) {
+  state2.selected = void 0;
+  state2.premovable.dests = void 0;
+  state2.hold.cancel();
 }
-function isMovable(state, orig) {
-  const piece = state.pieces.get(orig);
-  return !!piece && (state.movable.color === "both" || state.movable.color === piece.color && state.turnColor === piece.color);
+function isMovable(state2, orig) {
+  const piece = state2.pieces.get(orig);
+  return !!piece && (state2.movable.color === "both" || state2.movable.color === piece.color && state2.turnColor === piece.color);
 }
-var canMove = (state, orig, dest) => orig !== dest && isMovable(state, orig) && (state.movable.free || !!state.movable.dests?.get(orig)?.includes(dest));
-function canDrop(state, orig, dest) {
-  const piece = state.pieces.get(orig);
-  return !!piece && (orig === dest || !state.pieces.has(dest)) && (state.movable.color === "both" || state.movable.color === piece.color && state.turnColor === piece.color);
+var canMove = (state2, orig, dest) => orig !== dest && isMovable(state2, orig) && (state2.movable.free || !!state2.movable.dests?.get(orig)?.includes(dest));
+function canDrop(state2, orig, dest) {
+  const piece = state2.pieces.get(orig);
+  return !!piece && (orig === dest || !state2.pieces.has(dest)) && (state2.movable.color === "both" || state2.movable.color === piece.color && state2.turnColor === piece.color);
 }
-function isPremovable(state, orig) {
-  const piece = state.pieces.get(orig);
-  return !!piece && state.premovable.enabled && state.movable.color === piece.color && state.turnColor !== piece.color;
+function isPremovable(state2, orig) {
+  const piece = state2.pieces.get(orig);
+  return !!piece && state2.premovable.enabled && state2.movable.color === piece.color && state2.turnColor !== piece.color;
 }
-var canPremove = (state, orig, dest) => orig !== dest && isPremovable(state, orig) && (state.premovable.customDests?.get(orig) ?? premove(state, orig)).includes(dest);
-function canPredrop(state, orig, dest) {
-  const piece = state.pieces.get(orig);
-  const destPiece = state.pieces.get(dest);
-  return !!piece && (!destPiece || destPiece.color !== state.movable.color) && state.predroppable.enabled && (piece.role !== "pawn" || dest[1] !== "1" && dest[1] !== "8") && state.movable.color === piece.color && state.turnColor !== piece.color;
+var canPremove = (state2, orig, dest) => orig !== dest && isPremovable(state2, orig) && (state2.premovable.customDests?.get(orig) ?? premove(state2, orig)).includes(dest);
+function canPredrop(state2, orig, dest) {
+  const piece = state2.pieces.get(orig);
+  const destPiece = state2.pieces.get(dest);
+  return !!piece && (!destPiece || destPiece.color !== state2.movable.color) && state2.predroppable.enabled && (piece.role !== "pawn" || dest[1] !== "1" && dest[1] !== "8") && state2.movable.color === piece.color && state2.turnColor !== piece.color;
 }
-function isDraggable(state, orig) {
-  const piece = state.pieces.get(orig);
-  return !!piece && state.draggable.enabled && (state.movable.color === "both" || state.movable.color === piece.color && (state.turnColor === piece.color || state.premovable.enabled));
+function isDraggable(state2, orig) {
+  const piece = state2.pieces.get(orig);
+  return !!piece && state2.draggable.enabled && (state2.movable.color === "both" || state2.movable.color === piece.color && (state2.turnColor === piece.color || state2.premovable.enabled));
 }
-function playPremove(state) {
-  const move3 = state.premovable.current;
+function playPremove(state2) {
+  const move3 = state2.premovable.current;
   if (!move3)
     return false;
   const orig = move3[0], dest = move3[1];
   let success = false;
-  if (canMove(state, orig, dest)) {
-    const result = baseUserMove(state, orig, dest);
+  if (canMove(state2, orig, dest)) {
+    const result = baseUserMove(state2, orig, dest);
     if (result) {
       const metadata = { premove: true };
       if (result !== true)
         metadata.captured = result;
-      callUserFunction(state.movable.events.after, orig, dest, metadata);
+      callUserFunction(state2.movable.events.after, orig, dest, metadata);
       success = true;
     }
   }
-  unsetPremove(state);
+  unsetPremove(state2);
   return success;
 }
-function playPredrop(state, validate) {
-  const drop2 = state.predroppable.current;
+function playPredrop(state2, validate) {
+  const drop2 = state2.predroppable.current;
   let success = false;
   if (!drop2)
     return false;
   if (validate(drop2)) {
     const piece = {
       role: drop2.role,
-      color: state.movable.color
+      color: state2.movable.color
     };
-    if (baseNewPiece(state, piece, drop2.key)) {
-      callUserFunction(state.movable.events.afterNewPiece, drop2.role, drop2.key, {
+    if (baseNewPiece(state2, piece, drop2.key)) {
+      callUserFunction(state2.movable.events.afterNewPiece, drop2.role, drop2.key, {
         premove: false,
         predrop: true
       });
       success = true;
     }
   }
-  unsetPredrop(state);
+  unsetPredrop(state2);
   return success;
 }
-function cancelMove(state) {
-  unsetPremove(state);
-  unsetPredrop(state);
-  unselect(state);
+function cancelMove(state2) {
+  unsetPremove(state2);
+  unsetPredrop(state2);
+  unselect(state2);
 }
-function stop(state) {
-  state.movable.color = state.movable.dests = state.animation.current = void 0;
-  cancelMove(state);
+function stop(state2) {
+  state2.movable.color = state2.movable.dests = state2.animation.current = void 0;
+  cancelMove(state2);
 }
 function getKeyAtDomPos(pos, asWhite, bounds) {
   let file = Math.floor(8 * (pos[0] - bounds.left) / bounds.width);
@@ -3261,37 +3289,37 @@ function write(pieces) {
 }
 
 // node_modules/.pnpm/@lichess-org+chessground@10.1.0/node_modules/@lichess-org/chessground/dist/config.js
-function applyAnimation(state, config) {
+function applyAnimation(state2, config) {
   if (config.animation) {
-    deepMerge(state.animation, config.animation);
-    if ((state.animation.duration || 0) < 70)
-      state.animation.enabled = false;
+    deepMerge(state2.animation, config.animation);
+    if ((state2.animation.duration || 0) < 70)
+      state2.animation.enabled = false;
   }
 }
-function configure(state, config) {
+function configure(state2, config) {
   if (config.movable?.dests)
-    state.movable.dests = void 0;
+    state2.movable.dests = void 0;
   if (config.drawable?.autoShapes)
-    state.drawable.autoShapes = [];
-  deepMerge(state, config);
+    state2.drawable.autoShapes = [];
+  deepMerge(state2, config);
   if (config.fen) {
-    state.pieces = read(config.fen);
-    state.drawable.shapes = config.drawable?.shapes || [];
+    state2.pieces = read(config.fen);
+    state2.drawable.shapes = config.drawable?.shapes || [];
   }
   if ("check" in config)
-    setCheck(state, config.check || false);
+    setCheck(state2, config.check || false);
   if ("lastMove" in config && !config.lastMove)
-    state.lastMove = void 0;
+    state2.lastMove = void 0;
   else if (config.lastMove)
-    state.lastMove = config.lastMove;
-  if (state.selected)
-    setSelected(state, state.selected);
-  applyAnimation(state, config);
-  if (!state.movable.rookCastle && state.movable.dests) {
-    const rank = state.movable.color === "white" ? "1" : "8", kingStartPos = "e" + rank, dests = state.movable.dests.get(kingStartPos), king2 = state.pieces.get(kingStartPos);
+    state2.lastMove = config.lastMove;
+  if (state2.selected)
+    setSelected(state2, state2.selected);
+  applyAnimation(state2, config);
+  if (!state2.movable.rookCastle && state2.movable.dests) {
+    const rank = state2.movable.color === "white" ? "1" : "8", kingStartPos = "e" + rank, dests = state2.movable.dests.get(kingStartPos), king2 = state2.pieces.get(kingStartPos);
     if (!dests || !king2 || king2.role !== "king")
       return;
-    state.movable.dests.set(kingStartPos, dests.filter((d) => !(d === "a" + rank && dests.includes("c" + rank)) && !(d === "h" + rank && dests.includes("g" + rank))));
+    state2.movable.dests.set(kingStartPos, dests.filter((d) => !(d === "a" + rank && dests.includes("c" + rank)) && !(d === "h" + rank && dests.includes("g" + rank))));
   }
 }
 function deepMerge(base, extend) {
@@ -3312,10 +3340,10 @@ function isPlainObject(o) {
 }
 
 // node_modules/.pnpm/@lichess-org+chessground@10.1.0/node_modules/@lichess-org/chessground/dist/anim.js
-var anim = (mutation, state) => state.animation.enabled ? animate(mutation, state) : render(mutation, state);
-function render(mutation, state) {
-  const result = mutation(state);
-  state.dom.redraw();
+var anim = (mutation, state2) => state2.animation.enabled ? animate(mutation, state2) : render(mutation, state2);
+function render(mutation, state2) {
+  const result = mutation(state2);
+  state2.dom.redraw();
   return result;
 }
 var makePiece = (key, piece) => ({
@@ -3361,42 +3389,42 @@ function computePlan(prevPieces, current2) {
     fadings
   };
 }
-function step(state, now) {
-  const cur = state.animation.current;
+function step(state2, now) {
+  const cur = state2.animation.current;
   if (cur === void 0) {
-    if (!state.dom.destroyed)
-      state.dom.redrawNow();
+    if (!state2.dom.destroyed)
+      state2.dom.redrawNow();
     return;
   }
   const rest = 1 - (now - cur.start) * cur.frequency;
   if (rest <= 0) {
-    state.animation.current = void 0;
-    state.dom.redrawNow();
+    state2.animation.current = void 0;
+    state2.dom.redrawNow();
   } else {
     const ease = easing(rest);
     for (const cfg of cur.plan.anims.values()) {
       cfg[2] = cfg[0] * ease;
       cfg[3] = cfg[1] * ease;
     }
-    state.dom.redrawNow(true);
-    requestAnimationFrame((now2 = performance.now()) => step(state, now2));
+    state2.dom.redrawNow(true);
+    requestAnimationFrame((now2 = performance.now()) => step(state2, now2));
   }
 }
-function animate(mutation, state) {
-  const prevPieces = new Map(state.pieces);
-  const result = mutation(state);
-  const plan = computePlan(prevPieces, state);
+function animate(mutation, state2) {
+  const prevPieces = new Map(state2.pieces);
+  const result = mutation(state2);
+  const plan = computePlan(prevPieces, state2);
   if (plan.anims.size || plan.fadings.size) {
-    const alreadyRunning = state.animation.current && state.animation.current.start;
-    state.animation.current = {
+    const alreadyRunning = state2.animation.current && state2.animation.current.start;
+    state2.animation.current = {
       start: performance.now(),
-      frequency: 1 / state.animation.duration,
+      frequency: 1 / state2.animation.duration,
       plan
     };
     if (!alreadyRunning)
-      step(state, performance.now());
+      step(state2, performance.now());
   } else {
-    state.dom.redraw();
+    state2.dom.redraw();
   }
   return result;
 }
@@ -3404,64 +3432,64 @@ var easing = (t) => t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2
 
 // node_modules/.pnpm/@lichess-org+chessground@10.1.0/node_modules/@lichess-org/chessground/dist/draw.js
 var brushes = ["green", "red", "blue", "yellow"];
-function start(state, e) {
+function start(state2, e) {
   if (e.touches && e.touches.length > 1)
     return;
   e.stopPropagation();
   e.preventDefault();
-  e.ctrlKey ? unselect(state) : cancelMove(state);
-  const pos = eventPosition(e), orig = getKeyAtDomPos(pos, whitePov(state), state.dom.bounds());
+  e.ctrlKey ? unselect(state2) : cancelMove(state2);
+  const pos = eventPosition(e), orig = getKeyAtDomPos(pos, whitePov(state2), state2.dom.bounds());
   if (!orig)
     return;
-  state.drawable.current = {
+  state2.drawable.current = {
     orig,
     pos,
     brush: eventBrush(e),
-    snapToValidMove: state.drawable.defaultSnapToValidMove
+    snapToValidMove: state2.drawable.defaultSnapToValidMove
   };
-  processDraw(state);
+  processDraw(state2);
 }
-function processDraw(state) {
+function processDraw(state2) {
   requestAnimationFrame(() => {
-    const cur = state.drawable.current;
+    const cur = state2.drawable.current;
     if (cur) {
-      const keyAtDomPos = getKeyAtDomPos(cur.pos, whitePov(state), state.dom.bounds());
+      const keyAtDomPos = getKeyAtDomPos(cur.pos, whitePov(state2), state2.dom.bounds());
       if (!keyAtDomPos) {
         cur.snapToValidMove = false;
       }
-      const mouseSq = cur.snapToValidMove ? getSnappedKeyAtDomPos(cur.orig, cur.pos, whitePov(state), state.dom.bounds()) : keyAtDomPos;
+      const mouseSq = cur.snapToValidMove ? getSnappedKeyAtDomPos(cur.orig, cur.pos, whitePov(state2), state2.dom.bounds()) : keyAtDomPos;
       if (mouseSq !== cur.mouseSq) {
         cur.mouseSq = mouseSq;
         cur.dest = mouseSq !== cur.orig ? mouseSq : void 0;
-        state.dom.redrawNow();
+        state2.dom.redrawNow();
       }
-      processDraw(state);
+      processDraw(state2);
     }
   });
 }
-function move(state, e) {
-  if (state.drawable.current)
-    state.drawable.current.pos = eventPosition(e);
+function move(state2, e) {
+  if (state2.drawable.current)
+    state2.drawable.current.pos = eventPosition(e);
 }
-function end(state) {
-  const cur = state.drawable.current;
+function end(state2) {
+  const cur = state2.drawable.current;
   if (cur) {
     if (cur.mouseSq)
-      addShape(state.drawable, cur);
-    cancel(state);
+      addShape(state2.drawable, cur);
+    cancel(state2);
   }
 }
-function cancel(state) {
-  if (state.drawable.current) {
-    state.drawable.current = void 0;
-    state.dom.redraw();
+function cancel(state2) {
+  if (state2.drawable.current) {
+    state2.drawable.current = void 0;
+    state2.dom.redraw();
   }
 }
-function clear(state) {
-  if (state.drawable.shapes.length) {
-    state.drawable.shapes = [];
-    state.dom.redraw();
-    onChange(state.drawable);
+function clear(state2) {
+  if (state2.drawable.shapes.length) {
+    state2.drawable.shapes = [];
+    state2.dom.redraw();
+    onChange(state2.drawable);
   }
 }
 var sameEndpoints = (s1, s2) => s1.orig === s2.orig && s1.dest === s2.dest;
@@ -3511,7 +3539,7 @@ function start2(s, e) {
   const hadPredrop = !!s.predroppable.current;
   s.stats.ctrlKey = e.ctrlKey;
   if (s.selected && canMove(s, s.selected, orig)) {
-    anim((state) => selectSquare(state, orig), s);
+    anim((state2) => selectSquare(state2, orig), s);
   } else {
     selectSquare(s, orig);
   }
@@ -3704,111 +3732,111 @@ function pieceElementByKey(s, key) {
 }
 
 // node_modules/.pnpm/@lichess-org+chessground@10.1.0/node_modules/@lichess-org/chessground/dist/explosion.js
-function explosion(state, keys) {
-  state.exploding = { stage: 1, keys };
-  state.dom.redraw();
+function explosion(state2, keys) {
+  state2.exploding = { stage: 1, keys };
+  state2.dom.redraw();
   setTimeout(() => {
-    setStage(state, 2);
-    setTimeout(() => setStage(state, void 0), 120);
+    setStage(state2, 2);
+    setTimeout(() => setStage(state2, void 0), 120);
   }, 120);
 }
-function setStage(state, stage) {
-  if (state.exploding) {
+function setStage(state2, stage) {
+  if (state2.exploding) {
     if (stage)
-      state.exploding.stage = stage;
+      state2.exploding.stage = stage;
     else
-      state.exploding = void 0;
-    state.dom.redraw();
+      state2.exploding = void 0;
+    state2.dom.redraw();
   }
 }
 
 // node_modules/.pnpm/@lichess-org+chessground@10.1.0/node_modules/@lichess-org/chessground/dist/api.js
-function start3(state, redrawAll) {
+function start3(state2, redrawAll) {
   function toggleOrientation2() {
-    toggleOrientation(state);
+    toggleOrientation(state2);
     redrawAll();
   }
   return {
     set(config) {
-      if (config.orientation && config.orientation !== state.orientation)
+      if (config.orientation && config.orientation !== state2.orientation)
         toggleOrientation2();
-      applyAnimation(state, config);
-      (config.fen ? anim : render)((state2) => configure(state2, config), state);
+      applyAnimation(state2, config);
+      (config.fen ? anim : render)((state3) => configure(state3, config), state2);
     },
-    state,
-    getFen: () => write(state.pieces),
+    state: state2,
+    getFen: () => write(state2.pieces),
     toggleOrientation: toggleOrientation2,
     setPieces(pieces) {
-      anim((state2) => setPieces(state2, pieces), state);
+      anim((state3) => setPieces(state3, pieces), state2);
     },
     selectSquare(key, force) {
       if (key)
-        anim((state2) => selectSquare(state2, key, force), state);
-      else if (state.selected) {
-        unselect(state);
-        state.dom.redraw();
+        anim((state3) => selectSquare(state3, key, force), state2);
+      else if (state2.selected) {
+        unselect(state2);
+        state2.dom.redraw();
       }
     },
     move(orig, dest) {
-      anim((state2) => baseMove(state2, orig, dest), state);
+      anim((state3) => baseMove(state3, orig, dest), state2);
     },
     newPiece(piece, key) {
-      anim((state2) => baseNewPiece(state2, piece, key), state);
+      anim((state3) => baseNewPiece(state3, piece, key), state2);
     },
     playPremove() {
-      if (state.premovable.current) {
-        if (anim(playPremove, state))
+      if (state2.premovable.current) {
+        if (anim(playPremove, state2))
           return true;
-        state.dom.redraw();
+        state2.dom.redraw();
       }
       return false;
     },
     playPredrop(validate) {
-      if (state.predroppable.current) {
-        const result = playPredrop(state, validate);
-        state.dom.redraw();
+      if (state2.predroppable.current) {
+        const result = playPredrop(state2, validate);
+        state2.dom.redraw();
         return result;
       }
       return false;
     },
     cancelPremove() {
-      render(unsetPremove, state);
+      render(unsetPremove, state2);
     },
     cancelPredrop() {
-      render(unsetPredrop, state);
+      render(unsetPredrop, state2);
     },
     cancelMove() {
-      render((state2) => {
-        cancelMove(state2);
-        cancel2(state2);
-      }, state);
+      render((state3) => {
+        cancelMove(state3);
+        cancel2(state3);
+      }, state2);
     },
     stop() {
-      render((state2) => {
-        stop(state2);
-        cancel2(state2);
-      }, state);
+      render((state3) => {
+        stop(state3);
+        cancel2(state3);
+      }, state2);
     },
     explode(keys) {
-      explosion(state, keys);
+      explosion(state2, keys);
     },
     setAutoShapes(shapes) {
-      render((state2) => state2.drawable.autoShapes = shapes, state);
+      render((state3) => state3.drawable.autoShapes = shapes, state2);
     },
     setShapes(shapes) {
-      render((state2) => state2.drawable.shapes = shapes.slice(), state);
+      render((state3) => state3.drawable.shapes = shapes.slice(), state2);
     },
     getKeyAtDomPos(pos) {
-      return getKeyAtDomPos(pos, whitePov(state), state.dom.bounds());
+      return getKeyAtDomPos(pos, whitePov(state2), state2.dom.bounds());
     },
     redrawAll,
     dragNewPiece(piece, event, force) {
-      dragNewPiece(state, piece, event, force);
+      dragNewPiece(state2, piece, event, force);
     },
     destroy() {
-      stop(state);
-      state.dom.unbind && state.dom.unbind();
-      state.dom.destroyed = true;
+      stop(state2);
+      state2.dom.unbind && state2.dom.unbind();
+      state2.dom.destroyed = true;
     }
   };
 }
@@ -3918,12 +3946,12 @@ function createDefs() {
   defs.appendChild(filter);
   return defs;
 }
-function renderSvg(state, els) {
-  const d = state.drawable, curD = d.current, cur = curD && curD.mouseSq ? curD : void 0, dests = /* @__PURE__ */ new Map(), bounds = state.dom.bounds(), nonPieceAutoShapes = d.autoShapes.filter((autoShape) => !autoShape.piece);
+function renderSvg(state2, els) {
+  const d = state2.drawable, curD = d.current, cur = curD && curD.mouseSq ? curD : void 0, dests = /* @__PURE__ */ new Map(), bounds = state2.dom.bounds(), nonPieceAutoShapes = d.autoShapes.filter((autoShape) => !autoShape.piece);
   for (const s of d.shapes.concat(nonPieceAutoShapes).concat(cur ? [cur] : [])) {
     if (!s.dest)
       continue;
-    const sources = dests.get(s.dest) ?? /* @__PURE__ */ new Set(), from = pos2user(orient(key2pos(s.orig), state.orientation), bounds), to = pos2user(orient(key2pos(s.dest), state.orientation), bounds);
+    const sources = dests.get(s.dest) ?? /* @__PURE__ */ new Set(), from = pos2user(orient(key2pos(s.orig), state2.orientation), bounds), to = pos2user(orient(key2pos(s.dest), state2.orientation), bounds);
     sources.add(angleToSlot(moveAngle(from, to)));
     dests.set(s.dest, sources);
   }
@@ -3946,11 +3974,11 @@ function renderSvg(state, els) {
       pendingErase: false
     });
   const fullHash = shapes.map((sc) => sc.hash).join(";");
-  if (fullHash === state.drawable.prevSvgHash)
+  if (fullHash === state2.drawable.prevSvgHash)
     return;
-  state.drawable.prevSvgHash = fullHash;
+  state2.drawable.prevSvgHash = fullHash;
   syncDefs(d, shapes, els);
-  syncShapes(shapes, els, (s) => renderShape(state, s, d.brushes, dests, bounds));
+  syncShapes(shapes, els, (s) => renderShape(state2, s, d.brushes, dests, bounds));
 }
 function syncDefs(d, shapes, els) {
   for (const shapesEl of [els.shapes, els.shapesBelow]) {
@@ -4037,8 +4065,8 @@ function textHash(s) {
   }
   return h2.toString();
 }
-function renderShape(state, { shape, current: current2, pendingErase, hash: hash2 }, brushes2, dests, bounds) {
-  const from = pos2user(orient(key2pos(shape.orig), state.orientation), bounds), to = shape.dest ? pos2user(orient(key2pos(shape.dest), state.orientation), bounds) : from, brush = shape.brush && makeCustomBrush(brushes2[shape.brush], shape.modifiers), slots = dests.get(shape.dest), svgs = [];
+function renderShape(state2, { shape, current: current2, pendingErase, hash: hash2 }, brushes2, dests, bounds) {
+  const from = pos2user(orient(key2pos(shape.orig), state2.orientation), bounds), to = shape.dest ? pos2user(orient(key2pos(shape.dest), state2.orientation), bounds) : from, brush = shape.brush && makeCustomBrush(brushes2[shape.brush], shape.modifiers), slots = dests.get(shape.dest), svgs = [];
   if (brush) {
     const el = setAttributes(createElement2("g"), { cgHash: hash2 });
     svgs.push({ el });
@@ -4576,8 +4604,8 @@ function syncShapes2(shapes, root, renderShape3) {
 }
 
 // node_modules/.pnpm/@lichess-org+chessground@10.1.0/node_modules/@lichess-org/chessground/dist/autoPieces.js
-function render3(state, autoPieceEl) {
-  const autoPieces = state.drawable.autoShapes.filter((autoShape) => autoShape.piece);
+function render3(state2, autoPieceEl) {
+  const autoPieces = state2.drawable.autoShapes.filter((autoShape) => autoShape.piece);
   const autoPieceShapes = autoPieces.map((s) => {
     return {
       shape: s,
@@ -4586,17 +4614,17 @@ function render3(state, autoPieceEl) {
       pendingErase: false
     };
   });
-  syncShapes2(autoPieceShapes, autoPieceEl, (shape) => renderShape2(state, shape, state.dom.bounds()));
+  syncShapes2(autoPieceShapes, autoPieceEl, (shape) => renderShape2(state2, shape, state2.dom.bounds()));
 }
-function renderResized2(state) {
-  const asWhite = whitePov(state), posToTranslate2 = posToTranslate(state.dom.bounds());
-  let el = state.dom.elements.autoPieces?.firstChild;
+function renderResized2(state2) {
+  const asWhite = whitePov(state2), posToTranslate2 = posToTranslate(state2.dom.bounds());
+  let el = state2.dom.elements.autoPieces?.firstChild;
   while (el) {
     translateAndScale(el, posToTranslate2(key2pos(el.cgKey), asWhite), el.cgScale);
     el = el.nextSibling;
   }
 }
-function renderShape2(state, { shape, hash: hash2 }, bounds) {
+function renderShape2(state2, { shape, hash: hash2 }, bounds) {
   const orig = shape.orig;
   const role = shape.piece?.role;
   const color = shape.piece?.color;
@@ -4605,7 +4633,7 @@ function renderShape2(state, { shape, hash: hash2 }, bounds) {
   pieceEl.setAttribute("cgHash", hash2);
   pieceEl.cgKey = orig;
   pieceEl.cgScale = scale;
-  translateAndScale(pieceEl, posToTranslate(bounds)(key2pos(orig), whitePov(state)), scale);
+  translateAndScale(pieceEl, posToTranslate(bounds)(key2pos(orig), whitePov(state2)), scale);
   return pieceEl;
 }
 var hash = (autoPiece) => [autoPiece.orig, autoPiece.piece?.role, autoPiece.piece?.color, autoPiece.piece?.scale].join(",");
@@ -4617,33 +4645,33 @@ function Chessground(element, config) {
   function redrawAll() {
     const prevUnbind = "dom" in maybeState ? maybeState.dom.unbind : void 0;
     const elements = renderWrap(element, maybeState), bounds = memo(() => elements.board.getBoundingClientRect()), redrawNow = (skipSvg) => {
-      render2(state);
+      render2(state2);
       if (elements.autoPieces)
-        render3(state, elements.autoPieces);
+        render3(state2, elements.autoPieces);
       if (!skipSvg && elements.shapes)
-        renderSvg(state, elements);
+        renderSvg(state2, elements);
     }, onResize = () => {
-      updateBounds(state);
-      renderResized(state);
+      updateBounds(state2);
+      renderResized(state2);
       if (elements.autoPieces)
-        renderResized2(state);
+        renderResized2(state2);
     };
-    const state = maybeState;
-    state.dom = {
+    const state2 = maybeState;
+    state2.dom = {
       elements,
       bounds,
       redraw: debounceRedraw(redrawNow),
       redrawNow,
       unbind: prevUnbind
     };
-    state.drawable.prevSvgHash = "";
-    updateBounds(state);
+    state2.drawable.prevSvgHash = "";
+    updateBounds(state2);
     redrawNow(false);
-    bindBoard(state, onResize);
+    bindBoard(state2, onResize);
     if (!prevUnbind)
-      state.dom.unbind = bindDocument(state, onResize);
-    state.events.insert && state.events.insert(elements);
-    return state;
+      state2.dom.unbind = bindDocument(state2, onResize);
+    state2.events.insert && state2.events.insert(elements);
+    return state2;
   }
   return start3(redrawAll(), redrawAll);
 }
@@ -9966,6 +9994,284 @@ function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOn
   return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes)]);
 }
 
+// src/puzzles/puzzleDb.ts
+var DB_NAME = "patzer-puzzle-v1";
+var DB_VERSION = 1;
+var STORE_DEFINITIONS = "definitions";
+var STORE_ATTEMPTS = "attempts";
+var STORE_USER_META = "user-meta";
+var _db;
+function openPuzzleDb() {
+  if (_db) return Promise.resolve(_db);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_DEFINITIONS)) {
+        const store = db.createObjectStore(STORE_DEFINITIONS, { keyPath: "id" });
+        store.createIndex("sourceKind", "sourceKind", { unique: false });
+        store.createIndex("createdAt", "createdAt", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_ATTEMPTS)) {
+        const store = db.createObjectStore(STORE_ATTEMPTS, { autoIncrement: true });
+        store.createIndex("puzzleId", "puzzleId", { unique: false });
+        store.createIndex("completedAt", "completedAt", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_USER_META)) {
+        db.createObjectStore(STORE_USER_META, { keyPath: "puzzleId" });
+      }
+    };
+    req.onsuccess = () => {
+      _db = req.result;
+      resolve(_db);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getPuzzleDefinition(id) {
+  try {
+    const db = await openPuzzleDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(STORE_DEFINITIONS, "readonly").objectStore(STORE_DEFINITIONS).get(id);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] definition get failed", e);
+    return void 0;
+  }
+}
+async function listPuzzleDefinitions() {
+  try {
+    const db = await openPuzzleDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(STORE_DEFINITIONS, "readonly").objectStore(STORE_DEFINITIONS).getAll();
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] definition list failed", e);
+    return [];
+  }
+}
+
+// src/puzzles/ctrl.ts
+var state = { view: "library" };
+var libraryCounts;
+var roundState = null;
+function initPuzzlePage(view2, puzzleId) {
+  state = { view: view2, puzzleId };
+}
+function getLibraryCounts() {
+  return libraryCounts;
+}
+function getPuzzleRoundState() {
+  return roundState;
+}
+async function openPuzzleRound(id, redraw2) {
+  if (roundState && state.puzzleId === id && roundState.status !== "error") return;
+  state = { view: "round", puzzleId: id };
+  roundState = { definition: null, status: "loading" };
+  redraw2();
+  try {
+    const def = await getPuzzleDefinition(id);
+    if (!def) {
+      roundState = { definition: null, status: "error", error: `Puzzle "${id}" not found` };
+    } else {
+      roundState = { definition: def, status: "ready" };
+    }
+  } catch (e) {
+    roundState = {
+      definition: null,
+      status: "error",
+      error: e instanceof Error ? e.message : "Failed to load puzzle"
+    };
+  }
+  redraw2();
+}
+var puzzleCg;
+var puzzleOrientation = "white";
+function mountPuzzleBoard(el, redraw2) {
+  const def = roundState?.definition;
+  if (!def) return;
+  const setup = parseFen(def.startFen);
+  if (setup.isErr) {
+    console.error("[puzzle-ctrl] invalid startFen", def.startFen);
+    return;
+  }
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) {
+    console.error("[puzzle-ctrl] invalid position from startFen", def.startFen);
+    return;
+  }
+  const turn = pos.value.turn;
+  puzzleOrientation = turn;
+  const dests = chessgroundDests(pos.value);
+  puzzleCg?.destroy();
+  puzzleCg = Chessground(el, {
+    orientation: puzzleOrientation,
+    fen: def.startFen,
+    turnColor: turn,
+    viewOnly: false,
+    movable: {
+      free: false,
+      color: turn,
+      dests,
+      showDests: true
+    },
+    drawable: { enabled: true },
+    animation: { enabled: true, duration: 200 },
+    events: {
+      move: (_orig, _dest) => {
+        redraw2();
+      }
+    }
+  });
+}
+function destroyPuzzleBoard() {
+  puzzleCg?.destroy();
+  puzzleCg = void 0;
+}
+async function loadLibraryCounts(redraw2) {
+  try {
+    const all = await listPuzzleDefinitions();
+    let imported = 0;
+    let user = 0;
+    for (const p of all) {
+      if (p.sourceKind === "imported-lichess") imported++;
+      else if (p.sourceKind === "user-library") user++;
+    }
+    libraryCounts = { imported, user };
+  } catch (e) {
+    console.warn("[puzzle-ctrl] loadLibraryCounts failed", e);
+    libraryCounts = { imported: 0, user: 0 };
+  }
+  redraw2();
+}
+
+// src/puzzles/view.ts
+function sourceCard(title, description, count, _redraw8) {
+  const loaded = count !== void 0;
+  return h("div.puzzle-library__card", [
+    h("div.puzzle-library__card-header", [
+      h("h3.puzzle-library__card-title", title),
+      h(
+        "span.puzzle-library__card-count",
+        loaded ? `${count} puzzle${count === 1 ? "" : "s"}` : "loading\u2026"
+      )
+    ]),
+    h("p.puzzle-library__card-desc", description),
+    h(
+      "button.puzzle-library__card-action",
+      {
+        attrs: { disabled: !loaded || count === 0 },
+        on: {
+          click: () => {
+            console.log(`[puzzle-library] Browse ${title} \u2014 not yet implemented`);
+          }
+        }
+      },
+      "Browse"
+    )
+  ]);
+}
+function renderPuzzleLibrary(redraw2) {
+  const counts = getLibraryCounts();
+  return h("div.puzzle-page", [
+    h("div.puzzle-library", [
+      h("h2.puzzle-library__title", "Puzzle Library"),
+      h("div.puzzle-library__sources", [
+        sourceCard(
+          "Imported Puzzles",
+          "Puzzles imported from the Lichess puzzle database.",
+          counts?.imported,
+          redraw2
+        ),
+        sourceCard(
+          "User Library",
+          "Puzzles created from your reviewed games.",
+          counts?.user,
+          redraw2
+        )
+      ])
+    ])
+  ]);
+}
+function puzzleInfoRows(def) {
+  const rows = [];
+  const sourceLabel = def.sourceKind === "imported-lichess" ? "Imported (Lichess)" : "User Library";
+  rows.push(h("tr", [h("td.puzzle-round__label", "Source"), h("td", sourceLabel)]));
+  rows.push(h("tr", [h("td.puzzle-round__label", "Start FEN"), h("td.puzzle-round__fen", def.startFen)]));
+  rows.push(h("tr", [
+    h("td.puzzle-round__label", "Solution moves"),
+    h("td", `${def.solutionLine.length}`)
+  ]));
+  if (def.sourceKind === "imported-lichess") {
+    rows.push(h("tr", [h("td.puzzle-round__label", "Rating"), h("td", `${def.rating}`)]));
+    if (def.themes.length > 0) {
+      rows.push(h("tr", [h("td.puzzle-round__label", "Themes"), h("td", def.themes.join(", "))]));
+    }
+    if (def.lichessPuzzleId) {
+      rows.push(h("tr", [h("td.puzzle-round__label", "Lichess ID"), h("td", def.lichessPuzzleId)]));
+    }
+  } else {
+    if (def.title) {
+      rows.push(h("tr", [h("td.puzzle-round__label", "Title"), h("td", def.title)]));
+    }
+    if (def.sourceReason) {
+      rows.push(h("tr", [h("td.puzzle-round__label", "Reason"), h("td", def.sourceReason)]));
+    }
+    if (def.sourceGameId) {
+      rows.push(h("tr", [h("td.puzzle-round__label", "Source game"), h("td", def.sourceGameId)]));
+    }
+  }
+  return rows;
+}
+function renderPuzzleRound(_redraw8) {
+  const rs = getPuzzleRoundState();
+  if (!rs) {
+    return h("div.puzzle-page", h("div.puzzle-round", "Initializing\u2026"));
+  }
+  if (rs.status === "loading") {
+    return h("div.puzzle-page", h("div.puzzle-round", [
+      h("span.puzzle-round__loading", "Loading puzzle\u2026")
+    ]));
+  }
+  if (rs.status === "error" || !rs.definition) {
+    return h("div.puzzle-page", h("div.puzzle-round", [
+      h("div.puzzle-round__error", rs.error ?? "Unknown error"),
+      h("a.puzzle-round__back", { attrs: { href: "#/puzzles" } }, "\u2190 Back to Library")
+    ]));
+  }
+  const def = rs.definition;
+  return h("div.puzzle-page", [
+    h("div.puzzle", [
+      // Board area — mirrors div.puzzle__board.main-board from Lichess puzzle view
+      h("div.puzzle__board.main-board", [
+        h("div.cg-wrap", {
+          key: "puzzle-board",
+          hook: {
+            insert: (vnode3) => {
+              mountPuzzleBoard(vnode3.elm, _redraw8);
+            },
+            destroy: () => {
+              destroyPuzzleBoard();
+            }
+          }
+        })
+      ]),
+      // Side panel — puzzle info and navigation
+      h("aside.puzzle__side", [
+        h("div.puzzle-round__header", [
+          h("a.puzzle-round__back", { attrs: { href: "#/puzzles" } }, "\u2190 Back to Library"),
+          h("h2.puzzle-round__title", `Puzzle ${def.id}`)
+        ]),
+        h("table.puzzle-round__info", puzzleInfoRows(def))
+      ])
+    ])
+  ]);
+}
+
 // src/import/pgn.ts
 var pgnState = {
   input: "",
@@ -10904,6 +11210,8 @@ var routes = [
   { pattern: ["openings"], name: "openings" },
   { pattern: ["stats"], name: "stats" },
   { pattern: ["games"], name: "games" },
+  { pattern: ["puzzles", ":id"], name: "puzzle-round" },
+  { pattern: ["puzzles"], name: "puzzles" },
   { pattern: [], name: "analysis" }
 ];
 function parse(hash2) {
@@ -12045,6 +12353,16 @@ function routeContent(route) {
       ]);
     case "games":
       return renderGamesView(deps);
+    case "puzzles":
+      initPuzzlePage("library");
+      void loadLibraryCounts(redraw);
+      return renderPuzzleLibrary(redraw);
+    case "puzzle-round": {
+      const puzzleId = route.params.id ?? "";
+      initPuzzlePage("round", puzzleId);
+      void openPuzzleRound(puzzleId, redraw);
+      return renderPuzzleRound(redraw);
+    }
     case "openings":
       return h("h1", "Openings Page");
     case "stats":
@@ -12164,6 +12482,18 @@ initBatch({
   analyzedGameAccuracy,
   getUserColor,
   redraw
+});
+var _liveEvalSaveTimer = null;
+var LIVE_EVAL_SAVE_DELAY_MS = 3e3;
+setOnLiveEvalImproved(() => {
+  if (_liveEvalSaveTimer) clearTimeout(_liveEvalSaveTimer);
+  _liveEvalSaveTimer = setTimeout(() => {
+    _liveEvalSaveTimer = null;
+    const gameId = selectedGameId;
+    if (!gameId) return;
+    const nodes = buildAnalysisNodes(ctrl.mainline, (p) => evalCache.get(p));
+    void saveAnalysisToIdb("complete", gameId, nodes, analysisDepth);
+  }, LIVE_EVAL_SAVE_DELAY_MS);
 });
 initReviewQueue({
   analyzedGameIds,

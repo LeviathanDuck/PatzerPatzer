@@ -6034,15 +6034,15 @@ Prompt text not recovered. This history entry was reconstructed from the prompt 
 - Notes: reviewed against the live implementation in the configurable mistake-detection batch; original prompt text was not recovered into this archive before review.
 
 
-## CCP-150 — Created
+## CCP-150 — Reviewed
 
 - Task: add a dedicated puzzle product route owner without rebuilding the full round UI
 - Task ID: `CCP-150`
 - Parent prompt ID: none
 - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
 - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 1`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: none
 
@@ -6118,15 +6118,15 @@ Output shape:
 ```
 
 
-## CCP-151 — Created
+## CCP-151 — Reviewed
 
 - Task: render the first real puzzle-library surface with Imported Puzzles and User Library source sections
 - Task ID: `CCP-151`
 - Parent prompt ID: none
 - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
 - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 2`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: none
 
@@ -6202,15 +6202,15 @@ Output shape:
 ```
 
 
-## CCP-152 — Created
+## CCP-152 — Reviewed
 
 - Task: make selecting a canonical puzzle open a minimal dedicated round context
 - Task ID: `CCP-152`
 - Parent prompt ID: none
 - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
 - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 3`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: none
 
@@ -6285,15 +6285,15 @@ Output shape:
 ```
 
 
-## CCP-153 — Created
+## CCP-153 — Reviewed
 
 - Task: add the dedicated puzzle board page shell on top of the shared board subsystem
 - Task ID: `CCP-153`
 - Parent prompt ID: none
 - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
 - Source step: `Phase 1 — Minimal Puzzle Product Shell / Task 4`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: none
 
@@ -7704,15 +7704,15 @@ Output shape:
 ```
 
 
-## CCP-154 — Created
+## CCP-154 — Reviewed
 
 - Task: execute Puzzle V1 phase batch manager for `CCP-150`, `CCP-151`, `CCP-152`, `CCP-153`
 - Task ID: `CCP-154`
 - Parent prompt ID: none
 - Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
 - Source step: `Phase 1 — Minimal Puzzle Product Shell / manager prompt`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: manager-style batch prompt; intentionally not added to the runnable queue
 

@@ -158,7 +158,7 @@ The queue index must list only prompts still present in the queue.
 
 Queue-index checkbox rules:
 - when a prompt is created, add it as `- [ ]`
-- when a prompt is actually run, change only the queue-index checkbox from `- [ ]` to `- [x]`
+- when a prompt is actually run, change only the queue-index checkbox from `- [ ]` to `- [x]` as the first execution step
 - do not remove the queue item or prompt block at run time
 - review is the only step that removes the queued prompt from `CLAUDE_PROMPT_QUEUE.md`
 
@@ -193,6 +193,7 @@ Detailed log-entry format:
 
 For manager prompts:
 - `Batch prompt IDs` should list the child prompt ids the manager is intended to run
+- unless the user explicitly says `manager-only`, reviewing a manager prompt means reviewing the manager and its child prompts as one batch
 
 For normal prompts:
 - `Batch prompt IDs: none`
@@ -223,15 +224,16 @@ If the user asks to prebuild prompts for later phases:
 
 When a queued prompt is actually run:
 
-1. Re-read the workflow docs listed in `Start Here`
-2. Find the matching `CCP-###` item in the top `Queue Index`
-3. Change only that queue-index checkbox from `- [ ]` to `- [x]`
+1. As the first execution step, find the matching `CCP-###` item in the top `Queue Index`
+2. Change only that queue-index checkbox from `- [ ]` to `- [x]`
+3. Re-read the workflow docs listed in `Start Here`
 4. Leave the prompt block itself in `CLAUDE_PROMPT_QUEUE.md`
 5. Leave the detailed log entry in `CLAUDE_PROMPT_LOG.md` pending until review
 6. Do not remove the prompt from the queue during execution
 
 Execution-state rule:
 - queue checkbox state is an execution marker, not a review marker
+- the checkbox update should happen immediately, even if the prompt later fails or stops midway
 - reviewed prompts are still removed only by the review workflow
 - queue index, queue body, and log must still refer to the same prompt ids after the checkbox update
 
@@ -268,6 +270,11 @@ When reviewing a prompt:
 5. If the review found a real repository issue, ask whether it should be added to `docs/KNOWN_ISSUES.md`
 6. Run the required invariant verification
 7. Only after that verification passes is the review complete
+
+Manager review rule:
+- if the reviewed prompt is a manager prompt with `Batch prompt IDs`, treat review of that manager as review of the listed child prompts too, unless the user explicitly asks for a manager-only review
+- for manager reviews, review and close out the child prompts first, then review and close out the manager prompt itself
+- do not mark the manager prompt passed while its child prompts in that batch remain unreviewed
 
 Required invariant verification after review:
 

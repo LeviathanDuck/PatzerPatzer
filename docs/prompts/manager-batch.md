@@ -96,6 +96,8 @@ The final manager prompt must tell Claude Code:
 - do not create new prompts during the batch
 - do not execute, re-queue, or otherwise recurse into the manager prompt itself
 - do not remove child prompts from the queue; review still owns removal
+- before any startup coordination or batch work, the manager should mark its own queue-index item as `- [x]` if the manager prompt itself is present in the queue
+- before starting each child prompt's startup coordination or real work, mark that child prompt's queue-index item as `- [x]`
 
 ## Required progress reporting inside the manager prompt
 
@@ -146,6 +148,7 @@ Requirements for the manager prompt:
 - Claude must do internal validation/self-check only.
 - External review and tracking are handled separately in Codex.
 - Claude must leave the queued prompt blocks and queue-index entries present after checking them off; formal review removes them later.
+- Claude must mark the relevant queue-index checkbox first, before startup coordination or real work for the manager or any child prompt, so failed mid-run prompts still remain visibly attempted.
 - Claude must stop immediately if:
   - build fails
   - required validation fails
