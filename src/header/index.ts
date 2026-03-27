@@ -65,6 +65,9 @@ function activeSection(route: Route): string {
     case 'analysis':
     case 'analysis-game':
       return 'analysis';
+    case 'puzzles':
+    case 'puzzle-round':
+      return 'puzzles';
     case 'openings': return 'openings';
     case 'stats':    return 'stats';
     case 'games':    return 'games';
@@ -74,6 +77,7 @@ function activeSection(route: Route): string {
 
 const navLinks: { label: string; href: string; section: string }[] = [
   { label: 'Analysis', href: '#/analysis', section: 'analysis' },
+  { label: 'Puzzles',  href: '#/puzzles',  section: 'puzzles'  },
   { label: 'Games',    href: '#/games',    section: 'games'    },
   { label: 'Openings', href: '#/openings', section: 'openings' },
   { label: 'Stats',    href: '#/stats',    section: 'stats'    },
