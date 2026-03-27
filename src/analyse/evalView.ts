@@ -426,7 +426,7 @@ export function renderEvalGraph(
   }));
 
   // Center line (eval = 0)
-  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#444', 'stroke-width': 1, opacity: bg ? '0.5' : '1' } }));
+  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#999', 'stroke-width': 1, opacity: bg ? '0.6' : '1' } }));
 
   // Eval trace
   svgNodes.push(h('polyline', { attrs: {
