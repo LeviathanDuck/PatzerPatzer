@@ -10889,6 +10889,7 @@ var gamesFilterResults = /* @__PURE__ */ new Set();
 var gamesFilterSpeeds = /* @__PURE__ */ new Set();
 var gamesFilterOpponent = "";
 var gamesFilterColor = "";
+var gamesFilterTactics = /* @__PURE__ */ new Set();
 var gamesSortField = "date";
 var gamesSortDir = "desc";
 var gameListSearch = "";
@@ -10907,14 +10908,28 @@ function toggleGamesSort(field, redraw2) {
   redraw2();
 }
 function gamesFilterActive() {
-  return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 || gamesFilterOpponent.trim() !== "" || gamesFilterColor !== "";
+  return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 || gamesFilterOpponent.trim() !== "" || gamesFilterColor !== "" || gamesFilterTactics.size > 0;
 }
 function clearGamesFilters(redraw2) {
   gamesFilterResults = /* @__PURE__ */ new Set();
   gamesFilterSpeeds = /* @__PURE__ */ new Set();
   gamesFilterOpponent = "";
   gamesFilterColor = "";
+  gamesFilterTactics = /* @__PURE__ */ new Set();
   redraw2();
+}
+function gameTacticsSeverities(gameId, hasMissedTactic) {
+  const result = /* @__PURE__ */ new Set();
+  if (!hasMissedTactic) return result;
+  const moments = getMissedMoments(gameId);
+  const hasMate = moments.some((m) => m.kind === "missed-mate");
+  const swingMoments = moments.filter((m) => m.kind !== "missed-mate");
+  const worstLoss = swingMoments.length > 0 ? Math.max(...swingMoments.map((m) => m.loss)) : 0;
+  if (hasMate) result.add("M?!");
+  if (worstLoss >= LOSS_THRESHOLDS.blunder) result.add("!!!");
+  if (worstLoss >= LOSS_THRESHOLDS.mistake) result.add("!!");
+  if (worstLoss >= LOSS_THRESHOLDS.inaccuracy || hasMissedTactic) result.add("!");
+  return result;
 }
 function filteredGames(deps) {
   let list = [...deps.importedGames];
@@ -10936,6 +10951,16 @@ function filteredGames(deps) {
   }
   if (gamesFilterColor) {
     list = list.filter((g) => deps.getUserColor(g) === gamesFilterColor);
+  }
+  if (gamesFilterTactics.size > 0) {
+    list = list.filter((g) => {
+      const hasMissed = deps.missedTacticGameIds.has(g.id);
+      const severities = gameTacticsSeverities(g.id, hasMissed);
+      for (const s of gamesFilterTactics) {
+        if (severities.has(s)) return true;
+      }
+      return false;
+    });
   }
   list.sort((a, b) => {
     let cmp = 0;
@@ -11184,6 +11209,21 @@ function renderGamesView(deps) {
           redraw2();
         } }
       }, "Black")
+    ]),
+    // Tactics severity filter
+    h("div.games-view__filter-group", [
+      h("span.games-view__filter-label", "Tactics"),
+      ...["!", "!!", "!!!", "M?!"].map(
+        (sev) => h("button.games-view__pill.--tactics", {
+          class: { active: gamesFilterTactics.has(sev) },
+          on: { click: () => {
+            const s = new Set(gamesFilterTactics);
+            s.has(sev) ? s.delete(sev) : s.add(sev);
+            gamesFilterTactics = s;
+            redraw2();
+          } }
+        }, sev)
+      )
     ]),
     // Opponent search
     h("div.games-view__filter-group", [
