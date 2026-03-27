@@ -257,7 +257,7 @@ Why now:
 ### 13. Implement the honest minimum route surface
 
 Current state:
-- `analysis-game` and `puzzles` are still route-level placeholders
+- `analysis-game` is still a route-level placeholder, and the standalone puzzle page has been removed pending a cleaner rebuild
 
 Why now:
 - route honesty matters once the core analysis path is reliable
