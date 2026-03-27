@@ -5,7 +5,6 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { annotationShapes as buildBoardGlyphShapes } from '../analyse/boardGlyphs';
 import { StockfishProtocol } from '../ceval/protocol';
-import { puzzleHidesAnalysis } from '../puzzles/runtime';
 import { evalWinChances, classifyLoss, type MoveLabel } from './winchances';
 import { formatScore } from '../analyse/evalView';
 import { pathInit, pathIsMainline } from '../tree/ops';
@@ -187,7 +186,6 @@ export function buildArrowShapes(): DrawShape[] {
   const shapes: DrawShape[] = [];
   const ctrl = _getCtrl();
   if (_isBatchActive()) return shapes;
-  if (puzzleHidesAnalysis()) return shapes;
 
   // Suppress engine-guidance arrows whenever retrospection is active and the user has not
   // manually revealed guidance for the current candidate.

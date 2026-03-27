@@ -7,7 +7,7 @@
 
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import { retroConfig } from './retroConfig';
-import type { TreeNode } from '../tree/types';
+import { LEARNABLE_REASONS, type LearnableReason, type TreeNode } from '../tree/types';
 
 // Classification rank: higher = stricter. Used to compare against retroConfig.minClassification.
 const CLASSIFICATION_RANK: Readonly<Record<MoveLabel, number>> = {
@@ -114,6 +114,13 @@ export interface RetroCandidate {
   isMissedMate:   boolean;           // parent had forced mate ≤ 3 but it was not played
   playerColor:    'white' | 'black'; // which player made this mistake
   ply:            number;            // ply number of the mistake node (for move-number display)
+  /**
+   * Why this position was flagged as a learnable moment.
+   * Derived from detection conditions: 'missed-mate' when isMissedMate dominates the
+   * classification; 'swing' otherwise (win-chance loss meets threshold).
+   * Carried forward to PuzzleCandidate when a RetroCandidate is promoted to a saved puzzle.
+   */
+  reason:         LearnableReason;
 }
 
 /**
@@ -220,6 +227,15 @@ export function buildRetroCandidates(
       finalClassification = 'blunder';
     }
 
+    // Derive reason code from detection conditions.
+    // 'missed-mate' takes priority when it is the primary reason for inclusion —
+    // i.e. when the win-chance loss alone would not have qualified but the missed mate did,
+    // or when the missed mate is the dominant signal (blunder classification with isMissedMate).
+    // 'swing' covers all other qualified positions.
+    const reason: LearnableReason = isMissedMate && !qualifiesByLoss
+      ? LEARNABLE_REASONS['missed-mate']
+      : LEARNABLE_REASONS['swing'];
+
     const candidate: RetroCandidate = {
       gameId,
       path,
@@ -233,6 +249,7 @@ export function buildRetroCandidates(
       isMissedMate,
       playerColor,
       ply:            node.ply,
+      reason,
     };
     // Attach the persisted PV line when available for answer reveal and near-best parity.
     // Mirrors lichess-org/lila: retroCtrl.ts solution node (comp child with moves array).

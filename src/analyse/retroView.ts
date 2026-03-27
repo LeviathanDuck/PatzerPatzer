@@ -7,6 +7,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import type { RetroCtrl } from './retroCtrl';
+import type { RetroCandidate } from './retro';
 
 // --- Entry button ---
 
@@ -112,6 +113,18 @@ function renderContinue(retro: RetroCtrl, navigate: (path: string) => void, redr
   }, [
     h('span.retro-continue__icon', '▶'),
     'Next',
+  ]);
+}
+
+// "Chosen because..." note shown on terminal states (win / view).
+// Reflects the detector that selected this candidate so the user understands
+// which configured parameter caused this moment to be included.
+// Only shown when a candidate is active; returns null otherwise.
+function renderReasonNote(cand: RetroCandidate | null): VNode | null {
+  if (!cand) return null;
+  return h('div.retro-reason', [
+    h('span.retro-reason__label', `Chosen because: ${cand.reason.label}`),
+    h('span.retro-reason__summary', cand.reason.summary),
   ]);
 }
 
@@ -234,7 +247,10 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
       h('div.retro-half.retro-half--top',
         h('div.retro-player', [
           h('div.retro-icon.retro-icon--win', '✓'),
-          h('div.retro-instruction', h('strong', msg)),
+          h('div.retro-instruction', [
+            h('strong', msg),
+            renderReasonNote(cand),
+          ]),
         ]),
       ),
       renderContinue(retro, navigate, redraw),
@@ -250,6 +266,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('div.retro-instruction', [
             h('strong', 'Solution'),
             h('em', ['Best was ', h('strong', bestSan)]),
+            renderReasonNote(cand),
           ]),
         ]),
       ),

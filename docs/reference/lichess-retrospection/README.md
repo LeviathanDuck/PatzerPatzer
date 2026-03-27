@@ -12,6 +12,11 @@ For the separate standalone puzzle-product reference set, use:
 
 - [docs/reference/lichess-puzzle-ux/README.md](/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md)
 
+For the broader market/product synthesis about what additional learnable moments Patzer could build
+on top of reviewed games, use:
+
+- [docs/reference/post-game-learning-opportunities-audit.md](/Users/leftcoast/Development/PatzerPatzer/docs/reference/post-game-learning-opportunities-audit.md)
+
 This research is intentionally strict about evidence:
 
 - `confirmed` means the behavior is directly visible in the checked source files

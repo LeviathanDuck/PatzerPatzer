@@ -4812,3 +4812,423 @@ Prompt text not recovered. This history entry was reconstructed from the prompt 
 ```
 Prompt text not recovered. This history entry was reconstructed from the prompt queue and review state.
 ```
+
+## CCP-080 — Reviewed Placeholder
+
+- Task: throttle engine-driven visible UI refresh during live analysis instead of redrawing directly from raw engine info output
+- Task ID: `CCP-080`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+- Source step: `Recommended Order Of Work, Step 1`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-081 — Reviewed Placeholder
+
+- Task: stop full imported-game library saves on every move-navigation step and move to a lightweight debounced nav-state persistence seam
+- Task ID: `CCP-081`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+- Source step: `Recommended Order Of Work, Step 2`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-082 — Reviewed Placeholder
+
+- Task: lower Patzer's default live-engine workload toward Lichess while preserving existing saved user preferences
+- Task ID: `CCP-082`
+- Parent prompt ID: none
+- Source document: `docs/reference/patzer-board-motion-lag-audit.md`
+- Source step: `Recommended Order Of Work, Step 3`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-102 — Reviewed Placeholder
+
+- Task: audit the puzzle page against Lichess and produce a sprint plan
+- Task ID: `CCP-102`
+- Parent prompt ID: none
+- Source document: none
+- Source step: `Puzzle page Lichess audit and sprint planning`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: backlog review confirmed the sprint plan landed as `docs/mini-sprints/PUZZLES_PAGE_BUILD_SPRINT_2026-03-21.md`; original prompt text was not recovered in this archive.
+
+## CCP-103 — Reviewed Placeholder
+
+- Task: wrong move should set feedback='fail' but leave result='active' so the user can retry without the round locking
+- Task ID: `CCP-103`
+- Parent prompt ID: none
+- Source document: `CCP-102 audit`
+- Source step: `Sprint 1 — Fix wrong-move result state`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-104 — Reviewed Placeholder
+
+- Task: delay opponent reply ~500ms and lock board during the window
+- Task ID: `CCP-104`
+- Parent prompt ID: none
+- Source document: `CCP-102 audit`
+- Source step: `Sprint 2 — Add opponent move animation delay`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-105 — Reviewed Placeholder
+
+- Task: add ✓/✗ icons to puzzle feedback section for good/fail/win states
+- Task ID: `CCP-105`
+- Parent prompt ID: none
+- Source document: `CCP-102 audit`
+- Source step: `Sprint 3 — Add visual feedback icons`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-106 — Reviewed Placeholder
+
+- Task: render distinct completion panel for solved/viewed terminal states
+- Task ID: `CCP-106`
+- Parent prompt ID: none
+- Source document: `CCP-102 audit`
+- Source step: `Sprint 4 — Add after-puzzle completion panel`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-107 — Reviewed Placeholder
+
+- Task: extract puzzle-round SCSS, fix sidebar-left, add icon and after-panel styles
+- Task ID: `CCP-107`
+- Parent prompt ID: none
+- Source document: `CCP-102 audit`
+- Source step: `Sprint 6 — Add puzzle-specific SCSS (layout + feedback)`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-108 — Reviewed Placeholder
+
+- Task: add first/prev/next/last buttons to step through solution in terminal state
+- Task ID: `CCP-108`
+- Parent prompt ID: none
+- Source document: `CCP-102 audit`
+- Source step: `Sprint 5 — Add move navigation controls`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-109 — Reviewed Placeholder
+
+- Task: arrow keys navigate puzzle moves; Escape returns to library
+- Task ID: `CCP-109`
+- Parent prompt ID: none
+- Source document: `CCP-102 audit`
+- Source step: `Sprint 7 — Add keyboard navigation shortcuts`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-110 — Reviewed Placeholder
+
+- Task: render colored result dots from puzzleSession.recent in the puzzle round view
+- Task ID: `CCP-110`
+- Parent prompt ID: none
+- Source document: `CCP-102 audit`
+- Source step: `Sprint 8 — Add result history dots`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-111 — Reviewed Placeholder
+
+- Task: auto-run CCP-103 through CCP-106 in sequence
+- Task ID: `CCP-111`
+- Parent prompt ID: none
+- Source document: `docs/prompts/manager-batch.md`
+- Source step: `Phase 1 puzzle sprint execution`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: manager placeholder added during backlog review; original manager prompt text was not recovered in this archive.
+
+## CCP-112 — Reviewed Placeholder
+
+- Task: auto-run CCP-107 through CCP-110 in sequence
+- Task ID: `CCP-112`
+- Parent prompt ID: none
+- Source document: `docs/prompts/manager-batch.md`
+- Source step: `Phase 2 puzzle sprint execution`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: manager placeholder added during backlog review; original manager prompt text was not recovered in this archive.
+
+## CCP-113 — Reviewed Placeholder
+
+- Task: add training mode + cursor state to the imported puzzle module
+- Task ID: `CCP-113`
+- Parent prompt ID: none
+- Source document: `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+- Source step: `Puzzle training queue — sequential puzzle delivery within a filtered set`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-114 — Reviewed Placeholder
+
+- Task: use the imported training queue for continue-training navigation
+- Task ID: `CCP-114`
+- Parent prompt ID: `CCP-113`
+- Source document: `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+- Source step: `Post-completion continuation — "next puzzle" in training mode`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-115 — Reviewed Placeholder
+
+- Task: add "Start Training" entry point to the imported puzzle library
+- Task ID: `CCP-115`
+- Parent prompt ID: `CCP-114`
+- Source document: `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+- Source step: `Training entry point — entering continuous solve mode from the library`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-116 — Reviewed Placeholder
+
+- Task: persist imported puzzle filter query state to IDB
+- Task ID: `CCP-116`
+- Parent prompt ID: none
+- Source document: `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+- Source step: `Filter persistence — filters survive page reload`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-117 — Reviewed Placeholder
+
+- Task: show active training context in the puzzle round side panel
+- Task ID: `CCP-117`
+- Parent prompt ID: `CCP-116`
+- Source document: `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+- Source step: `Side panel — puzzle metadata and active training context`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-118 — Reviewed Placeholder
+
+- Task: manager prompt — run CCP-113 through CCP-115 sequentially
+- Task ID: `CCP-118`
+- Parent prompt ID: none
+- Source document: `docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+- Source step: `Phase 1 Puzzle Training Queue Manager`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: manager placeholder added during backlog review; original manager prompt text was not recovered in this archive.
+
+## CCP-119 — Reviewed Placeholder
+
+- Task: manager prompt — run CCP-116 through CCP-117 sequentially
+- Task ID: `CCP-119`
+- Parent prompt ID: none
+- Source document: `docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+- Source step: `Phase 2 Puzzle Filter Persistence Manager`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: manager placeholder added during backlog review; original manager prompt text was not recovered in this archive.
+
+## CCP-120 — Reviewed Placeholder
+
+- Task: add configurable ProtocolConfig constructor options to StockfishProtocol
+- Task ID: `CCP-120`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+- Source step: `Sprint 0 — Make StockfishProtocol configurable`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-121 — Reviewed Placeholder
+
+- Task: create `src/engine/reviewQueue.ts` with background StockfishProtocol, queue types, and public API stubs
+- Task ID: `CCP-121`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+- Source step: `Sprint 1-A — Background engine module skeleton`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-122 — Reviewed Placeholder
+
+- Task: implement enqueueBulkReview, per-game ctrl/cache, background batch analysis loop, and getReviewProgress
+- Task ID: `CCP-122`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+- Source step: `Sprint 1-B — Per-game analysis loop`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-123 — Reviewed Placeholder
+
+- Task: guard loadGame() and route changes while bulk review is running; wire enqueueBulkReview from main shell
+- Task ID: `CCP-123`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+- Source step: `Sprint 2 — Route-change resilience`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-124 — Reviewed Placeholder
+
+- Task: add live progress badges to game rows and queue summary line above list
+- Task ID: `CCP-124`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+- Source step: `Sprint 3 — Per-game progress display`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-125 — Reviewed Placeholder
+
+- Task: add Review nav button with submenu for depth, auto-review, and queue controls
+- Task ID: `CCP-125`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+- Source step: `Sprint 4 — Bulk Review settings submenu`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-126 — Reviewed Placeholder
+
+- Task: manager prompt — run CCP-120 through CCP-125 sequentially, verifying build after each
+- Task ID: `CCP-126`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+- Source step: `full sprint — manager runs CCP-120 through CCP-125 in order`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: manager placeholder added during backlog review; original manager prompt text was not recovered in this archive.
+
+## CCP-127 — Reviewed Placeholder
+
+- Task: add dismissible chip summary bar showing active puzzle filters
+- Task ID: `CCP-127`
+- Parent prompt ID: none
+- Source document: `puzzle filter UI audit (planning session)`
+- Source step: `Sprint Prompt 1 — Active Filter Summary Bar`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-128 — Reviewed Placeholder
+
+- Task: replace difficulty select with pill buttons and live numeric range label
+- Task ID: `CCP-128`
+- Parent prompt ID: none
+- Source document: `puzzle filter UI audit (planning session)`
+- Source step: `Sprint Prompt 2 — Difficulty Preset Pills with Range Display`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-129 — Reviewed Placeholder
+
+- Task: change imported puzzle theme filter from single string to `themes: string[]` and update filter logic
+- Task ID: `CCP-129`
+- Parent prompt ID: none
+- Source document: `puzzle filter UI audit (planning session)`
+- Source step: `Sprint Prompt 3 — Multi-Select Theme Filter Type and Logic`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-130 — Reviewed Placeholder
+
+- Task: update `renderThemeGrid()` for multi-select theme toggling
+- Task ID: `CCP-130`
+- Parent prompt ID: none
+- Source document: `puzzle filter UI audit (planning session)`
+- Source step: `Sprint Prompt 4 — Multi-Select Theme Tile Grid View Update`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-131 — Reviewed Placeholder
+
+- Task: add min/max number inputs below preset pills for custom rating bands
+- Task ID: `CCP-131`
+- Parent prompt ID: none
+- Source document: `puzzle filter UI audit (planning session)`
+- Source step: `Sprint Prompt 5 — Custom Rating Range Number Inputs`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-132 — Reviewed Placeholder
+
+- Task: add per-category theme expand/collapse with Checkmate Patterns collapsed by default
+- Task ID: `CCP-132`
+- Parent prompt ID: none
+- Source document: `puzzle filter UI audit (planning session)`
+- Source step: `Sprint Prompt 6 — Theme Category Collapse Toggle`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: history placeholder created during backlog review; original prompt text was not recovered in this archive.
+
+## CCP-133 — Reviewed Placeholder
+
+- Task: manager prompt — run CCP-127 through CCP-132 sequentially
+- Task ID: `CCP-133`
+- Parent prompt ID: none
+- Source document: `puzzle filter UI audit (planning session)`
+- Source step: `manager prompt — run CCP-127 through CCP-132 in order`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: manager placeholder added during backlog review; original manager prompt text was not recovered in this archive.

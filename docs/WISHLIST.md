@@ -24,15 +24,15 @@ the committed near-term roadmap.
 - [x] Add tag or label next to engine move arrows showing what their eval is
 - [x] we shouldn't re import the same games that have already been imported
 - [x] Import only new games since last import. Freshly imported games from last batch, if other games were already present should get a "new import" identifier that displays for 1h or more
-- [ ] In the header, it should default to a chess.com username input field. You should be able to then click the chess.com Label as a button, and have it change to lichess. 
+- [x] In the header, it should default to a chess.com username input field. You should be able to then click the chess.com Label as a button, and have it change to lichess. 
 - [x] IF there is an engine line available that has a massive improvement ie. A Tactic or something, the engine lines eval number next to the engine line should change to a brighter more aggressive colour. Maybe a green shade. 
-- [ ] When there is a list of games, it should on the right hand side of the list, say who the user they were playing against was. Less dominant and agressive, but also show the elo number of the user. This should be formatted more subtly. The goal is so that if you are importing games from multiple accounts it's easy to see 
-- [ ] When mate is played on the board, the analysis engine should show a #KO symbol not a #0 symbol. 
-- [ ] When mate is played on the board, for some reason the eval bar drops to full black. The eval bar should fill up entirely with whatever colour delivered the mate. 
+- [x] When there is a list of games, it should on the right hand side of the list, say who the user they were playing against was. Less dominant and agressive, but also show the elo number of the user. This should be formatted more subtly. The goal is so that if you are importing games from multiple accounts it's easy to see 
+- [x] When mate is played on the board, the analysis engine should show a #KO symbol not a #0 symbol. 
+- [x] When mate is played on the board, for some reason the eval bar drops to full black. The eval bar should fill up entirely with whatever colour delivered the mate. 
 - [x] For the mini board preview on engine line mouse hover should be larger. If right now is considered 100%, we should go up to 200% in size. 
-- [ ] When M1 is played on the board, the losing king should get a KO symbol over it. The KO symbol would be a mini version of what is used in street fighter, if the source of this KO graphic isnt known you should ask. 
-- [ ] when game review button is pressed, all arrows should be removed from board until game review is completed. 
-- [ ] Setting to toggle only the users whose perspective we are looking at the game from to have their move review annotated dot colour shown. Default state shows both. 
+- [x] When M1 is played on the board, the losing king should get a KO symbol over it. The KO symbol would be a mini version of what is used in street fighter, if the source of this KO graphic isnt known you should ask. 
+- [x] when game review button is pressed, all arrows should be removed from board until game review is completed. 
+- [x] Setting to toggle only the users whose perspective we are looking at the game from to have their move review annotated dot colour shown. Default state shows both. 
 
 
 ## Completed items and completion date

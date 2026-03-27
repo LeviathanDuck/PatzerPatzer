@@ -155,8 +155,9 @@ IndexedDB persistence is consolidated in one module. Current stores:
 
 ### `src/puzzles/`
 
-Only candidate extraction and candidate-list rendering exist. There is still no proper saved
-puzzles route or puzzle play state machine.
+The standalone puzzle page/product has been removed. The remaining ownership here is limited to
+analysis-side puzzle candidate extraction in `extract.ts` and saved-candidate support used by the
+analysis/review workflow.
 
 ---
 
@@ -193,7 +194,7 @@ The largest remaining divergences are structural rather than behavioral:
 - no composed controller structure around `AnalyseCtrl`
 - engine still runs on the main thread
 - review and restore coordination still lives partly in `main.ts`
-- puzzles route is not a real subsystem yet
+- standalone puzzle product is intentionally absent pending a clean rebuild
 
 For retrospection and puzzle-finder work specifically, the repo now has dedicated research bases:
 - `docs/reference/lichess-retrospection/`
