@@ -131,10 +131,12 @@ export let analysisDepth   = storedInt('patzer.analysisDepth', 30, 18, 30);
 export let showEngineArrows = true;
 export let arrowAllLines    = true;
 export let showPlayedArrow  = true;
-export let showArrowLabels  = localStorage.getItem('patzer.showArrowLabels') === 'true';
+export let showArrowLabels  = localStorage.getItem('patzer.showArrowLabels') !== 'false';
 export let showReviewLabels = localStorage.getItem('patzer.showReviewLabels') !== 'false';
 export let showBoardReviewGlyphs = localStorage.getItem('patzer.showBoardReviewGlyphs') !== 'false';
-export let arrowLabelSize   = storedInt('patzer.arrowLabelSize', 10, 6, 18);
+// Default label size is larger on touch/mobile devices (coarse pointer) for legibility.
+const ARROW_LABEL_SIZE_DEFAULT = window.matchMedia('(pointer: coarse)').matches ? 18 : 10;
+export let arrowLabelSize   = storedInt('patzer.arrowLabelSize', ARROW_LABEL_SIZE_DEFAULT, 6, 18);
 
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 export let pendingLines: EvalLine[] = [];
