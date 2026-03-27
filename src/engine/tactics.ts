@@ -133,6 +133,38 @@ export function detectMissedMoments(
         userMate <= config.missedMateMaxN &&
         !nodeEval.mate
       ) {
+        // Don't flag if the user played the engine's best move — the child
+        // position may not show forced mate at the review depth even though
+        // the parent did.  This prevents false positives from depth variance.
+        if (node.uci === parentEval.best) continue;
+
+        // Don't flag if the user delivered checkmate within a generous window.
+        // Look ahead in the mainline: if the game ends (last node, no children)
+        // or any future position still shows forced mate for the user, they
+        // stayed in the mating net — just not via the fastest line.
+        // Window: 2× the original mate distance in full moves = 4× in plies.
+        const lookAheadPlies = userMate * 4;
+        let deliveredMate = false;
+        let lookPath = path;
+        for (let j = i + 1; j < mainline.length && j <= i + lookAheadPlies; j++) {
+          lookPath += mainline[j]!.id;
+          // Game ended (last node, no children) — user delivered checkmate
+          if (j === mainline.length - 1 && mainline[j]!.children.length === 0) {
+            deliveredMate = true;
+            break;
+          }
+          // Future position still shows forced mate for the user
+          const futureEval = cache.get(lookPath);
+          if (futureEval?.mate !== undefined) {
+            const futureMoverMate = isWhiteMove ? futureEval.mate : -futureEval.mate;
+            if (futureMoverMate > 0) {
+              deliveredMate = true;
+              break;
+            }
+          }
+        }
+        if (deliveredMate) continue;
+
         moments.push({ kind: 'missed-mate', ply: node.ply, loss: nodeEval.loss ?? 0.5, path });
         continue;
       }
