@@ -13081,6 +13081,7 @@ function routeContent(route) {
           // Eval graph rendered as background behind controls on mobile.
           // bg:true strips interactivity — graph still tracks current move position.
           renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, redraw, currentUserColor, reviewDotsUserOnly, true),
+          // Action buttons — desktop only (mobile uses .analyse__actions below the move list).
           renderAnalysisControls([
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.
@@ -13102,6 +13103,18 @@ function routeContent(route) {
             h("button.fbt", {
               attrs: { "data-icon": "\uE026", disabled: !ctrl.node.children[0], title: "Next move" },
               on: { click: next }
+            })
+          ])
+        ]),
+        // Mobile-only action buttons row — sits below the move list.
+        // Hidden on desktop via CSS; desktop shows these inside .analyse__controls.
+        h("div.analyse__actions", [
+          renderAnalysisControls([
+            renderRetroEntry({
+              retro: ctrl.retro,
+              analysisComplete,
+              batchAnalyzing,
+              onToggle: toggleRetro
             })
           ])
         ]),
