@@ -6307,7 +6307,7 @@ function onUserMove(orig, dest) {
       return;
     }
     applyMoveToTree(normMove, pos);
-    cgInstance?.set({ movable: { color: void 0 } });
+    cgInstance?.set({ movable: { color: "both", dests: /* @__PURE__ */ new Map() } });
     setTimeout(() => {
       for (const reply of outcome.replies) playUciMove(reply);
       puzzleCtrl.setCurrentPath(_getCtrl3().path);
@@ -6410,7 +6410,7 @@ function completePromotion(role) {
       return;
     }
     applyMoveToTree(move3, pos);
-    cgInstance?.set({ movable: { color: void 0 } });
+    cgInstance?.set({ movable: { color: "both", dests: /* @__PURE__ */ new Map() } });
     setTimeout(() => {
       for (const reply of outcome.replies) playUciMove(reply);
       puzzleCtrl.setCurrentPath(_getCtrl3().path);
