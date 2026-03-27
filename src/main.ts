@@ -78,6 +78,7 @@ import { pgnToTree } from './tree/pgn';
 import { buildMainlineOpeningProvider, buildRetroCandidates } from './analyse/retro';
 import { makeRetroCtrl } from './analyse/retroCtrl';
 import { onRetroConfigChange } from './analyse/retroConfig';
+import { initRetroMoveHandler } from './analyse/retroMoveHandler';
 import { renderRetroEntry, renderRetroStrip } from './analyse/retroView';
 
 console.log('Patzer Pro');
@@ -923,6 +924,9 @@ initGround({
   getSelectedGameId:() => selectedGameId,
   redraw,
 });
+// Retro solve interception: analysis-owned handler subscribes to board move hooks.
+// Must be wired after initGround so the board hook seam is available.
+initRetroMoveHandler(() => ctrl);
 initCevalView({
   getCtrl:  () => ctrl,
   navigate,
