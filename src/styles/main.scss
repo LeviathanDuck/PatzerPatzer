@@ -2163,8 +2163,10 @@ body[data-board='newspaper'] cg-board::before {
   min-width: 90px;
   text-align: center;
 
-  // Analysis complete — green fill
+  // Analysis complete — green fill; smaller font to fit "Re-analyze" in the fixed-width button
   &--complete {
+    font-size: 0.7rem !important;
+    letter-spacing: 0 !important;
     background: #1b3d28 !important;
     border-color: #2d6644 !important;
     color: #72c494 !important;
