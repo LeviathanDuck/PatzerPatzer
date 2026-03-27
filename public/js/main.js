@@ -7634,13 +7634,14 @@ function timeClassFromTimeControl(tc) {
 }
 
 // src/import/filters.ts
-var importFilters = {
+var importFilters2 = {
   rated: true,
   speeds: /* @__PURE__ */ new Set(),
   // empty = all speeds
   dateRange: "1month",
   customFrom: "",
-  customTo: ""
+  customTo: "",
+  autoReview: false
 };
 var SPEED_OPTIONS = [
   { value: "bullet", label: "Bullet", icon: "\uE032" },
@@ -7660,19 +7661,19 @@ var DATE_RANGE_OPTIONS = [
   { value: "custom", label: "Custom" }
 ];
 function filterGamesByDate(games) {
-  if (importFilters.dateRange === "all") return games;
-  if (importFilters.dateRange === "custom") {
+  if (importFilters2.dateRange === "all") return games;
+  if (importFilters2.dateRange === "custom") {
     return games.filter((g) => {
       const d = g.date?.slice(0, 10);
       if (!d) return true;
-      if (importFilters.customFrom && d < importFilters.customFrom) return false;
-      if (importFilters.customTo && d > importFilters.customTo) return false;
+      if (importFilters2.customFrom && d < importFilters2.customFrom) return false;
+      if (importFilters2.customTo && d > importFilters2.customTo) return false;
       return true;
     });
   }
   const now = /* @__PURE__ */ new Date();
   let cutoff;
-  switch (importFilters.dateRange) {
+  switch (importFilters2.dateRange) {
     case "24h":
       cutoff = new Date(now.getTime() - 864e5);
       break;
@@ -8772,10 +8773,10 @@ function pgnToTree(pgn) {
 // src/import/chesscom.ts
 var CHESSCOM_BASE = "https://api.chess.com/pub/player";
 function archiveCutoffMonth() {
-  const range = importFilters.dateRange;
+  const range = importFilters2.dateRange;
   if (range === "all") return null;
   if (range === "custom") {
-    return importFilters.customFrom ? importFilters.customFrom.slice(0, 7) : null;
+    return importFilters2.customFrom ? importFilters2.customFrom.slice(0, 7) : null;
   }
   const now = /* @__PURE__ */ new Date();
   let cutoff;
@@ -8883,7 +8884,7 @@ async function importChesscom(callbacks) {
   chesscom.error = null;
   callbacks.redraw();
   try {
-    const games = filterGamesByDate(await fetchChesscomGames(name, importFilters.rated, importFilters.speeds));
+    const games = filterGamesByDate(await fetchChesscomGames(name, importFilters2.rated, importFilters2.speeds));
     if (games.length === 0) {
       chesscom.error = "No games found matching current filters.";
     } else {
@@ -8956,7 +8957,7 @@ async function importLichess(callbacks) {
   lichess.error = null;
   callbacks.redraw();
   try {
-    const games = filterGamesByDate(await fetchLichessGames(name, importFilters.rated, importFilters.speeds));
+    const games = filterGamesByDate(await fetchLichessGames(name, importFilters2.rated, importFilters2.speeds));
     if (games.length === 0) {
       lichess.error = "No games found matching current filters.";
     } else {
@@ -10997,7 +10998,7 @@ function renderHeader(deps) {
   const error = importPlatform === "chesscom" ? chesscom.error : lichess.error;
   const username = importPlatform === "chesscom" ? chesscom.username : lichess.username;
   const doImport = () => importPlatform === "chesscom" ? void importChesscom(importCallbacks2) : void importLichess(importCallbacks2);
-  const hasActiveFilters = importFilters.speeds.size > 0 || importFilters.dateRange !== "1month" || !importFilters.rated;
+  const hasActiveFilters = importFilters2.speeds.size > 0 || importFilters2.dateRange !== "1month" || !importFilters2.rated;
   const panel = showImportPanel ? h("div.header__panel", [
     h("div.header__panel-section", [
       h("div.header__panel-label", "Platform"),
@@ -11023,20 +11024,20 @@ function renderHeader(deps) {
       h("div.header__panel-label", "Time control"),
       h("div.header__panel-row", [
         h("button.header__pill", {
-          class: { active: importFilters.speeds.size === 0 },
+          class: { active: importFilters2.speeds.size === 0 },
           on: { click: () => {
-            importFilters.speeds = /* @__PURE__ */ new Set();
+            importFilters2.speeds = /* @__PURE__ */ new Set();
             redraw2();
           } }
         }, "All"),
         ...SPEED_OPTIONS.map(
           ({ value, label, icon }) => h("button.header__pill", {
-            class: { active: importFilters.speeds.has(value) },
+            class: { active: importFilters2.speeds.has(value) },
             attrs: { "data-icon": icon },
             on: { click: () => {
-              const s = new Set(importFilters.speeds);
+              const s = new Set(importFilters2.speeds);
               s.has(value) ? s.delete(value) : s.add(value);
-              importFilters.speeds = s;
+              importFilters2.speeds = s;
               redraw2();
             } }
           }, label)
@@ -11046,28 +11047,28 @@ function renderHeader(deps) {
       h("div.header__panel-row", [
         ...DATE_RANGE_OPTIONS.map(
           ({ value, label }) => h("button.header__pill", {
-            class: { active: importFilters.dateRange === value },
+            class: { active: importFilters2.dateRange === value },
             on: { click: () => {
-              importFilters.dateRange = value;
+              importFilters2.dateRange = value;
               redraw2();
             } }
           }, label)
         )
       ]),
-      importFilters.dateRange === "custom" ? h("div.header__panel-row.--mt", [
+      importFilters2.dateRange === "custom" ? h("div.header__panel-row.--mt", [
         h("span.header__panel-hint", "From"),
         h("input.header__date-input", {
-          attrs: { type: "date", value: importFilters.customFrom },
+          attrs: { type: "date", value: importFilters2.customFrom },
           on: { change: (e) => {
-            importFilters.customFrom = e.target.value;
+            importFilters2.customFrom = e.target.value;
             redraw2();
           } }
         }),
         h("span.header__panel-hint", "To"),
         h("input.header__date-input", {
-          attrs: { type: "date", value: importFilters.customTo },
+          attrs: { type: "date", value: importFilters2.customTo },
           on: { change: (e) => {
-            importFilters.customTo = e.target.value;
+            importFilters2.customTo = e.target.value;
             redraw2();
           } }
         })
@@ -11075,15 +11076,31 @@ function renderHeader(deps) {
       h("div.header__panel-row.--mt", [
         h("label.header__panel-check", [
           h("input", {
-            attrs: { type: "checkbox", checked: importFilters.rated },
+            attrs: { type: "checkbox", checked: importFilters2.rated },
             on: { change: (e) => {
-              importFilters.rated = e.target.checked;
+              importFilters2.rated = e.target.checked;
               redraw2();
             } }
           }),
           "Rated only"
         ])
-      ])
+      ]),
+      h("div.header__panel-row.--mt", [
+        h("label.header__panel-check", [
+          h("input", {
+            attrs: { type: "checkbox", checked: importFilters2.autoReview },
+            on: { change: (e) => {
+              importFilters2.autoReview = e.target.checked;
+              redraw2();
+            } }
+          }),
+          "Auto-review after import"
+        ])
+      ]),
+      importFilters2.autoReview ? h(
+        "p.header__panel-hint.header__panel-warn",
+        "Large imports may take a long time to review. Each game runs through the engine at the configured review depth."
+      ) : null
     ]),
     h("div.header__panel-divider"),
     h("div.header__panel-section", [
@@ -11828,6 +11845,9 @@ var importCallbacks = {
     selectedGameId = first2.id;
     void saveGamesToIdb(importedGames);
     loadGame(first2.pgn);
+    if (importFilters.autoReview && dedupedGames.length > 0) {
+      enqueueBulkReview(dedupedGames);
+    }
   },
   redraw() {
     redraw();
