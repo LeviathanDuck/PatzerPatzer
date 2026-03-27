@@ -78,6 +78,12 @@ to atomically mark a prompt as started:
 - regenerate the HTML dashboard
 - run the prompt audit
 
+Startup command rule:
+- use the exact plain command form `npm run prompt:start -- <PROMPT_ID>`
+- do not omit the `--` argument separator
+- do not replace the required startup step with a piped or truncated variant like `| tail -5`
+- if shortened terminal output is desired later, keep that as a separate optional manual step, not the required prompt startup command
+
 Use:
 
 ```sh
@@ -234,6 +240,7 @@ When a queued prompt is actually run:
 1. Re-read the workflow docs listed in `Start Here`
 2. Run:
    - `npm run prompt:start -- <PROMPT_ID>`
+   - use that exact command form; do not omit `--` and do not pipe it through helpers like `tail`
 3. Leave:
    - `status: created`
    - `reviewOutcome: pending`

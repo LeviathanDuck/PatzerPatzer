@@ -6,24 +6,25 @@ Use this file to track Claude Code prompts from creation through review.
 
 ## Prompt Index
 
-- [ ] CCP-153-F1 - Center Puzzle Board And Add Left Library Pane
-- [ ] CCP-166-F1 - Preserve Retro Bulk-Save First-Attempt Outcome
-- [ ] CCP-168-F1 - Fix Puzzle Metadata Editor exactOptionalPropertyTypes Gap
+- [ ] CCP-151-F1 - Inline Imported Puzzle Browser Pane
+- [x] CCP-153-F1 - Center Puzzle Board And Add Left Library Pane
+- [x] CCP-166-F1 - Preserve Retro Bulk-Save First-Attempt Outcome
+- [x] CCP-168-F1 - Fix Puzzle Metadata Editor exactOptionalPropertyTypes Gap
 - [x] CCP-164-F1 - Fix Puzzle Phase 2/3 exactOptionalPropertyTypes Breakages
 - [x] CCP-176-F3 - Fix Dashboard Index Sort After Queue Section
 - [x] CCP-176-F2 - Diagnose Missing Started Status For Dashboard Prompts
 - [x] CCP-176-F1 - Expose Prompt Metadata In Dashboard Detail View
 - [x] CCP-176 - Generate Prompt Tracking HTML Dashboard
 - [x] CCP-175 - Restore Puzzles Header Entry
-- [ ] CCP-174 - Puzzle V1 Phase 5 Batch Manager
+- [x] CCP-174 - Puzzle V1 Phase 5 Batch Manager
 - [x] CCP-169 - Puzzle V1 Phase 4 Batch Manager
 - [x] CCP-164 - Puzzle V1 Phase 3 Batch Manager
 - [x] CCP-159 - Puzzle V1 Phase 2 Batch Manager
 - [x] CCP-154 - Puzzle V1 Phase 1 Batch Manager
-- [ ] CCP-173 - Add Future Hooks For Rated Puzzle Mode
-- [ ] CCP-172 - Improve Imported Puzzle Library Filtering And Loading Scale
-- [ ] CCP-171 - Add Minimal Due-Again Metadata And Filters
-- [ ] CCP-170 - Add Retry-Failed-Earlier Queue
+- [x] CCP-173 - Add Future Hooks For Rated Puzzle Mode
+- [x] CCP-172 - Improve Imported Puzzle Library Filtering And Loading Scale
+- [x] CCP-171 - Add Minimal Due-Again Metadata And Filters
+- [x] CCP-170 - Add Retry-Failed-Earlier Queue
 - [x] CCP-168 - Add Flat Collections, Notes, Tags, And Favorites
 - [x] CCP-167 - Add Move-List Create-Puzzle Flow
 - [x] CCP-166 - Bulk-Save Missed Moments After Review
@@ -203,10 +204,30 @@ Use this file to track Claude Code prompts from creation through review.
 
 ## Detailed Log
 
-## CCP-153-F1 - Center Puzzle Board And Add Left Library Pane
+## CCP-151-F1 - Inline Imported Puzzle Browser Pane
 
 ```
 - [ ] Reviewed
+  - ID: `CCP-151-F1`
+  - Task ID: `CCP-151`
+  - Parent prompt ID: `CCP-151`
+  - Batch prompt IDs: none
+  - Source document: `docs/PUZZLE_V1_PLAN.md`
+  - Source step: `Library Default Load Behavior + Puzzle Board Layout`
+  - Task: refine imported puzzle browsing so the board stays visible on the same page and the imported library expands inline with richer filter and sort controls
+  - Created by: `Codex`
+  - Created at: `2026-03-27T15:56:47-07:00`
+  - Started at: `2026-03-27T23:02:35.699Z`
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-153-F1 - Center Puzzle Board And Add Left Library Pane
+
+```
+- [x] Reviewed
   - ID: `CCP-153-F1`
   - Task ID: `CCP-153`
   - Parent prompt ID: `CCP-153`
@@ -216,17 +237,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: refine the Puzzle V1 page shell so the board is present immediately, centered as the main focal area, with source and library navigation in a left-side pane
   - Created by: `Codex`
   - Created at: `2026-03-27T15:28:06-07:00`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: none
+  - Started at: `2026-03-27T22:30:11.883Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the layout-shell prompt bundled imported-library shard-loading changes and still lets browsing replace the board-first shell with a full-page list
   - Execution target: `Claude Code`
 ```
 
 ## CCP-166-F1 - Preserve Retro Bulk-Save First-Attempt Outcome
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-166-F1`
   - Task ID: `CCP-166`
   - Parent prompt ID: `CCP-166`
@@ -236,9 +257,9 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: fix the retrospection bulk-save path so it preserves first-attempt outcome information when saving failed, viewed, or skipped moments into the canonical puzzle library
   - Created by: `Codex`
   - Created at: `2026-03-27T15:23:53-07:00`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
+  - Started at: `2026-03-27T22:51:51.967Z`
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -246,7 +267,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-168-F1 - Fix Puzzle Metadata Editor exactOptionalPropertyTypes Gap
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-168-F1`
   - Task ID: `CCP-168`
   - Parent prompt ID: `CCP-168`
@@ -256,9 +277,9 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: fix the Phase 4 puzzle metadata editor so notes and tags editing is compatible with exactOptionalPropertyTypes without redesigning the metadata UI
   - Created by: `Codex`
   - Created at: `2026-03-27T15:23:53-07:00`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
+  - Started at: `2026-03-27T22:54:07.245Z`
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -386,7 +407,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-174 - Puzzle V1 Phase 5 Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-174`
   - Task ID: `CCP-174`
   - Parent prompt ID: none
@@ -398,8 +419,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: unknown
   - Started at: `2026-03-27T22:18:09.632Z`
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: none
+  - Review outcome: issues found
+  - Review issues: Phase 5 batch is not review-clean because CCP-172 still introduces puzzle-specific typecheck failures in the imported-library filter/loading step
   - Execution target: `Claude Code`
 ```
 
@@ -486,7 +507,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-173 - Add Future Hooks For Rated Puzzle Mode
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-173`
   - Task ID: `CCP-173`
   - Parent prompt ID: none
@@ -498,7 +519,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: unknown
   - Started at: `2026-03-27T22:26:30.440Z`
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -506,7 +527,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-172 - Improve Imported Puzzle Library Filtering And Loading Scale
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-172`
   - Task ID: `CCP-172`
   - Parent prompt ID: none
@@ -518,15 +539,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: unknown
   - Started at: `2026-03-27T22:23:33.846Z`
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: none
+  - Review outcome: issues found
+  - Review issues: the imported-library filter and loading step still introduces new puzzle-specific typecheck failures in filter state assignment and the idle-board helper
   - Execution target: `Claude Code`
 ```
 
 ## CCP-171 - Add Minimal Due-Again Metadata And Filters
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-171`
   - Task ID: `CCP-171`
   - Parent prompt ID: none
@@ -538,7 +559,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: unknown
   - Started at: `2026-03-27T22:20:50.863Z`
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -546,7 +567,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-170 - Add Retry-Failed-Earlier Queue
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-170`
   - Task ID: `CCP-170`
   - Parent prompt ID: none
@@ -558,7 +579,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: unknown
   - Started at: `2026-03-27T22:18:26.801Z`
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```

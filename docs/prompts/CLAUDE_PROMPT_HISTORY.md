@@ -6,7 +6,161 @@ Use this file to archive the full text of Claude Code prompts generated from Cod
 
 ## History
 
-## CCP-153-F1 — Created
+## CCP-151-F1 — Created
+
+- Task: refine imported puzzle browsing so the board stays visible on the same page and the imported library expands inline with richer filter and sort controls
+- Task ID: `CCP-151`
+- Parent prompt ID: `CCP-151`
+- Source document: `docs/PUZZLE_V1_PLAN.md`
+- Source step: `Library Default Load Behavior + Puzzle Board Layout`
+- Created by: `Codex`
+- Created at: `2026-03-27T15:56:47-07:00`
+- Started at: `2026-03-27T23:02:35.699Z`
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: follow-up prompt for the top-level source navigator to replace full-page imported browse swapping with an inline browser pane
+
+```
+Prompt ID: CCP-151-F1
+Task ID: CCP-151
+Parent Prompt ID: CCP-151
+Source Document: docs/PUZZLE_V1_PLAN.md
+Source Step: Library Default Load Behavior + Puzzle Board Layout
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup state step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-151-F1`
+- Only continue implementation work after that command succeeds.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / puzzle-view / imported-filter / layout / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: refine the imported puzzle browse experience so clicking `Browse` on `Imported Puzzles` does not replace the whole puzzle page with a separate browse view. Instead, the board should remain visible on the same page and the imported-library browser should expand inline as a scrollable window/pane, with richer filtering and sorting controls based on the provided design brief.
+
+Source-backed intent to preserve:
+- `docs/PUZZLE_V1_PLAN.md` says that when the puzzle page opens it should show `Imported Puzzles` and `User Library` as the top-level distinctions.
+- The same plan also says the desired V1 layout includes:
+  - centered chessboard
+  - left sidebar for source and library selection
+- That means imported-library browsing should feel like part of the same page shell, not a route-like page replacement that removes the board from view.
+
+Current repo-grounded behavior to confirm:
+- `src/puzzles/view.ts` currently renders the library shell in `renderPuzzleLibrary()`
+- when `getPuzzleListState()` is active, it returns `renderPuzzleList(...)` instead of keeping the board/library shell visible
+- the current imported filter UI is minimal:
+  - min/max rating inputs
+  - one theme dropdown
+  - no grouped multi-select theme panel
+  - no inline expandable imported-library window
+- current puzzle-library and puzzle-list styling lives in `src/styles/main.scss`, not a separate puzzle-only stylesheet
+
+Design brief to implement as the target direction for the imported-library panel:
+- keep the board present immediately on the same page
+- expand imported-library browsing inside a scrollable inline window/pane, similar in spirit to the move-list window
+- support a cleaner scalable filter UI for imported puzzles
+- theme selection panel should aim toward:
+  - grouped sections
+  - multi-select
+  - row clickability
+  - compact scrollable density
+  - clear selected/hover states
+- rating control should move toward a dual-handle slider instead of two plain number inputs
+- include sorting controls in the inline imported-library browser
+- use the provided UI description as a visual/interaction reference, but stay honest about what Patzer data actually exists today
+
+Important honesty rule:
+- if Patzer does not currently have real per-theme user performance data for `My Score %`, do not invent fake numbers
+- instead, implement the UI seam cleanly so a score column can be shown with honest placeholder/unavailable handling, or explicitly defer live score population if that is the smallest safe step
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/puzzles/types.ts`
+  - `src/puzzles/shardLoader.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+  - `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/side.ts`
+  - `~/Development/lichess-source/lila/modules/puzzle/src/main/ui/PuzzleUi.scala`
+  - any closely related Lichess theme/filter/layout source you need to confirm grouping, selection, or page-shell structure
+
+Implementation goal:
+- keep the board visible and mounted on the same puzzle page while browsing imported puzzles
+- keep top-level source navigation in the same page shell
+- turn the imported browse surface into an inline expandable/scrollable pane instead of a separate full-page list replacement
+- improve imported filter/sort UX substantially in that inline pane
+- keep the change scoped to imported-library browse behavior and shell interaction, not the full puzzle product redesign
+
+Constraints:
+- scope this primarily to the imported puzzle browse path
+- do not bundle strict solve-loop work
+- do not rebuild persistence or the imported puzzle data model from scratch
+- do not add large new puzzle logic to `src/main.ts`
+- do not invent backend analytics for per-theme score if that data does not exist
+- do not flatten the entire provided design brief into one giant uncontrolled rewrite; identify the smallest safe implementation slice that still clearly changes the browse experience in the requested direction
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for imported puzzle browsing
+- explicitly report:
+  - whether the board now stays visible while browsing imported puzzles
+  - how the inline browse window/pane is structured
+  - what filtering and sorting controls were added or upgraded
+  - whether grouped multi-select themes landed fully or partially
+  - whether `My Score %` is real data, placeholder, or deferred
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-153-F1 — Reviewed
 
 - Task: refine the Puzzle V1 page shell so the board is present immediately, centered as the main focal area, with source and library navigation in a left-side pane
 - Task ID: `CCP-153`
@@ -15,11 +169,11 @@ Use this file to archive the full text of Claude Code prompts generated from Cod
 - Source step: `Puzzle Board Layout`
 - Created by: `Codex`
 - Created at: `2026-03-27T15:28:06-07:00`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-27T22:30:11.883Z`
+- Status: reviewed
+- Review outcome: issues found
 - Commit: unknown
-- Notes: follow-up layout-shell prompt to enforce the centered-board and left-pane goals from the Puzzle V1 product plan
+- Notes: the centered idle board and left sidebar did land, but the task was not kept layout-only because it also added imported-library manifest/shard loading functions, and the board disappears whenever puzzle-list browsing becomes active.
 
 ```
 Prompt ID: CCP-153-F1
@@ -132,7 +286,7 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-166-F1 — Created
+## CCP-166-F1 — Reviewed
 
 - Task: fix the retrospection bulk-save path so it preserves first-attempt outcome information when saving failed, viewed, or skipped moments into the canonical puzzle library
 - Task ID: `CCP-166`
@@ -141,11 +295,11 @@ Output shape:
 - Source step: `Phase 4 — User Library Authoring / Task 2 / follow-up fix`
 - Created by: `Codex`
 - Created at: `2026-03-27T15:23:53-07:00`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-27T22:51:51.967Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
-- Notes: follow-up fix prompt for the reviewed bulk-save outcome persistence gap in CCP-166.
+- Notes: bulk-save now maps retro outcomes to first-attempt PuzzleAttempt records and persists them alongside saved puzzle definitions so retry/due logic can see prior retro results.
 
 ```
 Prompt ID: CCP-166-F1
@@ -242,7 +396,7 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-168-F1 — Created
+## CCP-168-F1 — Reviewed
 
 - Task: fix the Phase 4 puzzle metadata editor so notes and tags editing is compatible with exactOptionalPropertyTypes without redesigning the metadata UI
 - Task ID: `CCP-168`
@@ -251,11 +405,11 @@ Output shape:
 - Source step: `Phase 4 — User Library Authoring / Task 4 / follow-up fix`
 - Created by: `Codex`
 - Created at: `2026-03-27T15:23:53-07:00`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-27T22:54:07.245Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
-- Notes: follow-up fix prompt for the reviewed Phase 4 metadata editor typecheck gap in CCP-168.
+- Notes: the metadata editor now deletes optional notes/tags keys when blank instead of assigning explicit undefined, which resolves the exactOptionalPropertyTypes seam in the touched UI.
 
 ```
 Prompt ID: CCP-168-F1
@@ -1029,7 +1183,7 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-174 — Created
+## CCP-174 — Reviewed
 
 - Task: execute Puzzle V1 phase batch manager for `CCP-170`, `CCP-171`, `CCP-172`, `CCP-173`
 - Task ID: `CCP-174`
@@ -1039,10 +1193,10 @@ Output shape:
 - Created by: unknown
 - Created at: unknown
 - Started at: `2026-03-27T22:18:09.632Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: issues found
 - Commit: unknown
-- Notes: manager-style batch prompt; intentionally not added to the runnable queue
+- Notes: manager reviewed as a batch over CCP-170 through CCP-173; child prompts were closed out first with mixed pass/issues-found results.
 
 ```
 Prompt ID: CCP-174
@@ -1464,7 +1618,7 @@ If the batch finishes, report a compact summary of completed Prompt IDs.
 Begin with `CCP-150`, `CCP-151`, `CCP-152`, `CCP-153`.
 ```
 
-## CCP-173 — Created
+## CCP-173 — Reviewed
 
 - Task: add non-user-facing rated-mode hooks without implementing rating progression yet
 - Task ID: `CCP-173`
@@ -1474,10 +1628,10 @@ Begin with `CCP-150`, `CCP-151`, `CCP-152`, `CCP-153`.
 - Created by: unknown
 - Created at: unknown
 - Started at: `2026-03-27T22:26:30.440Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
-- Notes: none
+- Notes: future rated-mode hooks landed as forward-compatible PuzzleAttempt fields and practice-mode session state without exposing a fake rated UI.
 
 ```
 Prompt ID: CCP-173
@@ -1555,7 +1709,7 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-172 — Created
+## CCP-172 — Reviewed
 
 - Task: improve imported-library loading and filter behavior once the product shell is stable
 - Task ID: `CCP-172`
@@ -1565,10 +1719,10 @@ Output shape:
 - Created by: unknown
 - Created at: unknown
 - Started at: `2026-03-27T22:23:33.846Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: issues found
 - Commit: unknown
-- Notes: none
+- Notes: src/puzzles/view.ts assigns explicit undefined into optional filter fields, and src/puzzles/ctrl.ts mountIdleBoard(...) references Chessground without a matching symbol in scope, so the Phase 5 imported-library step is not validation-clean.
 
 ```
 Prompt ID: CCP-172
@@ -1646,7 +1800,7 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-171 — Created
+## CCP-171 — Reviewed
 
 - Task: add lightweight due-again metadata and filtering without a full scheduler
 - Task ID: `CCP-171`
@@ -1656,10 +1810,10 @@ Output shape:
 - Created by: unknown
 - Created at: unknown
 - Started at: `2026-03-27T22:20:50.863Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
-- Notes: none
+- Notes: lightweight due-again metadata and due-session entry points are present via PuzzleUserMeta.dueAt / lastAttemptResult and the due-for-review library section.
 
 ```
 Prompt ID: CCP-171
@@ -1737,7 +1891,7 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-170 — Created
+## CCP-170 — Reviewed
 
 - Task: add the first repetition-oriented queue using failed/assisted puzzle outcomes
 - Task ID: `CCP-170`
@@ -1747,10 +1901,10 @@ Output shape:
 - Created by: unknown
 - Created at: unknown
 - Started at: `2026-03-27T22:18:26.801Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
-- Notes: none
+- Notes: the retry-failed queue is present in src/puzzles/ctrl.ts and src/puzzles/view.ts, driven by most-recent attempt results plus never-attempted puzzles.
 
 ```
 Prompt ID: CCP-170
