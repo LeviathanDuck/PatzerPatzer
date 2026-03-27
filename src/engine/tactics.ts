@@ -53,11 +53,11 @@ export interface MissedMomentConfig {
 }
 
 export const missedMomentConfig: MissedMomentConfig = {
-  swingThreshold:  0.05,   // Lichess inaccuracy floor — any real mistake is flagged
-  missedMateMaxN:  5,      // mate in 1–5 (was hardcoded 3; extend to longer forcing lines)
-  collapseWcFloor: 0.55,   // mover had > 55% win chances (~+50–100 cp)
-  collapseDropMin: 0.08,   // and dropped by ≥ 0.08 (mistake-sized in a winning position)
-  maxPly:          80,     // up to move 40 (was 60 = move 30)
+  swingThreshold:  0.15,   // Lichess blunder floor — flags ~2+ pawn swings in typical positions
+  missedMateMaxN:  3,      // Lichess default: mate in 1–3
+  collapseWcFloor: 0.65,   // mover had > 65% win chances (~+250 cp) before collapse
+  collapseDropMin: 0.15,   // consistent with swingThreshold — requires a blunder-sized drop
+  maxPly:          80,     // up to move 40
 };
 
 const _configChangeCallbacks: (() => void)[] = [];
@@ -179,4 +179,23 @@ export function hasMissedMoments(
   config?:   MissedMomentConfig,
 ): boolean {
   return detectMissedMoments(mainline, cache, userColor, config).length > 0;
+}
+
+// ── Per-game moments store ────────────────────────────────────────────────────
+// Shared by both the foreground (batch.ts) and background (reviewQueue.ts)
+// review pipelines so either path can populate the data that renderMissedBadge
+// reads via getMissedMoments().
+
+const _missedMomentsMap: Map<string, MissedMoment[]> = new Map();
+
+export function getMissedMoments(gameId: string): MissedMoment[] {
+  return _missedMomentsMap.get(gameId) ?? [];
+}
+
+export function setMissedMoments(gameId: string, moments: MissedMoment[]): void {
+  _missedMomentsMap.set(gameId, moments);
+}
+
+export function clearMissedMoments(gameId: string): void {
+  _missedMomentsMap.delete(gameId);
 }

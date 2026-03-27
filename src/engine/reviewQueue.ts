@@ -6,7 +6,7 @@
 import { StockfishProtocol } from '../ceval/protocol';
 import { AnalyseCtrl } from '../analyse/ctrl';
 import { evalWinChances } from './winchances';
-import { hasMissedMoments, detectMissedMoments, onMissedMomentConfigChange, type MissedMoment } from './tactics';
+import { hasMissedMoments, detectMissedMoments, onMissedMomentConfigChange, getMissedMoments, setMissedMoments, clearMissedMoments, type MissedMoment } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
 import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import { pgnToTree } from '../tree/pgn';
@@ -67,22 +67,6 @@ let _analyzedGameAccuracy: Map<string, { white: number | null; black: number | n
 let _getUserColor:         (game: ImportedGame) => 'white' | 'black' | null            = () => null;
 let _redraw:               () => void                                                   = () => {};
 
-// Rich missed-moment data per game — independent of _missedTacticGameIds (boolean).
-// Populated at review completion and on config change via recomputeMissedTactics().
-// Accessed by games/view.ts via getMissedMoments() for gradient display.
-const _missedMomentsMap: Map<string, MissedMoment[]> = new Map();
-
-export function getMissedMoments(gameId: string): MissedMoment[] {
-  return _missedMomentsMap.get(gameId) ?? [];
-}
-
-export function setMissedMoments(gameId: string, moments: MissedMoment[]): void {
-  _missedMomentsMap.set(gameId, moments);
-}
-
-export function clearMissedMoments(gameId: string): void {
-  _missedMomentsMap.delete(gameId);
-}
 
 export function initReviewQueue(deps: {
   analyzedGameIds:      Set<string>;
@@ -111,7 +95,7 @@ function recomputeMissedTactics(): void {
     if (entry.status !== 'complete') continue;
     const userColor = _getUserColor(entry.game);
     const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
-    _missedMomentsMap.set(entry.game.id, moments);
+    setMissedMoments(entry.game.id, moments);
     if (moments.length > 0) {
       _missedTacticGameIds.add(entry.game.id);
     } else {
@@ -280,7 +264,7 @@ function finishEntry(entry: ReviewQueueEntry): void {
   const userColor = _getUserColor(entry.game);
   _analyzedGameIds.add(entry.game.id);
   const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
-  _missedMomentsMap.set(entry.game.id, moments);
+  setMissedMoments(entry.game.id, moments);
   if (moments.length > 0) _missedTacticGameIds.add(entry.game.id);
   const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
   if (summary) {
