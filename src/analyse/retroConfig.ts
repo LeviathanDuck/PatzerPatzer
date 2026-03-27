@@ -2,8 +2,10 @@
 // Mirrors the pattern of src/engine/tactics.ts missedMomentConfig but adds
 // localStorage persistence so settings survive page reloads.
 //
-// CCP-134: config ownership and defaults only — no menu UI, no wiring into
-// buildRetroCandidates yet (deferred to CCP-136).
+// CCP-136: retroConfig is read by buildRetroCandidates() in retro.ts for both
+// candidate gates (minClassification loss floor and missedMateDistance).
+// main.ts wires onRetroConfigChange(rebuildRetroSession) so any change to
+// retroConfig immediately rebuilds the active session with the new parameters.
 
 export interface RetroConfig {
   /**

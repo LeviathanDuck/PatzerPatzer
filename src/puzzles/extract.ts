@@ -2,7 +2,7 @@
 // Mirrors the swing-detection loop in lichess-org/lila: practiceCtrl.ts makeComment.
 
 import { h, type VNode } from 'snabbdom';
-import type { PuzzleCandidate, TreeNode } from '../tree/types';
+import { LEARNABLE_REASONS, type PuzzleCandidate, type TreeNode } from '../tree/types';
 
 // Minimum win-chance loss to qualify as a puzzle candidate.
 // Matches the blunder threshold — we only want clear mistakes.
@@ -48,6 +48,8 @@ export function extractPuzzleCandidates(
         san:      node.san ?? '',
         loss:     nodeEval.loss,
         ply:      node.ply,
+        // extract.ts uses only the win-chance swing condition; all candidates here are 'swing'.
+        reason:   LEARNABLE_REASONS['swing'],
       });
     }
   }
@@ -72,7 +74,6 @@ export interface PuzzleRenderDeps {
   savedPuzzles:   PuzzleCandidate[];
   navigate:       (p: string) => void;
   savePuzzle:     (c: PuzzleCandidate, redraw: () => void) => void;
-  puzzleHref:     (c: PuzzleCandidate) => string;
   uciToSan:       (fen: string, uci: string) => string;
   redraw:         () => void;
 }
@@ -119,7 +120,7 @@ export function renderFindPuzzlesButton(deps: PuzzleRenderDeps): VNode {
   }, btnLabel);
 }
 
-export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
+export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode | null {
   const { engineEnabled, batchAnalyzing, batchState, savedPuzzles, currentPath } = deps;
   const canExtract = engineEnabled && !batchAnalyzing;
   const btnLabel = canExtract
@@ -151,17 +152,6 @@ export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
         },
         on: { click: () => { deps.savePuzzle(c, deps.redraw); } },
       }, isSaved ? '✓ Saved' : 'Save'),
-      h('a', {
-        attrs: {
-          href: deps.puzzleHref(c),
-          style: 'flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px',
-        },
-        on: {
-          click: () => {
-            if (!isSaved) deps.savePuzzle(c, deps.redraw);
-          },
-        },
-      }, isSaved ? 'Solve' : 'Save & Solve'),
     ]);
   });
 

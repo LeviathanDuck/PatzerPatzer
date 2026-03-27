@@ -129,7 +129,6 @@ Working today:
 
 Still incomplete:
 - `analysis-game` route
-- saved puzzles route
-- puzzle play workflow
+- standalone puzzle product rebuild
 - engine worker path
 - clean typecheck baseline

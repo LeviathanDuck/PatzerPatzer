@@ -1227,18 +1227,6 @@ var StockfishProtocol = class {
   }
 };
 
-// src/puzzles/runtime.ts
-var activePuzzleCtrl;
-function getActivePuzzleCtrl() {
-  return activePuzzleCtrl;
-}
-function setActivePuzzleCtrl(ctrl2) {
-  activePuzzleCtrl = ctrl2;
-}
-function puzzleHidesAnalysis() {
-  return activePuzzleCtrl !== void 0;
-}
-
 // src/engine/winchances.ts
 var WIN_CHANCE_MULTIPLIER = -368208e-8;
 function rawWinChances(cp) {
@@ -1801,7 +1789,6 @@ function buildArrowShapes() {
   const shapes = [];
   const ctrl2 = _getCtrl();
   if (_isBatchActive()) return shapes;
-  if (puzzleHidesAnalysis()) return shapes;
   const retroHidden = ctrl2.retro !== void 0 && !ctrl2.retro.guidanceRevealed();
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
@@ -2569,50 +2556,6 @@ function savePuzzle(c, redraw2) {
   savedPuzzles = [...savedPuzzles, c];
   void savePuzzlesToIdb();
   redraw2();
-}
-async function savePuzzleSessionToIdb(session) {
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction("puzzle-library", "readwrite");
-    tx.objectStore("puzzle-library").put(session, "puzzle-session");
-  } catch (e) {
-    console.warn("[idb] puzzle session save failed", e);
-  }
-}
-async function loadPuzzleSessionFromIdb() {
-  try {
-    const db = await openGameDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("puzzle-library", "readonly").objectStore("puzzle-library").get("puzzle-session");
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[idb] puzzle session load failed", e);
-    return void 0;
-  }
-}
-async function savePuzzleQueryToIdb(filters) {
-  try {
-    const db = await openGameDb();
-    const tx = db.transaction("puzzle-library", "readwrite");
-    tx.objectStore("puzzle-library").put(filters, "puzzle-query-filters");
-  } catch (e) {
-    console.warn("[idb] puzzle query save failed", e);
-  }
-}
-async function loadPuzzleQueryFromIdb() {
-  try {
-    const db = await openGameDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("puzzle-library", "readonly").objectStore("puzzle-library").get("puzzle-query-filters");
-      req.onsuccess = () => resolve(req.result ?? null);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[idb] puzzle query load failed", e);
-    return null;
-  }
 }
 
 // src/engine/batch.ts
@@ -6292,7 +6235,6 @@ function initGround(deps) {
 var cgInstance = void 0;
 var orientation = "white";
 var pendingPromotion = null;
-var PUZZLE_REPLY_DELAY_MS = 500;
 function setOrientation(v) {
   orientation = v;
   cgInstance?.set({ orientation: v });
@@ -6335,34 +6277,6 @@ function onUserMove(orig, dest) {
   if (fromSq === void 0 || toSq === void 0) return;
   const normMove = normalizeMove(pos, { from: fromSq, to: toSq });
   const normUci = makeUci(normMove);
-  const puzzleCtrl = getActivePuzzleCtrl();
-  if (puzzleCtrl) {
-    const piece2 = pos.board.get(fromSq);
-    const reachesBackRank = piece2?.role === "pawn" && (pos.turn === "white" && toSq >= 56 || pos.turn === "black" && toSq < 8);
-    if (reachesBackRank) {
-      const expected = puzzleCtrl.currentExpectedMove();
-      if (expected?.startsWith(normUci)) {
-        pendingPromotion = { orig, dest, color: pos.turn };
-        _redraw3();
-        return;
-      }
-    }
-    const outcome = puzzleCtrl.submitUserMove(normUci, ctrl2.path);
-    if (!outcome.accepted) {
-      syncBoard();
-      _redraw3();
-      return;
-    }
-    applyMoveToTree(normMove, pos);
-    cgInstance?.set({ movable: { color: "both", dests: /* @__PURE__ */ new Map() } });
-    setTimeout(() => {
-      for (const reply of outcome.replies) playUciMove(reply);
-      puzzleCtrl.setCurrentPath(_getCtrl3().path);
-      syncBoard();
-      _redraw3();
-    }, PUZZLE_REPLY_DELAY_MS);
-    return;
-  }
   const retro = ctrl2.retro?.isSolving() ? ctrl2.retro : void 0;
   const retroCand = retro ? retro.current() : null;
   const atRetroExercise = !!(retro && retroCand && ctrl2.path === retroCand.parentPath);
@@ -6432,44 +6346,10 @@ function applyMoveToTree(move3, pos) {
   });
   _navigate(ctrl2.path + newNode.id);
 }
-function playUciMove(uci) {
-  const ctrl2 = _getCtrl3();
-  const parsed = parseUci(uci);
-  if (!parsed) return;
-  const setup = parseFen(ctrl2.node.fen).unwrap();
-  const pos = Chess.fromSetup(setup).unwrap();
-  const move3 = normalizeMove(pos, parsed);
-  applyMoveToTree(move3, pos);
-}
 function completePromotion(role) {
   if (!pendingPromotion) return;
   const { orig, dest } = pendingPromotion;
   pendingPromotion = null;
-  const puzzleCtrl = getActivePuzzleCtrl();
-  if (puzzleCtrl) {
-    const ctrl2 = _getCtrl3();
-    const setup = parseFen(ctrl2.node.fen).unwrap();
-    const pos = Chess.fromSetup(setup).unwrap();
-    const fromSq = parseSquare(orig);
-    const toSq = parseSquare(dest);
-    if (fromSq === void 0 || toSq === void 0) return;
-    const move3 = normalizeMove(pos, { from: fromSq, to: toSq, promotion: role });
-    const outcome = puzzleCtrl.submitUserMove(makeUci(move3), ctrl2.path);
-    if (!outcome.accepted) {
-      syncBoard();
-      _redraw3();
-      return;
-    }
-    applyMoveToTree(move3, pos);
-    cgInstance?.set({ movable: { color: "both", dests: /* @__PURE__ */ new Map() } });
-    setTimeout(() => {
-      for (const reply of outcome.replies) playUciMove(reply);
-      puzzleCtrl.setCurrentPath(_getCtrl3().path);
-      syncBoard();
-      _redraw3();
-    }, PUZZLE_REPLY_DELAY_MS);
-    return;
-  }
   completeMove(orig, dest, role);
 }
 var PROMOTION_ROLES = ["queen", "knight", "rook", "bishop"];
@@ -6718,9 +6598,6 @@ function renderBoard() {
 function syncBoardAndArrow() {
   syncBoard();
   syncArrow();
-}
-function setAnimationEnabled(enabled) {
-  cgInstance?.set({ animation: { enabled } });
 }
 
 // src/board/sound.ts
@@ -7201,6 +7078,20 @@ function renderEngineSettings() {
   ]);
 }
 
+// src/tree/types.ts
+var LEARNABLE_REASONS = {
+  "swing": {
+    code: "swing",
+    label: "Missed opportunity",
+    summary: "The move played gave up a significant advantage."
+  },
+  "missed-mate": {
+    code: "missed-mate",
+    label: "Missed forced mate",
+    summary: "A forced checkmate sequence was available but was not played."
+  }
+};
+
 // src/puzzles/extract.ts
 var puzzleCandidates = [];
 function clearPuzzleCandidates() {
@@ -7252,18 +7143,7 @@ function renderPuzzleCandidates(deps) {
         on: { click: () => {
           deps.savePuzzle(c, deps.redraw);
         } }
-      }, isSaved ? "\u2713 Saved" : "Save"),
-      h("a", {
-        attrs: {
-          href: deps.puzzleHref(c),
-          style: "flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px"
-        },
-        on: {
-          click: () => {
-            if (!isSaved) deps.savePuzzle(c, deps.redraw);
-          }
-        }
-      }, isSaved ? "Solve" : "Save & Solve")
+      }, isSaved ? "\u2713 Saved" : "Save")
     ]);
   });
   let navRow = null;
@@ -7471,1494 +7351,11 @@ function renderAnalysisControls(extraButtons) {
   ]);
 }
 
-// src/puzzles/ctrl.ts
-var altCastles = {
-  e1a1: "e1c1",
-  e1h1: "e1g1",
-  e8a8: "e8c8",
-  e8h8: "e8g8"
-};
-function isAltCastle(uci) {
-  return uci in altCastles;
-}
-function sameMove(played, expected) {
-  return played === expected || isAltCastle(played) && altCastles[played] === expected;
-}
-function makePuzzleCtrl(round, onChange3 = () => {
-}) {
-  let feedback = "find";
-  let result = "active";
-  let progressPly = 0;
-  let currentPath = round.parentPath;
-  const totalUserMoves = Math.ceil(round.solution.length / 2);
-  function emit() {
-    onChange3({
-      key: round.key,
-      progressPly,
-      currentPath,
-      feedback,
-      result,
-      updatedAt: Date.now()
-    });
-  }
-  return {
-    round: () => round,
-    feedback: () => feedback,
-    result: () => result,
-    progress: () => [Math.ceil(progressPly / 2), totalUserMoves],
-    progressPly: () => progressPly,
-    currentPath: () => currentPath,
-    currentExpectedMove: () => round.solution[progressPly] ?? null,
-    setCurrentPath(path) {
-      currentPath = path;
-      emit();
-    },
-    submitUserMove(uci, path) {
-      const expected = round.solution[progressPly];
-      if (!expected || path !== currentPath || result !== "active" || !sameMove(uci, expected)) {
-        feedback = "fail";
-        emit();
-        return { accepted: false, replies: [] };
-      }
-      progressPly += 1;
-      const replies = [];
-      while (progressPly < round.solution.length && progressPly % 2 === 1) {
-        replies.push(round.solution[progressPly]);
-        progressPly += 1;
-      }
-      if (progressPly >= round.solution.length) {
-        feedback = "win";
-        result = "solved";
-      } else {
-        feedback = "good";
-      }
-      emit();
-      return { accepted: true, replies };
-    },
-    retry() {
-      progressPly = 0;
-      feedback = "find";
-      result = "active";
-      currentPath = round.parentPath;
-      emit();
-    },
-    viewSolution() {
-      feedback = "view";
-      result = "viewed";
-      progressPly = round.solution.length;
-      emit();
-      return [...round.solution];
-    },
-    restore(snapshot) {
-      progressPly = Math.max(0, Math.min(snapshot.progressPly, round.solution.length));
-      feedback = snapshot.feedback;
-      result = snapshot.result;
-      currentPath = snapshot.currentPath;
-      emit();
-    },
-    snapshot() {
-      return {
-        key: round.key,
-        progressPly,
-        currentPath,
-        feedback,
-        result,
-        updatedAt: Date.now()
-      };
-    }
-  };
-}
-
-// src/puzzles/imported.ts
-var IMPORTED_PUZZLE_KEY_PREFIX = "lichess::";
-var IMPORTED_PUZZLE_BASE_URL = "/generated/lichess-puzzles";
-var DEFAULT_IMPORTED_PAGE_SIZE = 24;
-var _redraw6 = () => {
-};
-var manifest = null;
-var manifestPromise = null;
-var shardCache = /* @__PURE__ */ new Map();
-var libraryState = {
-  status: "idle",
-  query: defaultImportedPuzzleQuery(),
-  manifest: null,
-  items: [],
-  hasPrev: false,
-  hasNext: false,
-  loadedShardCount: 0
-};
-var libraryRequestKey = "";
-var libraryRequestToken = 0;
-function initImportedPuzzles(deps) {
-  _redraw6 = deps.redraw;
-}
-function defaultImportedPuzzleFilters() {
-  return {
-    ratingMin: "",
-    ratingMax: "",
-    themes: [],
-    opening: ""
-  };
-}
-function defaultImportedPuzzleQuery() {
-  return {
-    page: 0,
-    pageSize: DEFAULT_IMPORTED_PAGE_SIZE,
-    filters: defaultImportedPuzzleFilters()
-  };
-}
-function importedPuzzleLibraryState() {
-  return libraryState;
-}
-function importedPuzzleKey(shardId, id) {
-  return `${IMPORTED_PUZZLE_KEY_PREFIX}${shardId}::${id}`;
-}
-function importedPuzzleRouteId(shardId, id) {
-  return encodeURIComponent(importedPuzzleKey(shardId, id));
-}
-function isImportedPuzzleRouteId(routeId) {
-  return parseImportedPuzzleRouteId(routeId) !== null;
-}
-function parseImportedPuzzleRouteId(routeId) {
-  let decoded = routeId;
-  try {
-    decoded = decodeURIComponent(routeId);
-  } catch {
-    decoded = routeId;
-  }
-  if (!decoded.startsWith(IMPORTED_PUZZLE_KEY_PREFIX)) return null;
-  const body = decoded.slice(IMPORTED_PUZZLE_KEY_PREFIX.length);
-  const sep = body.indexOf("::");
-  if (sep < 0) return null;
-  const shardId = body.slice(0, sep);
-  const id = body.slice(sep + 2);
-  return shardId && id ? { shardId, id } : null;
-}
-function queryKey(query) {
-  return JSON.stringify(query);
-}
-async function loadManifest() {
-  if (manifest !== null) return manifest;
-  if (manifestPromise) return manifestPromise;
-  manifestPromise = (async () => {
-    try {
-      const response = await fetch(`${IMPORTED_PUZZLE_BASE_URL}/manifest.json`, { cache: "no-store" });
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`Manifest request failed with ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.warn("[puzzles] imported manifest load failed", error);
-      return null;
-    }
-  })();
-  manifest = await manifestPromise;
-  return manifest;
-}
-function annotateShardRecords(shardId, rows) {
-  return rows.map((row) => ({
-    ...row,
-    shardId,
-    key: importedPuzzleKey(shardId, row.id),
-    routeId: importedPuzzleRouteId(shardId, row.id)
-  }));
-}
-async function loadShard(file, shardId) {
-  const cached = shardCache.get(file);
-  if (cached) return cached;
-  const promise = (async () => {
-    const response = await fetch(`${IMPORTED_PUZZLE_BASE_URL}/${file}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Shard request failed with ${response.status}`);
-    const rows = await response.json();
-    return annotateShardRecords(shardId, rows);
-  })();
-  shardCache.set(file, promise);
-  return promise;
-}
-function normalizeTag(tag) {
-  return tag.trim().toLowerCase();
-}
-function toOptionalNumber(raw) {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const value = Number.parseInt(trimmed, 10);
-  return Number.isFinite(value) ? value : null;
-}
-function recordMatchesFilters(record, filters) {
-  const min = toOptionalNumber(filters.ratingMin);
-  const max = toOptionalNumber(filters.ratingMax);
-  if (min !== null && record.rating < min) return false;
-  if (max !== null && record.rating > max) return false;
-  if (filters.themes.length > 0) {
-    const wanted = filters.themes.map(normalizeTag);
-    if (!record.themes.some((t) => wanted.includes(normalizeTag(t)))) return false;
-  }
-  if (filters.opening) {
-    const wanted = normalizeTag(filters.opening);
-    if (!record.openingTags.some((opening) => normalizeTag(opening) === wanted)) return false;
-  }
-  return true;
-}
-function shardMayMatch(shard, filters) {
-  const min = toOptionalNumber(filters.ratingMin);
-  const max = toOptionalNumber(filters.ratingMax);
-  if (min !== null && shard.ratingMax !== void 0 && shard.ratingMax < min) return false;
-  if (max !== null && shard.ratingMin !== void 0 && shard.ratingMin > max) return false;
-  if (filters.themes.length > 0) {
-    if (shard.themes.length > 0) {
-      const wanted = filters.themes.map(normalizeTag);
-      if (!shard.themes.some((t) => wanted.includes(normalizeTag(t)))) return false;
-    }
-  }
-  if (filters.opening) {
-    const wanted = normalizeTag(filters.opening);
-    if (!shard.openings.some((opening) => normalizeTag(opening) === wanted)) return false;
-  }
-  return true;
-}
-function requestImportedPuzzleLibrary(query) {
-  const nextKey = queryKey(query);
-  if (libraryRequestKey === nextKey && libraryState.status !== "idle") return;
-  libraryRequestKey = nextKey;
-  const token = ++libraryRequestToken;
-  libraryState = {
-    status: "loading",
-    query,
-    manifest,
-    items: [],
-    hasPrev: query.page > 0,
-    hasNext: false,
-    loadedShardCount: 0
-  };
-  _redraw6();
-  void (async () => {
-    const loadedManifest = await loadManifest();
-    if (token !== libraryRequestToken) return;
-    if (!loadedManifest) {
-      libraryState = {
-        status: "missing",
-        query,
-        manifest: null,
-        items: [],
-        hasPrev: query.page > 0,
-        hasNext: false,
-        loadedShardCount: 0
-      };
-      _redraw6();
-      return;
-    }
-    const matchingShards = loadedManifest.shards.filter((shard) => shardMayMatch(shard, query.filters));
-    const start4 = query.page * query.pageSize;
-    const end3 = start4 + query.pageSize;
-    const target = end3 + 1;
-    const matches = [];
-    let loadedShardCount = 0;
-    let hasMorePossible = false;
-    try {
-      for (let i = 0; i < matchingShards.length; i++) {
-        const shard = matchingShards[i];
-        const rows = await loadShard(shard.file, shard.id);
-        if (token !== libraryRequestToken) return;
-        loadedShardCount += 1;
-        for (const row of rows) {
-          if (!recordMatchesFilters(row, query.filters)) continue;
-          matches.push(row);
-          if (matches.length > target) break;
-        }
-        if (matches.length > target) {
-          hasMorePossible = true;
-          break;
-        }
-      }
-    } catch (error) {
-      console.warn("[puzzles] imported shard load failed", error);
-      if (token !== libraryRequestToken) return;
-      libraryState = {
-        status: "error",
-        query,
-        manifest: loadedManifest,
-        items: [],
-        hasPrev: query.page > 0,
-        hasNext: false,
-        loadedShardCount,
-        error: error instanceof Error ? error.message : "Imported shard load failed"
-      };
-      _redraw6();
-      return;
-    }
-    const pageItems = matches.slice(start4, end3);
-    const hasNext = matches.length > end3 || hasMorePossible;
-    libraryState = {
-      status: "ready",
-      query,
-      manifest: loadedManifest,
-      items: pageItems,
-      hasPrev: query.page > 0,
-      hasNext,
-      loadedShardCount
-    };
-    _redraw6();
-  })();
-}
-async function loadTrainingPage(query, page) {
-  const loadedManifest = await loadManifest();
-  if (!loadedManifest) return { items: [], hasNext: false };
-  const { pageSize, filters } = query;
-  const matchingShards = loadedManifest.shards.filter((shard) => shardMayMatch(shard, filters));
-  const start4 = page * pageSize;
-  const end3 = start4 + pageSize;
-  const matches = [];
-  let hasMorePossible = false;
-  for (const shard of matchingShards) {
-    const rows = await loadShard(shard.file, shard.id);
-    for (const row of rows) {
-      if (!recordMatchesFilters(row, filters)) continue;
-      matches.push(row);
-      if (matches.length > end3) break;
-    }
-    if (matches.length > end3) {
-      hasMorePossible = true;
-      break;
-    }
-  }
-  return {
-    items: matches.slice(start4, end3),
-    hasNext: matches.length > end3 || hasMorePossible
-  };
-}
-var trainingActive = false;
-var trainingQuery = null;
-var trainingPage = 0;
-var trainingItems = [];
-var trainingIndex = 0;
-var trainingNextItems = null;
-var trainingNextHasNext = false;
-var trainingNextPage = -1;
-function prefetchNextTrainingPage() {
-  if (!trainingActive || !trainingQuery) return;
-  const nextPage = trainingPage + 1;
-  if (trainingNextPage === nextPage) return;
-  trainingNextPage = nextPage;
-  trainingNextItems = null;
-  void loadTrainingPage(trainingQuery, nextPage).then((result) => {
-    if (!trainingActive || trainingNextPage !== nextPage) return;
-    trainingNextItems = result.items;
-    trainingNextHasNext = result.hasNext;
-  });
-}
-function startTraining(query) {
-  trainingActive = true;
-  trainingQuery = { ...query, page: 0 };
-  trainingPage = 0;
-  trainingItems = [];
-  trainingIndex = 0;
-  trainingNextItems = null;
-  trainingNextHasNext = false;
-  trainingNextPage = -1;
-  void loadTrainingPage(trainingQuery, 0).then((result) => {
-    if (!trainingActive) return;
-    trainingItems = result.items;
-    if (result.hasNext) prefetchNextTrainingPage();
-    _redraw6();
-  });
-}
-function isTrainingMode() {
-  return trainingActive;
-}
-function currentTrainingRouteId() {
-  return trainingItems[trainingIndex]?.routeId ?? null;
-}
-function advanceTrainingCursor() {
-  if (!trainingActive) return;
-  trainingIndex++;
-  if (trainingIndex < trainingItems.length) {
-    if (trainingIndex >= trainingItems.length - 2) prefetchNextTrainingPage();
-    return;
-  }
-  if (trainingNextItems !== null && trainingNextItems.length > 0) {
-    trainingPage++;
-    trainingItems = trainingNextItems;
-    trainingIndex = 0;
-    trainingNextItems = null;
-    trainingNextPage = -1;
-    if (trainingNextHasNext) prefetchNextTrainingPage();
-  } else if (trainingNextItems !== null && trainingNextItems.length === 0) {
-    trainingActive = false;
-  }
-}
-function stopTraining() {
-  trainingActive = false;
-  trainingQuery = null;
-  trainingPage = 0;
-  trainingItems = [];
-  trainingIndex = 0;
-  trainingNextItems = null;
-  trainingNextHasNext = false;
-  trainingNextPage = -1;
-}
-async function findImportedPuzzleRoundByRouteId(routeId) {
-  const parsed = parseImportedPuzzleRouteId(routeId);
-  if (!parsed) return null;
-  const loadedManifest = await loadManifest();
-  if (!loadedManifest) return null;
-  const shard = loadedManifest.shards.find((entry) => entry.id === parsed.shardId);
-  if (!shard) return null;
-  const rows = await loadShard(shard.file, shard.id);
-  const record = rows.find((row) => row.id === parsed.id);
-  if (!record) return null;
-  const initialMove = record.moves[0] ?? "";
-  const solution = record.moves.slice(1);
-  const toMove = record.fen.split(" ")[1] === "b" ? "white" : "black";
-  return {
-    key: record.key,
-    routeId: record.routeId,
-    sourceKind: "imported",
-    source: null,
-    sourceGame: null,
-    imported: record,
-    parentPath: "",
-    startFen: record.fen,
-    initialMove,
-    solution,
-    toMove
-  };
-}
-
-// src/puzzles/round.ts
-var LOCAL_PUZZLE_GAME_ID = "local";
-function puzzleKey(candidate) {
-  return `${candidate.gameId ?? LOCAL_PUZZLE_GAME_ID}::${candidate.path}`;
-}
-function puzzleRouteIdFromKey(key) {
-  return encodeURIComponent(key);
-}
-function decodePuzzleRouteId(routeId) {
-  try {
-    return decodeURIComponent(routeId);
-  } catch {
-    return routeId;
-  }
-}
-function puzzleRouteHref(candidate) {
-  return `#/puzzles/${puzzleRouteIdFromKey(puzzleKey(candidate))}`;
-}
-function findSavedPuzzleByRouteId(puzzles, routeId) {
-  const decoded = decodePuzzleRouteId(routeId);
-  return puzzles.find((p) => puzzleKey(p) === decoded) ?? null;
-}
-function getPuzzleSolutionLine(candidate, storedAnalysis) {
-  const parentPath = pathInit(candidate.path);
-  const persisted = storedAnalysis?.nodes[parentPath]?.bestLine ?? [];
-  if (persisted.length === 0) return [candidate.bestMove];
-  if (persisted[0] === candidate.bestMove) return persisted;
-  return [candidate.bestMove, ...persisted];
-}
-function buildPuzzleRound(candidate, opts = {}) {
-  const key = puzzleKey(candidate);
-  return {
-    key,
-    routeId: puzzleRouteIdFromKey(key),
-    sourceKind: "saved",
-    source: candidate,
-    sourceGame: opts.sourceGame ?? null,
-    imported: null,
-    parentPath: pathInit(candidate.path),
-    startFen: candidate.fen,
-    solution: getPuzzleSolutionLine(candidate, opts.storedAnalysis),
-    toMove: candidate.ply % 2 === 1 ? "white" : "black"
-  };
-}
-function buildStandalonePuzzleRoot(fen) {
-  const setup = parseFen(fen).unwrap();
-  const initialPly = (setup.fullmoves - 1) * 2 + (setup.turn === "white" ? 0 : 1);
-  return {
-    id: "",
-    ply: initialPly,
-    fen,
-    children: []
-  };
-}
-
-// src/puzzles/session.ts
-var RECENT_PUZZLES_MAX = 16;
-function emptyPuzzleSession() {
-  return {
-    current: null,
-    recent: [],
-    updatedAt: Date.now()
-  };
-}
-function applyPuzzleSnapshot(session, snapshot) {
-  const next2 = {
-    current: snapshot,
-    recent: [...session.recent],
-    updatedAt: snapshot.updatedAt
-  };
-  if (snapshot.result !== "active") {
-    const result = snapshot.result;
-    next2.recent = [
-      { key: snapshot.key, result, updatedAt: snapshot.updatedAt },
-      ...next2.recent.filter((entry) => entry.key !== snapshot.key)
-    ].slice(0, RECENT_PUZZLES_MAX);
-  }
-  return next2;
-}
-function currentPuzzleSnapshot(session, key) {
-  return session.current?.key === key ? session.current : null;
-}
-function currentPuzzleIsActive(session, key) {
-  return session.current?.key === key && session.current.result === "active";
-}
-function recentPuzzleResult(session, key) {
-  if (session.current?.key === key && session.current.result !== "active") {
-    return session.current.result;
-  }
-  return session.recent.find((entry) => entry.key === key)?.result ?? null;
-}
-
-// src/puzzles/view.ts
-var PUZZLE_THEME_CATEGORIES = [
-  {
-    label: "Game Phase",
-    themes: [
-      { key: "opening", name: "Opening" },
-      { key: "middlegame", name: "Middlegame" },
-      { key: "endgame", name: "Endgame" },
-      { key: "rookEndgame", name: "Rook Endgame" },
-      { key: "bishopEndgame", name: "Bishop Endgame" },
-      { key: "pawnEndgame", name: "Pawn Endgame" },
-      { key: "knightEndgame", name: "Knight Endgame" },
-      { key: "queenEndgame", name: "Queen Endgame" },
-      { key: "queenRookEndgame", name: "Queen & Rook Endgame" }
-    ]
-  },
-  {
-    label: "Tactics",
-    themes: [
-      { key: "fork", name: "Fork" },
-      { key: "pin", name: "Pin" },
-      { key: "skewer", name: "Skewer" },
-      { key: "discoveredAttack", name: "Discovered Attack" },
-      { key: "discoveredCheck", name: "Discovered Check" },
-      { key: "doubleCheck", name: "Double Check" },
-      { key: "xRayAttack", name: "X-Ray Attack" },
-      { key: "hangingPiece", name: "Hanging Piece" },
-      { key: "capturingDefender", name: "Capture the Defender" },
-      { key: "trappedPiece", name: "Trapped Piece" },
-      { key: "sacrifice", name: "Sacrifice" },
-      { key: "clearance", name: "Clearance" },
-      { key: "attraction", name: "Attraction" },
-      { key: "deflection", name: "Deflection" },
-      { key: "advancedPawn", name: "Advanced Pawn" },
-      { key: "attackingF2F7", name: "Attack on f2/f7" },
-      { key: "exposedKing", name: "Exposed King" },
-      { key: "kingsideAttack", name: "Kingside Attack" },
-      { key: "queensideAttack", name: "Queenside Attack" },
-      { key: "promotion", name: "Promotion" },
-      { key: "underPromotion", name: "Underpromotion" },
-      { key: "crushing", name: "Crushing" },
-      { key: "advantage", name: "Advantage" }
-    ]
-  },
-  {
-    label: "Advanced Concepts",
-    themes: [
-      { key: "defensiveMove", name: "Defensive Move" },
-      { key: "interference", name: "Interference" },
-      { key: "intermezzo", name: "Intermezzo" },
-      { key: "quietMove", name: "Quiet Move" },
-      { key: "zugzwang", name: "Zugzwang" },
-      { key: "equality", name: "Equality" },
-      { key: "collinear", name: "Collinear" },
-      { key: "collinearMove", name: "Collinear Move" }
-    ]
-  },
-  {
-    label: "Checkmate Patterns",
-    themes: [
-      { key: "mate", name: "Checkmate" },
-      { key: "mateIn1", name: "Mate in 1" },
-      { key: "mateIn2", name: "Mate in 2" },
-      { key: "mateIn3", name: "Mate in 3" },
-      { key: "mateIn4", name: "Mate in 4" },
-      { key: "mateIn5", name: "Mate in 5+" },
-      { key: "anastasiaMate", name: "Anastasia's Mate" },
-      { key: "arabianMate", name: "Arabian Mate" },
-      { key: "backRankMate", name: "Back Rank Mate" },
-      { key: "balestraMate", name: "Balestra Mate" },
-      { key: "blindSwineMate", name: "Blind Swine Mate" },
-      { key: "bodenMate", name: "Boden's Mate" },
-      { key: "cornerMate", name: "Corner Mate" },
-      { key: "doubleBishopMate", name: "Double Bishop Mate" },
-      { key: "dovetailMate", name: "Dovetail Mate" },
-      { key: "epauletteMate", name: "\xC9paulette Mate" },
-      { key: "hookMate", name: "Hook Mate" },
-      { key: "killBoxMate", name: "Kill Box Mate" },
-      { key: "morphysMate", name: "Morphy's Mate" },
-      { key: "operaMate", name: "Opera Mate" },
-      { key: "pillsburysMate", name: "Pillsbury's Mate" },
-      { key: "smotheredMate", name: "Smothered Mate" },
-      { key: "swallowstailMate", name: "Swallowtail Mate" },
-      { key: "triangleMate", name: "Triangle Mate" },
-      { key: "vukovicMate", name: "Vukovic Mate" }
-    ]
-  },
-  {
-    label: "Length",
-    themes: [
-      { key: "oneMove", name: "One Move" },
-      { key: "short", name: "Short (2\u20133)" },
-      { key: "long", name: "Long (4\u20135)" },
-      { key: "veryLong", name: "Very Long (6+)" }
-    ]
-  },
-  {
-    label: "Other",
-    themes: [
-      { key: "castling", name: "Castling" },
-      { key: "enPassant", name: "En Passant" },
-      { key: "master", name: "Master Game" },
-      { key: "masterVsMaster", name: "Master vs Master" },
-      { key: "superGM", name: "Super GM" }
-    ]
-  }
-];
-var DIFFICULTY_PRESETS = [
-  { key: "easiest", label: "Easiest", ratingMin: "", ratingMax: "1200" },
-  { key: "easier", label: "Easier", ratingMin: "1200", ratingMax: "1500" },
-  { key: "normal", label: "Normal", ratingMin: "1500", ratingMax: "1800" },
-  { key: "harder", label: "Harder", ratingMin: "1800", ratingMax: "2100" },
-  { key: "hardest", label: "Hardest", ratingMin: "2100", ratingMax: "" }
-];
-function currentDifficulty(filters) {
-  for (const p of DIFFICULTY_PRESETS) {
-    if (filters.ratingMin === p.ratingMin && filters.ratingMax === p.ratingMax) return p.key;
-  }
-  return "";
-}
-function formatOpeningName(key) {
-  const parts = key.split("_");
-  if (parts.length <= 2) return parts.join(" ");
-  const family = parts.slice(0, 2).join(" ");
-  const variation = parts.slice(2).join(" ");
-  return `${family}: ${variation}`;
-}
-function formatLoss(loss) {
-  return `\u2212${Math.round(loss * 100)}%`;
-}
-function formatSavedMove(round) {
-  const moveNum = Math.ceil(round.source.ply / 2);
-  const prefix = round.source.ply % 2 === 1 ? `${moveNum}.` : `${moveNum}\u2026`;
-  return `${prefix} ${round.source.san}`;
-}
-function formatImportedOpening(record) {
-  return record.openingTags[0] ?? "No opening tag";
-}
-function renderSourceSwitch(current2, onChange3) {
-  return h("div.puzzle-library__sources", [
-    h("button", {
-      class: { active: current2 === "saved" },
-      on: { click: () => onChange3("saved") }
-    }, "Saved Puzzles"),
-    h("button", {
-      class: { active: current2 === "lichess" },
-      on: { click: () => onChange3("lichess") }
-    }, "Imported Lichess")
-  ]);
-}
-function renderSavedPuzzleLibrary(deps) {
-  const { rounds, currentPuzzleKey, recentResultForKey, isResumeKey } = deps;
-  if (rounds.length === 0) {
-    return h("div.puzzle-library__empty-body", [
-      h("p", "No saved puzzles yet."),
-      h("p", "Review games, save missed tactics, and they will appear here as local training rounds."),
-      h("a", { attrs: { href: "#/games" } }, "Go to My Games")
-    ]);
-  }
-  return h("ul.puzzle-library__list", rounds.map((round) => {
-    const result = recentResultForKey(round.key);
-    const resume = isResumeKey(round.key) || currentPuzzleKey === round.key;
-    const source = round.sourceGame ? `${round.sourceGame.white ?? "White"} vs ${round.sourceGame.black ?? "Black"}` : "Source game unavailable";
-    return h("li.puzzle-library__item", [
-      h("div.puzzle-library__main", [
-        h("div.puzzle-library__move", formatSavedMove(round)),
-        h("div.puzzle-library__meta", [
-          h("span", formatLoss(round.source.loss)),
-          h("span", `Best: ${uciToSan(round.startFen, round.source.bestMove)}`),
-          h("span", source)
-        ])
-      ]),
-      h("div.puzzle-library__actions", [
-        result ? h("span.puzzle-library__badge", result) : null,
-        round.sourceGame ? h("a.button", { attrs: { href: `#/puzzles/${round.routeId}` } }, resume ? "Resume" : "Solve") : h("span.puzzle-library__badge", "Unavailable")
-      ])
-    ]);
-  }));
-}
-function renderActiveFilterSummary(filters, onRatingMin, onRatingMax, onThemes, onOpening) {
-  const chips = [];
-  if (filters.ratingMin || filters.ratingMax) {
-    const min = filters.ratingMin.trim();
-    const max = filters.ratingMax.trim();
-    const label = min && max ? `${min}\u2013${max}` : min ? `>${min}` : `<${max}`;
-    chips.push(h("span.puzzle-filter__chip", [
-      h("span", label),
-      h("button.puzzle-filter__chip-clear", {
-        attrs: { title: "Clear rating filter" },
-        on: { click: () => {
-          onRatingMin("");
-          onRatingMax("");
-        } }
-      }, "\xD7")
-    ]));
-  }
-  if (filters.themes.length > 0) {
-    const label = filters.themes.length === 1 ? filters.themes[0] : `${filters.themes.length} themes`;
-    chips.push(h("span.puzzle-filter__chip", [
-      h("span", label),
-      h("button.puzzle-filter__chip-clear", {
-        attrs: { title: "Clear theme filter" },
-        on: { click: () => onThemes([]) }
-      }, "\xD7")
-    ]));
-  }
-  if (filters.opening) {
-    const shortName = filters.opening.split("_").slice(0, 2).join(" ");
-    chips.push(h("span.puzzle-filter__chip", [
-      h("span", shortName),
-      h("button.puzzle-filter__chip-clear", {
-        attrs: { title: "Clear opening filter" },
-        on: { click: () => onOpening("") }
-      }, "\xD7")
-    ]));
-  }
-  if (chips.length === 0) return null;
-  return h("div.puzzle-filter__active-summary", [
-    ...chips,
-    chips.length >= 2 ? h("button.puzzle-filter__clear-all", {
-      on: { click: () => {
-        onRatingMin("");
-        onRatingMax("");
-        onThemes([]);
-        onOpening("");
-      } }
-    }, "Clear all") : null
-  ]);
-}
-function renderDifficultyStrip(filters, onRatingMin, onRatingMax) {
-  const active = currentDifficulty(filters);
-  const min = filters.ratingMin.trim();
-  const max = filters.ratingMax.trim();
-  const rangeLabel = !min && !max ? "All ratings" : min && max ? `${min}\u2013${max}` : min ? `>${min}` : `<${max}`;
-  return h("div.puzzle-filter__difficulty", [
-    h("span.puzzle-filter__label", "Difficulty"),
-    h("div.puzzle-filter__preset-row", [
-      ...DIFFICULTY_PRESETS.map(
-        (p) => h("button.puzzle-filter__preset-pill", {
-          class: { active: active === p.key },
-          on: { click: () => {
-            onRatingMin(p.ratingMin);
-            onRatingMax(p.ratingMax);
-          } },
-          attrs: { title: `${p.ratingMin || "0"}\u2013${p.ratingMax || "3500"}` }
-        }, p.label)
-      )
-    ]),
-    h("div.puzzle-filter__rating-inputs", [
-      h("input.puzzle-filter__rating-input", {
-        attrs: { type: "number", placeholder: "Min", min: "0", max: "3500", step: "50" },
-        props: { value: filters.ratingMin },
-        on: { change: (e) => onRatingMin(e.target.value.trim()) }
-      }),
-      h("span.puzzle-filter__rating-sep", "\u2013"),
-      h("input.puzzle-filter__rating-input", {
-        attrs: { type: "number", placeholder: "Max", min: "0", max: "3500", step: "50" },
-        props: { value: filters.ratingMax },
-        on: { change: (e) => onRatingMax(e.target.value.trim()) }
-      })
-    ]),
-    h("span.puzzle-filter__range-display", rangeLabel)
-  ]);
-}
-function renderOpeningSelect(openings, currentOpening, onOpening) {
-  return h("div.puzzle-filter__select", [
-    h("label.puzzle-filter__label", { attrs: { for: "puzzle-opening-sel" } }, "Opening"),
-    h("select.puzzle-opening__selector", {
-      attrs: { id: "puzzle-opening-sel" },
-      on: { change: (e) => onOpening(e.target.value) }
-    }, [
-      h("option", { attrs: { value: "" }, props: { selected: currentOpening === "" } }, "All openings"),
-      ...openings.map(
-        (opening) => h("option", {
-          attrs: { value: opening },
-          props: { selected: currentOpening === opening }
-        }, formatOpeningName(opening))
-      )
-    ])
-  ]);
-}
-var collapsedCategories = /* @__PURE__ */ new Set(["Checkmate Patterns"]);
-function renderThemeGrid(availableThemes, selectedThemes, onThemes, redraw2) {
-  const themeSet = new Set(availableThemes);
-  const selectedSet = new Set(selectedThemes);
-  const categories = PUZZLE_THEME_CATEGORIES.map((cat) => {
-    const catThemes = cat.themes.filter((t) => themeSet.has(t.key));
-    if (catThemes.length === 0) return null;
-    const isCollapsed = collapsedCategories.has(cat.label);
-    return h("div.puzzle-themes__category", { class: { collapsed: isCollapsed } }, [
-      h("button.puzzle-themes__category-label", {
-        on: {
-          click: () => {
-            if (isCollapsed) collapsedCategories.delete(cat.label);
-            else collapsedCategories.add(cat.label);
-            redraw2();
-          }
-        }
-      }, [
-        h("span", cat.label),
-        h("span.puzzle-themes__collapse-icon", isCollapsed ? "\u25B6" : "\u25BC")
-      ]),
-      isCollapsed ? null : h(
-        "div.puzzle-themes__list",
-        catThemes.map((theme) => {
-          const isActive = selectedSet.has(theme.key);
-          return h("button.puzzle-themes__link", {
-            class: { active: isActive },
-            on: {
-              click: () => {
-                const next2 = isActive ? selectedThemes.filter((k) => k !== theme.key) : [...selectedThemes, theme.key];
-                onThemes(next2);
-              }
-            }
-          }, [
-            h("span", h("h3", theme.name))
-          ]);
-        })
-      )
-    ]);
-  }).filter((n) => n !== null);
-  return h("div.puzzle-themes", categories);
-}
-function renderImportedPuzzleLibrary(deps) {
-  const { state } = deps;
-  if (state.status === "missing") {
-    return h("div.puzzle-library__empty-body", [
-      h("p", "No generated Lichess puzzle dataset was found in `public/generated/lichess-puzzles/`."),
-      h("p", "Run the local download and shard scripts first, then reload this page.")
-    ]);
-  }
-  if (state.status === "error") {
-    return h("div.puzzle-library__empty-body", [
-      h("p", "The imported puzzle dataset could not be loaded."),
-      state.error ? h("p", state.error) : null
-    ]);
-  }
-  const manifest2 = state.manifest;
-  const filters = state.query.filters;
-  const filterPanel = h("div.puzzle-library__filter-panel", [
-    h("div.puzzle-filter__settings", [
-      renderDifficultyStrip(filters, deps.onRatingMin, deps.onRatingMax),
-      manifest2?.openings ? renderOpeningSelect(manifest2.openings, filters.opening, deps.onOpening) : null
-    ]),
-    renderActiveFilterSummary(filters, deps.onRatingMin, deps.onRatingMax, deps.onThemes, deps.onOpening),
-    manifest2?.themes ? renderThemeGrid(manifest2.themes, filters.themes, deps.onThemes, deps.redraw) : h("div.puzzle-library__empty-body", "Loading puzzle catalog\u2026")
-  ]);
-  if (state.status === "loading") {
-    return h("div.puzzle-library__imported", [
-      filterPanel,
-      h("div.puzzle-library__status", "Searching puzzles\u2026")
-    ]);
-  }
-  const pageLabel = `Page ${state.query.page + 1}`;
-  const countLabel = state.items.length === 0 ? "No puzzles match the current filters." : `${state.items.length}${state.hasNext ? "+" : ""} puzzles`;
-  const ctaBar = h("div.puzzle-library__cta-bar", [
-    h("span.puzzle-library__count", countLabel),
-    state.items.length > 0 ? h("button.puzzle-library__train-btn", { on: { click: deps.onStartTraining } }, "Start Training \u2192") : null
-  ]);
-  return h("div.puzzle-library__imported", [
-    filterPanel,
-    ctaBar,
-    state.items.length === 0 ? null : h("ul.puzzle-library__list", state.items.map((item) => {
-      const themeLabel = item.themes.slice(0, 3).join(", ") || "No themes";
-      return h("li.puzzle-library__item", [
-        h("div.puzzle-library__main", [
-          h("div.puzzle-library__move", `Lichess #${item.id}`),
-          h("div.puzzle-library__meta", [
-            h("span", `Rating ${item.rating}`),
-            item.plays !== void 0 ? h("span", `${item.plays.toLocaleString()} plays`) : null,
-            h("span", formatImportedOpening(item)),
-            h("span", themeLabel)
-          ])
-        ]),
-        h("div.puzzle-library__actions", [
-          h("a.button", { attrs: { href: `#/puzzles/${item.routeId}` } }, "Solve")
-        ])
-      ]);
-    })),
-    state.items.length > 0 ? h("div.puzzle-library__paging", [
-      h("div.puzzle-library__paging-actions", [
-        h("button", { attrs: { disabled: !state.hasPrev }, on: { click: deps.onPrevPage } }, "\u2190 Prev"),
-        h("span", pageLabel),
-        h("button", { attrs: { disabled: !state.hasNext }, on: { click: deps.onNextPage } }, "Next \u2192")
-      ])
-    ]) : null
-  ]);
-}
-function renderPuzzleLibrary(deps) {
-  const resumeKey = deps.currentPuzzleKey ?? deps.session.current?.key ?? null;
-  const title = deps.source === "saved" ? `Saved Puzzles (${deps.savedRounds.length})` : `Imported Lichess Puzzles (${deps.importedState.manifest?.totalCount ?? "\u2026"})`;
-  const subtitle = deps.source === "saved" ? "Local tactics extracted from your reviewed games." : "Official Lichess puzzle export, preprocessed into local browser-ready shards.";
-  return h("div.puzzle-library", [
-    h("div.puzzle-library__header", [
-      h("div", [
-        h("h2", title),
-        h("p", subtitle)
-      ]),
-      resumeKey ? h("a.button", { attrs: { href: `#/puzzles/${encodeURIComponent(resumeKey)}` } }, "Resume Current Puzzle") : null
-    ]),
-    renderSourceSwitch(deps.source, deps.onSourceChange),
-    deps.source === "saved" ? renderSavedPuzzleLibrary({
-      rounds: deps.savedRounds,
-      currentPuzzleKey: deps.currentPuzzleKey,
-      recentResultForKey: deps.recentResultForKey,
-      isResumeKey: deps.isResumeKey
-    }) : renderImportedPuzzleLibrary({
-      state: deps.importedState,
-      onRatingMin: deps.onImportedRatingMin,
-      onRatingMax: deps.onImportedRatingMax,
-      onThemes: deps.onImportedThemes,
-      onOpening: deps.onImportedOpening,
-      onPrevPage: deps.onImportedPrevPage,
-      onNextPage: deps.onImportedNextPage,
-      onStartTraining: deps.onStartTraining,
-      redraw: deps.redraw
-    })
-  ]);
-}
-function renderPuzzleRound(deps) {
-  const round = deps.ctrl.round();
-  const [done, total] = deps.ctrl.progress();
-  const feedback = deps.ctrl.feedback();
-  const result = deps.ctrl.result();
-  let label = `Find the best move for ${round.toMove === "white" ? "White" : "Black"}`;
-  if (feedback === "good") label = "Correct. Keep going.";
-  else if (feedback === "fail") label = "Not the move. Try again or reveal the line.";
-  else if (feedback === "win") label = "Solved.";
-  else if (feedback === "view") label = "Solution shown.";
-  const metaRows = [];
-  if (round.sourceKind === "saved") {
-    const sourceGame = round.sourceGame;
-    const sourceLabel = sourceGame ? `${sourceGame.white ?? "White"} vs ${sourceGame.black ?? "Black"}` : "Source game unavailable";
-    metaRows.push(
-      h("dt", "Source game"),
-      h("dd", sourceLabel),
-      h("dt", "Mistake"),
-      h("dd", formatSavedMove(round)),
-      h("dt", "Loss"),
-      h("dd", formatLoss(round.source.loss)),
-      h("dt", "Best move"),
-      h("dd", uciToSan(round.startFen, round.source.bestMove))
-    );
-    if (sourceGame?.opening || sourceGame?.eco) {
-      metaRows.push(h("dt", "Opening"), h("dd", sourceGame.opening ?? sourceGame.eco ?? ""));
-    }
-    if (sourceGame?.date) {
-      metaRows.push(h("dt", "Date"), h("dd", sourceGame.date));
-    }
-    if (sourceGame?.timeClass) {
-      metaRows.push(h("dt", "Time control"), h("dd", sourceGame.timeClass));
-    }
-  } else {
-    const imported = round.imported;
-    metaRows.push(
-      h("dt", "Source"),
-      h("dd", "Imported Lichess puzzle"),
-      h("dt", "Puzzle ID"),
-      h("dd", imported.id),
-      h("dt", "Rating"),
-      h("dd", String(imported.rating)),
-      h("dt", "Themes"),
-      h("dd", imported.themes.join(", ") || "None"),
-      h("dt", "Opening"),
-      h("dd", formatImportedOpening(imported))
-    );
-    if (imported.plays !== void 0) {
-      metaRows.push(h("dt", "Plays"), h("dd", imported.plays.toLocaleString()));
-    }
-    if (imported.popularity !== void 0) {
-      metaRows.push(h("dt", "Popularity"), h("dd", String(imported.popularity)));
-    }
-  }
-  const isTerminal = result === "solved" || result === "viewed";
-  return h("div.puzzle-round", [
-    h("div.analyse__board.main-board.puzzle-round__board-shell", [
-      deps.topStrip,
-      h("div.analyse__board-inner", [deps.board, deps.promotionDialog]),
-      deps.bottomStrip,
-      isTerminal ? h("div.puzzle-round__nav", [
-        h("button", { on: { click: deps.onNavFirst }, attrs: { title: "First" } }, "|\u25C0"),
-        h("button", { on: { click: deps.onNavPrev }, attrs: { title: "Previous" } }, "\u25C0"),
-        h("button", { on: { click: deps.onNavNext }, attrs: { title: "Next" } }, "\u25B6"),
-        h("button", { on: { click: deps.onNavLast }, attrs: { title: "Last" } }, "\u25B6|")
-      ]) : null
-    ]),
-    h("aside.puzzle-round__side", [
-      deps.trainingContext ? (() => {
-        const ctx = deps.trainingContext;
-        const parts = [];
-        if (ctx.themes.length > 0) parts.push(ctx.themes.join(", "));
-        if (ctx.opening) parts.push(ctx.opening);
-        const ratingMin = ctx.ratingMin.trim();
-        const ratingMax = ctx.ratingMax.trim();
-        if (ratingMin || ratingMax) {
-          parts.push(ratingMin && ratingMax ? `${ratingMin}\u2013${ratingMax}` : ratingMin || ratingMax);
-        }
-        return parts.length > 0 ? h("div.puzzle-round__training-context", `Training: ${parts.join(" \xB7 ")}`) : null;
-      })() : null,
-      h(`section.puzzle-round__feedback.${feedback}`, [
-        result === "solved" || result === "viewed" ? h("div.puzzle-round__after", [
-          h(
-            "div.puzzle-round__complete",
-            result === "solved" ? "Puzzle solved!" : "Puzzle complete."
-          ),
-          h("button.puzzle-round__next", { on: { click: deps.onNext } }, "Continue training \u2192")
-        ]) : [
-          feedback === "good" || feedback === "win" ? h("div.puzzle-round__feedback-icon", "\u2713") : feedback === "fail" ? h("div.puzzle-round__feedback-icon", "\u2717") : null,
-          h("div.puzzle-round__status", label),
-          h("div.puzzle-round__progress", `${done} / ${total}`)
-        ]
-      ]),
-      h("section.puzzle-round__controls", [
-        h("button", { on: { click: deps.onBack } }, "Back to library"),
-        h("button", { on: { click: deps.onFlip } }, "Flip"),
-        result !== "solved" && result !== "viewed" && feedback === "fail" ? h("button", { on: { click: deps.onRetry } }, "Retry") : null,
-        result !== "solved" && result !== "viewed" && (feedback === "find" || feedback === "good" || feedback === "fail") ? h("button", { on: { click: deps.onViewSolution } }, "View solution") : null,
-        deps.recent.length > 0 ? h(
-          "div.puzzle-round__session",
-          // Most-recent-first: index 0 is the most recent outcome
-          deps.recent.map((r) => h(`span.result-dot.result-dot--${r.result}`))
-        ) : null
-      ]),
-      h("section.puzzle-round__meta", [
-        h("h3", "Puzzle context"),
-        h("dl", metaRows),
-        round.sourceKind === "saved" && round.sourceGame ? h("button", { on: { click: deps.onOpenSourceGame } }, "Open source game") : null,
-        round.sourceKind === "imported" && round.imported.gameUrl ? h("a.button", {
-          attrs: {
-            href: round.imported.gameUrl,
-            target: "_blank",
-            rel: "noreferrer"
-          }
-        }, "Open source on Lichess") : null
-      ])
-    ])
-  ]);
-}
-
-// src/puzzles/index.ts
-var _getImportedGames4 = () => [];
-var _getRoute = () => ({ name: "home", params: {} });
-var _getCtrlPath = () => "";
-var _loadGameById = () => false;
-var _navigate3 = () => {
-};
-var _clearRetro = () => {
-};
-var _redraw7 = () => {
-};
-var _openStandalonePuzzle = () => {
-};
-var _restoreStandalonePuzzleBackground = () => {
-};
-var _hasStandalonePuzzleBackground = () => false;
-var routeState = { status: "idle" };
-var puzzleSession = emptyPuzzleSession();
-var librarySource = "saved";
-var importedQuery = defaultImportedPuzzleQuery();
-var viewPly = 0;
-function saveSessionSnapshot() {
-  const active = getActivePuzzleCtrl();
-  if (!active) return;
-  puzzleSession = applyPuzzleSnapshot(puzzleSession, active.snapshot());
-  void savePuzzleSessionToIdb(puzzleSession);
-}
-function clearActivePuzzleRoute() {
-  setActivePuzzleCtrl(void 0);
-  viewPly = 0;
-  syncArrow();
-}
-function onNavFirst() {
-  const ctrl2 = getActivePuzzleCtrl();
-  if (!ctrl2) return;
-  viewPly = 0;
-  restoreRoundBoard(ctrl2.round(), viewPly);
-  ctrl2.setCurrentPath(_getCtrlPath());
-  syncArrow();
-  _redraw7();
-}
-function onNavPrev() {
-  const ctrl2 = getActivePuzzleCtrl();
-  if (!ctrl2) return;
-  viewPly = Math.max(0, viewPly - 1);
-  restoreRoundBoard(ctrl2.round(), viewPly);
-  ctrl2.setCurrentPath(_getCtrlPath());
-  syncArrow();
-  _redraw7();
-}
-function onNavNext() {
-  const ctrl2 = getActivePuzzleCtrl();
-  if (!ctrl2) return;
-  viewPly = Math.min(ctrl2.round().solution.length, viewPly + 1);
-  restoreRoundBoard(ctrl2.round(), viewPly);
-  ctrl2.setCurrentPath(_getCtrlPath());
-  syncArrow();
-  _redraw7();
-}
-function onNavLast() {
-  const ctrl2 = getActivePuzzleCtrl();
-  if (!ctrl2) return;
-  viewPly = ctrl2.round().solution.length;
-  restoreRoundBoard(ctrl2.round(), viewPly);
-  ctrl2.setCurrentPath(_getCtrlPath());
-  syncArrow();
-  _redraw7();
-}
-function savedPuzzleRounds() {
-  const games = _getImportedGames4();
-  return savedPuzzles.map(
-    (candidate) => buildPuzzleRound(candidate, {
-      sourceGame: candidate.gameId ? games.find((game) => game.id === candidate.gameId) ?? null : null
-    })
-  );
-}
-function setLibrarySource(source) {
-  if (librarySource === source) return;
-  librarySource = source;
-  if (source === "lichess") requestImportedPuzzleLibrary(importedQuery);
-  _redraw7();
-}
-function updateImportedFilters(patch2) {
-  importedQuery = {
-    ...importedQuery,
-    page: 0,
-    filters: {
-      ...importedQuery.filters,
-      ...patch2
-    }
-  };
-  requestImportedPuzzleLibrary(importedQuery);
-  void savePuzzleQueryToIdb(importedQuery.filters);
-}
-function stepImportedPage(delta) {
-  const nextPage = Math.max(0, importedQuery.page + delta);
-  if (nextPage === importedQuery.page) return;
-  importedQuery = {
-    ...importedQuery,
-    page: nextPage
-  };
-  requestImportedPuzzleLibrary(importedQuery);
-}
-function nextPuzzleHref(round) {
-  if (round.sourceKind === "saved") {
-    const rounds = savedPuzzleRounds();
-    const idx2 = rounds.findIndex((candidate) => candidate.key === round.key);
-    const next3 = idx2 >= 0 ? rounds[idx2 + 1] : null;
-    return next3 ? `#/puzzles/${next3.routeId}` : "#/puzzles";
-  }
-  if (isTrainingMode()) {
-    advanceTrainingCursor();
-    const routeId = currentTrainingRouteId();
-    if (routeId) return `#/puzzles/${routeId}`;
-    if (!isTrainingMode()) return "#/puzzles";
-    return "#/puzzles";
-  }
-  const importedState = importedPuzzleLibraryState();
-  const idx = importedState.items.findIndex((item) => item.key === round.key);
-  const next2 = idx >= 0 ? importedState.items[idx + 1] : null;
-  return next2 ? `#/puzzles/${next2.routeId}` : "#/puzzles";
-}
-function openSourceGame(round) {
-  if (round.sourceKind !== "saved" || !round.source.gameId) return;
-  if (!_loadGameById(round.source.gameId)) return;
-  _clearRetro();
-  _navigate3(round.parentPath);
-  window.location.hash = `#/analysis/${round.source.gameId}`;
-}
-function restoreRoundBoard(round, progressPly) {
-  setAnimationEnabled(false);
-  if (round.sourceKind === "imported") {
-    _openStandalonePuzzle(round.startFen);
-    if (round.initialMove) playUciMove(round.initialMove);
-    for (let i = 0; i < progressPly; i++) {
-      const move3 = round.solution[i];
-      if (!move3) break;
-      playUciMove(move3);
-    }
-    setAnimationEnabled(true);
-    return;
-  }
-  if (round.source.gameId) _loadGameById(round.source.gameId);
-  _clearRetro();
-  _navigate3(round.parentPath);
-  for (let i = 0; i < progressPly; i++) {
-    const move3 = round.solution[i];
-    if (!move3) break;
-    playUciMove(move3);
-  }
-  setAnimationEnabled(true);
-}
-function initPuzzles(deps) {
-  _getImportedGames4 = deps.getImportedGames;
-  _getRoute = deps.getRoute;
-  _getCtrlPath = deps.getCtrlPath;
-  _loadGameById = deps.loadGameById;
-  _navigate3 = deps.navigate;
-  _clearRetro = deps.clearRetro;
-  _redraw7 = deps.redraw;
-  _openStandalonePuzzle = deps.openStandalonePuzzle;
-  _restoreStandalonePuzzleBackground = deps.restoreStandalonePuzzleBackground;
-  _hasStandalonePuzzleBackground = deps.hasStandalonePuzzleBackground;
-  initImportedPuzzles({ redraw: deps.redraw });
-  void loadPuzzleQueryFromIdb().then((filters) => {
-    if (filters) {
-      const migratedFilters = {
-        ...filters,
-        themes: filters.themes ?? (filters.theme ? [filters.theme] : [])
-      };
-      importedQuery = { ...importedQuery, page: 0, filters: migratedFilters };
-    }
-  });
-  void loadPuzzleSessionFromIdb().then((session) => {
-    puzzleSession = session ?? emptyPuzzleSession();
-    _redraw7();
-    void syncPuzzleRoute(_getRoute());
-  });
-}
-async function syncPuzzleRoute(route) {
-  if (route.name !== "puzzle-round") {
-    if (route.name === "puzzles") {
-      routeState = { status: "library" };
-    } else {
-      routeState = { status: "idle" };
-      if (_hasStandalonePuzzleBackground()) {
-        _restoreStandalonePuzzleBackground();
-      }
-    }
-    if (getActivePuzzleCtrl()) {
-      saveSessionSnapshot();
-      clearActivePuzzleRoute();
-    }
-    _redraw7();
-    return;
-  }
-  const routeId = route.params["id"] ?? "";
-  const active = getActivePuzzleCtrl();
-  const activeSnapshot = active ? currentPuzzleSnapshot(puzzleSession, active.round().key) : null;
-  if (active?.round().routeId === routeId && routeState.status === "ready" && (!activeSnapshot || active.progressPly() === activeSnapshot.progressPly)) return;
-  if (isTrainingMode() && isImportedPuzzleRouteId(routeId) && currentTrainingRouteId() !== routeId) {
-    stopTraining();
-  }
-  routeState = { status: "loading", routeId };
-  clearActivePuzzleRoute();
-  _redraw7();
-  const importedRoute = isImportedPuzzleRouteId(routeId);
-  if (importedRoute) {
-    librarySource = "lichess";
-  } else {
-    librarySource = "saved";
-    if (_hasStandalonePuzzleBackground()) {
-      _restoreStandalonePuzzleBackground();
-    }
-  }
-  let round = null;
-  if (importedRoute) {
-    round = await findImportedPuzzleRoundByRouteId(routeId);
-    if (!round) {
-      routeState = { status: "missing", routeId, message: "This imported puzzle could not be loaded from the generated Lichess shards." };
-      _redraw7();
-      return;
-    }
-  } else {
-    const candidate = findSavedPuzzleByRouteId(savedPuzzles, routeId);
-    if (!candidate) {
-      routeState = { status: "missing", routeId, message: "This saved puzzle was not found." };
-      _redraw7();
-      return;
-    }
-    if (!candidate.gameId) {
-      routeState = { status: "missing", routeId, message: "This puzzle has no saved source game to load." };
-      _redraw7();
-      return;
-    }
-    const sourceGame = _getImportedGames4().find((game) => game.id === candidate.gameId) ?? null;
-    if (!sourceGame) {
-      routeState = { status: "missing", routeId, message: "The source game for this puzzle is no longer in the local library." };
-      _redraw7();
-      return;
-    }
-    const storedAnalysis = await loadAnalysisFromIdb(candidate.gameId);
-    round = buildPuzzleRound(candidate, {
-      sourceGame,
-      ...storedAnalysis !== void 0 ? { storedAnalysis } : {}
-    });
-  }
-  const ctrl2 = makePuzzleCtrl(round, (snapshot2) => {
-    puzzleSession = applyPuzzleSnapshot(puzzleSession, snapshot2);
-    void savePuzzleSessionToIdb(puzzleSession);
-    _redraw7();
-  });
-  setActivePuzzleCtrl(ctrl2);
-  syncArrow();
-  const snapshot = currentPuzzleSnapshot(puzzleSession, round.key);
-  const progressPly = snapshot?.progressPly ?? 0;
-  restoreRoundBoard(round, progressPly);
-  if (snapshot) ctrl2.restore(snapshot);
-  ctrl2.setCurrentPath(_getCtrlPath());
-  const restoredResult = ctrl2.result();
-  viewPly = restoredResult === "solved" || restoredResult === "viewed" ? round.solution.length : 0;
-  routeState = { status: "ready", routeId };
-  _redraw7();
-}
-function renderPuzzlesRoute(route) {
-  if (route.name === "puzzles") {
-    if (librarySource === "lichess") requestImportedPuzzleLibrary(importedQuery);
-    const rounds = savedPuzzleRounds();
-    return renderPuzzleLibrary({
-      source: librarySource,
-      onSourceChange: setLibrarySource,
-      savedRounds: rounds,
-      importedState: importedPuzzleLibraryState(),
-      session: puzzleSession,
-      currentPuzzleKey: getActivePuzzleCtrl()?.round().key ?? null,
-      recentResultForKey: (key) => recentPuzzleResult(puzzleSession, key),
-      isResumeKey: (key) => currentPuzzleIsActive(puzzleSession, key),
-      onImportedRatingMin: (value) => updateImportedFilters({ ratingMin: value }),
-      onImportedRatingMax: (value) => updateImportedFilters({ ratingMax: value }),
-      onImportedThemes: (values) => updateImportedFilters({ themes: values }),
-      onImportedOpening: (value) => updateImportedFilters({ opening: value }),
-      onImportedPrevPage: () => stepImportedPage(-1),
-      onImportedNextPage: () => stepImportedPage(1),
-      redraw: _redraw7,
-      onStartTraining: () => {
-        startTraining(importedQuery);
-        const routeId = currentTrainingRouteId();
-        if (routeId) {
-          window.location.hash = `#/puzzles/${routeId}`;
-        } else {
-          const waitForTraining = () => {
-            const id = currentTrainingRouteId();
-            if (id) {
-              window.location.hash = `#/puzzles/${id}`;
-              return;
-            }
-            if (!isTrainingMode()) return;
-            setTimeout(waitForTraining, 50);
-          };
-          setTimeout(waitForTraining, 50);
-        }
-      }
-    });
-  }
-  if (route.name !== "puzzle-round") {
-    return h("div");
-  }
-  if (routeState.status === "loading") {
-    return h("div.puzzle-library puzzle-library--empty", [
-      h("h2", "Puzzles"),
-      h("p", "Loading puzzle\u2026")
-    ]);
-  }
-  if (routeState.status === "missing") {
-    return h("div.puzzle-library puzzle-library--empty", [
-      h("h2", "Puzzles"),
-      h("p", routeState.message),
-      h("a", { attrs: { href: "#/puzzles" } }, "Back to puzzle library")
-    ]);
-  }
-  const ctrl2 = getActivePuzzleCtrl();
-  if (!ctrl2) {
-    return h("div.puzzle-library puzzle-library--empty", [
-      h("h2", "Puzzles"),
-      h("p", "Loading puzzle\u2026")
-    ]);
-  }
-  const [topStrip, bottomStrip] = renderPlayerStrips();
-  return renderPuzzleRound({
-    ctrl: ctrl2,
-    onBack: () => {
-      window.location.hash = "#/puzzles";
-    },
-    onFlip: () => {
-      flip();
-      _redraw7();
-    },
-    onRetry: () => {
-      ctrl2.retry();
-      viewPly = 0;
-      restoreRoundBoard(ctrl2.round(), 0);
-      ctrl2.setCurrentPath(_getCtrlPath());
-      syncArrow();
-      _redraw7();
-    },
-    onViewSolution: () => {
-      ctrl2.viewSolution();
-      viewPly = ctrl2.round().solution.length;
-      restoreRoundBoard(ctrl2.round(), viewPly);
-      ctrl2.setCurrentPath(_getCtrlPath());
-      syncArrow();
-      _redraw7();
-    },
-    onNext: () => {
-      window.location.hash = nextPuzzleHref(ctrl2.round());
-    },
-    onOpenSourceGame: () => openSourceGame(ctrl2.round()),
-    onNavFirst,
-    onNavPrev,
-    onNavNext,
-    onNavLast,
-    recent: puzzleSession.recent,
-    trainingContext: ctrl2.round().sourceKind === "imported" && isTrainingMode() ? importedQuery.filters : null,
-    board: renderBoard(),
-    promotionDialog: renderPromotionDialog(),
-    topStrip,
-    bottomStrip
-  });
-}
-function puzzleHrefForCandidate(gameId, path) {
-  return puzzleRouteHref({ gameId, path });
-}
-function handlePuzzleKey(key) {
-  const ctrl2 = getActivePuzzleCtrl();
-  if (!ctrl2) return false;
-  const isTerminal = ctrl2.result() === "solved" || ctrl2.result() === "viewed";
-  if (key === "Escape") {
-    window.location.hash = "#/puzzles";
-    return true;
-  }
-  if (!isTerminal) return false;
-  if (key === "ArrowLeft") {
-    onNavPrev();
-    return true;
-  }
-  if (key === "ArrowRight") {
-    onNavNext();
-    return true;
-  }
-  if (key === "ArrowUp") {
-    onNavFirst();
-    return true;
-  }
-  if (key === "ArrowDown") {
-    onNavLast();
-    return true;
-  }
-  return false;
-}
-
 // src/keyboard.ts
 var _getCtrl6 = () => {
   throw new Error("keyboard not initialised");
 };
-var _navigate4 = () => {
+var _navigate3 = () => {
 };
 var _next = () => {
 };
@@ -8972,77 +7369,68 @@ var _flip = () => {
 };
 var _completeMove = () => {
 };
-var _redraw8 = () => {
+var _redraw6 = () => {
 };
 function bindKeyboardHandlers(deps) {
   _getCtrl6 = deps.getCtrl;
-  _navigate4 = deps.navigate;
+  _navigate3 = deps.navigate;
   _next = deps.next;
   _prev = deps.prev;
   _first = deps.first;
   _last = deps.last;
   _flip = deps.flip;
   _completeMove = deps.completeMove;
-  _redraw8 = deps.redraw;
+  _redraw6 = deps.redraw;
   document.addEventListener("keydown", (e) => {
     const tag = e.target.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
-    if (getActivePuzzleCtrl()) {
-      if (e.key !== "f" && e.key !== "F") {
-        const consumed = handlePuzzleKey(e.key);
-        if (consumed) {
-          e.preventDefault();
-          return;
-        }
-      }
-    }
     if (e.shiftKey) {
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         previousBranch();
-        _redraw8();
+        _redraw6();
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         nextBranch();
-        _redraw8();
+        _redraw6();
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         nextSibling2();
-        _redraw8();
+        _redraw6();
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         prevSibling();
-        _redraw8();
+        _redraw6();
       }
       return;
     }
     if (e.key === "ArrowRight") {
       _next();
-      _redraw8();
+      _redraw6();
     } else if (e.key === "ArrowLeft") {
       _prev();
-      _redraw8();
+      _redraw6();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       _first();
-      _redraw8();
+      _redraw6();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       _last();
-      _redraw8();
+      _redraw6();
     } else if (e.key === "f" || e.key === "F") _flip();
     else if (e.key === "x" || e.key === "X") toggleThreatMode();
     else if (e.key === "l" || e.key === "L") toggleEngine();
     else if (e.key === "a" || e.key === "A") {
       setShowEngineArrows(!showEngineArrows);
       syncArrow();
-      _redraw8();
+      _redraw6();
     } else if (e.key === " ") {
       e.preventDefault();
       playBestMove();
     } else if (e.key === "?") {
       showKeyboardHelp = !showKeyboardHelp;
-      _redraw8();
+      _redraw6();
     }
   });
 }
@@ -9062,12 +7450,12 @@ function previousBranch() {
       return p;
     })();
     if (parent && parent.children.length >= 2) {
-      _navigate4(path);
+      _navigate3(path);
       return;
     }
     path = pathInit(path);
   }
-  _navigate4("");
+  _navigate3("");
 }
 function nextBranch() {
   const ctrl2 = _getCtrl6();
@@ -9080,7 +7468,7 @@ function nextBranch() {
     node = onlyChild;
   }
   const firstChild = node.children[0];
-  if (node.children.length >= 2 && firstChild) _navigate4(path + firstChild.id);
+  if (node.children.length >= 2 && firstChild) _navigate3(path + firstChild.id);
   else _last();
 }
 function nextSibling2() {
@@ -9091,7 +7479,7 @@ function nextSibling2() {
   const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
   const next2 = parentNode2.children[(idx + 1) % parentNode2.children.length];
   if (!next2) return;
-  _navigate4(parentPath + next2.id);
+  _navigate3(parentPath + next2.id);
 }
 function prevSibling() {
   const ctrl2 = _getCtrl6();
@@ -9101,7 +7489,7 @@ function prevSibling() {
   const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
   const prev2 = parentNode2.children[(idx - 1 + parentNode2.children.length) % parentNode2.children.length];
   if (!prev2) return;
-  _navigate4(parentPath + prev2.id);
+  _navigate3(parentPath + prev2.id);
 }
 function playBestMove() {
   const best = currentEval.best;
@@ -9117,7 +7505,7 @@ function renderKeyboardHelp() {
   return h("div.keyboard-help", {
     on: { click: () => {
       showKeyboardHelp = false;
-      _redraw8();
+      _redraw6();
     } }
   }, [
     h("div.keyboard-help__box", { on: { click: (e) => e.stopPropagation() } }, [
@@ -9140,7 +7528,7 @@ function renderKeyboardHelp() {
       h("button.keyboard-help__close", {
         on: { click: () => {
           showKeyboardHelp = false;
-          _redraw8();
+          _redraw6();
         } }
       }, "\u2715")
     ])
@@ -10531,14 +8919,14 @@ var _analyzedGameIds2 = /* @__PURE__ */ new Set();
 var _missedTacticGameIds2 = /* @__PURE__ */ new Set();
 var _analyzedGameAccuracy2 = /* @__PURE__ */ new Map();
 var _getUserColor2 = () => null;
-var _redraw9 = () => {
+var _redraw7 = () => {
 };
 function initReviewQueue(deps) {
   _analyzedGameIds2 = deps.analyzedGameIds;
   _missedTacticGameIds2 = deps.missedTacticGameIds;
   _analyzedGameAccuracy2 = deps.analyzedGameAccuracy;
   _getUserColor2 = deps.getUserColor;
-  _redraw9 = deps.redraw;
+  _redraw7 = deps.redraw;
   onMissedMomentConfigChange(recomputeMissedTactics);
 }
 function recomputeMissedTactics() {
@@ -10553,7 +8941,7 @@ function recomputeMissedTactics() {
       _missedTacticGameIds2.delete(entry.game.id);
     }
   }
-  _redraw9();
+  _redraw7();
 }
 async function initReviewEngine(baseUrl) {
   if (reviewEngineInitStarted) return;
@@ -10660,7 +9048,7 @@ function onReviewBestmove() {
     buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
     reviewDepth
   );
-  _redraw9();
+  _redraw7();
   if (reviewItemIndex < reviewItemQueue.length) {
     sendNextItem();
   } else {
@@ -10711,7 +9099,7 @@ function finishEntry(entry) {
     reviewDepth
   );
   console.log("[review-engine] game complete:", entry.game.id);
-  _redraw9();
+  _redraw7();
   advanceQueue();
 }
 async function startEntryBatch(entry) {
@@ -10750,7 +9138,7 @@ function advanceQueue() {
   const nextIndex = queue.findIndex((e) => e.status === "pending");
   if (nextIndex < 0) {
     activeIndex = -1;
-    _redraw9();
+    _redraw7();
     return;
   }
   activeIndex = nextIndex;
@@ -10798,7 +9186,7 @@ function cancelBulkReview() {
   queue = [];
   activeIndex = -1;
   queuePaused = false;
-  _redraw9();
+  _redraw7();
 }
 function pauseBulkReview() {
   if (!isBulkRunning()) return;
@@ -10808,7 +9196,7 @@ function pauseBulkReview() {
     reviewProtocol.stop();
     reviewSearchActive = false;
   }
-  _redraw9();
+  _redraw7();
 }
 function resumeBulkReview() {
   if (!queuePaused) return;
@@ -10819,7 +9207,7 @@ function resumeBulkReview() {
   } else {
     advanceQueue();
   }
-  _redraw9();
+  _redraw7();
 }
 function getReviewProgress(gameId) {
   const entry = queue.find((e) => e.game.id === gameId);
@@ -11626,9 +10014,6 @@ function activeSection(route) {
     case "analysis":
     case "analysis-game":
       return "analysis";
-    case "puzzle-round":
-    case "puzzles":
-      return "puzzles";
     case "openings":
       return "openings";
     case "stats":
@@ -11642,7 +10027,6 @@ function activeSection(route) {
 var navLinks = [
   { label: "Analysis", href: "#/analysis", section: "analysis" },
   { label: "Games", href: "#/games", section: "games" },
-  { label: "Puzzles", href: "#/puzzles", section: "puzzles" },
   { label: "Openings", href: "#/openings", section: "openings" },
   { label: "Stats", href: "#/stats", section: "stats" }
 ];
@@ -12313,8 +10697,6 @@ function renderHeader(deps) {
 var routes = [
   { pattern: ["analysis", ":id"], name: "analysis-game" },
   { pattern: ["analysis"], name: "analysis" },
-  { pattern: ["puzzles", ":id"], name: "puzzle-round" },
-  { pattern: ["puzzles"], name: "puzzles" },
   { pattern: ["openings"], name: "openings" },
   { pattern: ["stats"], name: "stats" },
   { pattern: ["games"], name: "games" },
@@ -12404,6 +10786,7 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null, getOp
     } else {
       finalClassification = "blunder";
     }
+    const reason = isMissedMate && !qualifiesByLoss ? LEARNABLE_REASONS["missed-mate"] : LEARNABLE_REASONS["swing"];
     const candidate = {
       gameId,
       path,
@@ -12416,7 +10799,8 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null, getOp
       loss: loss ?? 0,
       isMissedMate,
       playerColor,
-      ply: node.ply
+      ply: node.ply,
+      reason
     };
     if (parentEval.moves && parentEval.moves.length > 0) {
       candidate.bestLine = parentEval.moves;
@@ -12612,6 +10996,13 @@ function renderContinue(retro, navigate2, redraw2) {
     "Next"
   ]);
 }
+function renderReasonNote(cand) {
+  if (!cand) return null;
+  return h("div.retro-reason", [
+    h("span.retro-reason__label", `Chosen because: ${cand.reason.label}`),
+    h("span.retro-reason__summary", cand.reason.summary)
+  ]);
+}
 function renderRetroStrip(deps) {
   const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2, onRevealGuidance, onClose, getEvalDepth } = deps;
   if (!retro) return null;
@@ -12712,7 +11103,10 @@ function renderRetroStrip(deps) {
         "div.retro-half.retro-half--top",
         h("div.retro-player", [
           h("div.retro-icon.retro-icon--win", "\u2713"),
-          h("div.retro-instruction", h("strong", msg))
+          h("div.retro-instruction", [
+            h("strong", msg),
+            renderReasonNote(cand)
+          ])
         ])
       ),
       renderContinue(retro, navigate2, redraw2)
@@ -12726,7 +11120,8 @@ function renderRetroStrip(deps) {
           h("div.retro-icon.retro-icon--win", "\u2713"),
           h("div.retro-instruction", [
             h("strong", "Solution"),
-            h("em", ["Best was ", h("strong", bestSan)])
+            h("em", ["Best was ", h("strong", bestSan)]),
+            renderReasonNote(cand)
           ])
         ])
       ),
@@ -12881,58 +11276,8 @@ function getActivePgn() {
   return selectedGamePgn ?? SAMPLE_PGN;
 }
 var ctrl = new AnalyseCtrl(pgnToTree(getActivePgn()));
-var standalonePuzzleBackground = null;
 var restoreGeneration = 0;
 var navStateSaveTimer = null;
-function clonePositionEval(ev) {
-  return {
-    ...ev,
-    ...ev.moves ? { moves: [...ev.moves] } : {},
-    ...ev.lines ? {
-      lines: ev.lines.map((line) => ({
-        ...line,
-        ...line.moves ? { moves: [...line.moves] } : {}
-      }))
-    } : {}
-  };
-}
-function openStandalonePuzzle(fen) {
-  if (!standalonePuzzleBackground) {
-    standalonePuzzleBackground = {
-      ctrl,
-      selectedGameId,
-      selectedGamePgn,
-      currentEval: clonePositionEval(currentEval),
-      evalEntries: [...evalCache.entries()].map(([path, ev]) => [path, clonePositionEval(ev)])
-    };
-  }
-  contextMenuPath = null;
-  contextMenuPos = null;
-  selectedGameId = null;
-  selectedGamePgn = null;
-  ctrl = new AnalyseCtrl(buildStandalonePuzzleRoot(fen));
-  resetCurrentEval();
-  syncBoardAndArrow();
-  redraw();
-}
-function restoreStandalonePuzzleBackground() {
-  const snapshot = standalonePuzzleBackground;
-  if (!snapshot) return;
-  standalonePuzzleBackground = null;
-  selectedGameId = snapshot.selectedGameId;
-  selectedGamePgn = snapshot.selectedGamePgn;
-  ctrl = snapshot.ctrl;
-  clearEvalCache();
-  for (const [path, ev] of snapshot.evalEntries) {
-    evalCache.set(path, clonePositionEval(ev));
-  }
-  setCurrentEval(snapshot.currentEval);
-  syncBoardAndArrow();
-  redraw();
-}
-function hasStandalonePuzzleBackground() {
-  return standalonePuzzleBackground !== null;
-}
 function scheduleNavStateSave(path = ctrl.path) {
   if (navStateSaveTimer !== null) clearTimeout(navStateSaveTimer);
   const selectedId = selectedGameId;
@@ -12965,13 +11310,6 @@ function loadGame(pgn, opts) {
   if (selectedGameId) void loadAndRestoreAnalysis(selectedGameId, restoreGeneration);
   else evalCurrentPosition();
   redraw();
-}
-function loadGameById(gameId) {
-  const game = importedGames.find((g) => g.id === gameId);
-  if (!game) return false;
-  selectedGameId = game.id;
-  loadGame(game.pgn);
-  return true;
 }
 async function loadAndRestoreAnalysis(gameId, generation) {
   const stored = await loadAnalysisFromIdb(gameId);
@@ -13019,7 +11357,7 @@ function navigate(path) {
   ctrl.retro?.onJump(path);
   syncBoard();
   syncArrow();
-  if (!puzzleHidesAnalysis()) evalCurrentPosition();
+  evalCurrentPosition();
   scheduleNavStateSave(ctrl.path);
   redraw();
   scrollActiveIntoView();
@@ -13064,8 +11402,9 @@ function jumpToLast() {
   let node = ctrl.root;
   let path = "";
   while (node.children.length > 0) {
-    path += node.children[0].id;
-    node = node.children[0];
+    const firstChild = node.children[0];
+    path += firstChild.id;
+    node = firstChild;
   }
   navigate(path);
 }
@@ -13148,11 +11487,6 @@ function toggleRetro() {
   const first2 = ctrl.retro.current();
   if (first2) navigate(first2.parentPath);
   else redraw();
-}
-function clearRetroMode() {
-  if (!ctrl.retro) return;
-  delete ctrl.retro;
-  syncArrow();
 }
 function rebuildRetroSession() {
   if (!ctrl.retro) return;
@@ -13305,7 +11639,6 @@ function routeContent(route) {
               savedPuzzles,
               navigate,
               savePuzzle,
-              puzzleHref: (c) => puzzleHrefForCandidate(c.gameId, c.path),
               uciToSan,
               redraw
             };
@@ -13369,9 +11702,6 @@ function routeContent(route) {
       ]);
     case "games":
       return renderGamesView(deps);
-    case "puzzles":
-    case "puzzle-round":
-      return renderPuzzlesRoute(route);
     case "openings":
       return h("h1", "Openings Page");
     case "stats":
@@ -13381,7 +11711,7 @@ function routeContent(route) {
   }
 }
 async function resetAllData() {
-  if (!confirm("Clear all local Patzer Pro data? This removes imported games, saved analysis, puzzles, and local board/settings preferences from this browser.")) return;
+  if (!confirm("Clear all local Patzer Pro data? This removes imported games, saved analysis, saved puzzle candidates, and local board/settings preferences from this browser.")) return;
   await clearAllIdbData();
   clearBoardLocalData();
   window.location.reload();
@@ -13464,18 +11794,6 @@ initGround({
   getSelectedGameId: () => selectedGameId,
   redraw
 });
-initPuzzles({
-  getImportedGames: () => importedGames,
-  getRoute: () => currentRoute,
-  getCtrlPath: () => ctrl.path,
-  loadGameById,
-  navigate,
-  clearRetro: clearRetroMode,
-  redraw,
-  openStandalonePuzzle,
-  restoreStandalonePuzzleBackground,
-  hasStandalonePuzzleBackground
-});
 initCevalView({
   getCtrl: () => ctrl,
   navigate,
@@ -13524,12 +11842,8 @@ bindKeyboardHandlers({
 });
 onChange2((route) => {
   currentRoute = route;
-  if (route.name === "analysis-game" && hasStandalonePuzzleBackground()) {
-    restoreStandalonePuzzleBackground();
-  }
   if (isBulkRunning() && (route.name === "analysis-game" || route.name === "analysis")) {
     selectedGameId = route.params?.["id"] ?? selectedGameId;
-    void syncPuzzleRoute(route);
     vnode2 = patch(vnode2, view(currentRoute));
     return;
   }
@@ -13538,19 +11852,16 @@ onChange2((route) => {
     const game = importedGames.find((g) => g.id === id);
     if (game && game.id !== selectedGameId) {
       selectedGameId = game.id;
-      void syncPuzzleRoute(route);
       loadGame(game.pgn);
       return;
     }
   }
-  void syncPuzzleRoute(route);
   vnode2 = patch(vnode2, view(currentRoute));
 });
 vnode2 = patch(app, view(currentRoute));
 void loadPuzzlesFromIdb().then((puzzles) => {
   setSavedPuzzles(puzzles);
   redraw();
-  void syncPuzzleRoute(currentRoute);
 });
 void loadGamesFromIdb().then((stored) => {
   gamesLibraryLoaded = true;
@@ -13572,7 +11883,6 @@ void loadGamesFromIdb().then((stored) => {
   syncBoardAndArrow();
   redraw();
   void loadAndRestoreAnalysis(toLoad.id, restoreGeneration);
-  void syncPuzzleRoute(currentRoute);
 });
 onRetroConfigChange(rebuildRetroSession);
 //# sourceMappingURL=main.js.map

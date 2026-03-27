@@ -129,7 +129,7 @@ and mirror its module structure. Lichess consistently separates each tool into:
 
 | Feature to build | Lichess reference | Create in this project |
 |---|---|---|
-| Puzzle tool | `ui/puzzle/src/ctrl.ts` + `view.ts` | `src/puzzles/ctrl.ts` + `view.ts` |
+| Puzzle tool (future rebuild) | `ui/puzzle/src/ctrl.ts` + `view.ts` | `src/puzzles/ctrl.ts` + `view.ts` when the standalone puzzle product is reintroduced |
 | Opening trainer | `ui/learn/src/` | `src/openings/ctrl.ts` + `view.ts` |
 | Stats dashboard | `ui/dasher/src/` | `src/stats/ctrl.ts` + `view.ts` |
 

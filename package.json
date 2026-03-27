@@ -11,9 +11,7 @@
     "build": "node build.mjs",
     "serve": "node server.mjs",
     "typecheck": "tsc --noEmit",
-    "audit:prompts": "node scripts/audit-prompt-tracking.mjs",
-    "puzzles:download:lichess": "node scripts/puzzles/download-lichess-puzzles.mjs",
-    "puzzles:build:lichess": "node scripts/puzzles/build-lichess-shards.mjs"
+    "audit:prompts": "node scripts/audit-prompt-tracking.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.0",

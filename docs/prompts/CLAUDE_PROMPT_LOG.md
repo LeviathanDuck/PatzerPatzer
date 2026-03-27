@@ -70,6 +70,15 @@ It should stay in sync with the detailed entry below.
 
 ## Prompt Index
 
+- [ ] CCP-134 - Add Mistake Detection Config Owner
+- [ ] CCP-135 - Add Mistake Detection Menu Modal
+- [ ] CCP-136 - Wire Mistake Detection Config Into Retrospection
+- [ ] CCP-137 - Apply Mistake Detection Changes To The Active Analysis Session
+- [ ] CCP-138 - Add Learn-Moment Reason Metadata
+- [ ] CCP-139 - Show Learn-Moment Reason In Success UI
+- [ ] CCP-140 - Add Collapse Family To Mistake Detection
+- [ ] CCP-141 - Add Defensive Resource Family To Mistake Detection
+- [ ] CCP-142 - Add Punish-The-Blunder Family To Mistake Detection
 - [x] CCP-083 - Establish Puzzle Route Ownership
 - [x] CCP-084 - Add Puzzle Round Model
 - [x] CCP-085 - Render Saved Puzzle Library
@@ -82,48 +91,48 @@ It should stay in sync with the detailed entry below.
 - [x] CCP-092 - Cache Board Move Destinations
 - [x] CCP-093 - Narrow Board Auto-Shape Updates
 - [x] CCP-094 - Remove Board Overlay Fade Animation
-- [ ] CCP-133 - Puzzle Filter Redesign Sprint Manager (CCP-127–132)
-- [ ] CCP-132 - Theme Category Collapse Toggle
-- [ ] CCP-131 - Custom Rating Range Number Inputs
-- [ ] CCP-130 - Multi-Select Theme Tile Grid View Update
-- [ ] CCP-129 - Multi-Select Theme Filter Type and Logic
-- [ ] CCP-128 - Difficulty Preset Pills with Range Display
-- [ ] CCP-127 - Active Filter Summary Bar
-- [ ] CCP-126 - Background Bulk Review Sprint Manager (CCP-120–125)
-- [ ] CCP-125 - Bulk Review Settings Submenu in Header
-- [ ] CCP-124 - Per-Game Progress Display in Games List
-- [ ] CCP-123 - Route-Change Resilience in main.ts
-- [ ] CCP-122 - Per-Game Analysis Loop in reviewQueue.ts
-- [ ] CCP-121 - Background Review Engine Module Skeleton
-- [ ] CCP-120 - Configurable StockfishProtocol Engine Options
-- [ ] CCP-119 - Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
-- [ ] CCP-118 - Phase 1 Puzzle Training Queue Manager (CCP-113–115)
-- [ ] CCP-117 - Show Active Training Context in Puzzle Round Side Panel
-- [ ] CCP-116 - Persist Filter Query State to IDB
-- [ ] CCP-115 - Add "Start Training" Entry Point to Puzzle Library
-- [ ] CCP-114 - Wire Training Queue into Continue-Training Navigation
-- [ ] CCP-113 - Add Training Queue State to Imported Puzzle Module
-- [ ] CCP-112 - Phase 2 Puzzle Sprint Manager (CCP-107–110)
-- [ ] CCP-111 - Phase 1 Puzzle Sprint Manager (CCP-103–106)
-- [ ] CCP-110 - Add Result History Dots
-- [ ] CCP-109 - Add Keyboard Navigation Shortcuts
-- [ ] CCP-108 - Add Move Navigation Controls
-- [ ] CCP-107 - Add Puzzle-Specific SCSS
-- [ ] CCP-106 - Add After-Puzzle Completion Panel
-- [ ] CCP-105 - Add Visual Feedback Icons
-- [ ] CCP-104 - Add Opponent Move Animation Delay
-- [ ] CCP-103 - Fix Wrong-Move Result State
-- [ ] CCP-102 - Puzzle Page Lichess Audit And Sprint Plan
-- [ ] CCP-095 - Establish Lichess Dataset Workspace
-- [ ] CCP-096 - Add Lichess Puzzle Download Script
-- [ ] CCP-097 - Build Lichess Puzzle Shard Pipeline
-- [ ] CCP-098 - Add Imported Puzzle Loader Seam
-- [ ] CCP-099 - Add Imported Puzzle Source Switch
-- [ ] CCP-100 - Open Imported Lichess Puzzle Rounds
-- [ ] CCP-101 - Add Imported Puzzle Filters And Paging
-- [ ] CCP-080 - Throttle Live Engine UI Refresh
-- [ ] CCP-081 - Split And Debounce Nav-State Persistence
-- [ ] CCP-082 - Reduce Default Live Engine Workload
+- [x] CCP-133 - Puzzle Filter Redesign Sprint Manager (CCP-127–132)
+- [x] CCP-132 - Theme Category Collapse Toggle
+- [x] CCP-131 - Custom Rating Range Number Inputs
+- [x] CCP-130 - Multi-Select Theme Tile Grid View Update
+- [x] CCP-129 - Multi-Select Theme Filter Type and Logic
+- [x] CCP-128 - Difficulty Preset Pills with Range Display
+- [x] CCP-127 - Active Filter Summary Bar
+- [x] CCP-126 - Background Bulk Review Sprint Manager (CCP-120–125)
+- [x] CCP-125 - Bulk Review Settings Submenu in Header
+- [x] CCP-124 - Per-Game Progress Display in Games List
+- [x] CCP-123 - Route-Change Resilience in main.ts
+- [x] CCP-122 - Per-Game Analysis Loop in reviewQueue.ts
+- [x] CCP-121 - Background Review Engine Module Skeleton
+- [x] CCP-120 - Configurable StockfishProtocol Engine Options
+- [x] CCP-119 - Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
+- [x] CCP-118 - Phase 1 Puzzle Training Queue Manager (CCP-113–115)
+- [x] CCP-117 - Show Active Training Context in Puzzle Round Side Panel
+- [x] CCP-116 - Persist Filter Query State to IDB
+- [x] CCP-115 - Add "Start Training" Entry Point to Puzzle Library
+- [x] CCP-114 - Wire Training Queue into Continue-Training Navigation
+- [x] CCP-113 - Add Training Queue State to Imported Puzzle Module
+- [x] CCP-112 - Phase 2 Puzzle Sprint Manager (CCP-107–110)
+- [x] CCP-111 - Phase 1 Puzzle Sprint Manager (CCP-103–106)
+- [x] CCP-110 - Add Result History Dots
+- [x] CCP-109 - Add Keyboard Navigation Shortcuts
+- [x] CCP-108 - Add Move Navigation Controls
+- [x] CCP-107 - Add Puzzle-Specific SCSS
+- [x] CCP-106 - Add After-Puzzle Completion Panel
+- [x] CCP-105 - Add Visual Feedback Icons
+- [x] CCP-104 - Add Opponent Move Animation Delay
+- [x] CCP-103 - Fix Wrong-Move Result State
+- [x] CCP-102 - Puzzle Page Lichess Audit And Sprint Plan
+- [x] CCP-095 - Establish Lichess Dataset Workspace
+- [x] CCP-096 - Add Lichess Puzzle Download Script
+- [x] CCP-097 - Build Lichess Puzzle Shard Pipeline
+- [x] CCP-098 - Add Imported Puzzle Loader Seam
+- [x] CCP-099 - Add Imported Puzzle Source Switch
+- [x] CCP-100 - Open Imported Lichess Puzzle Rounds
+- [x] CCP-101 - Add Imported Puzzle Filters And Paging
+- [x] CCP-080 - Throttle Live Engine UI Refresh
+- [x] CCP-081 - Split And Debounce Nav-State Persistence
+- [x] CCP-082 - Reduce Default Live Engine Workload
 - [x] CCP-079 - Reduce Board Review Glyph Scale To 20 Percent
 - [x] CCP-066-F1 - Add Underboard Games Search Bar
 - [x] CCP-073 - Clear Board And Ceval Typecheck Slice
@@ -229,8 +238,8 @@ It should stay in sync with the detailed entry below.
   - Source step: `Task 1 — Establish a repo-safe local dataset workspace`
   - Task: add a repo-safe ignored local dataset workspace for raw Lichess puzzle downloads and generated shard output
   - Claude used: yes
-  - Review outcome: passed
-  - Review issues: none
+  - Review outcome: issues found
+  - Review issues: puzzle round restore/replay currently rebuilds progress through `playUciMove(...)`, which mutates the source analysis tree by inserting puzzle-line moves into the live game tree instead of keeping puzzle playback isolated
   - Execution target: `Claude Code`
 ```
 
@@ -339,7 +348,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-112 - Phase 2 Puzzle Sprint Manager (CCP-107–110)
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-112`
   - Task ID: `CCP-112`
   - Parent prompt ID: none
@@ -348,7 +357,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Phase 2 puzzle sprint execution
   - Task: auto-run CCP-107 through CCP-110 in sequence
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -356,7 +365,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-111 - Phase 1 Puzzle Sprint Manager (CCP-103–106)
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-111`
   - Task ID: `CCP-111`
   - Parent prompt ID: none
@@ -365,7 +374,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Phase 1 puzzle sprint execution
   - Task: auto-run CCP-103 through CCP-106 in sequence
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -373,7 +382,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-110 - Add Result History Dots
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-110`
   - Task ID: `CCP-110`
   - Parent prompt ID: none
@@ -382,7 +391,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 8 — Add result history dots
   - Task: render colored result dots from puzzleSession.recent in the puzzle round view
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -390,7 +399,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-109 - Add Keyboard Navigation Shortcuts
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-109`
   - Task ID: `CCP-109`
   - Parent prompt ID: none
@@ -399,7 +408,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 7 — Add keyboard navigation shortcuts
   - Task: arrow keys navigate puzzle moves; Escape returns to library
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -407,7 +416,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-108 - Add Move Navigation Controls
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-108`
   - Task ID: `CCP-108`
   - Parent prompt ID: none
@@ -416,7 +425,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 5 — Add move navigation controls
   - Task: add first/prev/next/last buttons to step through solution in terminal state
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -424,7 +433,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-107 - Add Puzzle-Specific SCSS
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-107`
   - Task ID: `CCP-107`
   - Parent prompt ID: none
@@ -433,7 +442,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 6 — Add puzzle-specific SCSS (layout + feedback)
   - Task: extract puzzle-round SCSS, fix sidebar-left, add icon and after-panel styles
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -441,7 +450,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-106 - Add After-Puzzle Completion Panel
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-106`
   - Task ID: `CCP-106`
   - Parent prompt ID: none
@@ -450,7 +459,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 4 — Add after-puzzle completion panel
   - Task: render distinct completion panel for solved/viewed terminal states
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -458,7 +467,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-105 - Add Visual Feedback Icons
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-105`
   - Task ID: `CCP-105`
   - Parent prompt ID: none
@@ -467,7 +476,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 3 — Add visual feedback icons
   - Task: add ✓/✗ icons to puzzle feedback section for good/fail/win states
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -475,7 +484,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-104 - Add Opponent Move Animation Delay
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-104`
   - Task ID: `CCP-104`
   - Parent prompt ID: none
@@ -484,7 +493,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 2 — Add opponent move animation delay
   - Task: delay opponent reply ~500ms and lock board during the window
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -492,7 +501,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-103 - Fix Wrong-Move Result State
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-103`
   - Task ID: `CCP-103`
   - Parent prompt ID: none
@@ -501,7 +510,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 1 — Fix wrong-move result state
   - Task: wrong move sets feedback='fail' but leaves result='active'
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -509,7 +518,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-102 - Puzzle Page Lichess Audit And Sprint Plan
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-102`
   - Task ID: `CCP-102`
   - Parent prompt ID: none
@@ -518,7 +527,7 @@ It should stay in sync with the detailed entry below.
   - Source step: Puzzle page Lichess audit and sprint planning
   - Task: audit puzzle page against Lichess and produce a sprint plan
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -730,7 +739,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-080 - Throttle Live Engine UI Refresh
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-080`
   - Task ID: `CCP-080`
   - Parent prompt ID: none
@@ -739,7 +748,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Recommended Order Of Work, Step 1`
   - Task: throttle engine-driven visible UI refresh during live analysis instead of redrawing directly from raw engine info output
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -747,7 +756,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-081 - Split And Debounce Nav-State Persistence
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-081`
   - Task ID: `CCP-081`
   - Parent prompt ID: none
@@ -756,7 +765,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Recommended Order Of Work, Step 2`
   - Task: stop full imported-game library saves on every move-navigation step and move to a lightweight debounced nav-state persistence seam
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -764,7 +773,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-082 - Reduce Default Live Engine Workload
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-082`
   - Task ID: `CCP-082`
   - Parent prompt ID: none
@@ -773,7 +782,7 @@ It should stay in sync with the detailed entry below.
   - Source step: `Recommended Order Of Work, Step 3`
   - Task: lower Patzer's default live-engine workload toward Lichess while preserving existing saved user preferences
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
   - Execution target: `Claude Code`
 ```
@@ -2192,7 +2201,7 @@ It should stay in sync with the detailed entry below.
 ## CCP-113 - Add Training Queue State to Imported Puzzle Module
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-113`
   - Task ID: `CCP-113`
   - Parent prompt ID: none
@@ -2201,14 +2210,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Puzzle training queue — sequential puzzle delivery within a filtered set
   - Task: add training mode + cursor state to imported.ts (startTraining, advanceTrainingCursor, getNextTrainingRouteId, isTrainingMode, stopTraining)
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-114 - Wire Training Queue into Continue-Training Navigation
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-114`
   - Task ID: `CCP-114`
   - Parent prompt ID: CCP-113
@@ -2217,14 +2226,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Post-completion continuation — "next puzzle" in training mode
   - Task: update onNext in index.ts to use training queue cursor for imported puzzles; stopTraining if user navigates off-queue
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-115 - Add "Start Training" Entry Point to Puzzle Library
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-115`
   - Task ID: `CCP-115`
   - Parent prompt ID: CCP-114
@@ -2233,14 +2242,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Training entry point — entering continuous solve mode from the library
   - Task: add "Start Training →" button to imported library header in view.ts; wire onStartTraining callback in index.ts
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-116 - Persist Filter Query State to IDB
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-116`
   - Task ID: `CCP-116`
   - Parent prompt ID: none
@@ -2249,14 +2258,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Filter persistence — filters survive page reload
   - Task: add savePuzzleQueryToIdb/loadPuzzleQueryFromIdb to idb/index.ts; save on filter change, restore on initPuzzles
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-117 - Show Active Training Context in Puzzle Round Side Panel
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-117`
   - Task ID: `CCP-117`
   - Parent prompt ID: CCP-116
@@ -2265,14 +2274,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Side panel — puzzle metadata and active training context
   - Task: render training context label (theme/rating range) in puzzle-round side panel for imported puzzles
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-118 - Phase 1 Puzzle Training Queue Manager (CCP-113–115)
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-118`
   - Task ID: `CCP-118`
   - Parent prompt ID: none
@@ -2281,14 +2290,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Phase 1 — sequential training queue
   - Task: manager prompt — run CCP-113, CCP-114, CCP-115 in order, verify build after each
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-119 - Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-119`
   - Task ID: `CCP-119`
   - Parent prompt ID: none
@@ -2297,14 +2306,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Phase 2 — filter persistence and training context
   - Task: manager prompt — run CCP-116, CCP-117 in order, verify build after each
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-120 - Configurable StockfishProtocol Engine Options
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-120`
   - Task ID: `CCP-120`
   - Parent prompt ID: none
@@ -2313,14 +2322,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 0 — Make StockfishProtocol configurable
   - Task: add ProtocolConfig constructor param (threads?, hash?) to StockfishProtocol
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-121 - Background Review Engine Module Skeleton
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-121`
   - Task ID: `CCP-121`
   - Parent prompt ID: none
@@ -2329,14 +2338,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 1-A — Background engine module skeleton
   - Task: create src/engine/reviewQueue.ts with background StockfishProtocol, queue types, public API stubs
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-122 - Per-Game Analysis Loop in reviewQueue.ts
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-122`
   - Task ID: `CCP-122`
   - Parent prompt ID: none
@@ -2345,14 +2354,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 1-B — Per-game analysis loop
   - Task: implement enqueueBulkReview, per-game ctrl/cache, background batch analysis loop, getReviewProgress
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-123 - Route-Change Resilience in main.ts
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-123`
   - Task ID: `CCP-123`
   - Parent prompt ID: none
@@ -2361,14 +2370,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 2 — Route-change resilience
   - Task: guard loadGame() and onChange(); remove gameAnalysisQueue; wire enqueueBulkReview
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-124 - Per-Game Progress Display in Games List
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-124`
   - Task ID: `CCP-124`
   - Parent prompt ID: none
@@ -2377,14 +2386,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 3 — Per-game progress display
   - Task: add live progress badges to game rows and queue summary line above list
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-125 - Bulk Review Settings Submenu in Header
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-125`
   - Task ID: `CCP-125`
   - Parent prompt ID: none
@@ -2393,14 +2402,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint 4 — Bulk Review settings submenu
   - Task: add Review nav button with submenu for depth, auto-review, and queue controls
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-126 - Background Bulk Review Sprint Manager (CCP-120–125)
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-126`
   - Task ID: `CCP-126`
   - Parent prompt ID: none
@@ -2409,14 +2418,14 @@ It should stay in sync with the detailed entry below.
   - Source step: full sprint — manager runs CCP-120 through CCP-125 in order
   - Task: manager prompt — run CCP-120 through CCP-125 sequentially, verify build after each
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-127 - Active Filter Summary Bar
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-127`
   - Task ID: `CCP-127`
   - Parent prompt ID: none
@@ -2425,14 +2434,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint Prompt 1 — Active Filter Summary Bar
   - Task: add dismissible chip summary bar showing active puzzle filters
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-128 - Difficulty Preset Pills with Range Display
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-128`
   - Task ID: `CCP-128`
   - Parent prompt ID: none
@@ -2441,14 +2450,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint Prompt 2 — Difficulty Preset Pills with Range Display
   - Task: replace difficulty <select> with pill buttons and live numeric range label
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-129 - Multi-Select Theme Filter Type and Logic
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-129`
   - Task ID: `CCP-129`
   - Parent prompt ID: none
@@ -2457,14 +2466,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint Prompt 3 — Multi-Select Theme Filter Type and Logic
   - Task: change ImportedPuzzleFilters.theme:string to themes:string[]; update filter logic and IDB migration
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-130 - Multi-Select Theme Tile Grid View Update
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-130`
   - Task ID: `CCP-130`
   - Parent prompt ID: none
@@ -2473,14 +2482,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint Prompt 4 — Multi-Select Theme Tile Grid View Update
   - Task: update renderThemeGrid() for multi-select; tiles toggle membership in themes array
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-131 - Custom Rating Range Number Inputs
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-131`
   - Task ID: `CCP-131`
   - Parent prompt ID: none
@@ -2489,14 +2498,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint Prompt 5 — Custom Rating Range Number Inputs
   - Task: add min/max number inputs below preset pills for arbitrary rating bands
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-132 - Theme Category Collapse Toggle
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-132`
   - Task ID: `CCP-132`
   - Parent prompt ID: none
@@ -2505,14 +2514,14 @@ It should stay in sync with the detailed entry below.
   - Source step: Sprint Prompt 6 — Theme Category Collapse Toggle
   - Task: per-category expand/collapse; Checkmate Patterns defaults collapsed
   - Claude used: no
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
 ```
 
 ## CCP-133 - Puzzle Filter Redesign Sprint Manager (CCP-127–132)
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-133`
   - Task ID: `CCP-133`
   - Parent prompt ID: none
@@ -2521,6 +2530,159 @@ It should stay in sync with the detailed entry below.
   - Source step: manager prompt — run CCP-127 through CCP-132 in order
   - Task: manager prompt — puzzle filter redesign sprint, run all six child prompts sequentially
   - Claude used: no
+  - Review outcome: passed
+  - Review issues: none
+```
+
+## CCP-134 - Add Mistake Detection Config Owner
+
+```
+- [ ] Reviewed
+  - ID: `CCP-134`
+  - Task ID: `CCP-134`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: inferred from user request in chat
+  - Source step: `add a configurable Learn From Your Mistakes parameter model in Patzer`
+  - Task: introduce a dedicated persisted config owner for Learn From Your Mistakes candidate selection without adding the menu yet
+  - Claude used: no
   - Review outcome: pending
   - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-135 - Add Mistake Detection Menu Modal
+
+```
+- [ ] Reviewed
+  - ID: `CCP-135`
+  - Task ID: `CCP-135`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: inferred from user request in chat
+  - Source step: `add a main-menu Mistake Detection modal for Learn From Your Mistakes settings`
+  - Task: add a main-menu `Mistake Detection` modal using the same style as the existing detection settings UI
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-136 - Wire Mistake Detection Config Into Retrospection
+
+```
+- [ ] Reviewed
+  - ID: `CCP-136`
+  - Task ID: `CCP-136`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: inferred from user request in chat
+  - Source step: `apply configurable mistake-detection parameters to Learn From Your Mistakes candidate selection`
+  - Task: make Learn From Your Mistakes candidate selection read the new configurable parameters instead of hard-coded rules
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-137 - Apply Mistake Detection Changes To The Active Analysis Session
+
+```
+- [ ] Reviewed
+  - ID: `CCP-137`
+  - Task ID: `CCP-137`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: inferred from user request in chat
+  - Source step: `apply mistake-detection setting changes immediately on the active analysis board`
+  - Task: make Mistake Detection setting changes apply coherently to the current analysis-board retrospection context
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-138 - Add Learn-Moment Reason Metadata
+
+```
+- [ ] Reviewed
+  - ID: `CCP-138`
+  - Task ID: `CCP-138`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
+  - Source step: `Best next implementation direction — add reason metadata before expanding learnable-moment families`
+  - Task: carry backend reason codes and human labels through retrospection and saved local puzzle candidates
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-139 - Show Learn-Moment Reason In Success UI
+
+```
+- [ ] Reviewed
+  - ID: `CCP-139`
+  - Task ID: `CCP-139`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
+  - Source step: `Best next implementation direction — explain why a learnable moment was chosen`
+  - Task: show backend learn-moment reasons in retrospection and saved-puzzle terminal feedback using parameter language
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-140 - Add Collapse Family To Mistake Detection
+
+```
+- [ ] Reviewed
+  - ID: `CCP-140`
+  - Task ID: `CCP-140`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
+  - Source step: `Best next implementation direction — promote blown wins / failed conversion into a first-class training lane`
+  - Task: extend Mistake Detection with an optional blown-win / failed-conversion family, defaulting it off
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-141 - Add Defensive Resource Family To Mistake Detection
+
+```
+- [ ] Reviewed
+  - ID: `CCP-141`
+  - Task ID: `CCP-141`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
+  - Source step: `Best next implementation direction — add missed defensive resources as a separate learnable-moment family`
+  - Task: add a narrow optional defensive-resource detector to Mistake Detection so missed saves can become learnable moments
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-142 - Add Punish-The-Blunder Family To Mistake Detection
+
+```
+- [ ] Reviewed
+  - ID: `CCP-142`
+  - Task ID: `CCP-142`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/post-game-learning-opportunities-audit.md`
+  - Source step: `Best next implementation direction — add punish-the-blunder moments as a separate learnable family`
+  - Task: add an optional family for moments where the opponent erred and the user failed to exploit it
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Execution target: `Claude Code`
 ```
