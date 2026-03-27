@@ -188,12 +188,10 @@ export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode {
     ]);
   }
 
+  if (puzzleCandidates.length === 0) return null;
+
   return h('div.game-list', [
     navRow,
-    puzzleCandidates.length > 0
-      ? h('ul', rows)
-      : h('div.game-list__header', batchState === 'complete'
-          ? 'No blunder-level candidates found in this game.'
-          : 'Run extraction after analysis completes.'),
+    h('ul', rows),
   ]);
 }
