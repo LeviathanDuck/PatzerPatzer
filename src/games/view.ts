@@ -173,6 +173,9 @@ let gamesFilterResults:  Set<GamesResultFilter> = new Set(); // empty = all
 let gamesFilterSpeeds:   Set<string>            = new Set(); // empty = all
 let gamesFilterOpponent  = '';
 let gamesFilterColor:    '' | 'white' | 'black' = '';
+// Tactics severity filter: '!' inaccuracy+, '!!' mistake+, '!!!' blunder, 'M?!' missed mate
+// Multi-select OR: show games matching any selected severity.
+let gamesFilterTactics:  Set<string>            = new Set();
 let gamesSortField: GamesSortField = 'date';
 let gamesSortDir:   'asc' | 'desc' = 'desc';
 
@@ -207,7 +210,8 @@ function toggleGamesSort(field: GamesSortField, redraw: () => void): void {
 
 function gamesFilterActive(): boolean {
   return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 ||
-    gamesFilterOpponent.trim() !== '' || gamesFilterColor !== '';
+    gamesFilterOpponent.trim() !== '' || gamesFilterColor !== '' ||
+    gamesFilterTactics.size > 0;
 }
 
 function clearGamesFilters(redraw: () => void): void {
@@ -215,7 +219,23 @@ function clearGamesFilters(redraw: () => void): void {
   gamesFilterSpeeds   = new Set();
   gamesFilterOpponent = '';
   gamesFilterColor    = '';
+  gamesFilterTactics  = new Set();
   redraw();
+}
+
+// Returns the set of tactics severity badges a game has, for filter matching.
+function gameTacticsSeverities(gameId: string, hasMissedTactic: boolean): Set<string> {
+  const result: Set<string> = new Set();
+  if (!hasMissedTactic) return result;
+  const moments = getMissedMoments(gameId);
+  const hasMate = moments.some((m: MissedMoment) => m.kind === 'missed-mate');
+  const swingMoments = moments.filter((m: MissedMoment) => m.kind !== 'missed-mate');
+  const worstLoss = swingMoments.length > 0 ? Math.max(...swingMoments.map((m: MissedMoment) => m.loss)) : 0;
+  if (hasMate) result.add('M?!');
+  if (worstLoss >= LOSS_THRESHOLDS.blunder)    result.add('!!!');
+  if (worstLoss >= LOSS_THRESHOLDS.mistake)    result.add('!!');
+  if (worstLoss >= LOSS_THRESHOLDS.inaccuracy || hasMissedTactic) result.add('!');
+  return result;
 }
 
 function filteredGames(deps: GamesViewDeps): ImportedGame[] {
@@ -242,6 +262,17 @@ function filteredGames(deps: GamesViewDeps): ImportedGame[] {
 
   if (gamesFilterColor) {
     list = list.filter(g => deps.getUserColor(g) === gamesFilterColor);
+  }
+
+  if (gamesFilterTactics.size > 0) {
+    list = list.filter(g => {
+      const hasMissed = deps.missedTacticGameIds.has(g.id);
+      const severities = gameTacticsSeverities(g.id, hasMissed);
+      for (const s of gamesFilterTactics) {
+        if (severities.has(s)) return true;
+      }
+      return false;
+    });
   }
 
   // Sort
@@ -567,6 +598,22 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         class: { active: gamesFilterColor === 'black' },
         on: { click: () => { gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black'; redraw(); } },
       }, 'Black'),
+    ]),
+
+    // Tactics severity filter
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Tactics'),
+      ...(['!', '!!', '!!!', 'M?!'] as string[]).map(sev =>
+        h('button.games-view__pill.--tactics', {
+          class: { active: gamesFilterTactics.has(sev) },
+          on: { click: () => {
+            const s = new Set(gamesFilterTactics);
+            s.has(sev) ? s.delete(sev) : s.add(sev);
+            gamesFilterTactics = s;
+            redraw();
+          }},
+        }, sev)
+      ),
     ]),
 
     // Opponent search
