@@ -17,7 +17,9 @@ import { makeFen, parseFen } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
-import { listPuzzleDefinitions, getPuzzleDefinition, saveAttempt, getAttempts, getMeta, saveMeta } from './puzzleDb';
+import { listPuzzleDefinitions, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getMeta, saveMeta } from './puzzleDb';
+import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestTotalCount, type ShardMeta } from './shardLoader';
+import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
 import type { PuzzleDefinition, PuzzleAttempt, SolveResult, FailureReason, PuzzleSourceKind, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSessionMode } from './types';
 import {
   protocol as engineProtocol,
@@ -942,6 +944,23 @@ export function destroyPuzzleBoard(): void {
   puzzleCg = undefined;
 }
 
+/**
+ * Mount an idle/decorative board for the library view.
+ * Shows the standard starting position with no interaction.
+ * Reuses the same puzzleCg slot so only one Chessground exists at a time.
+ */
+export function mountIdleBoard(el: HTMLElement): void {
+  if (puzzleCg) { puzzleCg.destroy(); puzzleCg = undefined; }
+  puzzleCg = makeChessground(el, {
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    orientation: 'white',
+    viewOnly: true,
+    coordinates: true,
+    animation: { enabled: false },
+    drawable: { enabled: false },
+  });
+}
+
 // --- User metadata (favorites, notes, tags, folders) ---
 // Thin cache layer over PuzzleUserMeta IDB records.
 // Loaded once per round open; mutated by the metadata editing UI and saved back.
@@ -1005,12 +1024,20 @@ export function getOrCreateMeta(puzzleId: string): PuzzleUserMeta {
  */
 export async function loadLibraryCounts(redraw: () => void): Promise<void> {
   try {
+    // User library count from IDB
     const all = await listPuzzleDefinitions();
-    let imported = 0;
     let user = 0;
     for (const p of all) {
-      if (p.sourceKind === 'imported-lichess') imported++;
-      else if (p.sourceKind === 'user-library') user++;
+      if (p.sourceKind === 'user-library') user++;
+    }
+    // Imported count: use manifest totalCount (the full Lichess database)
+    let imported = 0;
+    try {
+      const manifest = await loadManifest();
+      imported = manifest.totalCount;
+    } catch {
+      // Manifest not available — fall back to IDB count
+      imported = all.filter(p => p.sourceKind === 'imported-lichess').length;
     }
     libraryCounts = { imported, user };
   } catch (e) {
@@ -1068,9 +1095,14 @@ function applyListFilters(ls: PuzzleListState): void {
   ls.visible = filtered.slice(0, ls.pageSize);
 }
 
+// State for incremental shard loading
+let _importedShards: ShardMeta[] = [];
+let _importedShardIndex = 0;
+
 /**
  * Open the puzzle list view for a given source kind.
- * Loads all definitions of that source from IDB and sets up list state.
+ * For user-library: loads from IDB.
+ * For imported-lichess: loads from the generated shard files (one shard at a time).
  */
 export async function openPuzzleList(
   source: PuzzleSourceKind,
@@ -1090,40 +1122,87 @@ export async function openPuzzleList(
   redraw();
 
   try {
-    const all = await listPuzzleDefinitions();
-    const forSource = all.filter(p => p.sourceKind === source);
-
-    // Sort imported puzzles by rating ascending; user puzzles by createdAt descending
     if (source === 'imported-lichess') {
-      forSource.sort((a, b) => {
-        const ra = a.sourceKind === 'imported-lichess' ? a.rating : 0;
-        const rb = b.sourceKind === 'imported-lichess' ? b.rating : 0;
-        return ra - rb;
-      });
+      await openImportedList(redraw);
     } else {
-      forSource.sort((a, b) => b.createdAt - a.createdAt);
+      await openUserLibraryList(redraw);
     }
-
-    // Collect unique themes for the filter dropdown
-    const themeSet = new Set<string>();
-    for (const p of forSource) {
-      if (p.sourceKind === 'imported-lichess') {
-        for (const t of p.themes) themeSet.add(t);
-      }
-    }
-    const themes = Array.from(themeSet).sort();
-
-    puzzleListState!.allForSource = forSource;
-    puzzleListState!.availableThemes = themes;
-    puzzleListState!.loading = false;
-    applyListFilters(puzzleListState!);
   } catch (e) {
     console.warn('[puzzle-ctrl] openPuzzleList failed', e);
-    if (puzzleListState) {
-      puzzleListState.loading = false;
-    }
+    if (puzzleListState) puzzleListState.loading = false;
   }
   redraw();
+}
+
+/** Load user-library puzzles from IDB. */
+async function openUserLibraryList(redraw: () => void): Promise<void> {
+  const all = await listPuzzleDefinitions();
+  const forSource = all.filter(p => p.sourceKind === 'user-library');
+  forSource.sort((a, b) => b.createdAt - a.createdAt);
+
+  puzzleListState!.allForSource = forSource;
+  puzzleListState!.availableThemes = [];
+  puzzleListState!.loading = false;
+  applyListFilters(puzzleListState!);
+}
+
+/** Load imported puzzles from shard files — first shard initially, more on demand. */
+async function openImportedList(redraw: () => void): Promise<void> {
+  const manifest = await loadManifest();
+  _importedShards = manifest.shards;
+  _importedShardIndex = 0;
+  puzzleListState!.availableThemes = getManifestThemes();
+
+  // Load the first shard
+  if (_importedShards.length > 0) {
+    await loadNextImportedShard();
+  }
+  puzzleListState!.loading = false;
+  applyListFilters(puzzleListState!);
+  redraw();
+}
+
+/** Load the next shard of imported puzzles and append to the list. */
+async function loadNextImportedShard(): Promise<boolean> {
+  if (_importedShardIndex >= _importedShards.length) return false;
+  const shard = _importedShards[_importedShardIndex]!;
+  _importedShardIndex++;
+
+  const filters = puzzleListState?.filters ?? {};
+  const records = await loadFilteredShard(shard.id, filters);
+
+  // Convert shard records to PuzzleDefinitions
+  const defs = records
+    .map(r => lichessShardRecordToDefinition(r))
+    .filter((d): d is NonNullable<typeof d> => d !== undefined);
+
+  puzzleListState!.allForSource.push(...defs);
+  // Sort by rating ascending
+  puzzleListState!.allForSource.sort((a, b) => {
+    const ra = a.sourceKind === 'imported-lichess' ? a.rating : 0;
+    const rb = b.sourceKind === 'imported-lichess' ? b.rating : 0;
+    return ra - rb;
+  });
+  applyListFilters(puzzleListState!);
+  return true;
+}
+
+/**
+ * Load more imported puzzle shards. Called from the "Load More" button.
+ * Loads the next shard and appends results.
+ */
+export async function loadMoreImportedShards(redraw: () => void): Promise<void> {
+  if (!puzzleListState || puzzleListState.source !== 'imported-lichess') return;
+  puzzleListState.loading = true;
+  redraw();
+  const loaded = await loadNextImportedShard();
+  puzzleListState.loading = false;
+  if (!loaded) console.log('[puzzle-ctrl] all shards loaded');
+  redraw();
+}
+
+export function hasMoreImportedShards(): boolean {
+  return _importedShardIndex < _importedShards.length;
 }
 
 /**
@@ -1153,12 +1232,21 @@ export function loadMorePuzzles(redraw: () => void): void {
 
 /**
  * Select a puzzle from the list and open it for solving.
+ * For imported puzzles loaded from shards, saves to IDB first so
+ * openPuzzleRound can find it via getPuzzleDefinition.
  */
 export async function selectPuzzleFromList(
   id: string,
   redraw: () => void,
 ): Promise<void> {
-  // Keep the list state so user can return to it
+  // If the puzzle is from the current list (e.g., an imported shard record not yet in IDB),
+  // save it to IDB so the round can load it.
+  if (puzzleListState) {
+    const def = puzzleListState.allForSource.find(p => p.id === id);
+    if (def) {
+      await savePuzzleDefinition(def);
+    }
+  }
   roundState = null;
   activeRoundCtrl = null;
   await openPuzzleRound(id, redraw);

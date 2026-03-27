@@ -9,13 +9,14 @@
 import { h, type VNode } from 'snabbdom';
 import {
   getLibraryCounts, getPuzzleRoundState, getActiveRoundCtrl,
-  mountPuzzleBoard, destroyPuzzleBoard, nextPuzzle, retryPuzzle,
+  mountPuzzleBoard, destroyPuzzleBoard, mountIdleBoard, nextPuzzle, retryPuzzle,
   getOrCreateMeta, savePuzzleMeta, toggleFavorite,
   isRetrySessionActive, getRetryCount, getRetryIndex, getRetryQueue,
   startRetrySession, nextRetryPuzzle, loadRetryCount,
   getDueCount, loadDueCount, startDueSession,
   getPuzzleListState, openPuzzleList, closePuzzleList,
   filterPuzzleList, loadMorePuzzles, selectPuzzleFromList,
+  loadMoreImportedShards, hasMoreImportedShards,
   type LibraryCounts, type PuzzleListFilters, type PuzzleListState,
 } from './ctrl';
 import type { PuzzleRoundCtrl } from './ctrl';
@@ -53,94 +54,73 @@ function sourceCard(
   ]);
 }
 
+/** Render the library sidebar content (sources, due, retry). */
+function renderLibrarySidebar(redraw: () => void): VNode {
+  const counts = getLibraryCounts();
+  const rCount = getRetryCount();
+  const dCount = getDueCount();
+
+  if (rCount === undefined) loadRetryCount(redraw);
+  if (dCount === undefined) loadDueCount(redraw);
+
+  return h('aside.puzzle__side.puzzle-library__sidebar', [
+    h('h2.puzzle-library__title', 'Puzzle Library'),
+
+    // Source cards
+    sourceCard('Imported Puzzles', 'Puzzles from the Lichess database.',
+      counts?.imported, 'imported-lichess', redraw),
+    sourceCard('User Library', 'Puzzles from your reviewed games.',
+      counts?.user, 'user-library', redraw),
+
+    // Due for Review
+    h('div.puzzle-library__section', [
+      h('div.puzzle-library__section-header', [
+        h('h3', 'Due for Review'),
+        h('span.puzzle-library__count',
+          dCount !== undefined ? `${dCount}` : '\u2026'),
+      ]),
+      h('button.button.puzzle-library__action', {
+        attrs: { disabled: dCount === undefined || dCount === 0 },
+        on: { click: () => { startDueSession(redraw); } },
+      }, 'Review Due'),
+    ]),
+
+    // Retry Failed
+    h('div.puzzle-library__section', [
+      h('div.puzzle-library__section-header', [
+        h('h3', 'Retry Failed'),
+        h('span.puzzle-library__count',
+          rCount !== undefined ? `${rCount}` : '\u2026'),
+      ]),
+      h('button.button.puzzle-library__action', {
+        attrs: { disabled: rCount === undefined || rCount === 0 },
+        on: { click: () => { startRetrySession(redraw); } },
+      }, 'Start Retry'),
+    ]),
+  ]);
+}
+
 export function renderPuzzleLibrary(redraw: () => void): VNode {
-  // If the puzzle list is active, show that instead of the library overview
+  // If the puzzle list (browse) is active, show that instead
   const listState = getPuzzleListState();
   if (listState) {
     return renderPuzzleList(listState, redraw);
   }
 
-  const counts = getLibraryCounts();
-  const rCount = getRetryCount();
-  const dCount = getDueCount();
-
-  // Trigger retry count load if not yet loaded
-  if (rCount === undefined) {
-    loadRetryCount(redraw);
-  }
-  // Trigger due count load if not yet loaded
-  if (dCount === undefined) {
-    loadDueCount(redraw);
-  }
-
+  // Board-centered layout: library on left, board center, right side free for future move list
   return h('div.puzzle-page', [
-    h('div.puzzle-library', [
-      h('h2.puzzle-library__title', 'Puzzle Library'),
-      h('div.puzzle-library__sources', [
-        sourceCard(
-          'Imported Puzzles',
-          'Puzzles imported from the Lichess puzzle database.',
-          counts?.imported,
-          'imported-lichess',
-          redraw,
-        ),
-        sourceCard(
-          'User Library',
-          'Puzzles created from your reviewed games.',
-          counts?.user,
-          'user-library',
-          redraw,
-        ),
-      ]),
-      // Due for Review section — simple interval-based review scheduling
-      h('div.puzzle-library__due', [
-        h('div.puzzle-library__due-header', [
-          h('h3.puzzle-library__due-title', 'Due for Review'),
-          h(
-            'span.puzzle-library__due-count',
-            dCount !== undefined
-              ? `${dCount} puzzle${dCount === 1 ? '' : 's'} due`
-              : 'loading\u2026',
-          ),
-        ]),
-        h('p.puzzle-library__due-desc',
-          'Puzzles due for another attempt based on simple review intervals. Clean solves are due after 7 days, recovered solves after 3 days, and others after 1 day.',
-        ),
-        h(
-          'button.button.puzzle-library__due-action',
-          {
-            attrs: { disabled: dCount === undefined || dCount === 0 },
-            on: {
-              click: () => { startDueSession(redraw); },
-            },
+    h('div.puzzle.puzzle--library', [
+      // Library sidebar (left)
+      renderLibrarySidebar(redraw),
+      // Board area — idle decorative board, always visible
+      h('div.puzzle__board.main-board', [
+        h('div.cg-wrap', {
+          key: 'puzzle-idle-board',
+          hook: {
+            insert: vnode => { mountIdleBoard(vnode.elm as HTMLElement); },
+            destroy: () => { destroyPuzzleBoard(); },
           },
-          'Review Due Puzzles',
-        ),
-      ]),
-      // Retry Failed queue launcher
-      h('div.puzzle-library__retry', [
-        h('div.puzzle-library__retry-header', [
-          h('h3.puzzle-library__retry-title', 'Retry Failed'),
-          h(
-            'span.puzzle-library__retry-count',
-            rCount !== undefined
-              ? `${rCount} puzzle${rCount === 1 ? '' : 's'} to retry`
-              : 'loading\u2026',
-          ),
-        ]),
-        h('p.puzzle-library__retry-desc',
-          'Practice puzzles you previously failed, skipped, solved with assistance, or haven\u2019t tried yet.',
-        ),
-        h(
-          'button.button.puzzle-library__retry-action',
-          {
-            attrs: { disabled: rCount === undefined || rCount === 0 },
-            on: {
-              click: () => { startRetrySession(redraw); },
-            },
-          },
-          'Start Retry Session',
-        ),
+        }),
       ]),
     ]),
   ]);
@@ -180,7 +160,7 @@ function renderPuzzleListFilterBar(
           change: (e: Event) => {
             const val = parseInt((e.target as HTMLInputElement).value, 10);
             const newFilters: PuzzleListFilters = { ...filters };
-            newFilters.ratingMin = isNaN(val) ? undefined : val;
+            if (isNaN(val)) delete newFilters.ratingMin; else newFilters.ratingMin = val;
             filterPuzzleList(newFilters, redraw);
           },
         },
@@ -203,7 +183,7 @@ function renderPuzzleListFilterBar(
           change: (e: Event) => {
             const val = parseInt((e.target as HTMLInputElement).value, 10);
             const newFilters: PuzzleListFilters = { ...filters };
-            newFilters.ratingMax = isNaN(val) ? undefined : val;
+            if (isNaN(val)) delete newFilters.ratingMax; else newFilters.ratingMax = val;
             filterPuzzleList(newFilters, redraw);
           },
         },
@@ -221,7 +201,7 @@ function renderPuzzleListFilterBar(
             change: (e: Event) => {
               const val = (e.target as HTMLSelectElement).value;
               const newFilters: PuzzleListFilters = { ...filters };
-              newFilters.theme = val || undefined;
+              if (val) newFilters.theme = val; else delete newFilters.theme;
               filterPuzzleList(newFilters, redraw);
             },
           },
@@ -323,6 +303,13 @@ function renderPuzzleList(
         ? h('button.button.puzzle-list__load-more', {
             on: { click: () => loadMorePuzzles(redraw) },
           }, `Load More (${ls.visible.length} of ${ls.filtered.length})`)
+        : null,
+      // For imported puzzles: load more shards from the database
+      ls.source === 'imported-lichess' && hasMoreImportedShards()
+        ? h('button.button.button-empty.puzzle-list__load-shards', {
+            attrs: { disabled: ls.loading },
+            on: { click: () => loadMoreImportedShards(redraw) },
+          }, ls.loading ? 'Loading shard\u2026' : 'Load More Puzzles from Database')
         : null,
     ]),
   ]);
@@ -682,7 +669,7 @@ function renderMetaPanel(puzzleId: string, redraw: () => void): VNode {
           blur: (e: Event) => {
             const val = (e.target as HTMLTextAreaElement).value.trim();
             if ((meta.notes ?? '') !== val) {
-              meta.notes = val || undefined;
+              if (val) meta.notes = val; else delete meta.notes;
               savePuzzleMeta(meta);
             }
           },
@@ -704,7 +691,7 @@ function renderMetaPanel(puzzleId: string, redraw: () => void): VNode {
           blur: (e: Event) => {
             const raw = (e.target as HTMLInputElement).value;
             const tags = raw.split(',').map(t => t.trim()).filter(Boolean);
-            meta.tags = tags.length > 0 ? tags : undefined;
+            if (tags.length > 0) meta.tags = tags; else delete meta.tags;
             savePuzzleMeta(meta);
           },
         },
