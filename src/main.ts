@@ -658,8 +658,6 @@ function clearRetroMode(): void {
 function reviewAllGames(games: ImportedGame[]): void {
   if (games.length === 0) return;
   enqueueBulkReview(games);
-  // Stay on the current page — only navigate to games if not already there.
-  if (currentRoute.name !== 'games') window.location.hash = '#/games';
 }
 
 // --- Route views ---
