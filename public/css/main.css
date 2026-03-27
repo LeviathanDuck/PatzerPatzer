@@ -2794,7 +2794,7 @@ body[data-board=newspaper] cg-board::before {
   color: #8fb8d4;
 }
 .pv__score--ko {
-  color: hsl(307, 80%, 70%);
+  color: #a855f7;
   font-weight: 700;
 }
 .pv__score--massive {
