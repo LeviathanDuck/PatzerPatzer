@@ -1568,16 +1568,8 @@ body.resizing {
   display: none;
 }
 
-.analyse__controls {
-  grid-area: controls;
-  align-self: start;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding-top: 8px;
-}
-.analyse__controls .analyse-review-controls__row > button {
+.analyse__controls .analyse-review-controls__row > button,
+.analyse__actions .analyse-review-controls__row > button {
   background: #1e1e1e;
   color: #bbb;
   border: 1px solid #303030;
@@ -1595,20 +1587,33 @@ body.resizing {
   user-select: none;
 }
 @media (hover: hover) {
-  .analyse__controls .analyse-review-controls__row > button:hover:not([disabled]) {
+  .analyse__controls .analyse-review-controls__row > button:hover:not([disabled]),
+  .analyse__actions .analyse-review-controls__row > button:hover:not([disabled]) {
     background: rgba(56, 147, 232, 0.15);
     border-color: rgba(56, 147, 232, 0.35);
     color: #e0e0e0;
   }
 }
-.analyse__controls .analyse-review-controls__row > button[disabled] {
+.analyse__controls .analyse-review-controls__row > button[disabled],
+.analyse__actions .analyse-review-controls__row > button[disabled] {
   opacity: 0.35;
   cursor: default;
 }
-.analyse__controls .analyse-review-controls__row > button.active {
+.analyse__controls .analyse-review-controls__row > button.active,
+.analyse__actions .analyse-review-controls__row > button.active {
   background: rgba(56, 147, 232, 0.2);
   border-color: rgba(56, 147, 232, 0.5);
   color: #9cc9f5;
+}
+
+.analyse__controls {
+  grid-area: controls;
+  align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
 }
 
 .analyse__underboard {
