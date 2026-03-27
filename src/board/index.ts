@@ -501,8 +501,11 @@ export function renderPlayerStrips(): [VNode, VNode] {
 
 // --- Board resize handle ---
 // Adapted from lichess-org/lila: ui/lib/src/chessgroundResize.ts
-// Appended directly to the cg-wrap container so it sits inside the board bounds.
-function bindBoardResizeHandle(container: HTMLElement): void {
+// Appended to cg-container (the absolutely-positioned inner element) so that
+// position: absolute on cg-resize resolves against an element with defined
+// width/height — matching Lichess resizeHandle(els.container) exactly.
+function bindBoardResizeHandle(wrap: HTMLElement): void {
+  const container = (wrap.querySelector('cg-container') as HTMLElement | null) ?? wrap;
   const el = document.createElement('cg-resize');
   container.appendChild(el);
 
