@@ -44,6 +44,11 @@ Workflow:
 14. After those checks, quickly confirm the tracking state still matches `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
 15. If review finds a real bug, regression, or currently relevant repository issue, explicitly ask the user whether they want it added to `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
 16. If the review shows the task needs a follow-up fix prompt, note that the next prompt should reuse the same root `Task ID` with the next `-F#` `Prompt ID` modifier
+17. If the reviewed prompt is a manager prompt with `Batch prompt IDs`, treat that as a batch review by default:
+   - review the listed child prompts too unless the user explicitly asked for `manager-only`
+   - complete queue/log/history closeout for the child prompts first
+   - only then close out the manager prompt itself
+   - do not mark the manager prompt reviewed/passed while its child prompts are still unreviewed
 
 When checking git state, use local information first:
 - `git status --short --branch`
@@ -117,3 +122,4 @@ Review closeout is incomplete if:
 - the top prompt index and queue body disagree
 - the top prompt index says `[x]` but the detailed log block still says `Review outcome: pending`
 - queue/log/history edits were only partially applied
+- a manager prompt is marked reviewed while one or more of its `Batch prompt IDs` remain unreviewed
