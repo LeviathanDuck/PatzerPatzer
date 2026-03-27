@@ -25,7 +25,7 @@ import {
   getEvalParentPath,
 } from './ctrl';
 import { evalWinChances } from './winchances';
-import { hasMissedMoments } from './tactics';
+import { hasMissedMoments, detectMissedMoments, setMissedMoments } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
 import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import type { AnalyseCtrl } from '../analyse/ctrl';
@@ -209,7 +209,9 @@ export function advanceBatch(): void {
       _analyzedGameIds.add(gameId);
       const game = _getImportedGames().find(g => g.id === gameId);
       const userColor = game ? _getUserColor(game) : null;
-      if (detectMissedTactics(userColor)) _missedTacticGameIds.add(gameId);
+      const moments = detectMissedMoments(_getCtrl().mainline, evalCache, userColor);
+      setMissedMoments(gameId, moments);
+      if (moments.length > 0) _missedTacticGameIds.add(gameId);
       const liveSummary = computeAnalysisSummary(_getCtrl().mainline, evalCache);
       if (liveSummary) {
         _analyzedGameAccuracy.set(gameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });

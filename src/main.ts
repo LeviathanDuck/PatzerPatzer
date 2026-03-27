@@ -784,6 +784,9 @@ function routeContent(route: Route): VNode {
         h('div.analyse__controls', {
           hook: { insert: vnode => attachScrubListener(vnode.elm as HTMLElement) },
         }, [
+          // Eval graph rendered as background behind controls on mobile.
+          // bg:true strips interactivity — graph still tracks current move position.
+          renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, redraw, currentUserColor, reviewDotsUserOnly, true),
           renderAnalysisControls([
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.

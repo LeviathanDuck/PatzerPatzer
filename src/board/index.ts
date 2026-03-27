@@ -167,10 +167,32 @@ export function onUserMove(orig: string, dest: string): void {
     return;
   }
 
-  // Check existing children first — follow the tree if this move is already there
+  // Retro move interception: establish context BEFORE any navigation so both the
+  // "existing child" fast path and the "new node" path are covered.
+  // Timing rules:
+  //   - onWin() must run BEFORE navigate so onJump() sees 'win' and skips offTrack.
+  //   - setFeedback('eval') must run AFTER navigate to overwrite the transient
+  //     'offTrack' that onJump() sets when the path leaves c.parentPath.
+  // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts onWin / onFail.
+  const retro = ctrl.retro?.isSolving() ? ctrl.retro : undefined;
+  const retroCand = retro ? retro.current() : null;
+  const atRetroExercise = !!(retro && retroCand && ctrl.path === retroCand.parentPath);
+
+  if (atRetroExercise && retro && retroCand && normUci === retroCand.bestMove) {
+    retro.onWin(); // pre-win: sets 'win' before navigate, suppresses offTrack
+  }
+
+  // Check existing children — follow the tree if this move is already there.
+  // Must come AFTER retro pre-win so the win signal is in place before onJump fires.
   const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
   if (existingChild) {
     _navigate(ctrl.path + existingChild.id);
+    // Handle retro eval state for wrong moves through existing children.
+    // This covers the common case of the user replaying the game mistake (children[0]).
+    if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
+      retro.setFeedback('eval');
+      retro.onCeval();
+    }
     return;
   }
 
@@ -180,21 +202,6 @@ export function onUserMove(orig: string, dest: string): void {
     pendingPromotion = { orig, dest, color: pos.turn };
     _redraw();
     return;
-  }
-
-  // Retro move interception: check win/fail before and after completeMove.
-  // Timing is critical:
-  //   - onWin() must run BEFORE completeMove() so onJump() inside navigate sees 'win'
-  //     and skips the offTrack check (since the path leaves parentPath on a win).
-  //   - onFail() must run AFTER completeMove() to overwrite the transient 'offTrack'
-  //     that onJump() sets when the wrong-move path differs from parentPath.
-  // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts onWin / onFail.
-  const retro = ctrl.retro?.isSolving() ? ctrl.retro : undefined;
-  const retroCand = retro ? retro.current() : null;
-  const atRetroExercise = !!(retro && retroCand && ctrl.path === retroCand.parentPath);
-
-  if (atRetroExercise && retro && retroCand && normUci === retroCand.bestMove) {
-    retro.onWin(); // pre-win: sets 'win' before navigate, suppresses offTrack
   }
 
   completeMove(orig, dest);
