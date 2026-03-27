@@ -12,6 +12,7 @@ export const importFilters = {
   dateRange:  '1month' as ImportDateRange,
   customFrom: '',
   customTo:   '',
+  autoReview: false,
 };
 
 // Icons adapted from lichess-org/lila: ui/lib/src/game/perfIcons.ts + ui/lib/src/licon.ts

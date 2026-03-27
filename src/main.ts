@@ -118,6 +118,10 @@ const importCallbacks = {
     selectedGameId = first.id;
     void saveGamesToIdb(importedGames);
     loadGame(first.pgn); // calls redraw
+    // Auto-review: queue all newly imported games for background engine review.
+    if (importFilters.autoReview && dedupedGames.length > 0) {
+      enqueueBulkReview(dedupedGames);
+    }
   },
   redraw(): void { redraw(); },
 };
