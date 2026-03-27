@@ -1908,14 +1908,30 @@ function labelToBoardReviewSymbol(label) {
   if (label === "inaccuracy") return "?!";
   return null;
 }
+var KO_PATH = "M 398 142 L 368 128 L 344 127 L 340 131 L 327 133 L 320 130 L 316 135 L 302 137 L 285 144 L 281 140 L 278 147 L 266 144 L 267 149 L 257 162 L 309 159 L 311 162 L 307 165 L 294 166 L 289 171 L 282 172 L 267 184 L 258 187 L 249 204 L 243 209 L 243 217 L 240 220 L 238 219 L 230 234 L 230 245 L 226 248 L 220 246 L 215 269 L 219 277 L 217 282 L 222 294 L 233 304 L 232 306 L 236 311 L 247 318 L 264 322 L 296 322 L 322 313 L 327 308 L 343 301 L 378 273 L 401 242 L 416 212 L 420 196 L 419 175 L 415 162 Z M 251 128 L 160 170 L 171 125 L 168 117 L 145 112 L 131 126 L 109 164 L 89 213 L 45 238 L 55 242 L 48 250 L 50 255 L 38 264 L 42 267 L 59 260 L 62 273 L 59 288 L 42 322 L 41 331 L 47 325 L 43 349 L 53 329 L 56 332 L 52 342 L 65 327 L 71 330 L 68 341 L 78 326 L 84 328 L 83 333 L 87 331 L 116 257 L 121 259 L 146 296 L 200 340 L 226 349 L 237 344 L 220 330 L 230 327 L 189 285 L 164 240 L 153 236 L 151 228 L 162 217 L 166 205 L 181 201 L 185 195 L 247 164 L 249 151 L 238 151 L 236 146 L 253 136 L 244 136 Z M 371 169 L 376 177 L 376 183 L 375 184 L 376 190 L 368 203 L 368 206 L 365 209 L 362 216 L 358 221 L 356 225 L 355 232 L 349 239 L 348 246 L 340 251 L 341 252 L 340 255 L 342 257 L 332 263 L 329 268 L 327 268 L 316 274 L 311 272 L 303 277 L 304 278 L 303 283 L 296 288 L 294 288 L 293 285 L 284 285 L 278 282 L 276 280 L 277 278 L 273 277 L 270 274 L 270 271 L 267 266 L 267 257 L 269 254 L 269 249 L 271 243 L 276 237 L 278 232 L 282 228 L 283 225 L 301 206 L 316 193 L 327 186 L 331 182 L 337 179 L 336 176 L 337 174 L 342 170 L 354 163 Z M 234 304 L 236 302 L 237 302 L 238 301 L 240 303 L 242 300 L 246 300 L 247 301 L 247 303 L 251 303 L 252 302 L 254 302 L 255 303 L 257 303 L 258 302 L 260 304 L 260 305 L 262 307 L 265 307 L 265 306 L 266 305 L 267 305 L 268 306 L 271 306 L 272 307 L 272 308 L 271 309 L 271 310 L 273 310 L 274 311 L 274 310 L 275 309 L 279 309 L 280 310 L 284 310 L 285 311 L 285 313 L 284 314 L 282 314 L 281 313 L 279 313 L 279 314 L 280 313 L 281 314 L 281 315 L 283 315 L 284 316 L 284 317 L 283 318 L 283 320 L 282 321 L 281 320 L 281 321 L 280 322 L 279 321 L 275 321 L 274 322 L 273 322 L 272 321 L 270 321 L 269 320 L 267 320 L 266 321 L 265 320 L 261 320 L 260 319 L 257 319 L 256 318 L 253 318 L 252 317 L 249 317 L 248 316 L 246 316 L 243 313 L 242 313 L 239 310 L 238 310 L 237 309 L 237 308 L 234 305 Z";
 var KO_SVG_HTML = [
   "<defs>",
+  '<linearGradient id="ko-grad" x1="0%" y1="20%" x2="100%" y2="80%">',
+  '<stop offset="0%" stop-color="#f3b7ff"/>',
+  '<stop offset="18%" stop-color="#c86bff"/>',
+  '<stop offset="48%" stop-color="#8a35ff"/>',
+  '<stop offset="100%" stop-color="#3d0b73"/>',
+  "</linearGradient>",
+  '<filter id="ko-glow" x="-20%" y="-20%" width="140%" height="140%">',
+  '<feGaussianBlur stdDeviation="1.4" result="blur"/>',
+  '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>',
+  "</filter>",
   '<filter id="ko-ds" x="-25%" y="-25%" width="150%" height="150%">',
-  '<feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="rgba(0,0,0,0.85)"/>',
+  '<feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="rgba(0,0,0,0.9)"/>',
   "</filter>",
   "</defs>",
-  '<image href="/images/ko_purple.svg" x="4" y="4" width="92" height="92"',
-  ' filter="url(#ko-ds)" preserveAspectRatio="xMidYMid meet"/>'
+  '<g filter="url(#ko-ds)">',
+  '<svg viewBox="0 0 433 405" width="100" height="100">',
+  '<g filter="url(#ko-glow)">',
+  `<path d="${KO_PATH}" fill="url(#ko-grad)" fill-rule="evenodd" stroke="#f8dcff" stroke-width="1.6" stroke-linejoin="round"/>`,
+  "</g>",
+  "</svg>",
+  "</g>"
 ].join("");
 function buildKoOverlayShape(fen) {
   if (currentEval.mate !== 0) return null;
