@@ -1526,7 +1526,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       stroke: "none"
     }
   }));
-  svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#444", "stroke-width": 1, opacity: bg ? "0.5" : "1" } }));
+  svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#999", "stroke-width": 1, opacity: bg ? "0.6" : "1" } }));
   svgNodes.push(h("polyline", { attrs: {
     points: valid.map((p) => `${p.x},${p.y}`).join(" "),
     fill: "none",
