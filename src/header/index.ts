@@ -733,6 +733,19 @@ export function renderHeader(deps: HeaderDeps): VNode {
           'Rated only',
         ]),
       ]),
+
+      h('div.header__panel-row.--mt', [
+        h('label.header__panel-check', [
+          h('input', {
+            attrs: { type: 'checkbox', checked: importFilters.autoReview },
+            on: { change: (e: Event) => { importFilters.autoReview = (e.target as HTMLInputElement).checked; redraw(); } },
+          }),
+          'Auto-review after import',
+        ]),
+      ]),
+      importFilters.autoReview ? h('p.header__panel-hint.header__panel-warn',
+        'Large imports may take a long time to review. Each game runs through the engine at the configured review depth.'
+      ) : null,
     ]),
 
     h('div.header__panel-divider'),
