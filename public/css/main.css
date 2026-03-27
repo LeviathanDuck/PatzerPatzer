@@ -1499,13 +1499,112 @@ body.resizing {
   color: #aaa;
 }
 
+.fbt {
+  background: transparent;
+  color: #bbb;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+  user-select: none;
+}
+.fbt[data-icon]::before {
+  font-family: "lichess";
+  font-style: normal;
+  font-weight: normal;
+  text-transform: none;
+  speak: never;
+  content: attr(data-icon);
+  unicode-bidi: isolate;
+  font-size: 1.3em;
+  opacity: 0.9;
+  vertical-align: middle;
+}
+@media (hover: hover) {
+  .fbt:hover:not([disabled]) {
+    background: rgba(56, 147, 232, 0.15);
+    color: #e0e0e0;
+  }
+}
+.fbt.active {
+  background: rgba(56, 147, 232, 0.22);
+  color: #9cc9f5;
+}
+.fbt[disabled] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.jumps {
+  display: flex;
+  padding: 3px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  gap: 2px;
+}
+.jumps .fbt {
+  font-size: 1.25rem;
+  flex: 1;
+  border-radius: 5px;
+  padding: 5px 10px;
+  text-align: center;
+  min-width: 44px;
+}
+.jumps .fbt[data-icon] {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .analyse__controls {
   grid-area: controls;
   align-self: start;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   padding-top: 8px;
+}
+.analyse__controls .analyse-review-controls__row > button {
+  background: #1e1e1e;
+  color: #bbb;
+  border: 1px solid #303030;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  user-select: none;
+}
+@media (hover: hover) {
+  .analyse__controls .analyse-review-controls__row > button:hover:not([disabled]) {
+    background: rgba(56, 147, 232, 0.15);
+    border-color: rgba(56, 147, 232, 0.35);
+    color: #e0e0e0;
+  }
+}
+.analyse__controls .analyse-review-controls__row > button[disabled] {
+  opacity: 0.35;
+  cursor: default;
+}
+.analyse__controls .analyse-review-controls__row > button.active {
+  background: rgba(56, 147, 232, 0.2);
+  border-color: rgba(56, 147, 232, 0.5);
+  color: #9cc9f5;
 }
 
 .analyse__underboard {
@@ -1537,15 +1636,14 @@ body.resizing {
     align-items: stretch;
     touch-action: pan-y;
   }
-  .analyse__controls > button,
-  .analyse__controls .btn-review {
-    min-height: 44px;
-    padding: 10px 12px;
-    font-size: 0.92rem;
-  }
-  .analyse__controls > button,
+  .analyse__controls .jumps,
   .analyse__controls .analyse-review-controls {
     flex: 1 1 calc(50% - 8px);
+  }
+  .analyse__controls .jumps .fbt {
+    min-height: 44px;
+    font-size: 1.4rem;
+    padding: 8px 6px;
   }
   .analyse__controls .analyse-review-controls {
     min-width: 0;
@@ -1555,8 +1653,10 @@ body.resizing {
     flex-wrap: wrap;
     gap: 8px;
   }
-  .analyse__controls .analyse-review-controls__row > * {
+  .analyse__controls .analyse-review-controls__row > button {
     flex: 1 1 calc(50% - 8px);
+    min-height: 44px;
+    font-size: 0.88rem;
   }
   .eval-bar,
   .analyse__player_strip,
@@ -2183,12 +2283,15 @@ body[data-board=newspaper] cg-board::before {
   text-align: center;
 }
 .btn-review--complete {
-  background: #2a6644;
-  color: #fff;
-  border-color: #2a6644;
+  background: #1b3d28 !important;
+  border-color: #2d6644 !important;
+  color: #72c494 !important;
 }
-.btn-review--complete:hover {
-  background: #338855;
+@media (hover: hover) {
+  .btn-review--complete:hover:not([disabled]) {
+    background: #244e34 !important;
+    border-color: #3a8055 !important;
+  }
 }
 
 .analyse-review-controls {

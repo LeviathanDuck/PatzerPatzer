@@ -1813,10 +1813,16 @@ function buildArrowShapes() {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2), dest: uci.slice(2, 4), brush: "red" });
   }
-  if (showBoardReviewGlyphs) {
+  if (showBoardReviewGlyphs && !retroHidden) {
     shapes.push(...buildCurrentNodeReviewGlyphShapes(ctrl2));
   }
-  if (showPlayedArrow && pathIsMainline(ctrl2.root, ctrl2.path)) {
+  if (retroHidden && ctrl2.retro.isSolving()) {
+    const c = ctrl2.retro.current();
+    if (c && ctrl2.path === c.parentPath) {
+      shapes.push(buildArrowShape(c.playedMove, "red"));
+    }
+  }
+  if (showPlayedArrow && pathIsMainline(ctrl2.root, ctrl2.path) && !retroHidden) {
     const nextNode = ctrl2.node.children[0];
     if (nextNode?.uci) {
       const uci = nextNode.uci;
@@ -2259,16 +2265,16 @@ function isEngineSearchActive() {
 
 // src/engine/tactics.ts
 var missedMomentConfig = {
-  swingThreshold: 0.05,
-  // Lichess inaccuracy floor — any real mistake is flagged
-  missedMateMaxN: 5,
-  // mate in 1–5 (was hardcoded 3; extend to longer forcing lines)
-  collapseWcFloor: 0.55,
-  // mover had > 55% win chances (~+50–100 cp)
-  collapseDropMin: 0.08,
-  // and dropped by ≥ 0.08 (mistake-sized in a winning position)
+  swingThreshold: 0.15,
+  // Lichess blunder floor — flags ~2+ pawn swings in typical positions
+  missedMateMaxN: 3,
+  // Lichess default: mate in 1–3
+  collapseWcFloor: 0.65,
+  // mover had > 65% win chances (~+250 cp) before collapse
+  collapseDropMin: 0.15,
+  // consistent with swingThreshold — requires a blunder-sized drop
   maxPly: 80
-  // up to move 40 (was 60 = move 30)
+  // up to move 40
 };
 var _configChangeCallbacks = [];
 function onMissedMomentConfigChange(cb) {
@@ -6316,9 +6322,19 @@ function onUserMove(orig, dest) {
     }, PUZZLE_REPLY_DELAY_MS);
     return;
   }
+  const retro = ctrl2.retro?.isSolving() ? ctrl2.retro : void 0;
+  const retroCand = retro ? retro.current() : null;
+  const atRetroExercise = !!(retro && retroCand && ctrl2.path === retroCand.parentPath);
+  if (atRetroExercise && retro && retroCand && normUci === retroCand.bestMove) {
+    retro.onWin();
+  }
   const existingChild = ctrl2.node.children.find((c) => c.uci === normUci || c.uci?.startsWith(normUci));
   if (existingChild) {
     _navigate(ctrl2.path + existingChild.id);
+    if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
+      retro.setFeedback("eval");
+      retro.onCeval();
+    }
     return;
   }
   const piece = pos.board.get(fromSq);
@@ -6326,12 +6342,6 @@ function onUserMove(orig, dest) {
     pendingPromotion = { orig, dest, color: pos.turn };
     _redraw3();
     return;
-  }
-  const retro = ctrl2.retro?.isSolving() ? ctrl2.retro : void 0;
-  const retroCand = retro ? retro.current() : null;
-  const atRetroExercise = !!(retro && retroCand && ctrl2.path === retroCand.parentPath);
-  if (atRetroExercise && retro && retroCand && normUci === retroCand.bestMove) {
-    retro.onWin();
   }
   completeMove(orig, dest);
   if (atRetroExercise && retro && retroCand && normUci !== retroCand.bestMove) {
@@ -11511,7 +11521,8 @@ function renderReviewMenu(redraw2) {
   const running = isBulkRunning();
   const paused = isBulkPaused();
   const active = running || paused;
-  const summary = active ? getQueueSummary() : null;
+  if (!active) return null;
+  const summary = getQueueSummary();
   const auto = getAutoReview();
   return h("div.review-menu", [
     h("button.review-menu__trigger", {
@@ -11521,7 +11532,7 @@ function renderReviewMenu(redraw2) {
         showReviewMenu = !showReviewMenu;
         redraw2();
       } }
-    }, active ? `Review ${summary.done}/${summary.total}` : "Review"),
+    }, summary ? `Reviewing ${summary.done}/${summary.total}` : "Reviewing\u2026"),
     showReviewMenu ? h("div.review-menu__backdrop", {
       on: { click: () => {
         showReviewMenu = false;
@@ -11530,8 +11541,8 @@ function renderReviewMenu(redraw2) {
     }) : null,
     showReviewMenu ? h("div.review-menu__dropdown", [
       // Queue status + controls
-      active ? h("div.review-menu__section", [
-        h("div.review-menu__label", summary ? `${summary.done} of ${summary.total} game${summary.total === 1 ? "" : "s"} analyzed` : "Idle"),
+      h("div.review-menu__section", [
+        h("div.review-menu__label", summary ? `${summary.done} of ${summary.total} game${summary.total === 1 ? "" : "s"} analyzed` : "Reviewing\u2026"),
         h("div.review-menu__row", [
           paused ? h("button.review-menu__btn", {
             on: { click: () => {
@@ -11551,7 +11562,7 @@ function renderReviewMenu(redraw2) {
             } }
           }, "Cancel")
         ])
-      ]) : null,
+      ]),
       h("div.review-menu__section", [
         h("div.review-menu__label", `Depth: ${reviewDepth}`),
         h("div.review-menu__row", REVIEW_DEPTHS.map(
@@ -12172,6 +12183,8 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
   let currentIdx = -1;
   let _feedback = "find";
   let _guidanceRevealed = false;
+  let _winKind = null;
+  let _failKind = null;
   const isPlySolved = (ply) => solvedPlies.includes(ply);
   function findNextIdx() {
     return candidates.findIndex((c) => !isPlySolved(c.ply));
@@ -12183,6 +12196,8 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
   function jumpToNext() {
     _feedback = "find";
     _guidanceRevealed = false;
+    _winKind = null;
+    _failKind = null;
     currentIdx = findNextIdx();
   }
   function skip() {
@@ -12205,6 +12220,12 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
     },
     setFeedback(f) {
       _feedback = f;
+    },
+    winKind() {
+      return _winKind;
+    },
+    failKind() {
+      return _failKind;
     },
     isSolving() {
       return _feedback === "find" || _feedback === "fail";
@@ -12250,18 +12271,28 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
         const diff2 = (nodeWc - parentWc) / 2;
         if (diff2 > -0.04) {
           solveCurrent();
+          _winKind = "near-best";
           _feedback = "win";
         } else {
+          const gameEv = getEval(c.path);
+          if (gameEv) {
+            const gameNodeWc = toColor(evalWinChances(gameEv) ?? 0);
+            _failKind = nodeWc > gameNodeWc ? "better" : "worse";
+          } else {
+            _failKind = "worse";
+          }
           _feedback = "fail";
           navigateTo(c.parentPath);
         }
       } else {
+        _failKind = null;
         _feedback = "fail";
         navigateTo(c.parentPath);
       }
     },
     onWin() {
       solveCurrent();
+      _winKind = "exact";
       _feedback = "win";
     },
     onFail() {
@@ -12292,97 +12323,183 @@ function renderRetroEntry(deps) {
     on: { click: onToggle }
   }, retro ? "Close" : "Mistakes");
 }
+var MIN_DEPTH = 8;
+var MAX_DEPTH = 18;
+function renderEvalProgress(depth) {
+  const pct = depth ? Math.min(100, Math.max(0, 100 * (depth - MIN_DEPTH) / (MAX_DEPTH - MIN_DEPTH))) : 0;
+  return h("div.retro-progress", h("div", { attrs: { style: `width: ${pct}%` } }));
+}
+function renderSkipOrView(retro, navigate2, redraw2) {
+  const cand = retro.current();
+  return h("div.retro-choices", [
+    h("a", {
+      on: { click: () => {
+        retro.viewSolution();
+        if (cand) navigate2(cand.path);
+        else redraw2();
+      } }
+    }, "View the solution"),
+    h("a", {
+      on: { click: () => {
+        retro.skip();
+        const next2 = retro.current();
+        if (next2) navigate2(next2.parentPath);
+        else redraw2();
+      } }
+    }, "Skip this move")
+  ]);
+}
+function renderContinue(retro, navigate2, redraw2) {
+  return h("a.retro-continue", {
+    on: { click: () => {
+      retro.jumpToNext();
+      const next2 = retro.current();
+      if (next2) navigate2(next2.parentPath);
+      else redraw2();
+    } }
+  }, [
+    h("span.retro-continue__icon", "\u25B6"),
+    "Next"
+  ]);
+}
 function renderRetroStrip(deps) {
-  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2, onRevealGuidance } = deps;
+  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2, onRevealGuidance, onClose, getEvalDepth } = deps;
   if (!retro) return null;
   const feedback = retro.feedback();
   const cand = retro.current();
   const [solved, total] = retro.completion();
   const revealed = retro.guidanceRevealed();
-  const progress = h("span.retro-strip__progress", `${solved} / ${total}`);
-  const buttons = [];
-  if (feedback === "find" || feedback === "offTrack") {
-    buttons.push(
-      h("button.retro-strip__btn", {
-        on: { click: () => {
-          retro.viewSolution();
-          if (cand) navigate2(cand.path);
-        } }
-      }, "Show answer"),
-      h("button.retro-strip__btn", {
-        on: { click: () => {
-          retro.skip();
-          const next2 = retro.current();
-          if (next2) navigate2(next2.parentPath);
-          else redraw2();
-        } }
-      }, "Skip")
-    );
-  } else if (feedback === "win") {
-    buttons.push(
-      h("button.retro-strip__btn.retro-strip__btn--next", {
-        on: { click: () => {
-          retro.jumpToNext();
-          const next2 = retro.current();
-          if (next2) navigate2(next2.parentPath);
-          else redraw2();
-        } }
-      }, "Next \u2192")
-    );
-  } else if (feedback === "fail") {
-    buttons.push(
-      h("button.retro-strip__btn", {
-        on: { click: () => {
-          retro.setFeedback("find");
-          redraw2();
-        } }
-      }, "Retry"),
-      h("button.retro-strip__btn", {
-        on: { click: () => {
-          retro.viewSolution();
-          if (cand) navigate2(cand.path);
-        } }
-      }, "Show answer")
-    );
-  } else if (feedback === "view") {
-    const bestSan = cand ? uciToSan2(cand.fenBefore, cand.bestMove) : null;
-    if (bestSan) buttons.push(h("span.retro-strip__best", `Best: ${bestSan}`));
-    buttons.push(
-      h("button.retro-strip__btn.retro-strip__btn--next", {
-        on: { click: () => {
-          retro.jumpToNext();
-          const next2 = retro.current();
-          if (next2) navigate2(next2.parentPath);
-          else redraw2();
-        } }
-      }, "Next \u2192")
-    );
-  }
-  let label;
+  const progressText = `${Math.min(solved + 1, total)} / ${total}`;
+  let feedbackContent;
   if (!cand) {
-    label = "Review complete!";
-  } else if (feedback === "win") {
-    label = "Correct!";
-  } else if (feedback === "fail") {
-    label = "Not the best move.";
-  } else if (feedback === "view") {
-    label = `${cand.classification.charAt(0).toUpperCase() + cand.classification.slice(1)} on move ${Math.ceil(cand.ply / 2)}`;
+    feedbackContent = [
+      h("div.retro-player", [
+        h("div.retro-king", "\u265A"),
+        h("div.retro-instruction", [
+          h("em", total === 0 ? "No mistakes found." : "Done reviewing mistakes."),
+          h("div.retro-choices", [
+            total > 0 && h("a", { on: { click: () => {
+              retro.reset();
+              const f = retro.current();
+              if (f) navigate2(f.parentPath);
+              else redraw2();
+            } } }, "Do it again")
+          ].filter(Boolean))
+        ])
+      ])
+    ];
+  } else if (feedback === "find") {
+    const color = cand.playerColor === "white" ? "White" : "Black";
+    feedbackContent = [
+      h("div.retro-player", [
+        h("div.retro-instruction", [
+          h("strong", [
+            h("move", cand.playedMoveSan),
+            " was played"
+          ]),
+          h("em", `Find a better move for ${color}`),
+          renderSkipOrView(retro, navigate2, redraw2)
+        ])
+      ])
+    ];
   } else if (feedback === "offTrack") {
-    label = "Navigate back to resume";
+    feedbackContent = [
+      h("div.retro-player", [
+        h("div.retro-icon.retro-icon--off", "!"),
+        h("div.retro-instruction", [
+          h("strong", "You browsed away"),
+          h("div.retro-choices.retro-choices--off", [
+            h("a", {
+              on: { click: () => {
+                const c = retro.current();
+                if (c) navigate2(c.parentPath);
+                else redraw2();
+              } }
+            }, "Resume learning")
+          ])
+        ])
+      ])
+    ];
+  } else if (feedback === "fail") {
+    const fk = retro.failKind();
+    const color = cand.playerColor === "white" ? "White" : "Black";
+    let strongText;
+    if (fk === "better") {
+      strongText = "Better, but not the best move available.";
+    } else if (fk === "worse") {
+      strongText = "That move is even worse.";
+    } else {
+      strongText = "You can do better.";
+    }
+    feedbackContent = [
+      h("div.retro-player", [
+        h("div.retro-icon.retro-icon--fail", "\u2717"),
+        h("div.retro-instruction", [
+          h("strong", strongText),
+          h("em", `Try another move for ${color}`),
+          renderSkipOrView(retro, navigate2, redraw2)
+        ])
+      ])
+    ];
+  } else if (feedback === "eval") {
+    const depth = getEvalDepth?.();
+    feedbackContent = [
+      h(
+        "div.retro-half.retro-half--top",
+        h("div.retro-player.retro-player--center", [
+          h("div.retro-instruction", [
+            h("strong", "Evaluating your move\u2026"),
+            renderEvalProgress(depth)
+          ])
+        ])
+      )
+    ];
+  } else if (feedback === "win") {
+    const wk = retro.winKind();
+    const msg = wk === "near-best" ? "Good enough!" : "Good move!";
+    feedbackContent = [
+      h(
+        "div.retro-half.retro-half--top",
+        h("div.retro-player", [
+          h("div.retro-icon.retro-icon--win", "\u2713"),
+          h("div.retro-instruction", h("strong", msg))
+        ])
+      ),
+      renderContinue(retro, navigate2, redraw2)
+    ];
   } else {
-    const color = cand.ply % 2 === 1 ? "White" : "Black";
-    label = `Find the best move for ${color}`;
+    const bestSan = uciToSan2(cand.fenBefore, cand.bestMove);
+    feedbackContent = [
+      h(
+        "div.retro-half.retro-half--top",
+        h("div.retro-player", [
+          h("div.retro-icon.retro-icon--win", "\u2713"),
+          h("div.retro-instruction", [
+            h("strong", "Solution"),
+            h("em", ["Best was ", h("strong", bestSan)])
+          ])
+        ])
+      ),
+      renderContinue(retro, navigate2, redraw2)
+    ];
   }
-  if (!revealed && cand) {
-    buttons.push(
-      h("button.retro-strip__btn.retro-strip__btn--engine", {
-        on: { click: onRevealGuidance }
-      }, "Show engine")
-    );
-  }
-  return h("div.retro-strip", [
-    h("div.retro-strip__label", label),
-    h("div.retro-strip__actions", [...buttons, progress])
+  const showEngineBtn = !revealed && cand && feedback !== "eval" ? [
+    h("div.retro-engine-reveal", [
+      h("a", { on: { click: onRevealGuidance } }, "Show engine")
+    ])
+  ] : [];
+  return h("div.retro-box.training-box", [
+    // Title bar — mirrors lichess-org/lila: retroView.ts div.title
+    h("div.retro-box__title", [
+      h("span", "Learn from your mistakes"),
+      h("span.retro-box__progress", progressText),
+      h("button.retro-box__close", { on: { click: onClose }, attrs: { title: "Close" } }, "\u2715")
+    ]),
+    // Feedback area — mirrors lichess-org/lila: retroView.ts div.feedback.{state}
+    h("div.retro-feedback." + feedback, [
+      ...feedbackContent,
+      ...showEngineBtn
+    ])
   ]);
 }
 
@@ -12817,7 +12934,9 @@ function routeContent(route) {
               ctrl.retro?.revealGuidance();
               syncArrow();
               redraw();
-            }
+            },
+            onClose: toggleRetro,
+            getEvalDepth: () => currentEval.depth
           }),
           // Analysis summary and puzzle finder — hidden during active retrospection.
           // These are analysis-complete result panels; they conflict with the focused
@@ -12856,9 +12975,22 @@ function routeContent(route) {
         // Controls — navigation only; engine toggle + settings moved to renderCeval() header
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls (jump buttons)
         h("div.analyse__controls", [
-          h("button", { on: { click: prev }, attrs: { disabled: ctrl.path === "" } }, "\u2190 Prev"),
-          h("button", { on: { click: flip } }, "Flip"),
-          h("button", { on: { click: next }, attrs: { disabled: !ctrl.node.children[0] } }, "Next \u2192"),
+          // Navigation jump buttons — mirrors lichess-org/lila: ui/analyse/src/view/controls.ts .jumps
+          // data-icon values: LessThan \ue027 (prev), GreaterThan \ue026 (next)
+          h("div.jumps", [
+            h("button.fbt", {
+              attrs: { "data-icon": "\uE027", disabled: ctrl.path === "", title: "Previous move" },
+              on: { click: prev }
+            }),
+            h("button.fbt", {
+              attrs: { title: "Flip board" },
+              on: { click: flip }
+            }, "Flip"),
+            h("button.fbt", {
+              attrs: { "data-icon": "\uE026", disabled: !ctrl.node.children[0], title: "Next move" },
+              on: { click: next }
+            })
+          ]),
           renderAnalysisControls([
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.
