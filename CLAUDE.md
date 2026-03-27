@@ -157,12 +157,17 @@ Claude must:
 Before implementing any CCP prompt, Claude must run:
 
 ```
-npm run prompt:start <CCP-ID>
+npm run prompt:start -- <CCP-ID>
 ```
 
 This marks the prompt as started in the registry, sets the timestamp, and regenerates
 tracking docs. This applies whether the prompt was read from the queue file, pasted by
 the user, or dispatched by a manager prompt. No exceptions.
+
+Use that exact command form:
+- do not omit the `--`
+- do not replace it with a piped or truncated variant like `| tail -5`
+- do not continue implementation work until the plain startup command succeeds
 
 ## Stop Condition
 

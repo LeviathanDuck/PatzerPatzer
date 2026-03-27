@@ -62,11 +62,43 @@ http.createServer((req, res) => {
   if (url === '/dashboard') {
     if (fs.existsSync(DASHBOARD_PATH)) {
       res.setHeader('Content-Type', MIME['.html']);
+      res.setHeader('Cache-Control', 'no-cache');
       res.writeHead(200);
       fs.createReadStream(DASHBOARD_PATH).pipe(res);
     } else {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Dashboard not generated yet. Run: npm run prompts:dashboard');
+    }
+    return;
+  }
+
+  // Serve prompt registry JSON for live dashboard reads
+  if (url === '/api/prompt-registry') {
+    const regPath = path.join(__dirname, 'docs', 'prompts', 'prompt-registry.json');
+    if (fs.existsSync(regPath)) {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.writeHead(200);
+      fs.createReadStream(regPath).pipe(res);
+    } else {
+      res.writeHead(404);
+      res.end('{}');
+    }
+    return;
+  }
+
+  // Serve prompt item files for live dashboard reads
+  if (url.startsWith('/api/prompt-item/')) {
+    const id = url.slice('/api/prompt-item/'.length);
+    const itemPath = path.join(__dirname, 'docs', 'prompts', 'items', `${id}.md`);
+    if (fs.existsSync(itemPath)) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.writeHead(200);
+      fs.createReadStream(itemPath).pipe(res);
+    } else {
+      res.writeHead(404);
+      res.end('');
     }
     return;
   }

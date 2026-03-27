@@ -526,7 +526,97 @@ td.kind { font-size: 0.78rem; color: var(--text-dim); }
 </div>
 
 <script>
-const PROMPTS = ${JSON.stringify(promptData)};
+let PROMPTS = ${JSON.stringify(promptData)};
+
+// --- Live data fetch (dev server only) ---
+// When served via the dev server, fetch the registry live so the dashboard
+// always shows current data without needing regeneration.
+async function fetchLiveData() {
+  if (location.protocol === 'file:') return; // static file — use baked data
+  try {
+    const res = await fetch('/api/prompt-registry');
+    if (!res.ok) return;
+    const registry = await res.json();
+    if (!Array.isArray(registry.prompts)) return;
+
+    // Rebuild PROMPTS from live registry
+    const livePrompts = [];
+    for (const p of registry.prompts) {
+      // Fetch prompt body
+      let body = '';
+      try {
+        const itemRes = await fetch('/api/prompt-item/' + p.id);
+        if (itemRes.ok) body = await itemRes.text();
+      } catch {}
+
+      livePrompts.push({
+        id: p.id,
+        title: p.title || '',
+        taskId: p.taskId || '',
+        parentPromptId: p.parentPromptId,
+        batchPromptIds: p.batchPromptIds || [],
+        sourceDocument: p.sourceDocument || '',
+        sourceStep: p.sourceStep || '',
+        task: p.task || '',
+        executionTarget: p.executionTarget || '',
+        createdBy: p.createdBy || 'unknown',
+        createdAt: p.createdAt || '',
+        startedAt: p.startedAt || '',
+        status: p.status || 'created',
+        reviewOutcome: p.reviewOutcome || 'pending',
+        reviewIssues: p.reviewIssues || 'none',
+        queueState: p.queueState || 'not-queued',
+        claudeUsed: p.claudeUsed || false,
+        kind: p.kind || 'normal',
+        notes: p.notes || 'none',
+        statusLabel: computeStatusLabel(p),
+        statusClass: computeStatusClass(p),
+        body: body,
+        isNew: false, // live mode doesn't track new-since-last-refresh
+      });
+    }
+    PROMPTS = livePrompts;
+    renderStats();
+    renderFilterButtons();
+    renderList();
+    // Update the timestamp display
+    const genEl = document.querySelector('.header__generated');
+    if (genEl) genEl.textContent = 'Live data';
+  } catch (e) {
+    console.warn('[dashboard] live fetch failed, using baked data', e);
+  }
+}
+
+function computeStatusLabel(p) {
+  if (p.status === 'reviewed') {
+    switch (p.reviewOutcome) {
+      case 'passed': return 'REVIEWED: PASSED';
+      case 'passed with notes': return 'REVIEWED: PASSED WITH NOTES';
+      case 'issues found': return 'REVIEWED: ISSUES FOUND';
+      case 'needs rework': return 'REVIEWED: NEEDS REWORK';
+      default: return 'REVIEWED';
+    }
+  }
+  if (p.queueState === 'queued-started') return 'STARTED';
+  if (p.queueState === 'queued-run') return 'RUN';
+  if (p.queueState === 'queued-pending') return 'READY TO RUN';
+  if (p.status === 'created') return 'NOT REVIEWED';
+  return (p.status || '').toUpperCase() || 'UNKNOWN';
+}
+
+function computeStatusClass(p) {
+  if (p.status === 'reviewed') {
+    if (p.reviewOutcome === 'passed') return 'status--passed';
+    if (p.reviewOutcome === 'passed with notes') return 'status--notes';
+    if (p.reviewOutcome === 'issues found') return 'status--issues';
+    if (p.reviewOutcome === 'needs rework') return 'status--rework';
+    return 'status--reviewed';
+  }
+  if (p.queueState === 'queued-started') return 'status--started';
+  if (p.queueState === 'queued-run') return 'status--run';
+  if (p.queueState === 'queued-pending') return 'status--ready';
+  return 'status--pending';
+}
 
 // --- Date formatting (Pacific time, human-readable) ---
 function fmtDate(iso) {
@@ -851,14 +941,16 @@ document.getElementById('refresh-btn').addEventListener('click', () => {
   const btn = document.getElementById('refresh-btn');
   btn.textContent = 'Refreshing...';
   btn.disabled = true;
-  // When served via the dev server, hit the refresh endpoint.
-  // When opened as a local file, show a hint instead.
   if (location.protocol === 'file:') {
-    alert('To refresh, run in your terminal:\\n\\nnpm run prompts:refresh\\n\\nThen reload this page.');
+    alert('To refresh, run in your terminal:\\n\\nnpm run prompts:dashboard\\n\\nThen reload this page.');
     btn.textContent = 'Refresh Data';
     btn.disabled = false;
   } else {
-    location.href = '/api/refresh-dashboard';
+    // Live mode: re-fetch registry data directly
+    fetchLiveData().then(() => {
+      btn.textContent = 'Refresh Data';
+      btn.disabled = false;
+    });
   }
 });
 
@@ -866,6 +958,8 @@ document.getElementById('refresh-btn').addEventListener('click', () => {
 renderStats();
 renderFilterButtons();
 renderList();
+// Fetch live data from dev server (replaces baked data if available)
+fetchLiveData();
 </script>
 
 </body>
