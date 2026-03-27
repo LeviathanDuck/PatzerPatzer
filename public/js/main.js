@@ -12947,7 +12947,6 @@ function clearRetroMode() {
 function reviewAllGames(games) {
   if (games.length === 0) return;
   enqueueBulkReview(games);
-  if (currentRoute.name !== "games") window.location.hash = "#/games";
 }
 function routeContent(route) {
   const deps = {
