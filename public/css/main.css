@@ -2283,6 +2283,8 @@ body[data-board=newspaper] cg-board::before {
   text-align: center;
 }
 .btn-review--complete {
+  font-size: 0.7rem !important;
+  letter-spacing: 0 !important;
   background: #1b3d28 !important;
   border-color: #2d6644 !important;
   color: #72c494 !important;

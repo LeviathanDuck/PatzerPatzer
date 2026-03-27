@@ -11699,7 +11699,7 @@ function renderDetectionModal(redraw2) {
   ]);
 }
 function renderGlobalMenu(deps) {
-  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
+  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, onFlipBoard, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
   const hasGame = selectedGameId2 !== null;
   return h("div.global-menu", [
     h("button.global-menu__trigger", {
@@ -11733,6 +11733,12 @@ function renderGlobalMenu(deps) {
           window.location.hash = "#/analysis";
         } }
       }, "Game Review"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          onFlipBoard();
+          closeGlobalMenu(redraw2);
+        } }
+      }, "Flip Board"),
       h("button.global-menu__item", {
         on: { click: () => {
           closeGlobalMenu(redraw2);
@@ -12975,22 +12981,6 @@ function routeContent(route) {
         // Controls — navigation only; engine toggle + settings moved to renderCeval() header
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls (jump buttons)
         h("div.analyse__controls", [
-          // Navigation jump buttons — mirrors lichess-org/lila: ui/analyse/src/view/controls.ts .jumps
-          // data-icon values: LessThan \ue027 (prev), GreaterThan \ue026 (next)
-          h("div.jumps", [
-            h("button.fbt", {
-              attrs: { "data-icon": "\uE027", disabled: ctrl.path === "", title: "Previous move" },
-              on: { click: prev }
-            }),
-            h("button.fbt", {
-              attrs: { title: "Flip board" },
-              on: { click: flip }
-            }, "Flip"),
-            h("button.fbt", {
-              attrs: { "data-icon": "\uE026", disabled: !ctrl.node.children[0], title: "Next move" },
-              on: { click: next }
-            })
-          ]),
           renderAnalysisControls([
             // Mistake-review entry: available after review completes.
             // Jumps to the position before the first candidate mistake.
@@ -13000,6 +12990,18 @@ function routeContent(route) {
               analysisComplete,
               batchAnalyzing,
               onToggle: toggleRetro
+            })
+          ]),
+          // Navigation jump buttons — mirrors lichess-org/lila: ui/analyse/src/view/controls.ts .jumps
+          // data-icon values: LessThan \ue027 (prev), GreaterThan \ue026 (next)
+          h("div.jumps", [
+            h("button.fbt", {
+              attrs: { "data-icon": "\uE027", disabled: ctrl.path === "", title: "Previous move" },
+              on: { click: prev }
+            }),
+            h("button.fbt", {
+              attrs: { "data-icon": "\uE026", disabled: !ctrl.node.children[0], title: "Next move" },
+              on: { click: next }
             })
           ])
         ]),
@@ -13047,6 +13049,7 @@ function view(route) {
       gameSourceUrl,
       downloadPgn,
       resetAllData,
+      onFlipBoard: flip,
       redraw
     }),
     h("main", [routeContent(route)]),
