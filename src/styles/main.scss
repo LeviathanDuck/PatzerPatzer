@@ -1483,9 +1483,8 @@ body.resizing {
       display: none;
     }
 
-    // Jumps fill the full width now that action buttons are gone.
     .jumps {
-      flex: 1 1 0;
+      flex: 0 0 40%;
       padding: 0;
       background: transparent;
       border: none;
