@@ -157,7 +157,7 @@ export function onUserMove(orig: string, dest: string): void {
     applyMoveToTree(normMove as NormalMove, pos);
     // Lock board during the reply window so the user cannot move opponent pieces.
     // Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts reply delay pattern.
-    cgInstance?.set({ movable: { color: undefined } });
+    cgInstance?.set({ movable: { color: 'both' as const, dests: new Map() } });
     setTimeout(() => {
       for (const reply of outcome.replies) playUciMove(reply);
       puzzleCtrl.setCurrentPath(_getCtrl().path);
@@ -293,7 +293,7 @@ export function completePromotion(role: Role): void {
     applyMoveToTree(move, pos);
     // Lock board during the reply window so the user cannot move opponent pieces.
     // Mirrors lichess-org/lila: ui/puzzle/src/ctrl.ts reply delay pattern.
-    cgInstance?.set({ movable: { color: undefined } });
+    cgInstance?.set({ movable: { color: 'both' as const, dests: new Map() } });
     setTimeout(() => {
       for (const reply of outcome.replies) playUciMove(reply);
       puzzleCtrl.setCurrentPath(_getCtrl().path);
