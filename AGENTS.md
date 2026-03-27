@@ -371,6 +371,15 @@ This coordination check applies to Codex in this thread only. Claude Code does n
 Do not begin repo work until the user has either pasted the Claude Code prompt or replied `ready`.
 Use that answer to avoid overlapping file ownership, conflicting edits, or duplicated investigation.
 
+Hard gate rules:
+
+- for any non-trivial implementation, refactor, or review task, the first assistant message must be only the coordination question
+- the coordination question must be sent as a normal visible assistant chat message, not as commentary, a collapsible work update, or any other minimized UI surface
+- do not hide the coordination question inside a progress update, multi-part message, or tool summary
+- do not run tools, inspect files, review code, or edit the repo before the user answers
+- if the user answers anything other than the active Claude Code prompt or `ready`, remain blocked and ask again clearly
+- after the user answers, then continue with the normal diagnosis / implementation / review workflow
+
 Before coding, provide:
 
 1. what part of the current codebase is relevant
