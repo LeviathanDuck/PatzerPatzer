@@ -33,7 +33,7 @@ export function setReviewDotsUserOnly(enabled: boolean): void {
 // --- Board zoom ---
 // zoom: 0–100, default 85. Stored in localStorage, applied to body as ---zoom.
 // CSS formula: ---board-scale = (---zoom / 100) * 0.75 + 0.25 (same as Lichess).
-const ZOOM_DEFAULT = 85;
+const ZOOM_DEFAULT = 70;
 const ZOOM_KEY = 'boardZoom';
 export let boardZoom: number = (() => {
   const stored = localStorage.getItem(ZOOM_KEY);
