@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PuzzleCandidate } from '../tree/types';
+import type { RetroCandidate } from '../analyse/retro';
 import type {
   ImportedLichessPuzzleDefinition,
   UserLibraryPuzzleDefinition,
@@ -78,21 +79,74 @@ export function candidateToDefinition(
     ? `${candidate.gameId}_${candidate.path}`
     : `user_${simpleHash(candidate.fen + candidate.bestMove)}`;
 
-  return {
+  const def: UserLibraryPuzzleDefinition = {
     id: idBase,
     sourceKind: 'user-library',
     startFen: candidate.fen,
     solutionLine: [candidate.bestMove],
     strictSolutionMove: candidate.bestMove,
     createdAt: Date.now(),
-    sourceGameId: candidate.gameId ?? undefined,
     sourcePath: candidate.path,
     sourceReason: candidate.reason?.code ?? 'swing',
-    title: opts?.title,
-    notes: opts?.notes,
-    tags: opts?.tags,
-    sourcePgn: opts?.sourcePgn,
   };
+  if (candidate.gameId != null) def.sourceGameId = candidate.gameId;
+  if (opts?.title != null)      def.title = opts.title;
+  if (opts?.notes != null)      def.notes = opts.notes;
+  if (opts?.tags != null)       def.tags = opts.tags;
+  if (opts?.sourcePgn != null)  def.sourcePgn = opts.sourcePgn;
+  return def;
+}
+
+// ---------------------------------------------------------------------------
+// Adapter 1b: RetroCandidate → UserLibraryPuzzleDefinition
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a RetroCandidate (from the Learn From Your Mistakes session) into a
+ * canonical UserLibraryPuzzleDefinition.
+ *
+ * RetroCandidate carries richer data than PuzzleCandidate: fenBefore, bestMove,
+ * bestLine (full PV), reason with code/label/summary, classification, loss, etc.
+ * This adapter maps those directly into the user-library puzzle model.
+ *
+ * @param candidate - Retro candidate from the active retrospection session.
+ * @param opts      - Optional overrides (title, notes, tags, sourcePgn).
+ */
+export function retroCandidateToDefinition(
+  candidate: RetroCandidate,
+  opts?: {
+    title?: string;
+    notes?: string;
+    tags?: string[];
+    sourcePgn?: string;
+  },
+): UserLibraryPuzzleDefinition {
+  // Stable id: prefix with source game id when available, fall back to fen hash.
+  const idBase = candidate.gameId
+    ? `${candidate.gameId}_${candidate.path}`
+    : `user_${simpleHash(candidate.fenBefore + candidate.bestMove)}`;
+
+  // Solution line: use the full PV when available, fall back to single best move.
+  const solutionLine = candidate.bestLine && candidate.bestLine.length > 0
+    ? candidate.bestLine
+    : [candidate.bestMove];
+
+  const def: UserLibraryPuzzleDefinition = {
+    id: idBase,
+    sourceKind: 'user-library',
+    startFen: candidate.fenBefore,
+    solutionLine,
+    strictSolutionMove: candidate.bestMove,
+    createdAt: Date.now(),
+    sourcePath: candidate.parentPath,
+    sourceReason: candidate.reason.code,
+  };
+  if (candidate.gameId != null)  def.sourceGameId = candidate.gameId;
+  if (opts?.title != null)       def.title = opts.title;
+  if (opts?.notes != null)       def.notes = opts.notes;
+  if (opts?.tags != null)        def.tags = opts.tags;
+  if (opts?.sourcePgn != null)   def.sourcePgn = opts.sourcePgn;
+  return def;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +172,7 @@ export function lichessShardRecordToDefinition(
 
   const solutionLine = record.moves.slice(1);
 
-  return {
+  const def: ImportedLichessPuzzleDefinition = {
     id: `lichess_${record.id}`,
     sourceKind: 'imported-lichess',
     startFen: record.fen,
@@ -127,13 +181,14 @@ export function lichessShardRecordToDefinition(
     createdAt: Date.now(),
     lichessPuzzleId: record.id,
     rating: record.rating,
-    ratingDeviation: record.ratingDeviation,
-    popularity: record.popularity,
-    plays: record.plays,
     themes: record.themes,
     openingTags: record.openingTags,
-    gameUrl: record.gameUrl,
   };
+  if (record.ratingDeviation != null) def.ratingDeviation = record.ratingDeviation;
+  if (record.popularity != null)      def.popularity = record.popularity;
+  if (record.plays != null)           def.plays = record.plays;
+  if (record.gameUrl != null)         def.gameUrl = record.gameUrl;
+  return def;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,7 +200,7 @@ export function lichessShardRecordToDefinition(
  * is available. Not cryptographic — only needs to be collision-resistant
  * enough within a single user's library.
  */
-function simpleHash(input: string): string {
+export function simpleHash(input: string): string {
   let h = 0;
   for (let i = 0; i < input.length; i++) {
     h = ((h << 5) - h + input.charCodeAt(i)) | 0;
