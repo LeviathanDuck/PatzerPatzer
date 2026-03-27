@@ -9,7 +9,9 @@ import { h, type VNode } from 'snabbdom';
 import type { RetroCtrl } from './retroCtrl';
 import type { RetroCandidate } from './retro';
 import { retroCandidateToDefinition } from '../puzzles/adapters';
-import { savePuzzleDefinition } from '../puzzles/puzzleDb';
+import { savePuzzleDefinition, saveAttempt } from '../puzzles/puzzleDb';
+import type { PuzzleAttempt, FailureReason, SolveResult } from '../puzzles/types';
+import type { RetroOutcome } from './retroCtrl';
 
 // --- Entry button ---
 
@@ -145,6 +147,7 @@ const _savingConfirm = new Set<string>();
  */
 function renderSaveToLibrary(
   cand: RetroCandidate,
+  retro: RetroCtrl,
   redraw: () => void,
 ): VNode {
   const alreadySaved = _savedPaths.has(cand.path);
@@ -159,15 +162,18 @@ function renderSaveToLibrary(
   return h('div.retro-save', h('button.retro-save__btn', {
     on: { click: () => {
       const def = retroCandidateToDefinition(cand);
+      const outcome = retro.getOutcome(cand.ply);
       savePuzzleDefinition(def).then(() => {
         _savedPaths.add(cand.path);
         _savingConfirm.add(cand.path);
         redraw();
-        // Clear the "Saved!" flash after 2 seconds, settle to quiet "Saved" label.
-        setTimeout(() => {
-          _savingConfirm.delete(cand.path);
-          redraw();
-        }, 2000);
+        setTimeout(() => { _savingConfirm.delete(cand.path); redraw(); }, 2000);
+        // Persist retro outcome as first-attempt record.
+        if (outcome) {
+          saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(e =>
+            console.warn('[retro-save] attempt save failed', e),
+          );
+        }
       });
     }},
   }, 'Save to Library'));
@@ -184,6 +190,50 @@ let _bulkSaveCount = 0;
  * Bulk-saves all candidates the user got wrong, viewed, or skipped.
  * Reuses _savedPaths to skip individually-saved candidates.
  */
+/**
+ * Map a retro outcome to a first-attempt PuzzleAttempt record.
+ * This preserves the retro session result when bulk-saving to the puzzle library.
+ * The attempt records that the user already encountered this position in a retro session.
+ */
+function retroOutcomeToAttempt(puzzleId: string, outcome: RetroOutcome): PuzzleAttempt {
+  const now = Date.now();
+  let result: SolveResult;
+  const failureReasons: FailureReason[] = [];
+  let skipped = false;
+
+  switch (outcome) {
+    case 'win':
+      result = 'clean-solve';
+      break;
+    case 'fail':
+      result = 'failed';
+      failureReasons.push('wrong-first-move');
+      break;
+    case 'view':
+      result = 'failed';
+      failureReasons.push('solution-revealed');
+      break;
+    case 'skip':
+      result = 'skipped';
+      failureReasons.push('skip-pressed');
+      skipped = true;
+      break;
+  }
+
+  return {
+    puzzleId,
+    startedAt: now,
+    completedAt: now,
+    result,
+    failureReasons,
+    usedHint: false,
+    usedEngineReveal: false,
+    revealedSolution: outcome === 'view',
+    openedNotesDuringSolve: false,
+    skipped,
+  };
+}
+
 function renderBulkSaveToLibrary(
   retro: RetroCtrl,
   redraw: () => void,
@@ -217,8 +267,16 @@ function renderBulkSaveToLibrary(
       redraw();
       const saves = unsaved.map(c => {
         const def = retroCandidateToDefinition(c);
+        const outcome = retro.getOutcome(c.ply);
         return savePuzzleDefinition(def).then(() => {
           _savedPaths.add(c.path);
+          // Persist the retro outcome as a first-attempt record so retry/due logic knows
+          // this puzzle was already encountered and what happened.
+          if (outcome) {
+            return saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(e =>
+              console.warn('[retro-bulk-save] attempt save failed', e),
+            );
+          }
         });
       });
       Promise.all(saves).then(() => {
@@ -329,7 +387,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('strong', strongText),
           h('em', `Try another move for ${color}`),
           renderSkipOrView(retro, navigate, redraw),
-          renderSaveToLibrary(cand, redraw),
+          renderSaveToLibrary(cand, retro, redraw),
         ]),
       ]),
     ];
@@ -359,7 +417,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('div.retro-instruction', [
             h('strong', msg),
             renderReasonNote(cand),
-            renderSaveToLibrary(cand, redraw),
+            renderSaveToLibrary(cand, retro, redraw),
           ]),
         ]),
       ),
@@ -377,7 +435,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
             h('strong', 'Solution'),
             h('em', ['Best was ', h('strong', bestSan)]),
             renderReasonNote(cand),
-            renderSaveToLibrary(cand, redraw),
+            renderSaveToLibrary(cand, retro, redraw),
           ]),
         ]),
       ),
