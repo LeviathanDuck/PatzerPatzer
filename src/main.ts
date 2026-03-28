@@ -943,7 +943,9 @@ function routeContent(route: Route): VNode {
     case 'puzzle-round': {
       const puzzleId = route.params.id ?? '';
       initPuzzlePage('round', puzzleId);
-      void openPuzzleRound(puzzleId, redraw);
+      // openPuzzleRound is called from onChange, not here — calling it
+      // in the render function causes an infinite redraw loop because
+      // it calls redraw() internally which re-triggers this render.
       return renderPuzzleRound(redraw);
     }
     case 'openings': return h('h1', 'Openings Page');
@@ -1137,6 +1139,12 @@ onChange(route => {
   // to avoid a redundant second patch in this handler.
   // Mirrors the pattern in lichess-org/lila: ui/analyse/src/ctrl.ts where the
   // controller is always initialized with the correct game data before rendering.
+  // When navigating to a puzzle round, load the puzzle before rendering.
+  if (route.name === 'puzzle-round') {
+    const puzzleId = route.params['id'] ?? '';
+    void openPuzzleRound(puzzleId, redraw);
+    return; // openPuzzleRound calls redraw() when ready
+  }
   if (route.name === 'analysis-game') {
     const id = route.params['id'] ?? '';
     const game = importedGames.find(g => g.id === id);
@@ -1151,6 +1159,12 @@ onChange(route => {
 
 // First render — all modules are initialised so view() is safe to call.
 vnode = patch(app, view(currentRoute));
+
+// If the initial route is a puzzle round, load it now.
+if (currentRoute.name === 'puzzle-round') {
+  const puzzleId = currentRoute.params['id'] ?? '';
+  void openPuzzleRound(puzzleId, redraw);
+}
 
 // --- Startup: restore persisted saved puzzle candidates ---
 void loadPuzzlesFromIdb().then(puzzles => {

@@ -11313,6 +11313,28 @@ async function startImportedSession(themes, openings, ratingMin, ratingMax, redr
   prefetchSessionPgns();
   window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
 }
+async function retryFailedPuzzles(redraw2) {
+  if (!_activeSession) return;
+  const failedIds = _activeSession.history.filter((e) => e.result === "failed" || e.result === "assisted").map((e) => e.puzzleId);
+  if (failedIds.length === 0) return;
+  const defs = [];
+  for (const id of failedIds) {
+    const def = await getPuzzleDefinition(id);
+    if (def) defs.push(def);
+  }
+  if (defs.length === 0) return;
+  for (let i = defs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [defs[i], defs[j]] = [defs[j], defs[i]];
+  }
+  const pick = defs[0];
+  _sessionQueue = defs.slice(1);
+  _activeSession.history.push({ puzzleId: pick.id, result: "in-progress" });
+  prefetchSessionPgns();
+  roundState = null;
+  activeRoundCtrl = null;
+  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+}
 var PGN_CACHE_STORE = "puzzle-pgn-cache";
 var PGN_DB_NAME = "patzer-puzzle-pgn";
 var PGN_DB_VERSION = 1;
@@ -12714,6 +12736,13 @@ function renderPuzzleEnginePanel(rc, redraw2) {
   children.push(renderEngineSettings());
   return h("div.puzzle-ceval", children);
 }
+function isReviewingPastPuzzle(session) {
+  const currentId = getPuzzleRoundState()?.definition?.id;
+  if (!currentId) return false;
+  const lastInProgress = [...session.history].reverse().find((e) => e.result === "in-progress");
+  if (lastInProgress && lastInProgress.puzzleId === currentId) return false;
+  return session.history.some((e) => e.puzzleId === currentId && e.result !== "in-progress");
+}
 function renderSessionSidebar(session, def, redraw2) {
   const labels = [];
   if (session.themes.length > 0) {
@@ -12734,13 +12763,21 @@ function renderSessionSidebar(session, def, redraw2) {
     h("div.session-info", [
       h("div.session-info__header", [
         h("span.session-info__label", "Current Session"),
-        h("button.session-info__end", {
-          on: { click: () => {
-            clearActiveSession();
-            window.location.hash = "#/puzzles";
-          } },
-          attrs: { title: "End session" }
-        }, "End")
+        h("div.session-info__actions", [
+          failed > 0 ? h("button.session-info__retry", {
+            on: { click: () => {
+              retryFailedPuzzles(redraw2);
+            } },
+            attrs: { title: "Retry failed and assisted puzzles" }
+          }, `Retry (${failed + assisted})`) : null,
+          h("button.session-info__end", {
+            on: { click: () => {
+              clearActiveSession();
+              window.location.hash = "#/puzzles";
+            } },
+            attrs: { title: "End session" }
+          }, "End")
+        ])
       ]),
       h("div.session-info__themes", labels.join(", ")),
       h(
@@ -12759,18 +12796,33 @@ function renderSessionSidebar(session, def, redraw2) {
       h("div.session-history__label", "Puzzle History"),
       h(
         "div.session-history__grid",
-        session.history.map(
-          (entry, i) => h("div.session-history__cell", {
+        session.history.map((entry, i) => {
+          const isCurrent = entry.puzzleId === getPuzzleRoundState()?.definition?.id;
+          const isCompleted = entry.result !== "in-progress";
+          return h("div.session-history__cell", {
             class: {
               "session-history__cell--clean": entry.result === "clean",
               "session-history__cell--assisted": entry.result === "assisted",
               "session-history__cell--failed": entry.result === "failed",
-              "session-history__cell--active": entry.result === "in-progress"
+              "session-history__cell--active": entry.result === "in-progress",
+              "session-history__cell--current": isCurrent
             },
-            attrs: { title: `#${i + 1} ${entry.puzzleId}: ${entry.result}` }
-          })
-        )
-      )
+            attrs: { title: `#${i + 1}: ${entry.result}` },
+            on: isCompleted && !isCurrent ? {
+              click: () => {
+                window.location.hash = `#/puzzles/${encodeURIComponent(entry.puzzleId)}`;
+              }
+            } : {},
+            style: isCompleted && !isCurrent ? { cursor: "pointer" } : {}
+          });
+        })
+      ),
+      // "Continue" button — shown when reviewing a past puzzle
+      isReviewingPastPuzzle(session) ? h("button.session-history__continue", {
+        on: { click: () => {
+          nextPuzzle(redraw2);
+        } }
+      }, "Continue Session \u2192") : null
     ]),
     // Puzzle info + metadata — moved to left sidebar
     renderPuzzleInfo(def, redraw2),
@@ -15178,7 +15230,6 @@ function routeContent(route) {
     case "puzzle-round": {
       const puzzleId = route.params.id ?? "";
       initPuzzlePage("round", puzzleId);
-      void openPuzzleRound(puzzleId, redraw);
       return renderPuzzleRound(redraw);
     }
     case "openings":
@@ -15340,6 +15391,11 @@ onChange2((route) => {
     vnode2 = patch(vnode2, view(currentRoute));
     return;
   }
+  if (route.name === "puzzle-round") {
+    const puzzleId = route.params["id"] ?? "";
+    void openPuzzleRound(puzzleId, redraw);
+    return;
+  }
   if (route.name === "analysis-game") {
     const id = route.params["id"] ?? "";
     const game = importedGames.find((g) => g.id === id);
@@ -15352,6 +15408,10 @@ onChange2((route) => {
   vnode2 = patch(vnode2, view(currentRoute));
 });
 vnode2 = patch(app, view(currentRoute));
+if (currentRoute.name === "puzzle-round") {
+  const puzzleId = currentRoute.params["id"] ?? "";
+  void openPuzzleRound(puzzleId, redraw);
+}
 void loadPuzzlesFromIdb().then((puzzles) => {
   setSavedPuzzles(puzzles);
   redraw();
