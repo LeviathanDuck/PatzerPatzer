@@ -4077,6 +4077,8 @@ body[data-board='newspaper'] cg-board::before {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
 }
 
 .session-info {
