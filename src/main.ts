@@ -65,6 +65,7 @@ import { renderPuzzleLibrary, renderPuzzleRound } from './puzzles/view';
 import { savePuzzleDefinition } from './puzzles/puzzleDb';
 import { simpleHash } from './puzzles/adapters';
 import type { UserLibraryPuzzleDefinition } from './puzzles/types';
+import { renderAdminPage } from './admin/view';
 import {
   enqueueBulkReview, isBulkRunning, initReviewQueue,
 } from './engine/reviewQueue';
@@ -952,6 +953,7 @@ function routeContent(route: Route): VNode {
     }
     case 'openings': return renderOpeningsPage(redraw);
     case 'stats':    return h('h1', 'Stats Page');
+    case 'admin':    return renderAdminPage(redraw);
     default:         return h('h1', 'Home');
   }
 }
