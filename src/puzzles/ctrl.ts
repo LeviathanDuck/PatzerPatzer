@@ -18,7 +18,8 @@ import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { listPuzzleDefinitions, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getMeta, saveMeta } from './puzzleDb';
-import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestTotalCount, type ShardMeta } from './shardLoader';
+import { bindBoardResizeHandle } from '../board/index';
+import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestOpenings, getManifestTotalCount, type ShardMeta } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
 import type { PuzzleDefinition, PuzzleAttempt, SolveResult, FailureReason, PuzzleSourceKind, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSessionMode } from './types';
 import {
@@ -102,6 +103,8 @@ export interface PuzzleListState {
   pageSize: number;
   /** All unique themes found in the source pool (for the theme dropdown). */
   availableThemes: string[];
+  /** All unique openings found in the source pool. */
+  availableOpenings: string[];
   loading: boolean;
 }
 
@@ -421,7 +424,9 @@ export class PuzzleRoundCtrl {
    * Even progressPly indices (0, 2, 4…) are user moves in our convention.
    */
   isUserTurn(): boolean {
-    return this.progressPly % 2 === 0;
+    // solutionLine[0] = opponent trigger move, solutionLine[1] = user's first answer.
+    // Odd indices are user moves, even indices are opponent moves.
+    return this.progressPly % 2 === 1;
   }
 
   /**
@@ -468,7 +473,7 @@ export class PuzzleRoundCtrl {
       this.firstWrongPly = this.progressPly;
     }
     this.feedback = 'fail';
-    const reason: FailureReason = this.progressPly === 0
+    const reason: FailureReason = this.progressPly <= 1
       ? 'wrong-first-move'
       : 'wrong-later-move';
     if (!this.failureReasons.includes(reason)) {
@@ -501,9 +506,12 @@ export class PuzzleRoundCtrl {
     if (!cg) return;
 
     // Apply the opponent move on Chessground
+    // Set guard flag so the move event handler ignores this auto-play
+    _opponentMoving = true;
     const orig = opponentUci.slice(0, 2) as Key;
     const dest = opponentUci.slice(2, 4) as Key;
     cg.move(orig, dest);
+    _opponentMoving = false;
 
     // Handle promotion piece in UCI (e.g. "e7e8q")
     // Chessground move() handles the visual; the position update below handles logic.
@@ -565,6 +573,9 @@ export class PuzzleRoundCtrl {
       // when currentSessionMode === 'rated'. Left undefined for practice mode.
     };
     if (this.firstWrongPly !== undefined) attempt.firstWrongPly = this.firstWrongPly;
+
+    // Update active session history
+    sessionRecordResult(this.definition.id, this.status === 'solved' ? 'solved' : 'failed');
 
     // Fire-and-forget persistence — append-only semantics.
     // After saving the attempt, update the puzzle's due-again metadata.
@@ -830,6 +841,7 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
     } else {
       roundState = { definition: def, status: 'ready' };
       startPuzzleRound(def, redraw);
+      sessionRecordStart(def.id);
       // Pre-load user metadata for the editing surface
       loadPuzzleMeta(id).then(() => redraw());
     }
@@ -850,6 +862,8 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
 
 let puzzleCg: CgApi | undefined;
 let puzzleOrientation: 'white' | 'black' = 'white';
+/** Guard flag: true while an opponent auto-play is in progress. */
+let _opponentMoving = false;
 
 export function getPuzzleCg(): CgApi | undefined { return puzzleCg; }
 export function getPuzzleOrientation(): 'white' | 'black' { return puzzleOrientation; }
@@ -901,14 +915,16 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
     viewOnly: false,
     movable: {
       free: false,
-      color: solverColor,
-      dests,
+      // Initially no pieces are movable — the trigger move plays first
+      color: undefined,
+      dests: new Map(),
       showDests: true,
     },
     drawable: { enabled: true },
-    animation: { enabled: true, duration: 200 },
+    animation: { enabled: true, duration: 300 },
     events: {
       move: (orig, dest, _capturedPiece) => {
+        if (_opponentMoving) return; // ignore auto-played opponent moves
         if (!rc || rc.status !== 'playing') return;
 
         // Build UCI string from the move (promotion not yet handled)
@@ -934,6 +950,20 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
       },
     },
   });
+
+  // Attach resize handle
+  bindBoardResizeHandle(el);
+
+  // --- Trigger move: auto-play the opponent's first move ---
+  // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts playInitialMove
+  // In Lichess puzzles, solutionLine[0] is the trigger move (opponent's move).
+  // We play it with a short delay so the user sees the starting position first.
+  if (rc && rc.status === 'playing' && def.solutionLine.length > 0) {
+    setTimeout(() => {
+      rc.playOpponentReply();
+      redraw();
+    }, 500);
+  }
 }
 
 /**
@@ -1117,6 +1147,7 @@ export async function openPuzzleList(
     page: 1,
     pageSize: LIST_PAGE_SIZE,
     availableThemes: [],
+    availableOpenings: [],
     loading: true,
   };
   redraw();
@@ -1142,6 +1173,7 @@ async function openUserLibraryList(redraw: () => void): Promise<void> {
 
   puzzleListState!.allForSource = forSource;
   puzzleListState!.availableThemes = [];
+  puzzleListState!.availableOpenings = [];
   puzzleListState!.loading = false;
   applyListFilters(puzzleListState!);
 }
@@ -1152,6 +1184,7 @@ async function openImportedList(redraw: () => void): Promise<void> {
   _importedShards = manifest.shards;
   _importedShardIndex = 0;
   puzzleListState!.availableThemes = getManifestThemes();
+  puzzleListState!.availableOpenings = getManifestOpenings();
 
   // Load the first shard
   if (_importedShards.length > 0) {
@@ -1206,6 +1239,113 @@ export function hasMoreImportedShards(): boolean {
 }
 
 /**
+ * Start an imported puzzle session using the selected themes/openings and rating range.
+ * Loads matching puzzles across shards and opens the first match.
+ */
+export async function startImportedSession(
+  themes: string[],
+  openings: string[],
+  ratingMin: number | undefined,
+  ratingMax: number | undefined,
+  redraw: () => void,
+): Promise<void> {
+  const manifest = await loadManifest();
+  const filters: { ratingMin?: number; ratingMax?: number; theme?: string } = {};
+  if (ratingMin !== undefined) filters.ratingMin = ratingMin;
+  if (ratingMax !== undefined) filters.ratingMax = ratingMax;
+
+  // Find shards that match the rating range (theme check is per-record)
+  const matchingShards = findMatchingShards(manifest, filters);
+  if (matchingShards.length === 0) {
+    console.warn('[puzzle-ctrl] no shards match filters');
+    return;
+  }
+
+  // Load records from shards and filter by themes/openings + rating
+  const candidates: PuzzleDefinition[] = [];
+  for (const shard of matchingShards) {
+    const records = await loadFilteredShard(shard.id, filters);
+    for (const r of records) {
+      // If themes are selected, the puzzle must match at least one
+      if (themes.length > 0 && !themes.some(t => r.themes.includes(t))) continue;
+      // If openings are selected, the puzzle must match at least one
+      if (openings.length > 0 && !openings.some(o => r.openingTags.includes(o))) continue;
+      const def = lichessShardRecordToDefinition(r);
+      if (def) candidates.push(def);
+      // Stop early once we have enough candidates for a session
+      if (candidates.length >= 200) break;
+    }
+    if (candidates.length >= 200) break;
+  }
+
+  if (candidates.length === 0) {
+    console.warn('[puzzle-ctrl] no imported puzzles match selection');
+    _importedSessionError = 'No puzzles match your selection. Try widening the rating range or selecting different themes.';
+    redraw();
+    return;
+  }
+
+  // Pick a random puzzle from candidates and start
+  const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
+  await savePuzzleDefinition(pick);
+  _importedSessionError = null;
+
+  // Create active session tracker
+  _activeSession = {
+    themes: [...themes],
+    openings: [...openings],
+    ratingMin: ratingMin ?? 0,
+    ratingMax: ratingMax ?? 3200,
+    history: [{ puzzleId: pick.id, result: 'in-progress' }],
+  };
+
+  // Navigate to the puzzle round route
+  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+}
+
+/** Error message from last imported session start attempt. */
+let _importedSessionError: string | null = null;
+export function getImportedSessionError(): string | null { return _importedSessionError; }
+export function clearImportedSessionError(): void { _importedSessionError = null; }
+
+// --- Active session tracking ---
+// Tracks the current puzzle session so the sidebar can show session info and history.
+
+export interface SessionHistoryEntry {
+  puzzleId: string;
+  result: 'solved' | 'failed' | 'in-progress';
+}
+
+export interface ActiveSession {
+  themes: string[];
+  openings: string[];
+  ratingMin: number;
+  ratingMax: number;
+  history: SessionHistoryEntry[];
+}
+
+let _activeSession: ActiveSession | null = null;
+
+export function getActiveSession(): ActiveSession | null { return _activeSession; }
+
+export function clearActiveSession(): void { _activeSession = null; }
+
+/** Record the current puzzle as in-progress in the session history. */
+export function sessionRecordStart(puzzleId: string): void {
+  if (!_activeSession) return;
+  // Avoid duplicates
+  if (_activeSession.history.some(e => e.puzzleId === puzzleId && e.result === 'in-progress')) return;
+  _activeSession.history.push({ puzzleId, result: 'in-progress' });
+}
+
+/** Update a session history entry with the solve result. */
+export function sessionRecordResult(puzzleId: string, result: 'solved' | 'failed'): void {
+  if (!_activeSession) return;
+  const entry = _activeSession.history.find(e => e.puzzleId === puzzleId);
+  if (entry) entry.result = result;
+}
+
+/**
  * Update filters on the active puzzle list and re-apply.
  */
 export function filterPuzzleList(
@@ -1247,9 +1387,8 @@ export async function selectPuzzleFromList(
       await savePuzzleDefinition(def);
     }
   }
-  roundState = null;
-  activeRoundCtrl = null;
-  await openPuzzleRound(id, redraw);
+  // Navigate to the puzzle round route
+  window.location.hash = `#/puzzles/${encodeURIComponent(id)}`;
 }
 
 // --- Session navigation ---

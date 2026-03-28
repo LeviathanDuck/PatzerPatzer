@@ -126,6 +126,11 @@ export function getManifestThemes(): string[] {
   return _manifest?.themes ?? [];
 }
 
+/** Get all unique openings from the manifest. */
+export function getManifestOpenings(): string[] {
+  return _manifest?.openings ?? [];
+}
+
 /** Get total puzzle count from manifest. */
 export function getManifestTotalCount(): number {
   return _manifest?.totalCount ?? 0;

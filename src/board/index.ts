@@ -493,7 +493,7 @@ export function renderPlayerStrips(): [VNode, VNode] {
 // Appended to cg-container (the absolutely-positioned inner element) so that
 // position: absolute on cg-resize resolves against an element with defined
 // width/height — matching Lichess resizeHandle(els.container) exactly.
-function bindBoardResizeHandle(wrap: HTMLElement): void {
+export function bindBoardResizeHandle(wrap: HTMLElement): void {
   const container = (wrap.querySelector('cg-container') as HTMLElement | null) ?? wrap;
   const el = document.createElement('cg-resize');
   container.appendChild(el);
