@@ -10734,6 +10734,12 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
       sessionResult = "clean";
     }
     sessionRecordResult(this.definition.id, sessionResult);
+    if (_autoNext && this.status === "solved") {
+      const redraw2 = this.redraw;
+      setTimeout(() => {
+        nextPuzzle(redraw2);
+      }, 1500);
+    }
     saveAttempt(attempt).then(() => getAttempts(this.definition.id)).then((allAttempts) => updateDueMeta(this.definition.id, allAttempts)).catch((e) => console.warn("[puzzle-round] attempt save / due-meta update failed", e));
     return attempt;
   }
@@ -11310,6 +11316,8 @@ async function startImportedSession(themes, openings, ratingMin, ratingMax, redr
     ratingMax: ratingMax ?? 3200,
     history: [{ puzzleId: pick.id, result: "in-progress" }]
   };
+  saveSessionToStorage();
+  saveQueueToStorage();
   prefetchSessionPgns();
   window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
 }
@@ -11330,6 +11338,8 @@ async function retryFailedPuzzles(redraw2) {
   const pick = defs[0];
   _sessionQueue = defs.slice(1);
   _activeSession.history.push({ puzzleId: pick.id, result: "in-progress" });
+  saveSessionToStorage();
+  saveQueueToStorage();
   prefetchSessionPgns();
   roundState = null;
   activeRoundCtrl = null;
@@ -11414,6 +11424,7 @@ function prefetchSessionPgns() {
 }
 function dequeueSessionPuzzle(id) {
   _sessionQueue = _sessionQueue.filter((d) => d.id !== id);
+  saveQueueToStorage();
 }
 async function loadPuzzlePgn(def) {
   if (def.sourceKind !== "imported-lichess" || !def.gameUrl) return void 0;
@@ -11426,22 +11437,73 @@ function getImportedSessionError() {
 function clearImportedSessionError() {
   _importedSessionError = null;
 }
+var SESSION_STORAGE_KEY = "puzzleSession";
+var QUEUE_STORAGE_KEY = "puzzleSessionQueue";
+var AUTONEXT_STORAGE_KEY = "puzzleAutoNext";
 var _activeSession = null;
+var _autoNext = false;
+function saveSessionToStorage() {
+  if (_activeSession) {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(_activeSession));
+  } else {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+}
+function saveQueueToStorage() {
+  if (_sessionQueue.length > 0) {
+    const compact = _sessionQueue.map((d) => d.id);
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(compact));
+  } else {
+    localStorage.removeItem(QUEUE_STORAGE_KEY);
+  }
+}
+function restoreSessionFromStorage() {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (raw) _activeSession = JSON.parse(raw);
+  } catch {
+  }
+  try {
+    const v = localStorage.getItem(AUTONEXT_STORAGE_KEY);
+    if (v === "true") _autoNext = true;
+  } catch {
+  }
+}
+function getAutoNext() {
+  return _autoNext;
+}
+function setAutoNext(v) {
+  _autoNext = v;
+  localStorage.setItem(AUTONEXT_STORAGE_KEY, String(v));
+}
 function getActiveSession() {
   return _activeSession;
 }
 function clearActiveSession() {
   _activeSession = null;
+  _sessionQueue = [];
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+  localStorage.removeItem(QUEUE_STORAGE_KEY);
 }
+function getResumePuzzleId() {
+  if (!_activeSession) return void 0;
+  const inProgress = _activeSession.history.find((e) => e.result === "in-progress");
+  if (inProgress) return inProgress.puzzleId;
+  const last2 = _activeSession.history[_activeSession.history.length - 1];
+  return last2?.puzzleId;
+}
+restoreSessionFromStorage();
 function sessionRecordStart(puzzleId) {
   if (!_activeSession) return;
   if (_activeSession.history.some((e) => e.puzzleId === puzzleId && e.result === "in-progress")) return;
   _activeSession.history.push({ puzzleId, result: "in-progress" });
+  saveSessionToStorage();
 }
 function sessionRecordResult(puzzleId, result) {
   if (!_activeSession) return;
   const entry = _activeSession.history.find((e) => e.puzzleId === puzzleId);
   if (entry) entry.result = result;
+  saveSessionToStorage();
 }
 function filterPuzzleList(filters, redraw2) {
   if (!puzzleListState) return;
@@ -11566,9 +11628,7 @@ async function startRetrySession(redraw2) {
     retryIndex = 0;
     retrySessionActive = true;
     const first2 = retryQueue[0];
-    roundState = null;
-    activeRoundCtrl = null;
-    await openPuzzleRound(first2.id, redraw2);
+    window.location.hash = `#/puzzles/${encodeURIComponent(first2.id)}`;
   } catch (e) {
     console.warn("[puzzle-ctrl] startRetrySession failed", e);
     retrySessionActive = false;
@@ -11588,9 +11648,7 @@ async function nextRetryPuzzle(redraw2) {
     return;
   }
   const next2 = retryQueue[retryIndex];
-  roundState = null;
-  activeRoundCtrl = null;
-  await openPuzzleRound(next2.id, redraw2);
+  window.location.hash = `#/puzzles/${encodeURIComponent(next2.id)}`;
 }
 var DAY_MS = 864e5;
 var DUE_INTERVALS = {
@@ -11674,9 +11732,7 @@ async function startDueSession(redraw2) {
     retryIndex = 0;
     retrySessionActive = true;
     const first2 = retryQueue[0];
-    roundState = null;
-    activeRoundCtrl = null;
-    await openPuzzleRound(first2.id, redraw2);
+    window.location.hash = `#/puzzles/${encodeURIComponent(first2.id)}`;
   } catch (e) {
     console.warn("[puzzle-ctrl] startDueSession failed", e);
     retrySessionActive = false;
@@ -11715,8 +11771,33 @@ function renderLibrarySidebar(redraw2) {
   const dCount = getDueCount();
   if (rCount === void 0) loadRetryCount(redraw2);
   if (dCount === void 0) loadDueCount(redraw2);
+  const session = getActiveSession();
+  const resumeId = getResumePuzzleId();
   return h("aside.puzzle__side.puzzle-library__sidebar", [
     h("h2.puzzle-library__title", "Puzzle Library"),
+    // Resume session card
+    session && resumeId ? h("div.puzzle-library__resume", [
+      h("div.puzzle-library__resume-header", [
+        h("span", "Session in progress"),
+        h(
+          "span.puzzle-library__resume-count",
+          `${session.history.length} puzzle${session.history.length === 1 ? "" : "s"}`
+        )
+      ]),
+      h("div.puzzle-library__resume-actions", [
+        h("button.puzzle-library__resume-btn", {
+          on: { click: () => {
+            window.location.hash = `#/puzzles/${encodeURIComponent(resumeId)}`;
+          } }
+        }, "Resume Session"),
+        h("button.puzzle-library__resume-end", {
+          on: { click: () => {
+            clearActiveSession();
+            redraw2();
+          } }
+        }, "Discard")
+      ])
+    ]) : null,
     // Source cards
     sourceCard(
       "Imported Puzzles",
@@ -12789,6 +12870,17 @@ function renderSessionSidebar(session, def, redraw2) {
         h("span.session-info__stat.session-info__stat--assisted", `${assisted} assisted`),
         h("span.session-info__stat.session-info__stat--failed", `${failed} failed`),
         h("span.session-info__stat", `${total} total`)
+      ]),
+      h("label.session-info__auto-next", [
+        h("input", {
+          attrs: { type: "checkbox" },
+          props: { checked: getAutoNext() },
+          on: { change: (e) => {
+            setAutoNext(e.target.checked);
+            redraw2();
+          } }
+        }),
+        h("span", "Auto-next")
       ])
     ]),
     // History chicklet grid

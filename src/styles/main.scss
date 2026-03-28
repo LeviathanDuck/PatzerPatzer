@@ -3518,6 +3518,60 @@ body[data-board='newspaper'] cg-board::before {
     margin: 0 0 10px;
   }
 
+  // Resume session card
+  &__resume {
+    background: rgba(68, 170, 153, 0.1);
+    border: 1px solid rgba(68, 170, 153, 0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+
+  &__resume-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #4a9;
+    margin-bottom: 8px;
+  }
+
+  &__resume-count {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: #888;
+  }
+
+  &__resume-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  &__resume-btn {
+    flex: 1;
+    padding: 6px 12px;
+    background: #4a9;
+    color: #111;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    &:hover { background: #5cb; }
+  }
+
+  &__resume-end {
+    padding: 6px 10px;
+    background: none;
+    color: #888;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    &:hover { color: #ccc; border-color: #666; }
+  }
+
   // Source cards — compact for sidebar
   &__card {
     background: #222;
@@ -4097,6 +4151,22 @@ body[data-board='newspaper'] cg-board::before {
     &--clean { color: #4a9; font-weight: 600; }
     &--assisted { color: #e8a040; font-weight: 600; }
     &--failed { color: #e05555; font-weight: 600; }
+  }
+
+  &__auto-next {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: #888;
+    cursor: pointer;
+    user-select: none;
+
+    input {
+      accent-color: #4a9;
+      cursor: pointer;
+    }
   }
 }
 
