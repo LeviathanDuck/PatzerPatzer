@@ -1321,16 +1321,17 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
         h('span.session-info__stat.session-info__stat--failed', `${failed} failed`),
         h('span.session-info__stat', `${total} total`),
       ]),
-      h('label.session-info__auto-next', [
-        h('input', {
-          attrs: { type: 'checkbox' },
-          props: { checked: getAutoNext() },
-          on: { change: (e: Event) => {
-            setAutoNext((e.target as HTMLInputElement).checked);
+      h('div.session-info__auto-next', [
+        h('span', 'Auto-next'),
+        h('div.toggle-switch', {
+          class: { 'toggle-switch--on': getAutoNext() },
+          on: { click: () => {
+            setAutoNext(!getAutoNext());
             redraw();
           }},
-        }),
-        h('span', 'Auto-next'),
+        }, [
+          h('div.toggle-switch__knob'),
+        ]),
       ]),
     ]),
 
