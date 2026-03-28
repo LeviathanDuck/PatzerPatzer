@@ -4928,13 +4928,288 @@ body[data-board='newspaper'] cg-board::before {
 // --- Puzzle mobile layout ---
 
 @media (max-width: 800px) {
-  .puzzle {
-    grid-template-columns: 1fr;
-    gap: 10px 0;
+  // Match analysis mobile spacing rhythm
+  .puzzle-page {
+    padding: 12px 10px 18px;
   }
 
+  // All puzzle grid variants collapse to single column, board first
+  .puzzle,
+  .puzzle--with-session,
+  .puzzle--library {
+    display: flex !important;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  // Board takes full width, appears first
+  .puzzle__board {
+    order: 1;
+    width: 100%;
+  }
+
+  // Session sidebar below board
+  .puzzle__session-sidebar {
+    order: 2;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  // Library sidebar below board
+  .puzzle-library__sidebar {
+    order: 2;
+  }
+
+  // Side panel: feedback appears right after board (order 2),
+  // engine/move list and other content follows after session sidebar
   .puzzle__side {
-    padding: 0 4px;
+    order: 2;
+    max-height: none;
+    padding: 0 2px;
+    // On mobile, let contents reorder via order properties
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  // Feedback (bottom half) appears first on mobile — right after board
+  .puzzle__side-bottom {
+    order: 1;
+    flex: none;
+    overflow-y: visible;
+  }
+
+  // Engine/move list (top half) appears after feedback
+  .puzzle__side-top {
+    order: 2;
+    flex: none;
+    border-bottom: none;
+  }
+
+  // Session sidebar after the side panel
+  .puzzle__session-sidebar {
+    order: 3;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  // Feedback: tighter padding, wrap action buttons
+  .puzzle__feedback {
+    padding: 8px 10px;
+  }
+
+  .puzzle__feedback__actions {
+    flex-wrap: wrap;
+
+    button {
+      min-height: 40px;
+      font-size: 0.85rem;
+    }
+  }
+
+  // Session info: compact
+  .session-info {
+    padding: 8px 10px;
+
+    &__stats { flex-wrap: wrap; gap: 6px; }
+    &__header { flex-wrap: wrap; gap: 6px; }
+  }
+
+  .session-history__grid {
+    grid-template-columns: repeat(auto-fill, 18px);
+    gap: 3px;
+  }
+  .session-history__cell { width: 18px; height: 18px; }
+
+  // Move list: readable, capped, scrollable
+  .puzzle-moves {
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 0.82rem;
+    padding: 6px 8px;
+    border-radius: 4px;
+  }
+
+  // Engine panel: compact, readable
+  .puzzle-ceval {
+    .ceval {
+      min-height: auto;
+      padding: 4px 8px;
+      font-size: 0.82rem;
+
+      pearl { font-size: 1.3em; }
+      .engine { font-size: 0.78rem; }
+    }
+
+    .pv { font-size: 0.78rem; padding: 4px 8px; }
+  }
+
+  // Engine settings on mobile
+  .puzzle-engine {
+    padding: 6px 8px;
+
+    &__pv { font-size: 0.78rem; }
+  }
+
+  // Session builder themes: capped to half viewport
+  .puzzle-session__themes { max-height: 50vh; }
+
+  // Session info/history: readable
+  .session-info {
+    &__themes { font-size: 0.8rem; }
+    &__rating { font-size: 0.75rem; }
+    &__auto-next { font-size: 0.8rem; }
+  }
+
+  .session-history {
+    &__label { font-size: 0.7rem; }
+    &__continue {
+      min-height: 40px;
+      font-size: 0.85rem;
+    }
+  }
+
+  // Start bar: stack vertically on mobile
+  .puzzle-session__start-bar {
+    flex-wrap: wrap;
+
+    .puzzle-session__start {
+      width: 100%;
+      min-height: 44px;
+      font-size: 0.9rem;
+    }
+  }
+
+  // Tabs: bigger tap targets
+  .puzzle-session__tab {
+    padding: 10px 8px;
+    font-size: 0.85rem;
+  }
+
+  // Theme/opening rows: bigger tap targets
+  .puzzle-session__theme-row {
+    padding: 8px 10px;
+    min-height: 40px;
+    font-size: 0.85rem;
+  }
+
+  .puzzle-session__category-label {
+    padding: 8px 10px 4px;
+    font-size: 0.75rem;
+  }
+
+  // Rating sliders: full width, bigger touch area
+  .puzzle-session__range { height: 24px; }
+  .puzzle-session__range-val { width: 56px; font-size: 0.82rem; padding: 4px 6px; }
+  .puzzle-session__range-label { font-size: 0.75rem; }
+
+  // Search input: bigger
+  .puzzle-session__search-input {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+  }
+
+  // Source cards: bigger actions
+  .puzzle-library__card-action {
+    min-height: 40px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+
+  // Library section actions
+  .puzzle-library__action {
+    min-height: 40px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+
+  // Tighter cards
+  .puzzle-library__card { padding: 10px; }
+  .puzzle-info { padding: 6px 8px; }
+  .puzzle-meta { padding: 6px 8px; }
+
+  // Resume card
+  .puzzle-library__resume {
+    padding: 8px 10px;
+
+    .puzzle-library__resume-btn {
+      min-height: 44px;
+      font-size: 0.9rem;
+    }
+  }
+
+  // --- Polish: tap targets, spacing, visual continuity ---
+
+  // Back link: bigger tap target
+  .puzzle-round__back {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.85rem;
+  }
+
+  // Feedback nav buttons: consistent 44px touch targets
+  .puzzle__feedback__nav {
+    gap: 6px;
+
+    button {
+      min-height: 44px;
+      font-size: 0.85rem;
+      padding: 8px 14px;
+    }
+
+    a {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+    }
+  }
+
+  // Next puzzle button
+  .puzzle__next, .puzzle__retry {
+    min-height: 44px;
+    font-size: 0.9rem;
+  }
+
+  // Toggle switch: slightly bigger on mobile
+  .toggle-switch {
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+
+    &__knob {
+      width: 18px;
+      height: 18px;
+    }
+
+    &--on .toggle-switch__knob {
+      transform: translateX(18px);
+    }
+  }
+
+  // Puzzle info summary: bigger tap
+  .puzzle-info__summary {
+    min-height: 36px;
+    padding: 4px 0;
+  }
+
+  // Session actions: bigger End/Retry buttons
+  .session-info__end, .session-info__retry {
+    min-height: 32px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+  }
+
+  // Consistent card border radius on mobile
+  .puzzle__feedback,
+  .session-info,
+  .session-history,
+  .puzzle-info,
+  .puzzle-meta,
+  .puzzle-library__card,
+  .puzzle-library__section,
+  .puzzle-library__resume {
+    border-radius: 4px;
   }
 }
 
@@ -4982,6 +5257,23 @@ body[data-board='newspaper'] cg-board::before {
 .openings__hint {
   font-size: 0.9em;
   color: #777;
+}
+
+.openings__empty-icon {
+  font-size: 3em;
+  opacity: 0.3;
+  margin-bottom: 8px;
+}
+
+.openings__empty-title {
+  margin: 0 0 8px;
+  font-size: 1.3em;
+}
+
+.openings__loading {
+  text-align: center;
+  padding: 40px;
+  color: #999;
 }
 
 // --- Collection list (library) ---
@@ -5210,6 +5502,17 @@ body[data-board='newspaper'] cg-board::before {
   color: #999;
 }
 
+.openings__flip-btn {
+  padding: 4px 10px;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 1.1em;
+  &:hover { background: #444; }
+}
+
 .openings__session-body {
   display: grid;
   grid-template-columns: minmax(280px, 400px) 1fr;
@@ -5418,6 +5721,25 @@ body[data-board='newspaper'] cg-board::before {
   font-size: 0.8em;
   color: #777;
   margin-top: 2px;
+}
+
+.openings__sample-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.openings__sample-copy,
+.openings__sample-link {
+  font-size: 0.78em;
+  padding: 2px 8px;
+  background: #333;
+  color: #bbb;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+  &:hover { background: #444; color: #fff; }
 }
 
 // --- Lichess Explorer comparison ---

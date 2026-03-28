@@ -4919,12 +4919,242 @@ body[data-board=newspaper] cg-board::before {
 }
 
 @media (max-width: 800px) {
-  .puzzle {
-    grid-template-columns: 1fr;
-    gap: 10px 0;
+  .puzzle-page {
+    padding: 12px 10px 18px;
+  }
+  .puzzle,
+  .puzzle--with-session,
+  .puzzle--library {
+    display: flex !important;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .puzzle__board {
+    order: 1;
+    width: 100%;
+  }
+  .puzzle__session-sidebar {
+    order: 2;
+    max-height: none;
+    overflow-y: visible;
+  }
+  .puzzle-library__sidebar {
+    order: 2;
   }
   .puzzle__side {
-    padding: 0 4px;
+    order: 2;
+    max-height: none;
+    padding: 0 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .puzzle__side-bottom {
+    order: 1;
+    flex: none;
+    overflow-y: visible;
+  }
+  .puzzle__side-top {
+    order: 2;
+    flex: none;
+    border-bottom: none;
+  }
+  .puzzle__session-sidebar {
+    order: 3;
+    max-height: none;
+    overflow-y: visible;
+  }
+  .puzzle__feedback {
+    padding: 8px 10px;
+  }
+  .puzzle__feedback__actions {
+    flex-wrap: wrap;
+  }
+  .puzzle__feedback__actions button {
+    min-height: 40px;
+    font-size: 0.85rem;
+  }
+  .session-info {
+    padding: 8px 10px;
+  }
+  .session-info__stats {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .session-info__header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .session-history__grid {
+    grid-template-columns: repeat(auto-fill, 18px);
+    gap: 3px;
+  }
+  .session-history__cell {
+    width: 18px;
+    height: 18px;
+  }
+  .puzzle-moves {
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 0.82rem;
+    padding: 6px 8px;
+    border-radius: 4px;
+  }
+  .puzzle-ceval .ceval {
+    min-height: auto;
+    padding: 4px 8px;
+    font-size: 0.82rem;
+  }
+  .puzzle-ceval .ceval pearl {
+    font-size: 1.3em;
+  }
+  .puzzle-ceval .ceval .engine {
+    font-size: 0.78rem;
+  }
+  .puzzle-ceval .pv {
+    font-size: 0.78rem;
+    padding: 4px 8px;
+  }
+  .puzzle-engine {
+    padding: 6px 8px;
+  }
+  .puzzle-engine__pv {
+    font-size: 0.78rem;
+  }
+  .puzzle-session__themes {
+    max-height: 50vh;
+  }
+  .session-info__themes {
+    font-size: 0.8rem;
+  }
+  .session-info__rating {
+    font-size: 0.75rem;
+  }
+  .session-info__auto-next {
+    font-size: 0.8rem;
+  }
+  .session-history__label {
+    font-size: 0.7rem;
+  }
+  .session-history__continue {
+    min-height: 40px;
+    font-size: 0.85rem;
+  }
+  .puzzle-session__start-bar {
+    flex-wrap: wrap;
+  }
+  .puzzle-session__start-bar .puzzle-session__start {
+    width: 100%;
+    min-height: 44px;
+    font-size: 0.9rem;
+  }
+  .puzzle-session__tab {
+    padding: 10px 8px;
+    font-size: 0.85rem;
+  }
+  .puzzle-session__theme-row {
+    padding: 8px 10px;
+    min-height: 40px;
+    font-size: 0.85rem;
+  }
+  .puzzle-session__category-label {
+    padding: 8px 10px 4px;
+    font-size: 0.75rem;
+  }
+  .puzzle-session__range {
+    height: 24px;
+  }
+  .puzzle-session__range-val {
+    width: 56px;
+    font-size: 0.82rem;
+    padding: 4px 6px;
+  }
+  .puzzle-session__range-label {
+    font-size: 0.75rem;
+  }
+  .puzzle-session__search-input {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+  }
+  .puzzle-library__card-action {
+    min-height: 40px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+  .puzzle-library__action {
+    min-height: 40px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+  .puzzle-library__card {
+    padding: 10px;
+  }
+  .puzzle-info {
+    padding: 6px 8px;
+  }
+  .puzzle-meta {
+    padding: 6px 8px;
+  }
+  .puzzle-library__resume {
+    padding: 8px 10px;
+  }
+  .puzzle-library__resume .puzzle-library__resume-btn {
+    min-height: 44px;
+    font-size: 0.9rem;
+  }
+  .puzzle-round__back {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.85rem;
+  }
+  .puzzle__feedback__nav {
+    gap: 6px;
+  }
+  .puzzle__feedback__nav button {
+    min-height: 44px;
+    font-size: 0.85rem;
+    padding: 8px 14px;
+  }
+  .puzzle__feedback__nav a {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .puzzle__next, .puzzle__retry {
+    min-height: 44px;
+    font-size: 0.9rem;
+  }
+  .toggle-switch {
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+  }
+  .toggle-switch__knob {
+    width: 18px;
+    height: 18px;
+  }
+  .toggle-switch--on .toggle-switch__knob {
+    transform: translateX(18px);
+  }
+  .puzzle-info__summary {
+    min-height: 36px;
+    padding: 4px 0;
+  }
+  .session-info__end, .session-info__retry {
+    min-height: 32px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+  }
+  .puzzle__feedback,
+  .session-info,
+  .session-history,
+  .puzzle-info,
+  .puzzle-meta,
+  .puzzle-library__card,
+  .puzzle-library__section,
+  .puzzle-library__resume {
+    border-radius: 4px;
   }
 }
 .openings {
@@ -4972,6 +5202,23 @@ body[data-board=newspaper] cg-board::before {
 .openings__hint {
   font-size: 0.9em;
   color: #777;
+}
+
+.openings__empty-icon {
+  font-size: 3em;
+  opacity: 0.3;
+  margin-bottom: 8px;
+}
+
+.openings__empty-title {
+  margin: 0 0 8px;
+  font-size: 1.3em;
+}
+
+.openings__loading {
+  text-align: center;
+  padding: 40px;
+  color: #999;
 }
 
 .openings__collections {
@@ -5229,6 +5476,19 @@ body[data-board=newspaper] cg-board::before {
   color: #999;
 }
 
+.openings__flip-btn {
+  padding: 4px 10px;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 1.1em;
+}
+.openings__flip-btn:hover {
+  background: #444;
+}
+
 .openings__session-body {
   display: grid;
   grid-template-columns: minmax(280px, 400px) 1fr;
@@ -5471,6 +5731,29 @@ body[data-board=newspaper] cg-board::before {
   font-size: 0.8em;
   color: #777;
   margin-top: 2px;
+}
+
+.openings__sample-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.openings__sample-copy,
+.openings__sample-link {
+  font-size: 0.78em;
+  padding: 2px 8px;
+  background: #333;
+  color: #bbb;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.openings__sample-copy:hover,
+.openings__sample-link:hover {
+  background: #444;
+  color: #fff;
 }
 
 .openings__explorer {
