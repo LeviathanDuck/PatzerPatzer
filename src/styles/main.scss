@@ -4078,7 +4078,8 @@ body[data-board='newspaper'] cg-board::before {
 
   &__stat {
     color: #888;
-    &--solved { color: #4a9; font-weight: 600; }
+    &--clean { color: #4a9; font-weight: 600; }
+    &--assisted { color: #e8a040; font-weight: 600; }
     &--failed { color: #e05555; font-weight: 600; }
   }
 }
@@ -4112,9 +4113,14 @@ body[data-board='newspaper'] cg-board::before {
     border: 1px solid #444;
     transition: background 0.2s;
 
-    &--solved {
+    &--clean {
       background: #2d8a5e;
       border-color: #3a9;
+    }
+
+    &--assisted {
+      background: #8a7a2d;
+      border-color: #bb4;
     }
 
     &--failed {
@@ -4193,8 +4199,27 @@ body[data-board='newspaper'] cg-board::before {
   &__side {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0;
     min-width: 0;
+    max-height: calc(100vh - 5rem);
+  }
+
+  &__side-top {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 50%;
+    min-height: 0;
+    border-bottom: 1px solid #333;
+  }
+
+  &__side-bottom {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 50%;
+    min-height: 0;
+    overflow-y: auto;
+    gap: 8px;
+    padding-top: 8px;
   }
 }
 
@@ -4260,7 +4285,7 @@ body[data-board='newspaper'] cg-board::before {
 .puzzle-moves {
   background: #222;
   border: 1px solid #333;
-  border-radius: 6px;
+  border-radius: 0 0 6px 6px;
   padding: 8px 10px;
   display: flex;
   flex-wrap: wrap;
@@ -4268,6 +4293,9 @@ body[data-board='newspaper'] cg-board::before {
   align-items: baseline;
   min-height: 32px;
   font-size: 0.85rem;
+  flex: 1;
+  overflow-y: auto;
+  align-content: flex-start;
 
   &__empty {
     color: #666;
@@ -4332,6 +4360,25 @@ body[data-board='newspaper'] cg-board::before {
     margin-left: auto;
   }
 
+  &__toggle {
+    margin-left: auto;
+    background: #333;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 2px 10px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    &:hover { background: #4a9; color: #111; border-color: #4a9; }
+  }
+
+  &__hint {
+    margin-left: auto;
+    font-size: 0.72rem;
+    color: #555;
+    font-style: italic;
+  }
+
   &__close {
     background: none;
     border: none;
@@ -4343,13 +4390,77 @@ body[data-board='newspaper'] cg-board::before {
     &:hover { color: #ccc; }
   }
 
-  &__line {
-    margin-top: 4px;
-    font-size: 0.78rem;
-    font-family: monospace;
-    color: #888;
-    word-break: break-all;
+  &__pv {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 4px;
+    padding: 4px 0;
+    font-size: 0.82rem;
   }
+
+  &__pv-move {
+    color: #ccc;
+    padding: 1px 3px;
+    border-radius: 2px;
+    &:nth-child(odd) { color: #fff; }
+    &:nth-child(even) { color: #999; }
+  }
+
+  &__pv-loading {
+    color: #666;
+    font-style: italic;
+    font-size: 0.78rem;
+  }
+
+  &--off {
+    opacity: 0.7;
+  }
+
+  &--on {
+    border-color: #6ba3d650;
+    background: #1e2228;
+  }
+}
+
+// --- Puzzle info (collapsible) ---
+
+.puzzle-info {
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 6px 10px;
+
+  &__summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+
+    &:hover { color: #fff; }
+  }
+
+  &__rating {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #ccc;
+  }
+
+  &__expand {
+    margin-left: auto;
+    font-size: 0.65rem;
+    color: #666;
+  }
+
+  .puzzle-round__info {
+    margin-top: 8px;
+  }
+}
+
+// --- Puzzle ceval wrapper (reuses analysis board ceval components) ---
+
+.puzzle-ceval {
+  border-bottom: 1px solid #333;
 }
 
 // --- Feedback panel ---
@@ -4428,6 +4539,7 @@ body[data-board='newspaper'] cg-board::before {
 
   // State-specific background tints
   &.good { border-color: #22c55e40; background: #22c55e10; }
+  &.fail { border-color: #ef444430; background: #ef444410; }
   &.solved { border-color: #22c55e30; }
   &.failed { border-color: #ef444430; }
 }

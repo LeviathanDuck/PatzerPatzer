@@ -7,6 +7,8 @@
 // ---------------------------------------------------------------------------
 
 import { h, type VNode } from 'snabbdom';
+import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
+import { protocol as sharedProtocol, engineEnabled, engineReady as sharedEngineReady, multiPv, analysisDepth } from '../engine/ctrl';
 import {
   getLibraryCounts, getPuzzleRoundState, getActiveRoundCtrl,
   mountPuzzleBoard, destroyPuzzleBoard, mountIdleBoard, nextPuzzle, retryPuzzle,
@@ -109,6 +111,10 @@ function renderLibrarySidebar(redraw: () => void): VNode {
 }
 
 export function renderPuzzleLibrary(redraw: () => void): VNode {
+  // Clear puzzle engine FEN override when back on library page
+  setCevalFenOverride(null);
+  _lastPuzzleEngineFen = '';
+
   const listState = getPuzzleListState();
 
   // Board-centered layout: sidebar on left, board always visible
@@ -360,6 +366,7 @@ let _sessionRatingMax = 2400;
 let _sessionStarting = false;
 let _sessionTab: 'themes' | 'openings' = 'themes';
 let _openingSearch = '';
+let _lastPuzzleEngineFen = '';
 
 function renderImportedSessionBuilder(
   ls: PuzzleListState,
@@ -602,46 +609,48 @@ function formatThemeName(theme: string): string {
 
 // --- Puzzle round view ---
 
-function puzzleInfoRows(def: PuzzleDefinition): VNode[] {
-  const rows: VNode[] = [];
+let _puzzleInfoExpanded = false;
 
-  // Source kind — always visible
-  const sourceLabel = def.sourceKind === 'imported-lichess'
-    ? 'Imported (Lichess)'
-    : 'User Library';
-  rows.push(h('tr', [h('td.puzzle-round__label', 'Source'), h('td', sourceLabel)]));
+function renderPuzzleInfo(def: PuzzleDefinition, redraw: () => void): VNode {
+  const rating = def.sourceKind === 'imported-lichess' ? `${def.rating}` : null;
 
-  // Start FEN
-  rows.push(h('tr', [h('td.puzzle-round__label', 'Start FEN'), h('td.puzzle-round__fen', def.startFen)]));
-
-  // Solution length
-  rows.push(h('tr', [
-    h('td.puzzle-round__label', 'Solution moves'),
-    h('td', `${def.solutionLine.length}`),
-  ]));
-
-  // Source-specific fields
-  if (def.sourceKind === 'imported-lichess') {
-    rows.push(h('tr', [h('td.puzzle-round__label', 'Rating'), h('td', `${def.rating}`)]));
-    if (def.themes.length > 0) {
-      rows.push(h('tr', [h('td.puzzle-round__label', 'Themes'), h('td', def.themes.join(', '))]));
-    }
-    if (def.lichessPuzzleId) {
-      rows.push(h('tr', [h('td.puzzle-round__label', 'Lichess ID'), h('td', def.lichessPuzzleId)]));
-    }
-  } else {
-    if (def.title) {
-      rows.push(h('tr', [h('td.puzzle-round__label', 'Title'), h('td', def.title)]));
-    }
-    if (def.sourceReason) {
-      rows.push(h('tr', [h('td.puzzle-round__label', 'Reason'), h('td', def.sourceReason)]));
-    }
-    if (def.sourceGameId) {
-      rows.push(h('tr', [h('td.puzzle-round__label', 'Source game'), h('td', def.sourceGameId)]));
-    }
+  // Collapsed: just show rating
+  if (!_puzzleInfoExpanded) {
+    return h('div.puzzle-info', [
+      h('div.puzzle-info__summary', {
+        on: { click: () => { _puzzleInfoExpanded = true; redraw(); }},
+      }, [
+        rating ? h('span.puzzle-info__rating', `Rating ${rating}`) : null,
+        h('span.puzzle-info__expand', '\u25BC'),
+      ]),
+    ]);
   }
 
-  return rows;
+  // Expanded: full details
+  const rows: VNode[] = [];
+  const sourceLabel = def.sourceKind === 'imported-lichess' ? 'Imported (Lichess)' : 'User Library';
+  rows.push(h('tr', [h('td.puzzle-round__label', 'Source'), h('td', sourceLabel)]));
+  if (rating) rows.push(h('tr', [h('td.puzzle-round__label', 'Rating'), h('td', rating)]));
+  rows.push(h('tr', [h('td.puzzle-round__label', 'Moves'), h('td', `${def.solutionLine.length}`)]));
+  if (def.sourceKind === 'imported-lichess') {
+    if (def.themes.length > 0) rows.push(h('tr', [h('td.puzzle-round__label', 'Themes'), h('td', def.themes.join(', '))]));
+    if (def.lichessPuzzleId) rows.push(h('tr', [h('td.puzzle-round__label', 'Lichess ID'), h('td', def.lichessPuzzleId)]));
+  } else {
+    if (def.title) rows.push(h('tr', [h('td.puzzle-round__label', 'Title'), h('td', def.title)]));
+    if (def.sourceReason) rows.push(h('tr', [h('td.puzzle-round__label', 'Reason'), h('td', def.sourceReason)]));
+    if (def.sourceGameId) rows.push(h('tr', [h('td.puzzle-round__label', 'Source game'), h('td', def.sourceGameId)]));
+  }
+  rows.push(h('tr', [h('td.puzzle-round__label', 'FEN'), h('td.puzzle-round__fen', def.startFen)]));
+
+  return h('div.puzzle-info', [
+    h('div.puzzle-info__summary', {
+      on: { click: () => { _puzzleInfoExpanded = false; redraw(); }},
+    }, [
+      rating ? h('span.puzzle-info__rating', `Rating ${rating}`) : null,
+      h('span.puzzle-info__expand', '\u25B2'),
+    ]),
+    h('table.puzzle-round__info', rows),
+  ]);
 }
 
 // --- Feedback panel ---
@@ -659,25 +668,17 @@ function solveResultLabel(result: SolveResult): string {
 }
 
 function renderFeedbackPanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
-  // --- Playing state ---
-  if (rc.status === 'playing') {
-    return renderPlayingFeedback(rc, redraw);
+  // --- Post-solve/fail viewing mode ---
+  if (rc.mode === 'view') {
+    if (rc.status === 'solved') return renderSolvedFeedback(rc, redraw);
+    if (rc.status === 'failed') return renderFailedFeedback(rc, redraw);
+    return h('div.puzzle__feedback.viewing', [
+      h('div.puzzle__feedback__message', 'Viewing puzzle'),
+    ]);
   }
 
-  // --- Solved state ---
-  if (rc.status === 'solved') {
-    return renderSolvedFeedback(rc, redraw);
-  }
-
-  // --- Failed state ---
-  if (rc.status === 'failed') {
-    return renderFailedFeedback(rc, redraw);
-  }
-
-  // --- Viewing state ---
-  return h('div.puzzle__feedback.viewing', [
-    h('div.puzzle__feedback__message', 'Viewing puzzle'),
-  ]);
+  // --- Active play (mode = 'play' or 'try') ---
+  return renderPlayingFeedback(rc, redraw);
 }
 
 /**
@@ -685,8 +686,8 @@ function renderFeedbackPanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
  * Adapted from lichess-org/lila: ui/puzzle/src/view/feedback.ts initial/good/fail
  */
 function renderPlayingFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
+  // Correct move — "Best move!"
   if (rc.feedback === 'good') {
-    // Transient correct-move feedback
     return h('div.puzzle__feedback.good', [
       h('div.puzzle__feedback__player', [
         h('div.puzzle__feedback__icon', '\u2713'),
@@ -695,6 +696,21 @@ function renderPlayingFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
           h('em', 'Keep going\u2026'),
         ]),
       ]),
+    ]);
+  }
+
+  // Wrong move — "Not the move. Try something else."
+  // Adapted from lichess-org/lila: ui/puzzle/src/view/feedback.ts fail()
+  if (rc.feedback === 'fail') {
+    return h('div.puzzle__feedback.fail', [
+      h('div.puzzle__feedback__player', [
+        h('div.puzzle__feedback__icon.puzzle__feedback__icon--fail', '\u2717'),
+        h('div.puzzle__feedback__instruction', [
+          h('strong', 'Not the move'),
+          h('em', 'Try something else.'),
+        ]),
+      ]),
+      renderViewSolutionButtons(rc, redraw),
     ]);
   }
 
@@ -708,22 +724,23 @@ function renderPlayingFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
         h('em', `Find the best move for ${colorLabel}.`),
       ]),
     ]),
-    h('div.puzzle__feedback__actions', [
-      h('button.button.button-empty.puzzle__hint', {
-        on: { click: () => { rc.useHint(redraw); } },
-      }, rc.usedHint ? 'Hint used' : 'Hint'),
-      h('button.button.button-empty.puzzle__reveal', {
-        on: { click: () => { rc.revealSolution(redraw); } },
-      }, 'Show Solution'),
-      h('button.button.button-empty.puzzle__skip', {
-        on: { click: () => { rc.skipPuzzle(); redraw(); } },
-      }, 'Skip'),
-    ]),
-    // Show the expected move if solution was revealed
-    rc.revealedSolution
-      ? h('div.puzzle__feedback__revealed', [
-          h('em', `Solution: ${expectedMoveSan(rc)}`),
-        ])
+    renderViewSolutionButtons(rc, redraw),
+  ]);
+}
+
+/**
+ * Hint + View Solution buttons, shown during play/try modes.
+ * Adapted from lichess-org/lila: ui/puzzle/src/view/feedback.ts viewSolution()
+ */
+function renderViewSolutionButtons(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
+  return h('div.puzzle__feedback__actions', [
+    h('button.button.button-empty.puzzle__hint', {
+      on: { click: () => { rc.useHint(redraw); } },
+    }, rc.usedHint ? 'Hint used' : 'Get a hint'),
+    rc.canViewSolution
+      ? h('button.button.button-empty.puzzle__reveal', {
+          on: { click: () => { rc.viewSolution(redraw); } },
+        }, 'View the solution')
       : null,
   ]);
 }
@@ -757,14 +774,14 @@ function formatCpLoss(cpLoss: number): string {
   return `\u2212${pawns.toFixed(1)}`; // minus sign + value
 }
 
-function renderMoveQualityRow(mq: PuzzleMoveQuality): VNode {
+function renderMoveQualityRow(mq: PuzzleMoveQuality, san: string): VNode {
   const color = QUALITY_COLORS[mq.quality];
   const label = QUALITY_LABELS[mq.quality];
 
   const cells: VNode[] = [];
 
-  // Move label (UCI for now)
-  cells.push(h('span.puzzle__mq-move', mq.playedUci));
+  // Move label in SAN
+  cells.push(h('span.puzzle__mq-move', san));
 
   // Quality badge
   cells.push(
@@ -792,12 +809,25 @@ function renderMoveQualityRow(mq: PuzzleMoveQuality): VNode {
   return h('div.puzzle__mq-row', cells);
 }
 
-function renderMoveQualitySummary(moveQualities: PuzzleMoveQuality[]): VNode | null {
-  if (moveQualities.length === 0) return null;
+function uciToSanFromFen(fen: string | undefined, uci: string): string {
+  if (!fen) return uci;
+  const setup = parseFen(fen);
+  if (setup.isErr) return uci;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return uci;
+  const move = parseUci(uci);
+  if (!move) return uci;
+  try { return makeSan(pos.value, move); } catch { return uci; }
+}
+
+function renderMoveQualitySummary(moveQualities: PuzzleMoveQuality[], _def: PuzzleDefinition): VNode | null {
+  // Only show moves that were accepted (matched the solution) — skip retried wrong moves
+  const accepted = moveQualities.filter(mq => mq.matched);
+  if (accepted.length === 0) return null;
 
   return h('div.puzzle__mq-summary', [
     h('div.puzzle__mq-header', 'Move Quality'),
-    ...moveQualities.map(renderMoveQualityRow),
+    ...accepted.map(mq => renderMoveQualityRow(mq, uciToSanFromFen(mq.fenBefore, mq.playedUci))),
   ]);
 }
 
@@ -833,7 +863,7 @@ function renderSolvedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
         on: { click: () => { rc.showEngineArrows(redraw); } },
       }, 'Engine Arrows'),
     ]),
-    renderMoveQualitySummary(rc.moveQualities),
+    renderMoveQualitySummary(rc.moveQualities, rc.definition),
     renderNextNav(redraw),
   ]);
 }
@@ -893,7 +923,7 @@ function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
         on: { click: () => { rc.showEngineArrows(redraw); } },
       }, 'Engine Arrows'),
     ]),
-    renderMoveQualitySummary(rc.moveQualities),
+    renderMoveQualitySummary(rc.moveQualities, rc.definition),
     h('div.puzzle__feedback__nav', [
       h('button.button.puzzle__retry', {
         on: { click: () => { retryPuzzle(redraw); } },
@@ -1155,51 +1185,59 @@ function renderPuzzleMoveList(def: PuzzleDefinition, rc: PuzzleRoundCtrl | null)
 // Shows engine eval output when activated after solve/fail.
 // Adapted from lichess-org/lila: ui/puzzle/src/view/feedback.ts post-solve ceval
 
-function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode | null {
-  if (!rc.puzzleEngineEnabled) return null;
-
-  const ev = rc.getPuzzleEval();
-  const hasEval = ev.cp !== undefined || ev.mate !== undefined;
-
-  // Format score
-  let scoreText = 'analyzing\u2026';
-  if (ev.mate !== undefined) {
-    scoreText = ev.mate > 0 ? `M${ev.mate}` : `M${ev.mate}`;
-  } else if (ev.cp !== undefined) {
-    const pawns = ev.cp / 100;
-    scoreText = pawns >= 0 ? `+${pawns.toFixed(1)}` : `${pawns.toFixed(1)}`;
+/**
+ * Render the analysis board's ceval components for the puzzle page.
+ * Sets the FEN override so renderPvBox uses the puzzle position, then
+ * uses the shared engine toggle and PV box from src/ceval/view.ts.
+ */
+function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
+  // Compute current puzzle FEN for the ceval view
+  const allMoves: string[] = [];
+  if (rc.definition.triggerMove) allMoves.push(rc.definition.triggerMove);
+  allMoves.push(...rc.solutionLine.slice(0, rc.progressPly));
+  const setup = parseFen(rc.definition.startFen);
+  let puzzleFen = rc.definition.startFen;
+  if (setup.isOk) {
+    const pos = Chess.fromSetup(setup.value);
+    if (pos.isOk) {
+      for (const uci of allMoves) {
+        const m = parseUci(uci);
+        if (m) pos.value.play(m);
+      }
+      puzzleFen = makeFen(pos.value.toSetup());
+    }
   }
 
-  // Format best line in SAN if available
-  let lineText = '';
-  if (ev.moves && ev.moves.length > 0 && ev.best) {
-    // Show first few moves of PV
-    lineText = ev.moves.slice(0, 6).join(' ');
+  // Set FEN override so the shared ceval view renders for the puzzle position
+  setCevalFenOverride(puzzleFen);
+
+  // If engine is on, ensure it's evaluating the puzzle position (not the analysis board's).
+  // Only send when the FEN changes to avoid spamming the engine on every redraw.
+  if (engineEnabled && sharedEngineReady && puzzleFen !== _lastPuzzleEngineFen) {
+    _lastPuzzleEngineFen = puzzleFen;
+    sharedProtocol.setPosition(puzzleFen);
+    sharedProtocol.go(analysisDepth, multiPv);
   }
 
-  const depthText = ev.depth ? `depth ${ev.depth}` : '';
+  const children: (VNode | null)[] = [];
 
-  return h('div.puzzle-engine', [
-    h('div.puzzle-engine__header', [
-      h('span.puzzle-engine__label', 'Engine'),
-      h('span.puzzle-engine__score', { class: { positive: (ev.cp ?? 0) > 0, negative: (ev.cp ?? 0) < 0 } }, scoreText),
-      depthText ? h('span.puzzle-engine__depth', depthText) : null,
-      h('button.puzzle-engine__close', {
-        on: { click: () => { rc.disablePuzzleEngine(); redraw(); }},
-        attrs: { title: 'Turn off engine' },
-      }, '\u2715'),
-    ]),
-    hasEval && lineText
-      ? h('div.puzzle-engine__line', lineText)
-      : null,
-  ]);
+  // Ceval header bar (toggle, eval pearl, engine name, settings gear)
+  children.push(renderCeval());
+
+  // PV lines box (only renders when engine is enabled)
+  children.push(renderPvBox());
+
+  // Engine settings panel (only renders when settings gear is toggled)
+  children.push(renderEngineSettings());
+
+  return h('div.puzzle-ceval', children);
 }
 
 // --- Session sidebar ---
 // Persistent left sidebar during puzzle rounds. Shows session info at top
 // and a chicklet history grid at bottom.
 
-function renderSessionSidebar(session: ActiveSession, redraw: () => void): VNode {
+function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, redraw: () => void): VNode {
   // Format theme/opening labels
   const labels: string[] = [];
   if (session.themes.length > 0) {
@@ -1212,7 +1250,8 @@ function renderSessionSidebar(session: ActiveSession, redraw: () => void): VNode
   }
   if (labels.length === 0) labels.push('All themes');
 
-  const solved = session.history.filter(e => e.result === 'solved').length;
+  const clean = session.history.filter(e => e.result === 'clean').length;
+  const assisted = session.history.filter(e => e.result === 'assisted').length;
   const failed = session.history.filter(e => e.result === 'failed').length;
   const total = session.history.length;
 
@@ -1230,7 +1269,8 @@ function renderSessionSidebar(session: ActiveSession, redraw: () => void): VNode
       h('div.session-info__rating',
         `Rating ${session.ratingMin}\u2013${session.ratingMax}`),
       h('div.session-info__stats', [
-        h('span.session-info__stat.session-info__stat--solved', `${solved} solved`),
+        h('span.session-info__stat.session-info__stat--clean', `${clean} clean`),
+        h('span.session-info__stat.session-info__stat--assisted', `${assisted} assisted`),
         h('span.session-info__stat.session-info__stat--failed', `${failed} failed`),
         h('span.session-info__stat', `${total} total`),
       ]),
@@ -1243,7 +1283,8 @@ function renderSessionSidebar(session: ActiveSession, redraw: () => void): VNode
         session.history.map((entry, i) =>
           h('div.session-history__cell', {
             class: {
-              'session-history__cell--solved': entry.result === 'solved',
+              'session-history__cell--clean': entry.result === 'clean',
+              'session-history__cell--assisted': entry.result === 'assisted',
               'session-history__cell--failed': entry.result === 'failed',
               'session-history__cell--active': entry.result === 'in-progress',
             },
@@ -1252,6 +1293,10 @@ function renderSessionSidebar(session: ActiveSession, redraw: () => void): VNode
         ),
       ),
     ]),
+
+    // Puzzle info + metadata — moved to left sidebar
+    renderPuzzleInfo(def, redraw),
+    renderMetaPanel(def.id, redraw),
   ]);
 }
 
@@ -1286,9 +1331,18 @@ export function renderPuzzleRound(redraw: () => void): VNode {
   const session = getActiveSession();
 
   return h('div.puzzle-page', [
-    h('div.puzzle' + (session ? '.puzzle--with-session' : ''), [
-      // Session sidebar (left) — only when session is active
-      session ? renderSessionSidebar(session, redraw) : null,
+    h('div.puzzle.puzzle--with-session', [
+      // Left sidebar — session info + puzzle info + meta
+      session
+        ? renderSessionSidebar(session, def, redraw)
+        : h('aside.puzzle__session-sidebar', [
+            h('div.puzzle-round__header', [
+              h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
+              h('h2.puzzle-round__title', `Puzzle ${def.id}`),
+            ]),
+            renderPuzzleInfo(def, redraw),
+            renderMetaPanel(def.id, redraw),
+          ]),
       // Board area
       h('div.puzzle__board.main-board', [
         h('div.cg-wrap', {
@@ -1303,21 +1357,20 @@ export function renderPuzzleRound(redraw: () => void): VNode {
           },
         }),
       ]),
-      // Side panel — feedback + move list + puzzle info
+      // Side panel — split into engine/moves top half + feedback/tools bottom half
       h('aside.puzzle__side', [
-        h('div.puzzle-round__header', [
-          h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
-          h('h2.puzzle-round__title', `Puzzle ${def.id}`),
+        // --- Top half: engine eval + move list ---
+        h('div.puzzle__side-top', [
+          // Engine eval bar + lines (always present as a container)
+          rc ? renderPuzzleEnginePanel(rc, redraw) : null,
+          // Move list
+          renderPuzzleMoveList(def, rc),
         ]),
-        // Move list
-        renderPuzzleMoveList(def, rc),
-        // Feedback panel
-        rc ? renderFeedbackPanel(rc, redraw) : null,
-        // Engine panel (post-solve/fail only)
-        rc ? renderPuzzleEnginePanel(rc, redraw) : null,
-        h('table.puzzle-round__info', puzzleInfoRows(def)),
-        // Metadata editing — favorites, notes, tags, collections
-        renderMetaPanel(def.id, redraw),
+        // --- Bottom half: feedback ---
+        h('div.puzzle__side-bottom', [
+          // Feedback panel
+          rc ? renderFeedbackPanel(rc, redraw) : null,
+        ]),
       ]),
     ]),
   ]);
