@@ -82,6 +82,8 @@ import {
 import { current, onChange, type Route } from './router';
 import { deleteNodeAt, nodeAtPath, parentAtPath, pathInit, promoteAt, pruneVariations } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
+import { initOpeningsPage, invalidateCollections } from './openings/ctrl';
+import { renderOpeningsPage } from './openings/view';
 import { buildMainlineOpeningProvider, buildRetroCandidates } from './analyse/retro';
 import { makeRetroCtrl } from './analyse/retroCtrl';
 import { onRetroConfigChange } from './analyse/retroConfig';
@@ -948,7 +950,7 @@ function routeContent(route: Route): VNode {
       // it calls redraw() internally which re-triggers this render.
       return renderPuzzleRound(redraw);
     }
-    case 'openings': return h('h1', 'Openings Page');
+    case 'openings': return renderOpeningsPage(redraw);
     case 'stats':    return h('h1', 'Stats Page');
     default:         return h('h1', 'Home');
   }
@@ -1145,6 +1147,10 @@ onChange(route => {
     void openPuzzleRound(puzzleId, redraw);
     return; // openPuzzleRound calls redraw() when ready
   }
+  if (route.name === 'openings') {
+    initOpeningsPage('library');
+    invalidateCollections();
+  }
   if (route.name === 'analysis-game') {
     const id = route.params['id'] ?? '';
     const game = importedGames.find(g => g.id === id);
@@ -1159,6 +1165,12 @@ onChange(route => {
 
 // First render — all modules are initialised so view() is safe to call.
 vnode = patch(app, view(currentRoute));
+
+// If the initial route is openings, initialise page state.
+if (currentRoute.name === 'openings') {
+  initOpeningsPage('library');
+  invalidateCollections();
+}
 
 // If the initial route is a puzzle round, load it now.
 if (currentRoute.name === 'puzzle-round') {

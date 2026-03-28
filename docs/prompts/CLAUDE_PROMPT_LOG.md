@@ -6,6 +6,38 @@ Use this file to track Claude Code prompts from creation through review.
 
 ## Prompt Index
 
+- [x] CCP-209 - Puzzle Mobile Usability Batch Manager
+- [x] CCP-204 - Add Real Mobile Puzzle Layout Mode
+- [x] CCP-205 - Make Puzzle Library And Session Builder Mobile-Usable
+- [x] CCP-206 - Make Puzzle Feedback Mobile Board-Adjacent
+- [x] CCP-207 - Make Puzzle Side Surfaces Readable On Mobile
+- [x] CCP-208 - Add Puzzle Mobile Touch Polish
+- [x] CCP-203 - Openings Full Batch Manager
+- [x] CCP-178 - Establish Openings Subsystem And Real Route Owner
+- [x] CCP-179 - Add Separate Openings Research DB And Canonical Types
+- [x] CCP-180 - Add Opening Research Source Adapter Contract
+- [x] CCP-181 - Add Saved Research Collection Library Shell
+- [x] CCP-183 - Render Openings Import Workflow Shell
+- [x] CCP-184 - Add Opponent Research Import Pipeline
+- [x] CCP-185 - Add Opening Research Import Progress And Collection Creation
+- [x] CCP-186 - Persist And Reload Opening Research Collections
+- [x] CCP-188 - Build Opening Tree Aggregation Engine
+- [x] CCP-189 - Add Opening Session Controller And Nav State
+- [x] CCP-190 - Render Opening Prep Board Shell Using Shared Board Subsystem
+- [x] CCP-191 - Add Opening Navigator And Position Sync
+- [x] CCP-193 - Render Played Lines Panel With Counts And Percentages
+- [x] CCP-194 - Bring Played Lines Styling Toward Lichess Opening DB Conventions
+- [x] CCP-195 - Add Current Position Report And Sample Games Panel
+- [x] CCP-196 - Add Optional Lichess Explorer Comparison Surface
+- [x] CCP-198 - Add Research Collections Management Surface
+- [x] CCP-199 - Add Sample Game Actions And Reopen Workflow
+- [x] CCP-200 - Add Honest Openings Empty States And Route Polish
+- [x] CCP-201 - Add Preparation Perspective Controls And Final Openings Shell Validation
+- [x] CCP-182 - Openings Phase 0 Batch Manager
+- [x] CCP-187 - Openings Phase 1 Batch Manager
+- [x] CCP-192 - Openings Phase 2 Batch Manager
+- [x] CCP-197 - Openings Phase 3 Batch Manager
+- [x] CCP-202 - Openings Phase 4 Batch Manager
 - [x] CCP-177 - Puzzle Blocking Fixes Batch Manager
 - [x] CCP-151-F3 - Fix Imported Theme Session Start
 - [x] CCP-156-F1 - Fix Puzzle Round Board Interactivity
@@ -209,6 +241,646 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-068 - Add Eval Graph Height Toggle
 
 ## Detailed Log
+
+## CCP-209 - Puzzle Mobile Usability Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-209`
+  - Task ID: `CCP-209`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-204`, `CCP-205`, `CCP-206`, `CCP-207`, `CCP-208`
+  - Source document: `docs/mini-sprints/PUZZLE_PAGE_MOBILE_USABILITY_SPRINT_2026-03-28.md`
+  - Source step: `Full puzzle mobile usability batch / manager prompt`
+  - Task: execute the full tracked puzzle mobile usability batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:35:08.302Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-204 - Add Real Mobile Puzzle Layout Mode
+
+```
+- [x] Reviewed
+  - ID: `CCP-204`
+  - Task ID: `CCP-204`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_PAGE_MOBILE_USABILITY_SPRINT_2026-03-28.md`
+  - Source step: `Task 1 — Add a real mobile puzzle layout mode`
+  - Task: add a real mobile puzzle layout mode for both the puzzle library and puzzle round views so the page has intentional board-first mobile structure instead of a generic one-column collapse
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:35:23.118Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-205 - Make Puzzle Library And Session Builder Mobile-Usable
+
+```
+- [x] Reviewed
+  - ID: `CCP-205`
+  - Task ID: `CCP-205`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_PAGE_MOBILE_USABILITY_SPRINT_2026-03-28.md`
+  - Source step: `Task 2 — Make the puzzle library and imported-session builder usable on mobile`
+  - Task: make the puzzle library sidebar and imported-session builder actually usable on mobile without changing their underlying selection or session-start logic
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:36:57.457Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-206 - Make Puzzle Feedback Mobile Board-Adjacent
+
+```
+- [x] Reviewed
+  - ID: `CCP-206`
+  - Task ID: `CCP-206`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_PAGE_MOBILE_USABILITY_SPRINT_2026-03-28.md`
+  - Source step: `Task 3 — Make puzzle feedback and core actions board-adjacent on mobile`
+  - Task: make puzzle feedback and the core puzzle action cluster board-adjacent on mobile so narrow screens prioritize active solving over lower-value side content
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:37:23.934Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-207 - Make Puzzle Side Surfaces Readable On Mobile
+
+```
+- [x] Reviewed
+  - ID: `CCP-207`
+  - Task ID: `CCP-207`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_PAGE_MOBILE_USABILITY_SPRINT_2026-03-28.md`
+  - Source step: `Task 4 — Make engine, move list, and session surfaces readable as a mobile stack`
+  - Task: make the engine panel, move list, and session surfaces readable and intentionally ordered on mobile without changing puzzle engine behavior or session logic
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:37:49.270Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-208 - Add Puzzle Mobile Touch Polish
+
+```
+- [x] Reviewed
+  - ID: `CCP-208`
+  - Task ID: `CCP-208`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/PUZZLE_PAGE_MOBILE_USABILITY_SPRINT_2026-03-28.md`
+  - Source step: `Task 5 — Add one minimal touch/mobile polish pass for continuity`
+  - Task: add one minimal touch/mobile polish pass so the puzzle page feels intentionally mobile and visually continuous with Patzer's analysis mobile styling
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:38:18.433Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-203 - Openings Full Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-203`
+  - Task ID: `CCP-203`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-182`, `CCP-187`, `CCP-192`, `CCP-197`, `CCP-202`
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Full openings implementation batch / manager of managers`
+  - Task: execute the full tracked openings implementation by running all phase manager prompts in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:14:54.702Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: Openings review still has concrete failures in Phase 1 and Phase 2: src/openings/import.ts is not exactOptionalPropertyTypes-clean, and src/openings/view.ts still leaves openings-specific board-sync/path typecheck failures.
+  - Execution target: `Claude Code`
+```
+
+## CCP-178 - Establish Openings Subsystem And Real Route Owner
+
+```
+- [x] Reviewed
+  - ID: `CCP-178`
+  - Task ID: `CCP-178`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Separate Research Persistence / Task 1`
+  - Task: replace the placeholder openings route with a real openings subsystem owner and minimal page shell without adding the full product yet
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:15:31.721Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-179 - Add Separate Openings Research DB And Canonical Types
+
+```
+- [x] Reviewed
+  - ID: `CCP-179`
+  - Task ID: `CCP-179`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Separate Research Persistence / Task 2`
+  - Task: create a separate openings research persistence owner and canonical domain types so opponent-prep data does not reuse the analysis game library or database
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:16:25.349Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-180 - Add Opening Research Source Adapter Contract
+
+```
+- [x] Reviewed
+  - ID: `CCP-180`
+  - Task ID: `CCP-180`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Separate Research Persistence / Task 3`
+  - Task: define the smallest safe openings research source adapter contract for lichess username, chess.com username, and PGN upload sources without building the full fetch pipeline yet
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:17:11.567Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-181 - Add Saved Research Collection Library Shell
+
+```
+- [x] Reviewed
+  - ID: `CCP-181`
+  - Task ID: `CCP-181`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Separate Research Persistence / Task 4`
+  - Task: add the smallest honest saved research collection library shell to the openings page so the route can show empty state plus real persisted collection placeholders
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:17:37.864Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-183 - Render Openings Import Workflow Shell
+
+```
+- [x] Reviewed
+  - ID: `CCP-183`
+  - Task ID: `CCP-183`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 1 — Opponent Research Import Flow / Task 1`
+  - Task: build the openings import workflow shell using the OpeningTree-style source -> details -> filters -> actions flow, but inside the Patzer openings subsystem
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:18:16.275Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-184 - Add Opponent Research Import Pipeline
+
+```
+- [x] Reviewed
+  - ID: `CCP-184`
+  - Task ID: `CCP-184`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 1 — Opponent Research Import Flow / Task 2`
+  - Task: implement the smallest safe openings opponent-research import pipeline for lichess usernames, chess.com usernames, and PGN upload without reusing the analysis-game library path
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:19:17.865Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: src/openings/import.ts still constructs ResearchGame objects with explicit undefined optional fields, so the Phase 1 import pipeline is not exactOptionalPropertyTypes-clean.
+  - Execution target: `Claude Code`
+```
+
+## CCP-185 - Add Opening Research Import Progress And Collection Creation
+
+```
+- [x] Reviewed
+  - ID: `CCP-185`
+  - Task ID: `CCP-185`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 1 — Opponent Research Import Flow / Task 3`
+  - Task: add progress, stop, and collection-creation behavior to the openings import flow so a completed opponent-research import becomes a reopenable research collection
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:20:17.888Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-186 - Persist And Reload Opening Research Collections
+
+```
+- [x] Reviewed
+  - ID: `CCP-186`
+  - Task ID: `CCP-186`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 1 — Opponent Research Import Flow / Task 4`
+  - Task: persist saved opening research collections and make the openings page able to reload them honestly after refresh
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:21:44.754Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-188 - Build Opening Tree Aggregation Engine
+
+```
+- [x] Reviewed
+  - ID: `CCP-188`
+  - Task ID: `CCP-188`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 2 — Tree Build And Board Shell / Task 1`
+  - Task: build the smallest safe opening tree aggregation engine that groups imported research games by position and move so the openings product stops being just a saved collection list
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:23:31.126Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-189 - Add Opening Session Controller And Nav State
+
+```
+- [x] Reviewed
+  - ID: `CCP-189`
+  - Task ID: `CCP-189`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 2 — Tree Build And Board Shell / Task 2`
+  - Task: add an openings session controller that can open one saved research collection, track current path/fen, and persist honest openings navigation state
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:24:29.809Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-190 - Render Opening Prep Board Shell Using Shared Board Subsystem
+
+```
+- [x] Reviewed
+  - ID: `CCP-190`
+  - Task ID: `CCP-190`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 2 — Tree Build And Board Shell / Task 3`
+  - Task: render the first real opening-prep board shell using the shared board subsystem instead of copying the analysis page
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:25:05.821Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-191 - Add Opening Navigator And Position Sync
+
+```
+- [x] Reviewed
+  - ID: `CCP-191`
+  - Task ID: `CCP-191`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 2 — Tree Build And Board Shell / Task 4`
+  - Task: add the openings navigator and position sync so board moves, tree path, and line selection stay aligned while browsing a research collection
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:26:27.141Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: src/openings/view.ts still leaves openings-specific typecheck failures in board sync and breadcrumb/path code, so navigator/position-sync is not validation-clean.
+  - Execution target: `Claude Code`
+```
+
+## CCP-193 - Render Played Lines Panel With Counts And Percentages
+
+```
+- [x] Reviewed
+  - ID: `CCP-193`
+  - Task ID: `CCP-193`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 3 — Played Lines, Percentages, And Report Surface / Task 1`
+  - Task: render the core played-lines panel for the openings page, showing different moves from the current position with counts and percentages from the research tree
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:27:24.463Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-194 - Bring Played Lines Styling Toward Lichess Opening DB Conventions
+
+```
+- [x] Reviewed
+  - ID: `CCP-194`
+  - Task ID: `CCP-194`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 3 — Played Lines, Percentages, And Report Surface / Task 2`
+  - Task: bring the openings played-lines panel styling toward Lichess opening-surface conventions for row density, hierarchy, and percentage emphasis without redesigning the whole page
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:28:14.767Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-195 - Add Current Position Report And Sample Games Panel
+
+```
+- [x] Reviewed
+  - ID: `CCP-195`
+  - Task ID: `CCP-195`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 3 — Played Lines, Percentages, And Report Surface / Task 3`
+  - Task: add the current-position report panel and sample-games surface so the openings page can answer what happens from this position and show concrete example games
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:29:31.046Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-196 - Add Optional Lichess Explorer Comparison Surface
+
+```
+- [x] Reviewed
+  - ID: `CCP-196`
+  - Task ID: `CCP-196`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 3 — Played Lines, Percentages, And Report Surface / Task 4`
+  - Task: add the smallest safe optional Lichess explorer comparison surface so researched opponent moves can be compared against broader book moves without changing the core tree owner
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:31:40.855Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-198 - Add Research Collections Management Surface
+
+```
+- [x] Reviewed
+  - ID: `CCP-198`
+  - Task ID: `CCP-198`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 4 — Collections Management And Product Polish / Task 1`
+  - Task: add the smallest honest research collections management surface so saved opening-prep collections can be renamed, deleted, and reopened without leaving the openings product
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:33:14.243Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-199 - Add Sample Game Actions And Reopen Workflow
+
+```
+- [x] Reviewed
+  - ID: `CCP-199`
+  - Task ID: `CCP-199`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 4 — Collections Management And Product Polish / Task 2`
+  - Task: add sample-game actions and a smoother reopen workflow so a user can reopen a saved prep collection and jump into concrete example games from the current opening position
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:34:20.427Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-200 - Add Honest Openings Empty States And Route Polish
+
+```
+- [x] Reviewed
+  - ID: `CCP-200`
+  - Task ID: `CCP-200`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 4 — Collections Management And Product Polish / Task 3`
+  - Task: polish the openings route so empty, loading, and no-data states are honest, and the page no longer feels like a partly hidden placeholder product
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:34:54.979Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-201 - Add Preparation Perspective Controls And Final Openings Shell Validation
+
+```
+- [x] Reviewed
+  - ID: `CCP-201`
+  - Task ID: `CCP-201`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 4 — Collections Management And Product Polish / Task 4`
+  - Task: add the smallest safe preparation-perspective controls and finish the first honest validation pass on the openings product shell
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:35:24.949Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-182 - Openings Phase 0 Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-182`
+  - Task ID: `CCP-182`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-178`, `CCP-179`, `CCP-180`, `CCP-181`
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 0 — Ownership And Separate Research Persistence / manager prompt`
+  - Task: execute the phase 0 — ownership and separate research persistence openings batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:15:25.620Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-187 - Openings Phase 1 Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-187`
+  - Task ID: `CCP-187`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-183`, `CCP-184`, `CCP-185`, `CCP-186`
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 1 — Opponent Research Import Flow / manager prompt`
+  - Task: execute the phase 1 — opponent research import flow openings batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:18:15.158Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: child prompt CCP-184 still leaves an openings-specific exactOptionalPropertyTypes failure in src/openings/import.ts, so the Phase 1 batch is not review-clean.
+  - Execution target: `Claude Code`
+```
+
+## CCP-192 - Openings Phase 2 Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-192`
+  - Task ID: `CCP-192`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-188`, `CCP-189`, `CCP-190`, `CCP-191`
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 2 — Tree Build And Board Shell / manager prompt`
+  - Task: execute the phase 2 — tree build and board shell openings batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:23:02.161Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: child prompt CCP-191 still leaves openings-specific typecheck failures in src/openings/view.ts, so the Phase 2 batch is not review-clean.
+  - Execution target: `Claude Code`
+```
+
+## CCP-197 - Openings Phase 3 Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-197`
+  - Task ID: `CCP-197`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-193`, `CCP-194`, `CCP-195`, `CCP-196`
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 3 — Played Lines, Percentages, And Report Surface / manager prompt`
+  - Task: execute the phase 3 — played lines, percentages, and report surface openings batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:27:23.404Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-202 - Openings Phase 4 Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-202`
+  - Task ID: `CCP-202`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-198`, `CCP-199`, `CCP-200`, `CCP-201`
+  - Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+  - Source step: `Phase 4 — Collections Management And Product Polish / manager prompt`
+  - Task: execute the phase 4 — collections management and product polish openings batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:06:53Z`
+  - Started at: `2026-03-28T06:33:12.690Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
 
 ## CCP-177 - Puzzle Blocking Fixes Batch Manager
 

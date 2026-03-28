@@ -14212,8 +14212,16 @@ var _importError = null;
 var _importProgress = 0;
 var _importAbort = null;
 var _lastCreatedCollection = null;
+var _importSpeeds = /* @__PURE__ */ new Set();
+var _importDateRange = "1month";
+var _importCustomFrom = "";
+var _importCustomTo = "";
+var _importRated = true;
+var _importMaxGames = 50;
 function initOpeningsPage(page = "library") {
   _currentPage = page;
+}
+function invalidateCollections() {
   _collectionsLoaded = false;
 }
 function openingsPage() {
@@ -14271,6 +14279,42 @@ function setImportColor(color) {
 function setImportError(err) {
   _importError = err;
 }
+function importSpeeds() {
+  return _importSpeeds;
+}
+function setImportSpeeds(s) {
+  _importSpeeds = s;
+}
+function importDateRange() {
+  return _importDateRange;
+}
+function setImportDateRange(r) {
+  _importDateRange = r;
+}
+function importCustomFrom() {
+  return _importCustomFrom;
+}
+function setImportCustomFrom(v) {
+  _importCustomFrom = v;
+}
+function importCustomTo() {
+  return _importCustomTo;
+}
+function setImportCustomTo(v) {
+  _importCustomTo = v;
+}
+function importRated() {
+  return _importRated;
+}
+function setImportRated(v) {
+  _importRated = v;
+}
+function importMaxGames() {
+  return _importMaxGames;
+}
+function setImportMaxGames(v) {
+  _importMaxGames = Math.max(1, Math.min(200, v));
+}
 function importProgress() {
   return _importProgress;
 }
@@ -14306,13 +14350,26 @@ function resetImport() {
   _importError = null;
   _importProgress = 0;
   _lastCreatedCollection = null;
+  _importSpeeds = /* @__PURE__ */ new Set();
+  _importDateRange = "1month";
+  _importCustomFrom = "";
+  _importCustomTo = "";
+  _importRated = true;
+  _importMaxGames = 50;
 }
 var _activeCollection = null;
 var _openingTree = null;
 var _sessionPath = [];
 var _sessionNode = null;
+var _boardOrientation = "white";
 function activeCollection() {
   return _activeCollection;
+}
+function boardOrientation() {
+  return _boardOrientation;
+}
+function flipBoard() {
+  _boardOrientation = _boardOrientation === "white" ? "black" : "white";
 }
 function openingTree() {
   return _openingTree;
@@ -14328,6 +14385,7 @@ function openCollection(collection) {
   _openingTree = buildOpeningTree(collection.games);
   _sessionPath = [];
   _sessionNode = _openingTree;
+  _boardOrientation = collection.perspective === "black" ? "white" : collection.perspective === "white" ? "black" : "white";
   _currentPage = "session";
 }
 function navigateToMove(uci) {
@@ -14416,7 +14474,12 @@ function splitPgnText(text) {
   return text.trim().split(/\n\n(?=\[Event )/).filter((s) => s.trim());
 }
 async function fetchLichessResearch(username, signal) {
-  const params = new URLSearchParams({ max: "50" });
+  const max = importMaxGames();
+  const speeds = importSpeeds();
+  const rated = importRated();
+  const params = new URLSearchParams({ max: String(max) });
+  if (rated) params.set("rated", "true");
+  if (speeds.size > 0) params.set("perfType", [...speeds].join(","));
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
   const res = await fetch(url, { headers: { Accept: "application/x-chess-pgn" }, signal });
   if (!res.ok) {
@@ -14440,15 +14503,64 @@ async function fetchChesscomResearch(username, signal, onProgress) {
   const archivesData = await archivesRes.json();
   const archives = archivesData.archives ?? [];
   if (archives.length === 0) return [];
-  const recent = archives.slice(-3);
+  const max = importMaxGames();
+  const speeds = importSpeeds();
+  const rated = importRated();
+  const dateRange = importDateRange();
+  let relevantArchives;
+  if (dateRange === "all") {
+    relevantArchives = archives;
+  } else {
+    const now = /* @__PURE__ */ new Date();
+    let cutoff;
+    switch (dateRange) {
+      case "24h":
+        cutoff = new Date(now.getTime() - 864e5);
+        break;
+      case "1week":
+        cutoff = new Date(now.getTime() - 7 * 864e5);
+        break;
+      case "1month":
+        cutoff = new Date(now);
+        cutoff.setMonth(cutoff.getMonth() - 1);
+        break;
+      case "3months":
+        cutoff = new Date(now);
+        cutoff.setMonth(cutoff.getMonth() - 3);
+        break;
+      case "1year":
+        cutoff = new Date(now);
+        cutoff.setFullYear(cutoff.getFullYear() - 1);
+        break;
+      case "custom":
+        cutoff = importCustomFrom() ? new Date(importCustomFrom()) : /* @__PURE__ */ new Date(0);
+        break;
+      default:
+        cutoff = new Date(now);
+        cutoff.setMonth(cutoff.getMonth() - 1);
+    }
+    const cutoffMonth = cutoff.toISOString().slice(0, 7);
+    relevantArchives = archives.filter((url) => {
+      const parts = url.split("/");
+      const year = parts[parts.length - 2];
+      const month = parts[parts.length - 1];
+      if (!year || !month) return false;
+      return `${year}-${month.padStart(2, "0")}` >= cutoffMonth;
+    });
+  }
+  if (relevantArchives.length === 0) return [];
   const games = [];
-  for (let i = 0; i < recent.length; i++) {
+  for (let i = 0; i < relevantArchives.length; i++) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-    const res = await fetch(recent[i], { signal });
+    if (games.length >= max) break;
+    const res = await fetch(relevantArchives[i], { signal });
     if (!res.ok) continue;
     const data = await res.json();
     for (const raw of (data.games ?? []).reverse()) {
+      if (games.length >= max) break;
       if (raw.rules !== "chess" || raw.time_class === "daily") continue;
+      if (rated && !raw.rated) continue;
+      if (speeds.size > 0 && !speeds.has(raw.time_class)) continue;
       const pgn = raw.pgn ?? "";
       if (!pgn) continue;
       const g = pgnToResearchGame(pgn, "chesscom");
@@ -14501,6 +14613,18 @@ async function executeResearchImport(redraw2) {
         games = [];
     }
     if (abort.signal.aborted) return;
+    if (source !== "pgn") {
+      const savedDateRange = importFilters2.dateRange;
+      const savedCustomFrom = importFilters2.customFrom;
+      const savedCustomTo = importFilters2.customTo;
+      importFilters2.dateRange = importDateRange();
+      importFilters2.customFrom = importCustomFrom();
+      importFilters2.customTo = importCustomTo();
+      games = filterGamesByDate(games);
+      importFilters2.dateRange = savedDateRange;
+      importFilters2.customFrom = savedCustomFrom;
+      importFilters2.customTo = savedCustomTo;
+    }
     setImportProgress(games.length);
     if (games.length === 0) {
       setImportStep("details");
@@ -14651,8 +14775,10 @@ function renderLibraryPage(redraw2) {
 }
 function renderEmptyState(redraw2) {
   return h("div.openings__empty", [
-    h("p", "No research collections yet."),
-    h("p.openings__hint", "Import opponent games to build an opening tree."),
+    h("div.openings__empty-icon", "\u265E"),
+    h("h2.openings__empty-title", "Opening Preparation"),
+    h("p", "Research your opponents\u2019 openings by importing their games."),
+    h("p.openings__hint", "Games are stored separately from your analysis library."),
     h("button.openings__start-btn", {
       on: { click: () => {
         setImportStep("source");
@@ -14749,8 +14875,11 @@ function renderDetailsStep(redraw2) {
   const src = importSource();
   const color = importColor();
   const err = importError();
+  const speeds = importSpeeds();
+  const dateRange = importDateRange();
   return h("div.openings__step", [
     h("h3", src === "pgn" ? "PGN Upload" : "Opponent Details"),
+    // --- Username / PGN input ---
     src !== "pgn" ? h("div.openings__field", [
       h("label", "Username"),
       h("input.openings__input", {
@@ -14771,6 +14900,7 @@ function renderDetailsStep(redraw2) {
         } }
       })
     ]),
+    // --- Perspective ---
     h("div.openings__field", [
       h("label", "Perspective"),
       h("div.openings__color-options", ["white", "black", "both"].map(
@@ -14783,6 +14913,92 @@ function renderDetailsStep(redraw2) {
         }, c.charAt(0).toUpperCase() + c.slice(1))
       ))
     ]),
+    // --- Time control (not shown for PGN) ---
+    src !== "pgn" ? h("div.openings__field", [
+      h("label", "Time control"),
+      h("div.openings__filter-row", [
+        h("button.openings__filter-pill", {
+          class: { active: speeds.size === 0 },
+          on: { click: () => {
+            setImportSpeeds(/* @__PURE__ */ new Set());
+            redraw2();
+          } }
+        }, "All"),
+        ...SPEED_OPTIONS.map(
+          ({ value, label, icon }) => h("button.openings__filter-pill", {
+            class: { active: speeds.has(value) },
+            attrs: { "data-icon": icon },
+            on: { click: () => {
+              const s = new Set(speeds);
+              s.has(value) ? s.delete(value) : s.add(value);
+              setImportSpeeds(s);
+              redraw2();
+            } }
+          }, label)
+        )
+      ])
+    ]) : null,
+    // --- Period (not shown for PGN) ---
+    src !== "pgn" ? h("div.openings__field", [
+      h("label", "Period"),
+      h("div.openings__filter-row", [
+        ...DATE_RANGE_OPTIONS.map(
+          ({ value, label }) => h("button.openings__filter-pill", {
+            class: { active: dateRange === value },
+            on: { click: () => {
+              setImportDateRange(value);
+              redraw2();
+            } }
+          }, label)
+        )
+      ]),
+      dateRange === "custom" ? h("div.openings__custom-dates", [
+        h("span", "From"),
+        h("input.openings__date-input", {
+          attrs: { type: "date" },
+          props: { value: importCustomFrom() },
+          on: { change: (e) => {
+            setImportCustomFrom(e.target.value);
+            redraw2();
+          } }
+        }),
+        h("span", "To"),
+        h("input.openings__date-input", {
+          attrs: { type: "date" },
+          props: { value: importCustomTo() },
+          on: { change: (e) => {
+            setImportCustomTo(e.target.value);
+            redraw2();
+          } }
+        })
+      ]) : null
+    ]) : null,
+    // --- Rated only (not shown for PGN) ---
+    src !== "pgn" ? h("div.openings__field", [
+      h("label.openings__check-label", [
+        h("input", {
+          attrs: { type: "checkbox" },
+          props: { checked: importRated() },
+          on: { change: (e) => {
+            setImportRated(e.target.checked);
+            redraw2();
+          } }
+        }),
+        " Rated only"
+      ])
+    ]) : null,
+    // --- Max games (not shown for PGN) ---
+    src !== "pgn" ? h("div.openings__field", [
+      h("label", "Max games"),
+      h("input.openings__input.openings__input--short", {
+        attrs: { type: "number", min: "1", max: "200" },
+        props: { value: importMaxGames() },
+        on: { change: (e) => {
+          setImportMaxGames(parseInt(e.target.value, 10) || 50);
+          redraw2();
+        } }
+      })
+    ]) : null,
     err ? h("div.openings__error", err) : null,
     h("div.openings__actions", [
       h("button.openings__back-btn", {
@@ -14845,7 +15061,15 @@ function renderSessionPage(redraw2) {
         } }
       }, "\u2190 Library"),
       h("h2.openings__session-title", collection?.name ?? "Opening Research"),
-      h("span.openings__session-meta", node ? `${node.total} game${node.total !== 1 ? "s" : ""} reached this position` : "")
+      h("span.openings__session-meta", node ? `${node.total} game${node.total !== 1 ? "s" : ""} reached this position` : ""),
+      h("button.openings__flip-btn", {
+        attrs: { title: `Flip board (viewing as ${boardOrientation()})` },
+        on: { click: () => {
+          flipBoard();
+          if (_openingsCg) _openingsCg.set({ orientation: boardOrientation() });
+          redraw2();
+        } }
+      }, "\u21C5")
     ]),
     h("div.openings__session-body", [
       h("div.openings__board-wrap", [
@@ -14872,7 +15096,7 @@ function renderOpeningsBoard(node, redraw2) {
         const dests = pos?.isOk ? chessgroundDests(pos.value) : /* @__PURE__ */ new Map();
         _openingsCg = Chessground(vnode3.elm, {
           fen,
-          orientation: "white",
+          orientation: boardOrientation(),
           viewOnly: false,
           movable: {
             free: false,
@@ -15077,13 +15301,46 @@ function renderSampleGameRow(game) {
   if (game.opening) info.push(game.opening);
   if (game.date) info.push(game.date);
   if (game.timeClass) info.push(game.timeClass);
+  const ratings = [];
+  if (game.whiteRating) ratings.push(`W:${game.whiteRating}`);
+  if (game.blackRating) ratings.push(`B:${game.blackRating}`);
   return h("div.openings__sample-row", { key: game.id }, [
     h("div.openings__sample-players", [
       h("span", players),
       h("span.openings__sample-result", result)
     ]),
-    info.length > 0 ? h("div.openings__sample-info", info.join(" \xB7 ")) : null
+    info.length > 0 ? h("div.openings__sample-info", [
+      info.join(" \xB7 "),
+      ratings.length > 0 ? ` \xB7 ${ratings.join(" ")}` : ""
+    ]) : null,
+    h("div.openings__sample-actions", [
+      h("button.openings__sample-copy", {
+        attrs: { title: "Copy PGN" },
+        on: { click: (e) => {
+          e.stopPropagation();
+          void navigator.clipboard.writeText(game.pgn).then(() => {
+            const btn = e.target;
+            btn.textContent = "Copied!";
+            setTimeout(() => {
+              btn.textContent = "Copy PGN";
+            }, 1500);
+          });
+        } }
+      }, "Copy PGN"),
+      game.source === "lichess" && game.pgn ? h("a.openings__sample-link", {
+        attrs: {
+          href: extractLichessUrl(game.pgn),
+          target: "_blank",
+          rel: "noopener",
+          title: "View on Lichess"
+        }
+      }, "Lichess") : null
+    ])
   ]);
+}
+function extractLichessUrl(pgn) {
+  const site = pgn.match(/\[Site\s+"([^"]+)"]/)?.[1];
+  return site && site.includes("lichess.org") ? site : "#";
 }
 function renderExplorerToggle(node, redraw2) {
   const enabled = explorerEnabled();
@@ -16496,7 +16753,6 @@ function routeContent(route) {
       return renderPuzzleRound(redraw);
     }
     case "openings":
-      initOpeningsPage("library");
       return renderOpeningsPage(redraw);
     case "stats":
       return h("h1", "Stats Page");
@@ -16660,6 +16916,10 @@ onChange2((route) => {
     void openPuzzleRound(puzzleId, redraw);
     return;
   }
+  if (route.name === "openings") {
+    initOpeningsPage("library");
+    invalidateCollections();
+  }
   if (route.name === "analysis-game") {
     const id = route.params["id"] ?? "";
     const game = importedGames.find((g) => g.id === id);
@@ -16672,6 +16932,10 @@ onChange2((route) => {
   vnode2 = patch(vnode2, view(currentRoute));
 });
 vnode2 = patch(app, view(currentRoute));
+if (currentRoute.name === "openings") {
+  initOpeningsPage("library");
+  invalidateCollections();
+}
 if (currentRoute.name === "puzzle-round") {
   const puzzleId = currentRoute.params["id"] ?? "";
   void openPuzzleRound(puzzleId, redraw);
