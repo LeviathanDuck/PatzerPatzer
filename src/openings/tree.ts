@@ -1,9 +1,12 @@
 /**
  * Opening tree aggregation engine.
  *
- * Builds a position-frequency tree from imported research games.
- * Each node represents a position reached by one or more games,
- * with children representing moves played from that position.
+ * Builds a position-frequency graph from imported research games.
+ * Positions are keyed by normalized FEN (without halfmove/fullmove counters)
+ * so transpositions merge into the same node.
+ *
+ * The graph is presented as a tree structure (OpeningTreeNode) where each
+ * node's children are the moves played from that position across all games.
  *
  * Uses chessops for move replay and FEN generation.
  */
@@ -17,8 +20,10 @@ import type { ResearchGame } from './types';
 
 /** A node in the opening frequency tree. */
 export interface OpeningTreeNode {
-  /** FEN at this position. */
+  /** FEN at this position (full FEN). */
   fen: string;
+  /** Normalized FEN (without halfmove/fullmove) used as position key. */
+  posKey: string;
   /** SAN of the move that reached this position (empty string for root). */
   san: string;
   /** UCI of the move that reached this position (empty string for root). */
@@ -31,6 +36,12 @@ export interface OpeningTreeNode {
   draws: number;
   /** Wins from black's perspective. */
   black: number;
+  /** Whether this position is reachable by multiple move orders (transposition). */
+  transposition: boolean;
+  /** Average rating of games passing through this edge (0 if no ratings). */
+  avgRating: number;
+  /** Most recent game date passing through this edge (empty if unknown). */
+  lastPlayed: string;
   /** Child moves from this position, sorted by frequency (most common first). */
   children: OpeningTreeNode[];
 }
@@ -43,17 +54,36 @@ interface ResultCounts {
   black: number;
 }
 
-// Internal mutable node for building phase.
-interface BuildNode {
+// Internal mutable position node for building phase.
+interface BuildPosition {
   fen: string;
-  san: string;
-  uci: string;
+  posKey: string;
   results: ResultCounts;
-  children: Map<string, BuildNode>; // keyed by UCI
+  /** Edges keyed by UCI — each edge leads to a child position. */
+  edges: Map<string, BuildEdge>;
+  /** How many distinct parent positions lead here. */
+  parentCount: number;
 }
 
-function newBuildNode(fen: string, san: string, uci: string): BuildNode {
-  return { fen, san, uci, results: { total: 0, white: 0, draws: 0, black: 0 }, children: new Map() };
+interface BuildEdge {
+  san: string;
+  uci: string;
+  targetPosKey: string;
+  results: ResultCounts;
+  ratingSum: number;
+  ratingCount: number;
+  lastPlayed: string;
+}
+
+/**
+ * Normalize FEN by stripping halfmove clock and fullmove number.
+ * This makes "same position, different move number" merge as one node.
+ */
+function normalizeFen(fen: string): string {
+  // FEN has 6 fields: pieces, turn, castling, en-passant, halfmove, fullmove
+  // Keep first 4 fields only for position identity.
+  const parts = fen.split(' ');
+  return parts.slice(0, 4).join(' ');
 }
 
 function parseResult(result: string | undefined): 'white' | 'black' | 'draw' | null {
@@ -70,75 +100,175 @@ function addResult(counts: ResultCounts, result: 'white' | 'black' | 'draw' | nu
   else if (result === 'draw') counts.draws++;
 }
 
-/** Maximum ply depth to aggregate (30 moves = 60 plies). */
-const MAX_PLY = 60;
+function newCounts(): ResultCounts {
+  return { total: 0, white: 0, draws: 0, black: 0 };
+}
 
-/**
- * Build an opening frequency tree from a set of research games.
- * Walks the mainline of each game up to MAX_PLY, recording move frequencies and results.
- */
-export function buildOpeningTree(games: readonly ResearchGame[]): OpeningTreeNode {
-  const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-  const root = newBuildNode(startFen, '', '');
+function avgGameRating(game: ResearchGame): number {
+  const ratings = [game.whiteRating, game.blackRating].filter((r): r is number => r !== undefined && r > 0);
+  return ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+}
 
-  for (const game of games) {
-    try {
-      const parsed = parsePgn(game.pgn);
-      if (parsed.length === 0) continue;
-      const pgnGame = parsed[0]!;
-      const setup = startingPosition(pgnGame.headers);
-      if (setup.isErr) continue;
-      const pos = setup.value;
+/** Maximum ply depth to aggregate (15 moves = 30 plies).
+ *  Opening theory rarely extends beyond move 15. Deeper plies add
+ *  processing cost with diminishing prep value. */
+const MAX_PLY = 30;
 
-      const result = parseResult(game.result);
-      addResult(root.results, result);
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const START_KEY = normalizeFen(START_FEN);
 
-      let current = root;
-      let node = pgnGame.moves.children[0]; // first child of root = first move
-      let ply = 0;
+/** Mutable tree builder — processes games incrementally. */
+export class OpeningTreeBuilder {
+  readonly positions = new Map<string, BuildPosition>();
+  readonly root: BuildPosition;
 
-      while (node && ply < MAX_PLY) {
-        const move = parseSan(pos, node.data.san);
-        if (!move) break;
+  constructor() {
+    this.root = this._getOrCreate(START_FEN, START_KEY);
+  }
 
-        const uci = makeUci(move);
-        const san = makeSanAndPlay(pos, move);
-        const fen = makeFen(pos.toSetup());
+  private _getOrCreate(fen: string, posKey: string): BuildPosition {
+    let pos = this.positions.get(posKey);
+    if (!pos) {
+      pos = { fen, posKey, results: newCounts(), edges: new Map(), parentCount: 0 };
+      this.positions.set(posKey, pos);
+    }
+    return pos;
+  }
 
-        let child = current.children.get(uci);
-        if (!child) {
-          child = newBuildNode(fen, san, uci);
-          current.children.set(uci, child);
+  /** Add a batch of games to the graph. */
+  addGames(games: readonly ResearchGame[]): void {
+    for (const game of games) {
+      try {
+        const parsed = parsePgn(game.pgn);
+        if (parsed.length === 0) continue;
+        const pgnGame = parsed[0]!;
+        const setup = startingPosition(pgnGame.headers);
+        if (setup.isErr) continue;
+        const pos = setup.value;
+
+        const result = parseResult(game.result);
+        addResult(this.root.results, result);
+
+        const gameRating = avgGameRating(game);
+        const gameDate = game.date ?? '';
+
+        let currentKey = START_KEY;
+        let pgnNode = pgnGame.moves.children[0];
+        let ply = 0;
+
+        while (pgnNode && ply < MAX_PLY) {
+          const move = parseSan(pos, pgnNode.data.san);
+          if (!move) break;
+
+          const uci = makeUci(move);
+          const san = makeSanAndPlay(pos, move);
+          const fen = makeFen(pos.toSetup());
+          const childKey = normalizeFen(fen);
+
+          const childPos = this._getOrCreate(fen, childKey);
+          addResult(childPos.results, result);
+
+          const currentPos = this.positions.get(currentKey)!;
+          let edge = currentPos.edges.get(uci);
+          if (!edge) {
+            edge = { san, uci, targetPosKey: childKey, results: newCounts(), ratingSum: 0, ratingCount: 0, lastPlayed: '' };
+            currentPos.edges.set(uci, edge);
+            childPos.parentCount++;
+          }
+          addResult(edge.results, result);
+          if (gameRating > 0) {
+            edge.ratingSum += gameRating;
+            edge.ratingCount++;
+          }
+          if (gameDate > edge.lastPlayed) edge.lastPlayed = gameDate;
+
+          currentKey = childKey;
+          pgnNode = pgnNode.children[0];
+          ply++;
         }
-        addResult(child.results, result);
-
-        current = child;
-        node = node.children[0]; // mainline continuation
-        ply++;
+      } catch {
+        continue;
       }
-    } catch {
-      // Skip games that fail to parse
-      continue;
     }
   }
 
-  return freezeTree(root);
+  /** Freeze the mutable graph into an immutable tree. */
+  freeze(): OpeningTreeNode {
+    return freezeGraph(this.root, this.positions, new Set());
+  }
 }
 
-/** Convert mutable build tree to immutable output. Children sorted by frequency. */
-function freezeTree(node: BuildNode): OpeningTreeNode {
-  const children = [...node.children.values()]
-    .sort((a, b) => b.results.total - a.results.total)
-    .map(freezeTree);
+/**
+ * Build an opening frequency graph from a set of research games (synchronous).
+ * For large collections, prefer OpeningTreeBuilder + chunked addGames().
+ */
+export function buildOpeningTree(games: readonly ResearchGame[]): OpeningTreeNode {
+  const builder = new OpeningTreeBuilder();
+  builder.addGames(games);
+  return builder.freeze();
+}
+
+function freezeGraph(
+  pos: BuildPosition,
+  allPositions: Map<string, BuildPosition>,
+  visited: Set<string>,
+): OpeningTreeNode {
+  visited.add(pos.posKey);
+
+  const children: OpeningTreeNode[] = [];
+  const edgesSorted = [...pos.edges.values()].sort((a, b) => b.results.total - a.results.total);
+
+  for (const edge of edgesSorted) {
+    const targetPos = allPositions.get(edge.targetPosKey);
+    if (!targetPos) continue;
+
+    const edgeAvgRating = edge.ratingCount > 0 ? Math.round(edge.ratingSum / edge.ratingCount) : 0;
+
+    if (visited.has(edge.targetPosKey)) {
+      // Circular — render as a leaf with stats but no children
+      children.push({
+        fen: targetPos.fen,
+        posKey: targetPos.posKey,
+        san: edge.san,
+        uci: edge.uci,
+        total: edge.results.total,
+        white: edge.results.white,
+        draws: edge.results.draws,
+        black: edge.results.black,
+        avgRating: edgeAvgRating,
+        lastPlayed: edge.lastPlayed,
+        transposition: true,
+        children: [],
+      });
+    } else {
+      const childTree = freezeGraph(targetPos, allPositions, new Set(visited));
+      children.push({
+        ...childTree,
+        san: edge.san,
+        uci: edge.uci,
+        total: edge.results.total,
+        white: edge.results.white,
+        draws: edge.results.draws,
+        black: edge.results.black,
+        avgRating: edgeAvgRating,
+        lastPlayed: edge.lastPlayed,
+        transposition: targetPos.parentCount > 1,
+      });
+    }
+  }
 
   return {
-    fen: node.fen,
-    san: node.san,
-    uci: node.uci,
-    total: node.results.total,
-    white: node.results.white,
-    draws: node.results.draws,
-    black: node.results.black,
+    fen: pos.fen,
+    posKey: pos.posKey,
+    san: '',
+    uci: '',
+    total: pos.results.total,
+    white: pos.results.white,
+    draws: pos.results.draws,
+    black: pos.results.black,
+    avgRating: 0,
+    lastPlayed: '',
+    transposition: pos.parentCount > 1,
     children,
   };
 }

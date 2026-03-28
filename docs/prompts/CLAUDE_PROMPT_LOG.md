@@ -6,6 +6,28 @@ Use this file to track Claude Code prompts from creation through review.
 
 ## Prompt Index
 
+- [x] CCP-190-F5 - Openings Board Full Follow-Up Batch Manager
+- [x] CCP-190-F4 - Add Resizable Openings Board Handle
+- [ ] CCP-190-F3 - Openings Board Arrow And Engine Batch Manager
+- [x] CCP-190-F2 - Add Optional Engine Controls To Openings Board
+- [x] CCP-190-F1 - Add Played-Line Gradient Arrows To Openings Board
+- [x] CCP-194-F1 - Refine Openings WDL Viewer Styling
+- [x] CCP-225 - Openings Research Upgrade Full Batch Manager
+- [x] CCP-224 - Openings Phase 7 Batch Manager
+- [x] CCP-223 - Final Openings Research Shell Polish And Validation
+- [x] CCP-222 - Persist Openings Session Resume State
+- [x] CCP-221 - Strengthen Explorer Comparison Surface
+- [x] CCP-220 - Add Move Row Context Metadata
+- [x] CCP-219 - Openings Phase 6 Batch Manager
+- [x] CCP-218 - Add Current Position Research Summary Panel
+- [x] CCP-217 - Add Perspective-Relative Move Rows And Default Ordering
+- [x] CCP-216 - Adapt Openings Session Controller To Graph Navigation
+- [x] CCP-215 - Build Position-Keyed Opening Graph With Transposition Merge
+- [x] CCP-214 - Openings Phase 5 Batch Manager
+- [x] CCP-213 - Render Collection Summary And Import Provenance Surface
+- [x] CCP-212 - Add Real PGN File Upload Support To Openings Import
+- [x] CCP-211 - Remove Shared Import Filter Mutation From Openings Import
+- [x] CCP-210 - Add Research Settings Snapshot To Saved Collections
 - [x] CCP-209 - Puzzle Mobile Usability Batch Manager
 - [x] CCP-204 - Add Real Mobile Puzzle Layout Mode
 - [x] CCP-205 - Make Puzzle Library And Session Builder Mobile-Usable
@@ -239,8 +261,454 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-066 - Add Search To Underboard And Games Lists
 - [x] CCP-067 - Bring Eval Graph Fill Into Lichess Parity
 - [x] CCP-068 - Add Eval Graph Height Toggle
+- [x] CCP-226 - SQLite Schema and Server Database Module
+- [x] CCP-227 - Admin Auth Middleware and Login Endpoint
+- [x] CCP-228 - Server API Endpoints for Data Sync
+- [x] CCP-229 - Client Sync Service
+- [x] CCP-230 - Admin UI Login Panel and Sync Controls
+- [x] CCP-231 - Auth and Sync Sprint Batch Manager
 
 ## Detailed Log
+
+## CCP-190-F5 - Openings Board Full Follow-Up Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-190-F5`
+  - Task ID: `CCP-190`
+  - Parent prompt ID: `CCP-190`
+  - Batch prompt IDs: `CCP-190-F1`, `CCP-190-F2`, `CCP-190-F4`
+  - Source document: `ad hoc user request`
+  - Source step: `openings board arrows, engine controls, and resize follow-up batch`
+  - Task: execute the openings board follow-up batch for played-line arrows, optional engine controls, and resize handle behavior in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T07:21:08Z`
+  - Started at: `2026-03-28T07:23:24.601Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-190-F4 - Add Resizable Openings Board Handle
+
+```
+- [x] Reviewed
+  - ID: `CCP-190-F4`
+  - Task ID: `CCP-190`
+  - Parent prompt ID: `CCP-190`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `make the openings board resizable like the analysis board with a draggable bottom-corner resize handle`
+  - Task: make the openings research board resizable with the same draggable bottom-corner handle behavior as the analysis board, without turning the openings page into the analysis page
+  - Created by: `Codex`
+  - Created at: `2026-03-28T07:12:05Z`
+  - Started at: `2026-03-28T07:26:31.981Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-190-F3 - Openings Board Arrow And Engine Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-190-F3`
+  - Task ID: `CCP-190`
+  - Parent prompt ID: `CCP-190`
+  - Batch prompt IDs: `CCP-190-F1`, `CCP-190-F2`
+  - Source document: `ad hoc user request`
+  - Source step: `openings board arrow-and-engine follow-up batch`
+  - Task: execute the openings board follow-up batch for played-line arrows and optional engine controls in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T07:12:05Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-190-F2 - Add Optional Engine Controls To Openings Board
+
+```
+- [x] Reviewed
+  - ID: `CCP-190-F2`
+  - Task ID: `CCP-190`
+  - Parent prompt ID: `CCP-190`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `allow engine controls to be turned on at any time on the openings research board`
+  - Task: add an openings-board engine control surface so the user can turn engine analysis on at any time while browsing an openings research position without turning the openings page into the analysis page
+  - Created by: `Codex`
+  - Created at: `2026-03-28T07:12:05Z`
+  - Started at: `2026-03-28T07:25:28.487Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-190-F1 - Add Played-Line Gradient Arrows To Openings Board
+
+```
+- [x] Reviewed
+  - ID: `CCP-190-F1`
+  - Task ID: `CCP-190`
+  - Parent prompt ID: `CCP-190`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `add played-line gradient move arrows to the openings board like a richer opening research surface`
+  - Task: add played-line move arrows to the openings research board so the current position can visually show the available child moves with differentiated gradient or intensity treatment based on line importance, while keeping the existing openings board shell intact
+  - Created by: `Codex`
+  - Created at: `2026-03-28T07:12:05Z`
+  - Started at: `2026-03-28T07:24:27.900Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-194-F1 - Refine Openings WDL Viewer Styling
+
+```
+- [x] Reviewed
+  - ID: `CCP-194-F1`
+  - Task ID: `CCP-194`
+  - Parent prompt ID: `CCP-194`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `stylize the openings win/draw/loss viewer beside the move list to look like the Lichess masters database percentages display`
+  - Task: restyle the win / draw / loss viewer beside the openings move list so it feels much closer to the Lichess masters database percentage treatment without changing the underlying openings data model
+  - Created by: `Codex`
+  - Created at: `2026-03-28T07:10:01Z`
+  - Started at: `2026-03-28T07:12:23.841Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-225 - Openings Research Upgrade Full Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-225`
+  - Task ID: `CCP-225`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-214`, `CCP-219`, `CCP-224`
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Full openings research upgrade batch / manager of managers`
+  - Task: execute the full tracked openings research upgrade batch by running all phase manager prompts in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:56:46.655Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-224 - Openings Phase 7 Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-224`
+  - Task ID: `CCP-224`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-220`, `CCP-221`, `CCP-222`, `CCP-223`
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 7 — Comparative Prep And Session Polish / manager prompt`
+  - Task: execute the phase 7 — comparative prep and session polish openings batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:06:41.589Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-223 - Final Openings Research Shell Polish And Validation
+
+```
+- [x] Reviewed
+  - ID: `CCP-223`
+  - Task ID: `CCP-223`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 7 — Comparative Prep And Session Polish / Task 4`
+  - Task: do a final openings research shell polish pass so the upgraded report, comparison, and session surfaces feel like one coherent product rather than separate widgets
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:11:23.850Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-222 - Persist Openings Session Resume State
+
+```
+- [x] Reviewed
+  - ID: `CCP-222`
+  - Task ID: `CCP-222`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 7 — Comparative Prep And Session Polish / Task 3`
+  - Task: persist enough openings session resume state that a user can leave and return to the current research session without losing place
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:09:39.812Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-221 - Strengthen Explorer Comparison Surface
+
+```
+- [x] Reviewed
+  - ID: `CCP-221`
+  - Task ID: `CCP-221`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 7 — Comparative Prep And Session Polish / Task 2`
+  - Task: strengthen the explorer comparison panel so it reads as a comparative prep surface against the current collection rather than as a disconnected extra data block
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:08:49.749Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-220 - Add Move Row Context Metadata
+
+```
+- [x] Reviewed
+  - ID: `CCP-220`
+  - Task ID: `CCP-220`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 7 — Comparative Prep And Session Polish / Task 1`
+  - Task: enrich openings move rows with context metadata such as average strength or recency signals so the move table better reflects research quality instead of bare frequency alone
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:06:42.785Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-219 - Openings Phase 6 Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-219`
+  - Task ID: `CCP-219`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-215`, `CCP-216`, `CCP-217`, `CCP-218`
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 6 — Position Graph And Session Report Upgrade / manager prompt`
+  - Task: execute the phase 6 — position graph and session report upgrade openings batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:00:16.012Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-218 - Add Current Position Research Summary Panel
+
+```
+- [x] Reviewed
+  - ID: `CCP-218`
+  - Task ID: `CCP-218`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 6 — Position Graph And Session Report Upgrade / Task 4`
+  - Task: add a current-position research summary panel that explains what matters at the current opening node instead of making the user infer everything from raw rows
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:03:00.101Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-217 - Add Perspective-Relative Move Rows And Default Ordering
+
+```
+- [x] Reviewed
+  - ID: `CCP-217`
+  - Task ID: `CCP-217`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 6 — Position Graph And Session Report Upgrade / Task 3`
+  - Task: upgrade openings move rows so they read from the chosen prep perspective instead of only showing raw white-draw-black percentages
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:02:00.280Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-216 - Adapt Openings Session Controller To Graph Navigation
+
+```
+- [x] Reviewed
+  - ID: `CCP-216`
+  - Task ID: `CCP-216`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 6 — Position Graph And Session Report Upgrade / Task 2`
+  - Task: adapt openings session state and navigation so the board, path breadcrumb, and current node stay coherent after the graph/model upgrade
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:01:15.212Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-215 - Build Position-Keyed Opening Graph With Transposition Merge
+
+```
+- [x] Reviewed
+  - ID: `CCP-215`
+  - Task ID: `CCP-215`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 6 — Position Graph And Session Report Upgrade / Task 1`
+  - Task: upgrade the openings aggregation model so repeated positions can merge into a position-keyed research graph instead of remaining only path-separated move branches
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T07:00:17.063Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-214 - Openings Phase 5 Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-214`
+  - Task ID: `CCP-214`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-210`, `CCP-211`, `CCP-212`, `CCP-213`
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 5 — Research Model And Import Integrity / manager prompt`
+  - Task: execute the phase 5 — research model and import integrity openings batch in order
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:57:06.223Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-213 - Render Collection Summary And Import Provenance Surface
+
+```
+- [x] Reviewed
+  - ID: `CCP-213`
+  - Task ID: `CCP-213`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 5 — Research Model And Import Integrity / Task 4`
+  - Task: render a stronger collection summary and import provenance surface in the openings library so saved research sessions are understandable before opening them
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:59:28.793Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-212 - Add Real PGN File Upload Support To Openings Import
+
+```
+- [x] Reviewed
+  - ID: `CCP-212`
+  - Task ID: `CCP-212`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 5 — Research Model And Import Integrity / Task 3`
+  - Task: add honest PGN file upload support to openings research import while preserving the current paste path
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:58:45.088Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-211 - Remove Shared Import Filter Mutation From Openings Import
+
+```
+- [x] Reviewed
+  - ID: `CCP-211`
+  - Task ID: `CCP-211`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 5 — Research Model And Import Integrity / Task 2`
+  - Task: remove the openings import pipeline's mutation of shared import filter state and give openings import its own date-filtering path
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:58:00.295Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-210 - Add Research Settings Snapshot To Saved Collections
+
+```
+- [x] Reviewed
+  - ID: `CCP-210`
+  - Task ID: `CCP-210`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+  - Source step: `Phase 5 — Research Model And Import Integrity / Task 1`
+  - Task: extend saved openings research collections so they preserve the research settings and source summary needed to understand and trust a collection later
+  - Created by: `Codex`
+  - Created at: `2026-03-28T06:31:22Z`
+  - Started at: `2026-03-28T06:57:07.316Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
 
 ## CCP-209 - Puzzle Mobile Usability Batch Manager
 
@@ -4900,4 +5368,124 @@ Use this file to track Claude Code prompts from creation through review.
   - Review outcome: passed
   - Review issues: none
   - Execution target: `Codex`
+```
+
+## CCP-226 - SQLite Schema and Server Database Module
+
+```
+- [x] Reviewed
+  - ID: `CCP-226`
+  - Task ID: `CCP-226`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+  - Source step: `Task 1 — SQLite schema and server database module`
+  - Task: add SQLite server database module with schema mirroring client IDB stores
+  - Created by: `Claude Code`
+  - Created at: `2026-03-28T07:00:19.322Z`
+  - Started at: `2026-03-28T07:05:05.595Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: server/db.mjs implements a MySQL mysql2 pool instead of the SQLite better-sqlite3 module and data/patzer.db flow the prompt explicitly required.
+  - Execution target: `Claude Code`
+```
+
+## CCP-227 - Admin Auth Middleware and Login Endpoint
+
+```
+- [x] Reviewed
+  - ID: `CCP-227`
+  - Task ID: `CCP-227`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+  - Source step: `Task 2 — Admin auth middleware and login endpoint`
+  - Task: add admin auth to dev server with ADMIN_TOKEN env var and login/status endpoints
+  - Created by: `Claude Code`
+  - Created at: `2026-03-28T07:00:19.322Z`
+  - Started at: `2026-03-28T07:08:36.900Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-228 - Server API Endpoints for Data Sync
+
+```
+- [x] Reviewed
+  - ID: `CCP-228`
+  - Task ID: `CCP-228`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+  - Source step: `Task 3 — Server API endpoints for data sync`
+  - Task: add authenticated REST endpoints for pushing/pulling games, puzzles, and analysis data
+  - Created by: `Claude Code`
+  - Created at: `2026-03-28T07:00:19.322Z`
+  - Started at: `2026-03-28T07:09:43.341Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-229 - Client Sync Service
+
+```
+- [x] Reviewed
+  - ID: `CCP-229`
+  - Task ID: `CCP-229`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+  - Source step: `Task 4 — Client sync service`
+  - Task: create client-side sync service with push/pull and last-write-wins conflict resolution
+  - Created by: `Claude Code`
+  - Created at: `2026-03-28T07:00:19.322Z`
+  - Started at: `2026-03-28T07:10:29.231Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: src/sync/client.ts does not implement last-write-wins merge logic and never writes pulled puzzle attempts into IndexedDB, so the sync client is incomplete against the prompt.
+  - Execution target: `Claude Code`
+```
+
+## CCP-230 - Admin UI Login Panel and Sync Controls
+
+```
+- [x] Reviewed
+  - ID: `CCP-230`
+  - Task ID: `CCP-230`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+  - Source step: `Task 5 — Admin UI: login panel and sync controls`
+  - Task: wire /admin route with login form and push/pull sync controls
+  - Created by: `Claude Code`
+  - Created at: `2026-03-28T07:00:19.322Z`
+  - Started at: `2026-03-28T07:11:23.731Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-231 - Auth and Sync Sprint Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-231`
+  - Task ID: `CCP-231`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-226`, `CCP-227`, `CCP-228`, `CCP-229`, `CCP-230`
+  - Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+  - Source step: `Full auth and sync batch / manager prompt`
+  - Task: execute auth sprint batch: CCP-226 through CCP-230
+  - Created by: `Claude Code`
+  - Created at: `2026-03-28T07:00:19.322Z`
+  - Started at: `2026-03-28T07:04:58.887Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: child prompts CCP-226 and CCP-229 are not review-clean, so the auth and sync manager batch does not pass.
+  - Execution target: `Claude Code`
 ```
