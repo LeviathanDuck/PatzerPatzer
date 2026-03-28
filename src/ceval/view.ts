@@ -44,6 +44,10 @@ let _getCtrl:  () => AnalyseCtrl = () => { throw new Error('cevalView not initia
 let _navigate: (path: string) => void = () => {};
 let _redraw:   () => void = () => {};
 
+/** Optional FEN override for puzzle mode — bypasses _getCtrl().node.fen */
+let _fenOverride: string | null = null;
+export function setCevalFenOverride(fen: string | null): void { _fenOverride = fen; }
+
 export function initCevalView(deps: {
   getCtrl:  () => AnalyseCtrl;
   navigate: (path: string) => void;
@@ -161,6 +165,7 @@ function renderPvMoves(fen: string, moves: string[]): { first: VNode[]; rest: VN
  * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts playUciList / playUci
  */
 function playPvUciList(ucis: string[]): void {
+  if (_fenOverride) return; // In puzzle mode, PV click-to-navigate is not supported
   const ctrl = _getCtrl();
   let path = ctrl.path;
   let node = ctrl.node;
@@ -206,7 +211,7 @@ function playPvUciList(ucis: string[]): void {
 export function renderPvBox(): VNode | null {
   if (!engineEnabled) return null;
 
-  const fen = _getCtrl().node.fen;
+  const fen = _fenOverride ?? _getCtrl().node.fen;
 
   function pvRowForSlot(slotIdx: number): VNode {
     // Slot 0 = primary line (currentEval); slots 1+ = secondary lines (currentEval.lines[i-1])
