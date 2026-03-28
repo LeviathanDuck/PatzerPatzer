@@ -782,7 +782,7 @@ function renderAnalysisToggle(rc: PuzzleRoundCtrl, redraw: () => void): VNode | 
     class: { active: rc.analysisMode },
     attrs: { title: rc.analysisMode ? 'Back to puzzle' : 'Analyse full game' },
     on: { click: () => { rc.toggleAnalysisMode(redraw); } },
-  }, '\uD83D\uDD0D'); // 🔍 magnifying glass
+  }, [h('img.puzzle__analyse-icon', { attrs: { src: '/images/analysis_icon_minimal.svg', alt: 'Analyse' } })]);
 }
 
 // --- Move quality summary ---

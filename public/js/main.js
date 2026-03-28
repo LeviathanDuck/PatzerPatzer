@@ -12503,7 +12503,7 @@ function renderAnalysisToggle(rc, redraw2) {
     on: { click: () => {
       rc.toggleAnalysisMode(redraw2);
     } }
-  }, "\u{1F50D}");
+  }, [h("img.puzzle__analyse-icon", { attrs: { src: "/images/analysis_icon_minimal.svg", alt: "Analyse" } })]);
 }
 var QUALITY_COLORS = {
   best: "#22c55e",
