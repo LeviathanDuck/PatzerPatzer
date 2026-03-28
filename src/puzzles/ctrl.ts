@@ -21,6 +21,7 @@ import { makeSan } from 'chessops/san';
 import { scalachessCharPair } from 'chessops/compat';
 import type { TreeNode, TreePath } from '../tree/types';
 import { nodeAtPath, mainlineNodeList, nodeListAt, addNode } from '../tree/ops';
+import { pgnToTree } from '../tree/pgn';
 import { listPuzzleDefinitions, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getMeta, saveMeta } from './puzzleDb';
 import { bindBoardResizeHandle } from '../board/index';
 import { playMoveSound } from '../board/sound';
@@ -287,6 +288,16 @@ export class PuzzleRoundCtrl {
 
   /** Full game PGN fetched from Lichess API (available post-fetch, undefined until loaded). */
   gamePgn: string | undefined;
+  /** Full game tree parsed from gamePgn. Null until PGN loads and is parsed. */
+  gameTree: TreeNode | null;
+  /** Path within gameTree to the puzzle start position. */
+  gameTreePuzzlePath: TreePath | null;
+  /** Whether analysis mode is active (full game tree + free navigation). */
+  analysisMode: boolean;
+  /** Saved puzzle tree root — restored when leaving analysis mode. */
+  private puzzleTreeRoot: TreeNode;
+  /** Saved puzzle tree path — restored when leaving analysis mode. */
+  private puzzleTreePath: TreePath;
 
   // --- Move tree ---
   // Full tree structure for analysis-board-style move list and navigation.
@@ -317,6 +328,9 @@ export class PuzzleRoundCtrl {
     this.mode = 'play';
     this.canViewSolution = false;
     this.gamePgn = undefined;
+    this.gameTree = null;
+    this.gameTreePuzzlePath = null;
+    this.analysisMode = false;
 
     // Determine solver's color.
     // startFen has the opponent to move (they play the trigger move).
@@ -333,6 +347,8 @@ export class PuzzleRoundCtrl {
     this.treePath = path;
     this.treeNode = node;
     this.treeMainline = mainlineNodeList(root);
+    this.puzzleTreeRoot = root;
+    this.puzzleTreePath = path;
   }
 
   /**
@@ -345,6 +361,63 @@ export class PuzzleRoundCtrl {
     if (this.definition.triggerMove) moves.push(this.definition.triggerMove);
     moves.push(...this.solutionLine.slice(0, this.progressPly));
     return moves;
+  }
+
+  /**
+   * Parse the full game PGN into a tree and find the puzzle start position.
+   * Switches to the game tree when analysis mode is activated.
+   */
+  loadGameTree(): boolean {
+    if (!this.gamePgn) return false;
+    try {
+      this.gameTree = pgnToTree(this.gamePgn);
+      // Find the puzzle start position by walking the mainline and matching FEN
+      // We match by comparing the position part of FEN (ignore halfmove/fullmove counters)
+      const puzzleFenParts = this.definition.startFen.split(' ').slice(0, 4).join(' ');
+      const mainline = mainlineNodeList(this.gameTree);
+      for (let i = 0; i < mainline.length; i++) {
+        const nodeFenParts = mainline[i]!.fen.split(' ').slice(0, 4).join(' ');
+        if (nodeFenParts === puzzleFenParts) {
+          // Build path from root to this node
+          let path = '';
+          for (let j = 1; j <= i; j++) path += mainline[j]!.id;
+          this.gameTreePuzzlePath = path;
+          return true;
+        }
+      }
+      // FEN not found in mainline — still usable, just no path
+      this.gameTreePuzzlePath = null;
+      return true;
+    } catch (e) {
+      console.warn('[puzzle-ctrl] failed to parse game PGN', e);
+      return false;
+    }
+  }
+
+  /**
+   * Toggle analysis mode — switches between puzzle tree and full game tree.
+   */
+  toggleAnalysisMode(redraw: () => void): void {
+    if (this.analysisMode) {
+      // Switch back to puzzle tree
+      this.analysisMode = false;
+      this.treeRoot = this.puzzleTreeRoot;
+      this.setTreePath(this.puzzleTreePath);
+    } else {
+      // Switch to full game tree
+      if (!this.gameTree && !this.loadGameTree()) return;
+      if (!this.gameTree) return;
+      // Save current puzzle tree state
+      this.puzzleTreeRoot = this.treeRoot;
+      this.puzzleTreePath = this.treePath;
+      this.analysisMode = true;
+      this.treeRoot = this.gameTree;
+      // Navigate to the puzzle start position in the game tree
+      const startPath = this.gameTreePuzzlePath ?? '';
+      this.setTreePath(startPath);
+    }
+    syncPuzzleBoard();
+    redraw();
   }
 
   /** Navigate the tree to a given path. Updates treeNode and syncs the board. */
@@ -632,6 +705,8 @@ export class PuzzleRoundCtrl {
         this.status = 'solved';
         this.mode = 'view';
         this.recordAttempt();
+        // Sync board to allow both sides to move in analysis mode
+        syncPuzzleBoard();
       }
       this.redraw();
       return { accepted: true };
@@ -699,6 +774,7 @@ export class PuzzleRoundCtrl {
     this.recordAttempt();
     // Add remaining solution moves to the tree for navigation
     completeSolutionTree(this);
+    syncPuzzleBoard();
     redraw();
   }
 
@@ -818,7 +894,7 @@ export class PuzzleRoundCtrl {
     // Auto-next: advance to the next puzzle after a short delay
     if (_autoNext && this.status === 'solved') {
       const redraw = this.redraw;
-      setTimeout(() => { nextPuzzle(redraw); }, 1500);
+      setTimeout(() => { nextPuzzle(redraw); }, 800);
     }
 
     // Fire-and-forget persistence — append-only semantics.
@@ -1115,6 +1191,7 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
       loadPuzzlePgn(def).then(pgn => {
         if (pgn && activeRoundCtrl?.definition.id === def.id) {
           activeRoundCtrl.gamePgn = pgn;
+          activeRoundCtrl.loadGameTree();
           redraw();
         }
       });
@@ -1201,8 +1278,8 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
         if (!rc) return;
         const uci = `${orig}${dest}`;
 
-        // Post-solve free play: add variation to tree
-        if (rc.mode === 'view') {
+        // Post-solve or analysis mode: add variation to tree
+        if (rc.mode === 'view' || rc.analysisMode) {
           const newNode = rc.addVariationMove(uci);
           if (newNode) {
             playMoveSound(newNode.san);
@@ -1293,8 +1370,8 @@ export function destroyPuzzleBoard(): void {
 export function puzzleNavigate(path: TreePath, redraw: () => void): void {
   const rc = activeRoundCtrl;
   if (!rc) return;
-  // During play, don't navigate beyond the current progress
-  if (rc.mode !== 'view') return;
+  // During play (not analysis mode), don't allow tree navigation
+  if (rc.mode !== 'view' && !rc.analysisMode) return;
   rc.setTreePath(path);
   syncPuzzleBoard();
   redraw();
@@ -1315,7 +1392,7 @@ export function syncPuzzleBoard(): void {
   const dests = chessgroundDests(pos.value) as Map<Key, Key[]>;
   const turn: 'white' | 'black' = pos.value.turn;
   const lastMove = node.uci ? [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] : undefined;
-  const movableColor = rc.mode === 'view' ? turn : rc.pov;
+  const movableColor = (rc.mode === 'view' || rc.analysisMode) ? 'both' as const : rc.pov;
   cg.set({
     fen: node.fen,
     turnColor: turn,
@@ -1922,8 +1999,8 @@ restoreSessionFromStorage();
 /** Record the current puzzle as in-progress in the session history. */
 export function sessionRecordStart(puzzleId: string): void {
   if (!_activeSession) return;
-  // Avoid duplicates
-  if (_activeSession.history.some(e => e.puzzleId === puzzleId && e.result === 'in-progress')) return;
+  // Don't add if the puzzle already has an entry (completed or in-progress)
+  if (_activeSession.history.some(e => e.puzzleId === puzzleId)) return;
   _activeSession.history.push({ puzzleId, result: 'in-progress' });
   saveSessionToStorage();
 }
