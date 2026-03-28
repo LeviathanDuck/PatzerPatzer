@@ -435,34 +435,10 @@ function renderImportedSessionBuilder(
       ]),
     ]),
 
-    // Tab selector: Themes | Openings
-    h('div.puzzle-session__tabs', [
-      h('button.puzzle-session__tab', {
-        class: { active: _sessionTab === 'themes' },
-        on: { click: () => { _sessionTab = 'themes'; redraw(); }},
-      }, `Themes${_selectedThemes.size > 0 ? ` (${_selectedThemes.size})` : ''}`),
-      h('button.puzzle-session__tab', {
-        class: { active: _sessionTab === 'openings' },
-        on: { click: () => { _sessionTab = 'openings'; redraw(); }},
-      }, `Openings${_selectedOpenings.size > 0 ? ` (${_selectedOpenings.size})` : ''}`),
-    ]),
-
-    // Tab content
-    _sessionTab === 'themes'
-      ? renderThemeList(ls, redraw)
-      : renderOpeningList(ls, redraw),
-
-    // Error message
-    getImportedSessionError()
-      ? h('div.puzzle-session__error', getImportedSessionError()!)
-      : null,
-
-    // Start button
-    h('div.puzzle-session__actions', [
-      totalSelected > 0
-        ? h('span.puzzle-session__selection-hint',
-            `${totalSelected} selected`)
-        : h('span.puzzle-session__selection-hint', 'Select themes/openings or start with all'),
+    // Start bar — always visible near top
+    h('div.puzzle-session__start-bar', [
+      h('span.puzzle-session__selection-hint',
+        totalSelected > 0 ? `${totalSelected} selected` : 'All puzzles'),
       h('button.button.puzzle-session__start', {
         attrs: { disabled: _sessionStarting },
         on: { click: () => {
@@ -482,6 +458,28 @@ function renderImportedSessionBuilder(
         }},
       }, _sessionStarting ? 'Loading\u2026' : 'Start Puzzles'),
     ]),
+
+    // Error message
+    getImportedSessionError()
+      ? h('div.puzzle-session__error', getImportedSessionError()!)
+      : null,
+
+    // Tab selector: Themes | Openings
+    h('div.puzzle-session__tabs', [
+      h('button.puzzle-session__tab', {
+        class: { active: _sessionTab === 'themes' },
+        on: { click: () => { _sessionTab = 'themes'; redraw(); }},
+      }, `Themes${_selectedThemes.size > 0 ? ` (${_selectedThemes.size})` : ''}`),
+      h('button.puzzle-session__tab', {
+        class: { active: _sessionTab === 'openings' },
+        on: { click: () => { _sessionTab = 'openings'; redraw(); }},
+      }, `Openings${_selectedOpenings.size > 0 ? ` (${_selectedOpenings.size})` : ''}`),
+    ]),
+
+    // Tab content
+    _sessionTab === 'themes'
+      ? renderThemeList(ls, redraw)
+      : renderOpeningList(ls, redraw),
   ]);
 }
 
@@ -724,7 +722,7 @@ function renderPlayingFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
     // Show the expected move if solution was revealed
     rc.revealedSolution
       ? h('div.puzzle__feedback__revealed', [
-          h('em', `Solution: ${rc.currentExpectedMove() ?? 'complete'}`),
+          h('em', `Solution: ${expectedMoveSan(rc)}`),
         ])
       : null,
   ]);
@@ -848,11 +846,30 @@ function renderSolvedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
 function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
   const skipped = rc.failureReasons.includes('skip-pressed');
 
-  // Show the expected correct move
-  const expectedMove = rc.solutionLine[rc.progressPly];
-  const correctMoveNote = expectedMove
-    ? `The correct move was ${expectedMove}.`
-    : undefined;
+  // Show the expected correct move in SAN
+  const expectedUci = rc.solutionLine[rc.progressPly];
+  let correctMoveNote: string | undefined;
+  if (expectedUci) {
+    // Compute position at current progress to convert UCI to SAN
+    const allMoves: string[] = [];
+    if (rc.definition.triggerMove) allMoves.push(rc.definition.triggerMove);
+    allMoves.push(...rc.solutionLine.slice(0, rc.progressPly));
+    const setupResult = parseFen(rc.definition.startFen);
+    let san = expectedUci;
+    if (setupResult.isOk) {
+      const posResult = Chess.fromSetup(setupResult.value);
+      if (posResult.isOk) {
+        const pos = posResult.value;
+        for (const uci of allMoves) {
+          const m = parseUci(uci);
+          if (m) pos.play(m);
+        }
+        const expectedParsed = parseUci(expectedUci);
+        if (expectedParsed) san = makeSan(pos, expectedParsed);
+      }
+    }
+    correctMoveNote = `The correct move was ${san}.`;
+  }
 
   return h('div.puzzle__feedback.after.failed', [
     h('div.puzzle__feedback__result', [
@@ -1036,6 +1053,26 @@ function renderFoldersEditor(meta: PuzzleUserMeta, redraw: () => void): VNode {
   ]);
 }
 
+/** Convert the current expected move from UCI to SAN for display. */
+function expectedMoveSan(rc: PuzzleRoundCtrl): string {
+  const uci = rc.currentExpectedMove();
+  if (!uci) return 'complete';
+  const allMoves: string[] = [];
+  if (rc.definition.triggerMove) allMoves.push(rc.definition.triggerMove);
+  allMoves.push(...rc.solutionLine.slice(0, rc.progressPly));
+  const setupResult = parseFen(rc.definition.startFen);
+  if (setupResult.isErr) return uci;
+  const posResult = Chess.fromSetup(setupResult.value);
+  if (posResult.isErr) return uci;
+  const pos = posResult.value;
+  for (const m of allMoves) {
+    const parsed = parseUci(m);
+    if (parsed) pos.play(parsed);
+  }
+  const move = parseUci(uci);
+  return move ? makeSan(pos, move) : uci;
+}
+
 // --- Puzzle move list ---
 // Shows moves played so far without revealing future solution moves.
 // Adapted from lichess-org/lila: ui/puzzle/src/view/tree.ts (puzzle replay)
@@ -1061,8 +1098,12 @@ function renderPuzzleMoveList(def: PuzzleDefinition, rc: PuzzleRoundCtrl | null)
   // Show only moves that have been played (up to progressPly).
   // After solve/fail, show all solution moves.
   const showAll = rc && (rc.status === 'solved' || rc.status === 'failed');
-  const movesToShow = showAll ? def.solutionLine : def.solutionLine.slice(0, progressPly);
-  const sans = computeSanMoves(def.startFen, movesToShow);
+  const solutionSlice = showAll ? def.solutionLine : def.solutionLine.slice(0, progressPly);
+  // Prepend trigger move so the move list starts with the opponent's last move
+  const allMoves = def.triggerMove ? [def.triggerMove, ...solutionSlice] : solutionSlice;
+  const sans = computeSanMoves(def.startFen, allMoves);
+  // Track whether we have a trigger move prefix for styling
+  const hasTrigger = !!def.triggerMove;
 
   if (sans.length === 0) {
     return h('div.puzzle-moves', [
@@ -1088,15 +1129,20 @@ function renderPuzzleMoveList(def: PuzzleDefinition, rc: PuzzleRoundCtrl | null)
       );
     }
 
-    const isFuture = i >= progressPly && !showAll;
-    const isLast = i === progressPly - 1;
+    // With trigger: i=0 is trigger(opponent), i=1 is user, i=2 is opponent...
+    // Without trigger: i=0 is user, i=1 is opponent...
+    const isTrigger = hasTrigger && i === 0;
+    const solutionIdx = hasTrigger ? i - 1 : i;
+    const isUserMove = hasTrigger ? (i % 2 === 1) : (i % 2 === 0);
+    const isCurrentMove = hasTrigger ? (solutionIdx === progressPly - 1 && solutionIdx >= 0) : (i === progressPly - 1);
+
     moveNodes.push(
       h('span.puzzle-moves__move', {
         class: {
-          'puzzle-moves__move--current': isLast,
-          'puzzle-moves__move--future': isFuture,
-          'puzzle-moves__move--opponent': i % 2 === 0, // even = opponent trigger/reply
-          'puzzle-moves__move--user': i % 2 === 1,     // odd = user move
+          'puzzle-moves__move--current': isCurrentMove,
+          'puzzle-moves__move--trigger': isTrigger,
+          'puzzle-moves__move--opponent': !isUserMove,
+          'puzzle-moves__move--user': isUserMove,
         },
       }, sans[i]),
     );

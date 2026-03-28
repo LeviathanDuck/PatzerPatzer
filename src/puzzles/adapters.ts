@@ -170,12 +170,14 @@ export function lichessShardRecordToDefinition(
   // moves[0] = opponent trigger move; moves[1..] = solution line.
   if (record.moves.length < 2) return undefined;
 
+  const triggerMove = record.moves[0]!;
   const solutionLine = record.moves.slice(1);
 
   const def: ImportedLichessPuzzleDefinition = {
     id: `lichess_${record.id}`,
     sourceKind: 'imported-lichess',
     startFen: record.fen,
+    triggerMove,
     solutionLine,
     strictSolutionMove: solutionLine[0]!,
     createdAt: Date.now(),
