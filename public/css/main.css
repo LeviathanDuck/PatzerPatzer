@@ -5388,6 +5388,62 @@ body[data-board=newspaper] cg-board::before {
   background: #444;
 }
 
+.openings__filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.openings__filter-pill {
+  padding: 5px 12px;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.88em;
+  font-family: "lichess", sans-serif;
+}
+.openings__filter-pill.active {
+  background: #629924;
+  color: #fff;
+  border-color: #629924;
+}
+.openings__filter-pill:hover:not(.active) {
+  background: #444;
+}
+
+.openings__custom-dates {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.88em;
+  color: #999;
+}
+
+.openings__date-input {
+  padding: 4px 8px;
+  background: #2a2a2a;
+  color: #e8e8e8;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 0.88em;
+}
+
+.openings__check-label {
+  font-size: 0.92em;
+  color: #ccc;
+  cursor: pointer;
+}
+.openings__check-label input {
+  margin-right: 6px;
+}
+
+.openings__input--short {
+  width: 80px;
+}
+
 .openings__error {
   color: #e05050;
   font-size: 0.9em;
