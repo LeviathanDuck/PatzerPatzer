@@ -23,6 +23,8 @@ import {
   getImportedSessionError, clearImportedSessionError,
   getActiveSession, clearActiveSession,
   retryFailedPuzzles,
+  getAutoNext, setAutoNext,
+  getResumePuzzleId,
   type LibraryCounts, type PuzzleListFilters, type PuzzleListState,
   type ActiveSession,
 } from './ctrl';
@@ -74,8 +76,33 @@ function renderLibrarySidebar(redraw: () => void): VNode {
   if (rCount === undefined) loadRetryCount(redraw);
   if (dCount === undefined) loadDueCount(redraw);
 
+  // Check for a persisted session to resume
+  const session = getActiveSession();
+  const resumeId = getResumePuzzleId();
+
   return h('aside.puzzle__side.puzzle-library__sidebar', [
     h('h2.puzzle-library__title', 'Puzzle Library'),
+
+    // Resume session card
+    session && resumeId
+      ? h('div.puzzle-library__resume', [
+          h('div.puzzle-library__resume-header', [
+            h('span', 'Session in progress'),
+            h('span.puzzle-library__resume-count',
+              `${session.history.length} puzzle${session.history.length === 1 ? '' : 's'}`),
+          ]),
+          h('div.puzzle-library__resume-actions', [
+            h('button.puzzle-library__resume-btn', {
+              on: { click: () => {
+                window.location.hash = `#/puzzles/${encodeURIComponent(resumeId)}`;
+              }},
+            }, 'Resume Session'),
+            h('button.puzzle-library__resume-end', {
+              on: { click: () => { clearActiveSession(); redraw(); }},
+            }, 'Discard'),
+          ]),
+        ])
+      : null,
 
     // Source cards
     sourceCard('Imported Puzzles', 'Puzzles from the Lichess database.',
@@ -1293,6 +1320,17 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
         h('span.session-info__stat.session-info__stat--assisted', `${assisted} assisted`),
         h('span.session-info__stat.session-info__stat--failed', `${failed} failed`),
         h('span.session-info__stat', `${total} total`),
+      ]),
+      h('label.session-info__auto-next', [
+        h('input', {
+          attrs: { type: 'checkbox' },
+          props: { checked: getAutoNext() },
+          on: { change: (e: Event) => {
+            setAutoNext((e.target as HTMLInputElement).checked);
+            redraw();
+          }},
+        }),
+        h('span', 'Auto-next'),
       ]),
     ]),
 
