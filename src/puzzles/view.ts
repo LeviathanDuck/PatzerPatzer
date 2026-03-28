@@ -22,6 +22,7 @@ import {
   startImportedSession,
   getImportedSessionError, clearImportedSessionError,
   getActiveSession, clearActiveSession,
+  retryFailedPuzzles,
   type LibraryCounts, type PuzzleListFilters, type PuzzleListState,
   type ActiveSession,
 } from './ctrl';
@@ -1237,6 +1238,17 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
 // Persistent left sidebar during puzzle rounds. Shows session info at top
 // and a chicklet history grid at bottom.
 
+/** Check if the user is viewing a previously completed puzzle (not the latest in-progress one). */
+function isReviewingPastPuzzle(session: ActiveSession): boolean {
+  const currentId = getPuzzleRoundState()?.definition?.id;
+  if (!currentId) return false;
+  // Find the last in-progress entry — that's the "current" session puzzle
+  const lastInProgress = [...session.history].reverse().find(e => e.result === 'in-progress');
+  if (lastInProgress && lastInProgress.puzzleId === currentId) return false;
+  // The current puzzle is a completed one the user navigated back to
+  return session.history.some(e => e.puzzleId === currentId && e.result !== 'in-progress');
+}
+
 function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, redraw: () => void): VNode {
   // Format theme/opening labels
   const labels: string[] = [];
@@ -1260,10 +1272,18 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
     h('div.session-info', [
       h('div.session-info__header', [
         h('span.session-info__label', 'Current Session'),
-        h('button.session-info__end', {
-          on: { click: () => { clearActiveSession(); window.location.hash = '#/puzzles'; }},
-          attrs: { title: 'End session' },
-        }, 'End'),
+        h('div.session-info__actions', [
+          failed > 0
+            ? h('button.session-info__retry', {
+                on: { click: () => { retryFailedPuzzles(redraw); }},
+                attrs: { title: 'Retry failed and assisted puzzles' },
+              }, `Retry (${failed + assisted})`)
+            : null,
+          h('button.session-info__end', {
+            on: { click: () => { clearActiveSession(); window.location.hash = '#/puzzles'; }},
+            attrs: { title: 'End session' },
+          }, 'End'),
+        ]),
       ]),
       h('div.session-info__themes', labels.join(', ')),
       h('div.session-info__rating',
@@ -1280,18 +1300,33 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
     h('div.session-history', [
       h('div.session-history__label', 'Puzzle History'),
       h('div.session-history__grid',
-        session.history.map((entry, i) =>
-          h('div.session-history__cell', {
+        session.history.map((entry, i) => {
+          const isCurrent = entry.puzzleId === getPuzzleRoundState()?.definition?.id;
+          const isCompleted = entry.result !== 'in-progress';
+          return h('div.session-history__cell', {
             class: {
               'session-history__cell--clean': entry.result === 'clean',
               'session-history__cell--assisted': entry.result === 'assisted',
               'session-history__cell--failed': entry.result === 'failed',
               'session-history__cell--active': entry.result === 'in-progress',
+              'session-history__cell--current': isCurrent,
             },
-            attrs: { title: `#${i + 1} ${entry.puzzleId}: ${entry.result}` },
-          }),
-        ),
+            attrs: { title: `#${i + 1}: ${entry.result}` },
+            on: isCompleted && !isCurrent ? {
+              click: () => {
+                window.location.hash = `#/puzzles/${encodeURIComponent(entry.puzzleId)}`;
+              },
+            } : {},
+            style: isCompleted && !isCurrent ? { cursor: 'pointer' } : {},
+          });
+        }),
       ),
+      // "Continue" button — shown when reviewing a past puzzle
+      isReviewingPastPuzzle(session)
+        ? h('button.session-history__continue', {
+            on: { click: () => { nextPuzzle(redraw); }},
+          }, 'Continue Session \u2192')
+        : null,
     ]),
 
     // Puzzle info + metadata — moved to left sidebar
