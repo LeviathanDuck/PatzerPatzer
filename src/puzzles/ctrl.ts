@@ -1743,7 +1743,7 @@ export async function fetchGamePgn(gameUrl: string): Promise<string | undefined>
 // When a session starts, we store the candidate puzzle queue.
 // As puzzles are opened, we prefetch PGNs for the next few in the background.
 
-const PREFETCH_AHEAD = 3;
+const PREFETCH_AHEAD = 10;
 let _sessionQueue: PuzzleDefinition[] = [];
 let _prefetchInFlight = new Set<string>();
 
