@@ -10363,6 +10363,9 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     this.mode = "play";
     this.canViewSolution = false;
     this.gamePgn = void 0;
+    this.gameTree = null;
+    this.gameTreePuzzlePath = null;
+    this.analysisMode = false;
     const setup = parseFen(definition.startFen);
     this.pov = setup.isOk ? setup.value.turn === "white" ? "black" : "white" : "white";
     const { root, path, node } = buildInitialPuzzleTree(definition);
@@ -10370,6 +10373,8 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     this.treePath = path;
     this.treeNode = node;
     this.treeMainline = mainlineNodeList(root);
+    this.puzzleTreeRoot = root;
+    this.puzzleTreePath = path;
   }
   /**
    * Returns the next expected user move from the solution line,
@@ -10381,6 +10386,53 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     if (this.definition.triggerMove) moves.push(this.definition.triggerMove);
     moves.push(...this.solutionLine.slice(0, this.progressPly));
     return moves;
+  }
+  /**
+   * Parse the full game PGN into a tree and find the puzzle start position.
+   * Switches to the game tree when analysis mode is activated.
+   */
+  loadGameTree() {
+    if (!this.gamePgn) return false;
+    try {
+      this.gameTree = pgnToTree(this.gamePgn);
+      const puzzleFenParts = this.definition.startFen.split(" ").slice(0, 4).join(" ");
+      const mainline = mainlineNodeList(this.gameTree);
+      for (let i = 0; i < mainline.length; i++) {
+        const nodeFenParts = mainline[i].fen.split(" ").slice(0, 4).join(" ");
+        if (nodeFenParts === puzzleFenParts) {
+          let path = "";
+          for (let j = 1; j <= i; j++) path += mainline[j].id;
+          this.gameTreePuzzlePath = path;
+          return true;
+        }
+      }
+      this.gameTreePuzzlePath = null;
+      return true;
+    } catch (e) {
+      console.warn("[puzzle-ctrl] failed to parse game PGN", e);
+      return false;
+    }
+  }
+  /**
+   * Toggle analysis mode — switches between puzzle tree and full game tree.
+   */
+  toggleAnalysisMode(redraw2) {
+    if (this.analysisMode) {
+      this.analysisMode = false;
+      this.treeRoot = this.puzzleTreeRoot;
+      this.setTreePath(this.puzzleTreePath);
+    } else {
+      if (!this.gameTree && !this.loadGameTree()) return;
+      if (!this.gameTree) return;
+      this.puzzleTreeRoot = this.treeRoot;
+      this.puzzleTreePath = this.treePath;
+      this.analysisMode = true;
+      this.treeRoot = this.gameTree;
+      const startPath = this.gameTreePuzzlePath ?? "";
+      this.setTreePath(startPath);
+    }
+    syncPuzzleBoard();
+    redraw2();
   }
   /** Navigate the tree to a given path. Updates treeNode and syncs the board. */
   setTreePath(path) {
@@ -10593,6 +10645,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
         this.status = "solved";
         this.mode = "view";
         this.recordAttempt();
+        syncPuzzleBoard();
       }
       this.redraw();
       return { accepted: true };
@@ -10647,6 +10700,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     this.revealedSolution = true;
     this.recordAttempt();
     completeSolutionTree(this);
+    syncPuzzleBoard();
     redraw2();
   }
   /**
@@ -10738,7 +10792,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
       const redraw2 = this.redraw;
       setTimeout(() => {
         nextPuzzle(redraw2);
-      }, 1500);
+      }, 800);
     }
     saveAttempt(attempt).then(() => getAttempts(this.definition.id)).then((allAttempts) => updateDueMeta(this.definition.id, allAttempts)).catch((e) => console.warn("[puzzle-round] attempt save / due-meta update failed", e));
     return attempt;
@@ -10960,6 +11014,7 @@ async function openPuzzleRound(id, redraw2) {
       loadPuzzlePgn(def).then((pgn) => {
         if (pgn && activeRoundCtrl?.definition.id === def.id) {
           activeRoundCtrl.gamePgn = pgn;
+          activeRoundCtrl.loadGameTree();
           redraw2();
         }
       });
@@ -11016,7 +11071,7 @@ function mountPuzzleBoard(el, redraw2) {
       move: (orig, dest, _capturedPiece) => {
         if (!rc) return;
         const uci = `${orig}${dest}`;
-        if (rc.mode === "view") {
+        if (rc.mode === "view" || rc.analysisMode) {
           const newNode = rc.addVariationMove(uci);
           if (newNode) {
             playMoveSound(newNode.san);
@@ -11092,7 +11147,7 @@ function syncPuzzleBoard() {
   const dests = chessgroundDests(pos.value);
   const turn = pos.value.turn;
   const lastMove = node.uci ? [node.uci.slice(0, 2), node.uci.slice(2, 4)] : void 0;
-  const movableColor = rc.mode === "view" ? turn : rc.pov;
+  const movableColor = rc.mode === "view" || rc.analysisMode ? "both" : rc.pov;
   cg.set({
     fen: node.fen,
     turnColor: turn,
@@ -11495,7 +11550,7 @@ function getResumePuzzleId() {
 restoreSessionFromStorage();
 function sessionRecordStart(puzzleId) {
   if (!_activeSession) return;
-  if (_activeSession.history.some((e) => e.puzzleId === puzzleId && e.result === "in-progress")) return;
+  if (_activeSession.history.some((e) => e.puzzleId === puzzleId)) return;
   _activeSession.history.push({ puzzleId, result: "in-progress" });
   saveSessionToStorage();
 }
@@ -12436,8 +12491,19 @@ function renderViewSolutionButtons(rc, redraw2) {
       on: { click: () => {
         rc.viewSolution(redraw2);
       } }
-    }, "View the solution") : null
+    }, "View the solution") : null,
+    renderAnalysisToggle(rc, redraw2)
   ]);
+}
+function renderAnalysisToggle(rc, redraw2) {
+  if (!rc.gamePgn && !rc.gameTree) return null;
+  return h("button.button.button-empty.puzzle__analyse", {
+    class: { active: rc.analysisMode },
+    attrs: { title: rc.analysisMode ? "Back to puzzle" : "Analyse full game" },
+    on: { click: () => {
+      rc.toggleAnalysisMode(redraw2);
+    } }
+  }, "\u{1F50D}");
 }
 var QUALITY_COLORS = {
   best: "#22c55e",
@@ -12530,7 +12596,8 @@ function renderSolvedFeedback(rc, redraw2) {
         on: { click: () => {
           rc.showEngineArrows(redraw2);
         } }
-      }, "Engine Arrows")
+      }, "Engine Arrows"),
+      renderAnalysisToggle(rc, redraw2)
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     renderNextNav(redraw2)
@@ -12584,7 +12651,8 @@ function renderFailedFeedback(rc, redraw2) {
         on: { click: () => {
           rc.showEngineArrows(redraw2);
         } }
-      }, "Engine Arrows")
+      }, "Engine Arrows"),
+      renderAnalysisToggle(rc, redraw2)
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     h("div.puzzle__feedback__nav", [
@@ -12790,26 +12858,18 @@ function renderPuzzleMoveList(def, rc) {
   return h("div.puzzle-moves", moveNodes);
 }
 function renderPuzzleEnginePanel(rc, redraw2) {
-  const allMoves = [];
-  if (rc.definition.triggerMove) allMoves.push(rc.definition.triggerMove);
-  allMoves.push(...rc.solutionLine.slice(0, rc.progressPly));
-  const setup = parseFen(rc.definition.startFen);
-  let puzzleFen = rc.definition.startFen;
-  if (setup.isOk) {
-    const pos = Chess.fromSetup(setup.value);
-    if (pos.isOk) {
-      for (const uci of allMoves) {
-        const m = parseUci(uci);
-        if (m) pos.value.play(m);
-      }
-      puzzleFen = makeFen(pos.value.toSetup());
-    }
-  }
+  const puzzleFen = rc.treeNode.fen;
   setCevalFenOverride(puzzleFen);
-  if (engineEnabled && engineReady && puzzleFen !== _lastPuzzleEngineFen) {
-    _lastPuzzleEngineFen = puzzleFen;
-    protocol.setPosition(puzzleFen);
-    protocol.go(analysisDepth, multiPv);
+  if (engineEnabled && engineReady) {
+    if (puzzleFen !== _lastPuzzleEngineFen) {
+      _lastPuzzleEngineFen = puzzleFen;
+      requestAnimationFrame(() => {
+        protocol.setPosition(puzzleFen);
+        protocol.go(analysisDepth, multiPv);
+      });
+    }
+  } else {
+    _lastPuzzleEngineFen = "";
   }
   const children = [];
   children.push(renderCeval());
@@ -12838,6 +12898,7 @@ function renderSessionSidebar(session, def, redraw2) {
   const clean = session.history.filter((e) => e.result === "clean").length;
   const assisted = session.history.filter((e) => e.result === "assisted").length;
   const failed = session.history.filter((e) => e.result === "failed").length;
+  const completed = clean + assisted + failed;
   const total = session.history.length;
   return h("aside.puzzle__session-sidebar", [
     // Session info
@@ -12869,7 +12930,7 @@ function renderSessionSidebar(session, def, redraw2) {
         h("span.session-info__stat.session-info__stat--clean", `${clean} clean`),
         h("span.session-info__stat.session-info__stat--assisted", `${assisted} assisted`),
         h("span.session-info__stat.session-info__stat--failed", `${failed} failed`),
-        h("span.session-info__stat", `${total} total`)
+        h("span.session-info__stat", `${completed}/${total}`)
       ]),
       h("div.session-info__auto-next", [
         h("span", "Auto-next"),
@@ -13976,6 +14037,1115 @@ function current() {
 }
 function onChange2(fn) {
   window.addEventListener("hashchange", () => fn(current()));
+}
+
+// src/openings/db.ts
+var _db2;
+function openDb() {
+  if (_db2) return Promise.resolve(_db2);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("patzer-openings", 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("collections")) {
+        db.createObjectStore("collections", { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => {
+      _db2 = req.result;
+      resolve(_db2);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function saveCollection(collection) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("collections", "readwrite");
+    tx.objectStore("collections").put(collection);
+  } catch (e) {
+    console.warn("[openings-db] save failed", e);
+  }
+}
+async function loadCollections() {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("collections", "readonly");
+      const req = tx.objectStore("collections").getAll();
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[openings-db] load failed", e);
+    return [];
+  }
+}
+async function deleteCollection(id) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("collections", "readwrite");
+    tx.objectStore("collections").delete(id);
+  } catch (e) {
+    console.warn("[openings-db] delete failed", e);
+  }
+}
+
+// src/openings/tree.ts
+function newBuildNode(fen, san, uci) {
+  return { fen, san, uci, results: { total: 0, white: 0, draws: 0, black: 0 }, children: /* @__PURE__ */ new Map() };
+}
+function parseResult(result) {
+  if (result === "1-0") return "white";
+  if (result === "0-1") return "black";
+  if (result === "1/2-1/2") return "draw";
+  return null;
+}
+function addResult(counts, result) {
+  counts.total++;
+  if (result === "white") counts.white++;
+  else if (result === "black") counts.black++;
+  else if (result === "draw") counts.draws++;
+}
+var MAX_PLY = 60;
+function buildOpeningTree(games) {
+  const startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  const root = newBuildNode(startFen, "", "");
+  for (const game of games) {
+    try {
+      const parsed = parsePgn(game.pgn);
+      if (parsed.length === 0) continue;
+      const pgnGame = parsed[0];
+      const setup = startingPosition(pgnGame.headers);
+      if (setup.isErr) continue;
+      const pos = setup.value;
+      const result = parseResult(game.result);
+      addResult(root.results, result);
+      let current2 = root;
+      let node = pgnGame.moves.children[0];
+      let ply = 0;
+      while (node && ply < MAX_PLY) {
+        const move3 = parseSan(pos, node.data.san);
+        if (!move3) break;
+        const uci = makeUci(move3);
+        const san = makeSanAndPlay(pos, move3);
+        const fen = makeFen(pos.toSetup());
+        let child = current2.children.get(uci);
+        if (!child) {
+          child = newBuildNode(fen, san, uci);
+          current2.children.set(uci, child);
+        }
+        addResult(child.results, result);
+        current2 = child;
+        node = node.children[0];
+        ply++;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return freezeTree(root);
+}
+function freezeTree(node) {
+  const children = [...node.children.values()].sort((a, b) => b.results.total - a.results.total).map(freezeTree);
+  return {
+    fen: node.fen,
+    san: node.san,
+    uci: node.uci,
+    total: node.results.total,
+    white: node.results.white,
+    draws: node.results.draws,
+    black: node.results.black,
+    children
+  };
+}
+function nodeAtMoves(root, moves) {
+  let current2 = root;
+  for (const uci of moves) {
+    if (!current2) return void 0;
+    current2 = current2.children.find((c) => c.uci === uci);
+  }
+  return current2;
+}
+function findSampleGames(games, path, limit = 5) {
+  if (path.length === 0) return games.slice(0, limit);
+  const results = [];
+  for (const game of games) {
+    if (results.length >= limit) break;
+    if (gameMatchesPath(game, path)) results.push(game);
+  }
+  return results;
+}
+function gameMatchesPath(game, path) {
+  try {
+    const parsed = parsePgn(game.pgn);
+    if (parsed.length === 0) return false;
+    const pgnGame = parsed[0];
+    const setup = startingPosition(pgnGame.headers);
+    if (setup.isErr) return false;
+    const pos = setup.value;
+    let node = pgnGame.moves.children[0];
+    for (let i = 0; i < path.length; i++) {
+      if (!node) return false;
+      const move3 = parseSan(pos, node.data.san);
+      if (!move3) return false;
+      const uci = makeUci(move3);
+      if (uci !== path[i]) return false;
+      makeSanAndPlay(pos, move3);
+      node = node.children[0];
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// src/openings/ctrl.ts
+var _currentPage = "library";
+var _collections = [];
+var _collectionsLoaded = false;
+var _importStep = "idle";
+var _importSource = "lichess";
+var _importUsername = "";
+var _importColor = "both";
+var _importError = null;
+var _importProgress = 0;
+var _importAbort = null;
+var _lastCreatedCollection = null;
+function initOpeningsPage(page = "library") {
+  _currentPage = page;
+  _collectionsLoaded = false;
+}
+function openingsPage() {
+  return _currentPage;
+}
+function collectionsLoaded() {
+  return _collectionsLoaded;
+}
+function collections() {
+  return _collections;
+}
+function addCollection(c) {
+  _collections = [c, ..._collections];
+}
+async function removeCollection(id, redraw2) {
+  await deleteCollection(id);
+  _collections = _collections.filter((c) => c.id !== id);
+  redraw2();
+}
+async function renameCollection(id, newName, redraw2) {
+  const col = _collections.find((c) => c.id === id);
+  if (!col) return;
+  col.name = newName;
+  col.updatedAt = Date.now();
+  await saveCollection(col);
+  redraw2();
+}
+function importStep() {
+  return _importStep;
+}
+function importSource() {
+  return _importSource;
+}
+function importUsername() {
+  return _importUsername;
+}
+function importColor() {
+  return _importColor;
+}
+function importError() {
+  return _importError;
+}
+function setImportStep(step2) {
+  _importStep = step2;
+}
+function setImportSource(source) {
+  _importSource = source;
+}
+function setImportUsername(username) {
+  _importUsername = username;
+}
+function setImportColor(color) {
+  _importColor = color;
+}
+function setImportError(err) {
+  _importError = err;
+}
+function importProgress() {
+  return _importProgress;
+}
+function setImportProgress(n) {
+  _importProgress = n;
+}
+function setImportAbort(ctrl2) {
+  _importAbort = ctrl2;
+}
+function lastCreatedCollection() {
+  return _lastCreatedCollection;
+}
+function setLastCreatedCollection(c) {
+  _lastCreatedCollection = c;
+}
+function cancelImport() {
+  if (_importAbort) {
+    _importAbort.abort();
+    _importAbort = null;
+  }
+  _importStep = "details";
+  _importProgress = 0;
+  _importError = "Import cancelled.";
+}
+function resetImport() {
+  if (_importAbort) {
+    _importAbort.abort();
+    _importAbort = null;
+  }
+  _importStep = "idle";
+  _importUsername = "";
+  _importColor = "both";
+  _importError = null;
+  _importProgress = 0;
+  _lastCreatedCollection = null;
+}
+var _activeCollection = null;
+var _openingTree = null;
+var _sessionPath = [];
+var _sessionNode = null;
+function activeCollection() {
+  return _activeCollection;
+}
+function openingTree() {
+  return _openingTree;
+}
+function sessionPath() {
+  return _sessionPath;
+}
+function sessionNode() {
+  return _sessionNode;
+}
+function openCollection(collection) {
+  _activeCollection = collection;
+  _openingTree = buildOpeningTree(collection.games);
+  _sessionPath = [];
+  _sessionNode = _openingTree;
+  _currentPage = "session";
+}
+function navigateToMove(uci) {
+  if (!_sessionNode) return;
+  const child = _sessionNode.children.find((c) => c.uci === uci);
+  if (child) {
+    _sessionPath = [..._sessionPath, uci];
+    _sessionNode = child;
+  }
+}
+function navigateBack() {
+  if (_sessionPath.length === 0 || !_openingTree) return;
+  _sessionPath = _sessionPath.slice(0, -1);
+  _sessionNode = nodeAtMoves(_openingTree, _sessionPath) ?? _openingTree;
+}
+function navigateToRoot() {
+  if (!_openingTree) return;
+  _sessionPath = [];
+  _sessionNode = _openingTree;
+}
+function navigateToPath(moves) {
+  if (!_openingTree) return;
+  const target = nodeAtMoves(_openingTree, moves);
+  if (target) {
+    _sessionPath = [...moves];
+    _sessionNode = target;
+  }
+}
+function sampleGames(limit = 5) {
+  if (!_activeCollection) return [];
+  return findSampleGames(_activeCollection.games, _sessionPath, limit);
+}
+function closeSession() {
+  _activeCollection = null;
+  _openingTree = null;
+  _sessionPath = [];
+  _sessionNode = null;
+  _currentPage = "library";
+}
+async function loadSavedCollections(redraw2) {
+  if (_collectionsLoaded) return;
+  try {
+    const loaded = await loadCollections();
+    loaded.sort((a, b) => b.createdAt - a.createdAt);
+    _collections = loaded;
+    _collectionsLoaded = true;
+  } catch (e) {
+    console.warn("[openings] failed to load collections", e);
+    _collections = [];
+    _collectionsLoaded = true;
+  }
+  redraw2();
+}
+
+// src/openings/import.ts
+var _researchIdCounter = 0;
+function nextResearchId() {
+  return `research-${++_researchIdCounter}`;
+}
+function nextCollectionId() {
+  return `col-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+function pgnToResearchGame(pgn, source) {
+  try {
+    pgnToTree(pgn);
+  } catch {
+    return null;
+  }
+  const date = (parsePgnHeader(pgn, "UTCDate") ?? parsePgnHeader(pgn, "Date"))?.replace(/\./g, "-");
+  return {
+    id: nextResearchId(),
+    pgn,
+    source,
+    white: parsePgnHeader(pgn, "White"),
+    black: parsePgnHeader(pgn, "Black"),
+    result: parsePgnHeader(pgn, "Result"),
+    date,
+    timeClass: timeClassFromTimeControl(parsePgnHeader(pgn, "TimeControl")),
+    opening: parsePgnHeader(pgn, "Opening"),
+    eco: parsePgnHeader(pgn, "ECO"),
+    whiteRating: parseRating(parsePgnHeader(pgn, "WhiteElo")),
+    blackRating: parseRating(parsePgnHeader(pgn, "BlackElo"))
+  };
+}
+function splitPgnText(text) {
+  return text.trim().split(/\n\n(?=\[Event )/).filter((s) => s.trim());
+}
+async function fetchLichessResearch(username, signal) {
+  const params = new URLSearchParams({ max: "50" });
+  const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
+  const res = await fetch(url, { headers: { Accept: "application/x-chess-pgn" }, signal });
+  if (!res.ok) {
+    throw new Error(res.status === 404 ? "Lichess: user not found" : `Lichess API error ${res.status}`);
+  }
+  const text = await res.text();
+  if (!text.trim()) return [];
+  const games = [];
+  for (const pgn of splitPgnText(text)) {
+    const g = pgnToResearchGame(pgn, "lichess");
+    if (g) games.push(g);
+  }
+  return games;
+}
+async function fetchChesscomResearch(username, signal, onProgress) {
+  const base = "https://api.chess.com/pub/player";
+  const archivesRes = await fetch(`${base}/${username.toLowerCase()}/games/archives`, { signal });
+  if (!archivesRes.ok) {
+    throw new Error(archivesRes.status === 404 ? "Chess.com: user not found" : `Chess.com API error ${archivesRes.status}`);
+  }
+  const archivesData = await archivesRes.json();
+  const archives = archivesData.archives ?? [];
+  if (archives.length === 0) return [];
+  const recent = archives.slice(-3);
+  const games = [];
+  for (let i = 0; i < recent.length; i++) {
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    const res = await fetch(recent[i], { signal });
+    if (!res.ok) continue;
+    const data = await res.json();
+    for (const raw of (data.games ?? []).reverse()) {
+      if (raw.rules !== "chess" || raw.time_class === "daily") continue;
+      const pgn = raw.pgn ?? "";
+      if (!pgn) continue;
+      const g = pgnToResearchGame(pgn, "chesscom");
+      if (g) games.push(g);
+    }
+    onProgress(games.length);
+  }
+  return games;
+}
+function parsePgnResearch(pgnText) {
+  const games = [];
+  for (const pgn of splitPgnText(pgnText)) {
+    const g = pgnToResearchGame(pgn, "pgn");
+    if (g) games.push(g);
+  }
+  return games;
+}
+async function executeResearchImport(redraw2) {
+  const source = importSource();
+  const username = importUsername().trim();
+  const color = importColor();
+  if (source !== "pgn" && !username) {
+    setImportError("Username is required.");
+    redraw2();
+    return;
+  }
+  const abort = new AbortController();
+  setImportAbort(abort);
+  setImportStep("importing");
+  setImportError(null);
+  setImportProgress(0);
+  redraw2();
+  try {
+    let games;
+    const progressCb = (n) => {
+      setImportProgress(n);
+      redraw2();
+    };
+    switch (source) {
+      case "lichess":
+        games = await fetchLichessResearch(username, abort.signal);
+        break;
+      case "chesscom":
+        games = await fetchChesscomResearch(username, abort.signal, progressCb);
+        break;
+      case "pgn":
+        games = parsePgnResearch(username);
+        break;
+      default:
+        games = [];
+    }
+    if (abort.signal.aborted) return;
+    setImportProgress(games.length);
+    if (games.length === 0) {
+      setImportStep("details");
+      setImportError("No games found.");
+      setImportAbort(null);
+      redraw2();
+      return;
+    }
+    if (color !== "both" && source !== "pgn") {
+      const target = username.toLowerCase();
+      games = games.filter((g) => {
+        const isWhite = g.white?.toLowerCase() === target;
+        const isBlack = g.black?.toLowerCase() === target;
+        return color === "white" ? isWhite : isBlack;
+      });
+      if (games.length === 0) {
+        setImportStep("details");
+        setImportError(`No games found where ${username} plays as ${color}.`);
+        setImportAbort(null);
+        redraw2();
+        return;
+      }
+    }
+    const label = source === "pgn" ? `PGN Upload ${(/* @__PURE__ */ new Date()).toLocaleDateString()}` : username;
+    const collection = {
+      id: nextCollectionId(),
+      name: label,
+      source,
+      target: source === "pgn" ? "PGN" : username,
+      perspective: color,
+      games,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    await saveCollection(collection);
+    addCollection(collection);
+    setLastCreatedCollection(collection);
+    setImportAbort(null);
+    setImportStep("done");
+    redraw2();
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+    setImportStep("details");
+    setImportError(err instanceof Error ? err.message : "Import failed.");
+    setImportAbort(null);
+    redraw2();
+  }
+}
+
+// src/openings/explorer.ts
+var _cache = /* @__PURE__ */ new Map();
+var _loading = false;
+var _error = null;
+var _enabled = false;
+var _data = null;
+function explorerEnabled() {
+  return _enabled;
+}
+function explorerLoading() {
+  return _loading;
+}
+function explorerError() {
+  return _error;
+}
+function explorerData() {
+  return _data;
+}
+function toggleExplorer() {
+  _enabled = !_enabled;
+  if (!_enabled) {
+    _data = null;
+    _loading = false;
+    _error = null;
+  }
+}
+async function fetchExplorer(fen, redraw2) {
+  if (!_enabled) return;
+  const cached = _cache.get(fen);
+  if (cached) {
+    _data = cached;
+    _loading = false;
+    _error = null;
+    redraw2();
+    return;
+  }
+  _loading = true;
+  _error = null;
+  redraw2();
+  try {
+    const params = new URLSearchParams({
+      fen,
+      speeds: "blitz,rapid,classical",
+      ratings: "1600,1800,2000,2200,2500"
+    });
+    const url = `https://explorer.lichess.ovh/lichess?${params.toString()}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Explorer API error ${res.status}`);
+    const json = await res.json();
+    json.fen = fen;
+    _cache.set(fen, json);
+    _data = json;
+    _loading = false;
+    _error = null;
+  } catch (err) {
+    _loading = false;
+    _error = err instanceof Error ? err.message : "Explorer fetch failed.";
+    _data = null;
+  }
+  redraw2();
+}
+
+// src/openings/view.ts
+var _openingsCg;
+function renderOpeningsPage(redraw2) {
+  const page = openingsPage();
+  if (page === "session") return renderSessionPage(redraw2);
+  return renderLibraryPage(redraw2);
+}
+function renderLibraryPage(redraw2) {
+  if (!collectionsLoaded()) {
+    void loadSavedCollections(redraw2);
+    return h("div.openings", [
+      h("div.openings__header", [
+        h("h1.openings__title", "Opening Preparation")
+      ]),
+      h("div.openings__body", [
+        h("div.openings__loading", "Loading collections\u2026")
+      ])
+    ]);
+  }
+  const saved = collections();
+  const step2 = importStep();
+  return h("div.openings", [
+    h("div.openings__header", [
+      h("h1.openings__title", "Opening Preparation"),
+      step2 === "idle" ? h("button.openings__new-btn", {
+        on: { click: () => {
+          setImportStep("source");
+          redraw2();
+        } }
+      }, "New Research") : null
+    ]),
+    step2 !== "idle" ? renderImportWorkflow(redraw2) : h(
+      "div.openings__body",
+      saved.length === 0 ? [renderEmptyState(redraw2)] : [renderCollectionList(saved, redraw2)]
+    )
+  ]);
+}
+function renderEmptyState(redraw2) {
+  return h("div.openings__empty", [
+    h("p", "No research collections yet."),
+    h("p.openings__hint", "Import opponent games to build an opening tree."),
+    h("button.openings__start-btn", {
+      on: { click: () => {
+        setImportStep("source");
+        redraw2();
+      } }
+    }, "Start New Research")
+  ]);
+}
+function renderCollectionList(items, redraw2) {
+  return h("div.openings__collections", items.map(
+    (c) => h("div.openings__collection-row", { key: c.id }, [
+      h("div.openings__collection-main", {
+        on: { click: () => {
+          openCollection(c);
+          redraw2();
+        } }
+      }, [
+        h("span.openings__collection-name", c.name),
+        h("span.openings__collection-meta", [
+          `${c.games.length} game${c.games.length !== 1 ? "s" : ""}`,
+          " \xB7 ",
+          c.source,
+          " \xB7 ",
+          new Date(c.createdAt).toLocaleDateString()
+        ])
+      ]),
+      h("div.openings__collection-actions", [
+        h("button.openings__col-rename", {
+          attrs: { title: "Rename" },
+          on: { click: (e) => {
+            e.stopPropagation();
+            const name = prompt("Rename collection:", c.name);
+            if (name && name.trim()) void renameCollection(c.id, name.trim(), redraw2);
+          } }
+        }, "\u270E"),
+        h("button.openings__col-delete", {
+          attrs: { title: "Delete" },
+          on: { click: (e) => {
+            e.stopPropagation();
+            if (confirm(`Delete "${c.name}"? This cannot be undone.`)) {
+              void removeCollection(c.id, redraw2);
+            }
+          } }
+        }, "\u2715")
+      ])
+    ])
+  ));
+}
+function renderImportWorkflow(redraw2) {
+  const step2 = importStep();
+  return h("div.openings__import", [
+    h("div.openings__import-header", [
+      h("h2", "New Opponent Research"),
+      h("button.openings__cancel-btn", {
+        on: { click: () => {
+          resetImport();
+          redraw2();
+        } }
+      }, "Cancel")
+    ]),
+    step2 === "source" ? renderSourceStep(redraw2) : null,
+    step2 === "details" ? renderDetailsStep(redraw2) : null,
+    step2 === "importing" ? renderImportingStep(redraw2) : null,
+    step2 === "done" ? renderDoneStep(redraw2) : null
+  ]);
+}
+function renderSourceStep(redraw2) {
+  const src = importSource();
+  const sources = [
+    { value: "lichess", label: "Lichess" },
+    { value: "chesscom", label: "Chess.com" },
+    { value: "pgn", label: "PGN Upload" }
+  ];
+  return h("div.openings__step", [
+    h("h3", "Select Source"),
+    h("div.openings__source-options", sources.map(
+      (s) => h("button.openings__source-btn", {
+        class: { active: src === s.value },
+        on: { click: () => {
+          setImportSource(s.value);
+          redraw2();
+        } }
+      }, s.label)
+    )),
+    h("button.openings__next-btn", {
+      on: { click: () => {
+        setImportStep("details");
+        redraw2();
+      } }
+    }, "Next")
+  ]);
+}
+function renderDetailsStep(redraw2) {
+  const src = importSource();
+  const color = importColor();
+  const err = importError();
+  return h("div.openings__step", [
+    h("h3", src === "pgn" ? "PGN Upload" : "Opponent Details"),
+    src !== "pgn" ? h("div.openings__field", [
+      h("label", "Username"),
+      h("input.openings__input", {
+        attrs: { type: "text", placeholder: `${src === "lichess" ? "Lichess" : "Chess.com"} username` },
+        props: { value: importUsername() },
+        on: { input: (e) => {
+          setImportUsername(e.target.value);
+          redraw2();
+        } }
+      })
+    ]) : h("div.openings__field", [
+      h("label", "Paste PGN or upload a file"),
+      h("textarea.openings__textarea", {
+        attrs: { placeholder: "Paste PGN text here\u2026", rows: "6" },
+        on: { input: (e) => {
+          setImportUsername(e.target.value);
+          redraw2();
+        } }
+      })
+    ]),
+    h("div.openings__field", [
+      h("label", "Perspective"),
+      h("div.openings__color-options", ["white", "black", "both"].map(
+        (c) => h("button.openings__color-btn", {
+          class: { active: color === c },
+          on: { click: () => {
+            setImportColor(c);
+            redraw2();
+          } }
+        }, c.charAt(0).toUpperCase() + c.slice(1))
+      ))
+    ]),
+    err ? h("div.openings__error", err) : null,
+    h("div.openings__actions", [
+      h("button.openings__back-btn", {
+        on: { click: () => {
+          setImportStep("source");
+          redraw2();
+        } }
+      }, "Back"),
+      h("button.openings__import-btn", {
+        attrs: { disabled: src !== "pgn" && importUsername().trim() === "" },
+        on: { click: () => {
+          void executeResearchImport(redraw2);
+        } }
+      }, "Import")
+    ])
+  ]);
+}
+function renderImportingStep(redraw2) {
+  const progress = importProgress();
+  return h("div.openings__step", [
+    h("h3", "Importing\u2026"),
+    h(
+      "div.openings__progress",
+      progress > 0 ? `Found ${progress} game${progress !== 1 ? "s" : ""} so far\u2026` : "Fetching opponent games\u2026"
+    ),
+    h("button.openings__cancel-import-btn", {
+      on: { click: () => {
+        cancelImport();
+        redraw2();
+      } }
+    }, "Cancel")
+  ]);
+}
+function renderDoneStep(redraw2) {
+  const collection = lastCreatedCollection();
+  return h("div.openings__step", [
+    h("h3", "Import Complete"),
+    collection ? h("p.openings__done-summary", [
+      `Created collection "${collection.name}" with ${collection.games.length} game${collection.games.length !== 1 ? "s" : ""}.`
+    ]) : null,
+    h("button.openings__done-btn", {
+      on: { click: () => {
+        resetImport();
+        redraw2();
+      } }
+    }, "Back to Library")
+  ]);
+}
+function renderSessionPage(redraw2) {
+  const collection = activeCollection();
+  const node = sessionNode();
+  const path = sessionPath();
+  return h("div.openings.openings--session", [
+    h("div.openings__session-header", [
+      h("button.openings__back-lib-btn", {
+        on: { click: () => {
+          _openingsCg = void 0;
+          closeSession();
+          redraw2();
+        } }
+      }, "\u2190 Library"),
+      h("h2.openings__session-title", collection?.name ?? "Opening Research"),
+      h("span.openings__session-meta", node ? `${node.total} game${node.total !== 1 ? "s" : ""} reached this position` : "")
+    ]),
+    h("div.openings__session-body", [
+      h("div.openings__board-wrap", [
+        renderOpeningsBoard(node, redraw2)
+      ]),
+      h("div.openings__session-panel", [
+        renderMovePath(path, redraw2),
+        renderMoveNav(path, redraw2),
+        node ? renderPlayedLinesPanel(node, redraw2) : null,
+        renderSampleGamesPanel(),
+        renderExplorerToggle(node, redraw2)
+      ])
+    ])
+  ]);
+}
+function renderOpeningsBoard(node, redraw2) {
+  const fen = node?.fen ?? "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  return h("div.cg-wrap.openings__board", {
+    key: "openings-board",
+    hook: {
+      insert: (vnode3) => {
+        const setup = parseFen(fen);
+        const pos = setup.isOk ? Chess.fromSetup(setup.value) : void 0;
+        const dests = pos?.isOk ? chessgroundDests(pos.value) : /* @__PURE__ */ new Map();
+        _openingsCg = Chessground(vnode3.elm, {
+          fen,
+          orientation: "white",
+          viewOnly: false,
+          movable: {
+            free: false,
+            color: "both",
+            dests
+          },
+          events: {
+            move: (orig, dest) => {
+              const uci = `${orig}${dest}`;
+              if (node) {
+                const match = node.children.find(
+                  (c) => c.uci === uci || c.uci.startsWith(uci)
+                );
+                if (match) {
+                  navigateToMove(match.uci);
+                  syncOpeningsBoard(redraw2);
+                  redraw2();
+                }
+              }
+            }
+          }
+        });
+      },
+      postpatch: () => {
+        if (_openingsCg) {
+          const setup = parseFen(fen);
+          const pos = setup.isOk ? Chess.fromSetup(setup.value) : void 0;
+          const dests = pos?.isOk ? chessgroundDests(pos.value) : /* @__PURE__ */ new Map();
+          _openingsCg.set({ fen, movable: { dests } });
+        }
+      },
+      destroy: () => {
+        if (_openingsCg) {
+          _openingsCg.destroy();
+          _openingsCg = void 0;
+        }
+      }
+    }
+  });
+}
+function syncOpeningsBoard(redraw2) {
+  const node = sessionNode();
+  if (!_openingsCg || !node) return;
+  const setup = parseFen(node.fen);
+  const pos = setup.isOk ? Chess.fromSetup(setup.value) : void 0;
+  const dests = pos?.isOk ? chessgroundDests(pos.value) : /* @__PURE__ */ new Map();
+  _openingsCg.set({
+    fen: node.fen,
+    movable: { dests },
+    lastMove: node.uci ? [node.uci.slice(0, 2), node.uci.slice(2, 4)] : void 0
+  });
+}
+function renderMoveNav(path, redraw2) {
+  const node = sessionNode();
+  const canForward = node !== null && node.children.length > 0;
+  return h("div.openings__nav", [
+    h("button.openings__nav-btn", {
+      attrs: { disabled: path.length === 0, title: "Go to start" },
+      on: { click: () => {
+        navigateToRoot();
+        syncOpeningsBoard(redraw2);
+        redraw2();
+      } }
+    }, "\u23EE"),
+    h("button.openings__nav-btn", {
+      attrs: { disabled: path.length === 0, title: "Back one move" },
+      on: { click: () => {
+        navigateBack();
+        syncOpeningsBoard(redraw2);
+        redraw2();
+      } }
+    }, "\u25C0"),
+    h("button.openings__nav-btn", {
+      attrs: { disabled: !canForward, title: "Most popular continuation" },
+      on: { click: () => {
+        if (node && node.children.length > 0) {
+          navigateToMove(node.children[0].uci);
+          syncOpeningsBoard(redraw2);
+          redraw2();
+        }
+      } }
+    }, "\u25B6"),
+    h("span.openings__nav-depth", `Move ${Math.ceil(path.length / 2)}`)
+  ]);
+}
+function renderMovePath(path, redraw2) {
+  if (path.length === 0) {
+    return h("div.openings__path", [h("span.openings__path-start", "Starting position")]);
+  }
+  const tree = openingTree();
+  const labels = [];
+  if (tree) {
+    let current2 = tree;
+    for (let i = 0; i < path.length; i++) {
+      const child = current2?.children.find((c) => c.uci === path[i]);
+      if (!child) break;
+      labels.push({ san: child.san, pathTo: path.slice(0, i + 1) });
+      current2 = child;
+    }
+  }
+  return h("div.openings__path", [
+    h("span.openings__path-start", {
+      on: { click: () => {
+        navigateToRoot();
+        syncOpeningsBoard(redraw2);
+        redraw2();
+      } }
+    }, "Start"),
+    ...labels.map((l, i) => {
+      const moveNum = Math.floor(i / 2) + 1;
+      const isWhite = i % 2 === 0;
+      const prefix = isWhite ? `${moveNum}. ` : i === 0 ? "1... " : "";
+      return h("span.openings__path-move", {
+        on: { click: () => {
+          navigateToPath(l.pathTo);
+          syncOpeningsBoard(redraw2);
+          redraw2();
+        } }
+      }, `${prefix}${l.san}`);
+    })
+  ]);
+}
+function renderPlayedLinesPanel(node, redraw2) {
+  const total = node.total || 1;
+  const wPct = (node.white / total * 100).toFixed(0);
+  const dPct = (node.draws / total * 100).toFixed(0);
+  const bPct = (node.black / total * 100).toFixed(0);
+  return h("div.openings__lines-panel", [
+    // Position summary header
+    h("div.openings__pos-summary", [
+      h("span.openings__pos-total", `${node.total} game${node.total !== 1 ? "s" : ""}`),
+      h("span.openings__pos-results", [
+        h("span.openings__pos-w", `W ${wPct}%`),
+        h("span.openings__pos-d", `D ${dPct}%`),
+        h("span.openings__pos-b", `B ${bPct}%`)
+      ]),
+      renderResultBar(node)
+    ]),
+    // Played lines
+    node.children.length === 0 ? h("div.openings__moves-empty", "No further moves in this collection.") : h("div.openings__moves", [
+      h("div.openings__moves-header", [
+        h("span.openings__mh-move", "Move"),
+        h("span.openings__mh-games", "Games"),
+        h("span.openings__mh-result", "Result")
+      ]),
+      ...node.children.map((child) => renderMoveRow(child, node.total, redraw2))
+    ])
+  ]);
+}
+function renderMoveRow(child, parentTotal, redraw2) {
+  const pct = parentTotal > 0 ? (child.total / parentTotal * 100).toFixed(1) : "0";
+  const total = child.total || 1;
+  const wPct = (child.white / total * 100).toFixed(0);
+  const dPct = (child.draws / total * 100).toFixed(0);
+  const bPct = (child.black / total * 100).toFixed(0);
+  return h("div.openings__move-row", {
+    key: child.uci,
+    on: { click: () => {
+      navigateToMove(child.uci);
+      syncOpeningsBoard(redraw2);
+      redraw2();
+    } }
+  }, [
+    h("span.openings__move-san", child.san),
+    h("span.openings__move-count", `${child.total} (${pct}%)`),
+    h("span.openings__move-results", [
+      h("span.openings__mr-w", `${wPct}%`),
+      h("span.openings__mr-d", `${dPct}%`),
+      h("span.openings__mr-b", `${bPct}%`)
+    ]),
+    renderResultBar(child)
+  ]);
+}
+function renderResultBar(node) {
+  const total = node.total || 1;
+  const wPct = node.white / total * 100;
+  const dPct = node.draws / total * 100;
+  const bPct = node.black / total * 100;
+  return h("div.openings__result-bar", [
+    h("div.openings__result-w", { style: { width: `${wPct}%` } }),
+    h("div.openings__result-d", { style: { width: `${dPct}%` } }),
+    h("div.openings__result-b", { style: { width: `${bPct}%` } })
+  ]);
+}
+function renderSampleGamesPanel() {
+  const games = sampleGames(5);
+  if (games.length === 0) {
+    return h("div.openings__samples", [
+      h("h3.openings__samples-title", "Example Games"),
+      h("div.openings__samples-empty", "No games match this position.")
+    ]);
+  }
+  return h("div.openings__samples", [
+    h("h3.openings__samples-title", `Example Games (${games.length})`),
+    ...games.map(renderSampleGameRow)
+  ]);
+}
+function renderSampleGameRow(game) {
+  const players = [game.white ?? "?", game.black ?? "?"].join(" vs ");
+  const result = game.result ?? "*";
+  const info = [];
+  if (game.opening) info.push(game.opening);
+  if (game.date) info.push(game.date);
+  if (game.timeClass) info.push(game.timeClass);
+  return h("div.openings__sample-row", { key: game.id }, [
+    h("div.openings__sample-players", [
+      h("span", players),
+      h("span.openings__sample-result", result)
+    ]),
+    info.length > 0 ? h("div.openings__sample-info", info.join(" \xB7 ")) : null
+  ]);
+}
+function renderExplorerToggle(node, redraw2) {
+  const enabled = explorerEnabled();
+  return h("div.openings__explorer", [
+    h("div.openings__explorer-toggle", [
+      h("label.openings__explorer-label", [
+        h("input", {
+          attrs: { type: "checkbox", checked: enabled },
+          on: {
+            change: () => {
+              toggleExplorer();
+              if (explorerEnabled() && node) {
+                void fetchExplorer(node.fen, redraw2);
+              }
+              redraw2();
+            }
+          }
+        }),
+        " Lichess Opening Book"
+      ])
+    ]),
+    enabled ? renderExplorerPanel(node, redraw2) : null
+  ]);
+}
+function renderExplorerPanel(node, redraw2) {
+  if (!node) return h("div.openings__explorer-empty", "No position selected.");
+  const data = explorerData();
+  if (!data || data.fen !== node.fen) {
+    if (!explorerLoading()) {
+      void fetchExplorer(node.fen, redraw2);
+    }
+  }
+  const loading = explorerLoading();
+  const err = explorerError();
+  if (loading) return h("div.openings__explorer-loading", "Loading book data\u2026");
+  if (err) return h("div.openings__explorer-error", err);
+  if (!data || data.moves.length === 0) {
+    return h("div.openings__explorer-empty", "No book data for this position.");
+  }
+  const total = data.white + data.draws + data.black;
+  return h("div.openings__explorer-data", [
+    data.opening ? h("div.openings__explorer-opening", `${data.opening.eco} ${data.opening.name}`) : null,
+    h("div.openings__explorer-summary", `${total.toLocaleString()} games in database`),
+    h("div.openings__explorer-moves", data.moves.slice(0, 8).map(
+      (m) => renderExplorerMoveRow(m)
+    ))
+  ]);
+}
+function renderExplorerMoveRow(move3) {
+  const total = move3.white + move3.draws + move3.black || 1;
+  const wPct = (move3.white / total * 100).toFixed(0);
+  const dPct = (move3.draws / total * 100).toFixed(0);
+  const bPct = (move3.black / total * 100).toFixed(0);
+  return h("div.openings__explorer-row", { key: move3.uci }, [
+    h("span.openings__explorer-san", move3.san),
+    h("span.openings__explorer-count", `${(move3.white + move3.draws + move3.black).toLocaleString()}`),
+    h("span.openings__explorer-results", [
+      h("span.openings__mr-w", `${wPct}%`),
+      h("span.openings__mr-d", `${dPct}%`),
+      h("span.openings__mr-b", `${bPct}%`)
+    ])
+  ]);
 }
 
 // src/analyse/retro.ts
@@ -15326,7 +16496,8 @@ function routeContent(route) {
       return renderPuzzleRound(redraw);
     }
     case "openings":
-      return h("h1", "Openings Page");
+      initOpeningsPage("library");
+      return renderOpeningsPage(redraw);
     case "stats":
       return h("h1", "Stats Page");
     default:
