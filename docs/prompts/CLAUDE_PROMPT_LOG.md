@@ -6,7 +6,13 @@ Use this file to track Claude Code prompts from creation through review.
 
 ## Prompt Index
 
-- [ ] CCP-151-F1 - Inline Imported Puzzle Browser Pane
+- [x] CCP-177 - Puzzle Blocking Fixes Batch Manager
+- [x] CCP-151-F3 - Fix Imported Theme Session Start
+- [x] CCP-156-F1 - Fix Puzzle Round Board Interactivity
+- [x] CCP-153-F2 - Add Puzzle Round Move List Surface
+- [x] CCP-160-F1 - Add Visible Puzzle Engine Surface
+- [x] CCP-151-F2 - Theme-First Imported Puzzle Session Builder
+- [x] CCP-151-F1 - Inline Imported Puzzle Browser Pane
 - [x] CCP-153-F1 - Center Puzzle Board And Add Left Library Pane
 - [x] CCP-166-F1 - Preserve Retro Bulk-Save First-Attempt Outcome
 - [x] CCP-168-F1 - Fix Puzzle Metadata Editor exactOptionalPropertyTypes Gap
@@ -204,10 +210,130 @@ Use this file to track Claude Code prompts from creation through review.
 
 ## Detailed Log
 
+## CCP-177 - Puzzle Blocking Fixes Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-177`
+  - Task ID: `CCP-177`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-151-F3`, `CCP-156-F1`, `CCP-153-F2`, `CCP-160-F1`
+  - Source document: `docs/NEXT_STEPS.md`
+  - Source step: `Puzzle V1 audit-and-gap-closure / current blocking puzzle round issues`
+  - Task: execute the current blocking puzzle follow-up fix batch for imported session start, board interactivity, move-list surface, and visible engine UI
+  - Created by: `Codex`
+  - Created at: `2026-03-27T23:29:35Z`
+  - Started at: `2026-03-27T23:47:32.936Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: CCP-156-F1 still leaves a puzzle-specific exactOptionalPropertyTypes failure in mountPuzzleBoard by assigning movable.color = undefined, so the blocking batch is not fully validation-clean
+  - Execution target: `Claude Code`
+```
+
+## CCP-151-F3 - Fix Imported Theme Session Start
+
+```
+- [x] Reviewed
+  - ID: `CCP-151-F3`
+  - Task ID: `CCP-151`
+  - Parent prompt ID: `CCP-151-F2`
+  - Batch prompt IDs: none
+  - Source document: `docs/PUZZLE_V1_PLAN.md`
+  - Source step: `Imported Puzzle Theme Selection And Session Start`
+  - Task: fix the imported theme-selection flow so Start Puzzles opens a real session or surfaces an honest no-match state
+  - Created by: `Codex`
+  - Created at: `2026-03-27T23:29:35Z`
+  - Started at: `2026-03-27T23:47:55.769Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-156-F1 - Fix Puzzle Round Board Interactivity
+
+```
+- [x] Reviewed
+  - ID: `CCP-156-F1`
+  - Task ID: `CCP-156`
+  - Parent prompt ID: `CCP-156`
+  - Batch prompt IDs: none
+  - Source document: `docs/PUZZLE_V1_PLAN.md`
+  - Source step: `Trigger Move Playback And Puzzle Board Interactivity`
+  - Task: fix puzzle-round setup so the board opens in a playable state with the correct side to move and interactable pieces
+  - Created by: `Codex`
+  - Created at: `2026-03-27T23:29:35Z`
+  - Started at: `2026-03-27T23:49:13.961Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: mountPuzzleBoard still violates exactOptionalPropertyTypes by assigning movable.color = undefined in the initial board config
+  - Execution target: `Claude Code`
+```
+
+## CCP-153-F2 - Add Puzzle Round Move List Surface
+
+```
+- [x] Reviewed
+  - ID: `CCP-153-F2`
+  - Task ID: `CCP-153`
+  - Parent prompt ID: `CCP-153-F1`
+  - Batch prompt IDs: none
+  - Source document: `docs/PUZZLE_V1_PLAN.md`
+  - Source step: `Puzzle Round Layout Gaps — Move List Surface`
+  - Task: add the missing puzzle-round move-list surface without copying the full analysis page
+  - Created by: `Codex`
+  - Created at: `2026-03-27T23:29:35Z`
+  - Started at: `2026-03-27T23:50:48.614Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-160-F1 - Add Visible Puzzle Engine Surface
+
+```
+- [x] Reviewed
+  - ID: `CCP-160-F1`
+  - Task ID: `CCP-160`
+  - Parent prompt ID: `CCP-160`
+  - Batch prompt IDs: none
+  - Source document: `docs/PUZZLE_V1_PLAN.md`
+  - Source step: `Puzzle Round Engine Visibility And Board Tools`
+  - Task: add the missing visible puzzle-engine surface while keeping strict correctness separate from assist behavior
+  - Created by: `Codex`
+  - Created at: `2026-03-27T23:29:35Z`
+  - Started at: `2026-03-27T23:52:52.657Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-151-F2 - Theme-First Imported Puzzle Session Builder
+
+```
+- [x] Reviewed
+  - ID: `CCP-151-F2`
+  - Task ID: `CCP-151`
+  - Parent prompt ID: `CCP-151-F1`
+  - Batch prompt IDs: none
+  - Source document: `docs/PUZZLE_V1_PLAN.md`
+  - Source step: `Library Default Load Behavior + Puzzle Board Layout`
+  - Task: replace the imported puzzle row browser with a grouped theme-selection pane that supports multi-select themes, a rating range slider, and a Start Puzzles action while keeping the board visible
+  - Created by: `Codex`
+  - Created at: `2026-03-27T23:15:31Z`
+  - Started at: `2026-03-27T23:18:45.915Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the theme-first builder UI landed, but Start Puzzles still picks one random imported puzzle and later navigation falls back to generic source-kind selection instead of a real session bound to the chosen themes/openings/rating range
+  - Execution target: `Claude Code`
+```
+
 ## CCP-151-F1 - Inline Imported Puzzle Browser Pane
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-151-F1`
   - Task ID: `CCP-151`
   - Parent prompt ID: `CCP-151`
@@ -219,8 +345,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: `2026-03-27T15:56:47-07:00`
   - Started at: `2026-03-27T23:02:35.699Z`
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: none
+  - Review outcome: issues found
+  - Review issues: the imported browse pane keeps the board visible, but it still only exposes basic min/max rating inputs and a single theme dropdown; the prompt's richer inline sort/filter controls did not land
   - Execution target: `Claude Code`
 ```
 

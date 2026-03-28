@@ -6,7 +6,698 @@ Use this file to archive the full text of Claude Code prompts generated from Cod
 
 ## History
 
-## CCP-151-F1 — Created
+## CCP-177 — Reviewed
+
+- Task: execute the current blocking puzzle follow-up fix batch for imported session start, board interactivity, move-list surface, and visible engine UI
+- Task ID: `CCP-177`
+- Parent prompt ID: none
+- Source document: `docs/NEXT_STEPS.md`
+- Source step: `Puzzle V1 audit-and-gap-closure / current blocking puzzle round issues`
+- Created by: `Codex`
+- Created at: `2026-03-27T23:29:35Z`
+- Started at: `2026-03-27T23:47:32.936Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: manager batch review: CCP-151-F3, CCP-153-F2, and CCP-160-F1 look good, but CCP-156-F1 still leaves a puzzle-specific typecheck failure in the board mount config, so the batch does not pass cleanly.
+
+```
+Prompt ID: CCP-177
+Task ID: CCP-177
+Source Document: docs/NEXT_STEPS.md
+Source Step: Puzzle V1 audit-and-gap-closure / current blocking puzzle round issues
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup state step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-177`
+- Only continue implementation work after that command succeeds.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-151-F3`
+- `CCP-156-F1`
+- `CCP-153-F2`
+- `CCP-160-F1`
+
+Manager-prompt rule:
+- `CCP-177` is the manager prompt id only
+- do not execute or recurse into `CCP-177` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / puzzle-round / puzzle-view / engine-assist files.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Prompt sources:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-151-F3.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-156-F1.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-153-F2.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-160-F1.md`
+
+Do not modify:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during the batch
+- do not continue past a known issue just to finish the batch
+- if a child prompt's startup state step already ran successfully in the current batch flow, do not rerun it a second time just because the child prompt text repeats it
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
+- only continue into a child prompt after that command succeeds
+- use internal validation/self-check only; external review and prompt closeout happen separately
+
+After each completed child prompt, report briefly:
+- Prompt ID
+- task title
+- build result
+- validation result
+- internal check result
+- whether the batch will continue or stop
+
+If the batch stops, report:
+- which Prompt ID stopped the batch
+- why it stopped
+- what issue or failure was found
+
+If the batch finishes, report a compact summary of completed Prompt IDs.
+
+Begin with `CCP-151-F3`, `CCP-156-F1`, `CCP-153-F2`, `CCP-160-F1`.
+```
+
+## CCP-151-F3 — Reviewed
+
+- Task: fix the imported theme-selection flow so Start Puzzles opens a real session or surfaces an honest no-match state
+- Task ID: `CCP-151`
+- Parent prompt ID: `CCP-151-F2`
+- Source document: `docs/PUZZLE_V1_PLAN.md`
+- Source step: `Imported Puzzle Theme Selection And Session Start`
+- Created by: `Codex`
+- Created at: `2026-03-27T23:29:35Z`
+- Started at: `2026-03-27T23:47:55.769Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: the prompt now surfaces an honest no-match error and creates visible session state when imported puzzle launch succeeds, which satisfies this follow-up's smaller scope even though broader session continuity remains a separate issue from CCP-151-F2.
+
+```
+Prompt ID: CCP-151-F3
+Task ID: CCP-151
+Parent Prompt ID: CCP-151-F2
+Source Document: docs/PUZZLE_V1_PLAN.md
+Source Step: Imported Puzzle Theme Selection And Session Start
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup state step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-151-F3`
+- Only continue implementation work after that command succeeds.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same imported-puzzle library / theme-selection / shard-loader / puzzle-route files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix the imported-puzzle theme-selection flow so that choosing themes and pressing `Start Puzzles` always produces an honest visible result instead of silently doing nothing.
+
+User-observed failure to fix:
+- the imported library viewer lets the user choose themes
+- pressing `Start Puzzles` currently appears to do nothing
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/puzzles/shardLoader.ts`
+  - `src/puzzles/types.ts`
+  - `src/main.ts`
+- Patzer references:
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/PuzzlePlanNotes.md`
+  - `docs/NEXT_STEPS.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+  - `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+  - relevant linked source files those references point to
+
+Constraints:
+- scope this to imported-session launch behavior only
+- do not redesign the whole imported library UI in this task
+- do not bundle board-interactivity, move-list, or engine-panel work here
+- preserve the current Imported Puzzles versus User Library distinction
+- if no puzzles match the selected filters, surface that honestly in the UI instead of failing silently
+- if puzzles do match, the first round must open through the normal puzzle-round path
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for imported theme selection and session launch
+- explicitly report:
+  - build result
+  - what happened before the fix
+  - what now happens when `Start Puzzles` is pressed with matching themes
+  - what now happens when no imported puzzles match the selected filters
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-156-F1 — Reviewed
+
+- Task: fix puzzle-round setup so the board opens in a playable state with the correct side to move and interactable pieces
+- Task ID: `CCP-156`
+- Parent prompt ID: `CCP-156`
+- Source document: `docs/PUZZLE_V1_PLAN.md`
+- Source step: `Trigger Move Playback And Puzzle Board Interactivity`
+- Created by: `Codex`
+- Created at: `2026-03-27T23:29:35Z`
+- Started at: `2026-03-27T23:49:13.961Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: the round-start trigger-move and interactivity path is much closer to correct now, but the board config still leaves a new puzzle-specific typecheck failure because movable.color is assigned explicit undefined.
+
+```
+Prompt ID: CCP-156-F1
+Task ID: CCP-156
+Parent Prompt ID: CCP-156
+Source Document: docs/PUZZLE_V1_PLAN.md
+Source Step: Trigger Move Playback And Puzzle Board Interactivity
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup state step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-156-F1`
+- Only continue implementation work after that command succeeds.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / board-mount / move-validation / adapter files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix puzzle-round setup so the puzzle board opens in an actually playable state, with the correct side to move and interactable pieces.
+
+User-observed failure to fix:
+- puzzle-round boards currently show pieces that are not interactable
+- the round does not feel like a real Lichess-style puzzle start state
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/ctrl.ts`
+  - `src/puzzles/adapters.ts`
+  - `src/puzzles/types.ts`
+  - `src/puzzles/view.ts`
+  - `src/board/index.ts`
+- Patzer references:
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/PuzzlePlanNotes.md`
+  - `docs/NEXT_STEPS.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+  - relevant linked source files those references point to
+
+Constraints:
+- scope this to round-start state and board interactivity
+- keep strict stored-solution validation as the correctness model
+- do not bundle move-list work or visible engine-panel work here
+- if the real bug is that the trigger move is not being applied before the solver turn, fix that directly
+- if the real bug is elsewhere, explain it clearly and fix the actual smallest safe cause
+- preserve Patzer's chosen divergences only after the board is genuinely playable
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for puzzle-round board interactivity
+- explicitly report:
+  - build result
+  - what the real root cause was
+  - which side now gets the first interactable move on puzzle load
+  - whether the trigger move is now represented correctly
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-153-F2 — Reviewed
+
+- Task: add the missing puzzle-round move-list surface without copying the full analysis page
+- Task ID: `CCP-153`
+- Parent prompt ID: `CCP-153-F1`
+- Source document: `docs/PUZZLE_V1_PLAN.md`
+- Source step: `Puzzle Round Layout Gaps — Move List Surface`
+- Created by: `Codex`
+- Created at: `2026-03-27T23:29:35Z`
+- Started at: `2026-03-27T23:50:48.614Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: the puzzle round now includes an honest move-list surface that shows played context and reveals the full solution line only after solve/fail, which matches the intended small step.
+
+```
+Prompt ID: CCP-153-F2
+Task ID: CCP-153
+Parent Prompt ID: CCP-153-F1
+Source Document: docs/PUZZLE_V1_PLAN.md
+Source Step: Puzzle Round Layout Gaps — Move List Surface
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup state step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-153-F2`
+- Only continue implementation work after that command succeeds.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-view / layout / move-list / board-shell files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add the missing puzzle-round move-list surface so the dedicated puzzle board no longer feels like a board-with-sidebar only shell.
+
+User-observed gap to fix:
+- the puzzle round currently does not show the move-list surface the product direction expected
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/analyse/moveList.ts`
+  - any tree or round-state helpers needed to render an honest puzzle move list
+- Patzer references:
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/PuzzlePlanNotes.md`
+  - `docs/NEXT_STEPS.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+  - relevant linked source files those references point to
+
+Constraints:
+- scope this to the move-list surface only
+- do not copy the full analysis page into the puzzle page
+- do not bundle visible engine-panel work here
+- the move list should be honest for puzzle play:
+  - show the source context and played puzzle line
+  - avoid giving away future solving information more than intended
+- prefer reusing existing move-list rendering concepts only where they actually fit puzzle mode
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for puzzle-round move-list rendering
+- explicitly report:
+  - build result
+  - what move-list surface now appears in the puzzle round
+  - what information is intentionally shown versus hidden
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-160-F1 — Reviewed
+
+- Task: add the missing visible puzzle-engine surface while keeping strict correctness separate from assist behavior
+- Task ID: `CCP-160`
+- Parent prompt ID: `CCP-160`
+- Source document: `docs/PUZZLE_V1_PLAN.md`
+- Source step: `Puzzle Round Engine Visibility And Board Tools`
+- Created by: `Codex`
+- Created at: `2026-03-27T23:29:35Z`
+- Started at: `2026-03-27T23:52:52.657Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: the puzzle round now exposes visible post-solve engine controls and a lightweight engine panel without letting engine assist replace strict puzzle correctness.
+
+```
+Prompt ID: CCP-160-F1
+Task ID: CCP-160
+Parent Prompt ID: CCP-160
+Source Document: docs/PUZZLE_V1_PLAN.md
+Source Step: Puzzle Round Engine Visibility And Board Tools
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup state step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-160-F1`
+- Only continue implementation work after that command succeeds.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-engine / puzzle-view / ceval / board-tool files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add the missing visible puzzle-engine surface so the puzzle round exposes the engine functionality the product direction expected, while keeping strict correctness separate from engine assist.
+
+User-observed gap to fix:
+- the puzzle page currently does not show the visible engine functionality the product direction called for
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/ceval/view.ts`
+  - `src/engine/ctrl.ts`
+  - `src/board/index.ts`
+- Patzer references:
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/PuzzlePlanNotes.md`
+  - `docs/NEXT_STEPS.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+  - relevant linked source files those references point to
+
+Constraints:
+- scope this to visible engine functionality only
+- do not let engine UI override strict puzzle correctness
+- do not bundle move-list work here
+- expose the smallest honest visible engine surface that matches the current runtime:
+  - engine on/off or activation seam
+  - visible lines/arrows or panel output if the runtime already supports them
+- if some intended engine feature is still structurally missing, expose only what the current runtime can honestly support and document the deferral
+- engine assist should still reset appropriately when moving to the next puzzle
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for visible puzzle-engine behavior
+- explicitly report:
+  - build result
+  - what visible engine controls or panels now appear
+  - which engine features are interactive on the puzzle page
+  - how the engine state resets or persists between puzzles
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-151-F2 — Reviewed
+
+- Task: replace the imported puzzle row browser with a grouped theme-selection pane that supports multi-select themes, a rating range slider, and a Start Puzzles action while keeping the board visible
+- Task ID: `CCP-151`
+- Parent prompt ID: `CCP-151-F1`
+- Source document: `docs/PUZZLE_V1_PLAN.md`
+- Source step: `Library Default Load Behavior + Puzzle Board Layout`
+- Created by: `Codex`
+- Created at: `2026-03-27T23:15:31Z`
+- Started at: `2026-03-27T23:18:45.915Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: the imported browser now shows grouped theme rows, checkbox selection, and rating sliders, but the controller does not preserve the selected imported set as a continuing session. Start Puzzles opens one random imported puzzle and next navigation falls back to generic imported-source selection.
+
+```
+Prompt ID: CCP-151-F2
+Task ID: CCP-151
+Parent Prompt ID: CCP-151-F1
+Source Document: docs/PUZZLE_V1_PLAN.md
+Source Step: Library Default Load Behavior + Puzzle Board Layout
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Startup state step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-151-F2`
+- Only continue implementation work after that command succeeds.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / imported-theme-browser / puzzle-view / shard-loader / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: replace the current imported-puzzle inline browser with a theme-first imported session builder. The imported viewer should no longer list individual puzzles as the main selection surface. Instead, it should list Lichess-style theme groups with checkable theme rows, a dual-handle rating range control, and a `Start Puzzles` action that begins a session using the selected imported themes while keeping the board visible on the same page.
+
+Source-backed intent to preserve:
+- `docs/PUZZLE_V1_PLAN.md` says the puzzle page should open with imported-vs-user top-level sources and a centered board with left-side library navigation.
+- The follow-up review on `CCP-151-F1` confirmed the board shell is now correct enough, but the imported browser behavior is still wrong for the intended product direction.
+- Lichess puzzle UX organizes themes under higher-level categories rather than making individual puzzles the main browse unit.
+
+Current repo-grounded behavior to confirm:
+- `src/puzzles/view.ts` currently renders an inline imported browse pane, but it still lists individual puzzle rows.
+- the imported browse controls are currently only:
+  - rating min/max number inputs
+  - a single theme dropdown
+  - load-more buttons for visible rows and additional shards
+- imported puzzle data currently comes from the shard loader and manifest in:
+  - `src/puzzles/shardLoader.ts`
+  - `src/puzzles/ctrl.ts`
+- current puzzle page and inline browse styling lives in `src/styles/main.scss`
+
+Target behavior for this follow-up:
+- keep the board visible and mounted on the same puzzle page
+- keep imported browsing inline in the left pane
+- replace individual imported-puzzle rows as the primary browse surface with theme rows grouped under simple divider headings aligned to Lichess-style theme families
+- each theme row should be clickable and include a checkbox/toggle
+- multiple themes can be selected at once
+- rating should use a minimum/maximum range slider control, not two plain number inputs
+- once one or more themes are selected, show a `Start Puzzles` button at the bottom of the pane
+- starting puzzles should begin a session from the selected imported theme set rather than opening a single manually chosen imported puzzle row
+
+Important honesty rules:
+- do not invent fake per-theme performance analytics
+- if Patzer does not currently have real `My Score %` or per-theme performance data, omit that feature or show an honest unavailable/deferred state
+- do not pretend Patzer already has the full Lichess training backend; keep this to the smallest local imported-session seam that fits the current architecture
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/puzzles/types.ts`
+  - `src/puzzles/shardLoader.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/modules/puzzle/src/main/ui/PuzzleUi.scala`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/side.ts`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
+  - any closely related Lichess puzzle theme/category source needed to confirm the category groupings
+
+Implementation goal:
+- keep this focused on imported-theme session selection, not the entire puzzle product
+- make the imported browser theme-first instead of puzzle-row-first
+- add grouped theme sections with multi-select row toggles
+- add a dual-handle rating range control or the smallest honest local equivalent that behaves like one
+- add a clear bottom `Start Puzzles` action that launches imported puzzles from the chosen theme/rating selection
+- preserve the current board-first inline shell and avoid moving more logic into `src/main.ts`
+
+Constraints:
+- scope this to the imported puzzle browse/start path only
+- do not bundle strict solve-loop redesign
+- do not rebuild the imported puzzle persistence model from scratch
+- do not add fake analytics or fake user score data
+- do not collapse the whole Lichess selection product into one giant rewrite; identify the smallest safe slice that clearly changes the imported flow to theme-selection-first
+- if full theme-family parity is too large, implement the smallest honest grouping model that still uses simple category divider headings and multi-select theme rows
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for imported-theme browsing and session start behavior
+- explicitly report:
+  - whether the board stays visible while selecting imported themes
+  - how theme groups/divider headings are structured
+  - whether multiple theme rows can be selected
+  - whether the rating control is a real dual-range slider or a smaller safe equivalent
+  - how `Start Puzzles` works
+  - whether individual puzzle rows are still the primary surface or have been replaced
+  - whether any analytics or score fields were honestly deferred
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-151-F1 — Reviewed
 
 - Task: refine imported puzzle browsing so the board stays visible on the same page and the imported library expands inline with richer filter and sort controls
 - Task ID: `CCP-151`
@@ -16,10 +707,10 @@ Use this file to archive the full text of Claude Code prompts generated from Cod
 - Created by: `Codex`
 - Created at: `2026-03-27T15:56:47-07:00`
 - Started at: `2026-03-27T23:02:35.699Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: issues found
 - Commit: unknown
-- Notes: follow-up prompt for the top-level source navigator to replace full-page imported browse swapping with an inline browser pane
+- Notes: the inline imported browse pane did land and the board now stays visible while browsing, but the browse controls remain a minimal rating-plus-single-theme filter bar with no richer sort panel, grouped multi-select themes, or score-aware column treatment.
 
 ```
 Prompt ID: CCP-151-F1

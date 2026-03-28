@@ -1,207 +1,154 @@
-# Patzer Pro — Puzzle V1 Phased Execution Plan
+# Patzer Pro — Puzzle V1 Phased Execution Record
 
 Date: 2026-03-27
 Source product plan: [docs/PUZZLE_V1_PLAN.md](/Users/leftcoast/Development/PatzerPatzer/docs/PUZZLE_V1_PLAN.md)
-Status: phased execution plan
+Status: completed initial implementation sequence
 
-This plan converts the Puzzle V1 product doc into a safer execution sequence.
+This document is no longer the active roadmap.
 
-It intentionally does **not** queue the full build at once.
+It now serves as a record of the initial Puzzle V1 build sequence that was used to move the repo
+from "no standalone puzzle product" to a live Puzzle V1 surface.
 
-Rule:
-- define the whole path now
-- queue only the current executable phase
-- promote later phases into the runnable prompt queue only after review gates pass
+Active planning has moved to:
+- [docs/NEXT_STEPS.md](/Users/leftcoast/Development/PatzerPatzer/docs/NEXT_STEPS.md)
 
-Exception:
-- if the user explicitly asks for later-phase prompts to be prebuilt, they may be created ahead of time
-- that does **not** remove the phase gates below
-- later-phase prompts should still be treated as gate-bound and should not be run before the prior phase is accepted
+Current rule:
+- use this file as historical build provenance
+- do not treat it as the current day-to-day execution plan
+- future puzzle work should now be driven by implementation audit, stabilization, and targeted
+  follow-up fixes
 
-## Current Repo Reality
+---
 
-Current relevant seams in the live repo:
+## What This Sequence Achieved
 
-- [src/board/index.ts](/Users/leftcoast/Development/PatzerPatzer/src/board/index.ts)
-  - owns core board lifecycle and move handling
-  - still contains analysis-owned retrospection solve interception
-- [src/main.ts](/Users/leftcoast/Development/PatzerPatzer/src/main.ts)
-  - still renders saved puzzle candidates in the analysis tools area
-- [src/puzzles/extract.ts](/Users/leftcoast/Development/PatzerPatzer/src/puzzles/extract.ts)
-  - still means “saved learnable moments from analysis”, not a standalone puzzle product
-- [src/idb/index.ts](/Users/leftcoast/Development/PatzerPatzer/src/idb/index.ts)
-  - only persists legacy saved puzzle candidates, not a full puzzle library model
-- [src/tree/types.ts](/Users/leftcoast/Development/PatzerPatzer/src/tree/types.ts)
-  - defines `PuzzleCandidate`, which is too small for Puzzle V1
+The initial build sequence established:
 
-Important implication:
-- Puzzle V1 cannot safely start from page UI work.
-- The first phase must establish ownership seams and the canonical puzzle model first.
+- a standalone puzzle product route and header nav presence
+- canonical puzzle domain types
+- puzzle-specific persistence for definitions, attempts, and metadata
+- imported Lichess and user-library source adaptation
+- a puzzle library surface with top-level imported/user distinctions
+- a dedicated puzzle round controller and round rendering
+- strict solve-state ownership and result-state rendering
+- assist-layer concepts like move quality and engine-driven feedback
+- review-side user-library authoring flows
+- due/retry concepts and future rated-mode hooks
 
-## Queue Policy
+It did not complete the product in the UX sense.
 
-Prompt policy for this build:
+That is why the next planning layer is no longer phased buildout. It is audit-and-gap-closure work.
 
-- only the prompts for the active phase belong in the live Claude queue
-- later phases should be planned here, not queued yet
-- phase promotion requires:
-  - review of the prior phase
-  - no unresolved architectural blocker in the prior phase gate
+---
 
-## Phase 0 — Ownership And Data Foundations
+## Completed Initial Sequence
 
-Goal:
+### Phase 0 — Ownership And Data Foundations
+
+Intent:
 - make the shared-board boundary more honest
-- stop board-core work from drifting toward product-specific ownership
 - define the canonical puzzle model before rebuilding puzzle UI
 
-Exit criteria:
-- board core has a consumer seam for mode-specific move reactions
-- analysis-owned retrospection solve logic no longer lives directly in board core
-- canonical puzzle model types exist
-- persistence seams exist for puzzle definitions, metadata, and attempts
-- imported and user-library puzzle sources can both adapt into the canonical model
+Prompt family:
+- `CCP-143` — Add Board Consumer Move Hook
+- `CCP-144` — Move Retrospection Solve Logic Out Of Board Core
+- `CCP-145` — Add Canonical Puzzle Domain Types
+- `CCP-146` — Add Puzzle Library Persistence Owner
+- `CCP-147` — Add Puzzle Source Adapter Seams
 
-Queued runnable prompts for this phase:
+### Phase 1 — Minimal Puzzle Product Shell
 
-1. `CCP-143` — Add Board Consumer Move Hook
-2. `CCP-144` — Move Retrospection Solve Logic Out Of Board Core
-3. `CCP-145` — Add Canonical Puzzle Domain Types
-4. `CCP-146` — Add Puzzle Library Persistence Owner
-5. `CCP-147` — Add Puzzle Source Adapter Seams
+Intent:
+- create the smallest real puzzle product surface
 
-## Phase 1 — Minimal Puzzle Product Shell
-
-Goal:
-- create the smallest real puzzle product surface without solving the full interaction model yet
-
-Prompt candidates for later creation:
-
-1. `CCP-150` — Add Puzzle Library Route Owner
-2. `CCP-151` — Render Top-Level Puzzle Source Navigator
-3. `CCP-152` — Open Minimal Puzzle Round From Canonical Puzzle Definition
-4. `CCP-153` — Add Puzzle Board Layout Shell
-
-Manager prompt:
+Prompt family:
+- `CCP-150` — Add Puzzle Library Route Owner
+- `CCP-151` — Render Top-Level Puzzle Source Navigator
+- `CCP-152` — Open Minimal Puzzle Round From Canonical Puzzle Definition
+- `CCP-153` — Add Puzzle Board Layout Shell
 - `CCP-154` — Puzzle V1 Phase 1 Batch Manager
 
-Gate before promotion:
-- Phase 0 types and adapters must be accepted
-- board ownership seam must be stable enough that puzzle board work does not re-couple to analysis
-- a board capability/ownership matrix must exist documenting what belongs to the shared board subsystem, what belongs to the analysis board only, and what belongs to the puzzle board only (required by V1 plan build step 1, may be produced as a Phase 0 review artifact)
+### Phase 1.5 — Restore Puzzle Header Entry
 
-## Phase 2 — Strict Puzzle Solve Loop
+Intent:
+- reintroduce the top-level `Puzzles` header entry after the shell was real enough to expose
 
-## Phase 1.5 — Restore Puzzle Header Entry
+Prompt family:
+- `CCP-175` — Restore Puzzles Header Entry
 
-Goal:
-- reintroduce the top-level `Puzzles` header entry only after the minimal puzzle product shell is real
+### Phase 2 — Strict Puzzle Solve Loop
 
-Prompt candidate for later creation:
-
-1. `CCP-175` — Restore Puzzles Header Entry
-
-Gate before promotion:
-- Phase 1 route owner, top-level source navigator, minimal round opening, and puzzle board layout shell must all be reviewed and accepted
-- the `#/puzzles` surface must be a real usable product shell, not a placeholder or dead route
-- the header change must stay scoped to navigation visibility and active-state behavior, not broader puzzle UX expansion
-
-## Phase 2 — Strict Puzzle Solve Loop
-
-Goal:
+Intent:
 - make one puzzle round honestly playable using strict stored-solution validation
 
-Prompt candidates for later creation:
-
-1. `CCP-155` — Add Puzzle Round Controller
-2. `CCP-156` — Validate Strict Solution Moves And Auto-Reply
-3. `CCP-157` — Persist Puzzle Attempt Results
-4. `CCP-158` — Render Puzzle Result States And Navigation
-
-Manager prompt:
+Prompt family:
+- `CCP-155` — Add Puzzle Round Controller
+- `CCP-156` — Validate Strict Solution Moves And Auto-Reply
+- `CCP-157` — Persist Puzzle Attempt Results
+- `CCP-158` — Render Puzzle Result States And Navigation
 - `CCP-159` — Puzzle V1 Phase 2 Batch Manager
 
-Gate before promotion:
-- puzzle rounds can open from canonical source data
-- solve state and attempt ownership are defined in code, not just docs
+### Phase 3 — Engine Assist Layer
 
-## Phase 3 — Engine Assist Layer
-
-Goal:
+Intent:
 - add Patzer-specific assist behavior on top of the strict solve loop without replacing it
 
-Prompt candidates for later creation:
-
-1. `CCP-160` — Add Puzzle-Mode Engine Runtime Owner
-2. `CCP-161` — Add `PuzzleMoveQuality` Evaluation Layer
-3. `CCP-162` — Log Assisted-Solve And Reveal Reasons
-4. `CCP-163` — Render Eval-Delta Feedback For Non-Best Moves
-
-Manager prompt:
+Prompt family:
+- `CCP-160` — Add Puzzle-Mode Engine Runtime Owner
+- `CCP-161` — Add `PuzzleMoveQuality` Evaluation Layer
+- `CCP-162` — Log Assisted-Solve And Reveal Reasons
+- `CCP-163` — Render Eval-Delta Feedback For Non-Best Moves
 - `CCP-164` — Puzzle V1 Phase 3 Batch Manager
 
-Gate before promotion:
-- strict solve loop must already be correct without the assist layer
-- engine-assist work must remain clearly separate from correctness state
+### Phase 4 — User Library Authoring
 
-## Phase 4 — User Library Authoring
-
-Goal:
+Intent:
 - let users create and organize personal puzzles from Patzer review workflows
 
-Prompt candidates for later creation:
-
-1. `CCP-165` — Save Learn From Your Mistakes Moments Into User Library
-2. `CCP-166` — Bulk-Save Missed Moments After Review
-3. `CCP-167` — Add Move-List Create-Puzzle Flow
-4. `CCP-168` — Add Flat Collections, Notes, Tags, And Favorites
-
-Manager prompt:
+Prompt family:
+- `CCP-165` — Save Learn From Your Mistakes Moments Into User Library
+- `CCP-166` — Bulk-Save Missed Moments After Review
+- `CCP-167` — Add Move-List Create-Puzzle Flow
+- `CCP-168` — Add Flat Collections, Notes, Tags, And Favorites
 - `CCP-169` — Puzzle V1 Phase 4 Batch Manager
 
-Gate before promotion:
-- canonical puzzle model and persistence must already exist
-- solve history must be global per puzzle, not folder-local
+### Phase 5 — Repetition And Imported-Library Scale
 
-## Phase 5 — Repetition And Imported-Library Scale
-
-Goal:
+Intent:
 - make the library useful over time instead of just loadable once
 
-Prompt candidates for later creation:
-
-1. `CCP-170` — Add Retry-Failed-Earlier Queue
-2. `CCP-171` — Add Minimal Due-Again Metadata And Filters
-3. `CCP-172` — Improve Imported Puzzle Library Filtering And Loading Scale
-4. `CCP-173` — Add Future Hooks For Rated Puzzle Mode
-
-Manager prompt:
+Prompt family:
+- `CCP-170` — Add Retry-Failed-Earlier Queue
+- `CCP-171` — Add Minimal Due-Again Metadata And Filters
+- `CCP-172` — Improve Imported Puzzle Library Filtering And Loading Scale
+- `CCP-173` — Add Future Hooks For Rated Puzzle Mode
 - `CCP-174` — Puzzle V1 Phase 5 Batch Manager
 
-Gate before promotion:
-- attempt history must already be trusted
-- imported and user-library sources must already coexist in one product shell
+---
 
-## Explicit Deferrals
+## Current interpretation
 
-Not part of the current queued phase:
+This sequence should now be read as:
 
-- login or user accounts
-- cloud sync
-- full PGN enrichment for imported Lichess puzzles
-- nested folder trees
-- broad desktop import of arbitrary personal puzzle formats
-- rated puzzle progression
+- the initial implementation record
+- the provenance for how Puzzle V1 got built
+- a source for tracing prompt families
 
-## Why This Order
+It should not be read as:
 
-This order is intentionally conservative.
+- the current next-step plan
+- proof that the product is complete
+- a substitute for a live implementation audit
 
-If Puzzle V1 starts with route/UI work first:
-- the product will guess at a data model that is not built yet
-- board ownership drift will return
-- imported and user-library puzzles will be forced into one shallow object too early
-- later prompts will need follow-up rewrites instead of clean reviewable steps
+---
 
-The current executable phase is therefore not “build the page”.
-It is “make the page rebuildable on honest foundations”.
+## What follows this record
+
+After this sequence, the correct next planning layer is:
+
+1. audit the live Puzzle V1 implementation against the product doc and current repo
+2. identify behavior, UX, and persistence gaps
+3. fix those gaps with small follow-up tasks
+4. update docs so active planning reflects the real post-implementation state
+
+That work is now tracked in [docs/NEXT_STEPS.md](/Users/leftcoast/Development/PatzerPatzer/docs/NEXT_STEPS.md).

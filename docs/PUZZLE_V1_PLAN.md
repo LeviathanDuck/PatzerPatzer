@@ -1,14 +1,23 @@
 # Patzer Pro — Puzzle V1 Plan
 
-This document defines the first real puzzle-product plan for Patzer Pro after the previous
-standalone puzzle implementation was removed from the codebase.
+This document defines the first real puzzle-product plan for Patzer Pro.
+
+Status note:
+- the initial Puzzle V1 implementation sequence has now been completed in code
+- this document should now be read as the product-intent and gap-reference doc for the live
+  puzzle product, not as a statement that Puzzle V1 does not exist yet
 
 It is intentionally stricter than brainstorming notes. Where earlier notes were too broad or
 internally inconsistent, this plan chooses a smaller, safer V1 shape.
 
 ## Current Repo Reality
 
-Patzer Pro already has the foundation for review-driven puzzle work:
+Patzer Pro now has both:
+
+- the original review-driven puzzle foundation work
+- a live standalone Puzzle V1 surface
+
+Review-side foundation already present:
 
 - game import from multiple sources
 - analysis board and Game Review flow
@@ -16,14 +25,22 @@ Patzer Pro already has the foundation for review-driven puzzle work:
 - Learn From Your Mistakes / retrospection candidate building
 - saved puzzle-candidate extraction and persistence
 
-What the repo does not currently have:
+Current live puzzle-product reality:
 
-- a live standalone puzzle product
-- a built-out board ownership architecture
-- a rich puzzle data model for folders, notes, tags, attempt logs, and spaced repetition
+- live `#/puzzles` and `#/puzzles/:id` routes
+- standalone puzzle library and round views
+- canonical puzzle domain types
+- Puzzle V1 persistence for definitions, attempts, and user metadata
+- imported Lichess shard loading plus user-library puzzle support
+- retry/due-again and future rated-mode hooks
+
+What the repo still does not have:
+
+- a fully built-out board ownership architecture
+- a fully stabilized final puzzle UX
 - a server/user-account system
 
-Board ownership is a target state, not current reality.
+Board ownership is still a target state, not fully current reality.
 
 Target board ownership architecture:
 
@@ -34,8 +51,9 @@ Target board ownership architecture:
 Current reality:
 
 - the shared board subsystem is only partially formalized
-- the analysis board is the only accepted live product board today
-- puzzle board must be rebuilt on top of the shared board subsystem after ownership cleanup
+- the analysis board is still the more mature board product
+- the puzzle board now exists as a live second product board, but the shared-board boundary is not
+  yet clean enough to call finished
 
 ## V1 Product Goal
 
