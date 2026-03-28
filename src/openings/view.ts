@@ -10,12 +10,14 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import { parseFen } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
+import { bindBoardResizeHandle } from '../board/index';
 import {
   collections, collectionsLoaded, loadSavedCollections,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
-  boardOrientation, flipBoard,
+  boardOrientation, flipBoard, colorFilter, setColorFilter,
   openCollection, closeSession, navigateToMove, navigateBack, navigateToRoot, navigateToPath,
   removeCollection, renameCollection,
+  treeBuilding, treeBuildProgress, treeBuildTotal,
   importStep, importSource, importUsername, importColor, importError,
   importProgress, lastCreatedCollection, cancelImport,
   importSpeeds, setImportSpeeds, importDateRange, setImportDateRange,
@@ -32,8 +34,11 @@ import {
   explorerEnabled, explorerLoading, explorerError, explorerData,
   toggleExplorer, fetchExplorer, type ExplorerMove,
 } from './explorer';
+import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
+import { engineEnabled, evalCurrentPosition } from '../engine/ctrl';
 
 let _openingsCg: CgApi | undefined;
+let _lastBoardFen: string = '';
 
 /** Render the openings page (library or session). */
 export function renderOpeningsPage(redraw: () => void): VNode {
@@ -94,7 +99,7 @@ function renderCollectionList(items: readonly ResearchCollection[], redraw: () =
   return h('div.openings__collections', items.map(c =>
     h('div.openings__collection-row', { key: c.id }, [
       h('div.openings__collection-main', {
-        on: { click: () => { openCollection(c); redraw(); } },
+        on: { click: () => { openCollection(c, redraw); } },
       }, [
         h('span.openings__collection-name', c.name),
         h('span.openings__collection-meta', [
@@ -291,12 +296,21 @@ function renderDetailsStep(redraw: () => void): VNode {
 
 function renderImportingStep(redraw: () => void): VNode {
   const progress = importProgress();
+
   return h('div.openings__step', [
-    h('h3', 'Importing\u2026'),
-    h('div.openings__progress', progress > 0
-      ? `Found ${progress} game${progress !== 1 ? 's' : ''} so far\u2026`
-      : 'Fetching opponent games\u2026',
-    ),
+    h('h3', 'Importing Games'),
+    // Transfer animation
+    h('div.openings__transfer', [
+      h('div.openings__transfer-track', [
+        h('div.openings__transfer-pulse'),
+        h('div.openings__transfer-pulse.openings__transfer-pulse--delayed'),
+      ]),
+      h('div.openings__transfer-count',
+        progress > 0
+          ? `${progress.toLocaleString()} game${progress !== 1 ? 's' : ''} found`
+          : 'Connecting\u2026',
+      ),
+    ]),
     h('button.openings__cancel-import-btn', {
       on: { click: () => { cancelImport(); redraw(); } },
     }, 'Cancel'),
@@ -318,41 +332,164 @@ function renderDoneStep(redraw: () => void): VNode {
 
 // ========== Session page (board shell) ==========
 
+let _keyHandler: ((e: KeyboardEvent) => void) | null = null;
+
 function renderSessionPage(redraw: () => void): VNode {
   const collection = activeCollection();
   const node = sessionNode();
   const path = sessionPath();
 
-  return h('div.openings.openings--session', [
+  return h('div.openings.openings--session', {
+    hook: {
+      insert: () => {
+        _keyHandler = (e: KeyboardEvent) => {
+          const tag = (e.target as HTMLElement)?.tagName;
+          if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+          if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            navigateBack();
+            syncOpeningsBoard(redraw);
+            redraw();
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            const cur = sessionNode();
+            if (cur && cur.children.length > 0) {
+              navigateToMove(cur.children[0]!.uci);
+              syncOpeningsBoard(redraw);
+              redraw();
+            }
+          } else if (e.key === 'Home') {
+            e.preventDefault();
+            navigateToRoot();
+            syncOpeningsBoard(redraw);
+            redraw();
+          }
+        };
+        document.addEventListener('keydown', _keyHandler);
+      },
+      destroy: () => {
+        if (_keyHandler) {
+          document.removeEventListener('keydown', _keyHandler);
+          _keyHandler = null;
+        }
+      },
+    },
+  }, [
     h('div.openings__session-header', [
       h('button.openings__back-lib-btn', {
-        on: { click: () => { _openingsCg = undefined; closeSession(); redraw(); } },
+        on: { click: () => { _openingsCg = undefined; setCevalFenOverride(null); closeSession(); redraw(); } },
       }, '\u2190 Library'),
       h('h2.openings__session-title', collection?.name ?? 'Opening Research'),
       h('span.openings__session-meta', node
         ? `${node.total} game${node.total !== 1 ? 's' : ''} reached this position`
         : ''),
+      // Color filter: White / Black
+      h('div.openings__color-filter', [
+        h('button.openings__color-btn', {
+          class: { active: colorFilter() === 'white' },
+          on: { click: () => { setColorFilter('white'); _lastBoardFen = ''; syncOpeningsBoard(redraw); redraw(); }},
+          attrs: { title: 'Show games as White' },
+        }, 'White'),
+        h('button.openings__color-btn', {
+          class: { active: colorFilter() === 'black' },
+          on: { click: () => { setColorFilter('black'); _lastBoardFen = ''; syncOpeningsBoard(redraw); redraw(); }},
+          attrs: { title: 'Show games as Black' },
+        }, 'Black'),
+      ]),
       h('button.openings__flip-btn', {
         attrs: { title: `Flip board (viewing as ${boardOrientation()})` },
         on: { click: () => {
           flipBoard();
-          if (_openingsCg) _openingsCg.set({ orientation: boardOrientation() });
+          if (_openingsCg) {
+            _openingsCg.set({ orientation: boardOrientation() });
+          }
           redraw();
         } },
       }, '\u21C5'),
     ]),
     h('div.openings__session-body', [
-      h('div.openings__board-wrap', [
-        renderOpeningsBoard(node, redraw),
+      h('div.openings__board-col', [
+        renderPlayerStrip(collection, 'top'),
+        h('div.openings__board-wrap', [
+          renderOpeningsBoard(node, redraw),
+        ]),
+        renderPlayerStrip(collection, 'bottom'),
       ]),
       h('div.openings__session-panel', [
+        treeBuilding() ? renderTreeBuildBar() : null,
         renderMovePath(path, redraw),
         renderMoveNav(path, redraw),
+        // Engine evaluation block — set FEN override before rendering ceval
+        (() => {
+          const currentFen = node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+          setCevalFenOverride(currentFen);
+          // Re-send position on every redraw when engine is active
+          // (toggleEngine calls evalCurrentPosition which sends the wrong FEN)
+          if (engineEnabled && sharedEngineReady) {
+            requestAnimationFrame(() => {
+              sharedProtocol.setPosition(currentFen);
+              sharedProtocol.go(analysisDepth, multiPv);
+            });
+          }
+          return null;
+        })(),
+        renderCeval(),
+        renderEngineSettings(),
+        engineEnabled ? renderPvBox() : null,
         node ? renderPlayedLinesPanel(node, redraw) : null,
         renderSampleGamesPanel(),
         renderExplorerToggle(node, redraw),
       ]),
     ]),
+  ]);
+}
+
+/**
+ * Player strip showing the target user and opponent labels around the board.
+ * The target (researched player) appears on the side matching their color.
+ */
+function renderPlayerStrip(
+  collection: ResearchCollection | null,
+  position: 'top' | 'bottom',
+): VNode {
+  const target = collection?.target ?? 'Player';
+  const orientation = boardOrientation();
+  const filter = colorFilter();
+
+  // Determine which color label goes on which side of the board
+  // Bottom = the side the board is oriented toward
+  // When orientation = 'white': bottom = white, top = black
+  // When orientation = 'black': bottom = black, top = white
+  const bottomColor: 'white' | 'black' = orientation;
+  const topColor: 'white' | 'black' = orientation === 'white' ? 'black' : 'white';
+  const stripColor = position === 'bottom' ? bottomColor : topColor;
+
+  // Is the target player on this side?
+  let label: string;
+  let isTarget = false;
+  if (filter === 'white') {
+    isTarget = stripColor === 'white';
+    label = isTarget ? target : 'Opponents';
+  } else if (filter === 'black') {
+    isTarget = stripColor === 'black';
+    label = isTarget ? target : 'Opponents';
+  } else {
+    // 'both' — show target on bottom, opponents on top
+    isTarget = position === 'bottom';
+    label = isTarget ? target : 'Opponents';
+  }
+
+  const colorDot = stripColor === 'white' ? '\u25CB' : '\u25CF'; // ○ or ●
+
+  return h('div.openings__player-strip', {
+    class: {
+      'openings__player-strip--target': isTarget,
+      'openings__player-strip--top': position === 'top',
+      'openings__player-strip--bottom': position === 'bottom',
+    },
+  }, [
+    h('span.openings__player-dot', colorDot),
+    h('span.openings__player-name', label),
   ]);
 }
 
@@ -363,9 +500,9 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
     key: 'openings-board',
     hook: {
       insert: (vnode) => {
-        const setup = parseFen(fen);
-        const pos = setup.isOk ? Chess.fromSetup(setup.value) : undefined;
-        const dests = pos?.isOk ? chessgroundDests(pos.value) : new Map();
+        const dests = destsForFen(fen);
+        _lastBoardFen = fen;
+        setCevalFenOverride(fen);
         _openingsCg = makeChessground(vnode.elm as HTMLElement, {
           fen,
           orientation: boardOrientation(),
@@ -374,6 +511,15 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
             free: false,
             color: 'both',
             dests,
+          },
+          drawable: {
+            enabled: true,
+            brushes: {
+              green:    { key: 'g',  color: '#15781B', opacity: 0.8,  lineWidth: 10 },
+              yellow:   { key: 'y',  color: '#e6a520', opacity: 0.55, lineWidth: 8 },
+              paleGrey: { key: 'pg', color: '#888888', opacity: 0.35, lineWidth: 6 },
+              ...FREQ_BRUSHES,
+            },
           },
           events: {
             move: (orig, dest) => {
@@ -392,16 +538,20 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
             },
           },
         });
+        bindBoardResizeHandle(vnode.elm as HTMLElement);
+        // Draw initial arrows for the starting position
+        if (node && _openingsCg) {
+          _openingsCg.setAutoShapes(buildFrequencyArrows(node));
+        }
       },
       postpatch: () => {
-        if (_openingsCg) {
-          const setup = parseFen(fen);
-          const pos = setup.isOk ? Chess.fromSetup(setup.value) : undefined;
-          const dests = pos?.isOk ? chessgroundDests(pos.value) : new Map();
-          _openingsCg.set({ fen, movable: { dests } });
+        // Sync arrows on every redraw (tree may have updated from background build)
+        if (node && _openingsCg) {
+          _openingsCg.setAutoShapes(buildFrequencyArrows(node));
         }
       },
       destroy: () => {
+        _lastBoardFen = '';
         if (_openingsCg) {
           _openingsCg.destroy();
           _openingsCg = undefined;
@@ -411,17 +561,91 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
   });
 }
 
-function syncOpeningsBoard(redraw: () => void): void {
+// --- Cached dests to avoid recomputing for the same FEN ---
+let _cachedDestsFen = '';
+let _cachedDests: Map<string, string[]> = new Map();
+
+function destsForFen(fen: string): Map<string, string[]> {
+  if (fen === _cachedDestsFen) return _cachedDests;
+  const setup = parseFen(fen);
+  const pos = setup.isOk ? Chess.fromSetup(setup.value) : undefined;
+  _cachedDests = pos?.isOk ? chessgroundDests(pos.value) : new Map();
+  _cachedDestsFen = fen;
+  return _cachedDests;
+}
+
+function syncOpeningsBoard(_redraw: () => void): void {
   const node = sessionNode();
   if (!_openingsCg || !node) return;
-  const setup = parseFen(node.fen);
-  const pos = setup.isOk ? Chess.fromSetup(setup.value) : undefined;
-  const dests = pos?.isOk ? chessgroundDests(pos.value) : new Map();
+  const fen = node.fen;
+  // Skip if nothing changed
+  if (fen === _lastBoardFen) return;
+  _lastBoardFen = fen;
   _openingsCg.set({
-    fen: node.fen,
-    movable: { dests },
+    fen,
+    orientation: boardOrientation(),
+    movable: { dests: destsForFen(fen) },
     lastMove: node.uci ? [node.uci.slice(0, 2), node.uci.slice(2, 4)] : undefined,
   });
+  _openingsCg.setAutoShapes(buildFrequencyArrows(node));
+  // Update engine eval for the new position — send directly to protocol
+  // (evalCurrentPosition reads the analysis board's FEN, not the openings FEN)
+  setCevalFenOverride(fen);
+  if (engineEnabled && sharedEngineReady) {
+    sharedProtocol.setPosition(fen);
+    sharedProtocol.go(analysisDepth, multiPv);
+  }
+}
+
+// Pre-built opacity brushes for frequency arrows (registered once at board init).
+const FREQ_BRUSHES: Record<string, { key: string; color: string; opacity: number; lineWidth: number }> = {};
+for (let i = 0; i < 8; i++) {
+  // Pre-register 8 brushes with descending opacity: 0.85, 0.70, 0.55, ...
+  const opacity = Math.max(0.15, 0.85 - i * 0.1);
+  FREQ_BRUSHES[`freq${i}`] = { key: `f${i}`, color: '#15781B', opacity, lineWidth: 10 };
+}
+
+/**
+ * Frequency arrows for child moves.
+ * Same green color, width scales with frequency, opacity via pre-registered brushes.
+ */
+function buildFrequencyArrows(node: OpeningTreeNode): {
+  orig: string; dest: string; brush: string;
+  modifiers?: { lineWidth: number };
+}[] {
+  if (!node.children.length || node.total === 0) return [];
+  const maxTotal = node.children[0]!.total;
+  if (maxTotal === 0) return [];
+
+  const shapes: { orig: string; dest: string; brush: string; modifiers?: { lineWidth: number } }[] = [];
+  const count = Math.min(node.children.length, 8);
+  for (let i = 0; i < count; i++) {
+    const child = node.children[i]!;
+    const ratio = child.total / maxTotal;
+    const width = Math.max(3, Math.round(14 * Math.sqrt(ratio)));
+    shapes.push({
+      orig: child.uci.slice(0, 2),
+      dest: child.uci.slice(2, 4),
+      brush: `freq${i}`,
+      modifiers: { lineWidth: width },
+    });
+  }
+  return shapes;
+}
+
+function renderTreeBuildBar(): VNode {
+  const progress = treeBuildProgress();
+  const total = treeBuildTotal();
+  const pct = total > 0 ? Math.min(100, Math.round((progress / total) * 100)) : 0;
+  return h('div.openings__tree-build', [
+    h('div.openings__tree-build-bar', [
+      h('div.openings__tree-build-fill', {
+        attrs: { style: `width:${pct}%` },
+      }),
+    ]),
+    h('span.openings__tree-build-label',
+      `Building tree\u2026 ${progress.toLocaleString()} / ${total.toLocaleString()} games (${pct}%)`),
+  ]);
 }
 
 function renderMoveNav(path: readonly string[], redraw: () => void): VNode {
@@ -485,42 +709,26 @@ function renderMovePath(path: readonly string[], redraw: () => void): VNode {
 }
 
 function renderPlayedLinesPanel(node: OpeningTreeNode, redraw: () => void): VNode {
-  const total = node.total || 1;
-  const wPct = ((node.white / total) * 100).toFixed(0);
-  const dPct = ((node.draws / total) * 100).toFixed(0);
-  const bPct = ((node.black / total) * 100).toFixed(0);
-
   return h('div.openings__lines-panel', [
-    // Position summary header
-    h('div.openings__pos-summary', [
-      h('span.openings__pos-total', `${node.total} game${node.total !== 1 ? 's' : ''}`),
-      h('span.openings__pos-results', [
-        h('span.openings__pos-w', `W ${wPct}%`),
-        h('span.openings__pos-d', `D ${dPct}%`),
-        h('span.openings__pos-b', `B ${bPct}%`),
+    // Position header: game count + result bar — visually separated from moves
+    h('div.openings__pos-header', [
+      h('div.openings__pos-summary', [
+        h('span.openings__pos-total', `${node.total} game${node.total !== 1 ? 's' : ''}`),
+        h('span.openings__pos-label', 'reached this position'),
       ]),
       renderResultBar(node),
     ]),
     // Played lines
     node.children.length === 0
       ? h('div.openings__moves-empty', 'No further moves in this collection.')
-      : h('div.openings__moves', [
-          h('div.openings__moves-header', [
-            h('span.openings__mh-move', 'Move'),
-            h('span.openings__mh-games', 'Games'),
-            h('span.openings__mh-result', 'Result'),
-          ]),
-          ...node.children.map(child => renderMoveRow(child, node.total, redraw)),
-        ]),
+      : h('div.openings__moves',
+          node.children.map(child => renderMoveRow(child, node.total, redraw)),
+        ),
   ]);
 }
 
 function renderMoveRow(child: OpeningTreeNode, parentTotal: number, redraw: () => void): VNode {
   const pct = parentTotal > 0 ? ((child.total / parentTotal) * 100).toFixed(1) : '0';
-  const total = child.total || 1;
-  const wPct = ((child.white / total) * 100).toFixed(0);
-  const dPct = ((child.draws / total) * 100).toFixed(0);
-  const bPct = ((child.black / total) * 100).toFixed(0);
 
   return h('div.openings__move-row', {
     key: child.uci,
@@ -528,24 +736,37 @@ function renderMoveRow(child: OpeningTreeNode, parentTotal: number, redraw: () =
   }, [
     h('span.openings__move-san', child.san),
     h('span.openings__move-count', `${child.total} (${pct}%)`),
-    h('span.openings__move-results', [
-      h('span.openings__mr-w', `${wPct}%`),
-      h('span.openings__mr-d', `${dPct}%`),
-      h('span.openings__mr-b', `${bPct}%`),
-    ]),
     renderResultBar(child),
   ]);
 }
 
-function renderResultBar(node: OpeningTreeNode): VNode {
-  const total = node.total || 1;
-  const wPct = (node.white / total) * 100;
-  const dPct = (node.draws / total) * 100;
-  const bPct = (node.black / total) * 100;
+/**
+ * Lichess masters-database-style result bar.
+ * Segments use display:inline-block with percentage width — the same
+ * technique as lichess-org/lila ui/analyse/src/explorer/explorerView.ts.
+ * Labels appear inside segments when wide enough.
+ */
+/**
+ * Lichess masters-database-style result bar.
+ * Segments use inline-block with percentage widths set via the style attribute.
+ * Note: Snabbdom's styleModule is not loaded in this app, so we use
+ * attrs.style (string) instead of the style object.
+ * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerView.ts
+ */
+function renderResultBar(node: { white: number; draws: number; black: number }): VNode {
+  const sum = node.white + node.draws + node.black || 1;
+  const wPct = (node.white * 100) / sum;
+  const dPct = (node.draws * 100) / sum;
+  const bPct = (node.black * 100) / sum;
+  const wW = Math.round(wPct * 10) / 10;
+  const dW = Math.round(dPct * 10) / 10;
+  const bW = Math.round(bPct * 10) / 10;
+  // Lichess convention: show label if segment > 12%, show '%' if > 20%
+  const label = (p: number) => p > 12 ? `${Math.round(p)}${p > 20 ? '%' : ''}` : '';
   return h('div.openings__result-bar', [
-    h('div.openings__result-w', { style: { width: `${wPct}%` } }),
-    h('div.openings__result-d', { style: { width: `${dPct}%` } }),
-    h('div.openings__result-b', { style: { width: `${bPct}%` } }),
+    h('span.openings__bar-w', { attrs: { style: `width:${wW}%` } }, label(wPct)),
+    h('span.openings__bar-d', { attrs: { style: `width:${dW}%` } }, label(dPct)),
+    h('span.openings__bar-b', { attrs: { style: `width:${bW}%` } }, label(bPct)),
   ]);
 }
 
@@ -565,6 +786,17 @@ function renderSampleGamesPanel(): VNode {
   ]);
 }
 
+/** Extract game URL from PGN headers (Site for Lichess, Link for Chess.com). */
+function extractGameUrl(pgn: string): string | null {
+  // Try [Link "..."] first (Chess.com)
+  const linkMatch = pgn.match(/\[Link\s+"([^"]+)"\]/);
+  if (linkMatch?.[1]) return linkMatch[1];
+  // Try [Site "..."] (Lichess — contains https://lichess.org/...)
+  const siteMatch = pgn.match(/\[Site\s+"(https?:\/\/[^"]+)"\]/);
+  if (siteMatch?.[1]) return siteMatch[1];
+  return null;
+}
+
 function renderSampleGameRow(game: ResearchGame): VNode {
   const players = [game.white ?? '?', game.black ?? '?'].join(' vs ');
   const result = game.result ?? '*';
@@ -575,8 +807,13 @@ function renderSampleGameRow(game: ResearchGame): VNode {
   const ratings: string[] = [];
   if (game.whiteRating) ratings.push(`W:${game.whiteRating}`);
   if (game.blackRating) ratings.push(`B:${game.blackRating}`);
+  const gameUrl = extractGameUrl(game.pgn);
 
-  return h('div.openings__sample-row', { key: game.id }, [
+  return h('div.openings__sample-row', {
+    key: game.id,
+    class: { 'openings__sample-row--clickable': !!gameUrl },
+    on: gameUrl ? { click: () => window.open(gameUrl, '_blank') } : {},
+  }, [
     h('div.openings__sample-players', [
       h('span', players),
       h('span.openings__sample-result', result),

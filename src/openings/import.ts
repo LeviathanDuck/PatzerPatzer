@@ -8,7 +8,7 @@
  * but produces ResearchGame[] instead of ImportedGame[].
  */
 
-import type { ResearchGame, ResearchSource, ResearchCollection } from './types';
+import type { ResearchGame, ResearchSource, ResearchCollection, ResearchSettings, ResearchProvenance } from './types';
 import { parsePgnHeader, parseRating, timeClassFromTimeControl } from '../import/types';
 import { pgnToTree } from '../tree/pgn';
 import { saveCollection } from './db';
@@ -19,7 +19,7 @@ import {
   setImportStep, setImportError, setImportProgress, setImportAbort,
   setLastCreatedCollection, addCollection,
 } from './ctrl';
-import { filterGamesByDate, importFilters } from '../import/filters';
+import type { ImportDateRange } from '../import/filters';
 
 let _researchIdCounter = 0;
 function nextResearchId(): string {
@@ -55,6 +55,37 @@ function pgnToResearchGame(pgn: string, source: ResearchSource): ResearchGame | 
   };
 }
 
+/**
+ * Pure date-range filter for research games.
+ * Does not read or mutate shared importFilters state.
+ */
+function filterResearchGamesByDate<T extends { date?: string }>(
+  games: T[], dateRange: ImportDateRange, customFrom: string, customTo: string,
+): T[] {
+  if (dateRange === 'all') return games;
+  if (dateRange === 'custom') {
+    return games.filter(g => {
+      const d = g.date?.slice(0, 10);
+      if (!d) return true;
+      if (customFrom && d < customFrom) return false;
+      if (customTo && d > customTo) return false;
+      return true;
+    });
+  }
+  const now = new Date();
+  let cutoff: Date;
+  switch (dateRange) {
+    case '24h':     cutoff = new Date(now.getTime() - 86_400_000);          break;
+    case '1week':   cutoff = new Date(now.getTime() - 7 * 86_400_000);     break;
+    case '1month':  cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 1);   break;
+    case '3months': cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 3);   break;
+    case '1year':   cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1); break;
+    default: return games;
+  }
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return games.filter(g => !g.date || g.date.slice(0, 10) >= cutoffStr);
+}
+
 function splitPgnText(text: string): string[] {
   return text.trim().split(/\n\n(?=\[Event )/).filter(s => s.trim());
 }
@@ -65,7 +96,8 @@ async function fetchLichessResearch(username: string, signal: AbortSignal): Prom
   const max = importMaxGames();
   const speeds = importSpeeds();
   const rated = importRated();
-  const params = new URLSearchParams({ max: String(max) });
+  const params = new URLSearchParams();
+  if (isFinite(max)) params.set('max', String(max));
   if (rated) params.set('rated', 'true');
   if (speeds.size > 0) params.set('perfType', [...speeds].join(','));
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
@@ -210,20 +242,12 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
 
     if (abort.signal.aborted) return;
 
-    // Apply date filtering post-fetch (Lichess API doesn't support date range params).
-    // Temporarily swap the shared importFilters to match the openings filter state,
-    // then restore. This reuses the existing filterGamesByDate logic.
+    const fetchedCount = games.length;
+
+    // Apply date filtering post-fetch using openings-local pure filter.
+    // Does not touch the shared importFilters state used by the header import.
     if (source !== 'pgn') {
-      const savedDateRange = importFilters.dateRange;
-      const savedCustomFrom = importFilters.customFrom;
-      const savedCustomTo = importFilters.customTo;
-      importFilters.dateRange = importDateRange();
-      importFilters.customFrom = importCustomFrom();
-      importFilters.customTo = importCustomTo();
-      games = filterGamesByDate(games);
-      importFilters.dateRange = savedDateRange;
-      importFilters.customFrom = savedCustomFrom;
-      importFilters.customTo = savedCustomTo;
+      games = filterResearchGamesByDate(games, importDateRange(), importCustomFrom(), importCustomTo());
     }
 
     setImportProgress(games.length);
@@ -253,6 +277,23 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
       }
     }
 
+    // Build settings snapshot and provenance
+    const settings: ResearchSettings = {
+      speeds: [...importSpeeds()],
+      dateRange: importDateRange(),
+      rated: importRated(),
+      maxGames: importMaxGames(),
+    };
+    if (settings.dateRange === 'custom') {
+      settings.customFrom = importCustomFrom();
+      settings.customTo = importCustomTo();
+    }
+    const provenance: ResearchProvenance = {
+      fetchedCount,
+      filteredCount: games.length,
+      importedAt: Date.now(),
+    };
+
     // Create and save collection
     const label = source === 'pgn' ? `PGN Upload ${new Date().toLocaleDateString()}` : username;
     const collection: ResearchCollection = {
@@ -264,6 +305,8 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
       games,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      settings,
+      provenance,
     };
 
     await saveCollection(collection);

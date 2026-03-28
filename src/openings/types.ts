@@ -36,6 +36,32 @@ export interface ResearchGame {
   blackRating?: number;
 }
 
+/** Snapshot of the import settings used when a collection was created. */
+export interface ResearchSettings {
+  /** Time control filters active at import time. Empty means "all". */
+  speeds: string[];
+  /** Date range filter. */
+  dateRange: string;
+  /** Custom date range start (YYYY-MM-DD), if dateRange === 'custom'. */
+  customFrom?: string;
+  /** Custom date range end (YYYY-MM-DD), if dateRange === 'custom'. */
+  customTo?: string;
+  /** Whether only rated games were included. */
+  rated: boolean;
+  /** Max games requested. */
+  maxGames: number;
+}
+
+/** Import provenance summary captured at collection creation time. */
+export interface ResearchProvenance {
+  /** Total games fetched before filtering. */
+  fetchedCount: number;
+  /** Total games after all filters were applied. */
+  filteredCount: number;
+  /** Timestamp of the import (Date.now()). */
+  importedAt: number;
+}
+
 /** A saved research collection — one opponent prep session. */
 export interface ResearchCollection {
   /** Stable unique id. */
@@ -54,4 +80,8 @@ export interface ResearchCollection {
   createdAt: number;
   /** When this collection was last updated (Date.now()). */
   updatedAt: number;
+  /** Settings snapshot from import time. Absent on collections created before this field. */
+  settings?: ResearchSettings;
+  /** Import provenance. Absent on collections created before this field. */
+  provenance?: ResearchProvenance;
 }

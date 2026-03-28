@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <!-- magnifying glass -->
+  <circle cx="28" cy="28" r="14" stroke="#E5E7EB" stroke-width="4"/>
+  <line x1="38" y1="38" x2="54" y2="54" stroke="#E5E7EB" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- small clock detail -->
+  <circle cx="28" cy="28" r="6" stroke="#E5E7EB" stroke-width="2"/>
+  <line x1="28" y1="28" x2="28" y2="24" stroke="#E5E7EB" stroke-width="2" stroke-linecap="round"/>
+  <line x1="28" y1="28" x2="32" y2="28" stroke="#E5E7EB" stroke-width="2" stroke-linecap="round"/>
+</svg>
