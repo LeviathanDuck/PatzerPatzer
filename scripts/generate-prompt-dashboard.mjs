@@ -30,7 +30,7 @@ function statusLabel(p) {
     }
   }
   if (p.queueState === 'queued-started') return 'RAN: NEEDS REVIEW';
-  if (p.queueState === 'queued-run') return 'RUN';
+  if (p.queueState === 'queued-run') return 'RAN: READY FOR REVIEW';
   if (p.queueState === 'queued-pending') return 'READY TO RUN';
   if (p.status === 'created') return 'NOT REVIEWED';
   return p.status?.toUpperCase() ?? 'UNKNOWN';
@@ -597,8 +597,8 @@ function computeStatusLabel(p) {
       default: return 'REVIEWED';
     }
   }
-  if (p.queueState === 'queued-started') return 'STARTED';
-  if (p.queueState === 'queued-run') return 'RUN';
+  if (p.queueState === 'queued-started') return 'RAN: NEEDS REVIEW';
+  if (p.queueState === 'queued-run') return 'RAN: READY FOR REVIEW';
   if (p.queueState === 'queued-pending') return 'READY TO RUN';
   if (p.status === 'created') return 'NOT REVIEWED';
   return (p.status || '').toUpperCase() || 'UNKNOWN';
@@ -676,8 +676,8 @@ function renderStats() {
 const STATUS_FILTERS = [
   { label: 'All', value: '' },
   { label: 'Ready', value: 'status--ready' },
-  { label: 'Started', value: 'status--started' },
-  { label: 'Run', value: 'status--run' },
+  { label: 'Ran', value: 'status--started' },
+  { label: 'Ran: Review', value: 'status--run' },
   { label: 'Passed', value: 'status--passed' },
   { label: 'Issues', value: 'status--issues' },
   { label: 'Pending', value: 'status--pending' },
