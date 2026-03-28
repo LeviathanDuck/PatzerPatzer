@@ -815,6 +815,12 @@ export class PuzzleRoundCtrl {
     }
     sessionRecordResult(this.definition.id, sessionResult);
 
+    // Auto-next: advance to the next puzzle after a short delay
+    if (_autoNext && this.status === 'solved') {
+      const redraw = this.redraw;
+      setTimeout(() => { nextPuzzle(redraw); }, 1500);
+    }
+
     // Fire-and-forget persistence — append-only semantics.
     // After saving the attempt, update the puzzle's due-again metadata.
     saveAttempt(attempt)
@@ -1654,6 +1660,10 @@ export async function startImportedSession(
     history: [{ puzzleId: pick.id, result: 'in-progress' }],
   };
 
+  // Persist session + queue
+  saveSessionToStorage();
+  saveQueueToStorage();
+
   // Start prefetching PGNs for upcoming puzzles
   prefetchSessionPgns();
 
@@ -1691,6 +1701,10 @@ export async function retryFailedPuzzles(redraw: () => void): Promise<void> {
 
   // Add retry entries to session history
   _activeSession.history.push({ puzzleId: pick.id, result: 'in-progress' });
+
+  // Persist
+  saveSessionToStorage();
+  saveQueueToStorage();
 
   // Prefetch PGNs for the retry queue
   prefetchSessionPgns();
@@ -1805,6 +1819,7 @@ function prefetchSessionPgns(): void {
 /** Remove a puzzle from the front of the session queue (after it's been opened). */
 function dequeueSessionPuzzle(id: string): void {
   _sessionQueue = _sessionQueue.filter(d => d.id !== id);
+  saveQueueToStorage();
 }
 
 /** Get the PGN for the current puzzle round (fetches if needed). */
@@ -1835,11 +1850,74 @@ export interface ActiveSession {
   history: SessionHistoryEntry[];
 }
 
+const SESSION_STORAGE_KEY = 'puzzleSession';
+const QUEUE_STORAGE_KEY = 'puzzleSessionQueue';
+const AUTONEXT_STORAGE_KEY = 'puzzleAutoNext';
+
 let _activeSession: ActiveSession | null = null;
+let _autoNext = false;
+
+// --- Session persistence (localStorage) ---
+
+function saveSessionToStorage(): void {
+  if (_activeSession) {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(_activeSession));
+  } else {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+}
+
+function saveQueueToStorage(): void {
+  if (_sessionQueue.length > 0) {
+    // Store only IDs + essential fields to keep storage small
+    const compact = _sessionQueue.map(d => d.id);
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(compact));
+  } else {
+    localStorage.removeItem(QUEUE_STORAGE_KEY);
+  }
+}
+
+function restoreSessionFromStorage(): void {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (raw) _activeSession = JSON.parse(raw) as ActiveSession;
+  } catch { /* ignore corrupt data */ }
+  try {
+    const v = localStorage.getItem(AUTONEXT_STORAGE_KEY);
+    if (v === 'true') _autoNext = true;
+  } catch { /* ignore */ }
+}
+
+export function getAutoNext(): boolean { return _autoNext; }
+export function setAutoNext(v: boolean): void {
+  _autoNext = v;
+  localStorage.setItem(AUTONEXT_STORAGE_KEY, String(v));
+}
 
 export function getActiveSession(): ActiveSession | null { return _activeSession; }
 
-export function clearActiveSession(): void { _activeSession = null; }
+export function clearActiveSession(): void {
+  _activeSession = null;
+  _sessionQueue = [];
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+  localStorage.removeItem(QUEUE_STORAGE_KEY);
+}
+
+/**
+ * Get the puzzle ID to resume — the last in-progress puzzle,
+ * or the last completed one if all are done.
+ */
+export function getResumePuzzleId(): string | undefined {
+  if (!_activeSession) return undefined;
+  const inProgress = _activeSession.history.find(e => e.result === 'in-progress');
+  if (inProgress) return inProgress.puzzleId;
+  // All done — return the last entry
+  const last = _activeSession.history[_activeSession.history.length - 1];
+  return last?.puzzleId;
+}
+
+// Restore on module load
+restoreSessionFromStorage();
 
 /** Record the current puzzle as in-progress in the session history. */
 export function sessionRecordStart(puzzleId: string): void {
@@ -1847,6 +1925,7 @@ export function sessionRecordStart(puzzleId: string): void {
   // Avoid duplicates
   if (_activeSession.history.some(e => e.puzzleId === puzzleId && e.result === 'in-progress')) return;
   _activeSession.history.push({ puzzleId, result: 'in-progress' });
+  saveSessionToStorage();
 }
 
 /** Update a session history entry with the solve result. */
@@ -1854,6 +1933,7 @@ export function sessionRecordResult(puzzleId: string, result: 'clean' | 'assiste
   if (!_activeSession) return;
   const entry = _activeSession.history.find(e => e.puzzleId === puzzleId);
   if (entry) entry.result = result;
+  saveSessionToStorage();
 }
 
 /**
@@ -2042,11 +2122,9 @@ export async function startRetrySession(redraw: () => void): Promise<void> {
     retryIndex = 0;
     retrySessionActive = true;
 
-    // Open the first puzzle in the queue
+    // Navigate to the first puzzle in the queue
     const first = retryQueue[0]!;
-    roundState = null;
-    activeRoundCtrl = null;
-    await openPuzzleRound(first.id, redraw);
+    window.location.hash = `#/puzzles/${encodeURIComponent(first.id)}`;
   } catch (e) {
     console.warn('[puzzle-ctrl] startRetrySession failed', e);
     retrySessionActive = false;
@@ -2076,9 +2154,7 @@ export async function nextRetryPuzzle(redraw: () => void): Promise<void> {
   }
 
   const next = retryQueue[retryIndex]!;
-  roundState = null;
-  activeRoundCtrl = null;
-  await openPuzzleRound(next.id, redraw);
+  window.location.hash = `#/puzzles/${encodeURIComponent(next.id)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -2221,9 +2297,7 @@ export async function startDueSession(redraw: () => void): Promise<void> {
     retrySessionActive = true;
 
     const first = retryQueue[0]!;
-    roundState = null;
-    activeRoundCtrl = null;
-    await openPuzzleRound(first.id, redraw);
+    window.location.hash = `#/puzzles/${encodeURIComponent(first.id)}`;
   } catch (e) {
     console.warn('[puzzle-ctrl] startDueSession failed', e);
     retrySessionActive = false;

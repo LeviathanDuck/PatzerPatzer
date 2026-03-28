@@ -3545,6 +3545,58 @@ body[data-board=newspaper] cg-board::before {
   font-weight: 700;
   margin: 0 0 10px;
 }
+.puzzle-library__resume {
+  background: rgba(68, 170, 153, 0.1);
+  border: 1px solid rgba(68, 170, 153, 0.3);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.puzzle-library__resume-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4a9;
+  margin-bottom: 8px;
+}
+.puzzle-library__resume-count {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: #888;
+}
+.puzzle-library__resume-actions {
+  display: flex;
+  gap: 6px;
+}
+.puzzle-library__resume-btn {
+  flex: 1;
+  padding: 6px 12px;
+  background: #4a9;
+  color: #111;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.puzzle-library__resume-btn:hover {
+  background: #5cb;
+}
+.puzzle-library__resume-end {
+  padding: 6px 10px;
+  background: none;
+  color: #888;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.puzzle-library__resume-end:hover {
+  color: #ccc;
+  border-color: #666;
+}
 .puzzle-library__card {
   background: #222;
   border: 1px solid #333;
@@ -4117,6 +4169,20 @@ body[data-board=newspaper] cg-board::before {
 .session-info__stat--failed {
   color: #e05555;
   font-weight: 600;
+}
+.session-info__auto-next {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+}
+.session-info__auto-next input {
+  accent-color: #4a9;
+  cursor: pointer;
 }
 
 .session-history {
