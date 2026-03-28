@@ -4089,8 +4089,12 @@ body[data-board=newspaper] cg-board::before {
 .session-info__stat {
   color: #888;
 }
-.session-info__stat--solved {
+.session-info__stat--clean {
   color: #4a9;
+  font-weight: 600;
+}
+.session-info__stat--assisted {
+  color: #e8a040;
   font-weight: 600;
 }
 .session-info__stat--failed {
@@ -4125,9 +4129,13 @@ body[data-board=newspaper] cg-board::before {
   border: 1px solid #444;
   transition: background 0.2s;
 }
-.session-history__cell--solved {
+.session-history__cell--clean {
   background: #2d8a5e;
   border-color: #3a9;
+}
+.session-history__cell--assisted {
+  background: #8a7a2d;
+  border-color: #bb4;
 }
 .session-history__cell--failed {
   background: #a03030;
@@ -4178,8 +4186,25 @@ body[data-board=newspaper] cg-board::before {
 .puzzle__side {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   min-width: 0;
+  max-height: calc(100vh - 5rem);
+}
+.puzzle__side-top {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 50%;
+  min-height: 0;
+  border-bottom: 1px solid #333;
+}
+.puzzle__side-bottom {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 50%;
+  min-height: 0;
+  overflow-y: auto;
+  gap: 8px;
+  padding-top: 8px;
 }
 
 .puzzle-round__header {
@@ -4234,7 +4259,7 @@ body[data-board=newspaper] cg-board::before {
 .puzzle-moves {
   background: #222;
   border: 1px solid #333;
-  border-radius: 6px;
+  border-radius: 0 0 6px 6px;
   padding: 8px 10px;
   display: flex;
   flex-wrap: wrap;
@@ -4242,6 +4267,9 @@ body[data-board=newspaper] cg-board::before {
   align-items: baseline;
   min-height: 32px;
   font-size: 0.85rem;
+  flex: 1;
+  overflow-y: auto;
+  align-content: flex-start;
 }
 .puzzle-moves__empty {
   color: #666;
@@ -4308,6 +4336,27 @@ body[data-board=newspaper] cg-board::before {
   color: #555;
   margin-left: auto;
 }
+.puzzle-engine__toggle {
+  margin-left: auto;
+  background: #333;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.puzzle-engine__toggle:hover {
+  background: #4a9;
+  color: #111;
+  border-color: #4a9;
+}
+.puzzle-engine__hint {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: #555;
+  font-style: italic;
+}
 .puzzle-engine__close {
   background: none;
   border: none;
@@ -4320,12 +4369,69 @@ body[data-board=newspaper] cg-board::before {
 .puzzle-engine__close:hover {
   color: #ccc;
 }
-.puzzle-engine__line {
-  margin-top: 4px;
+.puzzle-engine__pv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  padding: 4px 0;
+  font-size: 0.82rem;
+}
+.puzzle-engine__pv-move {
+  color: #ccc;
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+.puzzle-engine__pv-move:nth-child(odd) {
+  color: #fff;
+}
+.puzzle-engine__pv-move:nth-child(even) {
+  color: #999;
+}
+.puzzle-engine__pv-loading {
+  color: #666;
+  font-style: italic;
   font-size: 0.78rem;
-  font-family: monospace;
-  color: #888;
-  word-break: break-all;
+}
+.puzzle-engine--off {
+  opacity: 0.7;
+}
+.puzzle-engine--on {
+  border-color: rgba(107, 163, 214, 0.3137254902);
+  background: #1e2228;
+}
+
+.puzzle-info {
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.puzzle-info__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.puzzle-info__summary:hover {
+  color: #fff;
+}
+.puzzle-info__rating {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #ccc;
+}
+.puzzle-info__expand {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: #666;
+}
+.puzzle-info .puzzle-round__info {
+  margin-top: 8px;
+}
+
+.puzzle-ceval {
+  border-bottom: 1px solid #333;
 }
 
 .puzzle__feedback {
@@ -4413,6 +4519,10 @@ body[data-board=newspaper] cg-board::before {
 .puzzle__feedback.good {
   border-color: rgba(34, 197, 94, 0.2509803922);
   background: rgba(34, 197, 94, 0.062745098);
+}
+.puzzle__feedback.fail {
+  border-color: rgba(239, 68, 68, 0.1882352941);
+  background: rgba(239, 68, 68, 0.062745098);
 }
 .puzzle__feedback.solved {
   border-color: rgba(34, 197, 94, 0.1882352941);
