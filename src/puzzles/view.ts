@@ -770,7 +770,19 @@ function renderViewSolutionButtons(rc: PuzzleRoundCtrl, redraw: () => void): VNo
           on: { click: () => { rc.viewSolution(redraw); } },
         }, 'View the solution')
       : null,
+    renderAnalysisToggle(rc, redraw),
   ]);
+}
+
+/** Analysis mode toggle — eyeglasses icon to switch to full game tree. */
+function renderAnalysisToggle(rc: PuzzleRoundCtrl, redraw: () => void): VNode | null {
+  // Only show if game PGN is available (or loading)
+  if (!rc.gamePgn && !rc.gameTree) return null;
+  return h('button.button.button-empty.puzzle__analyse', {
+    class: { active: rc.analysisMode },
+    attrs: { title: rc.analysisMode ? 'Back to puzzle' : 'Analyse full game' },
+    on: { click: () => { rc.toggleAnalysisMode(redraw); } },
+  }, '\uD83D\uDD0D'); // 🔍 magnifying glass
 }
 
 // --- Move quality summary ---
@@ -890,6 +902,7 @@ function renderSolvedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
       h('button.button.button-empty.puzzle__engine-arrows', {
         on: { click: () => { rc.showEngineArrows(redraw); } },
       }, 'Engine Arrows'),
+      renderAnalysisToggle(rc, redraw),
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     renderNextNav(redraw),
@@ -950,6 +963,7 @@ function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
       h('button.button.button-empty.puzzle__engine-arrows', {
         on: { click: () => { rc.showEngineArrows(redraw); } },
       }, 'Engine Arrows'),
+      renderAnalysisToggle(rc, redraw),
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     h('div.puzzle__feedback__nav', [
@@ -1219,32 +1233,26 @@ function renderPuzzleMoveList(def: PuzzleDefinition, rc: PuzzleRoundCtrl | null)
  * uses the shared engine toggle and PV box from src/ceval/view.ts.
  */
 function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
-  // Compute current puzzle FEN for the ceval view
-  const allMoves: string[] = [];
-  if (rc.definition.triggerMove) allMoves.push(rc.definition.triggerMove);
-  allMoves.push(...rc.solutionLine.slice(0, rc.progressPly));
-  const setup = parseFen(rc.definition.startFen);
-  let puzzleFen = rc.definition.startFen;
-  if (setup.isOk) {
-    const pos = Chess.fromSetup(setup.value);
-    if (pos.isOk) {
-      for (const uci of allMoves) {
-        const m = parseUci(uci);
-        if (m) pos.value.play(m);
-      }
-      puzzleFen = makeFen(pos.value.toSetup());
-    }
-  }
+  // Use the current tree node's FEN — this tracks navigation and variations
+  const puzzleFen = rc.treeNode.fen;
 
   // Set FEN override so the shared ceval view renders for the puzzle position
   setCevalFenOverride(puzzleFen);
 
   // If engine is on, ensure it's evaluating the puzzle position (not the analysis board's).
-  // Only send when the FEN changes to avoid spamming the engine on every redraw.
-  if (engineEnabled && sharedEngineReady && puzzleFen !== _lastPuzzleEngineFen) {
-    _lastPuzzleEngineFen = puzzleFen;
-    sharedProtocol.setPosition(puzzleFen);
-    sharedProtocol.go(analysisDepth, multiPv);
+  // Re-send on every render when engine is active — evalCurrentPosition() from the analysis
+  // board may overwrite the position, so we need to keep reasserting the puzzle FEN.
+  if (engineEnabled && sharedEngineReady) {
+    // Use requestAnimationFrame to send AFTER any evalCurrentPosition() from toggle
+    if (puzzleFen !== _lastPuzzleEngineFen) {
+      _lastPuzzleEngineFen = puzzleFen;
+      requestAnimationFrame(() => {
+        sharedProtocol.setPosition(puzzleFen);
+        sharedProtocol.go(analysisDepth, multiPv);
+      });
+    }
+  } else {
+    _lastPuzzleEngineFen = '';
   }
 
   const children: (VNode | null)[] = [];
@@ -1292,6 +1300,7 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
   const clean = session.history.filter(e => e.result === 'clean').length;
   const assisted = session.history.filter(e => e.result === 'assisted').length;
   const failed = session.history.filter(e => e.result === 'failed').length;
+  const completed = clean + assisted + failed;
   const total = session.history.length;
 
   return h('aside.puzzle__session-sidebar', [
@@ -1319,7 +1328,7 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
         h('span.session-info__stat.session-info__stat--clean', `${clean} clean`),
         h('span.session-info__stat.session-info__stat--assisted', `${assisted} assisted`),
         h('span.session-info__stat.session-info__stat--failed', `${failed} failed`),
-        h('span.session-info__stat', `${total} total`),
+        h('span.session-info__stat', `${completed}/${total}`),
       ]),
       h('div.session-info__auto-next', [
         h('span', 'Auto-next'),
