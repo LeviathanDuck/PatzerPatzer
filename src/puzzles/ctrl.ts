@@ -212,6 +212,14 @@ export class PuzzleRoundCtrl {
    * Returns the next expected user move from the solution line,
    * or undefined if the puzzle is complete or out of bounds.
    */
+  /** All moves from startFen to reach the current position (trigger + solution moves played). */
+  private allMovesPlayed(): string[] {
+    const moves: string[] = [];
+    if (this.definition.triggerMove) moves.push(this.definition.triggerMove);
+    moves.push(...this.solutionLine.slice(0, this.progressPly));
+    return moves;
+  }
+
   currentExpectedMove(): string | undefined {
     if (this.progressPly >= this.solutionLine.length) return undefined;
     return this.solutionLine[this.progressPly];
@@ -424,9 +432,9 @@ export class PuzzleRoundCtrl {
    * Even progressPly indices (0, 2, 4…) are user moves in our convention.
    */
   isUserTurn(): boolean {
-    // solutionLine[0] = opponent trigger move, solutionLine[1] = user's first answer.
-    // Odd indices are user moves, even indices are opponent moves.
-    return this.progressPly % 2 === 1;
+    // solutionLine[0] = user's first answer, solutionLine[1] = opponent's reply.
+    // Even indices are user moves, odd indices are opponent moves.
+    return this.progressPly % 2 === 0;
   }
 
   /**
@@ -444,9 +452,7 @@ export class PuzzleRoundCtrl {
     if (!expected) return { accepted: false };
 
     // Compute the FEN before this move for quality evaluation.
-    // Position = startFen + solution moves played so far (up to progressPly).
-    const movesPlayed = this.solutionLine.slice(0, this.progressPly);
-    const posBefore = positionAfterMoves(this.definition.startFen, movesPlayed);
+    const posBefore = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     const fenBefore = posBefore ? makeFen(posBefore.toSetup()) : this.definition.startFen;
 
     const matched = uciMatches(uci, expected);
@@ -473,7 +479,7 @@ export class PuzzleRoundCtrl {
       this.firstWrongPly = this.progressPly;
     }
     this.feedback = 'fail';
-    const reason: FailureReason = this.progressPly <= 1
+    const reason: FailureReason = this.progressPly === 0
       ? 'wrong-first-move'
       : 'wrong-later-move';
     if (!this.failureReasons.includes(reason)) {
@@ -529,8 +535,7 @@ export class PuzzleRoundCtrl {
     }
 
     // Update board state: recompute position, set legal dests for user's next move
-    const movesPlayed = this.solutionLine.slice(0, this.progressPly);
-    const pos = positionAfterMoves(this.definition.startFen, movesPlayed);
+    const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     if (pos) {
       const dests = chessgroundDests(pos) as Map<Key, Key[]>;
       const turn: 'white' | 'black' = pos.turn;
@@ -728,10 +733,8 @@ export class PuzzleRoundCtrl {
     this.puzzleEngineEnabled = true;
     this.usedEngineReveal = true;
 
-    // Compute the current position FEN from startFen + moves played so far.
-    // progressPly tracks how far through the solution line we got.
-    const movesPlayed = this.solutionLine.slice(0, this.progressPly);
-    const pos = positionAfterMoves(this.definition.startFen, movesPlayed);
+    // Compute the current position FEN from startFen + trigger + solution moves played.
+    const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     if (!pos) {
       console.warn('[puzzle-engine] cannot derive position for engine eval');
       this.puzzleEngineEnabled = false;
@@ -954,13 +957,36 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
   // Attach resize handle
   bindBoardResizeHandle(el);
 
-  // --- Trigger move: auto-play the opponent's first move ---
+  // --- Trigger move: auto-play the opponent's last move before the puzzle ---
   // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts playInitialMove
-  // In Lichess puzzles, solutionLine[0] is the trigger move (opponent's move).
-  // We play it with a short delay so the user sees the starting position first.
-  if (rc && rc.status === 'playing' && def.solutionLine.length > 0) {
+  // triggerMove is the opponent's move that creates the puzzle position.
+  // After it plays, the solver gets control at solutionLine[0].
+  if (def.triggerMove) {
     setTimeout(() => {
-      rc.playOpponentReply();
+      const cg = getPuzzleCg();
+      if (!cg) return;
+      _opponentMoving = true;
+      const orig = def.triggerMove!.slice(0, 2) as Key;
+      const dest = def.triggerMove!.slice(2, 4) as Key;
+      cg.move(orig, dest);
+      _opponentMoving = false;
+
+      // Now compute the position after the trigger move and set up for the solver
+      const triggerMoves = [def.triggerMove!];
+      const pos = positionAfterMoves(def.startFen, triggerMoves);
+      if (pos) {
+        const dests = chessgroundDests(pos) as Map<Key, Key[]>;
+        const turn: 'white' | 'black' = pos.turn;
+        cg.set({
+          fen: makeFen(pos.toSetup()),
+          turnColor: turn,
+          movable: {
+            color: rc ? rc.pov : turn,
+            dests,
+            showDests: true,
+          },
+        });
+      }
       redraw();
     }, 500);
   }
