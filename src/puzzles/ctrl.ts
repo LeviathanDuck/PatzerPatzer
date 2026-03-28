@@ -511,17 +511,6 @@ export class PuzzleRoundCtrl {
     const cg = getPuzzleCg();
     if (!cg) return;
 
-    // Apply the opponent move on Chessground
-    // Set guard flag so the move event handler ignores this auto-play
-    _opponentMoving = true;
-    const orig = opponentUci.slice(0, 2) as Key;
-    const dest = opponentUci.slice(2, 4) as Key;
-    cg.move(orig, dest);
-    _opponentMoving = false;
-
-    // Handle promotion piece in UCI (e.g. "e7e8q")
-    // Chessground move() handles the visual; the position update below handles logic.
-
     // Advance progress past the opponent move
     this.progressPly++;
 
@@ -534,13 +523,17 @@ export class PuzzleRoundCtrl {
       return;
     }
 
-    // Update board state: recompute position, set legal dests for user's next move
+    // Apply the opponent move by setting the new position directly.
+    // Using cg.set() instead of cg.move() avoids firing the move event handler.
+    const orig = opponentUci.slice(0, 2) as Key;
+    const dest = opponentUci.slice(2, 4) as Key;
     const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     if (pos) {
       const dests = chessgroundDests(pos) as Map<Key, Key[]>;
-      const turn: 'white' | 'black' = pos.turn;
       cg.set({
-        turnColor: turn,
+        fen: makeFen(pos.toSetup()),
+        turnColor: pos.turn,
+        lastMove: [orig, dest],
         movable: {
           color: this.pov,
           dests,
@@ -865,8 +858,6 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
 
 let puzzleCg: CgApi | undefined;
 let puzzleOrientation: 'white' | 'black' = 'white';
-/** Guard flag: true while an opponent auto-play is in progress. */
-let _opponentMoving = false;
 
 export function getPuzzleCg(): CgApi | undefined { return puzzleCg; }
 export function getPuzzleOrientation(): 'white' | 'black' { return puzzleOrientation; }
@@ -927,7 +918,6 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
     animation: { enabled: true, duration: 300 },
     events: {
       move: (orig, dest, _capturedPiece) => {
-        if (_opponentMoving) return; // ignore auto-played opponent moves
         if (!rc || rc.status !== 'playing') return;
 
         // Build UCI string from the move (promotion not yet handled)
@@ -957,36 +947,30 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
   // Attach resize handle
   bindBoardResizeHandle(el);
 
-  // --- Trigger move: auto-play the opponent's last move before the puzzle ---
+  // --- Trigger move: show the opponent's last move before the puzzle ---
   // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts playInitialMove
-  // triggerMove is the opponent's move that creates the puzzle position.
-  // After it plays, the solver gets control at solutionLine[0].
+  // Instead of cg.move() (which fires the move event and causes double-counting),
+  // compute the post-trigger position and set it directly with lastMove highlight.
   if (def.triggerMove) {
     setTimeout(() => {
       const cg = getPuzzleCg();
       if (!cg) return;
-      _opponentMoving = true;
+      const triggerPos = positionAfterMoves(def.startFen, [def.triggerMove!]);
+      if (!triggerPos) return;
       const orig = def.triggerMove!.slice(0, 2) as Key;
       const dest = def.triggerMove!.slice(2, 4) as Key;
-      cg.move(orig, dest);
-      _opponentMoving = false;
-
-      // Now compute the position after the trigger move and set up for the solver
-      const triggerMoves = [def.triggerMove!];
-      const pos = positionAfterMoves(def.startFen, triggerMoves);
-      if (pos) {
-        const dests = chessgroundDests(pos) as Map<Key, Key[]>;
-        const turn: 'white' | 'black' = pos.turn;
-        cg.set({
-          fen: makeFen(pos.toSetup()),
-          turnColor: turn,
-          movable: {
-            color: rc ? rc.pov : turn,
-            dests,
-            showDests: true,
-          },
-        });
-      }
+      const dests = chessgroundDests(triggerPos) as Map<Key, Key[]>;
+      const solverColor = rc ? rc.pov : triggerPos.turn;
+      cg.set({
+        fen: makeFen(triggerPos.toSetup()),
+        turnColor: triggerPos.turn,
+        lastMove: [orig, dest],
+        movable: {
+          color: solverColor,
+          dests,
+          showDests: true,
+        },
+      });
       redraw();
     }, 500);
   }

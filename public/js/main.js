@@ -10527,11 +10527,6 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     if (!opponentUci) return;
     const cg = getPuzzleCg();
     if (!cg) return;
-    _opponentMoving = true;
-    const orig = opponentUci.slice(0, 2);
-    const dest = opponentUci.slice(2, 4);
-    cg.move(orig, dest);
-    _opponentMoving = false;
     this.progressPly++;
     if (this.progressPly >= this.solutionLine.length) {
       this.status = "solved";
@@ -10539,12 +10534,15 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
       this.redraw();
       return;
     }
+    const orig = opponentUci.slice(0, 2);
+    const dest = opponentUci.slice(2, 4);
     const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     if (pos) {
       const dests = chessgroundDests(pos);
-      const turn = pos.turn;
       cg.set({
-        turnColor: turn,
+        fen: makeFen(pos.toSetup()),
+        turnColor: pos.turn,
+        lastMove: [orig, dest],
         movable: {
           color: this.pov,
           dests
@@ -10785,7 +10783,6 @@ async function openPuzzleRound(id, redraw2) {
 }
 var puzzleCg;
 var puzzleOrientation = "white";
-var _opponentMoving = false;
 function getPuzzleCg() {
   return puzzleCg;
 }
@@ -10824,7 +10821,6 @@ function mountPuzzleBoard(el, redraw2) {
     animation: { enabled: true, duration: 300 },
     events: {
       move: (orig, dest, _capturedPiece) => {
-        if (_opponentMoving) return;
         if (!rc || rc.status !== "playing") return;
         const uci = `${orig}${dest}`;
         const result = rc.submitUserMove(uci);
@@ -10847,26 +10843,22 @@ function mountPuzzleBoard(el, redraw2) {
     setTimeout(() => {
       const cg = getPuzzleCg();
       if (!cg) return;
-      _opponentMoving = true;
+      const triggerPos = positionAfterMoves(def.startFen, [def.triggerMove]);
+      if (!triggerPos) return;
       const orig = def.triggerMove.slice(0, 2);
       const dest = def.triggerMove.slice(2, 4);
-      cg.move(orig, dest);
-      _opponentMoving = false;
-      const triggerMoves = [def.triggerMove];
-      const pos2 = positionAfterMoves(def.startFen, triggerMoves);
-      if (pos2) {
-        const dests2 = chessgroundDests(pos2);
-        const turn2 = pos2.turn;
-        cg.set({
-          fen: makeFen(pos2.toSetup()),
-          turnColor: turn2,
-          movable: {
-            color: rc ? rc.pov : turn2,
-            dests: dests2,
-            showDests: true
-          }
-        });
-      }
+      const dests2 = chessgroundDests(triggerPos);
+      const solverColor2 = rc ? rc.pov : triggerPos.turn;
+      cg.set({
+        fen: makeFen(triggerPos.toSetup()),
+        turnColor: triggerPos.turn,
+        lastMove: [orig, dest],
+        movable: {
+          color: solverColor2,
+          dests: dests2,
+          showDests: true
+        }
+      });
       redraw2();
     }, 500);
   }
