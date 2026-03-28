@@ -1661,6 +1661,45 @@ export async function startImportedSession(
   window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
 }
 
+/**
+ * Retry all failed puzzles from the current session.
+ * Loads the failed puzzle IDs back into the session queue and starts the first one.
+ */
+export async function retryFailedPuzzles(redraw: () => void): Promise<void> {
+  if (!_activeSession) return;
+  const failedIds = _activeSession.history
+    .filter(e => e.result === 'failed' || e.result === 'assisted')
+    .map(e => e.puzzleId);
+  if (failedIds.length === 0) return;
+
+  // Load definitions from IDB
+  const defs: PuzzleDefinition[] = [];
+  for (const id of failedIds) {
+    const def = await getPuzzleDefinition(id);
+    if (def) defs.push(def);
+  }
+  if (defs.length === 0) return;
+
+  // Shuffle for variety
+  for (let i = defs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [defs[i], defs[j]] = [defs[j]!, defs[i]!];
+  }
+
+  const pick = defs[0]!;
+  _sessionQueue = defs.slice(1);
+
+  // Add retry entries to session history
+  _activeSession.history.push({ puzzleId: pick.id, result: 'in-progress' });
+
+  // Prefetch PGNs for the retry queue
+  prefetchSessionPgns();
+
+  roundState = null;
+  activeRoundCtrl = null;
+  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Game PGN fetcher — fetches full game PGNs from Lichess API on demand
 // and caches them in IndexedDB to avoid refetching.

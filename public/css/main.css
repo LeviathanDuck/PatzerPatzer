@@ -4057,6 +4057,23 @@ body[data-board=newspaper] cg-board::before {
   letter-spacing: 0.04em;
   color: #4a9;
 }
+.session-info__actions {
+  display: flex;
+  gap: 6px;
+}
+.session-info__retry {
+  background: none;
+  border: 1px solid #e8a040;
+  border-radius: 3px;
+  color: #e8a040;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.session-info__retry:hover {
+  background: #e8a040;
+  color: #111;
+}
 .session-info__end {
   background: none;
   border: 1px solid #444;
@@ -4145,6 +4162,26 @@ body[data-board=newspaper] cg-board::before {
   background: #8a7a2d;
   border-color: #bb4;
   animation: pulse-active 1.5s ease-in-out infinite;
+}
+.session-history__cell--current {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+.session-history__continue {
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: #4a9;
+  color: #111;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.session-history__continue:hover {
+  background: #5cb;
 }
 
 @keyframes pulse-active {
