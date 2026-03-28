@@ -204,6 +204,8 @@ export interface PuzzleMoveQuality {
   expectedUci: string;
   /** Whether the played move matched the solution (from strict check). */
   matched: boolean;
+  /** FEN of the position before this move was played (for SAN conversion). */
+  fenBefore?: string;
   /** Engine eval of the position before the move (white-perspective cp). */
   evalBefore?: { cp?: number; mate?: number };
   /** Engine eval of the position after the move (white-perspective cp). */

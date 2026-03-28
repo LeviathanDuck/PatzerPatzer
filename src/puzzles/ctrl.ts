@@ -17,8 +17,13 @@ import { makeFen, parseFen } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
+import { makeSan } from 'chessops/san';
+import { scalachessCharPair } from 'chessops/compat';
+import type { TreeNode, TreePath } from '../tree/types';
+import { nodeAtPath, mainlineNodeList, nodeListAt, addNode } from '../tree/ops';
 import { listPuzzleDefinitions, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getMeta, saveMeta } from './puzzleDb';
 import { bindBoardResizeHandle } from '../board/index';
+import { playMoveSound } from '../board/sound';
 import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestOpenings, getManifestTotalCount, type ShardMeta } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
 import type { PuzzleDefinition, PuzzleAttempt, SolveResult, FailureReason, PuzzleSourceKind, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSessionMode } from './types';
@@ -58,6 +63,13 @@ function uciMatches(played: string, expected: string): boolean {
  * Replay a sequence of UCI moves from a FEN to obtain the resulting position.
  * Returns the Chess position after all moves, or undefined on error.
  */
+/** Get SAN for a UCI move at a given position. Returns UCI as fallback. */
+function uciToSanAtPos(pos: Chess, uci: string): string {
+  const move = parseUci(uci);
+  if (!move) return uci;
+  try { return makeSan(pos, move); } catch { return uci; }
+}
+
 function positionAfterMoves(fen: string, uciMoves: string[]): Chess | undefined {
   const setup = parseFen(fen);
   if (setup.isErr) return undefined;
@@ -138,6 +150,94 @@ export interface PuzzleRoundState {
 
 export type RoundStatus = 'playing' | 'solved' | 'failed' | 'viewing';
 export type RoundFeedback = 'none' | 'good' | 'fail';
+/** Lichess-style puzzle mode: 'play' = first attempt, 'try' = retrying after wrong move, 'view' = post-solve. */
+export type PuzzleMode = 'play' | 'try' | 'view';
+
+/**
+ * Build the initial puzzle tree from startFen + triggerMove.
+ * The tree starts with just the root and trigger — solution moves
+ * are appended incrementally as the user plays them correctly.
+ * This prevents future solution moves from leaking into the DOM.
+ */
+function buildInitialPuzzleTree(
+  def: PuzzleDefinition,
+): { root: TreeNode; path: TreePath; node: TreeNode } {
+  // Determine starting ply from FEN
+  const fenParts = def.startFen.split(' ');
+  const fullMove = parseInt(fenParts[5] ?? '1', 10);
+  const isBlack = fenParts[1] === 'b';
+  const startPly = (fullMove - 1) * 2 + (isBlack ? 1 : 0);
+
+  // Root node at startFen
+  const root: TreeNode = {
+    id: '',
+    ply: startPly,
+    fen: def.startFen,
+    children: [],
+  };
+
+  let currentNode = root;
+  let currentPath: TreePath = '';
+
+  // Add trigger move as first child if present
+  if (def.triggerMove) {
+    const triggerNode = makeTreeNode(def.startFen, def.triggerMove, startPly + 1);
+    if (triggerNode) {
+      root.children.push(triggerNode);
+      currentNode = triggerNode;
+      currentPath = triggerNode.id;
+    }
+  }
+
+  return { root, path: currentPath, node: currentNode };
+}
+
+/**
+ * Create a TreeNode for a UCI move from a given FEN.
+ * Returns undefined if the move or FEN is invalid.
+ */
+function makeTreeNode(fen: string, uci: string, ply: number): TreeNode | undefined {
+  const setup = parseFen(fen);
+  if (setup.isErr) return undefined;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return undefined;
+  const move = parseUci(uci);
+  if (!move) return undefined;
+  const san = makeSan(pos.value, move);
+  const id = scalachessCharPair(move);
+  pos.value.play(move);
+  const newFen = makeFen(pos.value.toSetup());
+  return { id, ply, uci, san, fen: newFen, children: [] };
+}
+
+/**
+ * Append the next solution move pair (user move + opponent reply) to the puzzle tree.
+ * Called after the user plays a correct move and the opponent replies.
+ */
+function appendSolutionMoveToTree(rc: PuzzleRoundCtrl, uci: string): void {
+  // Find the FEN at the current tree leaf
+  const parentNode = rc.treeNode;
+  const newPly = parentNode.ply + 1;
+  const newNode = makeTreeNode(parentNode.fen, uci, newPly);
+  if (!newNode) return;
+  addNode(rc.treeRoot, rc.treePath, newNode);
+  rc.treePath = rc.treePath + newNode.id;
+  rc.treeNode = newNode;
+  rc.treeMainline = mainlineNodeList(rc.treeRoot);
+}
+
+/**
+ * After solve/fail, add all remaining solution moves to the tree
+ * so the user can see and navigate the full solution.
+ */
+function completeSolutionTree(rc: PuzzleRoundCtrl): void {
+  // Find where we are in the solution line relative to the tree
+  // The tree has: root -> trigger? -> solution[0..progressPly-1]
+  // We need to add solution[progressPly..end]
+  for (let i = rc.progressPly; i < rc.solutionLine.length; i++) {
+    appendSolutionMoveToTree(rc, rc.solutionLine[i]!);
+  }
+}
 
 export class PuzzleRoundCtrl {
   readonly definition: PuzzleDefinition;
@@ -158,6 +258,10 @@ export class PuzzleRoundCtrl {
   private attemptRecorded: boolean;
   /** The color the solver plays. Opposite of who moves first at startFen. */
   pov: 'white' | 'black';
+  /** Lichess-style mode: 'play' on first attempt, 'try' after wrong move, 'view' after solve/fail+give up. */
+  mode: PuzzleMode;
+  /** Whether "View Solution" should be available. */
+  canViewSolution: boolean;
   private readonly redraw: () => void;
 
   // --- Puzzle engine assist layer ---
@@ -181,6 +285,18 @@ export class PuzzleRoundCtrl {
    */
   moveQualities: PuzzleMoveQuality[];
 
+  /** Full game PGN fetched from Lichess API (available post-fetch, undefined until loaded). */
+  gamePgn: string | undefined;
+
+  // --- Move tree ---
+  // Full tree structure for analysis-board-style move list and navigation.
+  // Built incrementally during play (nodes added as moves are confirmed).
+  // Post-solve, the full solution line is in the tree and variations can be added.
+  treeRoot: TreeNode;
+  treePath: TreePath;
+  treeNode: TreeNode;
+  treeMainline: TreeNode[];
+
   constructor(definition: PuzzleDefinition, redraw: () => void) {
     this.definition = definition;
     this.solutionLine = definition.solutionLine;
@@ -198,6 +314,9 @@ export class PuzzleRoundCtrl {
     this.puzzleEngineEnabled = false;
     this.currentSessionMode = 'practice';
     this.moveQualities = [];
+    this.mode = 'play';
+    this.canViewSolution = false;
+    this.gamePgn = undefined;
 
     // Determine solver's color.
     // startFen has the opponent to move (they play the trigger move).
@@ -206,6 +325,14 @@ export class PuzzleRoundCtrl {
     this.pov = setup.isOk
       ? (setup.value.turn === 'white' ? 'black' : 'white')
       : 'white'; // fallback
+
+    // Build initial tree: root node at startFen, plus trigger move if present.
+    // Solution moves are added incrementally as the user plays correctly.
+    const { root, path, node } = buildInitialPuzzleTree(definition);
+    this.treeRoot = root;
+    this.treePath = path;
+    this.treeNode = node;
+    this.treeMainline = mainlineNodeList(root);
   }
 
   /**
@@ -218,6 +345,26 @@ export class PuzzleRoundCtrl {
     if (this.definition.triggerMove) moves.push(this.definition.triggerMove);
     moves.push(...this.solutionLine.slice(0, this.progressPly));
     return moves;
+  }
+
+  /** Navigate the tree to a given path. Updates treeNode and syncs the board. */
+  setTreePath(path: TreePath): void {
+    const target = nodeAtPath(this.treeRoot, path);
+    if (!target) return;
+    this.treePath = path;
+    this.treeNode = target;
+    this.treeMainline = mainlineNodeList(this.treeRoot);
+  }
+
+  /** Add a variation move at the current tree position (post-solve free play). */
+  addVariationMove(uci: string): TreeNode | undefined {
+    const newNode = makeTreeNode(this.treeNode.fen, uci, this.treeNode.ply + 1);
+    if (!newNode) return undefined;
+    addNode(this.treeRoot, this.treePath, newNode);
+    this.treePath = this.treePath + newNode.id;
+    this.treeNode = newNode;
+    this.treeMainline = mainlineNodeList(this.treeRoot);
+    return newNode;
   }
 
   currentExpectedMove(): string | undefined {
@@ -254,6 +401,7 @@ export class PuzzleRoundCtrl {
         expectedUci,
         matched: true,
         quality: 'best',
+        fenBefore,
       };
       this.moveQualities.push(quality);
       return quality;
@@ -267,7 +415,8 @@ export class PuzzleRoundCtrl {
         playedUci,
         expectedUci,
         matched: false,
-        quality: 'blunder', // cannot evaluate — assume worst
+        quality: 'blunder',
+        fenBefore,
       };
       this.moveQualities.push(quality);
       return quality;
@@ -280,6 +429,7 @@ export class PuzzleRoundCtrl {
         expectedUci,
         matched: false,
         quality: 'blunder',
+        fenBefore,
       };
       this.moveQualities.push(quality);
       return quality;
@@ -294,6 +444,7 @@ export class PuzzleRoundCtrl {
         expectedUci,
         matched: false,
         quality: 'blunder',
+        fenBefore,
       };
       this.moveQualities.push(quality);
       return quality;
@@ -324,7 +475,8 @@ export class PuzzleRoundCtrl {
         playedUci,
         expectedUci,
         matched: false,
-        quality: 'mistake', // default classification without eval data
+        quality: 'mistake',
+        fenBefore,
       };
       this.moveQualities.push(quality);
       return quality;
@@ -347,6 +499,7 @@ export class PuzzleRoundCtrl {
         matched: false,
         evalBefore: eb,
         quality: 'mistake',
+        fenBefore,
       };
       this.moveQualities.push(quality);
       return quality;
@@ -365,8 +518,8 @@ export class PuzzleRoundCtrl {
       expectedUci,
       matched: false,
       evalBefore: eb,
-      // evalAfter will be populated when async engine eval is available
-      quality: 'mistake', // will be refined below if we have enough data
+      fenBefore,
+      quality: 'mistake',
     };
 
     this.moveQualities.push(quality);
@@ -447,6 +600,7 @@ export class PuzzleRoundCtrl {
    */
   submitUserMove(uci: string): { accepted: boolean } {
     if (this.status !== 'playing') return { accepted: false };
+    if (this.mode === 'view') return { accepted: false };
 
     const expected = this.currentExpectedMove();
     if (!expected) return { accepted: false };
@@ -457,24 +611,34 @@ export class PuzzleRoundCtrl {
 
     const matched = uciMatches(uci, expected);
 
+    // Clear any hint highlight
+    const cg = getPuzzleCg();
+    if (cg) cg.setAutoShapes([]);
+
     // Record move quality — this is data collection only, separate from correctness.
-    // evaluateMove never influences the accepted/rejected decision.
     this.evaluateMove(uci, expected, matched, fenBefore);
 
     if (matched) {
+      // Play move sound
+      if (posBefore) playMoveSound(uciToSanAtPos(posBefore, uci));
       this.feedback = 'good';
       this.progressPly++;
+
+      // Append the correct user move to the tree
+      appendSolutionMoveToTree(this, uci);
 
       // Check if puzzle is solved (all solution moves played)
       if (this.progressPly >= this.solutionLine.length) {
         this.status = 'solved';
+        this.mode = 'view';
         this.recordAttempt();
       }
       this.redraw();
       return { accepted: true };
     }
 
-    // Wrong move — track first wrong ply
+    // --- Wrong move: revert piece and allow retry ---
+    // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts applyProgress('fail')
     if (this.firstWrongPly === undefined) {
       this.firstWrongPly = this.progressPly;
     }
@@ -485,10 +649,57 @@ export class PuzzleRoundCtrl {
     if (!this.failureReasons.includes(reason)) {
       this.failureReasons.push(reason);
     }
-    this.status = 'failed';
-    this.recordAttempt();
+
+    // On first wrong move, switch from 'play' to 'try' and send result
+    if (this.mode === 'play') {
+      this.mode = 'try';
+      this.canViewSolution = true;
+    }
+
+    // Revert the piece back to its original square after a short delay
+    this.revertUserMove();
     this.redraw();
     return { accepted: false };
+  }
+
+  /**
+   * Revert the last wrong user move on the board — snap piece back.
+   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts revertUserMove
+   */
+  private revertUserMove(): void {
+    setTimeout(() => {
+      // Restore the board to the current correct position
+      const cg = getPuzzleCg();
+      if (!cg) return;
+      const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
+      if (pos) {
+        const dests = chessgroundDests(pos) as Map<Key, Key[]>;
+        cg.set({
+          fen: makeFen(pos.toSetup()),
+          turnColor: pos.turn,
+          movable: {
+            color: this.pov,
+            dests,
+          },
+        });
+      }
+      this.redraw();
+    }, 300);
+  }
+
+  /**
+   * Give up and view the solution. Marks the puzzle as failed.
+   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts viewSolution
+   */
+  viewSolution(redraw: () => void): void {
+    if (this.mode === 'view') return;
+    this.status = 'failed';
+    this.mode = 'view';
+    this.revealedSolution = true;
+    this.recordAttempt();
+    // Add remaining solution moves to the tree for navigation
+    completeSolutionTree(this);
+    redraw();
   }
 
   /**
@@ -511,7 +722,12 @@ export class PuzzleRoundCtrl {
     const cg = getPuzzleCg();
     if (!cg) return;
 
-    // Advance progress past the opponent move
+    // Play opponent move sound
+    const preOpponentPos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
+    if (preOpponentPos) playMoveSound(uciToSanAtPos(preOpponentPos, opponentUci));
+
+    // Append opponent move to tree and advance progress
+    appendSolutionMoveToTree(this, opponentUci);
     this.progressPly++;
 
     // Check if puzzle is solved after opponent reply (shouldn't happen normally,
@@ -541,7 +757,14 @@ export class PuzzleRoundCtrl {
       });
     }
 
-    this.feedback = 'none';
+    // Reset feedback to 'none' so the view shows "Your turn" again.
+    // A short delay keeps "Best move!" visible during the position transition.
+    setTimeout(() => {
+      if (this.status === 'playing') {
+        this.feedback = 'none';
+        this.redraw();
+      }
+    }, 200);
     this.redraw();
   }
 
@@ -572,8 +795,25 @@ export class PuzzleRoundCtrl {
     };
     if (this.firstWrongPly !== undefined) attempt.firstWrongPly = this.firstWrongPly;
 
-    // Update active session history
-    sessionRecordResult(this.definition.id, this.status === 'solved' ? 'solved' : 'failed');
+    // Update active session history with granular result:
+    // 'clean' = solved with no wrong moves, no hints, no engine assists
+    // 'assisted' = solved but had wrong moves, used hints, or used engine
+    // 'failed' = gave up or skipped
+    let sessionResult: 'clean' | 'assisted' | 'failed';
+    if (this.status !== 'solved') {
+      sessionResult = 'failed';
+    } else if (
+      this.failureReasons.length > 0 ||
+      this.usedHint ||
+      this.usedEngineReveal ||
+      this.revealedSolution ||
+      this.mode === 'try'
+    ) {
+      sessionResult = 'assisted';
+    } else {
+      sessionResult = 'clean';
+    }
+    sessionRecordResult(this.definition.id, sessionResult);
 
     // Fire-and-forget persistence — append-only semantics.
     // After saving the attempt, update the puzzle's due-again metadata.
@@ -612,6 +852,7 @@ export class PuzzleRoundCtrl {
       this.failureReasons.push('skip-pressed');
     }
     this.status = 'failed';
+    this.mode = 'view';
     this.feedback = 'fail';
 
     // Record with skipped flag — bypass normal recordAttempt to set skipped=true
@@ -657,6 +898,16 @@ export class PuzzleRoundCtrl {
     if (!this.failureReasons.includes('hint-used')) {
       this.failureReasons.push('hint-used');
     }
+    // Highlight the origin square of the expected move on the board
+    const expected = this.currentExpectedMove();
+    const cg = getPuzzleCg();
+    if (expected && cg) {
+      const orig = expected.slice(0, 2) as Key;
+      cg.setAutoShapes([{
+        orig,
+        brush: 'green',
+      }]);
+    }
     redraw();
   }
 
@@ -681,9 +932,12 @@ export class PuzzleRoundCtrl {
    */
   showEngineLines(redraw: () => void): void {
     if (this.status !== 'solved' && this.status !== 'failed') return;
-    this.usedEngineReveal = true;
-    if (!this.failureReasons.includes('engine-lines-shown')) {
-      this.failureReasons.push('engine-lines-shown');
+    // Only mark as assisted if used before/during solve — post-solve study is free
+    if (this.status === 'failed') {
+      this.usedEngineReveal = true;
+      if (!this.failureReasons.includes('engine-lines-shown')) {
+        this.failureReasons.push('engine-lines-shown');
+      }
     }
     this.enablePuzzleEngine(redraw);
   }
@@ -695,9 +949,12 @@ export class PuzzleRoundCtrl {
    */
   showEngineArrows(redraw: () => void): void {
     if (this.status !== 'solved' && this.status !== 'failed') return;
-    this.usedEngineReveal = true;
-    if (!this.failureReasons.includes('engine-arrows-shown')) {
-      this.failureReasons.push('engine-arrows-shown');
+    // Only mark as assisted if used before/during solve — post-solve study is free
+    if (this.status === 'failed') {
+      this.usedEngineReveal = true;
+      if (!this.failureReasons.includes('engine-arrows-shown')) {
+        this.failureReasons.push('engine-arrows-shown');
+      }
     }
     redraw();
   }
@@ -718,31 +975,38 @@ export class PuzzleRoundCtrl {
   enablePuzzleEngine(redraw: () => void): void {
     if (this.status !== 'solved' && this.status !== 'failed') return;
     if (this.puzzleEngineEnabled) return;
-    if (!sharedEngineReady) {
-      console.warn('[puzzle-engine] shared engine not ready — cannot enable puzzle eval');
-      return;
-    }
 
     this.puzzleEngineEnabled = true;
-    this.usedEngineReveal = true;
 
-    // Compute the current position FEN from startFen + trigger + solution moves played.
+    // Compute the current position FEN
     const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     if (!pos) {
       console.warn('[puzzle-engine] cannot derive position for engine eval');
       this.puzzleEngineEnabled = false;
       return;
     }
-
     const fenStr = makeFen(pos.toSetup());
 
-    // Send position to the shared Stockfish protocol.
-    // This deliberately bypasses evalCurrentPosition() to avoid coupling
-    // with the analysis board controller's state (node, path, cache, arrows).
-    engineProtocol.setPosition(fenStr);
-    engineProtocol.go(analysisDepth, multiPv);
-
-    redraw();
+    if (sharedEngineReady) {
+      // Engine already running — send position directly
+      engineProtocol.setPosition(fenStr);
+      engineProtocol.go(analysisDepth, multiPv);
+      redraw();
+    } else {
+      // Engine not yet initialized — start it, then evaluate on ready
+      redraw();
+      void engineProtocol.init('/stockfish-web').then(() => {
+        if (this.puzzleEngineEnabled) {
+          engineProtocol.setPosition(fenStr);
+          engineProtocol.go(analysisDepth, multiPv);
+          redraw();
+        }
+      }).catch((err: unknown) => {
+        console.error('[puzzle-engine] failed to load:', err);
+        this.puzzleEngineEnabled = false;
+        redraw();
+      });
+    }
   }
 
   /**
@@ -840,6 +1104,16 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
       sessionRecordStart(def.id);
       // Pre-load user metadata for the editing surface
       loadPuzzleMeta(id).then(() => redraw());
+      // Fetch full game PGN in the background — available for post-solve tree exploration
+      dequeueSessionPuzzle(def.id);
+      loadPuzzlePgn(def).then(pgn => {
+        if (pgn && activeRoundCtrl?.definition.id === def.id) {
+          activeRoundCtrl.gamePgn = pgn;
+          redraw();
+        }
+      });
+      // Prefetch PGNs for next puzzles in the session
+      prefetchSessionPgns();
     }
   } catch (e) {
     roundState = {
@@ -918,26 +1192,34 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
     animation: { enabled: true, duration: 300 },
     events: {
       move: (orig, dest, _capturedPiece) => {
-        if (!rc || rc.status !== 'playing') return;
-
-        // Build UCI string from the move (promotion not yet handled)
+        if (!rc) return;
         const uci = `${orig}${dest}`;
+
+        // Post-solve free play: add variation to tree
+        if (rc.mode === 'view') {
+          const newNode = rc.addVariationMove(uci);
+          if (newNode) {
+            playMoveSound(newNode.san);
+            syncPuzzleBoard();
+          }
+          redraw();
+          return;
+        }
+
+        if (rc.status !== 'playing') return;
+
         const result = rc.submitUserMove(uci);
 
         if (result.accepted) {
           if ((rc as PuzzleRoundCtrl).status === 'solved') {
-            // Puzzle complete — redraw shows solved state
             redraw();
             return;
           }
-          // Correct move but puzzle continues — schedule opponent reply
-          // Short delay (~300ms) before opponent auto-reply, matching Lichess feel
+          // Correct move — schedule opponent reply
           setTimeout(() => {
             rc.playOpponentReply();
           }, 300);
         } else {
-          // Wrong move — fail state. The board shows the piece where it landed
-          // but the puzzle is over. A future phase may add snap-back / retry.
           redraw();
         }
       },
@@ -955,6 +1237,9 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
     setTimeout(() => {
       const cg = getPuzzleCg();
       if (!cg) return;
+      // Play trigger move sound
+      const prePos = positionAfterMoves(def.startFen, []);
+      if (prePos) playMoveSound(uciToSanAtPos(prePos, def.triggerMove!));
       const triggerPos = positionAfterMoves(def.startFen, [def.triggerMove!]);
       if (!triggerPos) return;
       const orig = def.triggerMove!.slice(0, 2) as Key;
@@ -974,6 +1259,16 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
       redraw();
     }, 500);
   }
+
+  // Enable "View the solution" button after 4 seconds (matches Lichess gating)
+  if (rc) {
+    setTimeout(() => {
+      if (rc.mode !== 'view') {
+        rc.canViewSolution = true;
+        redraw();
+      }
+    }, 4000);
+  }
 }
 
 /**
@@ -982,6 +1277,48 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
 export function destroyPuzzleBoard(): void {
   puzzleCg?.destroy();
   puzzleCg = undefined;
+}
+
+/**
+ * Navigate the puzzle tree to a given path and sync the board.
+ * During play, restricts navigation to already-played moves.
+ * Post-solve, allows free navigation.
+ */
+export function puzzleNavigate(path: TreePath, redraw: () => void): void {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+  // During play, don't navigate beyond the current progress
+  if (rc.mode !== 'view') return;
+  rc.setTreePath(path);
+  syncPuzzleBoard();
+  redraw();
+}
+
+/**
+ * Sync the puzzle Chessground board to the current tree node.
+ */
+export function syncPuzzleBoard(): void {
+  const cg = puzzleCg;
+  const rc = activeRoundCtrl;
+  if (!cg || !rc) return;
+  const node = rc.treeNode;
+  const setup = parseFen(node.fen);
+  if (setup.isErr) return;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return;
+  const dests = chessgroundDests(pos.value) as Map<Key, Key[]>;
+  const turn: 'white' | 'black' = pos.value.turn;
+  const lastMove = node.uci ? [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] : undefined;
+  const movableColor = rc.mode === 'view' ? turn : rc.pov;
+  cg.set({
+    fen: node.fen,
+    turnColor: turn,
+    lastMove,
+    movable: {
+      color: movableColor,
+      dests,
+    },
+  });
 }
 
 /**
@@ -1295,10 +1632,18 @@ export async function startImportedSession(
     return;
   }
 
-  // Pick a random puzzle from candidates and start
-  const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
+  // Shuffle candidates for variety
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j]!, candidates[i]!];
+  }
+
+  const pick = candidates[0]!;
   await savePuzzleDefinition(pick);
   _importedSessionError = null;
+
+  // Store the session queue for prefetching and next-puzzle navigation
+  _sessionQueue = candidates.slice(1);
 
   // Create active session tracker
   _activeSession = {
@@ -1309,8 +1654,124 @@ export async function startImportedSession(
     history: [{ puzzleId: pick.id, result: 'in-progress' }],
   };
 
+  // Start prefetching PGNs for upcoming puzzles
+  prefetchSessionPgns();
+
   // Navigate to the puzzle round route
   window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Game PGN fetcher — fetches full game PGNs from Lichess API on demand
+// and caches them in IndexedDB to avoid refetching.
+// ---------------------------------------------------------------------------
+
+const PGN_CACHE_STORE = 'puzzle-pgn-cache';
+const PGN_DB_NAME = 'patzer-puzzle-pgn';
+const PGN_DB_VERSION = 1;
+
+let _pgnDb: IDBDatabase | null = null;
+
+function openPgnDb(): Promise<IDBDatabase> {
+  if (_pgnDb) return Promise.resolve(_pgnDb);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PGN_DB_NAME, PGN_DB_VERSION);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(PGN_CACHE_STORE);
+    };
+    req.onsuccess = () => { _pgnDb = req.result; resolve(req.result); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getCachedPgn(gameId: string): Promise<string | undefined> {
+  const db = await openPgnDb();
+  return new Promise((resolve) => {
+    const tx = db.transaction(PGN_CACHE_STORE, 'readonly');
+    const req = tx.objectStore(PGN_CACHE_STORE).get(gameId);
+    req.onsuccess = () => resolve(req.result as string | undefined);
+    req.onerror = () => resolve(undefined);
+  });
+}
+
+async function cachePgn(gameId: string, pgn: string): Promise<void> {
+  const db = await openPgnDb();
+  return new Promise((resolve) => {
+    const tx = db.transaction(PGN_CACHE_STORE, 'readwrite');
+    tx.objectStore(PGN_CACHE_STORE).put(pgn, gameId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  });
+}
+
+/** Extract the Lichess game ID from a gameUrl like "https://lichess.org/787zsVup/black#48" */
+function extractGameId(gameUrl: string): string | undefined {
+  try {
+    const parts = gameUrl.replace('https://lichess.org/', '').split(/[/#]/);
+    return parts[0] && parts[0].length >= 8 ? parts[0] : undefined;
+  } catch { return undefined; }
+}
+
+/**
+ * Fetch a game PGN from the Lichess API, with IDB cache.
+ * Returns the PGN string, or undefined on failure.
+ */
+export async function fetchGamePgn(gameUrl: string): Promise<string | undefined> {
+  const gameId = extractGameId(gameUrl);
+  if (!gameId) return undefined;
+
+  // Check cache first
+  const cached = await getCachedPgn(gameId);
+  if (cached) return cached;
+
+  // Fetch from Lichess API
+  try {
+    const res = await fetch(`https://lichess.org/game/export/${gameId}?evals=true&clocks=true`, {
+      headers: { 'Accept': 'application/x-chess-pgn' },
+    });
+    if (!res.ok) return undefined;
+    const pgn = await res.text();
+    // Cache for future use
+    await cachePgn(gameId, pgn);
+    return pgn;
+  } catch {
+    return undefined;
+  }
+}
+
+// --- Session PGN prefetch queue ---
+// When a session starts, we store the candidate puzzle queue.
+// As puzzles are opened, we prefetch PGNs for the next few in the background.
+
+const PREFETCH_AHEAD = 3;
+let _sessionQueue: PuzzleDefinition[] = [];
+let _prefetchInFlight = new Set<string>();
+
+/** Prefetch PGNs for the next N puzzles in the session queue. */
+function prefetchSessionPgns(): void {
+  let fetched = 0;
+  for (const def of _sessionQueue) {
+    if (fetched >= PREFETCH_AHEAD) break;
+    const url = def.sourceKind === 'imported-lichess' ? def.gameUrl : undefined;
+    if (!url) continue;
+    const gameId = extractGameId(url);
+    if (!gameId || _prefetchInFlight.has(gameId)) continue;
+    _prefetchInFlight.add(gameId);
+    fetched++;
+    // Fire and forget — cache silently in the background
+    fetchGamePgn(url).finally(() => _prefetchInFlight.delete(gameId));
+  }
+}
+
+/** Remove a puzzle from the front of the session queue (after it's been opened). */
+function dequeueSessionPuzzle(id: string): void {
+  _sessionQueue = _sessionQueue.filter(d => d.id !== id);
+}
+
+/** Get the PGN for the current puzzle round (fetches if needed). */
+export async function loadPuzzlePgn(def: PuzzleDefinition): Promise<string | undefined> {
+  if (def.sourceKind !== 'imported-lichess' || !def.gameUrl) return undefined;
+  return fetchGamePgn(def.gameUrl);
 }
 
 /** Error message from last imported session start attempt. */
@@ -1323,7 +1784,8 @@ export function clearImportedSessionError(): void { _importedSessionError = null
 
 export interface SessionHistoryEntry {
   puzzleId: string;
-  result: 'solved' | 'failed' | 'in-progress';
+  /** 'clean' = correct first try, no assists. 'assisted' = solved but used hints/engine/had wrong moves. 'failed' = gave up. */
+  result: 'clean' | 'assisted' | 'failed' | 'in-progress';
 }
 
 export interface ActiveSession {
@@ -1349,7 +1811,7 @@ export function sessionRecordStart(puzzleId: string): void {
 }
 
 /** Update a session history entry with the solve result. */
-export function sessionRecordResult(puzzleId: string, result: 'solved' | 'failed'): void {
+export function sessionRecordResult(puzzleId: string, result: 'clean' | 'assisted' | 'failed'): void {
   if (!_activeSession) return;
   const entry = _activeSession.history.find(e => e.puzzleId === puzzleId);
   if (entry) entry.result = result;
@@ -1413,6 +1875,17 @@ export async function nextPuzzle(redraw: () => void): Promise<void> {
   const currentDef = roundState?.definition;
   if (!currentDef) return;
 
+  // If there's a session queue, pick the next puzzle from it
+  if (_sessionQueue.length > 0) {
+    const pick = _sessionQueue[0]!;
+    await savePuzzleDefinition(pick);
+    roundState = null;
+    activeRoundCtrl = null;
+    window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+    return;
+  }
+
+  // Fallback: pick randomly from IDB
   const sourceKind: PuzzleSourceKind = currentDef.sourceKind;
   try {
     const all = await listPuzzleDefinitions();
@@ -1424,11 +1897,9 @@ export async function nextPuzzle(redraw: () => void): Promise<void> {
       return;
     }
     const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
-
-    // Reset round state and open the new puzzle
     roundState = null;
     activeRoundCtrl = null;
-    await openPuzzleRound(pick.id, redraw);
+    window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
   } catch (e) {
     console.warn('[puzzle-ctrl] nextPuzzle failed', e);
   }
