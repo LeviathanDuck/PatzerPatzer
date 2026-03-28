@@ -1,6 +1,6 @@
 # Patzer Pro — Architecture Reference
 
-Date: 2026-03-20
+Date: 2026-03-27
 Basis: current source tree read, current build output, current docs reconciliation
 
 This document describes the code that exists today. If this document disagrees with the
@@ -11,30 +11,23 @@ For detailed Lichess retrospection and puzzle-reference research, use:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
 
-Those folders are the current source-backed reference sets for Patzer work involving:
-- learn-from-mistakes
-- puzzle candidate extraction
-- review-to-puzzle logic
-- puzzle-quality heuristics
-- standalone puzzle product behavior
-- puzzle board UX
-- puzzle themes/openings/replay/history flows
-- Storm / Racer style puzzle products
-
 ---
 
 ## Current state
 
-Patzer Pro is no longer a single-file frontend. The app has already moved a substantial amount
-of logic out of `src/main.ts`, but it is still in a mid-refactor state rather than a finished
-Lichess-style module layout.
+Patzer Pro is no longer a single-file frontend. The app has already moved substantial logic out of
+`src/main.ts`, but it is still in a mid-refactor state rather than a finished Lichess-style module
+layout.
+
+The biggest change since the earlier architecture snapshot is that the standalone puzzle product is
+now live in the app.
 
 Current source layout:
 
-```
+```text
 src/
   main.ts                 — app bootstrap, route dispatch, game selection/load flow,
-                            analysis restore, wheel navigation, startup restore
+                            analysis restore, startup restore, puzzle product orchestration
   router.ts               — hash routing
   keyboard.ts             — keyboard navigation + help overlay
 
@@ -65,7 +58,7 @@ src/
     index.ts              — top nav, import panel, global menu
 
   idb/
-    index.ts              — IndexedDB persistence for games, analysis, puzzles
+    index.ts              — legacy IndexedDB persistence for games, analysis, saved candidates
 
   import/
     chesscom.ts           — Chess.com import adapter
@@ -75,7 +68,13 @@ src/
     types.ts              — import/game types + game id counter helpers
 
   puzzles/
-    extract.ts            — puzzle candidate extraction and candidate list render
+    ctrl.ts               — puzzle route owner, library state, round controller
+    view.ts               — puzzle library and round rendering
+    types.ts              — canonical puzzle product types
+    puzzleDb.ts           — Puzzle V1 IndexedDB ownership
+    adapters.ts           — source adapters into canonical puzzle definitions
+    shardLoader.ts        — generated Lichess shard loading/filtering
+    extract.ts            — legacy analysis-side candidate extraction and candidate list render
 
   tree/
     types.ts              — tree types
@@ -89,21 +88,20 @@ src/
 
 ### `src/main.ts`
 
-`src/main.ts` is down to roughly 500 lines and is mostly coordinator code now, but it still owns
-some important cross-system logic:
+`src/main.ts` is still coordinator-heavy and now also wires the standalone puzzle product.
 
-- in-memory game library state: `importedGames`, `selectedGameId`, `selectedGamePgn`
+It still owns:
+- in-memory game library state
 - `loadGame()` orchestration
 - persisted analysis restore for the current game
-- route placeholders for unfinished product areas
-- wheel navigation listener
-- startup restore flow for games and puzzles
+- route dispatch into analysis, games, and puzzle product surfaces
+- startup restore flow for games and legacy saved puzzle candidates
 
-This is much healthier than the previous monolith, but it is not yet a pure bootstrap file.
+This is much healthier than the previous monolith, but it is still not a pure bootstrap file.
 
 ### `src/analyse/`
 
-This directory now owns most analysis rendering:
+This directory owns most analysis rendering:
 
 - move list
 - eval bar
@@ -111,14 +109,24 @@ This directory now owns most analysis rendering:
 - accuracy / blunder summary
 - PGN export controls
 
-`AnalyseCtrl` is still intentionally minimal and holds only cursor state.
+`AnalyseCtrl` remains intentionally small and mostly cursor-oriented.
 
 ### `src/board/`
 
-Board ownership is reasonably clear:
+Board ownership is clearer than before, but still not a finished subsystem contract.
 
+Current reality:
 - `cosmetics.ts` owns theme, zoom, piece selection, filter settings, and board settings UI
 - `index.ts` owns Chessground, move input, sync, promotion UI, board orientation, and player strips
+- both the analysis board and the puzzle board now reuse shared board pieces
+
+Target ownership language still applies:
+- shared board subsystem
+- analysis board
+- puzzle board
+
+But that split should still be treated as a target state rather than a perfectly clean completed
+abstraction.
 
 ### `src/engine/`
 
@@ -128,53 +136,84 @@ Engine behavior is split into:
 - `batch.ts` for full-game review queueing and batch persistence flow
 - `winchances.ts` for pure math and move classification
 
-This is a meaningful improvement, but the engine state model still relies on mutable module-level
-state and some correctness issues remain in stop/start and restore flows.
+This is a real subsystem now, but the engine still runs on the main thread and some correctness
+and lifecycle issues remain.
 
 ### `src/games/`
 
-The Games tab renderers and game metadata helpers live here, but the actual game library state is
-still not extracted into a dedicated games-library module.
+The Games tab renderers and metadata helpers live here, but the actual game library state is still
+not extracted into a dedicated games-library module.
 
-### `src/import/`
+### `src/header/` and `src/router.ts`
 
-Import adapters are extracted and working:
+The standalone puzzle product is now exposed as a first-class app area:
 
-- Chess.com username import
-- Lichess username import
-- PGN paste import
-- shared filters and ID generation helpers
+- `src/router.ts`
+  - live `puzzles` and `puzzle-round` routes
+- `src/header/index.ts`
+  - `Puzzles` appears in the main header nav and mobile nav
+  - active-section logic knows about puzzle routes
 
-### `src/idb/`
+### `src/idb/` and `src/puzzles/puzzleDb.ts`
 
-IndexedDB persistence is consolidated in one module. Current stores:
+Browser-local persistence is now split across two layers:
 
-- `game-library`
-- `analysis-library`
-- `puzzle-library`
+- `src/idb/index.ts`
+  - legacy persistence for imported games, saved analysis, and legacy saved puzzle candidates
+- `src/puzzles/puzzleDb.ts`
+  - Puzzle V1 persistence for canonical puzzle definitions, attempts, and user metadata
+
+This split is functional, but it also means the repo currently has two puzzle-related persistence
+paths that will need long-term cleanup or clearer separation.
 
 ### `src/puzzles/`
 
-The standalone puzzle page/product has been removed. The remaining ownership here is limited to
-analysis-side puzzle candidate extraction in `extract.ts` and saved-candidate support used by the
-analysis/review workflow.
+`src/puzzles/` now owns a real standalone puzzle product:
+
+- `ctrl.ts`
+  - route owner for `#/puzzles` and `#/puzzles/:id`
+  - library counts and list browsing state
+  - imported/user source selection
+  - puzzle round controller ownership
+  - retry/due session entry points
+- `view.ts`
+  - puzzle library surface
+  - inline browse pane
+  - dedicated puzzle round rendering
+  - feedback / result-state / metadata panels
+- `types.ts`
+  - canonical puzzle definition, attempt, metadata, and move-quality types
+- `puzzleDb.ts`
+  - separate Puzzle V1 IndexedDB database
+- `adapters.ts`
+  - adapters from legacy review-derived data and imported Lichess shard records
+- `shardLoader.ts`
+  - imported Lichess shard manifest and shard loading
+- `extract.ts`
+  - legacy analysis-side candidate extraction still used by the analysis board
+
+Important caveat:
+- the puzzle product now exists
+- the analysis-side candidate path still coexists with it
+- that coexistence is functional, but it is also a cleanup target
 
 ---
 
 ## Runtime model
 
-State is still primarily module-level state spread across modules, not a centralized controller
-object. The current app shape is:
+State is still primarily module-level state spread across modules, not a single controller tree.
 
-1. `main.ts` owns top-level app state and orchestration
+The current app shape is:
+
+1. `main.ts` owns top-level app orchestration
 2. module-level subsystems own their local mutable state
 3. view functions rebuild Snabbdom VNodes on `redraw()`
-4. Chessground is updated directly via `cgInstance.set()`
+4. Chessground instances are updated directly
 5. engine output is parsed into live eval state and cached analysis state
 6. IndexedDB restores browser-local data on startup
 
-This is acceptable for the current refactor stage, but it means subsystem boundaries still need to
-be tightened carefully rather than assumed complete.
+This is acceptable for the current refactor stage, but subsystem boundaries still need to be kept
+honest and documented carefully.
 
 ---
 
@@ -187,23 +226,15 @@ The codebase is currently closest to Lichess in these areas:
 - Chessground board ownership pattern
 - move list / column-view rendering approach
 - eval bar / PV / win-chance logic
-- batch-review mental model
+- puzzle round / side-panel / session-flow inspiration
 
 The largest remaining divergences are structural rather than behavioral:
 
 - no composed controller structure around `AnalyseCtrl`
 - engine still runs on the main thread
 - review and restore coordination still lives partly in `main.ts`
-- standalone puzzle product is intentionally absent pending a clean rebuild
-
-For retrospection and puzzle-finder work specifically, the repo now has dedicated research bases:
-- `docs/reference/lichess-retrospection/`
-- `docs/reference/lichess-retrospection-ux/`
-- `docs/reference/lichess-puzzle-ux/`
-
-These folders should be treated as the internal source-backed summary of what Lichess code
-actually proves before adding any Patzer-specific heuristics, UX changes, or product-structure
-assumptions.
+- puzzle product and analysis-side candidate extraction still coexist as two partially overlapping systems
+- board ownership is improved but not yet formalized enough to call complete
 
 ---
 
@@ -213,19 +244,16 @@ These are the main current boundaries that are still unfinished:
 
 1. Game library ownership is split between `main.ts`, `import/types.ts`, and `games/view.ts`.
 2. `loadGame()` and persisted analysis restore still live in `main.ts`.
-3. `analysis-game`, `puzzles`, `openings`, and `stats` routes are still placeholders or partial.
-4. The engine worker path is still not implemented; `ceval/worker.ts` is a stub.
-5. `npm run typecheck` is now wired to a real project config but surfaces 53 type errors that are
-   not yet fixed.
+3. Puzzle V1 exists, but the analysis-side candidate path and Puzzle V1 storage/model still need clearer long-term separation.
+4. `analysis-game`, `openings`, and `stats` still need more honest route/product handling than they have today.
+5. The engine worker path is still not implemented; `ceval/worker.ts` is a stub.
+6. `npm run typecheck` is wired, but the typecheck gate is still not clean.
 
 ---
 
 ## Validation reality
 
-As of 2026-03-20:
+As of 2026-03-27:
 
 - `npm run build` passes
-- `npm run typecheck` now checks the project: `tsconfig.json` was added to the repo root,
-  extending `tsconfig.base.json`. Running it surfaces 53 real type errors across the source tree.
-  These errors are deferred and tracked in `docs/KNOWN_ISSUES.md`. The typecheck gate is wired
-  but not yet clean.
+- `npm run typecheck` is wired to the real project config, but the project still has unresolved type errors

@@ -10175,6 +10175,14 @@ async function loadShard(shardId) {
   _shardCache.set(shardId, records);
   return records;
 }
+function findMatchingShards(manifest, filters) {
+  return manifest.shards.filter((shard) => {
+    if (filters.ratingMin !== void 0 && shard.ratingMax !== void 0 && shard.ratingMax < filters.ratingMin) return false;
+    if (filters.ratingMax !== void 0 && shard.ratingMin !== void 0 && shard.ratingMin > filters.ratingMax) return false;
+    if (filters.theme && !shard.themes.includes(filters.theme)) return false;
+    return true;
+  });
+}
 async function loadFilteredShard(shardId, filters) {
   const records = await loadShard(shardId);
   return records.filter((r) => {
@@ -10186,6 +10194,9 @@ async function loadFilteredShard(shardId, filters) {
 }
 function getManifestThemes() {
   return _manifest?.themes ?? [];
+}
+function getManifestOpenings() {
+  return _manifest?.openings ?? [];
 }
 
 // src/puzzles/adapters.ts
@@ -10449,7 +10460,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
    * Even progressPly indices (0, 2, 4…) are user moves in our convention.
    */
   isUserTurn() {
-    return this.progressPly % 2 === 0;
+    return this.progressPly % 2 === 1;
   }
   /**
    * Validate a user move against the stored solution line.
@@ -10482,7 +10493,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
       this.firstWrongPly = this.progressPly;
     }
     this.feedback = "fail";
-    const reason = this.progressPly === 0 ? "wrong-first-move" : "wrong-later-move";
+    const reason = this.progressPly <= 1 ? "wrong-first-move" : "wrong-later-move";
     if (!this.failureReasons.includes(reason)) {
       this.failureReasons.push(reason);
     }
@@ -10508,9 +10519,11 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     if (!opponentUci) return;
     const cg = getPuzzleCg();
     if (!cg) return;
+    _opponentMoving = true;
     const orig = opponentUci.slice(0, 2);
     const dest = opponentUci.slice(2, 4);
     cg.move(orig, dest);
+    _opponentMoving = false;
     this.progressPly++;
     if (this.progressPly >= this.solutionLine.length) {
       this.status = "solved";
@@ -10560,6 +10573,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
       // when currentSessionMode === 'rated'. Left undefined for practice mode.
     };
     if (this.firstWrongPly !== void 0) attempt.firstWrongPly = this.firstWrongPly;
+    sessionRecordResult(this.definition.id, this.status === "solved" ? "solved" : "failed");
     saveAttempt(attempt).then(() => getAttempts(this.definition.id)).then((allAttempts) => updateDueMeta(this.definition.id, allAttempts)).catch((e) => console.warn("[puzzle-round] attempt save / due-meta update failed", e));
     return attempt;
   }
@@ -10751,6 +10765,7 @@ async function openPuzzleRound(id, redraw2) {
     } else {
       roundState = { definition: def, status: "ready" };
       startPuzzleRound(def, redraw2);
+      sessionRecordStart(def.id);
       loadPuzzleMeta(id).then(() => redraw2());
     }
   } catch (e) {
@@ -10764,6 +10779,7 @@ async function openPuzzleRound(id, redraw2) {
 }
 var puzzleCg;
 var puzzleOrientation = "white";
+var _opponentMoving = false;
 function getPuzzleCg() {
   return puzzleCg;
 }
@@ -10793,14 +10809,16 @@ function mountPuzzleBoard(el, redraw2) {
     viewOnly: false,
     movable: {
       free: false,
-      color: solverColor,
-      dests,
+      // Initially no pieces are movable — the trigger move plays first
+      color: void 0,
+      dests: /* @__PURE__ */ new Map(),
       showDests: true
     },
     drawable: { enabled: true },
-    animation: { enabled: true, duration: 200 },
+    animation: { enabled: true, duration: 300 },
     events: {
       move: (orig, dest, _capturedPiece) => {
+        if (_opponentMoving) return;
         if (!rc || rc.status !== "playing") return;
         const uci = `${orig}${dest}`;
         const result = rc.submitUserMove(uci);
@@ -10818,6 +10836,13 @@ function mountPuzzleBoard(el, redraw2) {
       }
     }
   });
+  bindBoardResizeHandle(el);
+  if (rc && rc.status === "playing" && def.solutionLine.length > 0) {
+    setTimeout(() => {
+      rc.playOpponentReply();
+      redraw2();
+    }, 500);
+  }
 }
 function destroyPuzzleBoard() {
   puzzleCg?.destroy();
@@ -10938,6 +10963,7 @@ async function openPuzzleList(source, redraw2) {
     page: 1,
     pageSize: LIST_PAGE_SIZE,
     availableThemes: [],
+    availableOpenings: [],
     loading: true
   };
   redraw2();
@@ -10959,6 +10985,7 @@ async function openUserLibraryList(redraw2) {
   forSource.sort((a, b) => b.createdAt - a.createdAt);
   puzzleListState.allForSource = forSource;
   puzzleListState.availableThemes = [];
+  puzzleListState.availableOpenings = [];
   puzzleListState.loading = false;
   applyListFilters(puzzleListState);
 }
@@ -10967,6 +10994,7 @@ async function openImportedList(redraw2) {
   _importedShards = manifest.shards;
   _importedShardIndex = 0;
   puzzleListState.availableThemes = getManifestThemes();
+  puzzleListState.availableOpenings = getManifestOpenings();
   if (_importedShards.length > 0) {
     await loadNextImportedShard();
   }
@@ -10990,17 +11018,69 @@ async function loadNextImportedShard() {
   applyListFilters(puzzleListState);
   return true;
 }
-async function loadMoreImportedShards(redraw2) {
-  if (!puzzleListState || puzzleListState.source !== "imported-lichess") return;
-  puzzleListState.loading = true;
-  redraw2();
-  const loaded = await loadNextImportedShard();
-  puzzleListState.loading = false;
-  if (!loaded) console.log("[puzzle-ctrl] all shards loaded");
-  redraw2();
+async function startImportedSession(themes, openings, ratingMin, ratingMax, redraw2) {
+  const manifest = await loadManifest();
+  const filters = {};
+  if (ratingMin !== void 0) filters.ratingMin = ratingMin;
+  if (ratingMax !== void 0) filters.ratingMax = ratingMax;
+  const matchingShards = findMatchingShards(manifest, filters);
+  if (matchingShards.length === 0) {
+    console.warn("[puzzle-ctrl] no shards match filters");
+    return;
+  }
+  const candidates = [];
+  for (const shard of matchingShards) {
+    const records = await loadFilteredShard(shard.id, filters);
+    for (const r of records) {
+      if (themes.length > 0 && !themes.some((t) => r.themes.includes(t))) continue;
+      if (openings.length > 0 && !openings.some((o) => r.openingTags.includes(o))) continue;
+      const def = lichessShardRecordToDefinition(r);
+      if (def) candidates.push(def);
+      if (candidates.length >= 200) break;
+    }
+    if (candidates.length >= 200) break;
+  }
+  if (candidates.length === 0) {
+    console.warn("[puzzle-ctrl] no imported puzzles match selection");
+    _importedSessionError = "No puzzles match your selection. Try widening the rating range or selecting different themes.";
+    redraw2();
+    return;
+  }
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  await savePuzzleDefinition(pick);
+  _importedSessionError = null;
+  _activeSession = {
+    themes: [...themes],
+    openings: [...openings],
+    ratingMin: ratingMin ?? 0,
+    ratingMax: ratingMax ?? 3200,
+    history: [{ puzzleId: pick.id, result: "in-progress" }]
+  };
+  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
 }
-function hasMoreImportedShards() {
-  return _importedShardIndex < _importedShards.length;
+var _importedSessionError = null;
+function getImportedSessionError() {
+  return _importedSessionError;
+}
+function clearImportedSessionError() {
+  _importedSessionError = null;
+}
+var _activeSession = null;
+function getActiveSession() {
+  return _activeSession;
+}
+function clearActiveSession() {
+  _activeSession = null;
+}
+function sessionRecordStart(puzzleId) {
+  if (!_activeSession) return;
+  if (_activeSession.history.some((e) => e.puzzleId === puzzleId && e.result === "in-progress")) return;
+  _activeSession.history.push({ puzzleId, result: "in-progress" });
+}
+function sessionRecordResult(puzzleId, result) {
+  if (!_activeSession) return;
+  const entry = _activeSession.history.find((e) => e.puzzleId === puzzleId);
+  if (entry) entry.result = result;
 }
 function filterPuzzleList(filters, redraw2) {
   if (!puzzleListState) return;
@@ -11023,9 +11103,7 @@ async function selectPuzzleFromList(id, redraw2) {
       await savePuzzleDefinition(def);
     }
   }
-  roundState = null;
-  activeRoundCtrl = null;
-  await openPuzzleRound(id, redraw2);
+  window.location.hash = `#/puzzles/${encodeURIComponent(id)}`;
 }
 async function nextPuzzle(redraw2) {
   const currentDef = roundState?.definition;
@@ -11321,13 +11399,10 @@ function renderLibrarySidebar(redraw2) {
 }
 function renderPuzzleLibrary(redraw2) {
   const listState = getPuzzleListState();
-  if (listState) {
-    return renderPuzzleList(listState, redraw2);
-  }
   return h("div.puzzle-page", [
     h("div.puzzle.puzzle--library", [
-      // Library sidebar (left)
-      renderLibrarySidebar(redraw2),
+      // Sidebar — shows browse pane when active, otherwise source cards
+      listState ? renderInlineBrowsePane(listState, redraw2) : renderLibrarySidebar(redraw2),
       // Board area — idle decorative board, always visible
       h("div.puzzle__board.main-board", [
         h("div.cg-wrap", {
@@ -11456,47 +11531,343 @@ function renderPuzzleListRow(def, redraw2) {
     }
   }, cells);
 }
-function renderPuzzleList(ls, redraw2) {
+function renderInlineBrowsePane(ls, redraw2) {
   if (ls.loading) {
-    return h("div.puzzle-page", [
-      h("div.puzzle-list", [
-        h("span.puzzle-list__loading", "Loading puzzles\u2026")
-      ])
+    return h("aside.puzzle__side.puzzle-library__sidebar", [
+      h("span.puzzle-list__loading", "Loading puzzles\u2026")
     ]);
   }
+  if (ls.source === "imported-lichess") {
+    return renderImportedSessionBuilder(ls, redraw2);
+  }
   const hasMore = ls.visible.length < ls.filtered.length;
-  return h("div.puzzle-page", [
-    h("div.puzzle-list", [
-      h("div.puzzle-list__header", [
-        h("a.puzzle-list__back", {
-          on: { click: () => closePuzzleList(redraw2) }
-        }, "\u2190 Back to Library"),
-        h("h2.puzzle-list__title", sourceLabel(ls.source))
+  return h("aside.puzzle__side.puzzle-library__sidebar.puzzle-list", [
+    h("div.puzzle-list__header", [
+      h("a.puzzle-list__back", {
+        on: { click: () => closePuzzleList(redraw2) }
+      }, "\u2190 Back"),
+      h("h2.puzzle-list__title", sourceLabel(ls.source)),
+      h("span.puzzle-list__count", `${ls.filtered.length} puzzle${ls.filtered.length === 1 ? "" : "s"}`)
+    ]),
+    renderPuzzleListFilterBar(ls, redraw2),
+    ls.filtered.length === 0 ? h("div.puzzle-list__empty", "No puzzles match the current filters.") : h("div.puzzle-list__scroll", [
+      h("div.puzzle-list__row.puzzle-list__row--header", [
+        h("span.puzzle-list__row-id", "Puzzle"),
+        h("span.puzzle-list__row-themes", "Reason"),
+        h("span.puzzle-list__row-moves", "Moves")
       ]),
-      renderPuzzleListFilterBar(ls, redraw2),
-      ls.filtered.length === 0 ? h("div.puzzle-list__empty", "No puzzles match the current filters.") : h("div.puzzle-list__rows", [
-        // Column headers
-        h("div.puzzle-list__row.puzzle-list__row--header", [
-          h("span.puzzle-list__row-id", "Puzzle"),
-          ...ls.source === "imported-lichess" ? [h("span.puzzle-list__row-rating", "Rating")] : [],
-          h(
-            "span.puzzle-list__row-themes",
-            ls.source === "imported-lichess" ? "Themes" : "Reason"
-          ),
-          h("span.puzzle-list__row-moves", "Length")
-        ]),
-        ...ls.visible.map((def) => renderPuzzleListRow(def, redraw2))
-      ]),
+      ...ls.visible.map((def) => renderPuzzleListRow(def, redraw2)),
       hasMore ? h("button.button.puzzle-list__load-more", {
         on: { click: () => loadMorePuzzles(redraw2) }
-      }, `Load More (${ls.visible.length} of ${ls.filtered.length})`) : null,
-      // For imported puzzles: load more shards from the database
-      ls.source === "imported-lichess" && hasMoreImportedShards() ? h("button.button.button-empty.puzzle-list__load-shards", {
-        attrs: { disabled: ls.loading },
-        on: { click: () => loadMoreImportedShards(redraw2) }
-      }, ls.loading ? "Loading shard\u2026" : "Load More Puzzles from Database") : null
+      }, `Load More (${ls.visible.length} of ${ls.filtered.length})`) : null
     ])
   ]);
+}
+var THEME_CATEGORIES = [
+  ["Motifs", [
+    "fork",
+    "pin",
+    "skewer",
+    "discoveredAttack",
+    "doubleCheck",
+    "sacrifice",
+    "hangingPiece",
+    "trappedPiece",
+    "exposedKing",
+    "attackingF2F7",
+    "capturingDefender",
+    "kingsideAttack",
+    "queensideAttack",
+    "advancedPawn"
+  ]],
+  ["Advanced", [
+    "attraction",
+    "clearance",
+    "deflection",
+    "interference",
+    "intermezzo",
+    "quietMove",
+    "xRayAttack",
+    "zugzwang",
+    "defensiveMove",
+    "discoveredCheck",
+    "collinearMove"
+  ]],
+  ["Mates", [
+    "mate",
+    "mateIn1",
+    "mateIn2",
+    "mateIn3",
+    "mateIn4",
+    "mateIn5"
+  ]],
+  ["Mate Patterns", [
+    "backRankMate",
+    "smotheredMate",
+    "hookMate",
+    "anastasiaMate",
+    "arabianMate",
+    "bodenMate",
+    "dovetailMate",
+    "swallowstailMate",
+    "morphysMate",
+    "operaMate",
+    "pillsburysMate"
+  ]],
+  ["Phases", [
+    "opening",
+    "middlegame",
+    "endgame",
+    "rookEndgame",
+    "bishopEndgame",
+    "pawnEndgame",
+    "knightEndgame",
+    "queenEndgame",
+    "queenRookEndgame"
+  ]],
+  ["Special Moves", [
+    "castling",
+    "enPassant",
+    "promotion",
+    "underPromotion"
+  ]],
+  ["Goals", [
+    "equality",
+    "advantage",
+    "crushing"
+  ]],
+  ["Lengths", [
+    "oneMove",
+    "short",
+    "long",
+    "veryLong"
+  ]]
+];
+var _selectedThemes = /* @__PURE__ */ new Set();
+var _selectedOpenings = /* @__PURE__ */ new Set();
+var _sessionRatingMin = 800;
+var _sessionRatingMax = 2400;
+var _sessionStarting = false;
+var _sessionTab = "themes";
+var _openingSearch = "";
+function renderImportedSessionBuilder(ls, redraw2) {
+  const totalSelected = _selectedThemes.size + _selectedOpenings.size;
+  return h("aside.puzzle__side.puzzle-library__sidebar.puzzle-list.puzzle-session", [
+    h("div.puzzle-list__header", [
+      h("a.puzzle-list__back", {
+        on: { click: () => {
+          _selectedThemes = /* @__PURE__ */ new Set();
+          _selectedOpenings = /* @__PURE__ */ new Set();
+          _openingSearch = "";
+          _sessionStarting = false;
+          _sessionTab = "themes";
+          closePuzzleList(redraw2);
+        } }
+      }, "\u2190 Back"),
+      h("h2.puzzle-list__title", "Imported Puzzles")
+    ]),
+    // Rating range sliders — stacked
+    h("div.puzzle-session__rating", [
+      h("label.puzzle-session__label", "Rating Range"),
+      h("div.puzzle-session__range-line", [
+        h("span.puzzle-session__range-label", "Min"),
+        h("input.puzzle-session__range", {
+          key: "rating-min-slider",
+          attrs: { type: "range", min: 0, max: 3200, step: 50, value: _sessionRatingMin },
+          props: { value: _sessionRatingMin },
+          on: { input: (e) => {
+            const v = parseInt(e.target.value, 10);
+            _sessionRatingMin = Math.min(v, _sessionRatingMax - 50);
+            redraw2();
+          } }
+        }),
+        h("input.puzzle-session__range-val", {
+          key: "rating-min-num",
+          attrs: { type: "number", min: 0, max: 3200, step: 50, value: _sessionRatingMin },
+          props: { value: _sessionRatingMin },
+          on: { change: (e) => {
+            const v = parseInt(e.target.value, 10);
+            if (!isNaN(v)) _sessionRatingMin = Math.max(0, Math.min(v, _sessionRatingMax - 50));
+            redraw2();
+          } },
+          hook: { update: (_old, vnode3) => {
+            vnode3.elm.value = String(_sessionRatingMin);
+          } }
+        })
+      ]),
+      h("div.puzzle-session__range-line", [
+        h("span.puzzle-session__range-label", "Max"),
+        h("input.puzzle-session__range", {
+          key: "rating-max-slider",
+          attrs: { type: "range", min: 0, max: 3200, step: 50, value: _sessionRatingMax },
+          props: { value: _sessionRatingMax },
+          on: { input: (e) => {
+            const v = parseInt(e.target.value, 10);
+            _sessionRatingMax = Math.max(v, _sessionRatingMin + 50);
+            redraw2();
+          } }
+        }),
+        h("input.puzzle-session__range-val", {
+          key: "rating-max-num",
+          attrs: { type: "number", min: 0, max: 3200, step: 50, value: _sessionRatingMax },
+          props: { value: _sessionRatingMax },
+          on: { change: (e) => {
+            const v = parseInt(e.target.value, 10);
+            if (!isNaN(v)) _sessionRatingMax = Math.min(3200, Math.max(v, _sessionRatingMin + 50));
+            redraw2();
+          } },
+          hook: { update: (_old, vnode3) => {
+            vnode3.elm.value = String(_sessionRatingMax);
+          } }
+        })
+      ])
+    ]),
+    // Tab selector: Themes | Openings
+    h("div.puzzle-session__tabs", [
+      h("button.puzzle-session__tab", {
+        class: { active: _sessionTab === "themes" },
+        on: { click: () => {
+          _sessionTab = "themes";
+          redraw2();
+        } }
+      }, `Themes${_selectedThemes.size > 0 ? ` (${_selectedThemes.size})` : ""}`),
+      h("button.puzzle-session__tab", {
+        class: { active: _sessionTab === "openings" },
+        on: { click: () => {
+          _sessionTab = "openings";
+          redraw2();
+        } }
+      }, `Openings${_selectedOpenings.size > 0 ? ` (${_selectedOpenings.size})` : ""}`)
+    ]),
+    // Tab content
+    _sessionTab === "themes" ? renderThemeList(ls, redraw2) : renderOpeningList(ls, redraw2),
+    // Error message
+    getImportedSessionError() ? h("div.puzzle-session__error", getImportedSessionError()) : null,
+    // Start button
+    h("div.puzzle-session__actions", [
+      totalSelected > 0 ? h(
+        "span.puzzle-session__selection-hint",
+        `${totalSelected} selected`
+      ) : h("span.puzzle-session__selection-hint", "Select themes/openings or start with all"),
+      h("button.button.puzzle-session__start", {
+        attrs: { disabled: _sessionStarting },
+        on: { click: () => {
+          _sessionStarting = true;
+          clearImportedSessionError();
+          redraw2();
+          startImportedSession(
+            [..._selectedThemes],
+            [..._selectedOpenings],
+            _sessionRatingMin,
+            _sessionRatingMax,
+            redraw2
+          ).finally(() => {
+            _sessionStarting = false;
+            redraw2();
+          });
+        } }
+      }, _sessionStarting ? "Loading\u2026" : "Start Puzzles")
+    ])
+  ]);
+}
+function renderThemeList(ls, redraw2) {
+  const available = new Set(ls.availableThemes);
+  return h("div.puzzle-session__themes", [
+    ...THEME_CATEGORIES.map(([category, themes]) => {
+      const visibleThemes = themes.filter((t) => available.has(t));
+      if (visibleThemes.length === 0) return null;
+      return h("div.puzzle-session__category", [
+        h("div.puzzle-session__category-label", category),
+        ...visibleThemes.map(
+          (theme) => h("div.puzzle-session__theme-row", {
+            class: { active: _selectedThemes.has(theme) },
+            on: { click: () => {
+              const s = new Set(_selectedThemes);
+              if (s.has(theme)) s.delete(theme);
+              else s.add(theme);
+              _selectedThemes = s;
+              redraw2();
+            } }
+          }, [
+            h("span.puzzle-session__checkbox", _selectedThemes.has(theme) ? "\u2611" : "\u2610"),
+            h("span.puzzle-session__theme-name", formatThemeName(theme))
+          ])
+        )
+      ]);
+    }).filter(Boolean)
+  ]);
+}
+function renderOpeningList(ls, redraw2) {
+  const query = _openingSearch.toLowerCase();
+  const allOpenings = ls.availableOpenings;
+  const filtered = query ? allOpenings.filter((o) => formatOpeningName(o).toLowerCase().includes(query)) : allOpenings;
+  const groups = /* @__PURE__ */ new Map();
+  for (const o of filtered) {
+    const parts = o.split("_");
+    const family = parts.length >= 2 ? `${parts[0]}_${parts[1]}` : parts[0];
+    if (!groups.has(family)) groups.set(family, []);
+    groups.get(family).push(o);
+  }
+  return h("div.puzzle-session__themes", [
+    // Search bar
+    h("div.puzzle-session__search", [
+      h("input.puzzle-session__search-input", {
+        attrs: { type: "text", placeholder: "Search openings\u2026" },
+        props: { value: _openingSearch },
+        on: { input: (e) => {
+          _openingSearch = e.target.value;
+          redraw2();
+        } }
+      })
+    ]),
+    filtered.length === 0 ? h("div.puzzle-list__empty", "No openings match your search.") : null,
+    ...[...groups.entries()].map(([family, openings]) => {
+      const allSelected = openings.every((o) => _selectedOpenings.has(o));
+      const someSelected = !allSelected && openings.some((o) => _selectedOpenings.has(o));
+      return h("div.puzzle-session__category", [
+        h("div.puzzle-session__category-label.puzzle-session__category-label--clickable", {
+          class: { active: allSelected, partial: someSelected },
+          on: { click: () => {
+            const s = new Set(_selectedOpenings);
+            if (allSelected) {
+              for (const o of openings) s.delete(o);
+            } else {
+              for (const o of openings) s.add(o);
+            }
+            _selectedOpenings = s;
+            redraw2();
+          } }
+        }, [
+          h(
+            "span.puzzle-session__checkbox",
+            allSelected ? "\u2611" : someSelected ? "\u2610" : "\u2610"
+          ),
+          h("span", formatOpeningName(family))
+        ]),
+        ...openings.map(
+          (opening) => h("div.puzzle-session__theme-row", {
+            class: { active: _selectedOpenings.has(opening) },
+            on: { click: () => {
+              const s = new Set(_selectedOpenings);
+              if (s.has(opening)) s.delete(opening);
+              else s.add(opening);
+              _selectedOpenings = s;
+              redraw2();
+            } }
+          }, [
+            h("span.puzzle-session__checkbox", _selectedOpenings.has(opening) ? "\u2611" : "\u2610"),
+            h("span.puzzle-session__theme-name", formatOpeningName(opening))
+          ])
+        )
+      ]);
+    })
+  ]);
+}
+function formatOpeningName(tag) {
+  return tag.replace(/_/g, " ");
+}
+function formatThemeName(theme) {
+  return theme.replace(/([A-Z])/g, " $1").replace(/(\d+)/g, " $1").replace(/^ /, "").replace(/\b\w/g, (c) => c.toUpperCase()).trim();
 }
 function puzzleInfoRows(def) {
   const rows = [];
@@ -11860,6 +12231,149 @@ function renderFoldersEditor(meta, redraw2) {
     })
   ]);
 }
+function computeSanMoves(startFen, uciMoves) {
+  const sans = [];
+  const setup = parseFen(startFen);
+  if (setup.isErr) return sans;
+  const posResult = Chess.fromSetup(setup.value);
+  if (posResult.isErr) return sans;
+  const pos = posResult.value;
+  for (const uci of uciMoves) {
+    const move3 = parseUci(uci);
+    if (!move3) break;
+    sans.push(makeSan(pos, move3));
+    pos.play(move3);
+  }
+  return sans;
+}
+function renderPuzzleMoveList(def, rc) {
+  const progressPly = rc?.progressPly ?? 0;
+  const showAll = rc && (rc.status === "solved" || rc.status === "failed");
+  const movesToShow = showAll ? def.solutionLine : def.solutionLine.slice(0, progressPly);
+  const sans = computeSanMoves(def.startFen, movesToShow);
+  if (sans.length === 0) {
+    return h("div.puzzle-moves", [
+      h("div.puzzle-moves__empty", "Waiting for moves\u2026")
+    ]);
+  }
+  const fenParts = def.startFen.split(" ");
+  const startFullMove = parseInt(fenParts[5] ?? "1", 10);
+  const startColorIsBlack = fenParts[1] === "b";
+  const moveNodes = [];
+  for (let i = 0; i < sans.length; i++) {
+    const isBlackMove = startColorIsBlack ? i % 2 === 0 : i % 2 === 1;
+    const fullMoveNum = startFullMove + Math.floor((i + (startColorIsBlack ? 1 : 0)) / 2);
+    if (!isBlackMove || i === 0 && startColorIsBlack) {
+      moveNodes.push(
+        h("span.puzzle-moves__num", `${fullMoveNum}.${startColorIsBlack && i === 0 ? ".." : ""}`)
+      );
+    }
+    const isFuture = i >= progressPly && !showAll;
+    const isLast = i === progressPly - 1;
+    moveNodes.push(
+      h("span.puzzle-moves__move", {
+        class: {
+          "puzzle-moves__move--current": isLast,
+          "puzzle-moves__move--future": isFuture,
+          "puzzle-moves__move--opponent": i % 2 === 0,
+          // even = opponent trigger/reply
+          "puzzle-moves__move--user": i % 2 === 1
+          // odd = user move
+        }
+      }, sans[i])
+    );
+  }
+  return h("div.puzzle-moves", moveNodes);
+}
+function renderPuzzleEnginePanel(rc, redraw2) {
+  if (!rc.puzzleEngineEnabled) return null;
+  const ev = rc.getPuzzleEval();
+  const hasEval = ev.cp !== void 0 || ev.mate !== void 0;
+  let scoreText = "analyzing\u2026";
+  if (ev.mate !== void 0) {
+    scoreText = ev.mate > 0 ? `M${ev.mate}` : `M${ev.mate}`;
+  } else if (ev.cp !== void 0) {
+    const pawns = ev.cp / 100;
+    scoreText = pawns >= 0 ? `+${pawns.toFixed(1)}` : `${pawns.toFixed(1)}`;
+  }
+  let lineText = "";
+  if (ev.moves && ev.moves.length > 0 && ev.best) {
+    lineText = ev.moves.slice(0, 6).join(" ");
+  }
+  const depthText = ev.depth ? `depth ${ev.depth}` : "";
+  return h("div.puzzle-engine", [
+    h("div.puzzle-engine__header", [
+      h("span.puzzle-engine__label", "Engine"),
+      h("span.puzzle-engine__score", { class: { positive: (ev.cp ?? 0) > 0, negative: (ev.cp ?? 0) < 0 } }, scoreText),
+      depthText ? h("span.puzzle-engine__depth", depthText) : null,
+      h("button.puzzle-engine__close", {
+        on: { click: () => {
+          rc.disablePuzzleEngine();
+          redraw2();
+        } },
+        attrs: { title: "Turn off engine" }
+      }, "\u2715")
+    ]),
+    hasEval && lineText ? h("div.puzzle-engine__line", lineText) : null
+  ]);
+}
+function renderSessionSidebar(session, redraw2) {
+  const labels = [];
+  if (session.themes.length > 0) {
+    labels.push(...session.themes.slice(0, 4).map((t) => formatThemeName(t)));
+    if (session.themes.length > 4) labels.push(`+${session.themes.length - 4} more`);
+  }
+  if (session.openings.length > 0) {
+    labels.push(...session.openings.slice(0, 3).map((o) => formatOpeningName(o)));
+    if (session.openings.length > 3) labels.push(`+${session.openings.length - 3} more`);
+  }
+  if (labels.length === 0) labels.push("All themes");
+  const solved = session.history.filter((e) => e.result === "solved").length;
+  const failed = session.history.filter((e) => e.result === "failed").length;
+  const total = session.history.length;
+  return h("aside.puzzle__session-sidebar", [
+    // Session info
+    h("div.session-info", [
+      h("div.session-info__header", [
+        h("span.session-info__label", "Current Session"),
+        h("button.session-info__end", {
+          on: { click: () => {
+            clearActiveSession();
+            window.location.hash = "#/puzzles";
+          } },
+          attrs: { title: "End session" }
+        }, "End")
+      ]),
+      h("div.session-info__themes", labels.join(", ")),
+      h(
+        "div.session-info__rating",
+        `Rating ${session.ratingMin}\u2013${session.ratingMax}`
+      ),
+      h("div.session-info__stats", [
+        h("span.session-info__stat.session-info__stat--solved", `${solved} solved`),
+        h("span.session-info__stat.session-info__stat--failed", `${failed} failed`),
+        h("span.session-info__stat", `${total} total`)
+      ])
+    ]),
+    // History chicklet grid
+    h("div.session-history", [
+      h("div.session-history__label", "Puzzle History"),
+      h(
+        "div.session-history__grid",
+        session.history.map(
+          (entry, i) => h("div.session-history__cell", {
+            class: {
+              "session-history__cell--solved": entry.result === "solved",
+              "session-history__cell--failed": entry.result === "failed",
+              "session-history__cell--active": entry.result === "in-progress"
+            },
+            attrs: { title: `#${i + 1} ${entry.puzzleId}: ${entry.result}` }
+          })
+        )
+      )
+    ])
+  ]);
+}
 function renderPuzzleRound(redraw2) {
   const rs = getPuzzleRoundState();
   if (!rs) {
@@ -11878,8 +12392,11 @@ function renderPuzzleRound(redraw2) {
   }
   const def = rs.definition;
   const rc = getActiveRoundCtrl();
+  const session = getActiveSession();
   return h("div.puzzle-page", [
-    h("div.puzzle", [
+    h("div.puzzle" + (session ? ".puzzle--with-session" : ""), [
+      // Session sidebar (left) — only when session is active
+      session ? renderSessionSidebar(session, redraw2) : null,
       // Board area
       h("div.puzzle__board.main-board", [
         h("div.cg-wrap", {
@@ -11894,14 +12411,18 @@ function renderPuzzleRound(redraw2) {
           }
         })
       ]),
-      // Side panel — feedback + puzzle info
+      // Side panel — feedback + move list + puzzle info
       h("aside.puzzle__side", [
         h("div.puzzle-round__header", [
           h("a.puzzle-round__back", { attrs: { href: "#/puzzles" } }, "\u2190 Back to Library"),
           h("h2.puzzle-round__title", `Puzzle ${def.id}`)
         ]),
+        // Move list
+        renderPuzzleMoveList(def, rc),
         // Feedback panel
         rc ? renderFeedbackPanel(rc, redraw2) : null,
+        // Engine panel (post-solve/fail only)
+        rc ? renderPuzzleEnginePanel(rc, redraw2) : null,
         h("table.puzzle-round__info", puzzleInfoRows(def)),
         // Metadata editing — favorites, notes, tags, collections
         renderMetaPanel(def.id, redraw2)

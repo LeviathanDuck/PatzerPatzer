@@ -17,10 +17,18 @@ import {
   getPuzzleListState, openPuzzleList, closePuzzleList,
   filterPuzzleList, loadMorePuzzles, selectPuzzleFromList,
   loadMoreImportedShards, hasMoreImportedShards,
+  startImportedSession,
+  getImportedSessionError, clearImportedSessionError,
+  getActiveSession, clearActiveSession,
   type LibraryCounts, type PuzzleListFilters, type PuzzleListState,
+  type ActiveSession,
 } from './ctrl';
 import type { PuzzleRoundCtrl } from './ctrl';
 import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta } from './types';
+import { parseFen, makeFen } from 'chessops/fen';
+import { Chess } from 'chessops/chess';
+import { parseUci } from 'chessops/util';
+import { makeSan } from 'chessops/san';
 
 function sourceCard(
   title: string,
@@ -101,17 +109,15 @@ function renderLibrarySidebar(redraw: () => void): VNode {
 }
 
 export function renderPuzzleLibrary(redraw: () => void): VNode {
-  // If the puzzle list (browse) is active, show that instead
   const listState = getPuzzleListState();
-  if (listState) {
-    return renderPuzzleList(listState, redraw);
-  }
 
-  // Board-centered layout: library on left, board center, right side free for future move list
+  // Board-centered layout: sidebar on left, board always visible
   return h('div.puzzle-page', [
     h('div.puzzle.puzzle--library', [
-      // Library sidebar (left)
-      renderLibrarySidebar(redraw),
+      // Sidebar — shows browse pane when active, otherwise source cards
+      listState
+        ? renderInlineBrowsePane(listState, redraw)
+        : renderLibrarySidebar(redraw),
       // Board area — idle decorative board, always visible
       h('div.puzzle__board.main-board', [
         h('div.cg-wrap', {
@@ -261,58 +267,339 @@ function renderPuzzleListRow(
   }, cells);
 }
 
-function renderPuzzleList(
+/** Inline browse pane — renders inside the sidebar so the board stays visible. */
+function renderInlineBrowsePane(
   ls: PuzzleListState,
   redraw: () => void,
 ): VNode {
   if (ls.loading) {
-    return h('div.puzzle-page', [
-      h('div.puzzle-list', [
-        h('span.puzzle-list__loading', 'Loading puzzles\u2026'),
-      ]),
+    return h('aside.puzzle__side.puzzle-library__sidebar', [
+      h('span.puzzle-list__loading', 'Loading puzzles\u2026'),
     ]);
   }
 
-  const hasMore = ls.visible.length < ls.filtered.length;
+  // Imported puzzles: theme-first session builder
+  if (ls.source === 'imported-lichess') {
+    return renderImportedSessionBuilder(ls, redraw);
+  }
 
-  return h('div.puzzle-page', [
-    h('div.puzzle-list', [
-      h('div.puzzle-list__header', [
-        h('a.puzzle-list__back', {
-          on: { click: () => closePuzzleList(redraw) },
-        }, '\u2190 Back to Library'),
-        h('h2.puzzle-list__title', sourceLabel(ls.source)),
-      ]),
-      renderPuzzleListFilterBar(ls, redraw),
-      ls.filtered.length === 0
-        ? h('div.puzzle-list__empty', 'No puzzles match the current filters.')
-        : h('div.puzzle-list__rows', [
-            // Column headers
-            h('div.puzzle-list__row.puzzle-list__row--header', [
-              h('span.puzzle-list__row-id', 'Puzzle'),
-              ...(ls.source === 'imported-lichess'
-                ? [h('span.puzzle-list__row-rating', 'Rating')]
-                : []),
-              h('span.puzzle-list__row-themes',
-                ls.source === 'imported-lichess' ? 'Themes' : 'Reason'),
-              h('span.puzzle-list__row-moves', 'Length'),
-            ]),
-            ...ls.visible.map(def => renderPuzzleListRow(def, redraw)),
+  // User library: puzzle-row list (unchanged)
+  const hasMore = ls.visible.length < ls.filtered.length;
+  return h('aside.puzzle__side.puzzle-library__sidebar.puzzle-list', [
+    h('div.puzzle-list__header', [
+      h('a.puzzle-list__back', {
+        on: { click: () => closePuzzleList(redraw) },
+      }, '\u2190 Back'),
+      h('h2.puzzle-list__title', sourceLabel(ls.source)),
+      h('span.puzzle-list__count', `${ls.filtered.length} puzzle${ls.filtered.length === 1 ? '' : 's'}`),
+    ]),
+    renderPuzzleListFilterBar(ls, redraw),
+    ls.filtered.length === 0
+      ? h('div.puzzle-list__empty', 'No puzzles match the current filters.')
+      : h('div.puzzle-list__scroll', [
+          h('div.puzzle-list__row.puzzle-list__row--header', [
+            h('span.puzzle-list__row-id', 'Puzzle'),
+            h('span.puzzle-list__row-themes', 'Reason'),
+            h('span.puzzle-list__row-moves', 'Moves'),
           ]),
-      hasMore
-        ? h('button.button.puzzle-list__load-more', {
-            on: { click: () => loadMorePuzzles(redraw) },
-          }, `Load More (${ls.visible.length} of ${ls.filtered.length})`)
-        : null,
-      // For imported puzzles: load more shards from the database
-      ls.source === 'imported-lichess' && hasMoreImportedShards()
-        ? h('button.button.button-empty.puzzle-list__load-shards', {
-            attrs: { disabled: ls.loading },
-            on: { click: () => loadMoreImportedShards(redraw) },
-          }, ls.loading ? 'Loading shard\u2026' : 'Load More Puzzles from Database')
-        : null,
+          ...ls.visible.map(def => renderPuzzleListRow(def, redraw)),
+          hasMore
+            ? h('button.button.puzzle-list__load-more', {
+                on: { click: () => loadMorePuzzles(redraw) },
+              }, `Load More (${ls.visible.length} of ${ls.filtered.length})`)
+            : null,
+        ]),
+  ]);
+}
+
+// --- Imported session builder: theme-first with category groups ---
+// Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleTheme.scala categorized
+
+/** Lichess-style theme categories. Themes not found in the manifest are hidden. */
+const THEME_CATEGORIES: [string, string[]][] = [
+  ['Motifs', [
+    'fork', 'pin', 'skewer', 'discoveredAttack', 'doubleCheck',
+    'sacrifice', 'hangingPiece', 'trappedPiece', 'exposedKing',
+    'attackingF2F7', 'capturingDefender', 'kingsideAttack', 'queensideAttack',
+    'advancedPawn',
+  ]],
+  ['Advanced', [
+    'attraction', 'clearance', 'deflection', 'interference', 'intermezzo',
+    'quietMove', 'xRayAttack', 'zugzwang', 'defensiveMove',
+    'discoveredCheck', 'collinearMove',
+  ]],
+  ['Mates', [
+    'mate', 'mateIn1', 'mateIn2', 'mateIn3', 'mateIn4', 'mateIn5',
+  ]],
+  ['Mate Patterns', [
+    'backRankMate', 'smotheredMate', 'hookMate', 'anastasiaMate',
+    'arabianMate', 'bodenMate', 'dovetailMate', 'swallowstailMate',
+    'morphysMate', 'operaMate', 'pillsburysMate',
+  ]],
+  ['Phases', [
+    'opening', 'middlegame', 'endgame',
+    'rookEndgame', 'bishopEndgame', 'pawnEndgame', 'knightEndgame',
+    'queenEndgame', 'queenRookEndgame',
+  ]],
+  ['Special Moves', [
+    'castling', 'enPassant', 'promotion', 'underPromotion',
+  ]],
+  ['Goals', [
+    'equality', 'advantage', 'crushing',
+  ]],
+  ['Lengths', [
+    'oneMove', 'short', 'long', 'veryLong',
+  ]],
+];
+
+/** Session builder local state — persists across redraws via closure. */
+let _selectedThemes: Set<string> = new Set();
+let _selectedOpenings: Set<string> = new Set();
+let _sessionRatingMin = 800;
+let _sessionRatingMax = 2400;
+let _sessionStarting = false;
+let _sessionTab: 'themes' | 'openings' = 'themes';
+let _openingSearch = '';
+
+function renderImportedSessionBuilder(
+  ls: PuzzleListState,
+  redraw: () => void,
+): VNode {
+  const totalSelected = _selectedThemes.size + _selectedOpenings.size;
+
+  return h('aside.puzzle__side.puzzle-library__sidebar.puzzle-list.puzzle-session', [
+    h('div.puzzle-list__header', [
+      h('a.puzzle-list__back', {
+        on: { click: () => {
+          _selectedThemes = new Set();
+          _selectedOpenings = new Set();
+          _openingSearch = '';
+          _sessionStarting = false;
+          _sessionTab = 'themes';
+          closePuzzleList(redraw);
+        }},
+      }, '\u2190 Back'),
+      h('h2.puzzle-list__title', 'Imported Puzzles'),
+    ]),
+
+    // Rating range sliders — stacked
+    h('div.puzzle-session__rating', [
+      h('label.puzzle-session__label', 'Rating Range'),
+      h('div.puzzle-session__range-line', [
+        h('span.puzzle-session__range-label', 'Min'),
+        h('input.puzzle-session__range', {
+          key: 'rating-min-slider',
+          attrs: { type: 'range', min: 0, max: 3200, step: 50, value: _sessionRatingMin },
+          props: { value: _sessionRatingMin },
+          on: { input: (e: Event) => {
+            const v = parseInt((e.target as HTMLInputElement).value, 10);
+            _sessionRatingMin = Math.min(v, _sessionRatingMax - 50);
+            redraw();
+          }},
+        }),
+        h('input.puzzle-session__range-val', {
+          key: 'rating-min-num',
+          attrs: { type: 'number', min: 0, max: 3200, step: 50, value: _sessionRatingMin },
+          props: { value: _sessionRatingMin },
+          on: { change: (e: Event) => {
+            const v = parseInt((e.target as HTMLInputElement).value, 10);
+            if (!isNaN(v)) _sessionRatingMin = Math.max(0, Math.min(v, _sessionRatingMax - 50));
+            redraw();
+          }},
+          hook: { update: (_old, vnode) => { (vnode.elm as HTMLInputElement).value = String(_sessionRatingMin); }},
+        }),
+      ]),
+      h('div.puzzle-session__range-line', [
+        h('span.puzzle-session__range-label', 'Max'),
+        h('input.puzzle-session__range', {
+          key: 'rating-max-slider',
+          attrs: { type: 'range', min: 0, max: 3200, step: 50, value: _sessionRatingMax },
+          props: { value: _sessionRatingMax },
+          on: { input: (e: Event) => {
+            const v = parseInt((e.target as HTMLInputElement).value, 10);
+            _sessionRatingMax = Math.max(v, _sessionRatingMin + 50);
+            redraw();
+          }},
+        }),
+        h('input.puzzle-session__range-val', {
+          key: 'rating-max-num',
+          attrs: { type: 'number', min: 0, max: 3200, step: 50, value: _sessionRatingMax },
+          props: { value: _sessionRatingMax },
+          on: { change: (e: Event) => {
+            const v = parseInt((e.target as HTMLInputElement).value, 10);
+            if (!isNaN(v)) _sessionRatingMax = Math.min(3200, Math.max(v, _sessionRatingMin + 50));
+            redraw();
+          }},
+          hook: { update: (_old, vnode) => { (vnode.elm as HTMLInputElement).value = String(_sessionRatingMax); }},
+        }),
+      ]),
+    ]),
+
+    // Tab selector: Themes | Openings
+    h('div.puzzle-session__tabs', [
+      h('button.puzzle-session__tab', {
+        class: { active: _sessionTab === 'themes' },
+        on: { click: () => { _sessionTab = 'themes'; redraw(); }},
+      }, `Themes${_selectedThemes.size > 0 ? ` (${_selectedThemes.size})` : ''}`),
+      h('button.puzzle-session__tab', {
+        class: { active: _sessionTab === 'openings' },
+        on: { click: () => { _sessionTab = 'openings'; redraw(); }},
+      }, `Openings${_selectedOpenings.size > 0 ? ` (${_selectedOpenings.size})` : ''}`),
+    ]),
+
+    // Tab content
+    _sessionTab === 'themes'
+      ? renderThemeList(ls, redraw)
+      : renderOpeningList(ls, redraw),
+
+    // Error message
+    getImportedSessionError()
+      ? h('div.puzzle-session__error', getImportedSessionError()!)
+      : null,
+
+    // Start button
+    h('div.puzzle-session__actions', [
+      totalSelected > 0
+        ? h('span.puzzle-session__selection-hint',
+            `${totalSelected} selected`)
+        : h('span.puzzle-session__selection-hint', 'Select themes/openings or start with all'),
+      h('button.button.puzzle-session__start', {
+        attrs: { disabled: _sessionStarting },
+        on: { click: () => {
+          _sessionStarting = true;
+          clearImportedSessionError();
+          redraw();
+          startImportedSession(
+            [..._selectedThemes],
+            [..._selectedOpenings],
+            _sessionRatingMin,
+            _sessionRatingMax,
+            redraw,
+          ).finally(() => {
+            _sessionStarting = false;
+            redraw();
+          });
+        }},
+      }, _sessionStarting ? 'Loading\u2026' : 'Start Puzzles'),
     ]),
   ]);
+}
+
+function renderThemeList(ls: PuzzleListState, redraw: () => void): VNode {
+  const available = new Set(ls.availableThemes);
+  return h('div.puzzle-session__themes', [
+    ...THEME_CATEGORIES.map(([category, themes]) => {
+      const visibleThemes = themes.filter(t => available.has(t));
+      if (visibleThemes.length === 0) return null;
+      return h('div.puzzle-session__category', [
+        h('div.puzzle-session__category-label', category),
+        ...visibleThemes.map(theme =>
+          h('div.puzzle-session__theme-row', {
+            class: { active: _selectedThemes.has(theme) },
+            on: { click: () => {
+              const s = new Set(_selectedThemes);
+              if (s.has(theme)) s.delete(theme); else s.add(theme);
+              _selectedThemes = s;
+              redraw();
+            }},
+          }, [
+            h('span.puzzle-session__checkbox', _selectedThemes.has(theme) ? '\u2611' : '\u2610'),
+            h('span.puzzle-session__theme-name', formatThemeName(theme)),
+          ]),
+        ),
+      ]);
+    }).filter(Boolean) as VNode[],
+  ]);
+}
+
+function renderOpeningList(ls: PuzzleListState, redraw: () => void): VNode {
+  const query = _openingSearch.toLowerCase();
+  const allOpenings = ls.availableOpenings;
+
+  // Group openings by family (text before the first underscore variation)
+  const filtered = query
+    ? allOpenings.filter(o => formatOpeningName(o).toLowerCase().includes(query))
+    : allOpenings;
+
+  // Group by opening family (e.g. "Sicilian_Defense" from "Sicilian_Defense_Najdorf_Variation")
+  const groups = new Map<string, string[]>();
+  for (const o of filtered) {
+    const parts = o.split('_');
+    // Use first two words as family, or first word if only one
+    const family = parts.length >= 2 ? `${parts[0]}_${parts[1]}` : parts[0]!;
+    if (!groups.has(family)) groups.set(family, []);
+    groups.get(family)!.push(o);
+  }
+
+  return h('div.puzzle-session__themes', [
+    // Search bar
+    h('div.puzzle-session__search', [
+      h('input.puzzle-session__search-input', {
+        attrs: { type: 'text', placeholder: 'Search openings\u2026' },
+        props: { value: _openingSearch },
+        on: { input: (e: Event) => {
+          _openingSearch = (e.target as HTMLInputElement).value;
+          redraw();
+        }},
+      }),
+    ]),
+    filtered.length === 0
+      ? h('div.puzzle-list__empty', 'No openings match your search.')
+      : null,
+    ...[...groups.entries()].map(([family, openings]) => {
+      const allSelected = openings.every(o => _selectedOpenings.has(o));
+      const someSelected = !allSelected && openings.some(o => _selectedOpenings.has(o));
+      return h('div.puzzle-session__category', [
+        h('div.puzzle-session__category-label.puzzle-session__category-label--clickable', {
+          class: { active: allSelected, partial: someSelected },
+          on: { click: () => {
+            const s = new Set(_selectedOpenings);
+            if (allSelected) {
+              for (const o of openings) s.delete(o);
+            } else {
+              for (const o of openings) s.add(o);
+            }
+            _selectedOpenings = s;
+            redraw();
+          }},
+        }, [
+          h('span.puzzle-session__checkbox',
+            allSelected ? '\u2611' : someSelected ? '\u2610' : '\u2610'),
+          h('span', formatOpeningName(family)),
+        ]),
+        ...openings.map(opening =>
+          h('div.puzzle-session__theme-row', {
+            class: { active: _selectedOpenings.has(opening) },
+            on: { click: () => {
+              const s = new Set(_selectedOpenings);
+              if (s.has(opening)) s.delete(opening); else s.add(opening);
+              _selectedOpenings = s;
+              redraw();
+            }},
+          }, [
+            h('span.puzzle-session__checkbox', _selectedOpenings.has(opening) ? '\u2611' : '\u2610'),
+            h('span.puzzle-session__theme-name', formatOpeningName(opening)),
+          ]),
+        ),
+      ]);
+    }),
+  ]);
+}
+
+/** Convert underscore-separated opening tag to readable label. */
+function formatOpeningName(tag: string): string {
+  return tag.replace(/_/g, ' ');
+}
+
+/** Convert camelCase theme id to readable label. */
+function formatThemeName(theme: string): string {
+  // mateIn1 -> Mate In 1, backRankMate -> Back Rank Mate
+  return theme
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/(\d+)/g, ' $1')
+    .replace(/^ /, '')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim();
 }
 
 // --- Puzzle round view ---
@@ -749,6 +1036,179 @@ function renderFoldersEditor(meta: PuzzleUserMeta, redraw: () => void): VNode {
   ]);
 }
 
+// --- Puzzle move list ---
+// Shows moves played so far without revealing future solution moves.
+// Adapted from lichess-org/lila: ui/puzzle/src/view/tree.ts (puzzle replay)
+
+function computeSanMoves(startFen: string, uciMoves: string[]): string[] {
+  const sans: string[] = [];
+  const setup = parseFen(startFen);
+  if (setup.isErr) return sans;
+  const posResult = Chess.fromSetup(setup.value);
+  if (posResult.isErr) return sans;
+  const pos = posResult.value;
+  for (const uci of uciMoves) {
+    const move = parseUci(uci);
+    if (!move) break;
+    sans.push(makeSan(pos, move));
+    pos.play(move);
+  }
+  return sans;
+}
+
+function renderPuzzleMoveList(def: PuzzleDefinition, rc: PuzzleRoundCtrl | null): VNode {
+  const progressPly = rc?.progressPly ?? 0;
+  // Show only moves that have been played (up to progressPly).
+  // After solve/fail, show all solution moves.
+  const showAll = rc && (rc.status === 'solved' || rc.status === 'failed');
+  const movesToShow = showAll ? def.solutionLine : def.solutionLine.slice(0, progressPly);
+  const sans = computeSanMoves(def.startFen, movesToShow);
+
+  if (sans.length === 0) {
+    return h('div.puzzle-moves', [
+      h('div.puzzle-moves__empty', 'Waiting for moves\u2026'),
+    ]);
+  }
+
+  // Determine starting move number from FEN
+  const fenParts = def.startFen.split(' ');
+  const startFullMove = parseInt(fenParts[5] ?? '1', 10);
+  const startColorIsBlack = fenParts[1] === 'b';
+
+  const moveNodes: VNode[] = [];
+  for (let i = 0; i < sans.length; i++) {
+    // Determine the actual ply in the game
+    const isBlackMove = startColorIsBlack ? (i % 2 === 0) : (i % 2 === 1);
+    const fullMoveNum = startFullMove + Math.floor((i + (startColorIsBlack ? 1 : 0)) / 2);
+
+    // Show move number before white moves (or before the first black move if starting as black)
+    if (!isBlackMove || (i === 0 && startColorIsBlack)) {
+      moveNodes.push(
+        h('span.puzzle-moves__num', `${fullMoveNum}.${startColorIsBlack && i === 0 ? '..' : ''}`),
+      );
+    }
+
+    const isFuture = i >= progressPly && !showAll;
+    const isLast = i === progressPly - 1;
+    moveNodes.push(
+      h('span.puzzle-moves__move', {
+        class: {
+          'puzzle-moves__move--current': isLast,
+          'puzzle-moves__move--future': isFuture,
+          'puzzle-moves__move--opponent': i % 2 === 0, // even = opponent trigger/reply
+          'puzzle-moves__move--user': i % 2 === 1,     // odd = user move
+        },
+      }, sans[i]),
+    );
+  }
+
+  return h('div.puzzle-moves', moveNodes);
+}
+
+// --- Puzzle engine panel ---
+// Shows engine eval output when activated after solve/fail.
+// Adapted from lichess-org/lila: ui/puzzle/src/view/feedback.ts post-solve ceval
+
+function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode | null {
+  if (!rc.puzzleEngineEnabled) return null;
+
+  const ev = rc.getPuzzleEval();
+  const hasEval = ev.cp !== undefined || ev.mate !== undefined;
+
+  // Format score
+  let scoreText = 'analyzing\u2026';
+  if (ev.mate !== undefined) {
+    scoreText = ev.mate > 0 ? `M${ev.mate}` : `M${ev.mate}`;
+  } else if (ev.cp !== undefined) {
+    const pawns = ev.cp / 100;
+    scoreText = pawns >= 0 ? `+${pawns.toFixed(1)}` : `${pawns.toFixed(1)}`;
+  }
+
+  // Format best line in SAN if available
+  let lineText = '';
+  if (ev.moves && ev.moves.length > 0 && ev.best) {
+    // Show first few moves of PV
+    lineText = ev.moves.slice(0, 6).join(' ');
+  }
+
+  const depthText = ev.depth ? `depth ${ev.depth}` : '';
+
+  return h('div.puzzle-engine', [
+    h('div.puzzle-engine__header', [
+      h('span.puzzle-engine__label', 'Engine'),
+      h('span.puzzle-engine__score', { class: { positive: (ev.cp ?? 0) > 0, negative: (ev.cp ?? 0) < 0 } }, scoreText),
+      depthText ? h('span.puzzle-engine__depth', depthText) : null,
+      h('button.puzzle-engine__close', {
+        on: { click: () => { rc.disablePuzzleEngine(); redraw(); }},
+        attrs: { title: 'Turn off engine' },
+      }, '\u2715'),
+    ]),
+    hasEval && lineText
+      ? h('div.puzzle-engine__line', lineText)
+      : null,
+  ]);
+}
+
+// --- Session sidebar ---
+// Persistent left sidebar during puzzle rounds. Shows session info at top
+// and a chicklet history grid at bottom.
+
+function renderSessionSidebar(session: ActiveSession, redraw: () => void): VNode {
+  // Format theme/opening labels
+  const labels: string[] = [];
+  if (session.themes.length > 0) {
+    labels.push(...session.themes.slice(0, 4).map(t => formatThemeName(t)));
+    if (session.themes.length > 4) labels.push(`+${session.themes.length - 4} more`);
+  }
+  if (session.openings.length > 0) {
+    labels.push(...session.openings.slice(0, 3).map(o => formatOpeningName(o)));
+    if (session.openings.length > 3) labels.push(`+${session.openings.length - 3} more`);
+  }
+  if (labels.length === 0) labels.push('All themes');
+
+  const solved = session.history.filter(e => e.result === 'solved').length;
+  const failed = session.history.filter(e => e.result === 'failed').length;
+  const total = session.history.length;
+
+  return h('aside.puzzle__session-sidebar', [
+    // Session info
+    h('div.session-info', [
+      h('div.session-info__header', [
+        h('span.session-info__label', 'Current Session'),
+        h('button.session-info__end', {
+          on: { click: () => { clearActiveSession(); window.location.hash = '#/puzzles'; }},
+          attrs: { title: 'End session' },
+        }, 'End'),
+      ]),
+      h('div.session-info__themes', labels.join(', ')),
+      h('div.session-info__rating',
+        `Rating ${session.ratingMin}\u2013${session.ratingMax}`),
+      h('div.session-info__stats', [
+        h('span.session-info__stat.session-info__stat--solved', `${solved} solved`),
+        h('span.session-info__stat.session-info__stat--failed', `${failed} failed`),
+        h('span.session-info__stat', `${total} total`),
+      ]),
+    ]),
+
+    // History chicklet grid
+    h('div.session-history', [
+      h('div.session-history__label', 'Puzzle History'),
+      h('div.session-history__grid',
+        session.history.map((entry, i) =>
+          h('div.session-history__cell', {
+            class: {
+              'session-history__cell--solved': entry.result === 'solved',
+              'session-history__cell--failed': entry.result === 'failed',
+              'session-history__cell--active': entry.result === 'in-progress',
+            },
+            attrs: { title: `#${i + 1} ${entry.puzzleId}: ${entry.result}` },
+          }),
+        ),
+      ),
+    ]),
+  ]);
+}
+
 export function renderPuzzleRound(redraw: () => void): VNode {
   const rs = getPuzzleRoundState();
 
@@ -777,8 +1237,12 @@ export function renderPuzzleRound(redraw: () => void): VNode {
   const def = rs.definition;
   const rc = getActiveRoundCtrl();
 
+  const session = getActiveSession();
+
   return h('div.puzzle-page', [
-    h('div.puzzle', [
+    h('div.puzzle' + (session ? '.puzzle--with-session' : ''), [
+      // Session sidebar (left) — only when session is active
+      session ? renderSessionSidebar(session, redraw) : null,
       // Board area
       h('div.puzzle__board.main-board', [
         h('div.cg-wrap', {
@@ -793,14 +1257,18 @@ export function renderPuzzleRound(redraw: () => void): VNode {
           },
         }),
       ]),
-      // Side panel — feedback + puzzle info
+      // Side panel — feedback + move list + puzzle info
       h('aside.puzzle__side', [
         h('div.puzzle-round__header', [
           h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
           h('h2.puzzle-round__title', `Puzzle ${def.id}`),
         ]),
+        // Move list
+        renderPuzzleMoveList(def, rc),
         // Feedback panel
         rc ? renderFeedbackPanel(rc, redraw) : null,
+        // Engine panel (post-solve/fail only)
+        rc ? renderPuzzleEnginePanel(rc, redraw) : null,
         h('table.puzzle-round__info', puzzleInfoRows(def)),
         // Metadata editing — favorites, notes, tags, collections
         renderMetaPanel(def.id, redraw),

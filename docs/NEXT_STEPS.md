@@ -1,22 +1,26 @@
 # Patzer Pro — Next Steps
 
 Date: 2026-03-27
-Status: Puzzle V1 rebuild and stabilization roadmap
+Status: Puzzle V1 implementation audit and stabilization roadmap
 
-This list is intentionally small and ordered for safety. It reflects the current repo, where the
-next phase has changed: Puzzle V1 is now the main active focus, but it must start with ownership
-cleanup, data-model work, and controlled foundations rather than jumping straight to page UI.
+Patzer Pro is no longer in the "build Puzzle V1 from zero" phase.
 
-Bug fixes and minor features still matter, but they should be selected based on whether they:
+The repo now has a real standalone puzzle product surface:
 
-- unblock Puzzle V1
-- reduce architectural risk
-- improve analysis-board correctness without distracting from the rebuild
+- live `#/puzzles` and `#/puzzles/:id` routes
+- `Puzzles` restored in the main header navigation
+- top-level `Imported Puzzles` and `User Library` library surfaces
+- a dedicated puzzle round controller and round view
+- strict solve-result ownership plus attempt persistence
+- retry/due-again flows and imported-puzzle shard loading
+- review-side puzzle authoring and legacy candidate extraction still present in analysis
 
-Current planning references for this track:
+That means the next work is no longer "foundations first". The next work is:
 
-- [docs/PUZZLE_V1_PLAN.md](/Users/leftcoast/Development/PatzerPatzer/docs/PUZZLE_V1_PLAN.md)
-- [docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md](/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md)
+- close the gap between the implemented product and the intended Puzzle V1 experience
+- stabilize correctness and persistence
+- tighten the review-to-puzzle bridge
+- fix stale docs and misleading planning artifacts
 
 For any roadmap item involving:
 - Learn From Your Mistakes
@@ -32,342 +36,155 @@ the mandatory reference base is:
 
 Rule:
 - follow the visible Lichess logic pipeline first
-- do not tune or replace puzzle-selection parameters early
-- if the open-source Lichess repo does not prove a rule, mark it as unknown instead of inventing
-  one
-- any Patzer-specific heuristic divergence should happen only after parity-oriented work and must
-  be called out explicitly
+- call out Patzer-specific divergences explicitly
+- do not quietly replace Lichess-backed rules with homegrown heuristics
 
 ---
 
-## Primary Track — Puzzle V1 Phase 0 Foundations
+## Primary Track — Audit And Stabilize Puzzle V1
 
-Puzzle V1 is now the main next project direction.
+### 1. Run a repo-grounded Puzzle V1 implementation audit
 
-Important constraint:
-- the current repo does not yet have a clean standalone puzzle product boundary
-- the first safe phase is foundation work, not route/UI-first implementation
+Current reality:
+- the product now exists in code, but the current docs still describe an earlier build stage
+- finishing the build phases did not guarantee that the product feels complete or correct
 
-Current active puzzle phase:
-- Phase 0 in `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+What this audit should separate:
+- implemented and acceptable
+- implemented but behaviorally wrong
+- implemented but structurally risky
+- missing from the intended V1 experience
+- explicitly deferred
 
-Phase 0 goals:
-- formalize a cleaner board-consumer seam
-- move analysis-owned retrospection solve interception out of board core
-- introduce canonical Puzzle V1 domain types
-- add puzzle-library persistence ownership for definitions, metadata, and attempt history
-- add source adapters for:
-  - Patzer user-library puzzles derived from review
-  - imported Lichess puzzle records already stored in the repo
+Why now:
+- more build prompts without an audit will create drift instead of finishing work
 
-Current queued execution order:
-- `CCP-143` Add Board Consumer Move Hook
-- `CCP-144` Move Retrospection Solve Logic Out Of Board Core
-- `CCP-145` Add Canonical Puzzle Domain Types
-- `CCP-146` Add Puzzle Library Persistence Owner
-- `CCP-147` Add Puzzle Source Adapter Seams
+### 2. Close the biggest UX and behavior gaps between the live puzzle product and `docs/PUZZLE_V1_PLAN.md`
 
-Why this is first:
-- starting with puzzle page UI would force the product to guess at ownership and data structures
-- imported and user-library puzzle sources should not be forced into one shallow model
-- Puzzle V1 needs honest foundations before a new page build can stay stable
+Priority questions:
+- does the library feel honest and usable for both `Imported Puzzles` and `User Library`?
+- does the round flow feel coherent enough to use repeatedly?
+- are the assist-layer behaviors matching the intended Patzer divergences?
+- is the current product surfacing the right information at the right time?
 
-Later puzzle phases in this track should explicitly preserve these product linkages:
-- the analysis board and Learn From Your Mistakes flow should be able to save selected moments into the user puzzle library
-- the end of a Learn From Your Mistakes session should support a focused follow-up path for failed moments
-- the puzzle product should become a dedicated training surface that the user can move into from analysis-driven review work, not a disconnected second system
+Why now:
+- the project has moved past "can this exist?" and into "is this actually the right product?"
 
-### Cloud persistence and auth timing recommendation
+### 3. Stabilize strict solve correctness, attempt logging, and result-state trustworthiness
 
-This is not the current implementation track, but it should guide sequencing once the Puzzle V1
-foundation work is stable.
+Current reality:
+- the product has round control, attempts, result states, and move-quality logic
+- these now need to be treated as trusted product state, not just implementation milestones
 
-Recommended order:
-- Now: keep focusing on review/puzzle ownership and persistence shape
-- Soon: design the cloud-owned data model and sync boundary
-- Next major step after Phase 0 foundations: implement Supabase + Google sign-in + user-owned tables
-- Later: broaden from “your/admin account” to normal user accounts
+Priority areas:
+- strict stored-solution correctness
+- failure-reason logging
+- clean/recovered/assisted/skipped result integrity
+- retry/due-again metadata behavior
 
-Important constraint:
-- do not treat login as a standalone UI feature
-- the real work is introducing the first honest backend/data ownership model for games, review data,
-  puzzle library data, and later attempt history
-- auth should follow stable data ownership, not come before it
+Why now:
+- repetition features and future rated mode depend on this state being correct
 
-Current recommendation:
-- if a bootstrap private account path is needed first, start with a restricted allowlisted Google
-  login rather than inventing a separate temporary admin-auth system that would need to be replaced
-  later
-- keep IndexedDB as the local fast cache even after cloud persistence is introduced
+### 4. Tighten review-to-puzzle integration
+
+Current reality:
+- analysis still owns legacy candidate extraction and save flows
+- standalone puzzle product now exists separately
+
+Next integration goals:
+- make the analysis-to-user-library path feel like one product, not two disconnected systems
+- verify right-click move authoring, Learn From Your Mistakes saves, and bulk-save flows against the live puzzle library behavior
+- reduce overlap and confusion between legacy candidate storage and Puzzle V1 storage
+
+Why now:
+- this is one of the main Patzer-specific product promises
+
+### 5. Decide what remains legacy and what becomes the canonical path
+
+Current reality:
+- the repo still has both:
+  - legacy analysis-side puzzle candidate persistence in `src/idb/index.ts`
+  - Puzzle V1 persistence in `src/puzzles/puzzleDb.ts`
+
+Need to decide:
+- what stays as analysis-only support
+- what should migrate into the Puzzle V1 library path
+- what should eventually be removed
+
+Why now:
+- leaving both models alive without a cleanup plan will create long-term confusion
 
 ---
 
-## Secondary Track — Restore trustworthy validation and fix blocking bugs
+## Secondary Track — Keep Core App Reliability Honest
 
-### 1. ✓ Make `npm run typecheck` real — DONE
-
-`tsconfig.json` added. `npm run typecheck` now checks the project and surfaces 53 real type
-errors. Errors are deferred and tracked in `docs/KNOWN_ISSUES.md`.
-
-### 2. Fix the 53 type errors surfaced by `npm run typecheck`
+### 6. Fix the remaining TypeScript errors surfaced by `npm run typecheck`
 
 Current state:
-- `npm run typecheck` exits non-zero with 53 errors
-- errors are mostly `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` violations
-- the build still passes because esbuild does not type-check
+- the build passes
+- typecheck is real, but the project still has unresolved errors
 
 Why now:
-- a non-zero typecheck gate provides no regression protection
-- fixing the errors makes the gate meaningful for all subsequent work
+- puzzle work is now large enough that typecheck regressions matter more than before
 
-### 3. Fix the broken clear-local-data reset path
+### 7. Keep the clear-local-data path trustworthy
 
 Current state:
-- `resetAllData()` in `src/main.ts` calls `openGameDb()` without importing it
+- the app now owns more browser-local state than before:
+  - games
+  - analysis
+  - legacy saved puzzle candidates
+  - Puzzle V1 data
 
-User impact:
-- the advertised “clear local data” recovery path is not currently trustworthy
-- users have less reliable recovery when local state becomes confusing or corrupted
+Why now:
+- reset/recovery matters more as local state becomes richer and more confusing
+
+### 8. Continue fixing analysis-board correctness issues that directly affect puzzle generation
+
+Still important:
+- engine update reliability on navigation and variation changes
+- saved-analysis restore correctness
+- active-game scoping
+- review-to-retrospection trustworthiness
+
+Why now:
+- puzzle quality still depends on review quality
 
 ---
 
-## Priority 1 — Make the analysis board and review loop reliable
+## Product Direction Rules
 
-### 4. Fix engine update reliability on navigation and variation changes
+### 9. Do not treat the phased execution doc as the active roadmap anymore
 
-Current state:
-- live engine analysis is not yet fully trustworthy across:
-  - move navigation
-  - variation creation
-  - branch switching
-  - other move-state changes
+`docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md` is now a record of the initial
+implementation sequence, not the current day-to-day plan.
 
-User impact:
-- the board can show stale or missing engine lines when the user is actively reviewing a game
-- this weakens the review experience and blocks downstream puzzle logic
+### 10. Do not start rated-mode or auth work yet
 
-### 5. Fix saved-analysis restore and active-game scoping
+Still deferred:
+- login / user accounts
+- cloud sync
+- rated puzzle progression
+- full imported-puzzle PGN enrichment
 
-Current state:
-- review results and persisted restore flow still need stronger active-game protection
-- restore is still async and coordinated from `src/main.ts`
-- review is still effectively tied to the currently selected game instead of being a clearly
-  scoped per-game background task with explicit progress visibility in the game list
+These remain future layers, not current stabilization priorities.
 
-User impact:
-- analysis can become untrustworthy when switching games quickly
-- users cannot reliably start review on one game, move to another game, and still see the first
-  game continue reviewing in the background with visible progress
-- puzzle tooling later will depend on this data being correct
+### 11. Keep board ownership cleanup active
 
-Implementation note:
-- per-game review ownership should be explicit enough that a game already under review can keep
-  progressing even when it is no longer the selected board context
-- the Games list should show that review is in progress for that game, including a visible
-  percentage indicator in the relevant review-status area of the row
+Current reality:
+- the standalone puzzle product exists, but board ownership is still not a finished abstraction
 
-### 6. Fix engine stop bookkeeping
-
-Current state:
-- `awaitingStopBestmove` in `src/engine/ctrl.ts` is still a single boolean
-
-User impact:
-- rapid stop/start sequences can still mis-handle stale `bestmove` output
-
-### 7. Fix played-arrow semantics in side variations
-
-Current state:
-- the “played move” arrow still assumes the current node is on the original game line
-
-User impact:
-- arrows can communicate the wrong thing while the user explores side lines
-- this makes move exploration less trustworthy in exactly the workflow the app is built for
+Rule:
+- shared board subsystem changes must remain clearly separate from puzzle-only and analysis-only behavior
 
 ---
 
-## Priority 2 — Finish the remaining analysis/review ownership seams
+## Immediate Recommended Next Step
 
-### 8. Formalize game and analysis ownership
+The best next planning artifact is not another build sprint.
 
-Current state:
-- game library state is still owned by `src/main.ts`
-- `loadGame()` and analysis restore coordination are still major cross-system seams
+It is:
+- a Puzzle V1 implementation audit
+- followed by a short punch-list sprint of concrete fixes and polish tasks
 
-Why now:
-- this is one of the last structural gaps that can still create confusing bugs in review flow
-
-### 9. Persist engine settings and review context cleanly
-
-Current state:
-- `reviewDepth`, `analysisDepth`, and `multiPv` still reset on reload
-
-Why now:
-- saved analysis should be stable, understandable, and reusable across sessions
-
----
-
-## Priority 3 — Build the next layer of review functionality
-
-### 10. Implement a local per-game “Learn From Mistakes” style review flow
-
-Current state:
-- the app can review a game and extract puzzle candidates
-- it does not yet have a focused local game-review flow that turns analysis into guided mistake study
-
-Why now:
-- this is the right bridge between game review and later puzzle tooling
-- it keeps the project centered on strengthening the analysis board before expanding puzzle scope
-
-Mandatory research base:
-- use:
-  - `docs/reference/lichess-retrospection/README.md`
-  - `docs/reference/lichess-retrospection-ux/README.md`
-  - `docs/reference/lichess-puzzle-ux/README.md`
-  and the linked files as the first reference layer before implementing or tuning this feature
-- replicate the visible Lichess retrospection pipeline first, then tune later if explicitly
-  desired
-
-Implementation shape:
-- build the first version on top of the review data Patzer already produces after `Review`
-- treat this as a retrospective training loop, not as a generic saved-puzzles feature
-- keep the first milestone scoped to one reviewed game at a time
-
-MVP checklist:
-- introduce a dedicated per-game retrospection candidate shape
-  - `gameId`
-  - `path`
-  - `fenBefore`
-  - `playedMove`
-  - `bestMove`
-  - `bestLine`
-  - `classification`
-  - `loss`
-  - `isMissedMate`
-  - `playerColor`
-- build those candidates from current reviewed mainline data rather than from ad hoc UI state
-- select candidates from reviewed moves only
-- start with `mistake` and `blunder` level moves, plus missed mate-in-3 style cases
-- when the user enters the feature, jump to the position before the mistake
-- let the user try a move from that position
-- first-pass acceptance rule:
-  - accept the exact engine best move
-  - defer Lichess-style "close enough by eval margin" acceptance until the feature loop itself is stable
-- after success, show the stored best line and advance to the next candidate
-- after failure, show the expected move and line, then allow continue / retry
-- when the user plays a move that is better than the game move but still not best, show how much better it was than the move actually played in the game instead of only saying "Better, but not the best move available"
-- distinguish exact-best from merely-better retro feedback clearly:
-  - if the user plays the engine best move, say `Best Move`
-  - if the user plays a move that is better than the game move but still worse than the best move, say `Good Move, but better was available`
-- make the "how much better" messaging data-driven rather than fixed wording, and report the eval swing improvement in the user's favor for the stronger move that was still available
-- add a hint action alongside `View the solution` in Learn From Mistakes mode that reveals which piece should be moved without fully giving the move away
-- if the user takes that hint, treat the current mistake as failed state rather than a clean solve, so hint usage is not counted the same as finding the move unaided
-- treat solved / failed Learn From Mistakes moments as puzzle-like outcomes rather than disposable session state
-- when a Learn From Mistakes session ends, offer a focused follow-up flow to:
-  - redo only the moments the user got wrong on the first attempt
-  - save selected failed moments into the personal puzzle library for later review
-- keep this explicitly connected to the existing review-derived puzzle path instead of inventing a totally separate storage model for retrospection mistakes
-- support sequential navigation through candidates inside the current game
-- persist enough state to resume the reviewed game later, but do not yet design a cross-game training inbox around it
-
-What current review output is already sufficient for:
-- identifying candidate mistake nodes from `loss`
-- locating the puzzle-start position from the parent FEN
-- showing the move that was played
-- showing the engine best move from that position
-- building a simple next / previous mistake flow
-
-What is still missing for full Lichess-style parity and should be deferred until after the MVP:
-- persisted `comp`-style alternative lines in the move tree
-- opening / book cancellation for theory moves
-- local ceval fallback to accept near-best alternatives
-- richer player-targeted practice state machine behavior
-- a broader cross-game “learn from my mistakes” queue
-
-Guardrails:
-- do not couple the first version to the saved-puzzles subsystem
-- do not add this mode by inventing large new ownership in `src/main.ts`
-- prefer a small dedicated retrospection module that consumes completed review output
-- keep the first version mainline-only until review-state correctness and side-line semantics are safer
-
-### 11. Formalize per-move review annotations and add book-move support
-
-Current state:
-- the app already computes win-chance-based `inaccuracy` / `mistake` / `blunder` style labels
-- those labels are still derived directly from eval cache data rather than a dedicated persisted review-annotation layer
-- there is no current book-move source or opening-explorer-backed move tagging during review
-
-Why now:
-- Lichess-style computer analysis is not just raw engine numbers; it turns analysis into move-by-move review language
-- Patzer Pro already has enough review math to support a proper annotation layer, but not yet enough structure to keep extending it safely
-- book-move tagging is useful, but should be added only behind a small cached provider boundary rather than mixed directly into `src/main.ts` or the raw batch engine flow
-
-Mandatory research base:
-- use:
-  - `docs/reference/lichess-retrospection/README.md`
-  - `docs/reference/lichess-retrospection-ux/README.md`
-  - `docs/reference/lichess-puzzle-ux/README.md`
-  and the linked files before changing any review-to-puzzle or book-aware candidate logic
-- follow the documented Lichess pipeline first rather than introducing Patzer-specific heuristic
-  shortcuts
-
-Implementation shape:
-- first persist explicit per-move review annotations alongside stored analysis
-- make move-list and summary UI read those annotations instead of recomputing ad hoc view labels
-- then add cached opening/book lookup by FEN so opening moves can be marked as book until the played line leaves known theory
-
----
-
-## Priority 4 — Tighten board-review behavior details
-
-### 12. Improve graph, arrows, and move-list review behavior
-
-Current state:
-- several analysis-board behaviors still need tightening for review quality:
-  - graph scrub / hover behavior
-  - move-list eval numbers
-  - played-move arrow behavior in side lines
-  - clear variations / reset flows
-- variation management is still missing the user-facing controls needed to discard analysis-board side lines without destroying full-game review data
-
-Exact implementation note:
-- add a move-list action to clear user-created side variations and reset the tree view back to the imported/mainline move order without wiping engine evaluation or completed game-review data for the mainline
-- add per-variation remove affordances in the move list, such as a small `x` beside user-created side lines, so variations can be removed one at a time
-- keep this scoped to move-tree mutation and move-list rendering ownership in `src/tree/ops.ts` and `src/analyse/moveList.ts`, with care not to couple variation cleanup to `evalCache` or full-review persistence unless that dependency is intentionally designed
-- because board move input currently creates new variation nodes in `src/board/index.ts`, this work should explicitly define which variations are safe to remove and how the current path is repaired after deletion
-
-Why now:
-- these are high-value improvements once engine correctness is reliable
-- they improve the actual quality of game review without jumping ahead to full puzzle mode
-
-### 13. Implement the honest minimum route surface
-
-Current state:
-- `analysis-game` is still a route-level placeholder, and the standalone puzzle page has been removed pending a cleaner rebuild
-
-Why now:
-- route honesty matters once the core analysis path is reliable
-- the app should not advertise route-level workflows it cannot yet complete
-
-### 14. Make small UI improvements that support review clarity
-
-Scope examples:
-- game list readability
-- settings/menu cleanup
-- clearer review-state messaging
-- better reset / clear-cache placement
-
----
-
-## Deferred until the core analysis path is safer and more complete
-
-These should not be casual near-term sprint items:
-
-- full puzzle play mode
-- broad saved-puzzles product work beyond minimal support
-- openings trainer
-- stats dashboard
-- engine worker migration
-- broad UI polish initiatives
-
-They are all lower-order than trustworthy analysis, stable saved review data, and clear subsystem
-ownership.
+That is the shortest path from "all phases are built" to "the product actually feels right."
