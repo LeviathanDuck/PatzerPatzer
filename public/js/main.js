@@ -1187,8 +1187,8 @@ var StockfishProtocol = class {
    * multiPv controls how many candidate lines the engine returns.
    * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
    */
-  go(depth, multiPv2 = 1) {
-    this.send(`setoption name MultiPV value ${multiPv2}`);
+  go(depth, multiPv3 = 1) {
+    this.send(`setoption name MultiPV value ${multiPv3}`);
     this.send(`go depth ${depth}`);
   }
   /** Interrupt a running search. */
@@ -1715,8 +1715,8 @@ function storedInt(key, def, min, max) {
   const v = parseInt(localStorage.getItem(key) ?? "", 10);
   return !isNaN(v) && v >= min && v <= max ? v : def;
 }
-var multiPv = storedInt("patzer.multiPv", 1, 1, 5);
-var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
+var multiPv2 = storedInt("patzer.multiPv", 1, 1, 5);
+var analysisDepth2 = storedInt("patzer.analysisDepth", 30, 18, 30);
 var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
@@ -1748,11 +1748,11 @@ function clearEvalCache() {
   evalCache.clear();
 }
 function setMultiPv(v) {
-  multiPv = v;
+  multiPv2 = v;
   localStorage.setItem("patzer.multiPv", String(v));
 }
 function setAnalysisDepth(v) {
-  analysisDepth = v;
+  analysisDepth2 = v;
   localStorage.setItem("patzer.analysisDepth", String(v));
 }
 function clearPendingLines() {
@@ -2213,7 +2213,7 @@ function evalThreatPosition() {
   evalIsThreat = true;
   protocol.stop();
   protocol.setPosition(flipFenColor(_getCtrl().node.fen));
-  protocol.go(analysisDepth);
+  protocol.go(analysisDepth2);
 }
 function toggleThreatMode() {
   threatMode = !threatMode;
@@ -2240,7 +2240,7 @@ function evalCurrentPosition() {
   threatEval = {};
   const ctrl2 = _getCtrl();
   const cached = evalCache.get(ctrl2.path);
-  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
+  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv2 - 1;
   if (cached && cachedHasLines) {
     cancelLiveEngineUiRefresh();
     currentEval = { ...cached };
@@ -2269,9 +2269,9 @@ function evalCurrentPosition() {
   evalNodePath = ctrl2.path;
   evalNodePly = ctrl2.node.ply;
   evalParentPath = ctrl2.path.length >= 2 ? ctrl2.path.slice(0, -2) : "";
-  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv);
+  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv2);
   protocol.setPosition(ctrl2.node.fen);
-  protocol.go(analysisDepth, multiPv);
+  protocol.go(analysisDepth2, multiPv2);
 }
 function toggleEngine() {
   engineEnabled = !engineEnabled;
@@ -6930,7 +6930,7 @@ function renderPvBox() {
     if (rest.length > 0) children.push(h("span.pv-cont", rest));
     return h("div.pv.pv--nowrap", children);
   }
-  const slots = [...Array(multiPv).keys()].map((i) => pvRowForSlot(i));
+  const slots = [...Array(multiPv2).keys()].map((i) => pvRowForSlot(i));
   return h("div.pv_box", {
     key: "pv-rows",
     hook: {
@@ -7023,7 +7023,7 @@ function renderEngineSettings() {
     h("div.ceval-settings__row", [
       h("label.ceval-settings__label", { attrs: { for: "ceval-multipv" } }, "Lines"),
       h("input#ceval-multipv", {
-        attrs: { type: "range", min: 1, max: 5, step: 1, value: multiPv },
+        attrs: { type: "range", min: 1, max: 5, step: 1, value: multiPv2 },
         on: {
           input: (e) => {
             setMultiPv(parseInt(e.target.value));
@@ -7036,7 +7036,7 @@ function renderEngineSettings() {
           }
         }
       }),
-      h("span.ceval-settings__val", `${multiPv} / 5`)
+      h("span.ceval-settings__val", `${multiPv2} / 5`)
     ]),
     h("div.ceval-settings__row", [
       h("label.ceval-settings__label", { attrs: { for: "ceval-review-depth" } }, "Review depth"),
@@ -7061,7 +7061,7 @@ function renderEngineSettings() {
           }
         }
       }, [18, 20, 24, 30].map(
-        (d) => h("option", { attrs: { value: d, selected: d === analysisDepth } }, String(d))
+        (d) => h("option", { attrs: { value: d, selected: d === analysisDepth2 } }, String(d))
       ))
     ]),
     h("div.ceval-settings__row", [
@@ -10938,14 +10938,14 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     const fenStr = makeFen(pos.toSetup());
     if (engineReady) {
       protocol.setPosition(fenStr);
-      protocol.go(analysisDepth, multiPv);
+      protocol.go(analysisDepth2, multiPv2);
       redraw2();
     } else {
       redraw2();
       void protocol.init("/stockfish-web").then(() => {
         if (this.puzzleEngineEnabled) {
           protocol.setPosition(fenStr);
-          protocol.go(analysisDepth, multiPv);
+          protocol.go(analysisDepth2, multiPv2);
           redraw2();
         }
       }).catch((err) => {
@@ -12865,7 +12865,7 @@ function renderPuzzleEnginePanel(rc, redraw2) {
       _lastPuzzleEngineFen = puzzleFen;
       requestAnimationFrame(() => {
         protocol.setPosition(puzzleFen);
-        protocol.go(analysisDepth, multiPv);
+        protocol.go(analysisDepth2, multiPv2);
       });
     }
   } else {
@@ -13044,6 +13044,320 @@ function renderPuzzleRound(redraw2) {
       ])
     ])
   ]);
+}
+
+// src/sync/client.ts
+var AUTH_TOKEN_KEY = "adminAuthToken";
+var LAST_SYNC_KEY = "lastSyncedAt";
+function setAuthToken(token) {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+function getAuthToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+function clearAuthToken() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+function isAuthenticated() {
+  return !!getAuthToken();
+}
+function getLastSyncedAt() {
+  return localStorage.getItem(LAST_SYNC_KEY);
+}
+function setLastSyncedAt() {
+  localStorage.setItem(LAST_SYNC_KEY, (/* @__PURE__ */ new Date()).toISOString());
+}
+function authHeaders() {
+  const token = getAuthToken();
+  return token ? { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+}
+async function apiGet(path) {
+  const res = await fetch(path, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET ${path}: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+async function apiPost(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`POST ${path}: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+async function login(token) {
+  try {
+    const result = await apiPost("/api/auth/login", { token });
+    if (result.authenticated) {
+      setAuthToken(token);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+function logout() {
+  clearAuthToken();
+}
+function openIdb(name, version) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(name, version);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function readAllFromStore(db, storeName) {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) return resolve([]);
+    const tx = db.transaction(storeName, "readonly");
+    const store = tx.objectStore(storeName);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function writeToStore(db, storeName, records, keyPath) {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) return resolve();
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    for (const record of records) {
+      if (keyPath) {
+        store.put(record);
+      } else {
+        store.add(record);
+      }
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function pushToServer() {
+  try {
+    const counts = {};
+    const mainDb = await openIdb("patzer-pro", 1);
+    const games = await readAllFromStore(mainDb, "game-library");
+    if (games.length > 0) {
+      await apiPost("/api/sync/games", { games });
+      counts.games = games.length;
+    }
+    const analysis = await readAllFromStore(mainDb, "analysis-library");
+    if (analysis.length > 0) {
+      await apiPost("/api/sync/analysis", { analysis });
+      counts.analysis = analysis.length;
+    }
+    mainDb.close();
+    const puzzleDb = await openIdb("patzer-puzzle-db", 2);
+    const definitions = await readAllFromStore(puzzleDb, "puzzle-definitions");
+    const attempts = await readAllFromStore(puzzleDb, "puzzle-attempts");
+    const meta = await readAllFromStore(puzzleDb, "puzzle-user-meta");
+    if (definitions.length > 0 || attempts.length > 0 || meta.length > 0) {
+      await apiPost("/api/sync/puzzles", { definitions, attempts, meta });
+      counts.definitions = definitions.length;
+      counts.attempts = attempts.length;
+      counts.meta = meta.length;
+    }
+    puzzleDb.close();
+    setLastSyncedAt();
+    return { success: true, counts };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Push failed" };
+  }
+}
+async function pullFromServer() {
+  try {
+    const counts = {};
+    const gamesResult = await apiGet("/api/sync/games");
+    if (gamesResult.games.length > 0) {
+      const mainDb = await openIdb("patzer-pro", 1);
+      await writeToStore(mainDb, "game-library", gamesResult.games, "id");
+      mainDb.close();
+      counts.games = gamesResult.games.length;
+    }
+    const analysisResult = await apiGet("/api/sync/analysis");
+    if (analysisResult.analysis.length > 0) {
+      const mainDb = await openIdb("patzer-pro", 1);
+      await writeToStore(mainDb, "analysis-library", analysisResult.analysis, "gameId");
+      mainDb.close();
+      counts.analysis = analysisResult.analysis.length;
+    }
+    const puzzleResult = await apiGet("/api/sync/puzzles");
+    const puzzleDb = await openIdb("patzer-puzzle-db", 2);
+    if (puzzleResult.definitions.length > 0) {
+      await writeToStore(puzzleDb, "puzzle-definitions", puzzleResult.definitions, "id");
+      counts.definitions = puzzleResult.definitions.length;
+    }
+    if (puzzleResult.meta.length > 0) {
+      await writeToStore(puzzleDb, "puzzle-user-meta", puzzleResult.meta, "puzzleId");
+      counts.meta = puzzleResult.meta.length;
+    }
+    if (puzzleResult.attempts.length > 0) {
+      counts.attempts = puzzleResult.attempts.length;
+    }
+    puzzleDb.close();
+    setLastSyncedAt();
+    return { success: true, counts };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Pull failed" };
+  }
+}
+async function getLocalDataCounts() {
+  try {
+    const mainDb = await openIdb("patzer-pro", 1);
+    const games = await readAllFromStore(mainDb, "game-library");
+    const analysis = await readAllFromStore(mainDb, "analysis-library");
+    mainDb.close();
+    const puzzleDb = await openIdb("patzer-puzzle-db", 2);
+    const defs = await readAllFromStore(puzzleDb, "puzzle-definitions");
+    const attempts = await readAllFromStore(puzzleDb, "puzzle-attempts");
+    const meta = await readAllFromStore(puzzleDb, "puzzle-user-meta");
+    puzzleDb.close();
+    return {
+      games: games.length,
+      analysis: analysis.length,
+      puzzleDefinitions: defs.length,
+      puzzleAttempts: attempts.length,
+      puzzleMeta: meta.length
+    };
+  } catch {
+    return { games: 0, analysis: 0, puzzleDefinitions: 0, puzzleAttempts: 0, puzzleMeta: 0 };
+  }
+}
+
+// src/admin/view.ts
+var authState = isAuthenticated() ? "logged-in" : "logged-out";
+var tokenInput = "";
+var loginError = "";
+var syncStatus = "idle";
+var syncMessage = "";
+var dataCounts = null;
+function loadCounts(redraw2) {
+  getLocalDataCounts().then((c) => {
+    dataCounts = c;
+    redraw2();
+  });
+}
+function renderAdminPage(redraw2) {
+  if (dataCounts === null) loadCounts(redraw2);
+  if (authState !== "logged-in") {
+    return renderLoginForm(redraw2);
+  }
+  return renderSyncPanel(redraw2);
+}
+function renderLoginForm(redraw2) {
+  return h("div.admin-page", [
+    h("div.admin-card", [
+      h("h2.admin-title", "Admin Login"),
+      h("p.admin-desc", "Enter admin token to access sync controls."),
+      h("div.admin-form", [
+        h("input.admin-input", {
+          attrs: { type: "password", placeholder: "Admin token" },
+          props: { value: tokenInput },
+          on: {
+            input: (e) => {
+              tokenInput = e.target.value;
+            },
+            keydown: (e) => {
+              if (e.key === "Enter") doLogin(redraw2);
+            }
+          }
+        }),
+        h("button.admin-btn.admin-btn--primary", {
+          on: { click: () => doLogin(redraw2) }
+        }, "Login")
+      ]),
+      loginError ? h("div.admin-error", loginError) : null
+    ])
+  ]);
+}
+function doLogin(redraw2) {
+  if (!tokenInput.trim()) return;
+  loginError = "";
+  login(tokenInput.trim()).then((ok) => {
+    if (ok) {
+      authState = "logged-in";
+      tokenInput = "";
+      loadCounts(redraw2);
+    } else {
+      loginError = "Invalid token";
+    }
+    redraw2();
+  });
+}
+function renderSyncPanel(redraw2) {
+  const lastSync = getLastSyncedAt();
+  return h("div.admin-page", [
+    h("div.admin-card", [
+      h("div.admin-header", [
+        h("h2.admin-title", "Sync Controls"),
+        h("button.admin-btn.admin-btn--muted", {
+          on: { click: () => {
+            logout();
+            authState = "logged-out";
+            redraw2();
+          } }
+        }, "Logout")
+      ]),
+      // Data counts
+      dataCounts ? h("div.admin-counts", [
+        h("div.admin-count", [h("span.admin-count__num", `${dataCounts.games}`), h("span", "Games")]),
+        h("div.admin-count", [h("span.admin-count__num", `${dataCounts.analysis}`), h("span", "Analyzed")]),
+        h("div.admin-count", [h("span.admin-count__num", `${dataCounts.puzzleDefinitions}`), h("span", "Puzzles")]),
+        h("div.admin-count", [h("span.admin-count__num", `${dataCounts.puzzleAttempts}`), h("span", "Attempts")]),
+        h("div.admin-count", [h("span.admin-count__num", `${dataCounts.puzzleMeta}`), h("span", "Meta")])
+      ]) : null,
+      // Sync status
+      h("div.admin-sync-status", [
+        lastSync ? h("span", `Last synced: ${new Date(lastSync).toLocaleString()}`) : h("span", "Never synced"),
+        syncStatus !== "idle" ? h("span.admin-sync-badge", {
+          class: {
+            "admin-sync-badge--active": syncStatus === "pushing" || syncStatus === "pulling",
+            "admin-sync-badge--done": syncStatus === "done",
+            "admin-sync-badge--error": syncStatus === "error"
+          }
+        }, syncStatus === "pushing" ? "Pushing..." : syncStatus === "pulling" ? "Pulling..." : syncStatus === "done" ? "Done" : "Error") : null
+      ]),
+      syncMessage ? h("div.admin-sync-message", syncMessage) : null,
+      // Sync buttons
+      h("div.admin-actions", [
+        h("button.admin-btn.admin-btn--primary", {
+          attrs: { disabled: syncStatus === "pushing" || syncStatus === "pulling" },
+          on: { click: () => doPush(redraw2) }
+        }, "Push to Server"),
+        h("button.admin-btn.admin-btn--primary", {
+          attrs: { disabled: syncStatus === "pushing" || syncStatus === "pulling" },
+          on: { click: () => doPull(redraw2) }
+        }, "Pull from Server")
+      ])
+    ])
+  ]);
+}
+function doPush(redraw2) {
+  syncStatus = "pushing";
+  syncMessage = "";
+  redraw2();
+  pushToServer().then((result) => {
+    syncStatus = result.success ? "done" : "error";
+    syncMessage = result.success ? `Pushed: ${formatCounts(result.counts)}` : `Error: ${result.error}`;
+    loadCounts(redraw2);
+    redraw2();
+  });
+}
+function doPull(redraw2) {
+  syncStatus = "pulling";
+  syncMessage = "";
+  redraw2();
+  pullFromServer().then((result) => {
+    syncStatus = result.success ? "done" : "error";
+    syncMessage = result.success ? `Pulled: ${formatCounts(result.counts)}` : `Error: ${result.error}`;
+    loadCounts(redraw2);
+    redraw2();
+  });
+}
+function formatCounts(counts) {
+  if (!counts) return "no data";
+  return Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(", ");
 }
 
 // src/import/pgn.ts
@@ -14006,6 +14320,7 @@ var routes = [
   { pattern: ["games"], name: "games" },
   { pattern: ["puzzles", ":id"], name: "puzzle-round" },
   { pattern: ["puzzles"], name: "puzzles" },
+  { pattern: ["admin"], name: "admin" },
   { pattern: [], name: "analysis" }
 ];
 function parse(hash2) {
@@ -14044,11 +14359,14 @@ var _db2;
 function openDb() {
   if (_db2) return Promise.resolve(_db2);
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("patzer-openings", 1);
+    const req = indexedDB.open("patzer-openings", 2);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains("collections")) {
         db.createObjectStore("collections", { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains("session")) {
+        db.createObjectStore("session");
       }
     };
     req.onsuccess = () => {
@@ -14090,10 +14408,43 @@ async function deleteCollection(id) {
     console.warn("[openings-db] delete failed", e);
   }
 }
+async function saveSessionState(state2) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("session", "readwrite");
+    tx.objectStore("session").put(state2, "current");
+  } catch (e) {
+    console.warn("[openings-db] session save failed", e);
+  }
+}
+async function loadSessionState() {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("session", "readonly");
+      const req = tx.objectStore("session").get("current");
+      req.onsuccess = () => resolve(req.result ?? void 0);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[openings-db] session load failed", e);
+    return void 0;
+  }
+}
+async function clearSessionState() {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("session", "readwrite");
+    tx.objectStore("session").delete("current");
+  } catch (e) {
+    console.warn("[openings-db] session clear failed", e);
+  }
+}
 
 // src/openings/tree.ts
-function newBuildNode(fen, san, uci) {
-  return { fen, san, uci, results: { total: 0, white: 0, draws: 0, black: 0 }, children: /* @__PURE__ */ new Map() };
+function normalizeFen(fen) {
+  const parts = fen.split(" ");
+  return parts.slice(0, 4).join(" ");
 }
 function parseResult(result) {
   if (result === "1-0") return "white";
@@ -14107,55 +14458,138 @@ function addResult(counts, result) {
   else if (result === "black") counts.black++;
   else if (result === "draw") counts.draws++;
 }
-var MAX_PLY = 60;
-function buildOpeningTree(games) {
-  const startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-  const root = newBuildNode(startFen, "", "");
-  for (const game of games) {
-    try {
-      const parsed = parsePgn(game.pgn);
-      if (parsed.length === 0) continue;
-      const pgnGame = parsed[0];
-      const setup = startingPosition(pgnGame.headers);
-      if (setup.isErr) continue;
-      const pos = setup.value;
-      const result = parseResult(game.result);
-      addResult(root.results, result);
-      let current2 = root;
-      let node = pgnGame.moves.children[0];
-      let ply = 0;
-      while (node && ply < MAX_PLY) {
-        const move3 = parseSan(pos, node.data.san);
-        if (!move3) break;
-        const uci = makeUci(move3);
-        const san = makeSanAndPlay(pos, move3);
-        const fen = makeFen(pos.toSetup());
-        let child = current2.children.get(uci);
-        if (!child) {
-          child = newBuildNode(fen, san, uci);
-          current2.children.set(uci, child);
+function newCounts() {
+  return { total: 0, white: 0, draws: 0, black: 0 };
+}
+function avgGameRating(game) {
+  const ratings = [game.whiteRating, game.blackRating].filter((r) => r !== void 0 && r > 0);
+  return ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+}
+var MAX_PLY = 30;
+var START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+var START_KEY = normalizeFen(START_FEN);
+var OpeningTreeBuilder = class {
+  constructor() {
+    this.positions = /* @__PURE__ */ new Map();
+    this.root = this._getOrCreate(START_FEN, START_KEY);
+  }
+  _getOrCreate(fen, posKey) {
+    let pos = this.positions.get(posKey);
+    if (!pos) {
+      pos = { fen, posKey, results: newCounts(), edges: /* @__PURE__ */ new Map(), parentCount: 0 };
+      this.positions.set(posKey, pos);
+    }
+    return pos;
+  }
+  /** Add a batch of games to the graph. */
+  addGames(games) {
+    for (const game of games) {
+      try {
+        const parsed = parsePgn(game.pgn);
+        if (parsed.length === 0) continue;
+        const pgnGame = parsed[0];
+        const setup = startingPosition(pgnGame.headers);
+        if (setup.isErr) continue;
+        const pos = setup.value;
+        const result = parseResult(game.result);
+        addResult(this.root.results, result);
+        const gameRating = avgGameRating(game);
+        const gameDate = game.date ?? "";
+        let currentKey = START_KEY;
+        let pgnNode = pgnGame.moves.children[0];
+        let ply = 0;
+        while (pgnNode && ply < MAX_PLY) {
+          const move3 = parseSan(pos, pgnNode.data.san);
+          if (!move3) break;
+          const uci = makeUci(move3);
+          const san = makeSanAndPlay(pos, move3);
+          const fen = makeFen(pos.toSetup());
+          const childKey = normalizeFen(fen);
+          const childPos = this._getOrCreate(fen, childKey);
+          addResult(childPos.results, result);
+          const currentPos = this.positions.get(currentKey);
+          let edge = currentPos.edges.get(uci);
+          if (!edge) {
+            edge = { san, uci, targetPosKey: childKey, results: newCounts(), ratingSum: 0, ratingCount: 0, lastPlayed: "" };
+            currentPos.edges.set(uci, edge);
+            childPos.parentCount++;
+          }
+          addResult(edge.results, result);
+          if (gameRating > 0) {
+            edge.ratingSum += gameRating;
+            edge.ratingCount++;
+          }
+          if (gameDate > edge.lastPlayed) edge.lastPlayed = gameDate;
+          currentKey = childKey;
+          pgnNode = pgnNode.children[0];
+          ply++;
         }
-        addResult(child.results, result);
-        current2 = child;
-        node = node.children[0];
-        ply++;
+      } catch {
+        continue;
       }
-    } catch {
-      continue;
     }
   }
-  return freezeTree(root);
+  /** Freeze the mutable graph into an immutable tree. */
+  freeze() {
+    return freezeGraph(this.root, this.positions, /* @__PURE__ */ new Set());
+  }
+};
+function buildOpeningTree(games) {
+  const builder = new OpeningTreeBuilder();
+  builder.addGames(games);
+  return builder.freeze();
 }
-function freezeTree(node) {
-  const children = [...node.children.values()].sort((a, b) => b.results.total - a.results.total).map(freezeTree);
+function freezeGraph(pos, allPositions, visited) {
+  visited.add(pos.posKey);
+  const children = [];
+  const edgesSorted = [...pos.edges.values()].sort((a, b) => b.results.total - a.results.total);
+  for (const edge of edgesSorted) {
+    const targetPos = allPositions.get(edge.targetPosKey);
+    if (!targetPos) continue;
+    const edgeAvgRating = edge.ratingCount > 0 ? Math.round(edge.ratingSum / edge.ratingCount) : 0;
+    if (visited.has(edge.targetPosKey)) {
+      children.push({
+        fen: targetPos.fen,
+        posKey: targetPos.posKey,
+        san: edge.san,
+        uci: edge.uci,
+        total: edge.results.total,
+        white: edge.results.white,
+        draws: edge.results.draws,
+        black: edge.results.black,
+        avgRating: edgeAvgRating,
+        lastPlayed: edge.lastPlayed,
+        transposition: true,
+        children: []
+      });
+    } else {
+      const childTree = freezeGraph(targetPos, allPositions, new Set(visited));
+      children.push({
+        ...childTree,
+        san: edge.san,
+        uci: edge.uci,
+        total: edge.results.total,
+        white: edge.results.white,
+        draws: edge.results.draws,
+        black: edge.results.black,
+        avgRating: edgeAvgRating,
+        lastPlayed: edge.lastPlayed,
+        transposition: targetPos.parentCount > 1
+      });
+    }
+  }
   return {
-    fen: node.fen,
-    san: node.san,
-    uci: node.uci,
-    total: node.results.total,
-    white: node.results.white,
-    draws: node.results.draws,
-    black: node.results.black,
+    fen: pos.fen,
+    posKey: pos.posKey,
+    san: "",
+    uci: "",
+    total: pos.results.total,
+    white: pos.results.white,
+    draws: pos.results.draws,
+    black: pos.results.black,
+    avgRating: 0,
+    lastPlayed: "",
+    transposition: pos.parentCount > 1,
     children
   };
 }
@@ -14217,7 +14651,7 @@ var _importDateRange = "1month";
 var _importCustomFrom = "";
 var _importCustomTo = "";
 var _importRated = true;
-var _importMaxGames = 50;
+var _importMaxGames = Infinity;
 function initOpeningsPage(page = "library") {
   _currentPage = page;
 }
@@ -14313,7 +14747,7 @@ function importMaxGames() {
   return _importMaxGames;
 }
 function setImportMaxGames(v) {
-  _importMaxGames = Math.max(1, Math.min(200, v));
+  _importMaxGames = v <= 0 ? Infinity : v;
 }
 function importProgress() {
   return _importProgress;
@@ -14355,13 +14789,14 @@ function resetImport() {
   _importCustomFrom = "";
   _importCustomTo = "";
   _importRated = true;
-  _importMaxGames = 50;
+  _importMaxGames = Infinity;
 }
 var _activeCollection = null;
 var _openingTree = null;
 var _sessionPath = [];
 var _sessionNode = null;
 var _boardOrientation = "white";
+var _colorFilter = "white";
 function activeCollection() {
   return _activeCollection;
 }
@@ -14374,19 +14809,109 @@ function flipBoard() {
 function openingTree() {
   return _openingTree;
 }
+function colorFilter() {
+  return _colorFilter;
+}
+function setColorFilter(color, redraw2) {
+  _colorFilter = color;
+  if (!_activeCollection) return;
+  const target = _activeCollection.target?.toLowerCase() ?? "";
+  let games = _activeCollection.games;
+  if (color !== "both" && target) {
+    games = games.filter((g) => {
+      const isWhite = g.white?.toLowerCase() === target;
+      const isBlack = g.black?.toLowerCase() === target;
+      return color === "white" ? isWhite : isBlack;
+    });
+  }
+  _openingTree = buildOpeningTree(games);
+  _sessionPath = [];
+  _sessionNode = _openingTree;
+  invalidateSampleCache();
+  if (color === "white") _boardOrientation = "white";
+  else if (color === "black") _boardOrientation = "black";
+}
 function sessionPath() {
   return _sessionPath;
 }
 function sessionNode() {
   return _sessionNode;
 }
-function openCollection(collection) {
+var _treeBuildProgress = 0;
+var _treeBuildTotal = 0;
+var _treeBuilding = false;
+function treeBuildProgress() {
+  return _treeBuildProgress;
+}
+function treeBuildTotal() {
+  return _treeBuildTotal;
+}
+function treeBuilding() {
+  return _treeBuilding;
+}
+function openCollection(collection, redraw2) {
   _activeCollection = collection;
-  _openingTree = buildOpeningTree(collection.games);
+  if (_colorFilter === "white") _boardOrientation = "white";
+  else if (_colorFilter === "black") _boardOrientation = "black";
+  const emptyBuilder = new OpeningTreeBuilder();
+  _openingTree = emptyBuilder.freeze();
   _sessionPath = [];
   _sessionNode = _openingTree;
-  _boardOrientation = collection.perspective === "black" ? "white" : collection.perspective === "white" ? "black" : "white";
+  invalidateSampleCache();
   _currentPage = "session";
+  const target = collection.target?.toLowerCase() ?? "";
+  let games = collection.games;
+  if (_colorFilter !== "both" && target) {
+    games = games.filter((g) => {
+      const isWhite = g.white?.toLowerCase() === target;
+      const isBlack = g.black?.toLowerCase() === target;
+      return _colorFilter === "white" ? isWhite : isBlack;
+    });
+  }
+  _treeBuildProgress = 0;
+  _treeBuildTotal = games.length;
+  _treeBuilding = true;
+  redraw2();
+  const CHUNK = 200;
+  const builder = new OpeningTreeBuilder();
+  let index = 0;
+  let chunkCount = 0;
+  function processChunk() {
+    const end3 = Math.min(index + CHUNK, games.length);
+    builder.addGames(games.slice(index, end3));
+    index = end3;
+    chunkCount++;
+    _treeBuildProgress = index;
+    const done = index >= games.length;
+    if (done || chunkCount % 4 === 0) {
+      _openingTree = builder.freeze();
+      _sessionNode = nodeAtMoves(_openingTree, [..._sessionPath]) ?? _openingTree;
+      invalidateSampleCache();
+    }
+    redraw2();
+    if (!done) {
+      setTimeout(processChunk, 0);
+    } else {
+      _treeBuilding = false;
+      redraw2();
+    }
+  }
+  setTimeout(processChunk, 0);
+}
+var _sessionSaveTimer = null;
+function persistSession() {
+  if (_sessionSaveTimer) clearTimeout(_sessionSaveTimer);
+  _sessionSaveTimer = setTimeout(() => {
+    _sessionSaveTimer = null;
+    if (_activeCollection) {
+      void saveSessionState({
+        collectionId: _activeCollection.id,
+        path: [..._sessionPath],
+        orientation: _boardOrientation,
+        savedAt: Date.now()
+      });
+    }
+  }, 500);
 }
 function navigateToMove(uci) {
   if (!_sessionNode) return;
@@ -14394,17 +14919,20 @@ function navigateToMove(uci) {
   if (child) {
     _sessionPath = [..._sessionPath, uci];
     _sessionNode = child;
+    persistSession();
   }
 }
 function navigateBack() {
   if (_sessionPath.length === 0 || !_openingTree) return;
   _sessionPath = _sessionPath.slice(0, -1);
   _sessionNode = nodeAtMoves(_openingTree, _sessionPath) ?? _openingTree;
+  persistSession();
 }
 function navigateToRoot() {
   if (!_openingTree) return;
   _sessionPath = [];
   _sessionNode = _openingTree;
+  persistSession();
 }
 function navigateToPath(moves) {
   if (!_openingTree) return;
@@ -14412,18 +14940,32 @@ function navigateToPath(moves) {
   if (target) {
     _sessionPath = [...moves];
     _sessionNode = target;
+    persistSession();
   }
 }
+var _cachedSamplesPath = "";
+var _cachedSamples = [];
 function sampleGames(limit = 5) {
   if (!_activeCollection) return [];
-  return findSampleGames(_activeCollection.games, _sessionPath, limit);
+  const pathKey = _sessionPath.join("/");
+  if (pathKey !== _cachedSamplesPath) {
+    _cachedSamplesPath = pathKey;
+    _cachedSamples = findSampleGames(_activeCollection.games, _sessionPath, limit);
+  }
+  return _cachedSamples;
+}
+function invalidateSampleCache() {
+  _cachedSamplesPath = "";
+  _cachedSamples = [];
 }
 function closeSession() {
+  invalidateSampleCache();
   _activeCollection = null;
   _openingTree = null;
   _sessionPath = [];
   _sessionNode = null;
   _currentPage = "library";
+  void clearSessionState();
 }
 async function loadSavedCollections(redraw2) {
   if (_collectionsLoaded) return;
@@ -14432,6 +14974,15 @@ async function loadSavedCollections(redraw2) {
     loaded.sort((a, b) => b.createdAt - a.createdAt);
     _collections = loaded;
     _collectionsLoaded = true;
+    const session = await loadSessionState();
+    if (session && _currentPage === "library") {
+      const col = _collections.find((c) => c.id === session.collectionId);
+      if (col) {
+        openCollection(col, redraw2);
+        if (session.path.length > 0) navigateToPath(session.path);
+        if (session.orientation) _boardOrientation = session.orientation;
+      }
+    }
   } catch (e) {
     console.warn("[openings] failed to load collections", e);
     _collections = [];
@@ -14470,6 +15021,44 @@ function pgnToResearchGame(pgn, source) {
     blackRating: parseRating(parsePgnHeader(pgn, "BlackElo"))
   };
 }
+function filterResearchGamesByDate(games, dateRange, customFrom, customTo) {
+  if (dateRange === "all") return games;
+  if (dateRange === "custom") {
+    return games.filter((g) => {
+      const d = g.date?.slice(0, 10);
+      if (!d) return true;
+      if (customFrom && d < customFrom) return false;
+      if (customTo && d > customTo) return false;
+      return true;
+    });
+  }
+  const now = /* @__PURE__ */ new Date();
+  let cutoff;
+  switch (dateRange) {
+    case "24h":
+      cutoff = new Date(now.getTime() - 864e5);
+      break;
+    case "1week":
+      cutoff = new Date(now.getTime() - 7 * 864e5);
+      break;
+    case "1month":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 1);
+      break;
+    case "3months":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 3);
+      break;
+    case "1year":
+      cutoff = new Date(now);
+      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      break;
+    default:
+      return games;
+  }
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
+}
 function splitPgnText(text) {
   return text.trim().split(/\n\n(?=\[Event )/).filter((s) => s.trim());
 }
@@ -14477,7 +15066,8 @@ async function fetchLichessResearch(username, signal) {
   const max = importMaxGames();
   const speeds = importSpeeds();
   const rated = importRated();
-  const params = new URLSearchParams({ max: String(max) });
+  const params = new URLSearchParams();
+  if (isFinite(max)) params.set("max", String(max));
   if (rated) params.set("rated", "true");
   if (speeds.size > 0) params.set("perfType", [...speeds].join(","));
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
@@ -14613,17 +15203,9 @@ async function executeResearchImport(redraw2) {
         games = [];
     }
     if (abort.signal.aborted) return;
+    const fetchedCount = games.length;
     if (source !== "pgn") {
-      const savedDateRange = importFilters2.dateRange;
-      const savedCustomFrom = importFilters2.customFrom;
-      const savedCustomTo = importFilters2.customTo;
-      importFilters2.dateRange = importDateRange();
-      importFilters2.customFrom = importCustomFrom();
-      importFilters2.customTo = importCustomTo();
-      games = filterGamesByDate(games);
-      importFilters2.dateRange = savedDateRange;
-      importFilters2.customFrom = savedCustomFrom;
-      importFilters2.customTo = savedCustomTo;
+      games = filterResearchGamesByDate(games, importDateRange(), importCustomFrom(), importCustomTo());
     }
     setImportProgress(games.length);
     if (games.length === 0) {
@@ -14648,6 +15230,21 @@ async function executeResearchImport(redraw2) {
         return;
       }
     }
+    const settings = {
+      speeds: [...importSpeeds()],
+      dateRange: importDateRange(),
+      rated: importRated(),
+      maxGames: importMaxGames()
+    };
+    if (settings.dateRange === "custom") {
+      settings.customFrom = importCustomFrom();
+      settings.customTo = importCustomTo();
+    }
+    const provenance = {
+      fetchedCount,
+      filteredCount: games.length,
+      importedAt: Date.now()
+    };
     const label = source === "pgn" ? `PGN Upload ${(/* @__PURE__ */ new Date()).toLocaleDateString()}` : username;
     const collection = {
       id: nextCollectionId(),
@@ -14657,7 +15254,9 @@ async function executeResearchImport(redraw2) {
       perspective: color,
       games,
       createdAt: Date.now(),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      settings,
+      provenance
     };
     await saveCollection(collection);
     addCollection(collection);
@@ -14738,6 +15337,7 @@ async function fetchExplorer(fen, redraw2) {
 
 // src/openings/view.ts
 var _openingsCg;
+var _lastBoardFen = "";
 function renderOpeningsPage(redraw2) {
   const page = openingsPage();
   if (page === "session") return renderSessionPage(redraw2);
@@ -14792,8 +15392,7 @@ function renderCollectionList(items, redraw2) {
     (c) => h("div.openings__collection-row", { key: c.id }, [
       h("div.openings__collection-main", {
         on: { click: () => {
-          openCollection(c);
-          redraw2();
+          openCollection(c, redraw2);
         } }
       }, [
         h("span.openings__collection-name", c.name),
@@ -15019,11 +15618,18 @@ function renderDetailsStep(redraw2) {
 function renderImportingStep(redraw2) {
   const progress = importProgress();
   return h("div.openings__step", [
-    h("h3", "Importing\u2026"),
-    h(
-      "div.openings__progress",
-      progress > 0 ? `Found ${progress} game${progress !== 1 ? "s" : ""} so far\u2026` : "Fetching opponent games\u2026"
-    ),
+    h("h3", "Importing Games"),
+    // Transfer animation
+    h("div.openings__transfer", [
+      h("div.openings__transfer-track", [
+        h("div.openings__transfer-pulse"),
+        h("div.openings__transfer-pulse.openings__transfer-pulse--delayed")
+      ]),
+      h(
+        "div.openings__transfer-count",
+        progress > 0 ? `${progress.toLocaleString()} game${progress !== 1 ? "s" : ""} found` : "Connecting\u2026"
+      )
+    ]),
     h("button.openings__cancel-import-btn", {
       on: { click: () => {
         cancelImport();
@@ -15047,42 +15653,155 @@ function renderDoneStep(redraw2) {
     }, "Back to Library")
   ]);
 }
+var _keyHandler = null;
 function renderSessionPage(redraw2) {
   const collection = activeCollection();
   const node = sessionNode();
   const path = sessionPath();
-  return h("div.openings.openings--session", [
+  return h("div.openings.openings--session", {
+    hook: {
+      insert: () => {
+        _keyHandler = (e) => {
+          const tag = e.target?.tagName;
+          if (tag === "INPUT" || tag === "TEXTAREA") return;
+          if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            navigateBack();
+            syncOpeningsBoard(redraw2);
+            redraw2();
+          } else if (e.key === "ArrowRight") {
+            e.preventDefault();
+            const cur = sessionNode();
+            if (cur && cur.children.length > 0) {
+              navigateToMove(cur.children[0].uci);
+              syncOpeningsBoard(redraw2);
+              redraw2();
+            }
+          } else if (e.key === "Home") {
+            e.preventDefault();
+            navigateToRoot();
+            syncOpeningsBoard(redraw2);
+            redraw2();
+          }
+        };
+        document.addEventListener("keydown", _keyHandler);
+      },
+      destroy: () => {
+        if (_keyHandler) {
+          document.removeEventListener("keydown", _keyHandler);
+          _keyHandler = null;
+        }
+      }
+    }
+  }, [
     h("div.openings__session-header", [
       h("button.openings__back-lib-btn", {
         on: { click: () => {
           _openingsCg = void 0;
+          setCevalFenOverride(null);
           closeSession();
           redraw2();
         } }
       }, "\u2190 Library"),
       h("h2.openings__session-title", collection?.name ?? "Opening Research"),
       h("span.openings__session-meta", node ? `${node.total} game${node.total !== 1 ? "s" : ""} reached this position` : ""),
+      // Color filter: White / Black
+      h("div.openings__color-filter", [
+        h("button.openings__color-btn", {
+          class: { active: colorFilter() === "white" },
+          on: { click: () => {
+            setColorFilter("white");
+            _lastBoardFen = "";
+            syncOpeningsBoard(redraw2);
+            redraw2();
+          } },
+          attrs: { title: "Show games as White" }
+        }, "White"),
+        h("button.openings__color-btn", {
+          class: { active: colorFilter() === "black" },
+          on: { click: () => {
+            setColorFilter("black");
+            _lastBoardFen = "";
+            syncOpeningsBoard(redraw2);
+            redraw2();
+          } },
+          attrs: { title: "Show games as Black" }
+        }, "Black")
+      ]),
       h("button.openings__flip-btn", {
         attrs: { title: `Flip board (viewing as ${boardOrientation()})` },
         on: { click: () => {
           flipBoard();
-          if (_openingsCg) _openingsCg.set({ orientation: boardOrientation() });
+          if (_openingsCg) {
+            _openingsCg.set({ orientation: boardOrientation() });
+          }
           redraw2();
         } }
       }, "\u21C5")
     ]),
     h("div.openings__session-body", [
-      h("div.openings__board-wrap", [
-        renderOpeningsBoard(node, redraw2)
+      h("div.openings__board-col", [
+        renderPlayerStrip(collection, "top"),
+        h("div.openings__board-wrap", [
+          renderOpeningsBoard(node, redraw2)
+        ]),
+        renderPlayerStrip(collection, "bottom")
       ]),
       h("div.openings__session-panel", [
+        treeBuilding() ? renderTreeBuildBar() : null,
         renderMovePath(path, redraw2),
         renderMoveNav(path, redraw2),
+        // Engine evaluation block — set FEN override before rendering ceval
+        (() => {
+          const currentFen = node?.fen ?? "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+          setCevalFenOverride(currentFen);
+          if (engineEnabled && sharedEngineReady) {
+            requestAnimationFrame(() => {
+              sharedProtocol.setPosition(currentFen);
+              sharedProtocol.go(analysisDepth, multiPv);
+            });
+          }
+          return null;
+        })(),
+        renderCeval(),
+        renderEngineSettings(),
+        engineEnabled ? renderPvBox() : null,
         node ? renderPlayedLinesPanel(node, redraw2) : null,
         renderSampleGamesPanel(),
         renderExplorerToggle(node, redraw2)
       ])
     ])
+  ]);
+}
+function renderPlayerStrip(collection, position) {
+  const target = collection?.target ?? "Player";
+  const orientation2 = boardOrientation();
+  const filter = colorFilter();
+  const bottomColor = orientation2;
+  const topColor = orientation2 === "white" ? "black" : "white";
+  const stripColor = position === "bottom" ? bottomColor : topColor;
+  let label;
+  let isTarget = false;
+  if (filter === "white") {
+    isTarget = stripColor === "white";
+    label = isTarget ? target : "Opponents";
+  } else if (filter === "black") {
+    isTarget = stripColor === "black";
+    label = isTarget ? target : "Opponents";
+  } else {
+    isTarget = position === "bottom";
+    label = isTarget ? target : "Opponents";
+  }
+  const colorDot = stripColor === "white" ? "\u25CB" : "\u25CF";
+  return h("div.openings__player-strip", {
+    class: {
+      "openings__player-strip--target": isTarget,
+      "openings__player-strip--top": position === "top",
+      "openings__player-strip--bottom": position === "bottom"
+    }
+  }, [
+    h("span.openings__player-dot", colorDot),
+    h("span.openings__player-name", label)
   ]);
 }
 function renderOpeningsBoard(node, redraw2) {
@@ -15091,9 +15810,9 @@ function renderOpeningsBoard(node, redraw2) {
     key: "openings-board",
     hook: {
       insert: (vnode3) => {
-        const setup = parseFen(fen);
-        const pos = setup.isOk ? Chess.fromSetup(setup.value) : void 0;
-        const dests = pos?.isOk ? chessgroundDests(pos.value) : /* @__PURE__ */ new Map();
+        const dests = destsForFen(fen);
+        _lastBoardFen = fen;
+        setCevalFenOverride(fen);
         _openingsCg = Chessground(vnode3.elm, {
           fen,
           orientation: boardOrientation(),
@@ -15102,6 +15821,15 @@ function renderOpeningsBoard(node, redraw2) {
             free: false,
             color: "both",
             dests
+          },
+          drawable: {
+            enabled: true,
+            brushes: {
+              green: { key: "g", color: "#15781B", opacity: 0.8, lineWidth: 10 },
+              yellow: { key: "y", color: "#e6a520", opacity: 0.55, lineWidth: 8 },
+              paleGrey: { key: "pg", color: "#888888", opacity: 0.35, lineWidth: 6 },
+              ...FREQ_BRUSHES
+            }
           },
           events: {
             move: (orig, dest) => {
@@ -15119,16 +15847,18 @@ function renderOpeningsBoard(node, redraw2) {
             }
           }
         });
+        bindBoardResizeHandle(vnode3.elm);
+        if (node && _openingsCg) {
+          _openingsCg.setAutoShapes(buildFrequencyArrows(node));
+        }
       },
       postpatch: () => {
-        if (_openingsCg) {
-          const setup = parseFen(fen);
-          const pos = setup.isOk ? Chess.fromSetup(setup.value) : void 0;
-          const dests = pos?.isOk ? chessgroundDests(pos.value) : /* @__PURE__ */ new Map();
-          _openingsCg.set({ fen, movable: { dests } });
+        if (node && _openingsCg) {
+          _openingsCg.setAutoShapes(buildFrequencyArrows(node));
         }
       },
       destroy: () => {
+        _lastBoardFen = "";
         if (_openingsCg) {
           _openingsCg.destroy();
           _openingsCg = void 0;
@@ -15137,17 +15867,74 @@ function renderOpeningsBoard(node, redraw2) {
     }
   });
 }
-function syncOpeningsBoard(redraw2) {
+var _cachedDestsFen = "";
+var _cachedDests = /* @__PURE__ */ new Map();
+function destsForFen(fen) {
+  if (fen === _cachedDestsFen) return _cachedDests;
+  const setup = parseFen(fen);
+  const pos = setup.isOk ? Chess.fromSetup(setup.value) : void 0;
+  _cachedDests = pos?.isOk ? chessgroundDests(pos.value) : /* @__PURE__ */ new Map();
+  _cachedDestsFen = fen;
+  return _cachedDests;
+}
+function syncOpeningsBoard(_redraw8) {
   const node = sessionNode();
   if (!_openingsCg || !node) return;
-  const setup = parseFen(node.fen);
-  const pos = setup.isOk ? Chess.fromSetup(setup.value) : void 0;
-  const dests = pos?.isOk ? chessgroundDests(pos.value) : /* @__PURE__ */ new Map();
+  const fen = node.fen;
+  if (fen === _lastBoardFen) return;
+  _lastBoardFen = fen;
   _openingsCg.set({
-    fen: node.fen,
-    movable: { dests },
+    fen,
+    orientation: boardOrientation(),
+    movable: { dests: destsForFen(fen) },
     lastMove: node.uci ? [node.uci.slice(0, 2), node.uci.slice(2, 4)] : void 0
   });
+  _openingsCg.setAutoShapes(buildFrequencyArrows(node));
+  setCevalFenOverride(fen);
+  if (engineEnabled && sharedEngineReady) {
+    sharedProtocol.setPosition(fen);
+    sharedProtocol.go(analysisDepth, multiPv);
+  }
+}
+var FREQ_BRUSHES = {};
+for (let i = 0; i < 8; i++) {
+  const opacity2 = Math.max(0.15, 0.85 - i * 0.1);
+  FREQ_BRUSHES[`freq${i}`] = { key: `f${i}`, color: "#15781B", opacity: opacity2, lineWidth: 10 };
+}
+function buildFrequencyArrows(node) {
+  if (!node.children.length || node.total === 0) return [];
+  const maxTotal = node.children[0].total;
+  if (maxTotal === 0) return [];
+  const shapes = [];
+  const count = Math.min(node.children.length, 8);
+  for (let i = 0; i < count; i++) {
+    const child = node.children[i];
+    const ratio = child.total / maxTotal;
+    const width = Math.max(3, Math.round(14 * Math.sqrt(ratio)));
+    shapes.push({
+      orig: child.uci.slice(0, 2),
+      dest: child.uci.slice(2, 4),
+      brush: `freq${i}`,
+      modifiers: { lineWidth: width }
+    });
+  }
+  return shapes;
+}
+function renderTreeBuildBar() {
+  const progress = treeBuildProgress();
+  const total = treeBuildTotal();
+  const pct = total > 0 ? Math.min(100, Math.round(progress / total * 100)) : 0;
+  return h("div.openings__tree-build", [
+    h("div.openings__tree-build-bar", [
+      h("div.openings__tree-build-fill", {
+        attrs: { style: `width:${pct}%` }
+      })
+    ]),
+    h(
+      "span.openings__tree-build-label",
+      `Building tree\u2026 ${progress.toLocaleString()} / ${total.toLocaleString()} games (${pct}%)`
+    )
+  ]);
 }
 function renderMoveNav(path, redraw2) {
   const node = sessionNode();
@@ -15220,38 +16007,24 @@ function renderMovePath(path, redraw2) {
   ]);
 }
 function renderPlayedLinesPanel(node, redraw2) {
-  const total = node.total || 1;
-  const wPct = (node.white / total * 100).toFixed(0);
-  const dPct = (node.draws / total * 100).toFixed(0);
-  const bPct = (node.black / total * 100).toFixed(0);
   return h("div.openings__lines-panel", [
-    // Position summary header
-    h("div.openings__pos-summary", [
-      h("span.openings__pos-total", `${node.total} game${node.total !== 1 ? "s" : ""}`),
-      h("span.openings__pos-results", [
-        h("span.openings__pos-w", `W ${wPct}%`),
-        h("span.openings__pos-d", `D ${dPct}%`),
-        h("span.openings__pos-b", `B ${bPct}%`)
+    // Position header: game count + result bar — visually separated from moves
+    h("div.openings__pos-header", [
+      h("div.openings__pos-summary", [
+        h("span.openings__pos-total", `${node.total} game${node.total !== 1 ? "s" : ""}`),
+        h("span.openings__pos-label", "reached this position")
       ]),
       renderResultBar(node)
     ]),
     // Played lines
-    node.children.length === 0 ? h("div.openings__moves-empty", "No further moves in this collection.") : h("div.openings__moves", [
-      h("div.openings__moves-header", [
-        h("span.openings__mh-move", "Move"),
-        h("span.openings__mh-games", "Games"),
-        h("span.openings__mh-result", "Result")
-      ]),
-      ...node.children.map((child) => renderMoveRow(child, node.total, redraw2))
-    ])
+    node.children.length === 0 ? h("div.openings__moves-empty", "No further moves in this collection.") : h(
+      "div.openings__moves",
+      node.children.map((child) => renderMoveRow(child, node.total, redraw2))
+    )
   ]);
 }
 function renderMoveRow(child, parentTotal, redraw2) {
   const pct = parentTotal > 0 ? (child.total / parentTotal * 100).toFixed(1) : "0";
-  const total = child.total || 1;
-  const wPct = (child.white / total * 100).toFixed(0);
-  const dPct = (child.draws / total * 100).toFixed(0);
-  const bPct = (child.black / total * 100).toFixed(0);
   return h("div.openings__move-row", {
     key: child.uci,
     on: { click: () => {
@@ -15262,23 +16035,22 @@ function renderMoveRow(child, parentTotal, redraw2) {
   }, [
     h("span.openings__move-san", child.san),
     h("span.openings__move-count", `${child.total} (${pct}%)`),
-    h("span.openings__move-results", [
-      h("span.openings__mr-w", `${wPct}%`),
-      h("span.openings__mr-d", `${dPct}%`),
-      h("span.openings__mr-b", `${bPct}%`)
-    ]),
     renderResultBar(child)
   ]);
 }
 function renderResultBar(node) {
-  const total = node.total || 1;
-  const wPct = node.white / total * 100;
-  const dPct = node.draws / total * 100;
-  const bPct = node.black / total * 100;
+  const sum = node.white + node.draws + node.black || 1;
+  const wPct = node.white * 100 / sum;
+  const dPct = node.draws * 100 / sum;
+  const bPct = node.black * 100 / sum;
+  const wW = Math.round(wPct * 10) / 10;
+  const dW = Math.round(dPct * 10) / 10;
+  const bW = Math.round(bPct * 10) / 10;
+  const label = (p) => p > 12 ? `${Math.round(p)}${p > 20 ? "%" : ""}` : "";
   return h("div.openings__result-bar", [
-    h("div.openings__result-w", { style: { width: `${wPct}%` } }),
-    h("div.openings__result-d", { style: { width: `${dPct}%` } }),
-    h("div.openings__result-b", { style: { width: `${bPct}%` } })
+    h("span.openings__bar-w", { attrs: { style: `width:${wW}%` } }, label(wPct)),
+    h("span.openings__bar-d", { attrs: { style: `width:${dW}%` } }, label(dPct)),
+    h("span.openings__bar-b", { attrs: { style: `width:${bW}%` } }, label(bPct))
   ]);
 }
 function renderSampleGamesPanel() {
@@ -15294,6 +16066,13 @@ function renderSampleGamesPanel() {
     ...games.map(renderSampleGameRow)
   ]);
 }
+function extractGameUrl(pgn) {
+  const linkMatch = pgn.match(/\[Link\s+"([^"]+)"\]/);
+  if (linkMatch?.[1]) return linkMatch[1];
+  const siteMatch = pgn.match(/\[Site\s+"(https?:\/\/[^"]+)"\]/);
+  if (siteMatch?.[1]) return siteMatch[1];
+  return null;
+}
 function renderSampleGameRow(game) {
   const players = [game.white ?? "?", game.black ?? "?"].join(" vs ");
   const result = game.result ?? "*";
@@ -15304,7 +16083,12 @@ function renderSampleGameRow(game) {
   const ratings = [];
   if (game.whiteRating) ratings.push(`W:${game.whiteRating}`);
   if (game.blackRating) ratings.push(`B:${game.blackRating}`);
-  return h("div.openings__sample-row", { key: game.id }, [
+  const gameUrl = extractGameUrl(game.pgn);
+  return h("div.openings__sample-row", {
+    key: game.id,
+    class: { "openings__sample-row--clickable": !!gameUrl },
+    on: gameUrl ? { click: () => window.open(gameUrl, "_blank") } : {}
+  }, [
     h("div.openings__sample-players", [
       h("span", players),
       h("span.openings__sample-result", result)
@@ -16756,6 +17540,8 @@ function routeContent(route) {
       return renderOpeningsPage(redraw);
     case "stats":
       return h("h1", "Stats Page");
+    case "admin":
+      return renderAdminPage(redraw);
     default:
       return h("h1", "Home");
   }
@@ -16882,7 +17668,7 @@ setOnLiveEvalImproved(() => {
     const gameId = selectedGameId;
     if (!gameId) return;
     const nodes = buildAnalysisNodes(ctrl.mainline, (p) => evalCache.get(p));
-    void saveAnalysisToIdb("complete", gameId, nodes, analysisDepth);
+    void saveAnalysisToIdb("complete", gameId, nodes, analysisDepth2);
   }, LIVE_EVAL_SAVE_DELAY_MS);
 });
 initReviewQueue({

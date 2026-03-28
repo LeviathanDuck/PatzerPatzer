@@ -6,6 +6,1743 @@ Use this file to archive the full text of Claude Code prompts generated from Cod
 
 ## History
 
+## CCP-190-F5 — Reviewed
+
+- Task: execute the openings board follow-up batch for played-line arrows, optional engine controls, and resize handle behavior in order
+- Task ID: `CCP-190`
+- Parent prompt ID: `CCP-190`
+- Source document: `ad hoc user request`
+- Source step: `openings board arrows, engine controls, and resize follow-up batch`
+- Created by: `Codex`
+- Created at: `2026-03-28T07:21:08Z`
+- Started at: `2026-03-28T07:23:24.601Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: manager prompt for the full openings board follow-up batch
+
+```
+Prompt ID: CCP-190-F5
+Task ID: CCP-190
+Parent Prompt ID: CCP-190
+Source Document: ad hoc user request
+Source Step: openings board arrows, engine controls, and resize follow-up batch
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-190-F5`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-190-F1`
+- `CCP-190-F2`
+- `CCP-190-F4`
+
+Manager-prompt rule:
+- `CCP-190-F5` is the manager prompt id only
+- do not execute or recurse into `CCP-190-F5` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings board, ceval, resize, or prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Prompt sources:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-190-F1.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-190-F2.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-190-F4.md`
+
+Do not modify:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during the batch
+- do not continue past a known issue just to finish the batch
+- if a child prompt's startup state step already ran successfully in the current batch flow, do not rerun it a second time just because the child prompt text repeats it
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
+- only continue into a child prompt after that command succeeds
+- use internal validation/self-check only; external review and prompt closeout happen separately
+
+After each completed child prompt, report briefly:
+- Prompt ID
+- task title
+- build result
+- validation result
+- internal check result
+- whether the batch will continue or stop
+
+If the batch stops, report:
+- which Prompt ID stopped the batch
+- why it stopped
+- what issue or failure was found
+
+If the batch finishes, report a compact summary of completed Prompt IDs.
+```
+
+## CCP-190-F4 — Reviewed
+
+- Task: make the openings research board resizable with the same draggable bottom-corner handle behavior as the analysis board, without turning the openings page into the analysis page
+- Task ID: `CCP-190`
+- Parent prompt ID: `CCP-190`
+- Source document: `ad hoc user request`
+- Source step: `make the openings board resizable like the analysis board with a draggable bottom-corner resize handle`
+- Created by: `Codex`
+- Created at: `2026-03-28T07:12:05Z`
+- Started at: `2026-03-28T07:26:31.981Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: follow-up prompt for resizable openings board behavior
+
+```
+Prompt ID: CCP-190-F4
+Task ID: CCP-190
+Parent Prompt ID: CCP-190
+Source Document: ad hoc user request
+Source Step: make the openings board resizable like the analysis board with a draggable bottom-corner resize handle
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-190-F4`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings board shell / shared board resize / stylesheet files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: make the openings research board resizable with the same draggable bottom-corner handle behavior as the analysis board, without turning the openings page into the analysis page
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/board/index.ts`
+  - `src/board/cosmetics.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/prompts/items/CCP-190.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+
+Focus on:
+- how the analysis board currently binds its resize handle
+- how `---board-scale` is already shared in CSS
+- how the openings board currently mounts Chessground and why it does not yet get the shared resize affordance
+- the smallest safe way to reuse the existing resize behavior instead of reimplementing it
+
+Constraints:
+- reuse the existing board resize behavior if possible
+- do not add medium-sized new logic to `src/main.ts`
+- do not redesign the openings layout in this task
+- keep desktop openings layout intact except for the new resize affordance
+- if mobile behavior needs to stay unchanged, say that explicitly
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report how the openings board now reuses or mirrors the analysis resize behavior
+- report whether the same persisted board scale is shared across analysis and openings
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-190-F3 — Created
+
+- Task: execute the openings board follow-up batch for played-line arrows and optional engine controls in order
+- Task ID: `CCP-190`
+- Parent prompt ID: `CCP-190`
+- Source document: `ad hoc user request`
+- Source step: `openings board arrow-and-engine follow-up batch`
+- Created by: `Codex`
+- Created at: `2026-03-28T07:12:05Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: manager prompt for openings board arrow and engine follow-up work
+
+```
+Prompt ID: CCP-190-F3
+Task ID: CCP-190
+Parent Prompt ID: CCP-190
+Source Document: ad hoc user request
+Source Step: openings board arrow-and-engine follow-up batch
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-190-F3`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-190-F1`
+- `CCP-190-F2`
+
+Manager-prompt rule:
+- `CCP-190-F3` is the manager prompt id only
+- do not execute or recurse into `CCP-190-F3` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings board, ceval, or prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Prompt sources:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-190-F1.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-190-F2.md`
+
+Do not modify:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during the batch
+- do not continue past a known issue just to finish the batch
+- if a child prompt's startup state step already ran successfully in the current batch flow, do not rerun it a second time just because the child prompt text repeats it
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
+- only continue into a child prompt after that command succeeds
+- use internal validation/self-check only; external review and prompt closeout happen separately
+
+After each completed child prompt, report briefly:
+- Prompt ID
+- task title
+- build result
+- validation result
+- internal check result
+- whether the batch will continue or stop
+```
+
+## CCP-190-F2 — Reviewed
+
+- Task: add an openings-board engine control surface so the user can turn engine analysis on at any time while browsing an openings research position without turning the openings page into the analysis page
+- Task ID: `CCP-190`
+- Parent prompt ID: `CCP-190`
+- Source document: `ad hoc user request`
+- Source step: `allow engine controls to be turned on at any time on the openings research board`
+- Created by: `Codex`
+- Created at: `2026-03-28T07:12:05Z`
+- Started at: `2026-03-28T07:25:28.487Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: follow-up prompt for optional engine controls on the openings board
+
+```
+Prompt ID: CCP-190-F2
+Task ID: CCP-190
+Parent Prompt ID: CCP-190
+Source Document: ad hoc user request
+Source Step: allow engine controls to be turned on at any time on the openings research board
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-190-F2`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings board / ceval / engine integration files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add an openings-board engine control surface so the user can turn engine analysis on at any time while browsing an openings research position without turning the openings page into the analysis page
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/ceval/view.ts`
+  - `src/engine/ctrl.ts`
+  - `src/board/index.ts`
+  - `src/styles/main.scss`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Focus on:
+- whether openings can reuse the existing ceval panel safely
+- how to provide a FEN source from the openings board/session
+- how to keep openings engine controls clearly optional
+- how to avoid importing large analysis-board-only UI into openings
+
+Constraints:
+- this should be an optional openings-board aid, not a conversion of openings into full analysis mode
+- prefer reusing existing ceval and engine owners where safe
+- do not add medium-sized new logic to `src/main.ts`
+- do not bundle explorer redesign or report redesign into this task
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report what engine controls are now available on the openings board
+- report how the current openings FEN is routed into engine analysis
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-190-F1 — Reviewed
+
+- Task: add played-line move arrows to the openings research board so the current position can visually show the available child moves with differentiated gradient or intensity treatment based on line importance, while keeping the existing openings board shell intact
+- Task ID: `CCP-190`
+- Parent prompt ID: `CCP-190`
+- Source document: `ad hoc user request`
+- Source step: `add played-line gradient move arrows to the openings board like a richer opening research surface`
+- Created by: `Codex`
+- Created at: `2026-03-28T07:12:05Z`
+- Started at: `2026-03-28T07:24:27.900Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: follow-up prompt for openings board played-line arrows
+
+```
+Prompt ID: CCP-190-F1
+Task ID: CCP-190
+Parent Prompt ID: CCP-190
+Source Document: ad hoc user request
+Source Step: add played-line gradient move arrows to the openings board like a richer opening research surface
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-190-F1`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings board / board-shape / shared board integration files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add played-line move arrows to the openings research board so the current position can visually show the available child moves with differentiated gradient or intensity treatment based on line importance, while keeping the existing openings board shell intact
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/openings/tree.ts`
+  - `src/board/index.ts`
+  - `src/styles/main.scss`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Focus on:
+- how the openings board currently sets `lastMove`
+- how child moves are represented on the current opening node
+- how shared Chessground brushes/shapes are configured today
+- the smallest safe way to add auto-shapes without pulling analysis engine arrows into openings
+
+Constraints:
+- keep this openings-specific; do not route through the analysis engine arrow pipeline
+- do not redesign the openings session layout in this task
+- preserve current board navigation behavior
+- use the smallest honest intensity/gradient treatment the current Chessground setup can support
+- if true color gradients are too invasive, implement a clear stepped importance treatment and say so explicitly
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report how move arrows are chosen and how importance is visually encoded
+- report whether the arrows update when navigating between openings positions
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-194-F1 — Reviewed
+
+- Task: restyle the win / draw / loss viewer beside the openings move list so it feels much closer to the Lichess masters database percentage treatment without changing the underlying openings data model
+- Task ID: `CCP-194`
+- Parent prompt ID: `CCP-194`
+- Source document: `ad hoc user request`
+- Source step: `stylize the openings win/draw/loss viewer beside the move list to look like the Lichess masters database percentages display`
+- Created by: `Codex`
+- Created at: `2026-03-28T07:10:01Z`
+- Started at: `2026-03-28T07:12:23.841Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: follow-up styling prompt for the openings played-lines W/D/L viewer
+
+```
+Prompt ID: CCP-194-F1
+Task ID: CCP-194
+Parent Prompt ID: CCP-194
+Source Document: ad hoc user request
+Source Step: stylize the openings win/draw/loss viewer beside the move list to look like the Lichess masters database percentages display
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-194-F1`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings move-row / result-bar / style files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: restyle the win / draw / loss viewer beside the openings move list so it feels much closer to the Lichess masters database percentage treatment without changing the underlying openings data model
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/prompts/items/CCP-194.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/sources/ui/puzzle/css/_openings.scss`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+
+Focus specifically on:
+- `.openings__move-results`
+- `.openings__result-bar`
+- `.openings__pos-results`
+- nearby row/result hierarchy in the played-lines panel
+
+Constraints:
+- this is a styling and presentation task only
+- do not change the current openings data model or row math
+- keep the current win / draw / loss information honest
+- do not redesign the whole openings page
+- prefer the smallest safe combination of view markup adjustment and SCSS refinement
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report exactly what changed in the W/D/L viewer styling
+- report whether only presentation changed or any row structure changed too
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-225 — Reviewed
+
+- Task: execute the full tracked openings research upgrade batch by running all phase manager prompts in order
+- Task ID: `CCP-225`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Full openings research upgrade batch / manager of managers`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T06:56:46.655Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: queued top-level manager-of-managers for the openings research upgrade sprint
+
+```
+Prompt ID: CCP-225
+Task ID: CCP-225
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Full openings research upgrade batch / manager of managers
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-225`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-214`
+- `CCP-219`
+- `CCP-224`
+
+Manager-prompt rule:
+- `CCP-225` is the top-level manager prompt id only
+- do not execute or recurse into `CCP-225` as if it were one of the child prompts
+- each child prompt listed above is itself a manager prompt and must be executed exactly as written
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings implementation files, prompt-tracking files, or repo areas targeted by these phases.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child manager prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- let each child manager control its own child prompt batch exactly as written
+- perform internal validation and self-check after each child manager completes
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+```
+
+## CCP-224 — Reviewed
+
+- Task: execute the phase 7 — comparative prep and session polish openings batch in order
+- Task ID: `CCP-224`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 7 — Comparative Prep And Session Polish / manager prompt`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:06:41.589Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: queued openings phase manager prompt
+
+```
+Prompt ID: CCP-224
+Task ID: CCP-224
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 7 — Comparative Prep And Session Polish / manager prompt
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-224`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-220`
+- `CCP-221`
+- `CCP-222`
+- `CCP-223`
+
+Manager-prompt rule:
+- `CCP-224` is the manager prompt id only
+- do not execute or recurse into `CCP-224` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+```
+
+## CCP-223 — Reviewed
+
+- Task: do a final openings research shell polish pass so the upgraded report, comparison, and session surfaces feel like one coherent product rather than separate widgets
+- Task ID: `CCP-223`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 7 — Comparative Prep And Session Polish / Task 4`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:11:23.850Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 7 Task 4
+
+```
+Prompt ID: CCP-223
+Task ID: CCP-223
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 7 — Comparative Prep And Session Polish / Task 4
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-223`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings shell / styles / final session files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: do a final openings research shell polish pass so the upgraded report, comparison, and session surfaces feel like one coherent product rather than separate widgets
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/styles/main.scss`
+  - `src/openings/ctrl.ts`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+
+Constraints:
+- this is a polish and integration step, not a new-feature step
+- do not rewrite prior work
+- keep desktop and mobile shell coherence in mind, but do not turn this into a dedicated mobile sprint
+- finish with honest validation rather than visual overreach
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report the final shell-level improvements made
+- report what still remains outside this sprint
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-222 — Reviewed
+
+- Task: persist enough openings session resume state that a user can leave and return to the current research session without losing place
+- Task ID: `CCP-222`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 7 — Comparative Prep And Session Polish / Task 3`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:09:39.812Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 7 Task 3
+
+```
+Prompt ID: CCP-222
+Task ID: CCP-222
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 7 — Comparative Prep And Session Polish / Task 3
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-222`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings controller / DB / route-session files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: persist enough openings session resume state that a user can leave and return to the current research session without losing place
+
+Inspect first:
+- Patzer:
+  - `src/openings/ctrl.ts`
+  - `src/openings/db.ts`
+  - `src/openings/view.ts`
+  - `src/router.ts`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Constraints:
+- keep this separate from analysis and puzzle session persistence
+- do not add login/cloud sync
+- persist only the smallest honest resume state for the current collection and position
+- do not redesign route ownership in this task
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report what session state is now persisted and restored
+- report any resume limitations
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-221 — Reviewed
+
+- Task: strengthen the explorer comparison panel so it reads as a comparative prep surface against the current collection rather than as a disconnected extra data block
+- Task ID: `CCP-221`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 7 — Comparative Prep And Session Polish / Task 2`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:08:49.749Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 7 Task 2
+
+```
+Prompt ID: CCP-221
+Task ID: CCP-221
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 7 — Comparative Prep And Session Polish / Task 2
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-221`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / session panel / styling files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: strengthen the explorer comparison panel so it reads as a comparative prep surface against the current collection rather than as a disconnected extra data block
+
+Inspect first:
+- Patzer:
+  - `src/openings/explorer.ts`
+  - `src/openings/view.ts`
+  - `src/styles/main.scss`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+
+Constraints:
+- keep explorer optional
+- do not turn this into a broad external-data refactor
+- focus on comparative presentation and clear overlap/divergence cues
+- preserve the current explorer fetch owner
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report how the explorer panel now compares collection moves to wider book moves
+- report what still remains simplistic or deferred
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-220 — Reviewed
+
+- Task: enrich openings move rows with context metadata such as average strength or recency signals so the move table better reflects research quality instead of bare frequency alone
+- Task ID: `CCP-220`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 7 — Comparative Prep And Session Polish / Task 1`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:06:42.785Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 7 Task 1
+
+```
+Prompt ID: CCP-220
+Task ID: CCP-220
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 7 — Comparative Prep And Session Polish / Task 1
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-220`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings move-row / sample-game / report files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: enrich openings move rows with context metadata such as average strength or recency signals so the move table better reflects research quality instead of bare frequency alone
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/tree.ts`
+  - `src/openings/types.ts`
+  - `src/styles/main.scss`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Constraints:
+- use only metadata Patzer can actually derive from stored research games
+- do not invent unavailable quality metrics
+- keep row density readable
+- do not redesign explorer comparison in this task
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report what new context metadata is shown and how it is derived
+- report any incomplete or missing data cases
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-219 — Reviewed
+
+- Task: execute the phase 6 — position graph and session report upgrade openings batch in order
+- Task ID: `CCP-219`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 6 — Position Graph And Session Report Upgrade / manager prompt`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:00:16.012Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: queued openings phase manager prompt
+
+```
+Prompt ID: CCP-219
+Task ID: CCP-219
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 6 — Position Graph And Session Report Upgrade / manager prompt
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-219`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-215`
+- `CCP-216`
+- `CCP-217`
+- `CCP-218`
+
+Manager-prompt rule:
+- `CCP-219` is the manager prompt id only
+- do not execute or recurse into `CCP-219` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+```
+
+## CCP-218 — Reviewed
+
+- Task: add a current-position research summary panel that explains what matters at the current opening node instead of making the user infer everything from raw rows
+- Task ID: `CCP-218`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 6 — Position Graph And Session Report Upgrade / Task 4`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:03:00.101Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 6 Task 4
+
+```
+Prompt ID: CCP-218
+Task ID: CCP-218
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 6 — Position Graph And Session Report Upgrade / Task 4
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-218`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings session panel / summary / styles files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add a current-position research summary panel that explains what matters at the current opening node instead of making the user infer everything from raw rows
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/openings/tree.ts`
+  - `src/styles/main.scss`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Constraints:
+- keep this grounded in already-available collection data
+- do not invent engine recommendations
+- summary text should clarify the current node, not replace the move table
+- keep the panel compact and openings-specific
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report what the summary panel now explains
+- report what remains outside scope
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-217 — Reviewed
+
+- Task: upgrade openings move rows so they read from the chosen prep perspective instead of only showing raw white-draw-black percentages
+- Task ID: `CCP-217`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 6 — Position Graph And Session Report Upgrade / Task 3`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:02:00.280Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 6 Task 3
+
+```
+Prompt ID: CCP-217
+Task ID: CCP-217
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 6 — Position Graph And Session Report Upgrade / Task 3
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-217`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings report / move row / styling files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: upgrade openings move rows so they read from the chosen prep perspective instead of only showing raw white-draw-black percentages
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/openings/tree.ts`
+  - `src/styles/main.scss`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Constraints:
+- keep raw W/D/L information available somewhere in the row or panel
+- do not add engine judgment here
+- do not redesign the whole session panel
+- focus on row semantics, row ordering, and clearer prep meaning
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report how row ordering and perspective-relative meaning now work
+- report what raw stats are still shown
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-216 — Reviewed
+
+- Task: adapt openings session state and navigation so the board, path breadcrumb, and current node stay coherent after the graph/model upgrade
+- Task ID: `CCP-216`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 6 — Position Graph And Session Report Upgrade / Task 2`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:01:15.212Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 6 Task 2
+
+```
+Prompt ID: CCP-216
+Task ID: CCP-216
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 6 — Position Graph And Session Report Upgrade / Task 2
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-216`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings controller / navigation / board sync files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: adapt openings session state and navigation so the board, path breadcrumb, and current node stay coherent after the graph/model upgrade
+
+Inspect first:
+- Patzer:
+  - `src/openings/ctrl.ts`
+  - `src/openings/view.ts`
+  - `src/openings/tree.ts`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Constraints:
+- build on CCP-215's ownership shape
+- do not redesign the whole openings session UI here
+- keep the board as a reused subsystem consumer rather than inventing new board code
+- preserve current basic navigation affordances unless a small adjustment is required by the new model
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report how session path, current node, and board sync now work
+- report any intentional navigation behavior change
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-215 — Reviewed
+
+- Task: upgrade the openings aggregation model so repeated positions can merge into a position-keyed research graph instead of remaining only path-separated move branches
+- Task ID: `CCP-215`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 6 — Position Graph And Session Report Upgrade / Task 1`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T07:00:17.063Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 6 Task 1
+
+```
+Prompt ID: CCP-215
+Task ID: CCP-215
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 6 — Position Graph And Session Report Upgrade / Task 1
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-215`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings tree / types / session-owner files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: upgrade the openings aggregation model so repeated positions can merge into a position-keyed research graph instead of remaining only path-separated move branches
+
+Inspect first:
+- Patzer:
+  - `src/openings/tree.ts`
+  - `src/openings/types.ts`
+  - `src/openings/ctrl.ts`
+  - `src/openings/view.ts`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Constraints:
+- this is a high-risk structural task, so keep the step as small and honest as possible
+- preserve the existing openings product surface if possible
+- do not bundle report-surface redesign into this task
+- if full transposition support must be staged, implement the first real ownership step rather than faking parity
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report the new graph/tree ownership shape
+- report what kind of position merging now exists
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-214 — Reviewed
+
+- Task: execute the phase 5 — research model and import integrity openings batch in order
+- Task ID: `CCP-214`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 5 — Research Model And Import Integrity / manager prompt`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T06:57:06.223Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: queued openings phase manager prompt
+
+```
+Prompt ID: CCP-214
+Task ID: CCP-214
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 5 — Research Model And Import Integrity / manager prompt
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-214`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-210`
+- `CCP-211`
+- `CCP-212`
+- `CCP-213`
+
+Manager-prompt rule:
+- `CCP-214` is the manager prompt id only
+- do not execute or recurse into `CCP-214` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas targeted by this phase.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Prompt sources:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-210.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-211.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-212.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-213.md`
+
+Do not modify:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during the batch
+- do not continue past a known issue just to finish the batch
+- if a child prompt's startup state step already ran successfully in the current batch flow, do not rerun it a second time just because the child prompt text repeats it
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
+- only continue into a child prompt after that command succeeds
+- use internal validation/self-check only; external review and prompt closeout happen separately
+
+After each completed child prompt, report briefly:
+- Prompt ID
+- task title
+- build result
+- validation result
+- internal check result
+- whether the batch will continue or stop
+```
+
+## CCP-213 — Reviewed
+
+- Task: render a stronger collection summary and import provenance surface in the openings library so saved research sessions are understandable before opening them
+- Task ID: `CCP-213`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 5 — Research Model And Import Integrity / Task 4`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T06:59:28.793Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 5 Task 4
+
+```
+Prompt ID: CCP-213
+Task ID: CCP-213
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 5 — Research Model And Import Integrity / Task 4
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-213`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings library / collection row / import summary files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: render a stronger collection summary and import provenance surface in the openings library so saved research sessions are understandable before opening them
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/types.ts`
+  - `src/styles/main.scss`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+
+Constraints:
+- do not redesign the whole openings library
+- build on the metadata added in CCP-210
+- keep this scoped to collection rows / summary / provenance display
+- do not add new persistence behavior in this task
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report what collection metadata is now visible in the library
+- report what still remains hidden or deferred
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-212 — Reviewed
+
+- Task: add honest PGN file upload support to openings research import while preserving the current paste path
+- Task ID: `CCP-212`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 5 — Research Model And Import Integrity / Task 3`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T06:58:45.088Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 5 Task 3
+
+```
+Prompt ID: CCP-212
+Task ID: CCP-212
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 5 — Research Model And Import Integrity / Task 3
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-212`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings import view / controller / import pipeline files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add honest PGN file upload support to openings research import while preserving the current paste path
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/openings/import.ts`
+  - `src/openings/types.ts`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Constraints:
+- keep this scoped to openings PGN import only
+- do not add generic site-wide file upload abstractions
+- preserve existing paste behavior
+- use the smallest honest file-input flow that works with the current import model
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report how pasted PGN and uploaded PGN now coexist
+- report any file-size or format limitations
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-211 — Reviewed
+
+- Task: remove the openings import pipeline's mutation of shared import filter state and give openings import its own date-filtering path
+- Task ID: `CCP-211`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 5 — Research Model And Import Integrity / Task 2`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T06:58:00.295Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 5 Task 2
+
+```
+Prompt ID: CCP-211
+Task ID: CCP-211
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 5 — Research Model And Import Integrity / Task 2
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-211`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings import / shared filter / import-types files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: remove the openings import pipeline's mutation of shared import filter state and give openings import its own date-filtering path
+
+Inspect first:
+- Patzer:
+  - `src/openings/import.ts`
+  - `src/import/filters.ts`
+  - `src/openings/types.ts`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+
+Constraints:
+- do not broaden this into a full import-system redesign
+- keep the openings research pipeline separate from analysis import semantics
+- preserve current user-visible import filtering behavior
+- prefer extracting or duplicating the smallest honest pure helper instead of mutating shared module state
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report exactly what shared-state mutation was removed
+- report how openings date filtering now works independently
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-210 — Reviewed
+
+- Task: extend saved openings research collections so they preserve the research settings and source summary needed to understand and trust a collection later
+- Task ID: `CCP-210`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Source step: `Phase 5 — Research Model And Import Integrity / Task 1`
+- Created by: `Codex`
+- Created at: `2026-03-28T06:31:22Z`
+- Started at: `2026-03-28T06:57:07.316Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: openings research upgrade sprint prompt — Phase 5 Task 1
+
+```
+Prompt ID: CCP-210
+Task ID: CCP-210
+Source Document: docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md
+Source Step: Phase 5 — Research Model And Import Integrity / Task 1
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-210`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings types / import / persistence files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: extend saved openings research collections so they preserve the research settings and source summary needed to understand and trust a collection later
+
+Inspect first:
+- Patzer:
+  - `src/openings/types.ts`
+  - `src/openings/import.ts`
+  - `src/openings/db.ts`
+  - `src/openings/view.ts`
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Lichess references:
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+
+Constraints:
+- keep the openings DB separate from analysis and puzzle persistence
+- do not redesign the import flow in this task
+- keep this scoped to canonical collection metadata and save/load shape
+- prefer additive backwards-compatible metadata where possible
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report the new collection metadata shape
+- report how old collections are handled
+- explicitly report:
+  - build result
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
 ## CCP-209 — Reviewed
 
 - Task: execute the full tracked puzzle mobile usability batch in order
@@ -13092,4 +14829,422 @@ Original prompt text was not recovered for CCP-067.
 
 ```
 Original prompt text was not recovered for CCP-068.
+```
+
+## CCP-226 — Reviewed
+
+- Task: add SQLite server database module with schema mirroring client IDB stores
+- Task ID: `CCP-226`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Source step: `Task 1 — SQLite schema and server database module`
+- Created by: `Claude Code`
+- Created at: `2026-03-28T07:00:19.322Z`
+- Started at: `2026-03-28T07:05:05.595Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: auth sprint task 1
+
+```
+Prompt ID: CCP-226
+Task ID: CCP-226
+Source Document: docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md
+Source Step: Task 1 — SQLite schema and server database module
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-226`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same server / database / persistence files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add SQLite server database module with schema that mirrors the client-side IDB stores, so the server has a persistence layer ready for sync endpoints
+
+Inspect first:
+- Patzer:
+  - `server.mjs`
+  - `package.json`
+  - `src/puzzles/puzzleDb.ts` (IDB schema reference)
+  - `src/idb/index.ts` (IDB schema reference)
+  - `src/puzzles/types.ts`
+  - `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Lichess references: none required
+
+Constraints:
+- scope this to the database module only — no API endpoints, no auth
+- use `better-sqlite3` (synchronous, zero-config, matches CLAUDE.md SQLite direction)
+- create `server/db.mjs` as a standalone module
+- tables should mirror the shapes stored in IDB: games, analysis results, puzzle definitions, puzzle attempts, puzzle user meta
+- include a `users` table with a single admin row concept
+- use `TEXT` for JSON-serialized complex fields where a flat schema would be too complex, BUT pull out commonly queried fields as proper columns (e.g. `rating`, `themes`, `openingTags` on puzzle definitions) so future FTS or filtering doesn't require JSON parsing
+- add `created_at` and `updated_at` timestamps to all tables
+- SQLite file should live at `data/patzer.db` (gitignored)
+- add `data/` to `.gitignore` if not already present
+
+Migration system requirement:
+- include a simple sequential migration runner in the database module
+- store the current schema version in a `schema_version` table (single row with an integer version)
+- define migrations as an ordered array — each entry is a SQL string or function
+- on module init, run any migrations that haven't been applied yet (compare `schema_version` against the array length)
+- the initial table creation should be migration 1 (not a separate `CREATE TABLE IF NOT EXISTS` outside the migration system)
+- this ensures that every future schema change (new columns, renamed fields, new tables) is handled automatically on server restart without manual intervention
+- wrap all migrations in a transaction so a failed migration doesn't leave the database in a half-migrated state
+
+Before coding, provide:
+- prompt id, task id, source document, source step, task title
+- relevant Patzer Pro files, relevant Lichess files
+- diagnosis, exact small step to implement, why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build` (should not break — server module is separate)
+- verify the module loads and creates tables
+- verify the migration runner works: check that `schema_version` table exists and version matches migration count
+- report: build result, tables created, migration system, SQLite file location, .gitignore updated, remaining risks
+```
+
+## CCP-227 — Reviewed
+
+- Task: add admin auth to dev server with ADMIN_TOKEN env var and login/status endpoints
+- Task ID: `CCP-227`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Source step: `Task 2 — Admin auth middleware and login endpoint`
+- Created by: `Claude Code`
+- Created at: `2026-03-28T07:00:19.322Z`
+- Started at: `2026-03-28T07:08:36.900Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: auth sprint task 2
+
+```
+Prompt ID: CCP-227
+Task ID: CCP-227
+Source Document: docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md
+Source Step: Task 2 — Admin auth middleware and login endpoint
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-227`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same server / auth / middleware files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add admin auth to the dev server — an environment-variable token, a login endpoint, an auth-check middleware, and a status endpoint
+
+Inspect first:
+- Patzer:
+  - `server.mjs`
+  - `server/db.mjs` (created by CCP-226)
+  - `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Lichess references: none required
+
+Constraints:
+- scope this to auth only — no sync endpoints yet
+- use `ADMIN_TOKEN` environment variable (no hardcoded secrets)
+- `POST /api/auth/login` accepts `{ token }` body, returns success/fail
+- on success, set an `Authorization: Bearer <token>` pattern for subsequent requests (stateless, no session cookies)
+- add a middleware function `requireAuth(req)` that checks the `Authorization` header
+- `GET /api/auth/status` returns `{ authenticated: true/false }`
+- keep the server as plain Node.js HTTP — no Express
+
+Before coding, provide:
+- prompt id, task id, source document, source step, task title
+- relevant Patzer Pro files, relevant Lichess files
+- diagnosis, exact small step to implement, why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- test with curl: `curl -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{"token":"test"}'`
+- report: build result, endpoints added, auth flow, remaining risks
+```
+
+## CCP-228 — Reviewed
+
+- Task: add authenticated REST endpoints for pushing/pulling games, puzzles, and analysis data
+- Task ID: `CCP-228`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Source step: `Task 3 — Server API endpoints for data sync`
+- Created by: `Claude Code`
+- Created at: `2026-03-28T07:00:19.322Z`
+- Started at: `2026-03-28T07:09:43.341Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: auth sprint task 3
+
+```
+Prompt ID: CCP-228
+Task ID: CCP-228
+Source Document: docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md
+Source Step: Task 3 — Server API endpoints for data sync
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-228`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same server / sync / database files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add authenticated REST endpoints to the dev server for pushing and pulling user data (games, puzzles, analysis) between client and server
+
+Inspect first:
+- Patzer:
+  - `server.mjs`
+  - `server/db.mjs` (created by CCP-226)
+  - `src/puzzles/types.ts`
+  - `src/puzzles/puzzleDb.ts`
+  - `src/idb/index.ts`
+  - `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Lichess references: none required
+
+Constraints:
+- all endpoints require admin auth (use middleware from CCP-227)
+- GET endpoints return full data arrays; POST endpoints accept batch arrays
+- `GET /api/sync/games` and `POST /api/sync/games`
+- `GET /api/sync/puzzles` and `POST /api/sync/puzzles` (definitions + attempts + meta)
+- `GET /api/sync/analysis` and `POST /api/sync/analysis`
+- POST endpoints should upsert (insert or update by primary key)
+- keep payloads as JSON — match the IDB record shapes
+- no pagination needed yet (admin single-user scale)
+
+Before coding, provide:
+- prompt id, task id, source document, source step, task title
+- relevant Patzer Pro files, relevant Lichess files
+- diagnosis, exact small step to implement, why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- test with curl: push a test record, pull it back
+- report: build result, endpoints added, upsert behavior, remaining risks
+```
+
+## CCP-229 — Reviewed
+
+- Task: create client-side sync service with push/pull and last-write-wins conflict resolution
+- Task ID: `CCP-229`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Source step: `Task 4 — Client sync service`
+- Created by: `Claude Code`
+- Created at: `2026-03-28T07:00:19.322Z`
+- Started at: `2026-03-28T07:10:29.231Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: auth sprint task 4
+
+```
+Prompt ID: CCP-229
+Task ID: CCP-229
+Source Document: docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md
+Source Step: Task 4 — Client sync service
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-229`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same sync / persistence / IDB files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: create a client-side sync service that can push IDB data to the server and pull server data into IDB, with last-write-wins conflict resolution
+
+Inspect first:
+- Patzer:
+  - `src/idb/index.ts`
+  - `src/puzzles/puzzleDb.ts`
+  - `server/db.mjs` (schema reference)
+  - `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Lichess references: none required
+
+Constraints:
+- create `src/sync/client.ts`
+- `setAuthToken(token)` / `getAuthToken()` — store in localStorage
+- `isAuthenticated()` — check if token is set
+- `pushToServer()` — read all IDB stores, POST to server sync endpoints
+- `pullFromServer()` — GET from server sync endpoints, merge into IDB
+- conflict resolution: compare `updatedAt` timestamps, keep newest
+- track `lastSyncedAt` in localStorage
+- do not auto-sync — manual push/pull only
+- handle network errors gracefully (return success/failure, don't throw)
+
+Before coding, provide:
+- prompt id, task id, source document, source step, task title
+- relevant Patzer Pro files, relevant Lichess files
+- diagnosis, exact small step to implement, why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- report: build result, exported functions, sync flow, conflict resolution, remaining risks
+```
+
+## CCP-230 — Reviewed
+
+- Task: wire /admin route with login form and push/pull sync controls
+- Task ID: `CCP-230`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Source step: `Task 5 — Admin UI: login panel and sync controls`
+- Created by: `Claude Code`
+- Created at: `2026-03-28T07:00:19.322Z`
+- Started at: `2026-03-28T07:11:23.731Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: auth sprint task 5
+
+```
+Prompt ID: CCP-230
+Task ID: CCP-230
+Source Document: docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md
+Source Step: Task 5 — Admin UI: login panel and sync controls
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-230`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same admin page / sync UI / routing files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: wire the existing `/admin` route to show a login form, and after login show sync controls (push/pull buttons, status display, data counts)
+
+Inspect first:
+- Patzer:
+  - `src/main.ts` (route handler for 'admin')
+  - `src/sync/client.ts` (created by CCP-229)
+  - `src/styles/main.scss`
+  - `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Lichess references: none required
+
+Constraints:
+- use Snabbdom `h()` for the UI — no raw DOM
+- login form: single token input + "Login" button
+- after login: show "Push to Server", "Pull from Server" buttons
+- show last sync time, sync status (idle/pushing/pulling/error)
+- show data counts (games, puzzles, attempts) from IDB
+- show a "Logout" button that clears the token
+- keep the admin page minimal and functional — no elaborate design
+- do not add admin to the main navigation — it's a secret route
+
+Before coding, provide:
+- prompt id, task id, source document, source step, task title
+- relevant Patzer Pro files, relevant Lichess files
+- diagnosis, exact small step to implement, why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- navigate to `#/admin` — verify login form appears
+- report: build result, UI elements added, login flow, sync controls, remaining risks
+```
+
+## CCP-231 — Reviewed
+
+- Task: execute auth sprint batch: CCP-226 through CCP-230
+- Task ID: `CCP-231`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Source step: `Full auth and sync batch / manager prompt`
+- Created by: `Claude Code`
+- Created at: `2026-03-28T07:00:19.322Z`
+- Started at: `2026-03-28T07:04:58.887Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: manager prompt for auth sprint
+
+```
+Prompt ID: CCP-231
+Task ID: CCP-231
+Source Document: docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md
+Source Step: Full auth and sync batch / manager prompt
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-231`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-226`
+- `CCP-227`
+- `CCP-228`
+- `CCP-229`
+- `CCP-230`
+
+Manager-prompt rule:
+- `CCP-231` is the manager prompt id only
+- do not execute or recurse into `CCP-231` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same server / auth / sync / admin files.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during the batch
+- do not continue past a known issue just to finish the batch
+- before starting each child prompt, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if not already started
+- use internal validation/self-check only; external review happens separately
+
+After each completed child prompt, report briefly:
+- Prompt ID, task title, build result, validation result, whether batch continues or stops
+
+If the batch finishes, report a compact summary of completed Prompt IDs.
 ```

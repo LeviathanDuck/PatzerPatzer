@@ -5282,6 +5282,115 @@ body[data-board='newspaper'] cg-board::before {
   color: #999;
 }
 
+// --- Collection loading page ---
+.openings--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.openings__loading-card {
+  text-align: center;
+  padding: 40px 60px;
+  background: #1e1e1e;
+  border-radius: 8px;
+  min-width: 360px;
+}
+
+.openings__loading-pct {
+  font-size: 3.5rem;
+  font-weight: 700;
+  color: #4a9;
+  text-align: center;
+  line-height: 1;
+  margin-bottom: 12px;
+  font-family: monospace;
+  letter-spacing: -2px;
+  width: 4.5ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.openings__loading-title {
+  margin: 0 0 8px;
+  font-size: 1.1em;
+  color: #ccc;
+}
+
+.openings__loading-bar {
+  width: 100%;
+  height: 22px;
+  background: #252525;
+  border-radius: 11px;
+  overflow: hidden;
+  margin: 12px 0 8px;
+}
+
+.openings__loading-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2d7a3a, #4a9);
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  transition: width 0.15s ease-out;
+  box-shadow: 0 0 10px rgba(74, 153, 74, 0.3);
+}
+
+.openings__loading-detail {
+  margin: 0;
+  font-size: 0.9em;
+  color: #888;
+}
+
+// --- Transfer animation (import + loading) ---
+
+.openings__transfer {
+  margin: 16px 0;
+  text-align: center;
+}
+
+.openings__transfer-track {
+  position: relative;
+  height: 6px;
+  background: #252525;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.openings__transfer-pulse {
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #4a9, transparent);
+  border-radius: 3px;
+  animation: transfer-slide 1.5s ease-in-out infinite;
+}
+
+.openings__transfer-pulse--delayed {
+  animation-delay: 0.75s;
+  background: linear-gradient(90deg, transparent, #6ba3d6, transparent);
+}
+
+@keyframes transfer-slide {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
+
+.openings__transfer-count {
+  font-size: 0.9rem;
+  color: #ccc;
+  font-weight: 600;
+}
+
 // --- Collection list (library) ---
 .openings__collections {
   display: grid;
@@ -5569,18 +5678,106 @@ body[data-board='newspaper'] cg-board::before {
 
 .openings__session-body {
   display: grid;
-  grid-template-columns: minmax(280px, 400px) 1fr;
+  grid-template-columns:
+    min(
+      calc((100vw - 32px - 300px) * var(---board-scale)),
+      calc((100vh - 5rem) * var(---board-scale))
+    )
+    1fr;
   gap: 16px;
   align-items: start;
 }
 
+.openings__board-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.openings__session-panel {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
 .openings__board-wrap {
-  aspect-ratio: 1;
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%;
+  overflow: visible;
+
+  .openings__board {
+    position: absolute;
+    inset: 0;
+  }
+}
+
+.openings__color-filter {
+  display: flex;
+  gap: 0;
+  border: 1px solid #555;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.openings__color-btn {
+  padding: 4px 10px;
+  background: #333;
+  color: #888;
+  border: none;
+  border-right: 1px solid #555;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s;
+
+  &:last-child { border-right: none; }
+  &:hover { background: #444; color: #ccc; }
+  &.active { background: #4a9; color: #111; }
 }
 
 .openings__board {
   width: 100%;
   height: 100%;
+  overflow: visible;
+  cg-container { overflow: visible !important; }
+}
+
+.openings__player-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 0.82rem;
+  color: #888;
+  min-height: 24px;
+
+  &--target {
+    color: #ccc;
+    font-weight: 600;
+  }
+
+  &--top {
+    border-bottom: 1px solid #2a2a2a;
+  }
+
+  &--bottom {
+    border-top: 1px solid #2a2a2a;
+  }
+}
+
+.openings__player-dot {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.openings__player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.openings__ceval {
+  margin-top: 4px;
 }
 
 // --- Move path breadcrumb ---
@@ -5634,6 +5831,34 @@ body[data-board='newspaper'] cg-board::before {
   margin-left: 8px;
 }
 
+// --- Tree build progress (inline in session panel) ---
+.openings__tree-build {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: #1a2520;
+  border-radius: 4px;
+}
+
+.openings__tree-build-bar {
+  height: 6px;
+  background: #252525;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.openings__tree-build-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2d7a3a, #4a9);
+  border-radius: 3px;
+  transition: width 0.15s ease-out;
+}
+
+.openings__tree-build-label {
+  font-size: 0.75em;
+  color: #8a8;
+}
+
 // --- Played lines panel ---
 // Row density and hierarchy informed by Lichess opening surface conventions.
 .openings__lines-panel {
@@ -5642,41 +5867,27 @@ body[data-board='newspaper'] cg-board::before {
   padding: 10px;
 }
 
+.openings__pos-header {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
+
 .openings__pos-summary {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #333;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.openings__pos-label {
+  font-size: 0.78rem;
+  color: #666;
 }
 
 .openings__pos-total {
   font-weight: 600;
   font-size: 0.95em;
-}
-
-.openings__pos-results {
-  display: flex;
-  gap: 8px;
-  font-size: 0.82em;
-}
-
-.openings__pos-w { color: #fff; }
-.openings__pos-d { color: #999; }
-.openings__pos-b { color: #888; }
-
-.openings__moves-header {
-  display: grid;
-  grid-template-columns: 80px 100px 1fr;
-  gap: 8px;
-  padding: 4px 6px;
-  font-size: 0.78em;
-  color: #777;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid #2a2a2a;
-  margin-bottom: 4px;
 }
 
 .openings__moves-empty {
@@ -5686,12 +5897,9 @@ body[data-board='newspaper'] cg-board::before {
   font-size: 0.9em;
 }
 
+// Each move row: move name + count on one line, full-width bar below.
 .openings__move-row {
-  display: grid;
-  grid-template-columns: 80px 100px auto 1fr;
-  gap: 8px;
-  align-items: center;
-  padding: 6px;
+  padding: 5px 6px;
   border-radius: 3px;
   cursor: pointer;
   transition: background 0.12s;
@@ -5700,8 +5908,9 @@ body[data-board='newspaper'] cg-board::before {
 
 .openings__move-san {
   font-weight: 700;
-  font-size: 1.1em;
+  font-size: 1.05em;
   color: #e8e8e8;
+  margin-right: 10px;
 }
 
 .openings__move-count {
@@ -5709,28 +5918,50 @@ body[data-board='newspaper'] cg-board::before {
   color: #bbb;
 }
 
-.openings__move-results {
-  display: flex;
-  gap: 6px;
-  font-size: 0.78em;
-}
-
-.openings__mr-w { color: #fff; }
-.openings__mr-d { color: #888; }
-.openings__mr-b { color: #666; }
-
-// Result bar: horizontal tri-color bar (white/draw/black)
+// Lichess masters-database-style result bar.
+// Block-level div, segments are inline-block with percentage widths.
+// Adapted from lichess-org/lila: ui/analyse/css/explorer/_explorer.scss
 .openings__result-bar {
-  display: flex;
-  height: 6px;
-  border-radius: 3px;
+  display: block;
+  height: 18px;
+  border-radius: 4px;
   overflow: hidden;
-  min-width: 60px;
+  font-size: 0;         // collapse whitespace between inline-block spans
+  white-space: nowrap;
+  margin-top: 3px;
 }
 
-.openings__result-w { background: #fff; }
-.openings__result-d { background: #666; }
-.openings__result-b { background: #333; }
+.openings__bar-w,
+.openings__bar-d,
+.openings__bar-b {
+  display: inline-block;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  overflow: hidden;
+  font-size: 11px;      // restore from parent's font-size:0
+  vertical-align: top;
+  transition: width 0.3s;
+}
+
+.openings__bar-w {
+  background: #ccc;
+  color: #222;
+  box-shadow: inset 0 -3px 5px rgba(0, 0, 0, 0.2);
+}
+
+.openings__bar-d {
+  background: #666;
+  color: #ddd;
+  box-shadow: inset 0 3px 5px rgba(255, 255, 255, 0.08);
+  min-width: 3px;
+}
+
+.openings__bar-b {
+  background: #333;
+  color: #ddd;
+  box-shadow: inset 0 3px 5px rgba(255, 255, 255, 0.08);
+}
 
 // --- Sample games panel ---
 .openings__samples {
@@ -5758,6 +5989,11 @@ body[data-board='newspaper'] cg-board::before {
   border-radius: 3px;
   &:hover { background: #2a2a2a; }
   & + & { border-top: 1px solid #2a2a2a; }
+
+  &--clickable {
+    cursor: pointer;
+    &:hover { background: #2a3a2a; }
+  }
 }
 
 .openings__sample-players {
