@@ -12871,16 +12871,17 @@ function renderSessionSidebar(session, def, redraw2) {
         h("span.session-info__stat.session-info__stat--failed", `${failed} failed`),
         h("span.session-info__stat", `${total} total`)
       ]),
-      h("label.session-info__auto-next", [
-        h("input", {
-          attrs: { type: "checkbox" },
-          props: { checked: getAutoNext() },
-          on: { change: (e) => {
-            setAutoNext(e.target.checked);
+      h("div.session-info__auto-next", [
+        h("span", "Auto-next"),
+        h("div.toggle-switch", {
+          class: { "toggle-switch--on": getAutoNext() },
+          on: { click: () => {
+            setAutoNext(!getAutoNext());
             redraw2();
           } }
-        }),
-        h("span", "Auto-next")
+        }, [
+          h("div.toggle-switch__knob")
+        ])
       ])
     ]),
     // History chicklet grid
