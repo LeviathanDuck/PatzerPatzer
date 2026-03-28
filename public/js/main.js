@@ -11374,7 +11374,7 @@ async function fetchGamePgn(gameUrl) {
     return void 0;
   }
 }
-var PREFETCH_AHEAD = 3;
+var PREFETCH_AHEAD = 10;
 var _sessionQueue = [];
 var _prefetchInFlight = /* @__PURE__ */ new Set();
 function prefetchSessionPgns() {
