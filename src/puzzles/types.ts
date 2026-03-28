@@ -24,10 +24,16 @@ interface PuzzleDefinitionBase {
   /** FEN of the position where the puzzle begins (before the solution move). */
   startFen: string;
   /**
+   * The opponent's last move before the puzzle begins (UCI notation).
+   * For imported Lichess puzzles this is moves[0] from the CSV.
+   * Applied on the board before the solver gets control.
+   */
+  triggerMove?: string;
+  /**
    * Full solution line in UCI notation.
-   * For imported Lichess puzzles this is the full moves array from the CSV
-   * (opponent trigger move excluded — that belongs in round setup, not here).
+   * For imported Lichess puzzles this is the solver's moves (trigger excluded).
    * For user-library puzzles this is the engine best-line or manually chosen line.
+   * Even indices (0, 2, 4...) = user moves. Odd indices (1, 3, 5...) = opponent replies.
    */
   solutionLine: string[];
   /**

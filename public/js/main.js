@@ -10222,11 +10222,13 @@ function retroCandidateToDefinition(candidate, opts) {
 }
 function lichessShardRecordToDefinition(record) {
   if (record.moves.length < 2) return void 0;
+  const triggerMove = record.moves[0];
   const solutionLine = record.moves.slice(1);
   const def = {
     id: `lichess_${record.id}`,
     sourceKind: "imported-lichess",
     startFen: record.fen,
+    triggerMove,
     solutionLine,
     strictSolutionMove: solutionLine[0],
     createdAt: Date.now(),
@@ -10300,6 +10302,13 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
    * Returns the next expected user move from the solution line,
    * or undefined if the puzzle is complete or out of bounds.
    */
+  /** All moves from startFen to reach the current position (trigger + solution moves played). */
+  allMovesPlayed() {
+    const moves = [];
+    if (this.definition.triggerMove) moves.push(this.definition.triggerMove);
+    moves.push(...this.solutionLine.slice(0, this.progressPly));
+    return moves;
+  }
   currentExpectedMove() {
     if (this.progressPly >= this.solutionLine.length) return void 0;
     return this.solutionLine[this.progressPly];
@@ -10460,7 +10469,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
    * Even progressPly indices (0, 2, 4…) are user moves in our convention.
    */
   isUserTurn() {
-    return this.progressPly % 2 === 1;
+    return this.progressPly % 2 === 0;
   }
   /**
    * Validate a user move against the stored solution line.
@@ -10474,8 +10483,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     if (this.status !== "playing") return { accepted: false };
     const expected = this.currentExpectedMove();
     if (!expected) return { accepted: false };
-    const movesPlayed = this.solutionLine.slice(0, this.progressPly);
-    const posBefore = positionAfterMoves(this.definition.startFen, movesPlayed);
+    const posBefore = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     const fenBefore = posBefore ? makeFen(posBefore.toSetup()) : this.definition.startFen;
     const matched = uciMatches(uci, expected);
     this.evaluateMove(uci, expected, matched, fenBefore);
@@ -10493,7 +10501,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
       this.firstWrongPly = this.progressPly;
     }
     this.feedback = "fail";
-    const reason = this.progressPly <= 1 ? "wrong-first-move" : "wrong-later-move";
+    const reason = this.progressPly === 0 ? "wrong-first-move" : "wrong-later-move";
     if (!this.failureReasons.includes(reason)) {
       this.failureReasons.push(reason);
     }
@@ -10531,8 +10539,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
       this.redraw();
       return;
     }
-    const movesPlayed = this.solutionLine.slice(0, this.progressPly);
-    const pos = positionAfterMoves(this.definition.startFen, movesPlayed);
+    const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     if (pos) {
       const dests = chessgroundDests(pos);
       const turn = pos.turn;
@@ -10700,8 +10707,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     }
     this.puzzleEngineEnabled = true;
     this.usedEngineReveal = true;
-    const movesPlayed = this.solutionLine.slice(0, this.progressPly);
-    const pos = positionAfterMoves(this.definition.startFen, movesPlayed);
+    const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     if (!pos) {
       console.warn("[puzzle-engine] cannot derive position for engine eval");
       this.puzzleEngineEnabled = false;
@@ -10837,9 +10843,30 @@ function mountPuzzleBoard(el, redraw2) {
     }
   });
   bindBoardResizeHandle(el);
-  if (rc && rc.status === "playing" && def.solutionLine.length > 0) {
+  if (def.triggerMove) {
     setTimeout(() => {
-      rc.playOpponentReply();
+      const cg = getPuzzleCg();
+      if (!cg) return;
+      _opponentMoving = true;
+      const orig = def.triggerMove.slice(0, 2);
+      const dest = def.triggerMove.slice(2, 4);
+      cg.move(orig, dest);
+      _opponentMoving = false;
+      const triggerMoves = [def.triggerMove];
+      const pos2 = positionAfterMoves(def.startFen, triggerMoves);
+      if (pos2) {
+        const dests2 = chessgroundDests(pos2);
+        const turn2 = pos2.turn;
+        cg.set({
+          fen: makeFen(pos2.toSetup()),
+          turnColor: turn2,
+          movable: {
+            color: rc ? rc.pov : turn2,
+            dests: dests2,
+            showDests: true
+          }
+        });
+      }
       redraw2();
     }, 500);
   }
@@ -11722,33 +11749,12 @@ function renderImportedSessionBuilder(ls, redraw2) {
         })
       ])
     ]),
-    // Tab selector: Themes | Openings
-    h("div.puzzle-session__tabs", [
-      h("button.puzzle-session__tab", {
-        class: { active: _sessionTab === "themes" },
-        on: { click: () => {
-          _sessionTab = "themes";
-          redraw2();
-        } }
-      }, `Themes${_selectedThemes.size > 0 ? ` (${_selectedThemes.size})` : ""}`),
-      h("button.puzzle-session__tab", {
-        class: { active: _sessionTab === "openings" },
-        on: { click: () => {
-          _sessionTab = "openings";
-          redraw2();
-        } }
-      }, `Openings${_selectedOpenings.size > 0 ? ` (${_selectedOpenings.size})` : ""}`)
-    ]),
-    // Tab content
-    _sessionTab === "themes" ? renderThemeList(ls, redraw2) : renderOpeningList(ls, redraw2),
-    // Error message
-    getImportedSessionError() ? h("div.puzzle-session__error", getImportedSessionError()) : null,
-    // Start button
-    h("div.puzzle-session__actions", [
-      totalSelected > 0 ? h(
+    // Start bar — always visible near top
+    h("div.puzzle-session__start-bar", [
+      h(
         "span.puzzle-session__selection-hint",
-        `${totalSelected} selected`
-      ) : h("span.puzzle-session__selection-hint", "Select themes/openings or start with all"),
+        totalSelected > 0 ? `${totalSelected} selected` : "All puzzles"
+      ),
       h("button.button.puzzle-session__start", {
         attrs: { disabled: _sessionStarting },
         on: { click: () => {
@@ -11767,7 +11773,28 @@ function renderImportedSessionBuilder(ls, redraw2) {
           });
         } }
       }, _sessionStarting ? "Loading\u2026" : "Start Puzzles")
-    ])
+    ]),
+    // Error message
+    getImportedSessionError() ? h("div.puzzle-session__error", getImportedSessionError()) : null,
+    // Tab selector: Themes | Openings
+    h("div.puzzle-session__tabs", [
+      h("button.puzzle-session__tab", {
+        class: { active: _sessionTab === "themes" },
+        on: { click: () => {
+          _sessionTab = "themes";
+          redraw2();
+        } }
+      }, `Themes${_selectedThemes.size > 0 ? ` (${_selectedThemes.size})` : ""}`),
+      h("button.puzzle-session__tab", {
+        class: { active: _sessionTab === "openings" },
+        on: { click: () => {
+          _sessionTab = "openings";
+          redraw2();
+        } }
+      }, `Openings${_selectedOpenings.size > 0 ? ` (${_selectedOpenings.size})` : ""}`)
+    ]),
+    // Tab content
+    _sessionTab === "themes" ? renderThemeList(ls, redraw2) : renderOpeningList(ls, redraw2)
   ]);
 }
 function renderThemeList(ls, redraw2) {
@@ -11968,7 +11995,7 @@ function renderPlayingFeedback(rc, redraw2) {
     ]),
     // Show the expected move if solution was revealed
     rc.revealedSolution ? h("div.puzzle__feedback__revealed", [
-      h("em", `Solution: ${rc.currentExpectedMove() ?? "complete"}`)
+      h("em", `Solution: ${expectedMoveSan(rc)}`)
     ]) : null
   ]);
 }
@@ -12056,8 +12083,28 @@ function renderSolvedFeedback(rc, redraw2) {
 }
 function renderFailedFeedback(rc, redraw2) {
   const skipped = rc.failureReasons.includes("skip-pressed");
-  const expectedMove = rc.solutionLine[rc.progressPly];
-  const correctMoveNote = expectedMove ? `The correct move was ${expectedMove}.` : void 0;
+  const expectedUci = rc.solutionLine[rc.progressPly];
+  let correctMoveNote;
+  if (expectedUci) {
+    const allMoves = [];
+    if (rc.definition.triggerMove) allMoves.push(rc.definition.triggerMove);
+    allMoves.push(...rc.solutionLine.slice(0, rc.progressPly));
+    const setupResult = parseFen(rc.definition.startFen);
+    let san = expectedUci;
+    if (setupResult.isOk) {
+      const posResult = Chess.fromSetup(setupResult.value);
+      if (posResult.isOk) {
+        const pos = posResult.value;
+        for (const uci of allMoves) {
+          const m = parseUci(uci);
+          if (m) pos.play(m);
+        }
+        const expectedParsed = parseUci(expectedUci);
+        if (expectedParsed) san = makeSan(pos, expectedParsed);
+      }
+    }
+    correctMoveNote = `The correct move was ${san}.`;
+  }
   return h("div.puzzle__feedback.after.failed", [
     h("div.puzzle__feedback__result", [
       h("div.puzzle__feedback__icon.puzzle__feedback__icon--fail", "\u2717"),
@@ -12231,6 +12278,24 @@ function renderFoldersEditor(meta, redraw2) {
     })
   ]);
 }
+function expectedMoveSan(rc) {
+  const uci = rc.currentExpectedMove();
+  if (!uci) return "complete";
+  const allMoves = [];
+  if (rc.definition.triggerMove) allMoves.push(rc.definition.triggerMove);
+  allMoves.push(...rc.solutionLine.slice(0, rc.progressPly));
+  const setupResult = parseFen(rc.definition.startFen);
+  if (setupResult.isErr) return uci;
+  const posResult = Chess.fromSetup(setupResult.value);
+  if (posResult.isErr) return uci;
+  const pos = posResult.value;
+  for (const m of allMoves) {
+    const parsed = parseUci(m);
+    if (parsed) pos.play(parsed);
+  }
+  const move3 = parseUci(uci);
+  return move3 ? makeSan(pos, move3) : uci;
+}
 function computeSanMoves(startFen, uciMoves) {
   const sans = [];
   const setup = parseFen(startFen);
@@ -12249,8 +12314,10 @@ function computeSanMoves(startFen, uciMoves) {
 function renderPuzzleMoveList(def, rc) {
   const progressPly = rc?.progressPly ?? 0;
   const showAll = rc && (rc.status === "solved" || rc.status === "failed");
-  const movesToShow = showAll ? def.solutionLine : def.solutionLine.slice(0, progressPly);
-  const sans = computeSanMoves(def.startFen, movesToShow);
+  const solutionSlice = showAll ? def.solutionLine : def.solutionLine.slice(0, progressPly);
+  const allMoves = def.triggerMove ? [def.triggerMove, ...solutionSlice] : solutionSlice;
+  const sans = computeSanMoves(def.startFen, allMoves);
+  const hasTrigger = !!def.triggerMove;
   if (sans.length === 0) {
     return h("div.puzzle-moves", [
       h("div.puzzle-moves__empty", "Waiting for moves\u2026")
@@ -12268,17 +12335,17 @@ function renderPuzzleMoveList(def, rc) {
         h("span.puzzle-moves__num", `${fullMoveNum}.${startColorIsBlack && i === 0 ? ".." : ""}`)
       );
     }
-    const isFuture = i >= progressPly && !showAll;
-    const isLast = i === progressPly - 1;
+    const isTrigger = hasTrigger && i === 0;
+    const solutionIdx = hasTrigger ? i - 1 : i;
+    const isUserMove = hasTrigger ? i % 2 === 1 : i % 2 === 0;
+    const isCurrentMove = hasTrigger ? solutionIdx === progressPly - 1 && solutionIdx >= 0 : i === progressPly - 1;
     moveNodes.push(
       h("span.puzzle-moves__move", {
         class: {
-          "puzzle-moves__move--current": isLast,
-          "puzzle-moves__move--future": isFuture,
-          "puzzle-moves__move--opponent": i % 2 === 0,
-          // even = opponent trigger/reply
-          "puzzle-moves__move--user": i % 2 === 1
-          // odd = user move
+          "puzzle-moves__move--current": isCurrentMove,
+          "puzzle-moves__move--trigger": isTrigger,
+          "puzzle-moves__move--opponent": !isUserMove,
+          "puzzle-moves__move--user": isUserMove
         }
       }, sans[i])
     );
