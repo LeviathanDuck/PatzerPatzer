@@ -4175,16 +4175,39 @@ body[data-board=newspaper] cg-board::before {
 .session-info__auto-next {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
+  justify-content: space-between;
+  margin-top: 8px;
   font-size: 0.78rem;
   color: #888;
-  cursor: pointer;
   user-select: none;
 }
-.session-info__auto-next input {
-  accent-color: #4a9;
+
+.toggle-switch {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: #444;
+  position: relative;
   cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle-switch__knob {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ccc;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s, background 0.2s;
+}
+.toggle-switch--on {
+  background: #4a9;
+}
+.toggle-switch--on .toggle-switch__knob {
+  transform: translateX(16px);
+  background: #fff;
 }
 
 .session-history {
