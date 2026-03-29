@@ -36,21 +36,29 @@
 }
 
 input[type='range'] {
+  -webkit-appearance: none;
   appearance: none;
-  background: none;
+  background: transparent;
   border: 0;
   padding: 0;
   cursor: pointer;
   flex: 1;
+  height: 1.4em; // explicit height so the track and thumb have space
 
   &:focus { outline: none; }
   &:disabled { opacity: 0.4; cursor: not-allowed; }
 
   &::-webkit-slider-runnable-track { @include range-track; }
   &::-webkit-slider-thumb {
-    @include range-thumb;
+    -webkit-appearance: none;
     appearance: none;
-    margin-top: calc((0.5em - 1.1em) / 2); // center thumb over track
+    border: 2px solid #777;
+    height: 1.1em;
+    width: 1.1em;
+    border-radius: 50%;
+    background: #999;
+    cursor: pointer;
+    margin-top: calc((0.5em - 1.1em) / 2);
   }
   &::-moz-range-track   { @include range-track; }
   &::-moz-range-thumb   { @include range-thumb; }
@@ -59,6 +67,26 @@ input[type='range'] {
   &:hover::-moz-range-thumb     { border-color: #4a9; background: #bbb; }
 
   &:focus-visible::-webkit-slider-thumb { outline: 2px solid #4a9; outline-offset: 1px; }
+}
+
+// Global scrollbar styling — matches Lichess dark theme thin scrollbar.
+// Adapted from lichess-org/lila: ui/lib/css/base/_scrollbar.scss
+body ::-webkit-scrollbar,
+body ::-webkit-scrollbar-corner {
+  width: 0.5rem;
+  background: #1a1a1a;
+}
+body ::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+}
+body ::-webkit-scrollbar-thumb:hover,
+body ::-webkit-scrollbar-thumb:active {
+  background: #555;
+}
+// Firefox thin scrollbar
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a3a #1a1a1a;
 }
 
 html,
@@ -1205,6 +1233,153 @@ body.resizing {
   min-height: 0;
   overflow: hidden;
   align-self: stretch; // match board height
+  position: relative; // required for .action-menu absolute overlay (CCP-243)
+}
+
+// Analysis-local action menu overlay.
+// Overlays .analyse__tools column when opened via hamburger button.
+// Adapted from lichess-org/lila: ui/analyse/css/_action-menu.scss .action-menu
+.action-menu {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  background: #1a1a1a;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  gap: 6px;
+  border-bottom: 2px solid #2e2e2e;
+
+  h2 {
+    font-size: 0.8em;
+    text-transform: uppercase;
+    text-align: center;
+    white-space: nowrap;
+    display: table;
+    width: 100%;
+    color: #666;
+    margin: 4px 0 2px;
+
+    &::before,
+    &::after {
+      border-top: 1px solid #2e2e2e;
+      content: '';
+      display: table-cell;
+      position: relative;
+      top: 0.5em;
+      width: 45%;
+    }
+
+    &::before { padding-inline-end: 8px; }
+    &::after  { padding-inline-start: 8px; }
+  }
+
+  &__close-btn {
+    align-self: flex-end;
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+
+    &:hover { color: #ccc; }
+  }
+
+  &__tools {
+    display: grid;
+    gap: 0 0.8em;
+    grid-template-columns: repeat(auto-fill, minmax(14ch, 1fr));
+
+    button, > a {
+      color: #ccc;
+      display: flex;
+      align-items: center;
+      line-height: 1.2em;
+      min-height: 3em;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      padding: 4px 0;
+      font-size: 0.9em;
+
+      &::before {
+        padding-inline-end: 8px;
+        font-size: 1.5em;
+      }
+
+      &:hover { color: #9cc9f5; }
+    }
+  }
+
+  &__display {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__coming {
+    color: #444;
+    font-size: 0.8em;
+    font-style: italic;
+    padding: 6px 0;
+  }
+
+  // Toggle rows inside the Display section.
+  &__toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #222;
+    cursor: pointer;
+    font-size: 0.9em;
+    color: #ccc;
+
+    &:last-child { border-bottom: none; }
+
+    input[type='checkbox'] {
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #3893e8;
+    }
+
+    &:hover { color: #9cc9f5; }
+  }
+
+  // Slider rows (range inputs) inside the Display section — CCP-246.
+  &__slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid #222;
+    font-size: 0.9em;
+    color: #ccc;
+
+    &:last-child { border-bottom: none; }
+
+    label { flex: 0 0 auto; }
+
+    input[type='range'] {
+      flex: 1 1 auto;
+      accent-color: #3893e8;
+      min-width: 0;
+    }
+  }
+
+  &__val {
+    flex: 0 0 auto;
+    font-size: 0.85em;
+    color: #888;
+    min-width: 3ch;
+    text-align: right;
+  }
 }
 
 // Move list scroll container inside tools.
@@ -1556,6 +1731,32 @@ body.resizing {
   }
 }
 
+// Three-zone analysis control bar — left / middle / right.
+// Mirrors lichess-org/lila: ui/analyse/src/view/controls.ts zone split.
+// Inserted inside .analyse__controls (the grid-area cell).
+.analyse-controls {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+
+  &__left {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  &__middle {
+    flex: 0 0 auto;
+  }
+
+  &__right {
+    flex: 0 0 auto;
+    margin-inline-start: 2px;
+  }
+}
+
 .analyse__controls {
   grid-area: controls;
   align-self: start;
@@ -1629,25 +1830,67 @@ body.resizing {
       display: none;
     }
 
-    .jumps {
-      flex: 0 0 40%;
-      padding: 0;
-      background: transparent;
-      border: none;
-      border-radius: 0;
+    // Three-zone bar fills the full mobile controls bar height.
+    .analyse-controls {
+      height: 100%;
       gap: 2px;
 
-      // Tab-style: top-rounded, no bottom border — docked to tools column edge.
-      // Mirrors lichess-org/lila: _tools-mobile.scss .fbt { border-bottom: none; border-radius: 6px 6px 0 0 }
-      .fbt {
-        font-size: 1.4rem;
-        padding: 6px 4px;
-        border-radius: 6px 6px 0 0;
-        border: 1px solid #2e2e2e;
-        border-bottom: none;
-        background: #1a1a1a;
-        height: 100%;
+      // Left zone (review/retro) hidden on mobile — moved to .analyse__actions.
+      &__left {
+        display: none;
       }
+
+      // Middle zone (jump buttons) grows to fill available width.
+      &__middle {
+        flex: 1 1 auto;
+        height: 100%;
+
+        .jumps {
+          flex: 1 1 auto;
+          width: 100%;
+          height: 100%;
+          padding: 0;
+          background: transparent;
+          border: none;
+          border-radius: 0;
+          gap: 2px;
+
+          // Tab-style: top-rounded, no bottom border — docked to tools column edge.
+          // Mirrors lichess-org/lila: _tools-mobile.scss .fbt { border-bottom: none; ... }
+          .fbt {
+            font-size: 1.4rem;
+            padding: 6px 4px;
+            border-radius: 6px 6px 0 0;
+            border: 1px solid #2e2e2e;
+            border-bottom: none;
+            background: #1a1a1a;
+            height: 100%;
+          }
+        }
+      }
+
+      // Right zone (hamburger) shares the same tab style on mobile.
+      &__right {
+        flex: 0 0 auto;
+        height: 100%;
+        margin-inline-start: 0;
+
+        .fbt {
+          font-size: 1.4rem;
+          height: 100%;
+          padding: 6px 8px;
+          border-radius: 6px 6px 0 0;
+          border: 1px solid #2e2e2e;
+          border-bottom: none;
+          background: #1a1a1a;
+        }
+      }
+    }
+
+    // Legacy .jumps rule no longer applies directly inside .analyse__controls on mobile
+    // (jumps are now nested inside .analyse-controls__middle). Rule kept for safety.
+    .jumps {
+      flex: unset;
     }
   }
 
@@ -4498,10 +4741,18 @@ body[data-board='newspaper'] cg-board::before {
   }
 
   &__board {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    overflow: visible;
+  }
+
+  &__board-inner {
     position: relative;
     width: 100%;
     padding-bottom: 100%; // 1:1 square aspect
     overflow: visible;
+    flex-shrink: 0;
 
     .cg-wrap {
       position: absolute;

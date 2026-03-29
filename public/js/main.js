@@ -1410,6 +1410,7 @@ function setEvalGraphHeightPct(value) {
 function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, userColor, userOnly, bg) {
   const n = mainline.length - 1;
   const renderedGraphHeight = Math.round(GRAPH_H * graphHeightPct / 100);
+  const svgH = bg ? GRAPH_H : renderedGraphHeight;
   if (n < 2) {
     if (bg) return h("div.eval-graph.eval-graph--bg");
     return h("div.eval-graph", [
@@ -1451,7 +1452,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       const label = !playedBest && shouldShowReviewAnnotation2(node.ply) ? cached.label ?? (cached.loss !== void 0 ? classifyLoss(cached.loss) : null) : null;
       pts.push({
         x: (i - 1) / (n - 1) * GRAPH_W,
-        y: (1 - wc) / 2 * GRAPH_H,
+        y: (1 - wc) / 2 * svgH,
         // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
         path,
         label,
@@ -1468,7 +1469,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       h("div.eval-graph__empty", "Analyze game to see graph.")
     ]);
   }
-  const cy = GRAPH_H / 2;
+  const cy = svgH / 2;
   const svgNodes = [];
   const hideHover = (svg) => {
     const hl = svg?.querySelector("[data-hover]");
@@ -1508,10 +1509,11 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
     }
   };
   const polyPts = [
-    `${valid[0].x},${GRAPH_H}`,
+    `${valid[0].x},${svgH}`,
     ...valid.map((p) => `${p.x},${p.y}`),
-    `${valid[valid.length - 1].x},${GRAPH_H}`
+    `${valid[valid.length - 1].x},${svgH}`
   ].join(" ");
+  svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#999", "stroke-width": 1, opacity: bg ? "0.6" : "1" } }));
   svgNodes.push(h("polygon", {
     attrs: {
       points: polyPts,
@@ -1519,7 +1521,6 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       stroke: "none"
     }
   }));
-  svgNodes.push(h("line", { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: "#999", "stroke-width": 1, opacity: bg ? "0.6" : "1" } }));
   svgNodes.push(h("polyline", { attrs: {
     points: valid.map((p) => `${p.x},${p.y}`).join(" "),
     fill: "none",
@@ -1535,7 +1536,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       x1: curPt.x,
       y1: 0,
       x2: curPt.x,
-      y2: GRAPH_H,
+      y2: svgH,
       stroke: "#4a8",
       "stroke-width": 1,
       opacity: "0.55"
@@ -1547,7 +1548,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       x1: 0,
       y1: 0,
       x2: 0,
-      y2: GRAPH_H,
+      y2: svgH,
       stroke: "#aaa",
       "stroke-width": 1.5,
       opacity: "0",
@@ -1574,7 +1575,7 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
       x: 0,
       y: 0,
       width: GRAPH_W,
-      height: GRAPH_H,
+      height: svgH,
       fill: "transparent"
     },
     on: {
@@ -1623,7 +1624,10 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
     }
   }, [
     h("svg", { attrs: {
-      viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
+      // viewBox matches the rendered pixel height so scaleY = 1, keeping circle
+      // markers circular at any graph height. scaleX still stretches to fill
+      // container width, which is the intended horizontal-fill behavior.
+      viewBox: `0 0 ${GRAPH_W} ${svgH}`,
       width: "100%",
       height: renderedGraphHeight,
       preserveAspectRatio: "none"
@@ -7155,97 +7159,6 @@ function renderEngineSettings() {
         }
       }),
       h("span.ceval-settings__val", `${searchTime / 1e3}s`)
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-arrows" } }, "Arrows"),
-      h("input#ceval-arrows", {
-        attrs: { type: "checkbox", checked: showEngineArrows },
-        on: {
-          change: (e) => {
-            setShowEngineArrows(e.target.checked);
-            syncArrow();
-            _redraw4();
-          }
-        }
-      })
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-arrow-lines" } }, "All lines"),
-      h("input#ceval-arrow-lines", {
-        attrs: { type: "checkbox", checked: arrowAllLines },
-        on: {
-          change: (e) => {
-            setArrowAllLines(e.target.checked);
-            syncArrow();
-            _redraw4();
-          }
-        }
-      })
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-played-arrow" } }, "Played"),
-      h("input#ceval-played-arrow", {
-        attrs: { type: "checkbox", checked: showPlayedArrow },
-        on: {
-          change: (e) => {
-            setShowPlayedArrow(e.target.checked);
-            syncArrow();
-            _redraw4();
-          }
-        }
-      })
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-arrow-labels" } }, "Labels"),
-      h("input#ceval-arrow-labels", {
-        attrs: { type: "checkbox", checked: showArrowLabels },
-        on: {
-          change: (e) => {
-            setShowArrowLabels(e.target.checked);
-            syncArrow();
-            _redraw4();
-          }
-        }
-      })
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-label-size" } }, "Label size"),
-      h("input#ceval-label-size", {
-        attrs: { type: "range", min: 6, max: 18, step: 1, value: arrowLabelSize },
-        on: {
-          input: (e) => {
-            setArrowLabelSize(parseInt(e.target.value));
-            syncArrow();
-            _redraw4();
-          }
-        }
-      }),
-      h("span.ceval-settings__val", `${arrowLabelSize}px`)
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-review-labels" } }, "Review"),
-      h("input#ceval-review-labels", {
-        attrs: { type: "checkbox", checked: showReviewLabels },
-        on: {
-          change: (e) => {
-            setShowReviewLabels(e.target.checked);
-            _redraw4();
-          }
-        }
-      })
-    ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-board-review-glyphs" } }, "Board review"),
-      h("input#ceval-board-review-glyphs", {
-        attrs: { type: "checkbox", checked: showBoardReviewGlyphs },
-        on: {
-          change: (e) => {
-            setShowBoardReviewGlyphs(e.target.checked);
-            syncArrow();
-            _redraw4();
-          }
-        }
-      })
     ])
   ]);
 }
@@ -7535,6 +7448,223 @@ function renderAnalysisControls(extraButtons) {
       ...extraButtons ?? []
     ]),
     statusLine
+  ]);
+}
+
+// src/analyse/analysisControls.ts
+var _actionMenuOpen = false;
+function toggleActionMenu() {
+  _actionMenuOpen = !_actionMenuOpen;
+}
+function closeActionMenu() {
+  _actionMenuOpen = false;
+}
+var _deps = null;
+function initAnalysisControls(deps) {
+  _deps = deps;
+}
+var ICON_JUMP_FIRST = "\uE035";
+var ICON_PREV = "\uE027";
+var ICON_NEXT = "\uE026";
+var ICON_JUMP_LAST = "\uE034";
+var ICON_HAMBURGER = "\uE039";
+var ICON_BOOK = "\uE03B";
+function renderExplorerEntry() {
+  const deps = _deps;
+  const ctrl2 = deps.getCtrl();
+  if (ctrl2.retro) return null;
+  const active = deps.explorerEnabled();
+  return h("button.fbt", {
+    class: { active },
+    attrs: { "data-icon": ICON_BOOK, title: "Opening explorer" },
+    on: { click: () => {
+      deps.onToggleExplorer();
+      deps.redraw();
+    } }
+  });
+}
+function renderControlBar(leftNodes) {
+  const deps = _deps;
+  const ctrl2 = deps.getCtrl();
+  const canPrev = ctrl2.path !== "";
+  const canNext = !!ctrl2.node.children[0];
+  return h("div.analyse-controls", [
+    h("div.analyse-controls__left", leftNodes.filter((n) => n !== null)),
+    h("div.analyse-controls__middle", [
+      h("div.jumps", [
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_JUMP_FIRST, disabled: !canPrev, title: "First move" },
+          on: { click: deps.first }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_PREV, disabled: !canPrev, title: "Previous move" },
+          on: { click: deps.prev }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_NEXT, disabled: !canNext, title: "Next move" },
+          on: { click: deps.next }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_JUMP_LAST, disabled: !canNext, title: "Last move" },
+          on: { click: deps.last }
+        })
+      ])
+    ]),
+    h("div.analyse-controls__right", [
+      h("button.fbt", {
+        class: { active: _actionMenuOpen },
+        attrs: { "data-icon": ICON_HAMBURGER, title: "Analysis menu" },
+        on: { click: () => {
+          toggleActionMenu();
+          deps.redraw();
+        } }
+      })
+    ])
+  ]);
+}
+var ICON_FLIP = "\uE020";
+var ICON_RETRO = "\uE05C";
+function renderActionMenu() {
+  if (!_actionMenuOpen) return null;
+  const deps = _deps;
+  const ctrl2 = deps.getCtrl();
+  const close = () => {
+    closeActionMenu();
+    deps.redraw();
+  };
+  const hasRetro = !!ctrl2.retro;
+  const canLFYM = analysisComplete && !batchAnalyzing;
+  return h("div.action-menu", [
+    h("button.action-menu__close-btn", {
+      attrs: { title: "Close menu" },
+      on: { click: close }
+    }, "\xD7"),
+    // Tools section — mirrors lichess-org/lila: actionMenu.ts Tools group
+    h("h2", "Tools"),
+    h("div.action-menu__tools", [
+      // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
+      h("button", {
+        attrs: { "data-icon": ICON_FLIP, title: "Flip board (hotkey: f)" },
+        on: { click: () => {
+          deps.onFlipBoard();
+          close();
+        } }
+      }, "Flip board"),
+      // Learn From Your Mistakes — mirrors lichess-org/lila: actionMenu.ts canRetro → toggleRetro()
+      h("button", {
+        class: { active: hasRetro },
+        attrs: {
+          "data-icon": ICON_RETRO,
+          title: canLFYM ? hasRetro ? "Exit mistakes review" : "Review your mistakes" : "Analyze the game first",
+          disabled: !canLFYM
+        },
+        on: { click: () => {
+          if (canLFYM) {
+            deps.onToggleRetro();
+            close();
+          }
+        } }
+      }, hasRetro ? "Close Mistakes" : "Learn From Your Mistakes")
+    ]),
+    // Display section — analysis-local display toggles.
+    // Arrow display settings moved here from engine gear (CCP-246).
+    // showBoardReviewGlyphs, showReviewLabels: primary ownership now here (removed from gear).
+    // reviewDotsUserOnly moved here from global header menu (CCP-244).
+    h("h2", "Display"),
+    h("div.action-menu__display", [
+      h("label.action-menu__toggle-row", [
+        h("span", "Move markers on board"),
+        h("input", {
+          attrs: { type: "checkbox", checked: showBoardReviewGlyphs },
+          on: { change: (e) => {
+            setShowBoardReviewGlyphs(e.target.checked);
+            syncArrow();
+            deps.redraw();
+          } }
+        })
+      ]),
+      h("label.action-menu__toggle-row", [
+        h("span", "Move labels"),
+        h("input", {
+          attrs: { type: "checkbox", checked: showReviewLabels },
+          on: { change: (e) => {
+            setShowReviewLabels(e.target.checked);
+            deps.redraw();
+          } }
+        })
+      ]),
+      // Review dots user-only — moved from global header menu (previously in src/header/index.ts).
+      // Storage owner (reviewDotsUserOnly / setReviewDotsUserOnly in src/board/cosmetics.ts) unchanged.
+      h("label.action-menu__toggle-row", [
+        h("span", "Review dots: my moves only"),
+        h("input", {
+          attrs: { type: "checkbox" },
+          props: { checked: reviewDotsUserOnly },
+          on: { change: (e) => {
+            setReviewDotsUserOnly(e.target.checked);
+            deps.redraw();
+          } }
+        })
+      ]),
+      // Arrow display settings — moved from engine gear (CCP-246).
+      // Storage owners in engine/ctrl.ts unchanged.
+      h("label.action-menu__toggle-row", [
+        h("span", "Engine arrows"),
+        h("input", {
+          attrs: { type: "checkbox", checked: showEngineArrows },
+          on: { change: (e) => {
+            setShowEngineArrows(e.target.checked);
+            syncArrow();
+            deps.redraw();
+          } }
+        })
+      ]),
+      h("label.action-menu__toggle-row", [
+        h("span", "All lines"),
+        h("input", {
+          attrs: { type: "checkbox", checked: arrowAllLines },
+          on: { change: (e) => {
+            setArrowAllLines(e.target.checked);
+            syncArrow();
+            deps.redraw();
+          } }
+        })
+      ]),
+      h("label.action-menu__toggle-row", [
+        h("span", "Played move arrow"),
+        h("input", {
+          attrs: { type: "checkbox", checked: showPlayedArrow },
+          on: { change: (e) => {
+            setShowPlayedArrow(e.target.checked);
+            syncArrow();
+            deps.redraw();
+          } }
+        })
+      ]),
+      h("label.action-menu__toggle-row", [
+        h("span", "Arrow labels"),
+        h("input", {
+          attrs: { type: "checkbox", checked: showArrowLabels },
+          on: { change: (e) => {
+            setShowArrowLabels(e.target.checked);
+            syncArrow();
+            deps.redraw();
+          } }
+        })
+      ]),
+      h("div.action-menu__slider-row", [
+        h("label", { attrs: { for: "action-menu-label-size" } }, "Label size"),
+        h("input#action-menu-label-size", {
+          attrs: { type: "range", min: 6, max: 18, step: 1, value: arrowLabelSize },
+          on: { input: (e) => {
+            setArrowLabelSize(parseInt(e.target.value));
+            syncArrow();
+            deps.redraw();
+          } }
+        }),
+        h("span.action-menu__val", `${arrowLabelSize}px`)
+      ])
+    ])
   ]);
 }
 
@@ -12172,6 +12302,92 @@ function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOn
 }
 
 // src/puzzles/view.ts
+var ROLE_ORDER2 = ["queen", "rook", "bishop", "knight", "pawn"];
+var ROLE_POINTS2 = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
+function puzzleMaterialDiff(fen) {
+  const diff2 = {
+    white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+    black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 }
+  };
+  const fenBoard = fen.split(" ")[0] ?? "";
+  const charToRole2 = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
+  for (const ch of fenBoard) {
+    const lower = ch.toLowerCase();
+    const role = charToRole2[lower];
+    if (!role) continue;
+    const color = ch === lower ? "black" : "white";
+    const opp = color === "white" ? "black" : "white";
+    if (diff2[opp][role] > 0) diff2[opp][role]--;
+    else diff2[color][role]++;
+  }
+  return diff2;
+}
+function puzzleMaterialScore(diff2) {
+  return ROLE_ORDER2.reduce((sum, role) => sum + (diff2.white[role] - diff2.black[role]) * ROLE_POINTS2[role], 0);
+}
+function renderPuzzleMaterialPieces(diff2, color, score) {
+  const groups = [];
+  for (const role of ROLE_ORDER2) {
+    const count = diff2[color][role];
+    if (count <= 0) continue;
+    const pieces = [];
+    for (let i = 0; i < count; i++) pieces.push(h("mpiece." + role));
+    groups.push(h("div", pieces));
+  }
+  return h("div.material", [
+    ...groups,
+    score > 0 ? h("score", "+" + score) : null
+  ]);
+}
+function formatPuzzleClock(centis) {
+  const totalSecs = Math.floor(centis / 100);
+  const hh = Math.floor(totalSecs / 3600);
+  const m = Math.floor(totalSecs % 3600 / 60);
+  const s = totalSecs % 60;
+  const pad = (n) => n < 10 ? "0" + n : String(n);
+  return hh > 0 ? `${hh}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+function renderPuzzlePlayerStrips(rc) {
+  const pov = rc.pov;
+  const opp = pov === "white" ? "black" : "white";
+  const headers = rc.pgnHeaders;
+  const result = headers?.result ?? "*";
+  const clocks = rc.puzzleClocks;
+  const diff2 = puzzleMaterialDiff(rc.treeNode.fen);
+  const score = puzzleMaterialScore(diff2);
+  const nameFor = (color) => {
+    const pgn = color === "white" ? headers?.white : headers?.black;
+    if (pgn && pgn.trim() && pgn !== "?") return pgn;
+    return color === pov ? "Hero" : "Opponent";
+  };
+  const strip = (color) => {
+    const name = nameFor(color);
+    const winner = color === "white" && result === "1-0" || color === "black" && result === "0-1";
+    const loser = color === "white" && result === "0-1" || color === "black" && result === "1-0";
+    const matScore = color === "white" ? score : -score;
+    const centis = color === "white" ? clocks.white : clocks.black;
+    return h("div.analyse__player_strip", [
+      h("div.player-strip__identity", {
+        class: {
+          "player-strip__identity--winner": winner,
+          "player-strip__identity--loser": loser,
+          "player-strip__identity--draw": result !== "*" && !winner && !loser
+        }
+      }, [
+        h("span.player-strip__color-icon", {
+          class: {
+            "player-strip__color-icon--white": color === "white",
+            "player-strip__color-icon--black": color === "black"
+          }
+        }),
+        h("span.player-strip__name", name)
+      ]),
+      renderPuzzleMaterialPieces(diff2, color, matScore > 0 ? matScore : 0),
+      centis !== void 0 ? h("div.analyse__clock", formatPuzzleClock(centis)) : null
+    ]);
+  };
+  return [strip(opp), strip(pov)];
+}
 function sourceCard(title, description, count, sourceKind, redraw2) {
   const loaded = count !== void 0;
   return h("div.puzzle-library__card", [
@@ -13467,20 +13683,27 @@ function renderPuzzleRound(redraw2) {
         renderPuzzleInfo(def, redraw2),
         renderMetaPanel(def.id, redraw2)
       ]),
-      // Board area
-      h("div.puzzle__board.main-board", [
-        h("div.cg-wrap", {
-          key: `puzzle-board-${def.id}`,
-          hook: {
-            insert: (vnode3) => {
-              mountPuzzleBoard(vnode3.elm, redraw2);
-            },
-            destroy: () => {
-              destroyPuzzleBoard();
-            }
-          }
-        })
-      ]),
+      // Board area with player strips
+      (() => {
+        const [topStrip, bottomStrip] = rc ? renderPuzzlePlayerStrips(rc) : [null, null];
+        return h("div.puzzle__board.main-board", [
+          topStrip,
+          h("div.puzzle__board-inner", [
+            h("div.cg-wrap", {
+              key: `puzzle-board-${def.id}`,
+              hook: {
+                insert: (vnode3) => {
+                  mountPuzzleBoard(vnode3.elm, redraw2);
+                },
+                destroy: () => {
+                  destroyPuzzleBoard();
+                }
+              }
+            })
+          ]),
+          bottomStrip
+        ]);
+      })(),
       // Side panel — split into engine/moves top half + feedback/tools bottom half
       h("aside.puzzle__side", [
         // --- Top half: engine eval + move list ---
@@ -14413,19 +14636,8 @@ function renderGlobalMenu(deps) {
           }
         })
       ]),
-      h("label.global-menu__item.global-menu__item--toggle", [
-        h("span", "Review Dots: User Only"),
-        h("input", {
-          attrs: { type: "checkbox" },
-          props: { checked: reviewDotsUserOnly },
-          on: {
-            change: (e) => {
-              setReviewDotsUserOnly(e.target.checked);
-              redraw2();
-            }
-          }
-        })
-      ]),
+      // 'Review Dots: User Only' moved to analysis action menu (CCP-244).
+      // It is analysis-board-local and belongs in the analysis menu, not the global header.
       h("label.global-menu__item.global-menu__item--toggle", [
         h("span", "Board Sounds"),
         h("input", {
@@ -18635,7 +18847,12 @@ function routeContent(route) {
               if (child) navigate(ctrl.path + child.id);
             },
             redraw
-          )
+          ),
+          // Analysis-local action menu — overlays the tools column when opened.
+          // position: absolute; inset: 0 on .action-menu ensures it covers all tool content.
+          // Returns null when closed, so tools render normally.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts ctrl.actionMenu() && actionMenu(ctrl)
+          renderActionMenu()
         ]),
         // Controls — below tools (grid-area: controls)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
@@ -18648,28 +18865,18 @@ function routeContent(route) {
           // bg:true strips interactivity — graph still tracks current move position.
           renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, redraw, currentUserColor, reviewDotsUserOnly, true),
           // Action buttons — desktop only (mobile uses .analyse__actions below the move list).
-          renderAnalysisControls([
-            // Mistake-review entry: available after review completes.
-            // Jumps to the position before the first candidate mistake.
-            // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroView.ts entry affordance.
-            renderRetroEntry({
-              retro: ctrl.retro,
-              analysisComplete,
-              batchAnalyzing,
-              onToggle: toggleRetro
-            })
-          ]),
-          // Navigation jump buttons — mirrors lichess-org/lila: ui/analyse/src/view/controls.ts .jumps
-          // data-icon values: LessThan \ue027 (prev), GreaterThan \ue026 (next)
-          h("div.jumps", [
-            h("button.fbt", {
-              attrs: { "data-icon": "\uE027", disabled: ctrl.path === "", title: "Previous move" },
-              on: { click: prev }
-            }),
-            h("button.fbt", {
-              attrs: { "data-icon": "\uE026", disabled: !ctrl.node.children[0], title: "Next move" },
-              on: { click: next }
-            })
+          // Three-zone Lichess-style control bar (CCP-242).
+          // Left: review/retro entry + opening explorer (CCP-245). Middle: jumps. Right: hamburger.
+          renderControlBar([
+            renderAnalysisControls([
+              renderRetroEntry({
+                retro: ctrl.retro,
+                analysisComplete,
+                batchAnalyzing,
+                onToggle: toggleRetro
+              }),
+              renderExplorerEntry()
+            ])
           ])
         ]),
         // Mobile-only action buttons row — sits below the move list.
@@ -18810,6 +19017,23 @@ initPgnExport({
   getSelectedGameId: () => selectedGameId,
   clearGameAnalysis,
   redraw
+});
+initAnalysisControls({
+  getCtrl: () => ctrl,
+  prev,
+  next,
+  first,
+  last,
+  navigate,
+  redraw,
+  onFlipBoard: flip,
+  onToggleRetro: toggleRetro,
+  // CCP-245: opening explorer toggle
+  onToggleExplorer: () => {
+    explorerCtrl.toggle();
+    explorerCtrl.setNode(ctrl.node.fen, redraw);
+  },
+  explorerEnabled: () => explorerCtrl.enabled
 });
 initEngine({
   getCtrl: () => ctrl,
