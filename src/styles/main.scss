@@ -1571,8 +1571,8 @@ body.resizing {
   }
 
   // Eval graph background layer — absolutely fills controls bar, no pointer events.
-  // Override desktop `display: none` so the mobile bg graph is visible.
-  .eval-graph--bg {
+  // Nested inside .analyse__controls to match desktop specificity and override display:none.
+  .analyse__controls .eval-graph--bg {
     display: block;
     position: absolute;
     inset: 0;
