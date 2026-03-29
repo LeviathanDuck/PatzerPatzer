@@ -30,10 +30,9 @@ import { SPEED_OPTIONS, DATE_RANGE_OPTIONS, type ImportSpeed, type ImportDateRan
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode } from './tree';
 import { executeResearchImport } from './import';
-import {
-  explorerEnabled, explorerLoading, explorerError, explorerData,
-  toggleExplorer, fetchExplorer, type ExplorerMove,
-} from './explorer';
+import type { OpeningMoveStats, ExplorerDb } from './explorer';
+import { explorerCtrl, MAX_EXPLORER_DEPTH } from './explorerCtrl';
+import { ALL_SPEEDS, ALL_RATINGS, ALL_MODES } from './explorerConfig';
 import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
 import { engineEnabled, evalCurrentPosition } from '../engine/ctrl';
 
@@ -139,8 +138,8 @@ function renderImportWorkflow(redraw: () => void): VNode {
   const step = importStep();
   return h('div.openings__import', [
     h('div.openings__import-header', [
-      h('h2', 'New Opponent Research'),
-      h('button.openings__cancel-btn', {
+      h('span', 'New Opponent Research'),
+      h('button.header__panel-btn.--ghost', {
         on: { click: () => { resetImport(); redraw(); } },
       }, 'Cancel'),
     ]),
@@ -159,16 +158,23 @@ function renderSourceStep(redraw: () => void): VNode {
     { value: 'pgn', label: 'PGN Upload' },
   ];
   return h('div.openings__step', [
-    h('h3', 'Select Source'),
-    h('div.openings__source-options', sources.map(s =>
-      h('button.openings__source-btn', {
-        class: { active: src === s.value },
-        on: { click: () => { setImportSource(s.value); redraw(); } },
-      }, s.label),
-    )),
-    h('button.openings__next-btn', {
-      on: { click: () => { setImportStep('details'); redraw(); } },
-    }, 'Next'),
+    h('div.header__panel-section', [
+      h('div.header__panel-label', 'Source'),
+      h('div.header__panel-row', sources.map(s =>
+        h('button.header__pill', {
+          class: { active: src === s.value },
+          on: { click: () => { setImportSource(s.value); redraw(); } },
+        }, s.label),
+      )),
+    ]),
+    h('div.header__panel-divider'),
+    h('div.header__panel-section', [
+      h('div.header__panel-row', [
+        h('button.header__panel-btn', {
+          on: { click: () => { setImportStep('details'); redraw(); } },
+        }, 'Next \u2192'),
+      ]),
+    ]),
   ]);
 }
 
@@ -179,46 +185,58 @@ function renderDetailsStep(redraw: () => void): VNode {
   const speeds = importSpeeds();
   const dateRange = importDateRange();
 
-  return h('div.openings__step', [
-    h('h3', src === 'pgn' ? 'PGN Upload' : 'Opponent Details'),
+  const sections: (VNode | null)[] = [];
 
-    // --- Username / PGN input ---
-    src !== 'pgn' ? h('div.openings__field', [
-      h('label', 'Username'),
-      h('input.openings__input', {
-        attrs: { type: 'text', placeholder: `${src === 'lichess' ? 'Lichess' : 'Chess.com'} username` },
+  // --- Username / PGN input ---
+  sections.push(
+    src !== 'pgn' ? h('div.header__panel-section', [
+      h('div.header__panel-label', 'Username'),
+      h('input.header__text-input', {
+        attrs: {
+          type: 'text',
+          placeholder: `${src === 'lichess' ? 'Lichess' : 'Chess.com'} username`,
+          autocomplete: 'off',
+          'data-lpignore': 'true',
+          'data-1p-ignore': 'true',
+          'data-bwignore': 'true',
+          'data-form-type': 'other',
+        },
         props: { value: importUsername() },
         on: { input: (e: Event) => { setImportUsername((e.target as HTMLInputElement).value); redraw(); } },
       }),
-    ]) : h('div.openings__field', [
-      h('label', 'Paste PGN or upload a file'),
-      h('textarea.openings__textarea', {
+    ]) : h('div.header__panel-section', [
+      h('div.header__panel-label', 'Paste PGN'),
+      h('textarea.header__pgn-input', {
         attrs: { placeholder: 'Paste PGN text here\u2026', rows: '6' },
         on: { input: (e: Event) => { setImportUsername((e.target as HTMLTextAreaElement).value); redraw(); } },
       }),
     ]),
+  );
 
-    // --- Perspective ---
-    h('div.openings__field', [
-      h('label', 'Perspective'),
-      h('div.openings__color-options', (['white', 'black', 'both'] as const).map(c =>
-        h('button.openings__color-btn', {
-          class: { active: color === c },
-          on: { click: () => { setImportColor(c); redraw(); } },
-        }, c.charAt(0).toUpperCase() + c.slice(1)),
-      )),
-    ]),
+  // --- Perspective ---
+  sections.push(h('div.header__panel-divider'));
+  sections.push(h('div.header__panel-section', [
+    h('div.header__panel-label', 'Perspective'),
+    h('div.header__panel-row', (['white', 'black', 'both'] as const).map(c =>
+      h('button.header__pill', {
+        class: { active: color === c },
+        on: { click: () => { setImportColor(c); redraw(); } },
+      }, c.charAt(0).toUpperCase() + c.slice(1)),
+    )),
+  ]));
 
-    // --- Time control (not shown for PGN) ---
-    src !== 'pgn' ? h('div.openings__field', [
-      h('label', 'Time control'),
-      h('div.openings__filter-row', [
-        h('button.openings__filter-pill', {
+  if (src !== 'pgn') {
+    // --- Time control ---
+    sections.push(h('div.header__panel-divider'));
+    sections.push(h('div.header__panel-section', [
+      h('div.header__panel-label', 'Time control'),
+      h('div.header__panel-row', [
+        h('button.header__pill', {
           class: { active: speeds.size === 0 },
           on: { click: () => { setImportSpeeds(new Set()); redraw(); } },
         }, 'All'),
         ...SPEED_OPTIONS.map(({ value, label, icon }) =>
-          h('button.openings__filter-pill', {
+          h('button.header__pill', {
             class: { active: speeds.has(value) },
             attrs: { 'data-icon': icon },
             on: { click: () => {
@@ -230,38 +248,40 @@ function renderDetailsStep(redraw: () => void): VNode {
           }, label),
         ),
       ]),
-    ]) : null,
+    ]));
 
-    // --- Period (not shown for PGN) ---
-    src !== 'pgn' ? h('div.openings__field', [
-      h('label', 'Period'),
-      h('div.openings__filter-row', [
+    // --- Period ---
+    sections.push(h('div.header__panel-divider'));
+    sections.push(h('div.header__panel-section', [
+      h('div.header__panel-label', 'Period'),
+      h('div.header__panel-row', [
         ...DATE_RANGE_OPTIONS.map(({ value, label }) =>
-          h('button.openings__filter-pill', {
+          h('button.header__pill', {
             class: { active: dateRange === value },
             on: { click: () => { setImportDateRange(value as ImportDateRange); redraw(); } },
           }, label),
         ),
       ]),
-      dateRange === 'custom' ? h('div.openings__custom-dates', [
+      dateRange === 'custom' ? h('div.header__panel-row.--mt', [
         h('span', 'From'),
-        h('input.openings__date-input', {
+        h('input.header__date-input', {
           attrs: { type: 'date' },
           props: { value: importCustomFrom() },
           on: { change: (e: Event) => { setImportCustomFrom((e.target as HTMLInputElement).value); redraw(); } },
         }),
         h('span', 'To'),
-        h('input.openings__date-input', {
+        h('input.header__date-input', {
           attrs: { type: 'date' },
           props: { value: importCustomTo() },
           on: { change: (e: Event) => { setImportCustomTo((e.target as HTMLInputElement).value); redraw(); } },
         }),
       ]) : null,
-    ]) : null,
+    ]));
 
-    // --- Rated only (not shown for PGN) ---
-    src !== 'pgn' ? h('div.openings__field', [
-      h('label.openings__check-label', [
+    // --- Rated only ---
+    sections.push(h('div.header__panel-divider'));
+    sections.push(h('div.header__panel-section', [
+      h('label.header__panel-check', [
         h('input', {
           attrs: { type: 'checkbox' },
           props: { checked: importRated() },
@@ -269,29 +289,36 @@ function renderDetailsStep(redraw: () => void): VNode {
         }),
         ' Rated only',
       ]),
-    ]) : null,
+    ]));
 
-    // --- Max games (not shown for PGN) ---
-    src !== 'pgn' ? h('div.openings__field', [
-      h('label', 'Max games'),
-      h('input.openings__input.openings__input--short', {
+    // --- Max games ---
+    sections.push(h('div.header__panel-divider'));
+    sections.push(h('div.header__panel-section', [
+      h('div.header__panel-label', 'Max games'),
+      h('input.header__text-input.header__text-input--short', {
         attrs: { type: 'number', min: '1', max: '200' },
         props: { value: importMaxGames() },
         on: { change: (e: Event) => { setImportMaxGames(parseInt((e.target as HTMLInputElement).value, 10) || 50); redraw(); } },
       }),
-    ]) : null,
+    ]));
+  }
 
-    err ? h('div.openings__error', err) : null,
-    h('div.openings__actions', [
-      h('button.openings__back-btn', {
+  // --- Error + actions ---
+  sections.push(h('div.header__panel-divider'));
+  sections.push(h('div.header__panel-section', [
+    err ? h('div.header__panel-error', err) : null,
+    h('div.header__panel-row', [
+      h('button.header__panel-btn', {
         on: { click: () => { setImportStep('source'); redraw(); } },
-      }, 'Back'),
-      h('button.openings__import-btn', {
+      }, '\u2190 Back'),
+      h('button.header__panel-btn', {
         attrs: { disabled: src !== 'pgn' && importUsername().trim() === '' },
         on: { click: () => { void executeResearchImport(redraw); } },
       }, 'Import'),
     ]),
-  ]);
+  ]));
+
+  return h('div.openings__step', sections);
 }
 
 function renderImportingStep(redraw: () => void): VNode {
@@ -419,18 +446,10 @@ function renderSessionPage(redraw: () => void): VNode {
         treeBuilding() ? renderTreeBuildBar() : null,
         renderMovePath(path, redraw),
         renderMoveNav(path, redraw),
-        // Engine evaluation block — set FEN override before rendering ceval
+        // Keep FEN override in sync with the current openings position on every render.
+        // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
         (() => {
-          const currentFen = node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-          setCevalFenOverride(currentFen);
-          // Re-send position on every redraw when engine is active
-          // (toggleEngine calls evalCurrentPosition which sends the wrong FEN)
-          if (engineEnabled && sharedEngineReady) {
-            requestAnimationFrame(() => {
-              sharedProtocol.setPosition(currentFen);
-              sharedProtocol.go(analysisDepth, multiPv);
-            });
-          }
+          setCevalFenOverride(node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
           return null;
         })(),
         renderCeval(),
@@ -592,13 +611,9 @@ function syncOpeningsBoard(_redraw: () => void): void {
     lastMove: node.uci ? [node.uci.slice(0, 2), node.uci.slice(2, 4)] : undefined,
   });
   _openingsCg.setAutoShapes(buildFrequencyArrows(node));
-  // Update engine eval for the new position — send directly to protocol
-  // (evalCurrentPosition reads the analysis board's FEN, not the openings FEN)
+  // Update FEN override and re-evaluate if engine is on.
   setCevalFenOverride(fen);
-  if (engineEnabled && sharedEngineReady) {
-    sharedProtocol.setPosition(fen);
-    sharedProtocol.go(analysisDepth, multiPv);
-  }
+  if (engineEnabled) evalCurrentPosition();
 }
 
 // Pre-built opacity brushes for frequency arrows (registered once at board init).
@@ -861,75 +876,505 @@ function extractLichessUrl(pgn: string): string {
 
 // ========== Lichess Explorer comparison ==========
 
+/**
+ * Render the appropriate error box for a failed explorer request.
+ * 401 errors get a "Connect to Lichess" prompt instead of the generic message.
+ */
+function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VNode {
+  const isAuthError = err.message.includes('401') || err.message.includes('Unauthorized') || err.message.includes('Not connected');
+  if (isAuthError) {
+    return h('div.openings__explorer-box', { class: { reduced: true } }, [
+      h('div.overlay'),
+      h('div.openings__explorer-message', [
+        h('strong', 'Lichess account required'),
+        h('p.openings__explorer-explanation', 'The opening book requires a Lichess login.'),
+        h('a.openings__explorer-connect-btn', {
+          attrs: { href: '/api/lichess/connect' },
+        }, 'Connect to Lichess'),
+      ]),
+    ]);
+  }
+  return h('div.openings__explorer-box', { class: { reduced: true } }, [
+    h('div.overlay'),
+    h('div.openings__explorer-message', [
+      h('h3', 'Oops, sorry!'),
+      h('p.openings__explorer-explanation', err.message),
+      h('button.openings__explorer-retry', {
+        on: { click: () => { explorerCtrl.reload(fen, redraw); redraw(); } },
+      }, 'Retry'),
+    ]),
+  ]);
+}
+
 function renderExplorerToggle(node: OpeningTreeNode | null, redraw: () => void): VNode {
-  const enabled = explorerEnabled();
+  const enabled = explorerCtrl.enabled;
   return h('div.openings__explorer', [
-    h('div.openings__explorer-toggle', [
+    h('div.openings__explorer-header', [
       h('label.openings__explorer-label', [
         h('input', {
           attrs: { type: 'checkbox', checked: enabled },
           on: {
             change: () => {
-              toggleExplorer();
-              if (explorerEnabled() && node) {
-                void fetchExplorer(node.fen, redraw);
-              }
+              explorerCtrl.toggle();
+              if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw);
               redraw();
             },
           },
         }),
-        ' Lichess Opening Book',
+        ' Opening Book',
       ]),
+      enabled ? h('button.openings__explorer-gear', {
+        attrs: { title: 'Configure explorer' },
+        on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
+      }, '\u2699\uFE0F') : null,
     ]),
-    enabled ? renderExplorerPanel(node, redraw) : null,
+    enabled ? renderExplorerDbTabs(node, redraw) : null,
+    enabled
+      ? (explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw) : renderExplorerPanel(node, redraw))
+      : null,
   ]);
 }
 
+function renderExplorerDbTabs(node: OpeningTreeNode | null, redraw: () => void): VNode {
+  const db = explorerCtrl.config.db;
+  const setDb = (d: ExplorerDb) => {
+    explorerCtrl.setDb(d);
+    if (node) explorerCtrl.setNode(node.fen, redraw);
+    redraw();
+  };
+  return h('div.openings__explorer-tabs', [
+    h(`button.openings__explorer-tab${db === 'masters' ? '.active' : ''}`, { on: { click: () => setDb('masters') } }, 'Masters'),
+    h(`button.openings__explorer-tab${db === 'lichess' ? '.active' : ''}`, { on: { click: () => setDb('lichess') } }, 'Lichess'),
+    h(`button.openings__explorer-tab${db === 'player' ? '.active' : ''}`, { on: { click: () => setDb('player') } }, 'Player'),
+  ]);
+}
+
+/**
+ * Config panel — DB-specific filter controls.
+ * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerConfig.ts view()
+ */
+function renderExplorerConfigPanel(redraw: () => void): VNode {
+  const cfg = explorerCtrl.config;
+  const db = cfg.db;
+
+  const toggleBtn = <T>(label: string, active: boolean, onClick: () => void) =>
+    h('button.openings__explorer-filter-btn', {
+      class: { active },
+      on: { click: () => { onClick(); redraw(); } },
+    }, label);
+
+  const speedSection = () => h('div.openings__explorer-config-section', [
+    h('label', 'Time control'),
+    h('div.openings__explorer-filter-row',
+      ALL_SPEEDS.map(s => toggleBtn(s, cfg.speeds.includes(s), () => cfg.toggleSpeed(s))),
+    ),
+  ]);
+
+  const ratingSection = () => h('div.openings__explorer-config-section', [
+    h('label', 'Avg rating'),
+    h('div.openings__explorer-filter-row',
+      ALL_RATINGS.map(r => toggleBtn(String(r), cfg.ratings.includes(r), () => cfg.toggleRating(r))),
+    ),
+  ]);
+
+  const modeSection = () => h('div.openings__explorer-config-section', [
+    h('label', 'Mode'),
+    h('div.openings__explorer-filter-row',
+      ALL_MODES.map(m => toggleBtn(m, cfg.modes.includes(m), () => cfg.toggleMode(m))),
+    ),
+  ]);
+
+  const dateInput = (label: string, value: string, onChange: (v: string) => void, type: 'number' | 'month') =>
+    h('label.openings__explorer-date-label', [
+      label,
+      h('input', {
+        attrs: { type, value, placeholder: type === 'number' ? 'YYYY' : 'YYYY-MM', min: type === 'number' ? '1952' : '1952-01' },
+        on: { change: (e: Event) => { onChange((e.target as HTMLInputElement).value); redraw(); } },
+      }),
+    ]);
+
+  const dateSection = (type: 'number' | 'month') =>
+    h('div.openings__explorer-config-section', [
+      dateInput('Since', cfg.since(), v => cfg.setSince(v), type),
+      dateInput('Until', cfg.until(), v => cfg.setUntil(v), type),
+    ]);
+
+  const playerSection = () => h('div.openings__explorer-config-section', [
+    h('label', 'Player'),
+    h('input.openings__explorer-player-input', {
+      attrs: { type: 'text', placeholder: 'Lichess username', value: cfg.playerName },
+      on: {
+        change: (e: Event) => {
+          cfg.setPlayerName((e.target as HTMLInputElement).value.trim());
+          redraw();
+        },
+      },
+    }),
+    cfg.playerPrevious.length ? h('div.openings__explorer-player-prev',
+      cfg.playerPrevious.slice(0, 10).map(name =>
+        h('button.openings__explorer-prev-btn', {
+          on: { click: () => { cfg.setPlayerName(name); redraw(); } },
+        }, name),
+      ),
+    ) : null,
+    h('div.openings__explorer-color-row', [
+      h('label', 'Color'),
+      toggleBtn('White', cfg.color === 'white', () => { cfg.color = 'white'; }),
+      toggleBtn('Black', cfg.color === 'black', () => { cfg.color = 'black'; }),
+    ]),
+  ]);
+
+  const sections: VNode[] = [];
+  if (db === 'masters') sections.push(dateSection('number'));
+  if (db === 'lichess') { sections.push(speedSection(), ratingSection(), dateSection('month')); }
+  if (db === 'player') { sections.push(playerSection(), speedSection(), modeSection(), dateSection('month')); }
+
+  return h('div.openings__explorer-config', [
+    ...sections,
+    h('button.openings__explorer-config-close', {
+      on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
+    }, 'Done'),
+  ]);
+}
+
+/**
+ * Explorer panel — handles all four UI states: loading, error, empty, and data.
+ * Mirrors lichess-org/lila: ui/analyse/src/explorer/explorerView.ts main() function.
+ *
+ * - Preserves stale cached data under a loading overlay (`.loading` class)
+ * - `.reduced` class when movesAway > 2 (position moved far from book)
+ * - "Max depth reached" when at or beyond MAX_EXPLORER_DEPTH
+ * - Queue position message when player DB is indexing
+ * - Error state with retry button
+ */
 function renderExplorerPanel(node: OpeningTreeNode | null, redraw: () => void): VNode {
   if (!node) return h('div.openings__explorer-empty', 'No position selected.');
 
-  // Trigger fetch if needed
-  const data = explorerData();
-  if (!data || data.fen !== node.fen) {
-    if (!explorerLoading()) {
-      void fetchExplorer(node.fen, redraw);
-    }
+  const data = explorerCtrl.current(node.fen);
+  if (!data && !explorerCtrl.loading && !explorerCtrl.failing) {
+    explorerCtrl.setNode(node.fen, redraw);
   }
 
-  const loading = explorerLoading();
-  const err = explorerError();
+  const loading = explorerCtrl.loading;
+  const failing = explorerCtrl.failing;
+  const movesAway = explorerCtrl.movesAway;
+  const isMasters = explorerCtrl.config.db === 'masters';
 
-  if (loading) return h('div.openings__explorer-loading', 'Loading book data\u2026');
-  if (err) return h('div.openings__explorer-error', err);
-  if (!data || data.moves.length === 0) {
-    return h('div.openings__explorer-empty', 'No book data for this position.');
+  // Error state — 401 shows a connect prompt; other errors show retry
+  if (failing && !data) return renderExplorerErrorBox(failing, node.fen, redraw);
+
+  // Empty state — no data and no longer loading
+  if (!loading && !data) {
+    const tooDeep = movesAway >= MAX_EXPLORER_DEPTH;
+    const queuePos = (data as import('./explorer').OpeningData | undefined)?.queuePosition;
+    return h('div.openings__explorer-box', { class: { reduced: movesAway > 2 } }, [
+      h('div.openings__explorer-message', [
+        h('strong', tooDeep ? 'Max depth reached' : 'No game found'),
+        queuePos
+          ? h('p.openings__explorer-explanation', `Indexing ${queuePos} other players first\u2026`)
+          : !tooDeep
+            ? h('p.openings__explorer-explanation', 'Try adjusting the filters.')
+            : null,
+      ]),
+    ]);
   }
 
-  const total = data.white + data.draws + data.black;
-  return h('div.openings__explorer-data', [
-    data.opening
-      ? h('div.openings__explorer-opening', `${data.opening.eco} ${data.opening.name}`)
-      : null,
-    h('div.openings__explorer-summary', `${total.toLocaleString()} games in database`),
-    h('div.openings__explorer-moves', data.moves.slice(0, 8).map(m =>
-      renderExplorerMoveRow(m),
-    )),
+  // Data available — show with loading overlay if refreshing
+  if (data) {
+    const hasContent = data.moves.length > 0 || (data.topGames?.length ?? 0) > 0 || (data.recentGames?.length ?? 0) > 0;
+    const queuePos = data.queuePosition;
+
+    const content = hasContent
+      ? h('div.openings__explorer-data', [
+          data.opening
+            ? h('div.openings__explorer-opening', `${data.opening.eco} ${data.opening.name}`)
+            : null,
+          renderExplorerMovesTable(data, node.fen, redraw),
+          renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
+          renderExplorerGamesTable('Recent games', data.recentGames ?? [], isMasters),
+        ])
+      : h('div.openings__explorer-message', [
+          h('strong', movesAway >= MAX_EXPLORER_DEPTH ? 'Max depth reached' : 'No game found'),
+          queuePos
+            ? h('p.openings__explorer-explanation', `Indexing ${queuePos} other players first\u2026`)
+            : null,
+        ]);
+
+    return h('div.openings__explorer-box', { class: { loading, reduced: movesAway > 2 && !hasContent } }, [
+      h('div.overlay'),
+      content,
+    ]);
+  }
+
+  // Still waiting on first response
+  return h('div.openings__explorer-box', { class: { loading: true } }, [
+    h('div.overlay'),
+    h('div.openings__explorer-message', h('p', 'Loading\u2026')),
   ]);
 }
 
-function renderExplorerMoveRow(move: ExplorerMove): VNode {
-  const total = move.white + move.draws + move.black || 1;
-  const wPct = ((move.white / total) * 100).toFixed(0);
-  const dPct = ((move.draws / total) * 100).toFixed(0);
-  const bPct = ((move.black / total) * 100).toFixed(0);
+/**
+ * Top/recent games table — adapted from lichess-org/lila: ui/analyse/src/explorer/explorerView.ts showGameTable()
+ * Columns: ratings (stacked), player names (stacked), result badge, month/year, speed icon (non-masters).
+ * Row click opens the game on Lichess in a new tab.
+ */
+function renderExplorerGamesTable(
+  title: string,
+  games: import('./explorer').OpeningGame[],
+  isMasters: boolean,
+): VNode | null {
+  if (!games.length) return null;
+  const colSpan = isMasters ? 4 : 5;
 
-  return h('div.openings__explorer-row', { key: move.uci }, [
-    h('span.openings__explorer-san', move.san),
-    h('span.openings__explorer-count', `${(move.white + move.draws + move.black).toLocaleString()}`),
-    h('span.openings__explorer-results', [
-      h('span.openings__mr-w', `${wPct}%`),
-      h('span.openings__mr-d', `${dPct}%`),
-      h('span.openings__mr-b', `${bPct}%`),
+  const resultBadge = (winner?: 'white' | 'black') =>
+    winner === 'white'
+      ? h('result.white', '1-0')
+      : winner === 'black'
+        ? h('result.black', '0-1')
+        : h('result.draws', '\u00BD-\u00BD');
+
+  const openGame = (gameId: string) => {
+    const url = isMasters
+      ? `https://lichess.org/import/master/${gameId}`
+      : `https://lichess.org/${gameId}`;
+    window.open(url, '_blank', 'noopener');
+  };
+
+  return h('table.explorer-games', [
+    h('thead', h('tr', h('th', { attrs: { colspan: colSpan } }, title))),
+    h('tbody',
+      games.map(game =>
+        h('tr', {
+          key: game.id,
+          attrs: { 'data-id': game.id, 'data-uci': game.uci ?? '' },
+          on: { click: () => openGame(game.id) },
+        }, [
+          h('td.ratings', [
+            h('span', String(game.white.rating)),
+            h('span', String(game.black.rating)),
+          ]),
+          h('td.players', [
+            h('span', game.white.name),
+            h('span', game.black.name),
+          ]),
+          h('td', resultBadge(game.winner)),
+          h('td.date', game.month ?? game.year ?? ''),
+          !isMasters
+            ? h('td.speed', game.speed ? h('span', { attrs: { title: game.speed } }, speedGlyph(game.speed)) : '')
+            : null,
+        ]),
+      ),
+    ),
+  ]);
+}
+
+/** Simple text glyph for speed — no icon font required. */
+function speedGlyph(speed: string): string {
+  const glyphs: Record<string, string> = {
+    ultraBullet: '\u26a1\u26a1', bullet: '\u26a1', blitz: '\uD83D\uDD25',
+    rapid: '\u23F1', classical: '\u231B', correspondence: '\u2709',
+  };
+  return glyphs[speed] ?? speed;
+}
+
+/** Compact number formatter: 12400 → "12.4k", 1200000 → "1.2M". */
+function compactNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+/** Render a stacked W/D/B result bar — adapted from Lichess explorerView.ts resultBar(). */
+function renderExplorerResultBar(move: OpeningMoveStats): VNode {
+  const sum = move.white + move.draws + move.black || 1;
+  const seg = (key: 'white' | 'draws' | 'black') => {
+    const pct = (move[key] * 100) / sum;
+    const width = Math.round((move[key] * 1000) / sum) / 10;
+    return h(`span.${key}`, { attrs: { style: `width: ${width}%` } },
+      pct > 12 ? `${Math.round(pct)}${pct > 20 ? '%' : ''}` : '');
+  };
+  return h('div.bar', [seg('white'), seg('draws'), seg('black')]);
+}
+
+/**
+ * Lichess-style moves table with result bar, hover arrows, and click-to-play.
+ * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerView.ts showMoveTable()
+ * and ui/analyse/src/explorer/explorerUtil.ts moveArrowAttributes().
+ *
+ * @param onMoveClick — optional; defaults to openings navigateToMove. Analysis board passes its own.
+ * @param cgBoard     — optional; defaults to openings board. Analysis board passes its Chessground.
+ */
+function renderExplorerMovesTable(
+  data: import('./explorer').OpeningData,
+  fen: string,
+  redraw: () => void,
+  onMoveClick?: (uci: string) => void,
+  cgBoard?: CgApi,
+): VNode {
+  const sumTotal = (data.white ?? 0) + (data.draws ?? 0) + (data.black ?? 0) || 1;
+
+  type SumRow = { uci: ''; san: string; white: number; black: number; draws: number };
+  type AnyRow = OpeningMoveStats | SumRow;
+  const rows: AnyRow[] = data.moves.length > 1
+    ? [...data.moves, { uci: '' as '', san: '\u03A3', white: data.white ?? 0, black: data.black ?? 0, draws: data.draws ?? 0 }]
+    : [...data.moves];
+
+  const board = cgBoard ?? _openingsCg;
+  const defaultMoveClick = (uci: string) => {
+    navigateToMove(uci);
+    const newNode = sessionNode();
+    if (newNode) explorerCtrl.setNode(newNode.fen, redraw);
+    redraw();
+  };
+  const handleMoveClick = onMoveClick ?? defaultMoveClick;
+
+  return h('table.explorer-moves', {
+    hook: {
+      insert(vnode: import('snabbdom').VNode) {
+        const el = vnode.elm as HTMLElement;
+        el.addEventListener('mouseover', (e: MouseEvent) => {
+          const tr = (e.target as HTMLElement).closest('tr');
+          const uci = tr?.getAttribute('data-uci');
+          if (uci) {
+            explorerCtrl.setHovering(fen, uci);
+            const orig = uci.slice(0, 2);
+            const dest = uci.slice(2, 4);
+            board?.setAutoShapes([{ orig: orig as any, dest: dest as any, brush: 'blue' }]);
+          }
+        });
+        el.addEventListener('mouseout', () => {
+          explorerCtrl.setHovering(fen, null);
+          board?.setAutoShapes([]);
+        });
+        el.addEventListener('click', (e: MouseEvent) => {
+          const tr = (e.target as HTMLElement).closest('tr');
+          const uci = tr?.getAttribute('data-uci');
+          if (uci) handleMoveClick(uci);
+        });
+      },
+    },
+  }, [
+    h('thead', h('tr', [
+      h('th', 'Move'), h('th', '%'), h('th', 'Games'), h('th', 'W/D/B'),
+    ])),
+    h('tbody', rows.map(move => {
+      const total = move.white + move.draws + move.black || 1;
+      const isSum = move.uci === '';
+      return h(isSum ? 'tr.sum' : 'tr', {
+        key: move.uci || '\u03A3',
+        attrs: move.uci ? { 'data-uci': move.uci } : {},
+      }, [
+        h('td', move.san),
+        h('td', `${((total / sumTotal) * 100).toFixed(0)}%`),
+        h('td', compactNum(total)),
+        h('td', renderExplorerResultBar(move as OpeningMoveStats)),
+      ]);
+    })),
+  ]);
+}
+
+// ========== Analysis board explorer integration ==========
+
+/**
+ * Explorer section for the analysis board tools column.
+ * Uses the same ExplorerCtrl singleton as the openings page.
+ * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerView.ts default export.
+ *
+ * @param fen         — current board FEN (from ctrl.node.fen)
+ * @param cg          — analysis board Chessground instance (for hover arrows)
+ * @param onMoveClick — called when a move row is clicked; should advance the analysis tree
+ * @param redraw      — analysis board redraw function
+ */
+export function renderAnalysisExplorerSection(
+  fen: string,
+  cg: CgApi | undefined,
+  onMoveClick: (uci: string) => void,
+  redraw: () => void,
+): VNode {
+  const enabled = explorerCtrl.enabled;
+  const isMasters = explorerCtrl.config.db === 'masters';
+
+  return h('div.openings__explorer', [
+    h('div.openings__explorer-header', [
+      h('label.openings__explorer-label', [
+        h('input', {
+          attrs: { type: 'checkbox', checked: enabled },
+          on: {
+            change: () => {
+              explorerCtrl.toggle();
+              if (explorerCtrl.enabled) explorerCtrl.setNode(fen, redraw);
+              redraw();
+            },
+          },
+        }),
+        ' Opening Book',
+      ]),
+      enabled ? h('button.openings__explorer-gear', {
+        attrs: { title: 'Configure explorer' },
+        on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
+      }, '\u2699\uFE0F') : null,
     ]),
+    enabled ? renderExplorerDbTabs(null, redraw) : null,
+    enabled
+      ? (explorerCtrl.configOpen
+          ? renderExplorerConfigPanel(redraw)
+          : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw))
+      : null,
+  ]);
+}
+
+/**
+ * FEN-based explorer panel for the analysis board (no OpeningTreeNode dependency).
+ * Mirrors renderExplorerPanel() but uses a plain FEN and custom move/arrow callbacks.
+ */
+function renderAnalysisExplorerPanel(
+  fen: string,
+  isMasters: boolean,
+  cg: CgApi | undefined,
+  onMoveClick: (uci: string) => void,
+  redraw: () => void,
+): VNode {
+  const data = explorerCtrl.current(fen);
+  if (!data && !explorerCtrl.loading && !explorerCtrl.failing) {
+    explorerCtrl.setNode(fen, redraw);
+  }
+
+  const loading = explorerCtrl.loading;
+  const failing = explorerCtrl.failing;
+  const movesAway = explorerCtrl.movesAway;
+
+  if (failing && !data) return renderExplorerErrorBox(failing, fen, redraw);
+
+  if (!loading && !data) {
+    const tooDeep = movesAway >= MAX_EXPLORER_DEPTH;
+    return h('div.openings__explorer-box', { class: { reduced: movesAway > 2 } }, [
+      h('div.openings__explorer-message', [
+        h('strong', tooDeep ? 'Max depth reached' : 'No game found'),
+        !tooDeep ? h('p.openings__explorer-explanation', 'Try adjusting the filters.') : null,
+      ]),
+    ]);
+  }
+
+  if (data) {
+    const hasContent = data.moves.length > 0 || (data.topGames?.length ?? 0) > 0 || (data.recentGames?.length ?? 0) > 0;
+    const content = hasContent
+      ? h('div.openings__explorer-data', [
+          data.opening ? h('div.openings__explorer-opening', `${data.opening.eco} ${data.opening.name}`) : null,
+          renderExplorerMovesTable(data, fen, redraw, onMoveClick, cg),
+          renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
+          renderExplorerGamesTable('Recent games', data.recentGames ?? [], isMasters),
+        ])
+      : h('div.openings__explorer-message', [
+          h('strong', movesAway >= MAX_EXPLORER_DEPTH ? 'Max depth reached' : 'No game found'),
+        ]);
+    return h('div.openings__explorer-box', { class: { loading, reduced: movesAway > 2 && !hasContent } }, [
+      h('div.overlay'),
+      content,
+    ]);
+  }
+
+  return h('div.openings__explorer-box', { class: { loading: true } }, [
+    h('div.overlay'),
+    h('div.openings__explorer-message', h('p', 'Loading\u2026')),
   ]);
 }

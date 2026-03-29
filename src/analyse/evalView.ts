@@ -458,19 +458,18 @@ export function renderEvalGraph(
     },
   }));
 
-  // Dots — skipped in background mode
+  // Dots — skipped in background mode.
+  // Only render a dot for the current position, mate opportunities, or classified moves
+  // (blunder / mistake / inaccuracy). Plain moves get no dot.
   if (!bg) for (const pt of valid) {
     const isCurrent = pt.path === currentPath;
-    // Visible dot — current position overrides to green; mate opportunity → purple;
-    // otherwise colored by move classification.
-    // Graph dot colors match glyph annotation palette — mirrors _theme.default.scss
+    if (!isCurrent && !pt.hasMate && !pt.label) continue;
     const dotColor = isCurrent         ? '#4a8'
       : pt.hasMate                     ? 'hsl(307,80%,70%)'
       : pt.label === 'blunder'         ? 'hsl(0,69%,60%)'
       : pt.label === 'mistake'         ? 'hsl(41,100%,45%)'
-      : pt.label === 'inaccuracy'      ? 'hsl(202,78%,62%)'
-      : '#888';
-    const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
+      :                                  'hsl(202,78%,62%)'; // inaccuracy
+    const dotR = isCurrent ? 3.5 : 2.5;
     svgNodes.push(h('circle', { attrs: {
       cx: pt.x, cy: pt.y,
       r: dotR,

@@ -1118,6 +1118,20 @@ export class PuzzleRoundCtrl {
   }
 
   /**
+   * Called by the view whenever the shared engine toggle is on during an active
+   * solve.  Idempotent — only marks the round the first time.
+   * Triggers are: mode === 'play' or 'try' AND engineEnabled() returns true.
+   */
+  notifyEngineUsedDuringSolve(): void {
+    if (this.usedEngineReveal) return;
+    if (this.status === 'solved' || this.status === 'failed') return;
+    this.usedEngineReveal = true;
+    if (!this.failureReasons.includes('engine-lines-shown')) {
+      this.failureReasons.push('engine-lines-shown');
+    }
+  }
+
+  /**
    * Stop engine evaluation for the puzzle position.
    */
   disablePuzzleEngine(): void {

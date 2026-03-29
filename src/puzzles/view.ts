@@ -34,7 +34,7 @@ import { parseFen, makeFen } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
-import { renderMoveList } from '../analyse/moveList';
+import { renderMoveList, renderContextMoves } from '../analyse/moveList';
 import { syncPuzzleBoard } from './ctrl';
 import { mainlineNodeList, promoteAt } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
@@ -835,11 +835,21 @@ function renderViewSolutionButtons(rc: PuzzleRoundCtrl, redraw: () => void): VNo
 function renderAnalysisToggle(rc: PuzzleRoundCtrl, redraw: () => void): VNode | null {
   // Only show if game PGN is available (or loading)
   if (!rc.gamePgn && !rc.gameTree) return null;
-  return h('button.button.button-empty.puzzle__analyse', {
+  return h('button.puzzle__analyse', {
     class: { active: rc.analysisMode },
     attrs: { title: rc.analysisMode ? 'Back to puzzle' : 'Analyse full game' },
     on: { click: () => { rc.toggleAnalysisMode(redraw); } },
-  }, [h('img.puzzle__analyse-icon', { attrs: { src: '/images/analysis_icon_minimal.svg', alt: 'Analyse' } })]);
+  }, [
+    h('svg.puzzle__analyse-icon', {
+      attrs: { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 64 64', width: '18', height: '18', fill: 'none' },
+    }, [
+      h('circle', { attrs: { cx: '28', cy: '28', r: '14', stroke: 'currentColor', 'stroke-width': '4' } }),
+      h('line',   { attrs: { x1: '38', y1: '38', x2: '54', y2: '54', stroke: 'currentColor', 'stroke-width': '4', 'stroke-linecap': 'round' } }),
+      h('circle', { attrs: { cx: '28', cy: '28', r: '6',  stroke: 'currentColor', 'stroke-width': '2' } }),
+      h('line',   { attrs: { x1: '28', y1: '28', x2: '28', y2: '24', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' } }),
+      h('line',   { attrs: { x1: '28', y1: '28', x2: '32', y2: '28', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round' } }),
+    ]),
+  ]);
 }
 
 // --- Move quality summary ---
@@ -1242,6 +1252,41 @@ function renderPuzzleMoveList(_def: PuzzleDefinition, rc: PuzzleRoundCtrl | null
   const nav     = (path: string) => puzzleNavigate(rc, path, redraw);
   const delVar  = (path: string) => puzzleDeleteVariation(rc, path, redraw);
   const ctxMenu = (path: string, e: MouseEvent) => { openPuzzleContextMenu(path, e); redraw(); };
+
+  const children: (VNode | null)[] = [];
+
+  // Pre-solve: show game context moves (from full PGN) above the puzzle tree.
+  // Only when not in analysis/browse mode (which uses the full game tree via rc.treeRoot).
+  if (rc.mode === 'play' && !rc.analysisMode && rc.gameTree && rc.gameTreePuzzlePath !== null) {
+    const gameMainline = mainlineNodeList(rc.gameTree);
+    const pathDepth = rc.gameTreePuzzlePath.length / 2;
+    const contextNodes = gameMainline.slice(1, pathDepth + 1);
+    if (contextNodes.length > 0) {
+      let nodePath = '';
+      const pathNodes = contextNodes.map(node => {
+        nodePath += node.id;
+        return { node, path: nodePath };
+      });
+      children.push(h('div.move-list-inner.puzzle-game-context', [
+        renderContextMoves(pathNodes, (p) => { rc.browseGameAt(p, redraw); redraw(); }, ''),
+      ]));
+      children.push(h('div.puzzle-game-context__sep'));
+    }
+  }
+
+  children.push(renderMoveList(
+    rc.treeRoot,
+    rc.treePath,
+    () => undefined,
+    nav,
+    rc.pov,
+    false,
+    delVar,
+    _puzzleContextMenuPath,
+    ctxMenu,
+  ));
+  children.push(renderPuzzleContextMenu(rc, redraw));
+
   return h('div.analyse__moves.areplay', {
     on: { click: (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -1250,20 +1295,7 @@ function renderPuzzleMoveList(_def: PuzzleDefinition, rc: PuzzleRoundCtrl | null
         redraw();
       }
     }},
-  }, [
-    renderMoveList(
-      rc.treeRoot,
-      rc.treePath,
-      () => undefined,
-      nav,
-      rc.pov,
-      false,
-      delVar,
-      _puzzleContextMenuPath,
-      ctxMenu,
-    ),
-    renderPuzzleContextMenu(rc, redraw),
-  ]);
+  }, children);
 }
 
 // --- Puzzle engine panel ---
@@ -1281,6 +1313,9 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
 
   // Set FEN override so the shared ceval view renders for the puzzle position
   setCevalFenOverride(puzzleFen);
+
+  // If the shared engine is on during an active solve, mark this round as assisted.
+  if (engineEnabled && rc.mode !== 'view') rc.notifyEngineUsedDuringSolve();
 
   // If engine is on, ensure it's evaluating the puzzle position (not the analysis board's).
   // Re-send on every render when engine is active — evalCurrentPosition() from the analysis

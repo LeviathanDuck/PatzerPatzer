@@ -17,7 +17,7 @@ import {
   importSpeeds, importDateRange, importCustomFrom, importCustomTo,
   importRated, importMaxGames,
   setImportStep, setImportError, setImportProgress, setImportAbort,
-  setLastCreatedCollection, addCollection,
+  setLastCreatedCollection, addCollection, openCollection,
 } from './ctrl';
 import type { ImportDateRange } from '../import/filters';
 
@@ -313,8 +313,7 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
     addCollection(collection);
     setLastCreatedCollection(collection);
     setImportAbort(null);
-    setImportStep('done');
-    redraw();
+    openCollection(collection, redraw);
   } catch (err) {
     if ((err as DOMException)?.name === 'AbortError') return; // user cancelled
     setImportStep('details');

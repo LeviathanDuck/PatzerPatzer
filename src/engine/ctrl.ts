@@ -89,6 +89,12 @@ export let engineEnabled     = false;
 export let engineReady       = false;
 let       engineInitialized  = false;
 export let currentEval: PositionEval = {};
+
+// FEN override for non-analysis-board contexts (openings page, puzzle page).
+// When set, evalCurrentPosition() evaluates this FEN instead of ctrl.node.fen
+// and the analysis-board stale-path guards are bypassed.
+let _evalFenOverride: string | null = null;
+export function setEvalFenOverride(fen: string | null): void { _evalFenOverride = fen; }
 export const evalCache = new Map<string, PositionEval>();
 
 let evalNodeId     = '';
@@ -130,7 +136,7 @@ function storedInt(key: string, def: number, min: number, max: number): number {
   return (!isNaN(v) && v >= min && v <= max) ? v : def;
 }
 
-export let multiPv         = storedInt('patzer.multiPv', 1, 1, 5);
+export let multiPv         = storedInt('patzer.multiPv', 3, 1, 5);
 export let analysisDepth   = storedInt('patzer.analysisDepth', 30, 18, 30);
 export let showEngineArrows = true;
 export let arrowAllLines    = true;
@@ -554,7 +560,7 @@ function parseEngineLine(line: string): void {
       // will rarely match the user's current navigation path, so skip the guard entirely
       // while a batch is active — batch items are identified by evalNodePath, not user path.
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
-      if (!evalIsThreat && !_isBatchActive() && evalNodePath !== _getCtrl().path) return;
+      if (!evalIsThreat && !_isBatchActive() && !_evalFenOverride && evalNodePath !== _getCtrl().path) return;
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== undefined) {
         // Normalize to white's perspective — odd plies are black to move, so negate.
@@ -576,7 +582,7 @@ function parseEngineLine(line: string): void {
     } else if (!evalIsThreat && score !== undefined) {
       // Secondary PV line (MultiPV 2, 3, …).
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts multiPv handling.
-      if (evalNodePath !== _getCtrl().path) return; // stale path guard
+      if (!_evalFenOverride && evalNodePath !== _getCtrl().path) return; // stale path guard
       const s = evalNodePly % 2 === 1 ? -score : score;
       const idx = pvIndex - 1;
       if (!pendingLines[idx]) pendingLines[idx] = {};
@@ -628,7 +634,7 @@ function parseEngineLine(line: string): void {
       // Path guard: if this bestmove is for an old position, don't update currentEval
       // or trigger UI redraws — but still advance a pending eval for the current position.
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
-      if (!_isBatchActive() && evalNodePath !== _getCtrl().path) {
+      if (!_isBatchActive() && !_evalFenOverride && evalNodePath !== _getCtrl().path) {
         pendingLines = [];
         if (pendingEval) evalCurrentPosition();
         else if (threatMode) evalThreatPosition();
@@ -746,6 +752,32 @@ export function evalCurrentPosition(): void {
   if (!engineEnabled || !engineReady) return;
   if (evalIsThreat) { pendingStopCount++; protocol.stop(); evalIsThreat = false; }
   threatEval = {};
+
+  // Override mode: non-analysis-board contexts (openings page, puzzle page) set a FEN
+  // override. Skip ctrl-based path tracking and cache lookup entirely.
+  if (_evalFenOverride) {
+    cancelLiveEngineUiRefresh();
+    currentEval  = {};
+    pendingLines = [];
+    syncArrow();
+    arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
+    if (engineSearchActive) {
+      if (!pendingEval) { pendingStopCount++; protocol.stop(); }
+      pendingEval = true;
+      _redraw();
+      return;
+    }
+    pendingEval        = false;
+    engineSearchActive = true;
+    evalNodeId         = '';
+    evalNodePath       = '';
+    evalNodePly        = 0;
+    evalParentPath     = '';
+    protocol.setPosition(_evalFenOverride);
+    protocol.go(analysisDepth, multiPv);
+    return;
+  }
+
   const ctrl = _getCtrl();
   const cached = evalCache.get(ctrl.path);
   const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
