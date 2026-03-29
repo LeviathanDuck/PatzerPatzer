@@ -12,6 +12,55 @@
   --text: #e8e8e8;
 }
 
+// Global range input styling — matches Lichess pill-shaped track + thumb.
+// Adapted from lichess-org/lila: ui/lib/css/form/_range.scss
+// Applied globally so all current and future sliders are consistent.
+@mixin range-track {
+  width: 100%;
+  height: 0.5em;
+  cursor: pointer;
+  background: #3a3a3a;
+  border-radius: 0.5em;
+  border: none;
+}
+
+@mixin range-thumb {
+  appearance: none;
+  border: 2px solid #777;
+  height: 1.1em;
+  width: 1.1em;
+  border-radius: 50%;
+  background: #999;
+  cursor: pointer;
+  margin-top: -0.3em;
+}
+
+input[type='range'] {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  flex: 1;
+
+  &:focus { outline: none; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  &::-webkit-slider-runnable-track { @include range-track; }
+  &::-webkit-slider-thumb {
+    @include range-thumb;
+    appearance: none;
+    margin-top: calc((0.5em - 1.1em) / 2); // center thumb over track
+  }
+  &::-moz-range-track   { @include range-track; }
+  &::-moz-range-thumb   { @include range-thumb; }
+
+  &:hover::-webkit-slider-thumb { border-color: #4a9; background: #bbb; }
+  &:hover::-moz-range-thumb     { border-color: #4a9; background: #bbb; }
+
+  &:focus-visible::-webkit-slider-thumb { outline: 2px solid #4a9; outline-offset: 1px; }
+}
+
 html,
 body {
   margin: 0;
@@ -245,6 +294,51 @@ main {
       &:hover { color: #ccc; background: #1a1a1a; }
       &.active { color: #e8e8e8; }
     }
+  }
+
+  // User area — login link or username + logout button
+  &__login {
+    flex-shrink: 0;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    color: #6a9;
+    text-decoration: none;
+    border: 1px solid #2a4a2a;
+    border-radius: 4px;
+    white-space: nowrap;
+    transition: color 0.1s, border-color 0.1s;
+
+    &:hover { color: #8fc; border-color: #3a6a3a; }
+  }
+
+  &__user {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  &__username {
+    font-size: 0.8rem;
+    color: #8a8;
+    white-space: nowrap;
+  }
+
+  &__logout {
+    width: 20px;
+    height: 20px;
+    background: transparent;
+    border: 1px solid #333;
+    border-radius: 3px;
+    color: #666;
+    cursor: pointer;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.1s, border-color 0.1s;
+
+    &:hover { color: #f66; border-color: #633; }
   }
 
   // ── Dropdown panel ──────────────────────────────────────────────────────────
@@ -669,15 +763,6 @@ main {
 
   input[type='range'] {
     width: 100%;
-    cursor: pointer;
-    accent-color: #5a9de0;
-    height: 6px;
-
-    // Larger thumb in Webkit
-    &::-webkit-slider-thumb {
-      width: 20px;
-      height: 20px;
-    }
   }
 
   // Classification pill row — used by the Mistake Detection modal.
@@ -991,7 +1076,7 @@ cg-resize {
     content: '';
     position: absolute;
     height: 2px;
-    background: rgba(255, 255, 255, 0.7);
+    background: #aaa;
     border-radius: 1px;
     transition: background 0.12s;
   }
@@ -1952,7 +2037,6 @@ body[data-board='newspaper'] cg-board::before {
       margin: 0;
       padding: 0;
       cursor: pointer;
-      accent-color: #6a9;
     }
   }
 
@@ -2042,9 +2126,31 @@ body[data-board='newspaper'] cg-board::before {
   }
 }
 
+// Board coordinate labels — overrides Chessground base defaults.
+// Adapted from lichess-org/lila: ui/lib/css/theme/board/_coords-in.scss
+// and ui/lib/css/theme/board/_coords-colors.scss
+.cg-wrap coords {
+  font-weight: bold;
+  color: #fff;
+  font-size: clamp(8px, 1.5cqw, 12px);
+  text-shadow: var(---cg-cs, 0 1px 2px #000);
+  user-select: none;
+
+  // Alternating coord colors: label on a light square uses the dark-square color
+  // and vice versa, so the label always contrasts against its background.
+  .coord-light {
+    color: var(---cg-ccb, #fff);
+  }
+
+  .coord-dark {
+    color: var(---cg-ccw, #fff);
+  }
+}
+
 .cg-wrap {
   width: 100%;
   aspect-ratio: 1 / 1;
+  container-type: inline-size;
 }
 
 // Move list — tview2 inline layout.
@@ -2648,10 +2754,50 @@ body[data-board='newspaper'] cg-board::before {
   display: flex;
   align-items: stretch;
   column-gap: 6px;
-  padding-top: 3px; // space for optional progress bar at top
+  padding-top: 3px;
   background: #111;
   position: relative;
   min-height: 44px;
+
+  // Progress bar along the top of the ceval panel.
+  // Fills left-to-right while searching; stays solid at 100% when done.
+  &__progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #1a1a1a;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  &__progress-fill {
+    position: relative;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, #4a9, #5cb);
+    transition: width 0.4s linear;
+
+    // Glowing leading edge — a bright bloom that extends ahead of the fill.
+    // The track's overflow:hidden clips it cleanly at the right boundary.
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: -20px;
+      width: 24px;
+      height: 100%;
+      background: linear-gradient(90deg, #7de, rgba(100, 230, 210, 0.6), transparent);
+    }
+
+    &--done {
+      background: #4a9;
+      transition: none;
+
+      &::after { display: none; }
+    }
+  }
 
   // Toggle button (left, fixed width) — mirrors .cmn-toggle flex: 0 0 40px
   .cmn-toggle {
@@ -2876,6 +3022,11 @@ body[data-board='newspaper'] cg-board::before {
     display: flex;
     align-items: center;
     gap: 10px;
+
+    &--disabled {
+      opacity: 0.35;
+      pointer-events: none;
+    }
   }
 
   &__label {
@@ -2894,13 +3045,11 @@ body[data-board='newspaper'] cg-board::before {
 
   input[type='range'] {
     flex: 1;
-    accent-color: #4a8;
   }
 
   input[type='checkbox'] {
     width: 16px;
     height: 16px;
-    accent-color: #4a8;
     cursor: pointer;
   }
 }
@@ -3901,7 +4050,6 @@ body[data-board='newspaper'] cg-board::before {
 
   &__range {
     flex: 1;
-    accent-color: #4a9;
     cursor: pointer;
   }
 
@@ -5903,9 +6051,11 @@ body[data-board='newspaper'] cg-board::before {
 }
 
 .openings__pos-header {
-  padding-bottom: 8px;
+  padding: 7px 6px;
   margin-bottom: 8px;
-  border-bottom: 1px solid #333;
+  background: #272727;
+  border: 1px solid #383838;
+  border-radius: 4px;
 }
 
 .openings__pos-summary {
@@ -6067,16 +6217,21 @@ body[data-board='newspaper'] cg-board::before {
   &:hover { background: #444; color: #fff; }
 }
 
-// --- Lichess Explorer comparison ---
+// --- Lichess Opening Explorer panel ---
+// Adapted from lichess-org/lila: ui/analyse/css/explorer/_explorer.scss
 .openings__explorer {
   margin-top: 12px;
-  background: #1e1e1e;
+  background: #1a1a1a;
   border-radius: 4px;
-  padding: 10px;
+  overflow: hidden;
+  font-size: 0.9em;
 }
 
-.openings__explorer-toggle {
-  margin-bottom: 8px;
+.openings__explorer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 0;
 }
 
 .openings__explorer-label {
@@ -6086,56 +6241,500 @@ body[data-board='newspaper'] cg-board::before {
   input { margin-right: 6px; }
 }
 
+.openings__explorer-gear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1em;
+  padding: 0 2px;
+  opacity: 0.6;
+  &:hover { opacity: 1; }
+}
+
+// DB tabs
+.openings__explorer-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 0;
+}
+
+.openings__explorer-tab {
+  flex: 1;
+  background: #252525;
+  border: none;
+  color: #888;
+  font-size: 0.82em;
+  padding: 4px 0;
+  border-radius: 3px;
+  cursor: pointer;
+  &:hover { color: #bbb; background: #2c2c2c; }
+  &.active { background: #333; color: #ddd; font-weight: 600; }
+}
+
+// Config panel
+// Adapted from lichess-org/lila: ui/analyse/css/explorer/_config.scss
+.openings__explorer-config {
+  padding: 8px 10px;
+}
+
+.openings__explorer-config-section {
+  margin-bottom: 10px;
+  label {
+    display: block;
+    font-size: 0.8em;
+    color: #999;
+    margin-bottom: 4px;
+  }
+}
+
+.openings__explorer-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.openings__explorer-filter-btn {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #888;
+  font-size: 0.78em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  &:hover { color: #bbb; }
+  &.active { background: #3a5a3a; border-color: #4a8; color: #8d8; }
+}
+
+.openings__explorer-date-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82em;
+  color: #999;
+  margin-bottom: 4px;
+  input {
+    background: #222;
+    border: 1px solid #444;
+    color: #ccc;
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    width: 90px;
+  }
+}
+
+.openings__explorer-player-input {
+  width: 100%;
+  background: #222;
+  border: 1px solid #444;
+  color: #ccc;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 0.88em;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.openings__explorer-player-prev {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.openings__explorer-prev-btn {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #aaa;
+  font-size: 0.78em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  &:hover { color: #ddd; border-color: #666; }
+}
+
+.openings__explorer-color-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  label { margin-bottom: 0; }
+}
+
+.openings__explorer-config-close {
+  display: block;
+  width: 100%;
+  background: #2a3a2a;
+  border: 1px solid #4a8;
+  color: #8d8;
+  padding: 5px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.88em;
+  margin-top: 4px;
+  &:hover { background: #3a4a3a; }
+}
+
 .openings__explorer-loading,
 .openings__explorer-empty {
   color: #777;
   font-size: 0.88em;
   text-align: center;
-  padding: 8px;
+  padding: 10px 8px;
 }
 
 .openings__explorer-error {
   color: #e05050;
   font-size: 0.88em;
-  padding: 8px;
+  padding: 8px 10px;
+}
+
+// Explorer box — wraps all state variants; loading overlay + reduced dimming.
+// Adapted from lichess-org/lila: ui/analyse/css/explorer/_explorer.scss .explorer-box
+.openings__explorer-box {
+  position: relative;
+  min-height: 48px;
+  transition: opacity 0.3s;
+
+  &.reduced { opacity: 0.5; }
+
+  // Loading overlay — fades in over existing content
+  &.loading .overlay {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 1;
+
+    // Spinner via CSS
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 24px;
+      height: 24px;
+      margin: -12px 0 0 -12px;
+      border: 3px solid #555;
+      border-top-color: #6bbfbf;
+      border-radius: 50%;
+      animation: explorer-spin 0.6s linear infinite;
+    }
+  }
+}
+
+@keyframes explorer-spin {
+  to { transform: rotate(360deg); }
+}
+
+// Empty / error / queue message box
+.openings__explorer-message {
+  padding: 16px 10px;
+  text-align: center;
+  color: #aaa;
+
+  strong {
+    display: block;
+    font-size: 1em;
+    color: #ccc;
+    margin-bottom: 6px;
+  }
+}
+
+.openings__explorer-explanation {
+  font-size: 0.85em;
+  color: #888;
+  margin: 4px 0 0;
+}
+
+.openings__explorer-retry {
+  margin-top: 10px;
+  padding: 4px 14px;
+  background: #1e2e1e;
+  color: #8c8;
+  border: 1px solid #3a5a3a;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.88em;
+
+  &:hover { background: #2a3e2a; }
+}
+
+// Tablebase panel
+// Adapted from lichess-org/lila: ui/analyse/css/explorer/_explorer.scss tablebase rules
+.tablebase-view {
+  padding: 0;
+}
+
+.tablebase__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid #2a2a2a;
+  font-size: 0.78rem;
+
+  .tablebase__label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #5cb;
+  }
+
+  .tablebase__pieces {
+    color: #666;
+  }
+}
+
+.tablebase__body {
+  padding: 4px 0;
+}
+
+.tablebase__section {
+  margin-bottom: 2px;
+}
+
+.tablebase__section-title {
+  padding: 4px 10px 2px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #666;
+}
+
+.tablebase {
+  width: 100%;
+  border-collapse: collapse;
+
+  .tablebase__row {
+    cursor: pointer;
+
+    &:hover { background: rgba(255,255,255,0.04); }
+
+    td { padding: 3px 10px; }
+  }
+
+  .tablebase__san {
+    font-weight: 600;
+    color: #ddd;
+    width: 4em;
+  }
+
+  .tablebase__result {
+    text-align: right;
+  }
+}
+
+// Outcome result badges — mirrors lichess-org/lila: ui/analyse/css/explorer/_explorer.scss result
+result {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  font-weight: 700;
+
+  &.white {
+    background: rgba(34, 197, 94, 0.18);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+  }
+
+  &.black {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+  }
+
+  &.draws {
+    background: rgba(156, 163, 175, 0.12);
+    color: #9ca3af;
+    border: 1px solid rgba(156, 163, 175, 0.18);
+  }
+}
+
+.openings__explorer-connect-btn {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 6px 18px;
+  background: #1a3a5c;
+  color: #7bc;
+  border: 1px solid #2a5a8c;
+  border-radius: 3px;
+  text-decoration: none;
+  font-size: 0.9em;
+  cursor: pointer;
+
+  &:hover { background: #244d78; color: #9cd; }
 }
 
 .openings__explorer-opening {
-  font-size: 0.9em;
+  font-size: 0.88em;
   color: #8c8;
-  margin-bottom: 4px;
+  padding: 4px 10px;
 }
 
-.openings__explorer-summary {
-  font-size: 0.82em;
-  color: #999;
-  margin-bottom: 8px;
+.openings__explorer-data {
+  padding-bottom: 4px;
 }
 
-.openings__explorer-row {
-  display: grid;
-  grid-template-columns: 80px 80px 1fr;
-  gap: 8px;
-  align-items: center;
-  padding: 4px 6px;
-  border-radius: 3px;
-  &:hover { background: #2a2a2a; }
+// Moves table — Lichess-style
+// Adapted from lichess-org/lila: ui/analyse/css/explorer/_explorer.scss
+table.explorer-moves {
+  width: 100%;
+  border-collapse: collapse;
+  will-change: transform, opacity; // prevents flicker in Safari
+
+  th {
+    font-size: 0.78rem;
+    line-height: 1.8em;
+    background: #252525;
+    padding-left: 7px;
+    color: #999;
+    font-weight: normal;
+    text-align: left;
+    &:last-child { padding-right: 7px; }
+  }
+
+  td {
+    cursor: pointer;
+    padding: 3px 0 3px 7px;
+    &:last-child { padding-right: 7px; }
+  }
+
+  td:first-child {
+    font-weight: 600;
+    line-height: 28px;
+  }
+
+  td:nth-child(2),
+  td:nth-child(3) {
+    font-size: 0.78em;
+    text-align: right;
+    color: #aaa;
+    white-space: nowrap;
+  }
+
+  td:last-child { width: 100%; }
+
+  tr:nth-child(even) { background: #1f1f1f; }
+  tr:hover { background: rgba(74, 136, 136, 0.12); }
+
+  tr.sum {
+    background: #222;
+    font-weight: bold;
+    td { cursor: default; }
+  }
 }
 
-.openings__explorer-san {
-  font-weight: 600;
-  font-size: 1em;
-}
-
-.openings__explorer-count {
-  font-size: 0.82em;
-  color: #999;
-}
-
-.openings__explorer-results {
+// Result bar — stacked W/D/B segments
+// Adapted from lichess-org/lila: ui/analyse/css/explorer/_explorer.scss .bar
+.openings__explorer-data .bar {
   display: flex;
-  gap: 6px;
-  font-size: 0.78em;
+  height: 16px;
+  border-radius: 2px;
+  overflow: hidden;
+
+  span {
+    display: inline-block;
+    overflow: hidden;
+    text-align: center;
+    height: 16px;
+    line-height: 14px;
+    font-size: 0.82em;
+    transition: width 1s;
+    vertical-align: middle;
+
+    &.white {
+      background: #ccc;
+      color: #222;
+      box-shadow: 0 -3px 5px rgba(0,0,0,0.2) inset;
+    }
+
+    &.draws {
+      background: #666;
+      color: #ddd;
+      box-shadow: 0 3px 5px rgba(255,255,255,0.08) inset;
+    }
+
+    &.black {
+      background: #333;
+      color: #ddd;
+      box-shadow: 0 3px 5px rgba(255,255,255,0.08) inset;
+    }
+  }
+}
+
+// Games table — top games / recent games
+// Adapted from lichess-org/lila: ui/analyse/css/explorer/_explorer.scss table.games
+table.explorer-games {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+  font-size: 0.85em;
+
+  thead th {
+    text-align: left;
+    padding: 4px 6px;
+    color: #aaa;
+    font-weight: normal;
+    border-bottom: 1px solid #444;
+  }
+
+  tbody tr {
+    cursor: pointer;
+    transition: background 0.1s;
+
+    &:hover { background: #2a2a2a; }
+  }
+
+  td {
+    padding: 3px 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 0; // required for text-overflow in table cells
+
+    &.ratings {
+      width: 64px;
+      text-align: right;
+      span { display: block; color: #999; font-size: 0.9em; }
+    }
+
+    &.players {
+      width: auto;
+      max-width: 140px;
+      span {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    result {
+      display: inline-block;
+      padding: 1px 3px;
+      border-radius: 2px;
+      font-size: 0.85em;
+      font-weight: bold;
+
+      &.white { background: #ccc; color: #222; }
+      &.black { background: #333; color: #eee; border: 1px solid #555; }
+      &.draws { background: #666; color: #eee; }
+    }
+
+    &.date { color: #999; font-size: 0.85em; width: 60px; }
+
+    &.speed {
+      width: 28px;
+      text-align: center;
+      span { cursor: default; }
+    }
+  }
 }
 
 // --- Session mobile ---

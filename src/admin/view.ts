@@ -5,7 +5,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import {
-  isAuthenticated, login, logout,
+  checkAuth, logout,
   pushToServer, pullFromServer,
   getLastSyncedAt, getLocalDataCounts,
   type SyncResult, type DataCounts,
@@ -13,9 +13,8 @@ import {
 
 // --- Local state ---
 
-let authState: 'unknown' | 'logged-in' | 'logged-out' = isAuthenticated() ? 'logged-in' : 'logged-out';
-let tokenInput = '';
-let loginError = '';
+let authState: 'unknown' | 'logged-in' | 'logged-out' = 'unknown';
+let authUser: string | null = null;
 let syncStatus: 'idle' | 'pushing' | 'pulling' | 'done' | 'error' = 'idle';
 let syncMessage = '';
 let dataCounts: DataCounts | null = null;
@@ -27,55 +26,38 @@ function loadCounts(redraw: () => void): void {
   });
 }
 
+function ensureAuthCheck(redraw: () => void): void {
+  if (authState !== 'unknown') return;
+  authState = 'logged-out'; // prevent duplicate calls
+  checkAuth().then(({ authenticated, username }) => {
+    authState = authenticated ? 'logged-in' : 'logged-out';
+    authUser = username;
+    redraw();
+  });
+}
+
 // --- Render ---
 
 export function renderAdminPage(redraw: () => void): VNode {
-  if (dataCounts === null) loadCounts(redraw);
-
-  if (authState !== 'logged-in') {
-    return renderLoginForm(redraw);
+  ensureAuthCheck(redraw);
+  if (authState === 'unknown') {
+    return h('div.admin-page', [h('div.admin-card', [h('p', 'Loading…')])]);
   }
+  if (authState === 'logged-in' && dataCounts === null) loadCounts(redraw);
+  if (authState !== 'logged-in') return renderLoginForm();
   return renderSyncPanel(redraw);
 }
 
-function renderLoginForm(redraw: () => void): VNode {
+function renderLoginForm(): VNode {
   return h('div.admin-page', [
     h('div.admin-card', [
-      h('h2.admin-title', 'Admin Login'),
-      h('p.admin-desc', 'Enter admin token to access sync controls.'),
-      h('div.admin-form', [
-        h('input.admin-input', {
-          attrs: { type: 'password', placeholder: 'Admin token' },
-          props: { value: tokenInput },
-          on: {
-            input: (e: Event) => { tokenInput = (e.target as HTMLInputElement).value; },
-            keydown: (e: KeyboardEvent) => {
-              if (e.key === 'Enter') doLogin(redraw);
-            },
-          },
-        }),
-        h('button.admin-btn.admin-btn--primary', {
-          on: { click: () => doLogin(redraw) },
-        }, 'Login'),
-      ]),
-      loginError ? h('div.admin-error', loginError) : null,
+      h('h2.admin-title', 'Sign in'),
+      h('p.admin-desc', 'Sign in with your Lichess account to access sync controls.'),
+      h('a.admin-btn.admin-btn--primary', {
+        attrs: { href: '/api/lichess/connect' },
+      }, 'Login with Lichess'),
     ]),
   ]);
-}
-
-function doLogin(redraw: () => void): void {
-  if (!tokenInput.trim()) return;
-  loginError = '';
-  login(tokenInput.trim()).then(ok => {
-    if (ok) {
-      authState = 'logged-in';
-      tokenInput = '';
-      loadCounts(redraw);
-    } else {
-      loginError = 'Invalid token';
-    }
-    redraw();
-  });
 }
 
 function renderSyncPanel(redraw: () => void): VNode {
@@ -84,9 +66,11 @@ function renderSyncPanel(redraw: () => void): VNode {
   return h('div.admin-page', [
     h('div.admin-card', [
       h('div.admin-header', [
-        h('h2.admin-title', 'Sync Controls'),
+        h('h2.admin-title', authUser ? `Sync Controls (${authUser})` : 'Sync Controls'),
         h('button.admin-btn.admin-btn--muted', {
-          on: { click: () => { logout(); authState = 'logged-out'; redraw(); } },
+          on: { click: () => {
+            logout().then(() => { authState = 'logged-out'; authUser = null; redraw(); });
+          }},
         }, 'Logout'),
       ]),
 

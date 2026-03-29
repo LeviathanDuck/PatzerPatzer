@@ -4,26 +4,7 @@
 // Last-write-wins conflict resolution by timestamp.
 // ---------------------------------------------------------------------------
 
-const AUTH_TOKEN_KEY = 'adminAuthToken';
 const LAST_SYNC_KEY = 'lastSyncedAt';
-
-// --- Auth token management ---
-
-export function setAuthToken(token: string): void {
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
-}
-
-export function getAuthToken(): string | null {
-  return localStorage.getItem(AUTH_TOKEN_KEY);
-}
-
-export function clearAuthToken(): void {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-}
-
-export function isAuthenticated(): boolean {
-  return !!getAuthToken();
-}
 
 // --- Last sync tracking ---
 
@@ -36,25 +17,20 @@ function setLastSyncedAt(): void {
 }
 
 // --- HTTP helpers ---
-
-function authHeaders(): Record<string, string> {
-  const token = getAuthToken();
-  return token
-    ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-    : { 'Content-Type': 'application/json' };
-}
+// Session cookie is sent automatically for same-origin requests.
 
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: authHeaders() });
+  const res = await fetch(path, { credentials: 'same-origin' });
   if (!res.ok) throw new Error(`GET ${path}: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
 
-async function apiPost<T>(path: string, body: unknown): Promise<T> {
+async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(body),
+    credentials: 'same-origin',
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`POST ${path}: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
@@ -62,30 +38,24 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
 // --- Auth check ---
 
-export async function checkAuth(): Promise<boolean> {
+export async function checkAuth(): Promise<{ authenticated: boolean; username: string | null }> {
   try {
-    const result = await apiGet<{ authenticated: boolean }>('/api/auth/status');
-    return result.authenticated;
+    return await apiGet<{ authenticated: boolean; username: string | null }>('/api/auth/status');
   } catch {
-    return false;
+    return { authenticated: false, username: null };
   }
 }
 
-export async function login(token: string): Promise<boolean> {
-  try {
-    const result = await apiPost<{ authenticated: boolean }>('/api/auth/login', { token });
-    if (result.authenticated) {
-      setAuthToken(token);
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
+/** Redirect the browser to the Lichess OAuth consent page. */
+export function login(): void {
+  window.location.href = '/api/lichess/connect';
 }
 
-export function logout(): void {
-  clearAuthToken();
+/** Clear the server-side session and the session cookie. */
+export async function logout(): Promise<void> {
+  try {
+    await apiPost('/api/auth/logout');
+  } catch { /* ignore — cookie cleared on server */ }
 }
 
 // --- IDB helpers (read all records from a store) ---

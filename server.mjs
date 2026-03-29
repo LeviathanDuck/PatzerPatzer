@@ -13,13 +13,18 @@
  * File://  URLs do NOT get these headers — you must use this server.
  */
 
-import http from 'http';
-import fs   from 'fs';
-import path from 'path';
+import http  from 'http';
+import https from 'https';
+import fs    from 'fs';
+import path  from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { handleLogin, handleAuthStatus } from './server/auth.mjs';
+import { handleAuthStatus, handleLogout } from './server/auth.mjs';
 import { handleSyncRoute } from './server/sync.mjs';
+import {
+  startOAuth, handleCallback,
+  getLichessToken, getLichessStatus, disconnectLichess,
+} from './server/lichess-oauth.mjs';
 import { runMigrations } from './server/db.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,12 +54,54 @@ const server = http.createServer((req, res) => {
   const url      = (req.url ?? '/').split('?')[0];
   const method   = req.method ?? 'GET';
 
-  // --- Auth endpoints ---
-  if (url === '/api/auth/login' && method === 'POST') {
-    return handleLogin(req, res);
+  // --- Lichess OAuth endpoints ---
+  if (url === '/api/lichess/connect') return startOAuth(req, res);
+  if (url === '/oauth/callback')      return handleCallback(req, res);
+  if (url === '/api/lichess/status' && method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(getLichessStatus()));
+    return;
   }
+  if (url === '/api/lichess/disconnect' && method === 'POST') {
+    disconnectLichess();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ connected: false }));
+    return;
+  }
+
+  // --- Opening explorer proxy ---
+  // Forwards /api/explorer/:db?... to https://explorer.lichess.ovh/:db?...
+  // Uses the Lichess OAuth token from the OAuth flow (falls back to LICHESS_TOKEN env var).
+  if (url.startsWith('/api/explorer/')) {
+    const db    = url.slice('/api/explorer/'.length);
+    const qs    = (req.url ?? '').includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    const token = getLichessToken() || process.env.LICHESS_TOKEN || '';
+    if (!token) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not connected to Lichess' }));
+      return;
+    }
+    const target = `https://explorer.lichess.ovh/${db}${qs}`;
+    https.get(target, {
+      headers: { 'User-Agent': 'PatzerPro/1.0', 'Authorization': `Bearer ${token}` },
+    }, upstream => {
+      res.setHeader('Content-Type', upstream.headers['content-type'] ?? 'application/x-ndjson');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.writeHead(upstream.statusCode ?? 502);
+      upstream.pipe(res);
+    }).on('error', err => {
+      res.writeHead(502, { 'Content-Type': 'text/plain' });
+      res.end(`Explorer proxy error: ${err.message}`);
+    });
+    return;
+  }
+
+  // --- Auth endpoints ---
   if (url === '/api/auth/status' && method === 'GET') {
     return handleAuthStatus(req, res);
+  }
+  if (url === '/api/auth/logout' && method === 'POST') {
+    return handleLogout(req, res);
   }
 
   // --- Sync endpoints (require auth) ---

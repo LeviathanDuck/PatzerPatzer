@@ -30,7 +30,7 @@ import { SPEED_OPTIONS, DATE_RANGE_OPTIONS, type ImportSpeed, type ImportDateRan
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode } from './tree';
 import { executeResearchImport } from './import';
-import type { OpeningMoveStats, ExplorerDb } from './explorer';
+import type { OpeningMoveStats, ExplorerDb, TablebaseData, TablebaseMoveStats, TablebaseCategory } from './explorer';
 import { explorerCtrl, MAX_EXPLORER_DEPTH } from './explorerCtrl';
 import { ALL_SPEEDS, ALL_RATINGS, ALL_MODES } from './explorerConfig';
 import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
@@ -877,9 +877,125 @@ function extractLichessUrl(pgn: string): string {
 // ========== Lichess Explorer comparison ==========
 
 /**
+ * Tablebase view — renders per-move outcome badges and DTZ/DTM data.
+ * Adapted from lichess-org/lila: ui/analyse/src/explorer/tablebaseView.ts
+ */
+
+/** Which result class to apply based on category and side to move.
+ *  In Lichess's naming: 'loss' means the side to move WINS (opponent loses).
+ *  'win' means the side to move LOSES (opponent wins).
+ *  Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerUtil.ts winnerOf()
+ */
+function tablebaseCategoryClass(fen: string, category: TablebaseCategory): string {
+  const turnWhite = (fen.split(' ')[1] ?? 'w') === 'w';
+  if (category === 'loss' || category === 'blessed-loss' || category === 'syzygy-loss' || category === 'maybe-loss') {
+    return turnWhite ? 'white' : 'black';
+  }
+  if (category === 'win' || category === 'cursed-win' || category === 'syzygy-win' || category === 'maybe-win') {
+    return turnWhite ? 'black' : 'white';
+  }
+  return 'draws';
+}
+
+const CATEGORY_LABELS: Record<TablebaseCategory, string> = {
+  'loss':         'Winning',
+  'maybe-loss':   'Win or 50-move',
+  'blessed-loss': 'Win (prevented by 50-move)',
+  'syzygy-loss':  'Win (prior mistake)',
+  'unknown':      'Unknown',
+  'draw':         'Draw',
+  'cursed-win':   'Loss (saved by 50-move)',
+  'maybe-win':    'Loss or 50-move',
+  'syzygy-win':   'Loss (prior mistake)',
+  'win':          'Losing',
+};
+
+function renderTablebaseMoveRow(fen: string, move: TablebaseMoveStats, onMoveClick: (uci: string) => void): VNode {
+  const cls = tablebaseCategoryClass(fen, move.category);
+  const badge: VNode[] = [];
+  if (move.checkmate)              badge.push(h(`result.${cls}`, 'Checkmate'));
+  else if (move.stalemate)         badge.push(h('result.draws', 'Stalemate'));
+  else if (move.insufficient_material) badge.push(h('result.draws', 'Insufficient'));
+  else if (move.dtz === 0)         badge.push(h('result.draws', 'Draw'));
+  else if (move.dtz !== undefined) badge.push(h(`result.${cls}`, { attrs: { title: 'Distance To Zeroing' } }, `DTZ ${Math.abs(move.dtz)}`));
+  else if (move.dtm !== undefined) badge.push(h(`result.${cls}`, { attrs: { title: 'Distance To Mate' } }, `DTM ${Math.abs(move.dtm)}`));
+  else                             badge.push(h(`result.${cls}`, CATEGORY_LABELS[move.category] ?? move.category));
+
+  return h('tr.tablebase__row', {
+    attrs: { 'data-uci': move.uci },
+    on: { click: () => onMoveClick(move.uci) },
+  }, [
+    h('td.tablebase__san', move.san),
+    h('td.tablebase__result', badge),
+  ]);
+}
+
+function renderTablebaseSection(
+  fen: string,
+  title: string,
+  moves: TablebaseMoveStats[],
+  onMoveClick: (uci: string) => void,
+): VNode | null {
+  if (!moves.length) return null;
+  return h('div.tablebase__section', [
+    h('div.tablebase__section-title', title),
+    h('table.tablebase', [
+      h('tbody', moves.map(m => renderTablebaseMoveRow(fen, m, onMoveClick))),
+    ]),
+  ]);
+}
+
+/**
+ * Full tablebase panel — groups moves by outcome category.
+ * Mirrors lichess-org/lila: ui/analyse/src/explorer/explorerView.ts tablebase block.
+ */
+function renderTablebasePanel(data: TablebaseData, _redraw: () => void): VNode {
+  const onMoveClick = (uci: string) => {
+    explorerCtrl.hovering = { fen: data.fen, uci };
+    _redraw();
+  };
+
+  if (data.checkmate) return h('div.openings__explorer-box', [h('div.openings__explorer-message', [h('strong', 'Checkmate')])]);
+  if (data.stalemate) return h('div.openings__explorer-box', [h('div.openings__explorer-message', [h('strong', 'Stalemate')])]);
+
+  const sections = [
+    renderTablebaseSection(data.fen, 'Winning',                data.moves.filter(m => m.category === 'loss'),        onMoveClick),
+    renderTablebaseSection(data.fen, 'Win or 50-move draw',    data.moves.filter(m => m.category === 'maybe-loss'),  onMoveClick),
+    renderTablebaseSection(data.fen, 'Win (50-move)',           data.moves.filter(m => m.category === 'blessed-loss'),onMoveClick),
+    renderTablebaseSection(data.fen, 'Win (prior mistake)',     data.moves.filter(m => m.category === 'syzygy-loss'), onMoveClick),
+    renderTablebaseSection(data.fen, 'Unknown',                 data.moves.filter(m => m.category === 'unknown'),     onMoveClick),
+    renderTablebaseSection(data.fen, 'Drawing',                 data.moves.filter(m => m.category === 'draw'),        onMoveClick),
+    renderTablebaseSection(data.fen, 'Loss (50-move)',          data.moves.filter(m => m.category === 'cursed-win'),  onMoveClick),
+    renderTablebaseSection(data.fen, 'Loss or 50-move draw',   data.moves.filter(m => m.category === 'maybe-win'),   onMoveClick),
+    renderTablebaseSection(data.fen, 'Loss (prior mistake)',    data.moves.filter(m => m.category === 'syzygy-win'),  onMoveClick),
+    renderTablebaseSection(data.fen, 'Losing',                  data.moves.filter(m => m.category === 'win'),         onMoveClick),
+  ].filter(Boolean) as VNode[];
+
+  return h('div.openings__explorer-box.tablebase-view', [
+    h('div.tablebase__header', [
+      h('span.tablebase__label', 'Tablebase'),
+      h('span.tablebase__pieces', `${data.moves.length} move${data.moves.length !== 1 ? 's' : ''}`),
+    ]),
+    sections.length ? h('div.tablebase__body', sections) : h('div.openings__explorer-message', 'No tablebase data for this position.'),
+  ]);
+}
+
+/**
  * Render the appropriate error box for a failed explorer request.
  * 401 errors get a "Connect to Lichess" prompt instead of the generic message.
  */
+function renderPlayerNamePrompt(redraw: () => void): VNode {
+  return h('div.openings__explorer-box', [
+    h('div.openings__explorer-message', [
+      h('strong', 'Enter a player name'),
+      h('p.openings__explorer-explanation', 'Open the settings panel and enter a Lichess username to search player games.'),
+      h('button.openings__explorer-retry', {
+        on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
+      }, 'Open settings'),
+    ]),
+  ]);
+}
+
 function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VNode {
   const isAuthError = err.message.includes('401') || err.message.includes('Unauthorized') || err.message.includes('Not connected');
   if (isAuthError) {
@@ -1051,7 +1167,7 @@ function renderExplorerPanel(node: OpeningTreeNode | null, redraw: () => void): 
   if (!node) return h('div.openings__explorer-empty', 'No position selected.');
 
   const data = explorerCtrl.current(node.fen);
-  if (!data && !explorerCtrl.loading && !explorerCtrl.failing) {
+  if (!data && !explorerCtrl.loading && !explorerCtrl.failing && !explorerCtrl.needsPlayerName) {
     explorerCtrl.setNode(node.fen, redraw);
   }
 
@@ -1059,6 +1175,12 @@ function renderExplorerPanel(node: OpeningTreeNode | null, redraw: () => void): 
   const failing = explorerCtrl.failing;
   const movesAway = explorerCtrl.movesAway;
   const isMasters = explorerCtrl.config.db === 'masters';
+
+  // Player DB needs a username before we can fetch
+  if (explorerCtrl.needsPlayerName) return renderPlayerNamePrompt(redraw);
+
+  // Tablebase mode — ≤7 pieces
+  if (explorerCtrl.tablebaseData) return renderTablebasePanel(explorerCtrl.tablebaseData, redraw);
 
   // Error state — 401 shows a connect prompt; other errors show retry
   if (failing && !data) return renderExplorerErrorBox(failing, node.fen, redraw);
@@ -1335,13 +1457,17 @@ function renderAnalysisExplorerPanel(
   redraw: () => void,
 ): VNode {
   const data = explorerCtrl.current(fen);
-  if (!data && !explorerCtrl.loading && !explorerCtrl.failing) {
+  if (!data && !explorerCtrl.loading && !explorerCtrl.failing && !explorerCtrl.needsPlayerName) {
     explorerCtrl.setNode(fen, redraw);
   }
 
   const loading = explorerCtrl.loading;
   const failing = explorerCtrl.failing;
   const movesAway = explorerCtrl.movesAway;
+
+  if (explorerCtrl.needsPlayerName) return renderPlayerNamePrompt(redraw);
+
+  if (explorerCtrl.tablebaseData) return renderTablebasePanel(explorerCtrl.tablebaseData, redraw);
 
   if (failing && !data) return renderExplorerErrorBox(failing, fen, redraw);
 
