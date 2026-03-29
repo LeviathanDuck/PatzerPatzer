@@ -15910,6 +15910,7 @@ function renderOpeningsBoard(node, redraw2) {
             dests
           },
           draggable: {
+            enabled: false,
             showGhost: false
           },
           drawable: {
