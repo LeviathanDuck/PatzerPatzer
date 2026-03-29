@@ -36,7 +36,7 @@ import {
   syncBoard, syncBoardAndArrow, flip,
   completeMove, uciToSan,
   renderBoard, renderPromotionDialog, renderPlayerStrips,
-  initGround,
+  initGround, cgInstance,
 } from './board/index';
 import { preloadBoardSounds, playMoveSound } from './board/sound';
 import {
@@ -84,7 +84,8 @@ import { current, onChange, type Route } from './router';
 import { deleteNodeAt, nodeAtPath, parentAtPath, pathInit, promoteAt, pruneVariations } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
 import { initOpeningsPage, invalidateCollections } from './openings/ctrl';
-import { renderOpeningsPage } from './openings/view';
+import { renderOpeningsPage, renderAnalysisExplorerSection } from './openings/view';
+import { explorerCtrl } from './openings/explorerCtrl';
 import { buildMainlineOpeningProvider, buildRetroCandidates } from './analyse/retro';
 import { makeRetroCtrl } from './analyse/retroCtrl';
 import { onRetroConfigChange } from './analyse/retroConfig';
@@ -506,6 +507,9 @@ function navigate(path: string): void {
   syncBoard();
   syncArrow();
   evalCurrentPosition();
+  // Notify opening explorer of the new position.
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts jump() explorer.setNode() call.
+  explorerCtrl.setNode(ctrl.node.fen, redraw);
   scheduleNavStateSave(ctrl.path);
   redraw();
   scrollActiveIntoView();
@@ -878,6 +882,18 @@ function routeContent(route: Route): VNode {
             };
             return renderPuzzleCandidates(puzzleDeps);
           })(),
+          // Opening explorer — hidden during retrospection (same gate as retro/explorer in Lichess).
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts retroView || explorerView pattern.
+          ctrl.retro ? null : renderAnalysisExplorerSection(
+            ctrl.node.fen,
+            cgInstance,
+            (uci: string) => {
+              const node = nodeAtPath(ctrl.root, ctrl.path);
+              const child = node?.children.find(c => c.uci === uci);
+              if (child) navigate(ctrl.path + child.id);
+            },
+            redraw,
+          ),
         ]),
 
         // Controls — below tools (grid-area: controls)

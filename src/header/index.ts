@@ -25,6 +25,7 @@ import {
 import { reviewDepth, setReviewDepth } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
+import { checkAuth, logout } from '../sync/client';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 
@@ -38,6 +39,36 @@ let showDetectionModal    = false;
 let showRetroModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
+
+// --- Auth state ---
+let headerAuthUser: string | null = null;
+let headerAuthChecked = false;
+
+function ensureHeaderAuth(redraw: () => void): void {
+  if (headerAuthChecked) return;
+  headerAuthChecked = true;
+  checkAuth().then(({ username }) => {
+    headerAuthUser = username;
+    redraw();
+  });
+}
+
+function renderUserArea(redraw: () => void): VNode {
+  if (headerAuthUser) {
+    return h('div.header__user', [
+      h('span.header__username', headerAuthUser),
+      h('button.header__logout', {
+        attrs: { title: 'Log out' },
+        on: { click: () => {
+          logout().then(() => { headerAuthUser = null; redraw(); });
+        }},
+      }, '✕'),
+    ]);
+  }
+  return h('a.header__login', {
+    attrs: { href: '/api/lichess/connect', title: 'Login with Lichess' },
+  }, 'Login');
+}
 
 export function setImportPlatform(p: ImportPlatform): void { importPlatform = p; }
 export function getImportPlatform(): ImportPlatform         { return importPlatform; }
@@ -653,6 +684,8 @@ export function renderHeader(deps: HeaderDeps): VNode {
     gameSourceUrl, resetAllData, redraw,
   } = deps;
 
+  ensureHeaderAuth(redraw);
+
   const loading  = importPlatform === 'chesscom' ? chesscom.loading  : lichess.loading;
   const error    = importPlatform === 'chesscom' ? chesscom.error    : lichess.error;
   const username = importPlatform === 'chesscom' ? chesscom.username : lichess.username;
@@ -861,6 +894,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
     renderNav(route),
     renderReviewMenu(redraw),
+    renderUserArea(redraw),
     renderGlobalMenu(deps),
     showDetectionModal ? renderDetectionModal(redraw) : null,
     showRetroModal     ? renderRetroModal(redraw)     : null,

@@ -18,6 +18,9 @@ import {
   engineEnabled, engineReady,
   multiPv, setMultiPv,
   analysisDepth, setAnalysisDepth,
+  searchTime, setSearchTime,
+  searchUntilDepth, setSearchUntilDepth,
+  isEngineSearching, getSearchProgress,
   clearPendingLines,
   showEngineArrows, setShowEngineArrows,
   arrowAllLines, setArrowAllLines,
@@ -93,11 +96,18 @@ export function renderCeval(): VNode {
         ? `Reviewing ${batchDone}/${batchQueue.length}…`
         : 'Engine on';
 
-  // Thin scanning bar along the top of the ceval panel while engine is searching.
+  // Thin bar along the top of the ceval panel.
+  // Progress bar along the top: fills left-to-right while searching, stays solid at 100% when done.
+  // Width tracks whichever of depth-fraction or time-fraction is further along.
+  const evalDone = engineEnabled && engineReady &&
+    !isEngineSearching() && currentEval.depth !== undefined;
+  const progressPct = evalDone ? 100 : Math.round(getSearchProgress() * 100);
   const progressBar = engineEnabled && engineReady
     ? h('div.ceval__progress', [
-        h('div.ceval__progress-pulse'),
-        h('div.ceval__progress-pulse.ceval__progress-pulse--delayed'),
+        h('div.ceval__progress-fill', {
+          class: { 'ceval__progress-fill--done': evalDone },
+          attrs: { style: `width:${progressPct}%` },
+        }),
       ])
     : null;
 
@@ -437,6 +447,31 @@ export function renderEngineSettings(): VNode | null {
       }, [18, 20, 24, 30].map(d =>
         h('option', { attrs: { value: d, selected: d === analysisDepth } }, String(d))
       )),
+    ]),
+    h('div.ceval-settings__row', [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-until-depth' } }, 'Search to depth'),
+      h('input#ceval-until-depth', {
+        attrs: { type: 'checkbox', checked: searchUntilDepth },
+        on: {
+          change: (e: Event) => {
+            setSearchUntilDepth((e.target as HTMLInputElement).checked);
+            _redraw();
+          },
+        },
+      }),
+    ]),
+    h('div.ceval-settings__row', { class: { 'ceval-settings__row--disabled': searchUntilDepth } }, [
+      h('label.ceval-settings__label', { attrs: { for: 'ceval-search-time' } }, 'Search time'),
+      h('input#ceval-search-time', {
+        attrs: { type: 'range', min: 1000, max: 60000, step: 1000, value: searchTime, disabled: searchUntilDepth },
+        on: {
+          input: (e: Event) => {
+            setSearchTime(parseInt((e.target as HTMLInputElement).value));
+            _redraw();
+          },
+        },
+      }),
+      h('span.ceval-settings__val', `${searchTime / 1000}s`),
     ]),
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-arrows' } }, 'Arrows'),
