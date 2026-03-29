@@ -8977,6 +8977,8 @@ function completeSolutionTree(rc) {
 }
 var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
   constructor(definition, redraw2) {
+    // --- Lazy-parsed PGN header cache ---
+    this._pgnHeaders = void 0;
     this.definition = definition;
     this.solutionLine = definition.solutionLine;
     this.status = "playing";
@@ -9010,6 +9012,54 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     this.puzzleTreePath = path;
     this.livePath = path;
     this.contextPeekPath = null;
+  }
+  /**
+   * PGN headers (White, Black, Result) lazily parsed from gamePgn.
+   * Returns null when gamePgn is unavailable or unparseable.
+   */
+  get pgnHeaders() {
+    if (this._pgnHeaders !== void 0) return this._pgnHeaders;
+    if (!this.gamePgn) {
+      this._pgnHeaders = null;
+      return null;
+    }
+    try {
+      const game = parsePgn(this.gamePgn)[0];
+      if (!game) {
+        this._pgnHeaders = null;
+        return null;
+      }
+      this._pgnHeaders = {
+        white: game.headers.get("White") ?? "",
+        black: game.headers.get("Black") ?? "",
+        result: game.headers.get("Result") ?? "*"
+      };
+      return this._pgnHeaders;
+    } catch {
+      this._pgnHeaders = null;
+      return null;
+    }
+  }
+  /**
+   * Clock times (in centiseconds) at the puzzle start position, from the game tree.
+   * Walks the game tree mainline from root to the puzzle position and finds
+   * the most recent clock for each color — same logic as getClocksAtPath on
+   * the analysis board.
+   */
+  get puzzleClocks() {
+    if (!this.gameTree) return { white: void 0, black: void 0 };
+    const targetPath = this.gameTreePuzzlePath ?? "";
+    const nodes = nodeListAt(this.gameTree, targetPath);
+    let white;
+    let black;
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes[i];
+      if (!n || n.clock === void 0) continue;
+      if (n.ply % 2 === 1 && white === void 0) white = n.clock;
+      if (n.ply % 2 === 0 && n.ply > 0 && black === void 0) black = n.clock;
+      if (white !== void 0 && black !== void 0) break;
+    }
+    return { white, black };
   }
   /**
    * Returns the next expected user move from the solution line,
@@ -9687,6 +9737,7 @@ async function openPuzzleRound(id, redraw2) {
         console.log("[pgn] loadPuzzlePgn resolved", { pgn: !!pgn, defId: def.id, ctrlId: activeRoundCtrl?.definition.id });
         if (pgn && activeRoundCtrl?.definition.id === def.id) {
           activeRoundCtrl.gamePgn = pgn;
+          activeRoundCtrl["_pgnHeaders"] = void 0;
           const treeOk = activeRoundCtrl.loadGameTree();
           console.log("[pgn] loadGameTree result", treeOk);
           redraw2();
@@ -13842,20 +13893,7 @@ function ensureHeaderAuth(redraw2) {
   });
 }
 function renderUserArea(redraw2) {
-  if (headerAuthUser) {
-    return h("div.header__user", [
-      h("span.header__username", headerAuthUser),
-      h("button.header__logout", {
-        attrs: { title: "Log out" },
-        on: { click: () => {
-          logout().then(() => {
-            headerAuthUser = null;
-            redraw2();
-          });
-        } }
-      }, "\u2715")
-    ]);
-  }
+  if (headerAuthUser) return null;
   return h("a.header__login", {
     attrs: { href: "/api/lichess/connect", title: "Login with Lichess" }
   }, "Login");
@@ -14426,6 +14464,14 @@ function renderGlobalMenu(deps) {
           redraw2();
         } }
       }, "Mistake Detection\u2026"),
+      headerAuthUser ? h("button.global-menu__item.global-menu__item--logout", {
+        on: { click: () => {
+          logout().then(() => {
+            headerAuthUser = null;
+            closeGlobalMenu(redraw2);
+          });
+        } }
+      }, "Logout") : null,
       h("div.global-menu__item.global-menu__item--has-sub", {
         on: { click: () => {
           showBoardSettings = !showBoardSettings;

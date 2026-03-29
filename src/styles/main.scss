@@ -881,6 +881,13 @@ main {
 
     &--has-sub { user-select: none; }
 
+    &--logout {
+      color: #c77;
+      border-top: 1px solid #2a2a2a;
+      margin-top: 4px;
+      &:hover { background: #2a1a1a; color: #f88; }
+    }
+
     &--toggle {
       cursor: default;
 
