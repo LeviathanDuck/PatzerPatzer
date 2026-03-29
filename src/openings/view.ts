@@ -513,6 +513,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
             dests,
           },
           draggable: {
+            enabled: false,
             showGhost: false,
           },
           drawable: {
