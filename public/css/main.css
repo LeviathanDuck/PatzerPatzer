@@ -1255,8 +1255,10 @@ cg-resize {
 cg-resize::before, cg-resize::after {
   content: "";
   position: absolute;
-  background: rgba(255, 255, 255, 0.5);
-  height: 1px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 1px;
+  transition: background 0.12s;
 }
 cg-resize::before {
   width: 5px;
@@ -1268,11 +1270,17 @@ cg-resize::after {
 }
 cg-resize:hover {
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(74, 136, 136, 0.35);
+}
+cg-resize:hover::before, cg-resize:hover::after {
+  background: #6bbfbf;
 }
 .resizing cg-resize {
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(74, 136, 136, 0.55);
+}
+.resizing cg-resize::before, .resizing cg-resize::after {
+  background: #8dd4d4;
 }
 
 body.resizing {
@@ -3003,34 +3011,34 @@ body[data-board=newspaper] cg-board::before {
 }
 .eval-graph__resize-handle {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: 0;
-  transform: translateX(-50%);
-  width: 22px;
   height: 14px;
   cursor: ns-resize;
   z-index: 2;
-}
-.eval-graph__resize-handle::before, .eval-graph__resize-handle::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  width: 10px;
-  height: 1px;
-  background: #000;
-  transform-origin: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
 }
 .eval-graph__resize-handle::before {
-  top: 4px;
-  transform: translateX(-50%) rotate(45deg);
-}
-.eval-graph__resize-handle::after {
-  top: 8px;
-  transform: translateX(-50%) rotate(-45deg);
+  content: "";
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(to right, #555 0px, #555 6px, transparent 6px, transparent 10px);
+  transition: background 0.15s;
 }
 .eval-graph__resize-handle:hover {
-  border-radius: 50%;
-  background: rgba(74, 136, 136, 0.22);
+  background: rgba(74, 136, 136, 0.12);
+}
+.eval-graph__resize-handle:hover::before {
+  background: repeating-linear-gradient(to right, #4a8888 0px, #4a8888 6px, transparent 6px, transparent 10px);
+}
+.eval-graph__resize-handle:active::before {
+  background: repeating-linear-gradient(to right, #6bbfbf 0px, #6bbfbf 6px, transparent 6px, transparent 10px);
 }
 
 .analysis-summary {
@@ -4317,6 +4325,8 @@ body[data-board=newspaper] cg-board::before {
   flex-direction: column;
   gap: 0;
   min-width: 0;
+  align-self: stretch;
+  overflow: hidden;
   max-height: calc(100vh - 5rem);
 }
 .puzzle__side-top {
