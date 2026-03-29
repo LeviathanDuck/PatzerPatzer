@@ -20,7 +20,7 @@ import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { scalachessCharPair } from 'chessops/compat';
 import type { TreeNode, TreePath } from '../tree/types';
-import { nodeAtPath, mainlineNodeList, nodeListAt, addNode } from '../tree/ops';
+import { nodeAtPath, mainlineNodeList, nodeListAt, addNode, deleteNodeAt, pathInit } from '../tree/ops';
 import { pgnToTree } from '../tree/pgn';
 import { listPuzzleDefinitions, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getMeta, saveMeta } from './puzzleDb';
 import { bindBoardResizeHandle } from '../board/index';
@@ -35,6 +35,7 @@ import {
   currentEval as sharedCurrentEval,
   multiPv,
   analysisDepth,
+  setEngineEnabledFlag,
   type PositionEval,
 } from '../engine/ctrl';
 import { evalWinChances, LOSS_THRESHOLDS } from '../engine/winchances';
@@ -420,6 +421,26 @@ export class PuzzleRoundCtrl {
     redraw();
   }
 
+  /**
+   * Navigate to a specific position in the full game tree without changing puzzle state.
+   * Used when the user clicks a pre-puzzle context move to browse the game.
+   * Puzzle progress, status, and solution state are preserved — only the board view changes.
+   */
+  browseGameAt(path: TreePath, redraw: () => void): void {
+    if (!this.gameTree && !this.loadGameTree()) return;
+    if (!this.gameTree) return;
+    // Save puzzle state if entering browse mode for the first time
+    if (!this.analysisMode) {
+      this.puzzleTreeRoot = this.treeRoot;
+      this.puzzleTreePath = this.treePath;
+    }
+    this.analysisMode = true;
+    this.treeRoot = this.gameTree;
+    this.setTreePath(path);
+    syncPuzzleBoard();
+    redraw();
+  }
+
   /** Navigate the tree to a given path. Updates treeNode and syncs the board. */
   setTreePath(path: TreePath): void {
     const target = nodeAtPath(this.treeRoot, path);
@@ -438,6 +459,15 @@ export class PuzzleRoundCtrl {
     this.treeNode = newNode;
     this.treeMainline = mainlineNodeList(this.treeRoot);
     return newNode;
+  }
+
+  /** Delete a variation node at a given path. If currently inside the deleted variation, navigate up to its parent. */
+  deleteVariation(path: TreePath): void {
+    deleteNodeAt(this.treeRoot, path);
+    if (this.treePath.startsWith(path)) {
+      this.setTreePath(pathInit(path));
+    }
+    this.treeMainline = mainlineNodeList(this.treeRoot);
   }
 
   currentExpectedMove(): string | undefined {
@@ -1059,15 +1089,10 @@ export class PuzzleRoundCtrl {
     if (this.puzzleEngineEnabled) return;
 
     this.puzzleEngineEnabled = true;
+    setEngineEnabledFlag(true); // makes renderCeval/renderPvBox show as active
 
-    // Compute the current position FEN
-    const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
-    if (!pos) {
-      console.warn('[puzzle-engine] cannot derive position for engine eval');
-      this.puzzleEngineEnabled = false;
-      return;
-    }
-    const fenStr = makeFen(pos.toSetup());
+    // Use the current board position (tracks analysis-mode navigation)
+    const fenStr = this.treeNode.fen;
 
     if (sharedEngineReady) {
       // Engine already running — send position directly
@@ -1086,6 +1111,7 @@ export class PuzzleRoundCtrl {
       }).catch((err: unknown) => {
         console.error('[puzzle-engine] failed to load:', err);
         this.puzzleEngineEnabled = false;
+        setEngineEnabledFlag(false);
         redraw();
       });
     }
@@ -1097,6 +1123,7 @@ export class PuzzleRoundCtrl {
   disablePuzzleEngine(): void {
     if (!this.puzzleEngineEnabled) return;
     this.puzzleEngineEnabled = false;
+    setEngineEnabledFlag(false);
     engineProtocol.stop();
   }
 
@@ -1189,9 +1216,11 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
       // Fetch full game PGN in the background — available for post-solve tree exploration
       dequeueSessionPuzzle(def.id);
       loadPuzzlePgn(def).then(pgn => {
+        console.log('[pgn] loadPuzzlePgn resolved', { pgn: !!pgn, defId: def.id, ctrlId: activeRoundCtrl?.definition.id });
         if (pgn && activeRoundCtrl?.definition.id === def.id) {
           activeRoundCtrl.gamePgn = pgn;
-          activeRoundCtrl.loadGameTree();
+          const treeOk = activeRoundCtrl.loadGameTree();
+          console.log('[pgn] loadGameTree result', treeOk);
           redraw();
         }
       });
@@ -1848,23 +1877,26 @@ function extractGameId(gameUrl: string): string | undefined {
  */
 export async function fetchGamePgn(gameUrl: string): Promise<string | undefined> {
   const gameId = extractGameId(gameUrl);
-  if (!gameId) return undefined;
+  if (!gameId) { console.warn('[pgn] extractGameId failed for', gameUrl); return undefined; }
 
   // Check cache first
   const cached = await getCachedPgn(gameId);
-  if (cached) return cached;
+  if (cached) { console.log('[pgn] cache hit for', gameId); return cached; }
 
   // Fetch from Lichess API
+  console.log('[pgn] fetching from Lichess:', gameId);
   try {
     const res = await fetch(`https://lichess.org/game/export/${gameId}?evals=true&clocks=true`, {
       headers: { 'Accept': 'application/x-chess-pgn' },
     });
-    if (!res.ok) return undefined;
+    if (!res.ok) { console.warn('[pgn] fetch failed', res.status, gameId); return undefined; }
     const pgn = await res.text();
+    console.log('[pgn] fetched ok, length', pgn.length, 'for', gameId);
     // Cache for future use
     await cachePgn(gameId, pgn);
     return pgn;
-  } catch {
+  } catch (e) {
+    console.warn('[pgn] fetch error', e);
     return undefined;
   }
 }
@@ -1901,7 +1933,8 @@ function dequeueSessionPuzzle(id: string): void {
 
 /** Get the PGN for the current puzzle round (fetches if needed). */
 export async function loadPuzzlePgn(def: PuzzleDefinition): Promise<string | undefined> {
-  if (def.sourceKind !== 'imported-lichess' || !def.gameUrl) return undefined;
+  if (def.sourceKind === 'user-library') return def.sourcePgn;
+  if (!def.gameUrl) return undefined;
   return fetchGamePgn(def.gameUrl);
 }
 

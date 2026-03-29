@@ -22,6 +22,7 @@
     "@lichess-org/chessground": "^10.1.0",
     "@lichess-org/stockfish-web": "^0.2.3",
     "chessops": "^0.15.0",
+    "mysql2": "^3.20.0",
     "snabbdom": "^3.6.2",
     "stockfish": "^16.0.0"
   },
