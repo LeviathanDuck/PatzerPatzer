@@ -35,7 +35,7 @@ import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { renderMoveList, renderContextMoves } from '../analyse/moveList';
-import { syncPuzzleBoard } from './ctrl';
+import { syncPuzzleBoard, peekPuzzleContext } from './ctrl';
 import { mainlineNodeList, promoteAt } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
 
@@ -1268,7 +1268,11 @@ function renderPuzzleMoveList(_def: PuzzleDefinition, rc: PuzzleRoundCtrl | null
         return { node, path: nodePath };
       });
       children.push(h('div.move-list-inner.puzzle-game-context', [
-        renderContextMoves(pathNodes, (p) => { rc.browseGameAt(p, redraw); redraw(); }, ''),
+        renderContextMoves(
+          pathNodes,
+          (p) => peekPuzzleContext(p, redraw),
+          rc.contextPeekPath ?? '',
+        ),
       ]));
       children.push(h('div.puzzle-game-context__sep'));
     }

@@ -104,6 +104,8 @@ let evalParentPath = '';
 
 /** True between sending 'go' and receiving the corresponding 'bestmove'. */
 let engineSearchActive = false;
+/** Timestamp (ms) when the current search started. Used for time-based progress display. */
+let searchStartedAt: number | null = null;
 /**
  * Count of 'stop' commands sent to interrupt active searches that have not yet
  * produced their stale 'bestmove' reply.  Each arriving 'bestmove' while this
@@ -138,6 +140,9 @@ function storedInt(key: string, def: number, min: number, max: number): number {
 
 export let multiPv         = storedInt('patzer.multiPv', 3, 1, 5);
 export let analysisDepth   = storedInt('patzer.analysisDepth', 30, 18, 30);
+export let searchTime      = storedInt('patzer.searchTime', 10000, 1000, 60000);
+/** When true, engine searches until depth is reached regardless of searchTime. Default on. */
+export let searchUntilDepth = localStorage.getItem('patzer.searchUntilDepth') !== 'false';
 export let showEngineArrows = true;
 export let arrowAllLines    = true;
 export let showPlayedArrow  = true;
@@ -177,8 +182,22 @@ let       threatEval: PositionEval = {};
 export function resetCurrentEval(): void          { currentEval = {}; }
 export function setCurrentEval(ev: PositionEval): void { currentEval = { ...ev }; }
 export function clearEvalCache(): void            { evalCache.clear(); }
-export function setMultiPv(v: number): void       { multiPv = v; localStorage.setItem('patzer.multiPv', String(v)); }
-export function setAnalysisDepth(v: number): void { analysisDepth = v; localStorage.setItem('patzer.analysisDepth', String(v)); }
+export function setMultiPv(v: number): void          { multiPv = v; localStorage.setItem('patzer.multiPv', String(v)); }
+export function setAnalysisDepth(v: number): void    { analysisDepth = v; localStorage.setItem('patzer.analysisDepth', String(v)); }
+export function setSearchTime(v: number): void       { searchTime = v; localStorage.setItem('patzer.searchTime', String(v)); }
+export function setSearchUntilDepth(v: boolean): void { searchUntilDepth = v; localStorage.setItem('patzer.searchUntilDepth', String(v)); }
+export function isEngineSearching(): boolean       { return engineSearchActive; }
+/**
+ * Returns 0–1 representing how far the current search has progressed.
+ * Uses whichever of depth or elapsed time is further along, so the bar
+ * advances at a useful rate even before the first deep info line arrives.
+ */
+export function getSearchProgress(): number {
+  if (!engineSearchActive || currentEval.depth === undefined && searchStartedAt === null) return 0;
+  const depthFraction  = currentEval.depth !== undefined ? currentEval.depth / analysisDepth : 0;
+  const timeFraction   = searchStartedAt !== null ? (Date.now() - searchStartedAt) / searchTime : 0;
+  return Math.min(1, Math.max(depthFraction, timeFraction));
+}
 export function clearPendingLines(): void         { pendingLines = []; }
 export function setShowEngineArrows(v: boolean): void { showEngineArrows = v; }
 export function setArrowAllLines(v: boolean): void    { arrowAllLines = v; }
@@ -729,7 +748,7 @@ export function evalThreatPosition(): void {
   evalIsThreat = true;
   protocol.stop();
   protocol.setPosition(flipFenColor(_getCtrl().node.fen));
-  protocol.go(analysisDepth);
+  protocol.go(analysisDepth, 1, searchUntilDepth ? undefined : searchTime);
 }
 
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode (keyboard 'x')
@@ -768,13 +787,13 @@ export function evalCurrentPosition(): void {
       return;
     }
     pendingEval        = false;
-    engineSearchActive = true;
+    engineSearchActive = true; searchStartedAt = Date.now();
     evalNodeId         = '';
     evalNodePath       = '';
     evalNodePly        = 0;
     evalParentPath     = '';
     protocol.setPosition(_evalFenOverride);
-    protocol.go(analysisDepth, multiPv);
+    protocol.go(analysisDepth, multiPv, searchUntilDepth ? undefined : searchTime);
     return;
   }
 
@@ -824,14 +843,14 @@ export function evalCurrentPosition(): void {
   }
 
   pendingEval        = false;
-  engineSearchActive = true;
+  engineSearchActive = true; searchStartedAt = Date.now();
   evalNodeId         = ctrl.node.id;
   evalNodePath       = ctrl.path;
   evalNodePly        = ctrl.node.ply;
   evalParentPath     = ctrl.path.length >= 2 ? ctrl.path.slice(0, -2) : '';
   console.log('[live-diag] starting live eval — path:', evalNodePath, 'ply:', evalNodePly, 'multiPv:', multiPv);
   protocol.setPosition(ctrl.node.fen);
-  protocol.go(analysisDepth, multiPv);
+  protocol.go(analysisDepth, multiPv, searchUntilDepth ? undefined : searchTime);
 }
 
 // --- Engine toggle ---

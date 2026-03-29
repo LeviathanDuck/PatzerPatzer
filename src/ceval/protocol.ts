@@ -130,13 +130,15 @@ export class StockfishProtocol {
   }
 
   /**
-   * Start a fixed-depth search on the current position.
-   * multiPv controls how many candidate lines the engine returns.
+   * Start a search on the current position.
+   * Stops at whichever limit is hit first: depth or movetime (milliseconds).
+   * Omit movetime to search to depth only.
    * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
    */
-  go(depth: number, multiPv = 1): void {
+  go(depth: number, multiPv = 1, movetime?: number): void {
     this.send(`setoption name MultiPV value ${multiPv}`);
-    this.send(`go depth ${depth}`);
+    const timeClause = movetime !== undefined ? ` movetime ${movetime}` : '';
+    this.send(`go depth ${depth}${timeClause}`);
   }
 
   /** Interrupt a running search. */

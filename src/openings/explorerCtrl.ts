@@ -8,7 +8,7 @@
  * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerCtrl.ts
  */
 
-import { openingFetch, type OpeningData, type OpeningParams } from './explorer';
+import { openingFetch, type OpeningData, type OpeningParams, tablebaseFetch, isTablebasePosition, type TablebaseData } from './explorer';
 import { ExplorerConfig } from './explorerConfig';
 
 const LS_ENABLED = 'analyse.explorer.enabled';
@@ -31,8 +31,11 @@ export class ExplorerCtrl {
   /** Whether the config panel is open. */
   configOpen: boolean;
   readonly config: ExplorerConfig;
+  /** Populated when the current position is tablebase territory (≤7 pieces). */
+  tablebaseData: TablebaseData | null = null;
 
   private cache = new Map<string, OpeningData>();
+  private tablebaseCache = new Map<string, TablebaseData>();
   private abortCtrl: AbortController | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -157,9 +160,53 @@ export class ExplorerCtrl {
     };
   }
 
+  /** True when player DB is selected but no username has been entered yet. */
+  get needsPlayerName(): boolean {
+    return this.config.db === 'player' && !this.config.playerName;
+  }
+
   private _fetch(fen: string, redraw: () => void): void {
+    // Player DB requires a username — show prompt instead of fetching.
+    if (this.needsPlayerName) {
+      this.loading = false;
+      this.failing = null;
+      redraw();
+      return;
+    }
+
     this.abortCtrl?.abort();
     this.abortCtrl = new AbortController();
+
+    // Tablebase mode: ≤7 pieces → query tablebase.lichess.ovh instead of opening explorer.
+    // Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerCtrl.ts
+    if (isTablebasePosition(fen)) {
+      this.tablebaseData = null;
+      const cached = this.tablebaseCache.get(fen);
+      if (cached) {
+        this.tablebaseData = cached;
+        this.loading = false;
+        this.failing = null;
+        redraw();
+        return;
+      }
+      tablebaseFetch(fen, this.abortCtrl.signal).then(data => {
+        this.tablebaseCache.set(fen, data);
+        this.tablebaseData = data;
+        this.loading = false;
+        this.failing = null;
+        redraw();
+      }).catch((err: Error) => {
+        if (err.name === 'AbortError') return;
+        this.loading = false;
+        this.tablebaseData = null;
+        // Tablebase failures are non-fatal — fall through to show opening data if any
+        this.failing = null;
+        redraw();
+      });
+      return;
+    }
+
+    this.tablebaseData = null;
 
     let params: OpeningParams;
     try {

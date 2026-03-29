@@ -11,6 +11,8 @@ import {
   showEngineArrows, setShowEngineArrows, syncArrow,
 } from './engine/ctrl';
 import { pathInit } from './tree/ops';
+import { current } from './router';
+import { getActiveRoundCtrl, puzzlePrev, puzzleNext, puzzleFirst, puzzleLast } from './puzzles/ctrl';
 
 // --- Injected deps ---
 
@@ -51,6 +53,16 @@ export function bindKeyboardHandlers(deps: {
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement).tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    // Puzzle round keyboard navigation.
+    // Adapted from lichess-org/lila: ui/puzzle/src/control.ts prev/next/first/last
+    if (current().name === 'puzzle-round' && getActiveRoundCtrl()) {
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); puzzlePrev(_redraw);  return; }
+      if (e.key === 'ArrowRight') { e.preventDefault(); puzzleNext(_redraw);  return; }
+      if (e.key === 'ArrowUp')    { e.preventDefault(); puzzleFirst(_redraw); return; }
+      if (e.key === 'ArrowDown')  { e.preventDefault(); puzzleLast(_redraw);  return; }
+      return; // swallow other keys on puzzle page to avoid analysis board conflicts
+    }
 
     if (e.shiftKey) {
       if (e.key === 'ArrowLeft')       { e.preventDefault(); previousBranch(); _redraw(); }
