@@ -1381,8 +1381,8 @@ var EVAL_BAR_TICKS = [...Array(8).keys()].map(
     attrs: { style: `height: ${(i + 1) * 12.5}%` }
   })
 );
-function renderEvalBar(engineEnabled2, currentEval2, fen) {
-  if (!engineEnabled2) return h("div.eval-bar.eval-bar--off");
+function renderEvalBar(engineEnabled3, currentEval2, fen) {
+  if (!engineEnabled3) return h("div.eval-bar.eval-bar--off");
   const pct = evalPct(currentEval2, fen);
   const scorePct = Math.max(8, Math.min(92, pct));
   const hasScore = currentEval2.cp !== void 0 || currentEval2.mate !== void 0;
@@ -2296,6 +2296,9 @@ function toggleEngine() {
     syncArrow();
   }
   _redraw();
+}
+function setEngineEnabledFlag(on) {
+  engineEnabled = on;
 }
 function getEvalNodePath() {
   return evalNodePath;
@@ -7209,8 +7212,8 @@ function nextMistake(currentPath) {
   return puzzleCandidates.find((c) => c.path.length > currentPath.length) ?? null;
 }
 function renderPuzzleCandidates(deps) {
-  const { engineEnabled: engineEnabled2, batchAnalyzing: batchAnalyzing2, batchState: batchState2, savedPuzzles: savedPuzzles2, currentPath } = deps;
-  const canExtract = engineEnabled2 && !batchAnalyzing2;
+  const { engineEnabled: engineEnabled3, batchAnalyzing: batchAnalyzing2, batchState: batchState2, savedPuzzles: savedPuzzles2, currentPath } = deps;
+  const canExtract = engineEnabled3 && !batchAnalyzing2;
   const btnLabel = canExtract ? `Find Puzzles (${puzzleCandidates.length})` : batchAnalyzing2 ? "Find Puzzles (analyzing\u2026)" : "Find Puzzles (engine off)";
   const rows = puzzleCandidates.map((c) => {
     const moveNum = Math.ceil(c.ply / 2);
@@ -10434,6 +10437,24 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     syncPuzzleBoard();
     redraw2();
   }
+  /**
+   * Navigate to a specific position in the full game tree without changing puzzle state.
+   * Used when the user clicks a pre-puzzle context move to browse the game.
+   * Puzzle progress, status, and solution state are preserved — only the board view changes.
+   */
+  browseGameAt(path, redraw2) {
+    if (!this.gameTree && !this.loadGameTree()) return;
+    if (!this.gameTree) return;
+    if (!this.analysisMode) {
+      this.puzzleTreeRoot = this.treeRoot;
+      this.puzzleTreePath = this.treePath;
+    }
+    this.analysisMode = true;
+    this.treeRoot = this.gameTree;
+    this.setTreePath(path);
+    syncPuzzleBoard();
+    redraw2();
+  }
   /** Navigate the tree to a given path. Updates treeNode and syncs the board. */
   setTreePath(path) {
     const target = nodeAtPath(this.treeRoot, path);
@@ -10451,6 +10472,14 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     this.treeNode = newNode;
     this.treeMainline = mainlineNodeList(this.treeRoot);
     return newNode;
+  }
+  /** Delete a variation node at a given path. If currently inside the deleted variation, navigate up to its parent. */
+  deleteVariation(path) {
+    deleteNodeAt(this.treeRoot, path);
+    if (this.treePath.startsWith(path)) {
+      this.setTreePath(pathInit(path));
+    }
+    this.treeMainline = mainlineNodeList(this.treeRoot);
   }
   currentExpectedMove() {
     if (this.progressPly >= this.solutionLine.length) return void 0;
@@ -10929,13 +10958,8 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     if (this.status !== "solved" && this.status !== "failed") return;
     if (this.puzzleEngineEnabled) return;
     this.puzzleEngineEnabled = true;
-    const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
-    if (!pos) {
-      console.warn("[puzzle-engine] cannot derive position for engine eval");
-      this.puzzleEngineEnabled = false;
-      return;
-    }
-    const fenStr = makeFen(pos.toSetup());
+    setEngineEnabledFlag(true);
+    const fenStr = this.treeNode.fen;
     if (engineReady) {
       protocol.setPosition(fenStr);
       protocol.go(analysisDepth2, multiPv2);
@@ -10951,6 +10975,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
       }).catch((err) => {
         console.error("[puzzle-engine] failed to load:", err);
         this.puzzleEngineEnabled = false;
+        setEngineEnabledFlag(false);
         redraw2();
       });
     }
@@ -10961,6 +10986,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
   disablePuzzleEngine() {
     if (!this.puzzleEngineEnabled) return;
     this.puzzleEngineEnabled = false;
+    setEngineEnabledFlag(false);
     protocol.stop();
   }
   /**
@@ -11012,9 +11038,11 @@ async function openPuzzleRound(id, redraw2) {
       loadPuzzleMeta(id).then(() => redraw2());
       dequeueSessionPuzzle(def.id);
       loadPuzzlePgn(def).then((pgn) => {
+        console.log("[pgn] loadPuzzlePgn resolved", { pgn: !!pgn, defId: def.id, ctrlId: activeRoundCtrl?.definition.id });
         if (pgn && activeRoundCtrl?.definition.id === def.id) {
           activeRoundCtrl.gamePgn = pgn;
-          activeRoundCtrl.loadGameTree();
+          const treeOk = activeRoundCtrl.loadGameTree();
+          console.log("[pgn] loadGameTree result", treeOk);
           redraw2();
         }
       });
@@ -11446,18 +11474,30 @@ function extractGameId(gameUrl) {
 }
 async function fetchGamePgn(gameUrl) {
   const gameId = extractGameId(gameUrl);
-  if (!gameId) return void 0;
+  if (!gameId) {
+    console.warn("[pgn] extractGameId failed for", gameUrl);
+    return void 0;
+  }
   const cached = await getCachedPgn(gameId);
-  if (cached) return cached;
+  if (cached) {
+    console.log("[pgn] cache hit for", gameId);
+    return cached;
+  }
+  console.log("[pgn] fetching from Lichess:", gameId);
   try {
     const res = await fetch(`https://lichess.org/game/export/${gameId}?evals=true&clocks=true`, {
       headers: { "Accept": "application/x-chess-pgn" }
     });
-    if (!res.ok) return void 0;
+    if (!res.ok) {
+      console.warn("[pgn] fetch failed", res.status, gameId);
+      return void 0;
+    }
     const pgn = await res.text();
+    console.log("[pgn] fetched ok, length", pgn.length, "for", gameId);
     await cachePgn(gameId, pgn);
     return pgn;
-  } catch {
+  } catch (e) {
+    console.warn("[pgn] fetch error", e);
     return void 0;
   }
 }
@@ -11482,7 +11522,8 @@ function dequeueSessionPuzzle(id) {
   saveQueueToStorage();
 }
 async function loadPuzzlePgn(def) {
-  if (def.sourceKind !== "imported-lichess" || !def.gameUrl) return void 0;
+  if (def.sourceKind === "user-library") return def.sourcePgn;
+  if (!def.gameUrl) return void 0;
   return fetchGamePgn(def.gameUrl);
 }
 var _importedSessionError = null;
@@ -12158,6 +12199,55 @@ var _sessionStarting = false;
 var _sessionTab = "themes";
 var _openingSearch = "";
 var _lastPuzzleEngineFen = "";
+var _puzzleContextMenuPath = null;
+function openPuzzleContextMenu(path, e) {
+  e.preventDefault();
+  _puzzleContextMenuPath = path;
+}
+function closePuzzleContextMenu() {
+  _puzzleContextMenuPath = null;
+}
+function renderPuzzleContextMenu(rc, redraw2) {
+  if (!_puzzleContextMenuPath) return null;
+  const path = _puzzleContextMenuPath;
+  const node = rc.treeRoot.children.length > 0 ? (() => {
+    let n = rc.treeRoot;
+    for (let i = 0; i < path.length; i += 2) {
+      const id = path.slice(i, i + 2);
+      const child = n.children.find((c) => c.id === id);
+      if (!child) return void 0;
+      n = child;
+    }
+    return n;
+  })() : void 0;
+  const title = node?.san ?? path;
+  const onMainline = isMainlinePath(rc.treeRoot, path);
+  return h("div#move-ctx-menu.visible", {
+    on: { contextmenu: (e) => e.preventDefault() }
+  }, [
+    h("p.title", title),
+    h("a", { on: { click: () => {
+      const p = _puzzleContextMenuPath;
+      closePuzzleContextMenu();
+      puzzleDeleteVariation(rc, p, redraw2);
+    } } }, "Delete from here"),
+    !onMainline ? h("a", { on: { click: () => {
+      promoteAt(rc.treeRoot, path, false);
+      rc.treeMainline = mainlineNodeList(rc.treeRoot);
+      closePuzzleContextMenu();
+      syncPuzzleBoard();
+      redraw2();
+    } } }, "Promote variation") : null,
+    !onMainline ? h("a", { on: { click: () => {
+      promoteAt(rc.treeRoot, path, true);
+      rc.treeMainline = mainlineNodeList(rc.treeRoot);
+      if (rc.treePath.startsWith(path)) rc.setTreePath(path);
+      closePuzzleContextMenu();
+      syncPuzzleBoard();
+      redraw2();
+    } } }, "Make main line") : null
+  ]);
+}
 function renderImportedSessionBuilder(ls, redraw2) {
   const totalSelected = _selectedThemes.size + _selectedOpenings.size;
   return h("aside.puzzle__side.puzzle-library__sidebar.puzzle-list.puzzle-session", [
@@ -12801,66 +12891,54 @@ function renderFoldersEditor(meta, redraw2) {
     })
   ]);
 }
-function computeSanMoves(startFen, uciMoves) {
-  const sans = [];
-  const setup = parseFen(startFen);
-  if (setup.isErr) return sans;
-  const posResult = Chess.fromSetup(setup.value);
-  if (posResult.isErr) return sans;
-  const pos = posResult.value;
-  for (const uci of uciMoves) {
-    const move3 = parseUci(uci);
-    if (!move3) break;
-    sans.push(makeSan(pos, move3));
-    pos.play(move3);
-  }
-  return sans;
+function puzzleNavigate(rc, path, redraw2) {
+  if (path === rc.treePath) return;
+  rc.setTreePath(path);
+  syncPuzzleBoard();
+  redraw2();
 }
-function renderPuzzleMoveList(def, rc) {
-  const progressPly = rc?.progressPly ?? 0;
-  const showAll = rc && (rc.status === "solved" || rc.status === "failed");
-  const solutionSlice = showAll ? def.solutionLine : def.solutionLine.slice(0, progressPly);
-  const allMoves = def.triggerMove ? [def.triggerMove, ...solutionSlice] : solutionSlice;
-  const sans = computeSanMoves(def.startFen, allMoves);
-  const hasTrigger = !!def.triggerMove;
-  if (sans.length === 0) {
-    return h("div.puzzle-moves", [
-      h("div.puzzle-moves__empty", "Waiting for moves\u2026")
-    ]);
+function puzzleDeleteVariation(rc, path, redraw2) {
+  rc.deleteVariation(path);
+  syncPuzzleBoard();
+  redraw2();
+}
+function renderPuzzleMoveList(_def, rc, redraw2) {
+  if (!rc || !redraw2) {
+    return h("div.analyse__moves.areplay", []);
   }
-  const fenParts = def.startFen.split(" ");
-  const startFullMove = parseInt(fenParts[5] ?? "1", 10);
-  const startColorIsBlack = fenParts[1] === "b";
-  const moveNodes = [];
-  for (let i = 0; i < sans.length; i++) {
-    const isBlackMove = startColorIsBlack ? i % 2 === 0 : i % 2 === 1;
-    const fullMoveNum = startFullMove + Math.floor((i + (startColorIsBlack ? 1 : 0)) / 2);
-    if (!isBlackMove || i === 0 && startColorIsBlack) {
-      moveNodes.push(
-        h("span.puzzle-moves__num", `${fullMoveNum}.${startColorIsBlack && i === 0 ? ".." : ""}`)
-      );
-    }
-    const isTrigger = hasTrigger && i === 0;
-    const solutionIdx = hasTrigger ? i - 1 : i;
-    const isUserMove = hasTrigger ? i % 2 === 1 : i % 2 === 0;
-    const isCurrentMove = hasTrigger ? solutionIdx === progressPly - 1 && solutionIdx >= 0 : i === progressPly - 1;
-    moveNodes.push(
-      h("span.puzzle-moves__move", {
-        class: {
-          "puzzle-moves__move--current": isCurrentMove,
-          "puzzle-moves__move--trigger": isTrigger,
-          "puzzle-moves__move--opponent": !isUserMove,
-          "puzzle-moves__move--user": isUserMove
-        }
-      }, sans[i])
-    );
-  }
-  return h("div.puzzle-moves", moveNodes);
+  const nav = (path) => puzzleNavigate(rc, path, redraw2);
+  const delVar = (path) => puzzleDeleteVariation(rc, path, redraw2);
+  const ctxMenu = (path, e) => {
+    openPuzzleContextMenu(path, e);
+    redraw2();
+  };
+  return h("div.analyse__moves.areplay", {
+    on: { click: (e) => {
+      const target = e.target;
+      if (!target.closest("#move-ctx-menu") && _puzzleContextMenuPath) {
+        closePuzzleContextMenu();
+        redraw2();
+      }
+    } }
+  }, [
+    renderMoveList(
+      rc.treeRoot,
+      rc.treePath,
+      () => void 0,
+      nav,
+      rc.pov,
+      false,
+      delVar,
+      _puzzleContextMenuPath,
+      ctxMenu
+    ),
+    renderPuzzleContextMenu(rc, redraw2)
+  ]);
 }
 function renderPuzzleEnginePanel(rc, redraw2) {
   const puzzleFen = rc.treeNode.fen;
   setCevalFenOverride(puzzleFen);
-  if (engineEnabled && engineReady) {
+  if (rc.puzzleEngineEnabled && engineReady) {
     if (puzzleFen !== _lastPuzzleEngineFen) {
       _lastPuzzleEngineFen = puzzleFen;
       requestAnimationFrame(() => {
@@ -12868,7 +12946,7 @@ function renderPuzzleEnginePanel(rc, redraw2) {
         protocol.go(analysisDepth2, multiPv2);
       });
     }
-  } else {
+  } else if (!rc.puzzleEngineEnabled) {
     _lastPuzzleEngineFen = "";
   }
   const children = [];
@@ -12971,10 +13049,19 @@ function renderSessionSidebar(session, def, redraw2) {
           });
         })
       ),
-      // "Continue" button — shown when reviewing a past puzzle
+      // "Continue" button — shown when reviewing a past puzzle.
+      // If there is still an in-progress puzzle in the session (e.g. the user
+      // navigated away from it to review an earlier one), go back to that puzzle.
+      // Otherwise all session puzzles are done — advance to the next unplayed one.
       isReviewingPastPuzzle(session) ? h("button.session-history__continue", {
         on: { click: () => {
-          nextPuzzle(redraw2);
+          const currentId = getPuzzleRoundState()?.definition?.id;
+          const inProgress = session.history.find((e) => e.result === "in-progress");
+          if (inProgress && inProgress.puzzleId !== currentId) {
+            window.location.hash = `#/puzzles/${encodeURIComponent(inProgress.puzzleId)}`;
+          } else {
+            void nextPuzzle(redraw2);
+          }
         } }
       }, "Continue Session \u2192") : null
     ]),
@@ -13034,7 +13121,7 @@ function renderPuzzleRound(redraw2) {
           // Engine eval bar + lines (always present as a container)
           rc ? renderPuzzleEnginePanel(rc, redraw2) : null,
           // Move list
-          renderPuzzleMoveList(def, rc)
+          renderPuzzleMoveList(def, rc, redraw2)
         ]),
         // --- Bottom half: feedback ---
         h("div.puzzle__side-bottom", [
@@ -15821,6 +15908,9 @@ function renderOpeningsBoard(node, redraw2) {
             free: false,
             color: "both",
             dests
+          },
+          draggable: {
+            showGhost: false
           },
           drawable: {
             enabled: true,

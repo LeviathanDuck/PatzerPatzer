@@ -34,6 +34,10 @@ import { parseFen, makeFen } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
+import { renderMoveList } from '../analyse/moveList';
+import { syncPuzzleBoard } from './ctrl';
+import { mainlineNodeList, promoteAt } from '../tree/ops';
+import { isMainlinePath } from '../analyse/pgnExport';
 
 function sourceCard(
   title: string,
@@ -395,6 +399,59 @@ let _sessionStarting = false;
 let _sessionTab: 'themes' | 'openings' = 'themes';
 let _openingSearch = '';
 let _lastPuzzleEngineFen = '';
+let _puzzleContextMenuPath: string | null = null;
+
+function openPuzzleContextMenu(path: string, e: MouseEvent): void {
+  e.preventDefault();
+  _puzzleContextMenuPath = path;
+}
+
+function closePuzzleContextMenu(): void {
+  _puzzleContextMenuPath = null;
+}
+
+function renderPuzzleContextMenu(rc: PuzzleRoundCtrl, redraw: () => void): VNode | null {
+  if (!_puzzleContextMenuPath) return null;
+  const path = _puzzleContextMenuPath;
+  const node = rc.treeRoot.children.length > 0 ? (() => {
+    // Walk the tree to find the node at path
+    let n: import('../tree/types').TreeNode = rc.treeRoot;
+    for (let i = 0; i < path.length; i += 2) {
+      const id = path.slice(i, i + 2);
+      const child = n.children.find(c => c.id === id);
+      if (!child) return undefined;
+      n = child;
+    }
+    return n;
+  })() : undefined;
+  const title = node?.san ?? path;
+  const onMainline = isMainlinePath(rc.treeRoot, path);
+  return h('div#move-ctx-menu.visible', {
+    on: { contextmenu: (e: Event) => e.preventDefault() },
+  }, [
+    h('p.title', title),
+    h('a', { on: { click: () => {
+      const p = _puzzleContextMenuPath!;
+      closePuzzleContextMenu();
+      puzzleDeleteVariation(rc, p, redraw);
+    }}}, 'Delete from here'),
+    !onMainline ? h('a', { on: { click: () => {
+      promoteAt(rc.treeRoot, path, false);
+      rc.treeMainline = mainlineNodeList(rc.treeRoot);
+      closePuzzleContextMenu();
+      syncPuzzleBoard();
+      redraw();
+    }}}, 'Promote variation') : null,
+    !onMainline ? h('a', { on: { click: () => {
+      promoteAt(rc.treeRoot, path, true);
+      rc.treeMainline = mainlineNodeList(rc.treeRoot);
+      if (rc.treePath.startsWith(path)) rc.setTreePath(path);
+      closePuzzleContextMenu();
+      syncPuzzleBoard();
+      redraw();
+    }}}, 'Make main line') : null,
+  ]);
+}
 
 function renderImportedSessionBuilder(
   ls: PuzzleListState,
@@ -1165,62 +1222,48 @@ function computeSanMoves(startFen: string, uciMoves: string[]): string[] {
   return sans;
 }
 
-function renderPuzzleMoveList(def: PuzzleDefinition, rc: PuzzleRoundCtrl | null): VNode {
-  const progressPly = rc?.progressPly ?? 0;
-  // Show only moves that have been played (up to progressPly).
-  // After solve/fail, show all solution moves.
-  const showAll = rc && (rc.status === 'solved' || rc.status === 'failed');
-  const solutionSlice = showAll ? def.solutionLine : def.solutionLine.slice(0, progressPly);
-  // Prepend trigger move so the move list starts with the opponent's last move
-  const allMoves = def.triggerMove ? [def.triggerMove, ...solutionSlice] : solutionSlice;
-  const sans = computeSanMoves(def.startFen, allMoves);
-  // Track whether we have a trigger move prefix for styling
-  const hasTrigger = !!def.triggerMove;
+function puzzleNavigate(rc: PuzzleRoundCtrl, path: string, redraw: () => void): void {
+  if (path === rc.treePath) return;
+  rc.setTreePath(path);
+  syncPuzzleBoard();
+  redraw();
+}
 
-  if (sans.length === 0) {
-    return h('div.puzzle-moves', [
-      h('div.puzzle-moves__empty', 'Waiting for moves\u2026'),
-    ]);
+function puzzleDeleteVariation(rc: PuzzleRoundCtrl, path: string, redraw: () => void): void {
+  rc.deleteVariation(path);
+  syncPuzzleBoard();
+  redraw();
+}
+
+function renderPuzzleMoveList(_def: PuzzleDefinition, rc: PuzzleRoundCtrl | null, redraw?: () => void): VNode {
+  if (!rc || !redraw) {
+    return h('div.analyse__moves.areplay', []);
   }
-
-  // Determine starting move number from FEN
-  const fenParts = def.startFen.split(' ');
-  const startFullMove = parseInt(fenParts[5] ?? '1', 10);
-  const startColorIsBlack = fenParts[1] === 'b';
-
-  const moveNodes: VNode[] = [];
-  for (let i = 0; i < sans.length; i++) {
-    // Determine the actual ply in the game
-    const isBlackMove = startColorIsBlack ? (i % 2 === 0) : (i % 2 === 1);
-    const fullMoveNum = startFullMove + Math.floor((i + (startColorIsBlack ? 1 : 0)) / 2);
-
-    // Show move number before white moves (or before the first black move if starting as black)
-    if (!isBlackMove || (i === 0 && startColorIsBlack)) {
-      moveNodes.push(
-        h('span.puzzle-moves__num', `${fullMoveNum}.${startColorIsBlack && i === 0 ? '..' : ''}`),
-      );
-    }
-
-    // With trigger: i=0 is trigger(opponent), i=1 is user, i=2 is opponent...
-    // Without trigger: i=0 is user, i=1 is opponent...
-    const isTrigger = hasTrigger && i === 0;
-    const solutionIdx = hasTrigger ? i - 1 : i;
-    const isUserMove = hasTrigger ? (i % 2 === 1) : (i % 2 === 0);
-    const isCurrentMove = hasTrigger ? (solutionIdx === progressPly - 1 && solutionIdx >= 0) : (i === progressPly - 1);
-
-    moveNodes.push(
-      h('span.puzzle-moves__move', {
-        class: {
-          'puzzle-moves__move--current': isCurrentMove,
-          'puzzle-moves__move--trigger': isTrigger,
-          'puzzle-moves__move--opponent': !isUserMove,
-          'puzzle-moves__move--user': isUserMove,
-        },
-      }, sans[i]),
-    );
-  }
-
-  return h('div.puzzle-moves', moveNodes);
+  const nav     = (path: string) => puzzleNavigate(rc, path, redraw);
+  const delVar  = (path: string) => puzzleDeleteVariation(rc, path, redraw);
+  const ctxMenu = (path: string, e: MouseEvent) => { openPuzzleContextMenu(path, e); redraw(); };
+  return h('div.analyse__moves.areplay', {
+    on: { click: (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#move-ctx-menu') && _puzzleContextMenuPath) {
+        closePuzzleContextMenu();
+        redraw();
+      }
+    }},
+  }, [
+    renderMoveList(
+      rc.treeRoot,
+      rc.treePath,
+      () => undefined,
+      nav,
+      rc.pov,
+      false,
+      delVar,
+      _puzzleContextMenuPath,
+      ctxMenu,
+    ),
+    renderPuzzleContextMenu(rc, redraw),
+  ]);
 }
 
 // --- Puzzle engine panel ---
@@ -1242,7 +1285,7 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
   // If engine is on, ensure it's evaluating the puzzle position (not the analysis board's).
   // Re-send on every render when engine is active — evalCurrentPosition() from the analysis
   // board may overwrite the position, so we need to keep reasserting the puzzle FEN.
-  if (engineEnabled && sharedEngineReady) {
+  if (rc.puzzleEngineEnabled && sharedEngineReady) {
     // Use requestAnimationFrame to send AFTER any evalCurrentPosition() from toggle
     if (puzzleFen !== _lastPuzzleEngineFen) {
       _lastPuzzleEngineFen = puzzleFen;
@@ -1251,7 +1294,7 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
         sharedProtocol.go(analysisDepth, multiPv);
       });
     }
-  } else {
+  } else if (!rc.puzzleEngineEnabled) {
     _lastPuzzleEngineFen = '';
   }
 
@@ -1369,10 +1412,21 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
           });
         }),
       ),
-      // "Continue" button — shown when reviewing a past puzzle
+      // "Continue" button — shown when reviewing a past puzzle.
+      // If there is still an in-progress puzzle in the session (e.g. the user
+      // navigated away from it to review an earlier one), go back to that puzzle.
+      // Otherwise all session puzzles are done — advance to the next unplayed one.
       isReviewingPastPuzzle(session)
         ? h('button.session-history__continue', {
-            on: { click: () => { nextPuzzle(redraw); }},
+            on: { click: () => {
+              const currentId = getPuzzleRoundState()?.definition?.id;
+              const inProgress = session.history.find(e => e.result === 'in-progress');
+              if (inProgress && inProgress.puzzleId !== currentId) {
+                window.location.hash = `#/puzzles/${encodeURIComponent(inProgress.puzzleId)}`;
+              } else {
+                void nextPuzzle(redraw);
+              }
+            }},
           }, 'Continue Session \u2192')
         : null,
     ]),
@@ -1447,7 +1501,7 @@ export function renderPuzzleRound(redraw: () => void): VNode {
           // Engine eval bar + lines (always present as a container)
           rc ? renderPuzzleEnginePanel(rc, redraw) : null,
           // Move list
-          renderPuzzleMoveList(def, rc),
+          renderPuzzleMoveList(def, rc, redraw),
         ]),
         // --- Bottom half: feedback ---
         h('div.puzzle__side-bottom', [

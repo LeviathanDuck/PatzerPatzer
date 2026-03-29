@@ -18,6 +18,9 @@ import fs   from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { handleLogin, handleAuthStatus } from './server/auth.mjs';
+import { handleSyncRoute } from './server/sync.mjs';
+import { runMigrations } from './server/db.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC    = path.join(__dirname, 'public');
@@ -37,13 +40,25 @@ const MIME = {
   '.map':  'application/json',
 };
 
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   // SharedArrayBuffer requires both of these (COOP + COEP).
   // Mirrors the headers Lichess production servers set on every response.
   res.setHeader('Cross-Origin-Opener-Policy',   'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
 
   const url      = (req.url ?? '/').split('?')[0];
+  const method   = req.method ?? 'GET';
+
+  // --- Auth endpoints ---
+  if (url === '/api/auth/login' && method === 'POST') {
+    return handleLogin(req, res);
+  }
+  if (url === '/api/auth/status' && method === 'GET') {
+    return handleAuthStatus(req, res);
+  }
+
+  // --- Sync endpoints (require auth) ---
+  if (url.startsWith('/api/sync/') && handleSyncRoute(url, method, req, res)) return;
 
   // Prompt dashboard: regenerate from registry and redirect back.
   if (url === '/api/refresh-dashboard') {
@@ -127,8 +142,20 @@ http.createServer((req, res) => {
   res.writeHead(200);
   fs.createReadStream(filePath).pipe(res);
 
-}).listen(PORT, () => {
-  console.log(`\nPatzerPro dev server → http://localhost:${PORT}`);
-  console.log('COOP + COEP headers active — SharedArrayBuffer available');
-  console.log('Multi-threaded Stockfish will be used automatically.\n');
 });
+
+// Run database migrations then start listening
+runMigrations()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`\nPatzerPro dev server → http://localhost:${PORT}`);
+      console.log('COOP + COEP headers active — SharedArrayBuffer available');
+      console.log('Multi-threaded Stockfish will be used automatically.\n');
+    });
+  })
+  .catch(err => {
+    console.warn('[db] Migration failed (server starting without database):', err.message);
+    server.listen(PORT, () => {
+      console.log(`\nPatzerPro dev server → http://localhost:${PORT} (no database)`);
+    });
+  });
