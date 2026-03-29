@@ -38,6 +38,118 @@ import { renderMoveList, renderContextMoves } from '../analyse/moveList';
 import { syncPuzzleBoard, peekPuzzleContext } from './ctrl';
 import { mainlineNodeList, promoteAt } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
+import type { Role } from '@lichess-org/chessground/types';
+
+// ---------------------------------------------------------------------------
+// Puzzle player strips
+// Adapted from lichess-org/lila: ui/analyse/src/view/components.ts renderPlayerStrips
+// Material diff helpers adapted from ui/lib/src/game/material.ts
+// ---------------------------------------------------------------------------
+
+type MaterialDiffSide = Record<Role, number>;
+interface MaterialDiff { white: MaterialDiffSide; black: MaterialDiffSide; }
+const ROLE_ORDER: Role[] = ['queen', 'rook', 'bishop', 'knight', 'pawn'];
+const ROLE_POINTS: Record<Role, number> = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
+
+function puzzleMaterialDiff(fen: string): MaterialDiff {
+  const diff: MaterialDiff = {
+    white: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+    black: { king: 0, queen: 0, rook: 0, bishop: 0, knight: 0, pawn: 0 },
+  };
+  const fenBoard = fen.split(' ')[0] ?? '';
+  const charToRole: Record<string, Role> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+  for (const ch of fenBoard) {
+    const lower = ch.toLowerCase();
+    const role = charToRole[lower];
+    if (!role) continue;
+    const color: 'white' | 'black' = ch === lower ? 'black' : 'white';
+    const opp = color === 'white' ? 'black' : 'white';
+    if (diff[opp][role] > 0) diff[opp][role]--;
+    else diff[color][role]++;
+  }
+  return diff;
+}
+
+function puzzleMaterialScore(diff: MaterialDiff): number {
+  return ROLE_ORDER.reduce((sum, role) => sum + (diff.white[role] - diff.black[role]) * ROLE_POINTS[role], 0);
+}
+
+function renderPuzzleMaterialPieces(diff: MaterialDiff, color: 'white' | 'black', score: number): VNode {
+  const groups: VNode[] = [];
+  for (const role of ROLE_ORDER) {
+    const count = diff[color][role];
+    if (count <= 0) continue;
+    const pieces: VNode[] = [];
+    for (let i = 0; i < count; i++) pieces.push(h('mpiece.' + role));
+    groups.push(h('div', pieces));
+  }
+  return h('div.material', [
+    ...groups,
+    score > 0 ? h('score', '+' + score) : null,
+  ]);
+}
+
+function formatPuzzleClock(centis: number): string {
+  const totalSecs = Math.floor(centis / 100);
+  const hh = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  const pad = (n: number) => n < 10 ? '0' + n : String(n);
+  return hh > 0 ? `${hh}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+/**
+ * Render the two player identity strips for the puzzle board.
+ * Returns [topStrip, bottomStrip]. The solver (Hero) is always at the bottom
+ * since the puzzle board is oriented to their pov.
+ * Adapted from lichess-org/lila: ui/puzzle/src/view/main.ts
+ */
+function renderPuzzlePlayerStrips(rc: PuzzleRoundCtrl): [VNode, VNode] {
+  const pov = rc.pov; // Hero (solver) color
+  const opp: 'white' | 'black' = pov === 'white' ? 'black' : 'white';
+
+  const headers = rc.pgnHeaders;
+  const result = headers?.result ?? '*';
+  const clocks = rc.puzzleClocks;
+  const diff = puzzleMaterialDiff(rc.treeNode.fen);
+  const score = puzzleMaterialScore(diff);
+
+  const nameFor = (color: 'white' | 'black'): string => {
+    const pgn = color === 'white' ? headers?.white : headers?.black;
+    if (pgn && pgn.trim() && pgn !== '?') return pgn;
+    return color === pov ? 'Hero' : 'Opponent';
+  };
+
+  const strip = (color: 'white' | 'black'): VNode => {
+    const name = nameFor(color);
+    const winner = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
+    const loser  = (color === 'white' && result === '0-1') || (color === 'black' && result === '1-0');
+    const matScore = color === 'white' ? score : -score;
+    const centis = color === 'white' ? clocks.white : clocks.black;
+    return h('div.analyse__player_strip', [
+      h('div.player-strip__identity', {
+        class: {
+          'player-strip__identity--winner': winner,
+          'player-strip__identity--loser': loser,
+          'player-strip__identity--draw': result !== '*' && !winner && !loser,
+        },
+      }, [
+        h('span.player-strip__color-icon', {
+          class: {
+            'player-strip__color-icon--white': color === 'white',
+            'player-strip__color-icon--black': color === 'black',
+          },
+        }),
+        h('span.player-strip__name', name),
+      ]),
+      renderPuzzleMaterialPieces(diff, color, matScore > 0 ? matScore : 0),
+      centis !== undefined ? h('div.analyse__clock', formatPuzzleClock(centis)) : null,
+    ]);
+  };
+
+  // Solver is at the bottom; opponent is at the top.
+  return [strip(opp), strip(pov)];
+}
 
 function sourceCard(
   title: string,
@@ -1519,20 +1631,27 @@ export function renderPuzzleRound(redraw: () => void): VNode {
             renderPuzzleInfo(def, redraw),
             renderMetaPanel(def.id, redraw),
           ]),
-      // Board area
-      h('div.puzzle__board.main-board', [
-        h('div.cg-wrap', {
-          key: `puzzle-board-${def.id}`,
-          hook: {
-            insert: vnode => {
-              mountPuzzleBoard(vnode.elm as HTMLElement, redraw);
-            },
-            destroy: () => {
-              destroyPuzzleBoard();
-            },
-          },
-        }),
-      ]),
+      // Board area with player strips
+      (() => {
+        const [topStrip, bottomStrip] = rc ? renderPuzzlePlayerStrips(rc) : [null, null];
+        return h('div.puzzle__board.main-board', [
+          topStrip,
+          h('div.puzzle__board-inner', [
+            h('div.cg-wrap', {
+              key: `puzzle-board-${def.id}`,
+              hook: {
+                insert: vnode => {
+                  mountPuzzleBoard(vnode.elm as HTMLElement, redraw);
+                },
+                destroy: () => {
+                  destroyPuzzleBoard();
+                },
+              },
+            }),
+          ]),
+          bottomStrip,
+        ]);
+      })(),
       // Side panel — split into engine/moves top half + feedback/tools bottom half
       h('aside.puzzle__side', [
         // --- Top half: engine eval + move list ---
