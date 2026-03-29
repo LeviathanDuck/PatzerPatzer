@@ -1187,8 +1187,8 @@ var StockfishProtocol = class {
    * multiPv controls how many candidate lines the engine returns.
    * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
    */
-  go(depth, multiPv3 = 1) {
-    this.send(`setoption name MultiPV value ${multiPv3}`);
+  go(depth, multiPv2 = 1) {
+    this.send(`setoption name MultiPV value ${multiPv2}`);
     this.send(`go depth ${depth}`);
   }
   /** Interrupt a running search. */
@@ -1381,8 +1381,8 @@ var EVAL_BAR_TICKS = [...Array(8).keys()].map(
     attrs: { style: `height: ${(i + 1) * 12.5}%` }
   })
 );
-function renderEvalBar(engineEnabled3, currentEval2, fen) {
-  if (!engineEnabled3) return h("div.eval-bar.eval-bar--off");
+function renderEvalBar(engineEnabled2, currentEval2, fen) {
+  if (!engineEnabled2) return h("div.eval-bar.eval-bar--off");
   const pct = evalPct(currentEval2, fen);
   const scorePct = Math.max(8, Math.min(92, pct));
   const hasScore = currentEval2.cp !== void 0 || currentEval2.mate !== void 0;
@@ -1554,8 +1554,9 @@ function renderEvalGraph(mainline, currentPath, evalCache2, navigate2, redraw2, 
   }));
   if (!bg) for (const pt of valid) {
     const isCurrent = pt.path === currentPath;
-    const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "hsl(307,80%,70%)" : pt.label === "blunder" ? "hsl(0,69%,60%)" : pt.label === "mistake" ? "hsl(41,100%,45%)" : pt.label === "inaccuracy" ? "hsl(202,78%,62%)" : "#888";
-    const dotR = isCurrent ? 3.5 : pt.label ? 2.5 : 2;
+    if (!isCurrent && !pt.hasMate && !pt.label) continue;
+    const dotColor = isCurrent ? "#4a8" : pt.hasMate ? "hsl(307,80%,70%)" : pt.label === "blunder" ? "hsl(0,69%,60%)" : pt.label === "mistake" ? "hsl(41,100%,45%)" : "hsl(202,78%,62%)";
+    const dotR = isCurrent ? 3.5 : 2.5;
     svgNodes.push(h("circle", { attrs: {
       cx: pt.x,
       cy: pt.y,
@@ -1703,6 +1704,10 @@ var engineEnabled = false;
 var engineReady = false;
 var engineInitialized = false;
 var currentEval = {};
+var _evalFenOverride = null;
+function setEvalFenOverride(fen) {
+  _evalFenOverride = fen;
+}
 var evalCache = /* @__PURE__ */ new Map();
 var evalNodeId = "";
 var evalNodePath = "";
@@ -1715,8 +1720,8 @@ function storedInt(key, def, min, max) {
   const v = parseInt(localStorage.getItem(key) ?? "", 10);
   return !isNaN(v) && v >= min && v <= max ? v : def;
 }
-var multiPv2 = storedInt("patzer.multiPv", 1, 1, 5);
-var analysisDepth2 = storedInt("patzer.analysisDepth", 30, 18, 30);
+var multiPv = storedInt("patzer.multiPv", 3, 1, 5);
+var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
 var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
@@ -1748,11 +1753,11 @@ function clearEvalCache() {
   evalCache.clear();
 }
 function setMultiPv(v) {
-  multiPv2 = v;
+  multiPv = v;
   localStorage.setItem("patzer.multiPv", String(v));
 }
 function setAnalysisDepth(v) {
-  analysisDepth2 = v;
+  analysisDepth = v;
   localStorage.setItem("patzer.analysisDepth", String(v));
 }
 function clearPendingLines() {
@@ -2072,7 +2077,7 @@ function parseEngineLine(line) {
       }
     }
     if (pvIndex === 1) {
-      if (!evalIsThreat && !_isBatchActive() && evalNodePath !== _getCtrl().path) return;
+      if (!evalIsThreat && !_isBatchActive() && !_evalFenOverride && evalNodePath !== _getCtrl().path) return;
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== void 0) {
         const s = !evalIsThreat && evalNodePly % 2 === 1 ? -score : score;
@@ -2091,7 +2096,7 @@ function parseEngineLine(line) {
         scheduleLiveEngineUiRefresh(!evalIsThreat);
       }
     } else if (!evalIsThreat && score !== void 0) {
-      if (evalNodePath !== _getCtrl().path) return;
+      if (!_evalFenOverride && evalNodePath !== _getCtrl().path) return;
       const s = evalNodePly % 2 === 1 ? -score : score;
       const idx = pvIndex - 1;
       if (!pendingLines[idx]) pendingLines[idx] = {};
@@ -2132,7 +2137,7 @@ function parseEngineLine(line) {
       syncArrow();
       _redraw();
     } else {
-      if (!_isBatchActive() && evalNodePath !== _getCtrl().path) {
+      if (!_isBatchActive() && !_evalFenOverride && evalNodePath !== _getCtrl().path) {
         pendingLines = [];
         if (pendingEval) evalCurrentPosition();
         else if (threatMode) evalThreatPosition();
@@ -2213,7 +2218,7 @@ function evalThreatPosition() {
   evalIsThreat = true;
   protocol.stop();
   protocol.setPosition(flipFenColor(_getCtrl().node.fen));
-  protocol.go(analysisDepth2);
+  protocol.go(analysisDepth);
 }
 function toggleThreatMode() {
   threatMode = !threatMode;
@@ -2238,9 +2243,34 @@ function evalCurrentPosition() {
     evalIsThreat = false;
   }
   threatEval = {};
+  if (_evalFenOverride) {
+    cancelLiveEngineUiRefresh();
+    currentEval = {};
+    pendingLines = [];
+    syncArrow();
+    arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
+    if (engineSearchActive) {
+      if (!pendingEval) {
+        pendingStopCount++;
+        protocol.stop();
+      }
+      pendingEval = true;
+      _redraw();
+      return;
+    }
+    pendingEval = false;
+    engineSearchActive = true;
+    evalNodeId = "";
+    evalNodePath = "";
+    evalNodePly = 0;
+    evalParentPath = "";
+    protocol.setPosition(_evalFenOverride);
+    protocol.go(analysisDepth, multiPv);
+    return;
+  }
   const ctrl2 = _getCtrl();
   const cached = evalCache.get(ctrl2.path);
-  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv2 - 1;
+  const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
   if (cached && cachedHasLines) {
     cancelLiveEngineUiRefresh();
     currentEval = { ...cached };
@@ -2269,9 +2299,9 @@ function evalCurrentPosition() {
   evalNodePath = ctrl2.path;
   evalNodePly = ctrl2.node.ply;
   evalParentPath = ctrl2.path.length >= 2 ? ctrl2.path.slice(0, -2) : "";
-  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv2);
+  console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv);
   protocol.setPosition(ctrl2.node.fen);
-  protocol.go(analysisDepth2, multiPv2);
+  protocol.go(analysisDepth, multiPv);
 }
 function toggleEngine() {
   engineEnabled = !engineEnabled;
@@ -6791,6 +6821,7 @@ var _redraw4 = () => {
 var _fenOverride = null;
 function setCevalFenOverride(fen) {
   _fenOverride = fen;
+  setEvalFenOverride(fen);
 }
 function initCevalView(deps) {
   _getCtrl4 = deps.getCtrl;
@@ -6807,7 +6838,12 @@ function renderCeval() {
   const pearlStr = engineEnabled ? hasEval ? formatScore(currentEval) : engineReady ? "\u2026" : "" : "";
   const engineLabel = protocol.engineName ?? "Stockfish 18";
   const statusText = !engineEnabled ? "Local analysis" : !engineReady ? "Loading\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "Engine on";
+  const progressBar = engineEnabled && engineReady ? h("div.ceval__progress", [
+    h("div.ceval__progress-pulse"),
+    h("div.ceval__progress-pulse.ceval__progress-pulse--delayed")
+  ]) : null;
   return h("div.ceval", { class: { enabled: engineEnabled } }, [
+    progressBar,
     // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
     h("button.cmn-toggle", {
       class: { active: engineEnabled },
@@ -6933,7 +6969,7 @@ function renderPvBox() {
     if (rest.length > 0) children.push(h("span.pv-cont", rest));
     return h("div.pv.pv--nowrap", children);
   }
-  const slots = [...Array(multiPv2).keys()].map((i) => pvRowForSlot(i));
+  const slots = [...Array(multiPv).keys()].map((i) => pvRowForSlot(i));
   return h("div.pv_box", {
     key: "pv-rows",
     hook: {
@@ -7026,7 +7062,7 @@ function renderEngineSettings() {
     h("div.ceval-settings__row", [
       h("label.ceval-settings__label", { attrs: { for: "ceval-multipv" } }, "Lines"),
       h("input#ceval-multipv", {
-        attrs: { type: "range", min: 1, max: 5, step: 1, value: multiPv2 },
+        attrs: { type: "range", min: 1, max: 5, step: 1, value: multiPv },
         on: {
           input: (e) => {
             setMultiPv(parseInt(e.target.value));
@@ -7039,7 +7075,7 @@ function renderEngineSettings() {
           }
         }
       }),
-      h("span.ceval-settings__val", `${multiPv2} / 5`)
+      h("span.ceval-settings__val", `${multiPv} / 5`)
     ]),
     h("div.ceval-settings__row", [
       h("label.ceval-settings__label", { attrs: { for: "ceval-review-depth" } }, "Review depth"),
@@ -7064,7 +7100,7 @@ function renderEngineSettings() {
           }
         }
       }, [18, 20, 24, 30].map(
-        (d) => h("option", { attrs: { value: d, selected: d === analysisDepth2 } }, String(d))
+        (d) => h("option", { attrs: { value: d, selected: d === analysisDepth } }, String(d))
       ))
     ]),
     h("div.ceval-settings__row", [
@@ -7212,8 +7248,8 @@ function nextMistake(currentPath) {
   return puzzleCandidates.find((c) => c.path.length > currentPath.length) ?? null;
 }
 function renderPuzzleCandidates(deps) {
-  const { engineEnabled: engineEnabled3, batchAnalyzing: batchAnalyzing2, batchState: batchState2, savedPuzzles: savedPuzzles2, currentPath } = deps;
-  const canExtract = engineEnabled3 && !batchAnalyzing2;
+  const { engineEnabled: engineEnabled2, batchAnalyzing: batchAnalyzing2, batchState: batchState2, savedPuzzles: savedPuzzles2, currentPath } = deps;
+  const canExtract = engineEnabled2 && !batchAnalyzing2;
   const btnLabel = canExtract ? `Find Puzzles (${puzzleCandidates.length})` : batchAnalyzing2 ? "Find Puzzles (analyzing\u2026)" : "Find Puzzles (engine off)";
   const rows = puzzleCandidates.map((c) => {
     const moveNum = Math.ceil(c.ply / 2);
@@ -10017,6 +10053,20 @@ function renderColumnNodes(nodes, parentPath, parent, out, currentPath, getEval,
   }
   renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu, worstMissPath);
 }
+function renderContextMoves(nodes, navigate2, currentPath, extraClass) {
+  const out = [];
+  for (const { node, path } of nodes) {
+    const isWhite = node.ply % 2 === 1;
+    if (isWhite) out.push(h("index", String(Math.ceil(node.ply / 2))));
+    out.push(h("move", {
+      class: { active: path === currentPath },
+      attrs: { p: path },
+      on: { click: () => navigate2(path) }
+    }, [h("san", node.san ?? "")]));
+  }
+  const cls = ["tview2", "tview2-column", ...extraClass ? [extraClass] : []].join(".");
+  return h(`div.${cls}`, out);
+}
 function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu, worstMissPath) {
   const nodes = [];
   renderColumnNodes(root.children, "", root, nodes, currentPath, getEval, navigate2, userColor, userOnly, deleteVariation2, contextMenuPath2, onContextMenu, worstMissPath);
@@ -10962,14 +11012,14 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     const fenStr = this.treeNode.fen;
     if (engineReady) {
       protocol.setPosition(fenStr);
-      protocol.go(analysisDepth2, multiPv2);
+      protocol.go(analysisDepth, multiPv);
       redraw2();
     } else {
       redraw2();
       void protocol.init("/stockfish-web").then(() => {
         if (this.puzzleEngineEnabled) {
           protocol.setPosition(fenStr);
-          protocol.go(analysisDepth2, multiPv2);
+          protocol.go(analysisDepth, multiPv);
           redraw2();
         }
       }).catch((err) => {
@@ -10978,6 +11028,19 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
         setEngineEnabledFlag(false);
         redraw2();
       });
+    }
+  }
+  /**
+   * Called by the view whenever the shared engine toggle is on during an active
+   * solve.  Idempotent — only marks the round the first time.
+   * Triggers are: mode === 'play' or 'try' AND engineEnabled() returns true.
+   */
+  notifyEngineUsedDuringSolve() {
+    if (this.usedEngineReveal) return;
+    if (this.status === "solved" || this.status === "failed") return;
+    this.usedEngineReveal = true;
+    if (!this.failureReasons.includes("engine-lines-shown")) {
+      this.failureReasons.push("engine-lines-shown");
     }
   }
   /**
@@ -12587,13 +12650,23 @@ function renderViewSolutionButtons(rc, redraw2) {
 }
 function renderAnalysisToggle(rc, redraw2) {
   if (!rc.gamePgn && !rc.gameTree) return null;
-  return h("button.button.button-empty.puzzle__analyse", {
+  return h("button.puzzle__analyse", {
     class: { active: rc.analysisMode },
     attrs: { title: rc.analysisMode ? "Back to puzzle" : "Analyse full game" },
     on: { click: () => {
       rc.toggleAnalysisMode(redraw2);
     } }
-  }, [h("img.puzzle__analyse-icon", { attrs: { src: "/images/analysis_icon_minimal.svg", alt: "Analyse" } })]);
+  }, [
+    h("svg.puzzle__analyse-icon", {
+      attrs: { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 64 64", width: "18", height: "18", fill: "none" }
+    }, [
+      h("circle", { attrs: { cx: "28", cy: "28", r: "14", stroke: "currentColor", "stroke-width": "4" } }),
+      h("line", { attrs: { x1: "38", y1: "38", x2: "54", y2: "54", stroke: "currentColor", "stroke-width": "4", "stroke-linecap": "round" } }),
+      h("circle", { attrs: { cx: "28", cy: "28", r: "6", stroke: "currentColor", "stroke-width": "2" } }),
+      h("line", { attrs: { x1: "28", y1: "28", x2: "28", y2: "24", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round" } }),
+      h("line", { attrs: { x1: "28", y1: "28", x2: "32", y2: "28", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round" } })
+    ])
+  ]);
 }
 var QUALITY_COLORS = {
   best: "#22c55e",
@@ -12912,6 +12985,38 @@ function renderPuzzleMoveList(_def, rc, redraw2) {
     openPuzzleContextMenu(path, e);
     redraw2();
   };
+  const children = [];
+  if (rc.mode === "play" && !rc.analysisMode && rc.gameTree && rc.gameTreePuzzlePath !== null) {
+    const gameMainline = mainlineNodeList(rc.gameTree);
+    const pathDepth = rc.gameTreePuzzlePath.length / 2;
+    const contextNodes = gameMainline.slice(1, pathDepth + 1);
+    if (contextNodes.length > 0) {
+      let nodePath = "";
+      const pathNodes = contextNodes.map((node) => {
+        nodePath += node.id;
+        return { node, path: nodePath };
+      });
+      children.push(h("div.move-list-inner.puzzle-game-context", [
+        renderContextMoves(pathNodes, (p) => {
+          rc.browseGameAt(p, redraw2);
+          redraw2();
+        }, "")
+      ]));
+      children.push(h("div.puzzle-game-context__sep"));
+    }
+  }
+  children.push(renderMoveList(
+    rc.treeRoot,
+    rc.treePath,
+    () => void 0,
+    nav,
+    rc.pov,
+    false,
+    delVar,
+    _puzzleContextMenuPath,
+    ctxMenu
+  ));
+  children.push(renderPuzzleContextMenu(rc, redraw2));
   return h("div.analyse__moves.areplay", {
     on: { click: (e) => {
       const target = e.target;
@@ -12920,30 +13025,18 @@ function renderPuzzleMoveList(_def, rc, redraw2) {
         redraw2();
       }
     } }
-  }, [
-    renderMoveList(
-      rc.treeRoot,
-      rc.treePath,
-      () => void 0,
-      nav,
-      rc.pov,
-      false,
-      delVar,
-      _puzzleContextMenuPath,
-      ctxMenu
-    ),
-    renderPuzzleContextMenu(rc, redraw2)
-  ]);
+  }, children);
 }
 function renderPuzzleEnginePanel(rc, redraw2) {
   const puzzleFen = rc.treeNode.fen;
   setCevalFenOverride(puzzleFen);
+  if (engineEnabled && rc.mode !== "view") rc.notifyEngineUsedDuringSolve();
   if (rc.puzzleEngineEnabled && engineReady) {
     if (puzzleFen !== _lastPuzzleEngineFen) {
       _lastPuzzleEngineFen = puzzleFen;
       requestAnimationFrame(() => {
         protocol.setPosition(puzzleFen);
-        protocol.go(analysisDepth2, multiPv2);
+        protocol.go(analysisDepth, multiPv);
       });
     }
   } else if (!rc.puzzleEngineEnabled) {
@@ -15349,8 +15442,7 @@ async function executeResearchImport(redraw2) {
     addCollection(collection);
     setLastCreatedCollection(collection);
     setImportAbort(null);
-    setImportStep("done");
-    redraw2();
+    openCollection(collection, redraw2);
   } catch (err) {
     if (err?.name === "AbortError") return;
     setImportStep("details");
@@ -15361,66 +15453,320 @@ async function executeResearchImport(redraw2) {
 }
 
 // src/openings/explorer.ts
-var _cache = /* @__PURE__ */ new Map();
-var _loading = false;
-var _error = null;
-var _enabled = false;
-var _data = null;
-function explorerEnabled() {
-  return _enabled;
-}
-function explorerLoading() {
-  return _loading;
-}
-function explorerError() {
-  return _error;
-}
-function explorerData() {
-  return _data;
-}
-function toggleExplorer() {
-  _enabled = !_enabled;
-  if (!_enabled) {
-    _data = null;
-    _loading = false;
-    _error = null;
-  }
-}
-async function fetchExplorer(fen, redraw2) {
-  if (!_enabled) return;
-  const cached = _cache.get(fen);
-  if (cached) {
-    _data = cached;
-    _loading = false;
-    _error = null;
-    redraw2();
+var EXPLORER_ENDPOINT = "/api/explorer";
+async function readNdJson(res, cb) {
+  if (!res.ok) throw new Error(`Explorer API error ${res.status}`);
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    if (text.trim()) cb(JSON.parse(text));
     return;
   }
-  _loading = true;
-  _error = null;
-  redraw2();
-  try {
-    const params = new URLSearchParams({
-      fen,
-      speeds: "blitz,rapid,classical",
-      ratings: "1600,1800,2000,2200,2500"
-    });
-    const url = `https://explorer.lichess.ovh/lichess?${params.toString()}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Explorer API error ${res.status}`);
-    const json = await res.json();
-    json.fen = fen;
-    _cache.set(fen, json);
-    _data = json;
-    _loading = false;
-    _error = null;
-  } catch (err) {
-    _loading = false;
-    _error = err instanceof Error ? err.message : "Explorer fetch failed.";
-    _data = null;
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed) cb(JSON.parse(trimmed));
+    }
   }
-  redraw2();
+  const tail = buf.trim();
+  if (tail) cb(JSON.parse(tail));
 }
+async function openingFetch(params, onData, signal) {
+  const url = new URL(`${EXPLORER_ENDPOINT}/${params.db}`, window.location.origin);
+  const p = url.searchParams;
+  p.set("fen", params.fen);
+  if (params.play?.length) p.set("play", params.play.join(","));
+  p.set("topGames", params.topGames === false ? "0" : "1");
+  p.set("recentGames", params.recentGames === false ? "0" : "1");
+  if (params.db === "masters") {
+    if (params.variant && params.variant !== "standard") p.set("variant", params.variant);
+    if (params.since) p.set("since", params.since.split("-")[0]);
+    if (params.until) p.set("until", params.until.split("-")[0]);
+  } else if (params.db === "lichess") {
+    if (params.variant && params.variant !== "standard") p.set("variant", params.variant);
+    if (params.speeds?.length) p.set("speeds", params.speeds.join(","));
+    if (params.ratings?.length) p.set("ratings", params.ratings.join(","));
+    if (params.since) p.set("since", params.since);
+    if (params.until) p.set("until", params.until);
+  } else {
+    if (!params.player) throw new Error("Player name required for player DB");
+    p.set("player", params.player);
+    p.set("color", params.color);
+    if (params.speeds?.length) p.set("speeds", params.speeds.join(","));
+    if (params.modes?.length) p.set("modes", params.modes.join(","));
+    if (params.since) p.set("since", params.since);
+    if (params.until) p.set("until", params.until);
+  }
+  const res = await fetch(url.href, {
+    cache: "default",
+    credentials: "omit",
+    signal
+  });
+  await readNdJson(res, (chunk) => {
+    chunk.isOpening = true;
+    chunk.fen = params.fen;
+    onData(chunk);
+  });
+}
+
+// src/openings/explorerConfig.ts
+var LS_DB = "explorer.db2.standard";
+var LS_SPEED = "explorer.speed";
+var LS_RATING = "analyse.explorer.rating";
+var LS_MODE = "explorer.mode";
+var LS_PLAYER_NAME = "analyse.explorer.player.name";
+var LS_PLAYER_PREV = "explorer.player.name.previous";
+var LS_SINCE_PFX = "analyse.explorer.since-2.";
+var LS_UNTIL_PFX = "analyse.explorer.until-2.";
+var ALL_SPEEDS = [
+  "ultraBullet",
+  "bullet",
+  "blitz",
+  "rapid",
+  "classical",
+  "correspondence"
+];
+var ALL_RATINGS = [400, 1e3, 1200, 1400, 1600, 1800, 2e3, 2200, 2500];
+var ALL_MODES = ["casual", "rated"];
+function loadJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+  } catch {
+  }
+  return fallback;
+}
+var ExplorerConfig = class {
+  constructor() {
+    this.db = localStorage.getItem(LS_DB) || "lichess";
+    this.speeds = loadJson(LS_SPEED, ALL_SPEEDS.slice(1));
+    this.ratings = loadJson(LS_RATING, ALL_RATINGS.slice(1));
+    this.modes = loadJson(LS_MODE, ALL_MODES);
+    this.playerName = localStorage.getItem(LS_PLAYER_NAME) || "";
+    this.playerPrevious = loadJson(LS_PLAYER_PREV, []);
+    this.color = "white";
+    this.sinceByDb = {
+      lichess: localStorage.getItem(LS_SINCE_PFX + "lichess") || "",
+      masters: localStorage.getItem(LS_SINCE_PFX + "masters") || "",
+      player: localStorage.getItem(LS_SINCE_PFX + "player") || ""
+    };
+    this.untilByDb = {
+      lichess: localStorage.getItem(LS_UNTIL_PFX + "lichess") || "",
+      masters: localStorage.getItem(LS_UNTIL_PFX + "masters") || "",
+      player: localStorage.getItem(LS_UNTIL_PFX + "player") || ""
+    };
+  }
+  setDb(db) {
+    this.db = db;
+    localStorage.setItem(LS_DB, db);
+  }
+  toggleSpeed(speed) {
+    if (this.speeds.includes(speed)) {
+      if (this.speeds.length > 1) this.speeds = this.speeds.filter((s) => s !== speed);
+    } else {
+      this.speeds = [...this.speeds, speed];
+    }
+    localStorage.setItem(LS_SPEED, JSON.stringify(this.speeds));
+  }
+  toggleRating(rating) {
+    if (this.ratings.includes(rating)) {
+      if (this.ratings.length > 1) this.ratings = this.ratings.filter((r) => r !== rating);
+    } else {
+      this.ratings = [...this.ratings, rating];
+    }
+    localStorage.setItem(LS_RATING, JSON.stringify(this.ratings));
+  }
+  toggleMode(mode) {
+    if (this.modes.includes(mode)) {
+      if (this.modes.length > 1) this.modes = this.modes.filter((m) => m !== mode);
+    } else {
+      this.modes = [...this.modes, mode];
+    }
+    localStorage.setItem(LS_MODE, JSON.stringify(this.modes));
+  }
+  setPlayerName(name) {
+    this.playerName = name;
+    localStorage.setItem(LS_PLAYER_NAME, name);
+    if (name && !this.playerPrevious.includes(name)) {
+      this.playerPrevious = [name, ...this.playerPrevious].slice(0, 20);
+      localStorage.setItem(LS_PLAYER_PREV, JSON.stringify(this.playerPrevious));
+    }
+  }
+  removePlayerFromHistory(name) {
+    this.playerPrevious = this.playerPrevious.filter((n) => n !== name);
+    localStorage.setItem(LS_PLAYER_PREV, JSON.stringify(this.playerPrevious));
+  }
+  toggleColor() {
+    this.color = this.color === "white" ? "black" : "white";
+  }
+  setSince(since) {
+    this.sinceByDb[this.db] = since;
+    localStorage.setItem(LS_SINCE_PFX + this.db, since);
+  }
+  setUntil(until) {
+    this.untilByDb[this.db] = until;
+    localStorage.setItem(LS_UNTIL_PFX + this.db, until);
+  }
+  since() {
+    return this.sinceByDb[this.db] || "";
+  }
+  until() {
+    return this.untilByDb[this.db] || "";
+  }
+};
+
+// src/openings/explorerCtrl.ts
+var LS_ENABLED = "analyse.explorer.enabled";
+var MAX_EXPLORER_DEPTH = 50;
+var ExplorerCtrl = class {
+  constructor() {
+    this.cache = /* @__PURE__ */ new Map();
+    this.abortCtrl = null;
+    this.debounceTimer = null;
+    this.enabled = localStorage.getItem(LS_ENABLED) === "true";
+    this.loading = false;
+    this.failing = null;
+    this.hovering = null;
+    this.movesAway = 0;
+    this.gameMenu = null;
+    this.configOpen = false;
+    this.config = new ExplorerConfig();
+  }
+  toggle() {
+    this.enabled = !this.enabled;
+    localStorage.setItem(LS_ENABLED, String(this.enabled));
+    if (!this.enabled) {
+      this.abortCtrl?.abort();
+      this.loading = false;
+      this.failing = null;
+      this.movesAway = 0;
+    }
+  }
+  toggleConfig() {
+    this.configOpen = !this.configOpen;
+  }
+  setDb(db) {
+    this.config.setDb(db);
+    this.cache.clear();
+    this.movesAway = 0;
+  }
+  setHovering(fen, uci) {
+    this.hovering = uci ? { fen, uci } : null;
+  }
+  current(fen) {
+    return this.cache.get(fen);
+  }
+  reload(fen, redraw2) {
+    this.cache.clear();
+    this.movesAway = 0;
+    this.failing = null;
+    this.setNode(fen, redraw2);
+  }
+  /**
+   * Called on every board navigation.
+   * Serves from in-memory cache on hit; debounces fetch on miss.
+   * Mirrors ExplorerCtrl.setNode() from lichess-org/lila.
+   */
+  setNode(fen, redraw2) {
+    if (!this.enabled) return;
+    this.gameMenu = null;
+    const cached = this.cache.get(fen);
+    if (cached) {
+      this.movesAway = cached.moves.length ? 0 : this.movesAway + 1;
+      this.loading = false;
+      this.failing = null;
+      redraw2();
+      return;
+    }
+    this.loading = true;
+    this.failing = null;
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.debounceTimer = null;
+      this._fetch(fen, redraw2);
+    }, 250);
+  }
+  _buildParams(fen) {
+    const { db, speeds, ratings, modes, playerName, color } = this.config;
+    const since = this.config.since() || void 0;
+    const until = this.config.until() || void 0;
+    if (db === "masters") {
+      return {
+        db: "masters",
+        fen,
+        variant: "standard",
+        ...since && { since },
+        ...until && { until },
+        topGames: false,
+        recentGames: false
+      };
+    }
+    if (db === "lichess") {
+      return {
+        db: "lichess",
+        fen,
+        variant: "standard",
+        speeds,
+        ratings,
+        ...since && { since },
+        ...until && { until },
+        topGames: false,
+        recentGames: false
+      };
+    }
+    if (!playerName) throw new Error("No player name set for explorer player DB");
+    return {
+      db: "player",
+      fen,
+      player: playerName,
+      color,
+      speeds,
+      modes,
+      ...since && { since },
+      ...until && { until },
+      topGames: false,
+      recentGames: false
+    };
+  }
+  _fetch(fen, redraw2) {
+    this.abortCtrl?.abort();
+    this.abortCtrl = new AbortController();
+    let params;
+    try {
+      params = this._buildParams(fen);
+    } catch (err) {
+      this.loading = false;
+      this.failing = err instanceof Error ? err : new Error("Config error");
+      redraw2();
+      return;
+    }
+    const merged = {};
+    openingFetch(params, (chunk) => {
+      Object.assign(merged, chunk);
+      if ("moves" in merged) {
+        const data = merged;
+        this.cache.set(fen, data);
+        this.movesAway = data.moves.length ? 0 : this.movesAway + 1;
+        this.loading = false;
+        this.failing = null;
+        redraw2();
+      }
+    }, this.abortCtrl.signal).catch((err) => {
+      if (err.name === "AbortError") return;
+      this.loading = false;
+      this.failing = err;
+      redraw2();
+    });
+  }
+};
+var explorerCtrl = new ExplorerCtrl();
 
 // src/openings/view.ts
 var _openingsCg;
@@ -15517,8 +15863,8 @@ function renderImportWorkflow(redraw2) {
   const step2 = importStep();
   return h("div.openings__import", [
     h("div.openings__import-header", [
-      h("h2", "New Opponent Research"),
-      h("button.openings__cancel-btn", {
+      h("span", "New Opponent Research"),
+      h("button.header__panel-btn.--ghost", {
         on: { click: () => {
           resetImport();
           redraw2();
@@ -15539,22 +15885,29 @@ function renderSourceStep(redraw2) {
     { value: "pgn", label: "PGN Upload" }
   ];
   return h("div.openings__step", [
-    h("h3", "Select Source"),
-    h("div.openings__source-options", sources.map(
-      (s) => h("button.openings__source-btn", {
-        class: { active: src === s.value },
-        on: { click: () => {
-          setImportSource(s.value);
-          redraw2();
-        } }
-      }, s.label)
-    )),
-    h("button.openings__next-btn", {
-      on: { click: () => {
-        setImportStep("details");
-        redraw2();
-      } }
-    }, "Next")
+    h("div.header__panel-section", [
+      h("div.header__panel-label", "Source"),
+      h("div.header__panel-row", sources.map(
+        (s) => h("button.header__pill", {
+          class: { active: src === s.value },
+          on: { click: () => {
+            setImportSource(s.value);
+            redraw2();
+          } }
+        }, s.label)
+      ))
+    ]),
+    h("div.header__panel-divider"),
+    h("div.header__panel-section", [
+      h("div.header__panel-row", [
+        h("button.header__panel-btn", {
+          on: { click: () => {
+            setImportStep("details");
+            redraw2();
+          } }
+        }, "Next \u2192")
+      ])
+    ])
   ]);
 }
 function renderDetailsStep(redraw2) {
@@ -15563,47 +15916,56 @@ function renderDetailsStep(redraw2) {
   const err = importError();
   const speeds = importSpeeds();
   const dateRange = importDateRange();
-  return h("div.openings__step", [
-    h("h3", src === "pgn" ? "PGN Upload" : "Opponent Details"),
-    // --- Username / PGN input ---
-    src !== "pgn" ? h("div.openings__field", [
-      h("label", "Username"),
-      h("input.openings__input", {
-        attrs: { type: "text", placeholder: `${src === "lichess" ? "Lichess" : "Chess.com"} username` },
+  const sections = [];
+  sections.push(
+    src !== "pgn" ? h("div.header__panel-section", [
+      h("div.header__panel-label", "Username"),
+      h("input.header__text-input", {
+        attrs: {
+          type: "text",
+          placeholder: `${src === "lichess" ? "Lichess" : "Chess.com"} username`,
+          autocomplete: "off",
+          "data-lpignore": "true",
+          "data-1p-ignore": "true",
+          "data-bwignore": "true",
+          "data-form-type": "other"
+        },
         props: { value: importUsername() },
         on: { input: (e) => {
           setImportUsername(e.target.value);
           redraw2();
         } }
       })
-    ]) : h("div.openings__field", [
-      h("label", "Paste PGN or upload a file"),
-      h("textarea.openings__textarea", {
+    ]) : h("div.header__panel-section", [
+      h("div.header__panel-label", "Paste PGN"),
+      h("textarea.header__pgn-input", {
         attrs: { placeholder: "Paste PGN text here\u2026", rows: "6" },
         on: { input: (e) => {
           setImportUsername(e.target.value);
           redraw2();
         } }
       })
-    ]),
-    // --- Perspective ---
-    h("div.openings__field", [
-      h("label", "Perspective"),
-      h("div.openings__color-options", ["white", "black", "both"].map(
-        (c) => h("button.openings__color-btn", {
-          class: { active: color === c },
-          on: { click: () => {
-            setImportColor(c);
-            redraw2();
-          } }
-        }, c.charAt(0).toUpperCase() + c.slice(1))
-      ))
-    ]),
-    // --- Time control (not shown for PGN) ---
-    src !== "pgn" ? h("div.openings__field", [
-      h("label", "Time control"),
-      h("div.openings__filter-row", [
-        h("button.openings__filter-pill", {
+    ])
+  );
+  sections.push(h("div.header__panel-divider"));
+  sections.push(h("div.header__panel-section", [
+    h("div.header__panel-label", "Perspective"),
+    h("div.header__panel-row", ["white", "black", "both"].map(
+      (c) => h("button.header__pill", {
+        class: { active: color === c },
+        on: { click: () => {
+          setImportColor(c);
+          redraw2();
+        } }
+      }, c.charAt(0).toUpperCase() + c.slice(1))
+    ))
+  ]));
+  if (src !== "pgn") {
+    sections.push(h("div.header__panel-divider"));
+    sections.push(h("div.header__panel-section", [
+      h("div.header__panel-label", "Time control"),
+      h("div.header__panel-row", [
+        h("button.header__pill", {
           class: { active: speeds.size === 0 },
           on: { click: () => {
             setImportSpeeds(/* @__PURE__ */ new Set());
@@ -15611,7 +15973,7 @@ function renderDetailsStep(redraw2) {
           } }
         }, "All"),
         ...SPEED_OPTIONS.map(
-          ({ value, label, icon }) => h("button.openings__filter-pill", {
+          ({ value, label, icon }) => h("button.header__pill", {
             class: { active: speeds.has(value) },
             attrs: { "data-icon": icon },
             on: { click: () => {
@@ -15623,13 +15985,13 @@ function renderDetailsStep(redraw2) {
           }, label)
         )
       ])
-    ]) : null,
-    // --- Period (not shown for PGN) ---
-    src !== "pgn" ? h("div.openings__field", [
-      h("label", "Period"),
-      h("div.openings__filter-row", [
+    ]));
+    sections.push(h("div.header__panel-divider"));
+    sections.push(h("div.header__panel-section", [
+      h("div.header__panel-label", "Period"),
+      h("div.header__panel-row", [
         ...DATE_RANGE_OPTIONS.map(
-          ({ value, label }) => h("button.openings__filter-pill", {
+          ({ value, label }) => h("button.header__pill", {
             class: { active: dateRange === value },
             on: { click: () => {
               setImportDateRange(value);
@@ -15638,9 +16000,9 @@ function renderDetailsStep(redraw2) {
           }, label)
         )
       ]),
-      dateRange === "custom" ? h("div.openings__custom-dates", [
+      dateRange === "custom" ? h("div.header__panel-row.--mt", [
         h("span", "From"),
-        h("input.openings__date-input", {
+        h("input.header__date-input", {
           attrs: { type: "date" },
           props: { value: importCustomFrom() },
           on: { change: (e) => {
@@ -15649,7 +16011,7 @@ function renderDetailsStep(redraw2) {
           } }
         }),
         h("span", "To"),
-        h("input.openings__date-input", {
+        h("input.header__date-input", {
           attrs: { type: "date" },
           props: { value: importCustomTo() },
           on: { change: (e) => {
@@ -15658,10 +16020,10 @@ function renderDetailsStep(redraw2) {
           } }
         })
       ]) : null
-    ]) : null,
-    // --- Rated only (not shown for PGN) ---
-    src !== "pgn" ? h("div.openings__field", [
-      h("label.openings__check-label", [
+    ]));
+    sections.push(h("div.header__panel-divider"));
+    sections.push(h("div.header__panel-section", [
+      h("label.header__panel-check", [
         h("input", {
           attrs: { type: "checkbox" },
           props: { checked: importRated() },
@@ -15672,11 +16034,11 @@ function renderDetailsStep(redraw2) {
         }),
         " Rated only"
       ])
-    ]) : null,
-    // --- Max games (not shown for PGN) ---
-    src !== "pgn" ? h("div.openings__field", [
-      h("label", "Max games"),
-      h("input.openings__input.openings__input--short", {
+    ]));
+    sections.push(h("div.header__panel-divider"));
+    sections.push(h("div.header__panel-section", [
+      h("div.header__panel-label", "Max games"),
+      h("input.header__text-input.header__text-input--short", {
         attrs: { type: "number", min: "1", max: "200" },
         props: { value: importMaxGames() },
         on: { change: (e) => {
@@ -15684,23 +16046,27 @@ function renderDetailsStep(redraw2) {
           redraw2();
         } }
       })
-    ]) : null,
-    err ? h("div.openings__error", err) : null,
-    h("div.openings__actions", [
-      h("button.openings__back-btn", {
+    ]));
+  }
+  sections.push(h("div.header__panel-divider"));
+  sections.push(h("div.header__panel-section", [
+    err ? h("div.header__panel-error", err) : null,
+    h("div.header__panel-row", [
+      h("button.header__panel-btn", {
         on: { click: () => {
           setImportStep("source");
           redraw2();
         } }
-      }, "Back"),
-      h("button.openings__import-btn", {
+      }, "\u2190 Back"),
+      h("button.header__panel-btn", {
         attrs: { disabled: src !== "pgn" && importUsername().trim() === "" },
         on: { click: () => {
           void executeResearchImport(redraw2);
         } }
       }, "Import")
     ])
-  ]);
+  ]));
+  return h("div.openings__step", sections);
 }
 function renderImportingStep(redraw2) {
   const progress = importProgress();
@@ -15838,16 +16204,10 @@ function renderSessionPage(redraw2) {
         treeBuilding() ? renderTreeBuildBar() : null,
         renderMovePath(path, redraw2),
         renderMoveNav(path, redraw2),
-        // Engine evaluation block — set FEN override before rendering ceval
+        // Keep FEN override in sync with the current openings position on every render.
+        // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
         (() => {
-          const currentFen = node?.fen ?? "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-          setCevalFenOverride(currentFen);
-          if (engineEnabled && sharedEngineReady) {
-            requestAnimationFrame(() => {
-              sharedProtocol.setPosition(currentFen);
-              sharedProtocol.go(analysisDepth, multiPv);
-            });
-          }
+          setCevalFenOverride(node?.fen ?? "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
           return null;
         })(),
         renderCeval(),
@@ -15982,10 +16342,7 @@ function syncOpeningsBoard(_redraw8) {
   });
   _openingsCg.setAutoShapes(buildFrequencyArrows(node));
   setCevalFenOverride(fen);
-  if (engineEnabled && sharedEngineReady) {
-    sharedProtocol.setPosition(fen);
-    sharedProtocol.go(analysisDepth, multiPv);
-  }
+  if (engineEnabled) evalCurrentPosition();
 }
 var FREQ_BRUSHES = {};
 for (let i = 0; i < 8; i++) {
@@ -16217,66 +16574,401 @@ function extractLichessUrl(pgn) {
   const site = pgn.match(/\[Site\s+"([^"]+)"]/)?.[1];
   return site && site.includes("lichess.org") ? site : "#";
 }
+function renderExplorerErrorBox(err, fen, redraw2) {
+  const isAuthError = err.message.includes("401") || err.message.includes("Unauthorized") || err.message.includes("Not connected");
+  if (isAuthError) {
+    return h("div.openings__explorer-box", { class: { reduced: true } }, [
+      h("div.overlay"),
+      h("div.openings__explorer-message", [
+        h("strong", "Lichess account required"),
+        h("p.openings__explorer-explanation", "The opening book requires a Lichess login."),
+        h("a.openings__explorer-connect-btn", {
+          attrs: { href: "/api/lichess/connect" }
+        }, "Connect to Lichess")
+      ])
+    ]);
+  }
+  return h("div.openings__explorer-box", { class: { reduced: true } }, [
+    h("div.overlay"),
+    h("div.openings__explorer-message", [
+      h("h3", "Oops, sorry!"),
+      h("p.openings__explorer-explanation", err.message),
+      h("button.openings__explorer-retry", {
+        on: { click: () => {
+          explorerCtrl.reload(fen, redraw2);
+          redraw2();
+        } }
+      }, "Retry")
+    ])
+  ]);
+}
 function renderExplorerToggle(node, redraw2) {
-  const enabled = explorerEnabled();
+  const enabled = explorerCtrl.enabled;
   return h("div.openings__explorer", [
-    h("div.openings__explorer-toggle", [
+    h("div.openings__explorer-header", [
       h("label.openings__explorer-label", [
         h("input", {
           attrs: { type: "checkbox", checked: enabled },
           on: {
             change: () => {
-              toggleExplorer();
-              if (explorerEnabled() && node) {
-                void fetchExplorer(node.fen, redraw2);
-              }
+              explorerCtrl.toggle();
+              if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw2);
               redraw2();
             }
           }
         }),
-        " Lichess Opening Book"
-      ])
+        " Opening Book"
+      ]),
+      enabled ? h("button.openings__explorer-gear", {
+        attrs: { title: "Configure explorer" },
+        on: { click: () => {
+          explorerCtrl.toggleConfig();
+          redraw2();
+        } }
+      }, "\u2699\uFE0F") : null
     ]),
-    enabled ? renderExplorerPanel(node, redraw2) : null
+    enabled ? renderExplorerDbTabs(node, redraw2) : null,
+    enabled ? explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw2) : renderExplorerPanel(node, redraw2) : null
+  ]);
+}
+function renderExplorerDbTabs(node, redraw2) {
+  const db = explorerCtrl.config.db;
+  const setDb = (d) => {
+    explorerCtrl.setDb(d);
+    if (node) explorerCtrl.setNode(node.fen, redraw2);
+    redraw2();
+  };
+  return h("div.openings__explorer-tabs", [
+    h(`button.openings__explorer-tab${db === "masters" ? ".active" : ""}`, { on: { click: () => setDb("masters") } }, "Masters"),
+    h(`button.openings__explorer-tab${db === "lichess" ? ".active" : ""}`, { on: { click: () => setDb("lichess") } }, "Lichess"),
+    h(`button.openings__explorer-tab${db === "player" ? ".active" : ""}`, { on: { click: () => setDb("player") } }, "Player")
+  ]);
+}
+function renderExplorerConfigPanel(redraw2) {
+  const cfg = explorerCtrl.config;
+  const db = cfg.db;
+  const toggleBtn = (label, active, onClick) => h("button.openings__explorer-filter-btn", {
+    class: { active },
+    on: { click: () => {
+      onClick();
+      redraw2();
+    } }
+  }, label);
+  const speedSection = () => h("div.openings__explorer-config-section", [
+    h("label", "Time control"),
+    h(
+      "div.openings__explorer-filter-row",
+      ALL_SPEEDS.map((s) => toggleBtn(s, cfg.speeds.includes(s), () => cfg.toggleSpeed(s)))
+    )
+  ]);
+  const ratingSection = () => h("div.openings__explorer-config-section", [
+    h("label", "Avg rating"),
+    h(
+      "div.openings__explorer-filter-row",
+      ALL_RATINGS.map((r) => toggleBtn(String(r), cfg.ratings.includes(r), () => cfg.toggleRating(r)))
+    )
+  ]);
+  const modeSection = () => h("div.openings__explorer-config-section", [
+    h("label", "Mode"),
+    h(
+      "div.openings__explorer-filter-row",
+      ALL_MODES.map((m) => toggleBtn(m, cfg.modes.includes(m), () => cfg.toggleMode(m)))
+    )
+  ]);
+  const dateInput = (label, value, onChange3, type) => h("label.openings__explorer-date-label", [
+    label,
+    h("input", {
+      attrs: { type, value, placeholder: type === "number" ? "YYYY" : "YYYY-MM", min: type === "number" ? "1952" : "1952-01" },
+      on: { change: (e) => {
+        onChange3(e.target.value);
+        redraw2();
+      } }
+    })
+  ]);
+  const dateSection = (type) => h("div.openings__explorer-config-section", [
+    dateInput("Since", cfg.since(), (v) => cfg.setSince(v), type),
+    dateInput("Until", cfg.until(), (v) => cfg.setUntil(v), type)
+  ]);
+  const playerSection = () => h("div.openings__explorer-config-section", [
+    h("label", "Player"),
+    h("input.openings__explorer-player-input", {
+      attrs: { type: "text", placeholder: "Lichess username", value: cfg.playerName },
+      on: {
+        change: (e) => {
+          cfg.setPlayerName(e.target.value.trim());
+          redraw2();
+        }
+      }
+    }),
+    cfg.playerPrevious.length ? h(
+      "div.openings__explorer-player-prev",
+      cfg.playerPrevious.slice(0, 10).map(
+        (name) => h("button.openings__explorer-prev-btn", {
+          on: { click: () => {
+            cfg.setPlayerName(name);
+            redraw2();
+          } }
+        }, name)
+      )
+    ) : null,
+    h("div.openings__explorer-color-row", [
+      h("label", "Color"),
+      toggleBtn("White", cfg.color === "white", () => {
+        cfg.color = "white";
+      }),
+      toggleBtn("Black", cfg.color === "black", () => {
+        cfg.color = "black";
+      })
+    ])
+  ]);
+  const sections = [];
+  if (db === "masters") sections.push(dateSection("number"));
+  if (db === "lichess") {
+    sections.push(speedSection(), ratingSection(), dateSection("month"));
+  }
+  if (db === "player") {
+    sections.push(playerSection(), speedSection(), modeSection(), dateSection("month"));
+  }
+  return h("div.openings__explorer-config", [
+    ...sections,
+    h("button.openings__explorer-config-close", {
+      on: { click: () => {
+        explorerCtrl.toggleConfig();
+        redraw2();
+      } }
+    }, "Done")
   ]);
 }
 function renderExplorerPanel(node, redraw2) {
   if (!node) return h("div.openings__explorer-empty", "No position selected.");
-  const data = explorerData();
-  if (!data || data.fen !== node.fen) {
-    if (!explorerLoading()) {
-      void fetchExplorer(node.fen, redraw2);
-    }
+  const data = explorerCtrl.current(node.fen);
+  if (!data && !explorerCtrl.loading && !explorerCtrl.failing) {
+    explorerCtrl.setNode(node.fen, redraw2);
   }
-  const loading = explorerLoading();
-  const err = explorerError();
-  if (loading) return h("div.openings__explorer-loading", "Loading book data\u2026");
-  if (err) return h("div.openings__explorer-error", err);
-  if (!data || data.moves.length === 0) {
-    return h("div.openings__explorer-empty", "No book data for this position.");
+  const loading = explorerCtrl.loading;
+  const failing = explorerCtrl.failing;
+  const movesAway = explorerCtrl.movesAway;
+  const isMasters = explorerCtrl.config.db === "masters";
+  if (failing && !data) return renderExplorerErrorBox(failing, node.fen, redraw2);
+  if (!loading && !data) {
+    const tooDeep = movesAway >= MAX_EXPLORER_DEPTH;
+    const queuePos = data?.queuePosition;
+    return h("div.openings__explorer-box", { class: { reduced: movesAway > 2 } }, [
+      h("div.openings__explorer-message", [
+        h("strong", tooDeep ? "Max depth reached" : "No game found"),
+        queuePos ? h("p.openings__explorer-explanation", `Indexing ${queuePos} other players first\u2026`) : !tooDeep ? h("p.openings__explorer-explanation", "Try adjusting the filters.") : null
+      ])
+    ]);
   }
-  const total = data.white + data.draws + data.black;
-  return h("div.openings__explorer-data", [
-    data.opening ? h("div.openings__explorer-opening", `${data.opening.eco} ${data.opening.name}`) : null,
-    h("div.openings__explorer-summary", `${total.toLocaleString()} games in database`),
-    h("div.openings__explorer-moves", data.moves.slice(0, 8).map(
-      (m) => renderExplorerMoveRow(m)
-    ))
+  if (data) {
+    const hasContent = data.moves.length > 0 || (data.topGames?.length ?? 0) > 0 || (data.recentGames?.length ?? 0) > 0;
+    const queuePos = data.queuePosition;
+    const content = hasContent ? h("div.openings__explorer-data", [
+      data.opening ? h("div.openings__explorer-opening", `${data.opening.eco} ${data.opening.name}`) : null,
+      renderExplorerMovesTable(data, node.fen, redraw2),
+      renderExplorerGamesTable("Top games", data.topGames ?? [], isMasters),
+      renderExplorerGamesTable("Recent games", data.recentGames ?? [], isMasters)
+    ]) : h("div.openings__explorer-message", [
+      h("strong", movesAway >= MAX_EXPLORER_DEPTH ? "Max depth reached" : "No game found"),
+      queuePos ? h("p.openings__explorer-explanation", `Indexing ${queuePos} other players first\u2026`) : null
+    ]);
+    return h("div.openings__explorer-box", { class: { loading, reduced: movesAway > 2 && !hasContent } }, [
+      h("div.overlay"),
+      content
+    ]);
+  }
+  return h("div.openings__explorer-box", { class: { loading: true } }, [
+    h("div.overlay"),
+    h("div.openings__explorer-message", h("p", "Loading\u2026"))
   ]);
 }
-function renderExplorerMoveRow(move3) {
-  const total = move3.white + move3.draws + move3.black || 1;
-  const wPct = (move3.white / total * 100).toFixed(0);
-  const dPct = (move3.draws / total * 100).toFixed(0);
-  const bPct = (move3.black / total * 100).toFixed(0);
-  return h("div.openings__explorer-row", { key: move3.uci }, [
-    h("span.openings__explorer-san", move3.san),
-    h("span.openings__explorer-count", `${(move3.white + move3.draws + move3.black).toLocaleString()}`),
-    h("span.openings__explorer-results", [
-      h("span.openings__mr-w", `${wPct}%`),
-      h("span.openings__mr-d", `${dPct}%`),
-      h("span.openings__mr-b", `${bPct}%`)
-    ])
+function renderExplorerGamesTable(title, games, isMasters) {
+  if (!games.length) return null;
+  const colSpan = isMasters ? 4 : 5;
+  const resultBadge = (winner) => winner === "white" ? h("result.white", "1-0") : winner === "black" ? h("result.black", "0-1") : h("result.draws", "\xBD-\xBD");
+  const openGame = (gameId) => {
+    const url = isMasters ? `https://lichess.org/import/master/${gameId}` : `https://lichess.org/${gameId}`;
+    window.open(url, "_blank", "noopener");
+  };
+  return h("table.explorer-games", [
+    h("thead", h("tr", h("th", { attrs: { colspan: colSpan } }, title))),
+    h(
+      "tbody",
+      games.map(
+        (game) => h("tr", {
+          key: game.id,
+          attrs: { "data-id": game.id, "data-uci": game.uci ?? "" },
+          on: { click: () => openGame(game.id) }
+        }, [
+          h("td.ratings", [
+            h("span", String(game.white.rating)),
+            h("span", String(game.black.rating))
+          ]),
+          h("td.players", [
+            h("span", game.white.name),
+            h("span", game.black.name)
+          ]),
+          h("td", resultBadge(game.winner)),
+          h("td.date", game.month ?? game.year ?? ""),
+          !isMasters ? h("td.speed", game.speed ? h("span", { attrs: { title: game.speed } }, speedGlyph(game.speed)) : "") : null
+        ])
+      )
+    )
+  ]);
+}
+function speedGlyph(speed) {
+  const glyphs = {
+    ultraBullet: "\u26A1\u26A1",
+    bullet: "\u26A1",
+    blitz: "\u{1F525}",
+    rapid: "\u23F1",
+    classical: "\u231B",
+    correspondence: "\u2709"
+  };
+  return glyphs[speed] ?? speed;
+}
+function compactNum(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  return String(n);
+}
+function renderExplorerResultBar(move3) {
+  const sum = move3.white + move3.draws + move3.black || 1;
+  const seg = (key) => {
+    const pct = move3[key] * 100 / sum;
+    const width = Math.round(move3[key] * 1e3 / sum) / 10;
+    return h(
+      `span.${key}`,
+      { attrs: { style: `width: ${width}%` } },
+      pct > 12 ? `${Math.round(pct)}${pct > 20 ? "%" : ""}` : ""
+    );
+  };
+  return h("div.bar", [seg("white"), seg("draws"), seg("black")]);
+}
+function renderExplorerMovesTable(data, fen, redraw2, onMoveClick, cgBoard) {
+  const sumTotal = (data.white ?? 0) + (data.draws ?? 0) + (data.black ?? 0) || 1;
+  const rows = data.moves.length > 1 ? [...data.moves, { uci: "", san: "\u03A3", white: data.white ?? 0, black: data.black ?? 0, draws: data.draws ?? 0 }] : [...data.moves];
+  const board = cgBoard ?? _openingsCg;
+  const defaultMoveClick = (uci) => {
+    navigateToMove(uci);
+    const newNode = sessionNode();
+    if (newNode) explorerCtrl.setNode(newNode.fen, redraw2);
+    redraw2();
+  };
+  const handleMoveClick = onMoveClick ?? defaultMoveClick;
+  return h("table.explorer-moves", {
+    hook: {
+      insert(vnode3) {
+        const el = vnode3.elm;
+        el.addEventListener("mouseover", (e) => {
+          const tr = e.target.closest("tr");
+          const uci = tr?.getAttribute("data-uci");
+          if (uci) {
+            explorerCtrl.setHovering(fen, uci);
+            const orig = uci.slice(0, 2);
+            const dest = uci.slice(2, 4);
+            board?.setAutoShapes([{ orig, dest, brush: "blue" }]);
+          }
+        });
+        el.addEventListener("mouseout", () => {
+          explorerCtrl.setHovering(fen, null);
+          board?.setAutoShapes([]);
+        });
+        el.addEventListener("click", (e) => {
+          const tr = e.target.closest("tr");
+          const uci = tr?.getAttribute("data-uci");
+          if (uci) handleMoveClick(uci);
+        });
+      }
+    }
+  }, [
+    h("thead", h("tr", [
+      h("th", "Move"),
+      h("th", "%"),
+      h("th", "Games"),
+      h("th", "W/D/B")
+    ])),
+    h("tbody", rows.map((move3) => {
+      const total = move3.white + move3.draws + move3.black || 1;
+      const isSum = move3.uci === "";
+      return h(isSum ? "tr.sum" : "tr", {
+        key: move3.uci || "\u03A3",
+        attrs: move3.uci ? { "data-uci": move3.uci } : {}
+      }, [
+        h("td", move3.san),
+        h("td", `${(total / sumTotal * 100).toFixed(0)}%`),
+        h("td", compactNum(total)),
+        h("td", renderExplorerResultBar(move3))
+      ]);
+    }))
+  ]);
+}
+function renderAnalysisExplorerSection(fen, cg, onMoveClick, redraw2) {
+  const enabled = explorerCtrl.enabled;
+  const isMasters = explorerCtrl.config.db === "masters";
+  return h("div.openings__explorer", [
+    h("div.openings__explorer-header", [
+      h("label.openings__explorer-label", [
+        h("input", {
+          attrs: { type: "checkbox", checked: enabled },
+          on: {
+            change: () => {
+              explorerCtrl.toggle();
+              if (explorerCtrl.enabled) explorerCtrl.setNode(fen, redraw2);
+              redraw2();
+            }
+          }
+        }),
+        " Opening Book"
+      ]),
+      enabled ? h("button.openings__explorer-gear", {
+        attrs: { title: "Configure explorer" },
+        on: { click: () => {
+          explorerCtrl.toggleConfig();
+          redraw2();
+        } }
+      }, "\u2699\uFE0F") : null
+    ]),
+    enabled ? renderExplorerDbTabs(null, redraw2) : null,
+    enabled ? explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw2) : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw2) : null
+  ]);
+}
+function renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw2) {
+  const data = explorerCtrl.current(fen);
+  if (!data && !explorerCtrl.loading && !explorerCtrl.failing) {
+    explorerCtrl.setNode(fen, redraw2);
+  }
+  const loading = explorerCtrl.loading;
+  const failing = explorerCtrl.failing;
+  const movesAway = explorerCtrl.movesAway;
+  if (failing && !data) return renderExplorerErrorBox(failing, fen, redraw2);
+  if (!loading && !data) {
+    const tooDeep = movesAway >= MAX_EXPLORER_DEPTH;
+    return h("div.openings__explorer-box", { class: { reduced: movesAway > 2 } }, [
+      h("div.openings__explorer-message", [
+        h("strong", tooDeep ? "Max depth reached" : "No game found"),
+        !tooDeep ? h("p.openings__explorer-explanation", "Try adjusting the filters.") : null
+      ])
+    ]);
+  }
+  if (data) {
+    const hasContent = data.moves.length > 0 || (data.topGames?.length ?? 0) > 0 || (data.recentGames?.length ?? 0) > 0;
+    const content = hasContent ? h("div.openings__explorer-data", [
+      data.opening ? h("div.openings__explorer-opening", `${data.opening.eco} ${data.opening.name}`) : null,
+      renderExplorerMovesTable(data, fen, redraw2, onMoveClick, cg),
+      renderExplorerGamesTable("Top games", data.topGames ?? [], isMasters),
+      renderExplorerGamesTable("Recent games", data.recentGames ?? [], isMasters)
+    ]) : h("div.openings__explorer-message", [
+      h("strong", movesAway >= MAX_EXPLORER_DEPTH ? "Max depth reached" : "No game found")
+    ]);
+    return h("div.openings__explorer-box", { class: { loading, reduced: movesAway > 2 && !hasContent } }, [
+      h("div.overlay"),
+      content
+    ]);
+  }
+  return h("div.openings__explorer-box", { class: { loading: true } }, [
+    h("div.overlay"),
+    h("div.openings__explorer-message", h("p", "Loading\u2026"))
   ]);
 }
 
@@ -17274,6 +17966,7 @@ function navigate(path) {
   syncBoard();
   syncArrow();
   evalCurrentPosition();
+  explorerCtrl.setNode(ctrl.node.fen, redraw);
   scheduleNavStateSave(ctrl.path);
   redraw();
   scrollActiveIntoView();
@@ -17559,7 +18252,19 @@ function routeContent(route) {
               redraw
             };
             return renderPuzzleCandidates(puzzleDeps);
-          })()
+          })(),
+          // Opening explorer — hidden during retrospection (same gate as retro/explorer in Lichess).
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts retroView || explorerView pattern.
+          ctrl.retro ? null : renderAnalysisExplorerSection(
+            ctrl.node.fen,
+            cgInstance,
+            (uci) => {
+              const node = nodeAtPath(ctrl.root, ctrl.path);
+              const child = node?.children.find((c) => c.uci === uci);
+              if (child) navigate(ctrl.path + child.id);
+            },
+            redraw
+          )
         ]),
         // Controls — below tools (grid-area: controls)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__controls
@@ -17759,7 +18464,7 @@ setOnLiveEvalImproved(() => {
     const gameId = selectedGameId;
     if (!gameId) return;
     const nodes = buildAnalysisNodes(ctrl.mainline, (p) => evalCache.get(p));
-    void saveAnalysisToIdb("complete", gameId, nodes, analysisDepth2);
+    void saveAnalysisToIdb("complete", gameId, nodes, analysisDepth);
   }, LIVE_EVAL_SAVE_DELAY_MS);
 });
 initReviewQueue({
