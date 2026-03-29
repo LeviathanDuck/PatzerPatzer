@@ -19,6 +19,7 @@ import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { scalachessCharPair } from 'chessops/compat';
+import { parsePgn } from 'chessops/pgn';
 import type { TreeNode, TreePath } from '../tree/types';
 import { nodeAtPath, mainlineNodeList, nodeListAt, addNode, deleteNodeAt, pathInit } from '../tree/ops';
 import { pgnToTree } from '../tree/pgn';
@@ -313,6 +314,53 @@ export class PuzzleRoundCtrl {
   treePath: TreePath;
   treeNode: TreeNode;
   treeMainline: TreeNode[];
+
+  // --- Lazy-parsed PGN header cache ---
+  private _pgnHeaders: { white: string; black: string; result: string } | null | undefined = undefined;
+
+  /**
+   * PGN headers (White, Black, Result) lazily parsed from gamePgn.
+   * Returns null when gamePgn is unavailable or unparseable.
+   */
+  get pgnHeaders(): { white: string; black: string; result: string } | null {
+    if (this._pgnHeaders !== undefined) return this._pgnHeaders;
+    if (!this.gamePgn) { this._pgnHeaders = null; return null; }
+    try {
+      const game = parsePgn(this.gamePgn)[0];
+      if (!game) { this._pgnHeaders = null; return null; }
+      this._pgnHeaders = {
+        white: game.headers.get('White') ?? '',
+        black: game.headers.get('Black') ?? '',
+        result: game.headers.get('Result') ?? '*',
+      };
+      return this._pgnHeaders;
+    } catch {
+      this._pgnHeaders = null;
+      return null;
+    }
+  }
+
+  /**
+   * Clock times (in centiseconds) at the puzzle start position, from the game tree.
+   * Walks the game tree mainline from root to the puzzle position and finds
+   * the most recent clock for each color — same logic as getClocksAtPath on
+   * the analysis board.
+   */
+  get puzzleClocks(): { white: number | undefined; black: number | undefined } {
+    if (!this.gameTree) return { white: undefined, black: undefined };
+    const targetPath = this.gameTreePuzzlePath ?? '';
+    const nodes = nodeListAt(this.gameTree, targetPath);
+    let white: number | undefined;
+    let black: number | undefined;
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      const n = nodes[i];
+      if (!n || n.clock === undefined) continue;
+      if (n.ply % 2 === 1 && white === undefined) white = n.clock;
+      if (n.ply % 2 === 0 && n.ply > 0 && black === undefined) black = n.clock;
+      if (white !== undefined && black !== undefined) break;
+    }
+    return { white, black };
+  }
 
   constructor(definition: PuzzleDefinition, redraw: () => void) {
     this.definition = definition;
@@ -1241,6 +1289,7 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
         console.log('[pgn] loadPuzzlePgn resolved', { pgn: !!pgn, defId: def.id, ctrlId: activeRoundCtrl?.definition.id });
         if (pgn && activeRoundCtrl?.definition.id === def.id) {
           activeRoundCtrl.gamePgn = pgn;
+          activeRoundCtrl['_pgnHeaders'] = undefined; // invalidate lazy cache
           const treeOk = activeRoundCtrl.loadGameTree();
           console.log('[pgn] loadGameTree result', treeOk);
           redraw();
