@@ -53,18 +53,8 @@ function ensureHeaderAuth(redraw: () => void): void {
   });
 }
 
-function renderUserArea(redraw: () => void): VNode {
-  if (headerAuthUser) {
-    return h('div.header__user', [
-      h('span.header__username', headerAuthUser),
-      h('button.header__logout', {
-        attrs: { title: 'Log out' },
-        on: { click: () => {
-          logout().then(() => { headerAuthUser = null; redraw(); });
-        }},
-      }, '✕'),
-    ]);
-  }
+function renderUserArea(redraw: () => void): VNode | null {
+  if (headerAuthUser) return null;
   return h('a.header__login', {
     attrs: { href: '/api/lichess/connect', title: 'Login with Lichess' },
   }, 'Login');
@@ -633,6 +623,12 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       h('button.global-menu__item', {
         on: { click: () => { showRetroModal = true; showGlobalMenu = false; redraw(); } },
       }, 'Mistake Detection…'),
+
+      headerAuthUser ? h('button.global-menu__item.global-menu__item--logout', {
+        on: { click: () => {
+          logout().then(() => { headerAuthUser = null; closeGlobalMenu(redraw); });
+        }},
+      }, 'Logout') : null,
 
       h('div.global-menu__item.global-menu__item--has-sub', {
         on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },

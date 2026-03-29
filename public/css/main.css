@@ -1194,6 +1194,15 @@ main {
 .global-menu__item--has-sub {
   user-select: none;
 }
+.global-menu__item--logout {
+  color: #c77;
+  border-top: 1px solid #2a2a2a;
+  margin-top: 4px;
+}
+.global-menu__item--logout:hover {
+  background: #2a1a1a;
+  color: #f88;
+}
 .global-menu__item--toggle {
   cursor: default;
 }
