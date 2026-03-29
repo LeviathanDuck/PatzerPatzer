@@ -224,6 +224,7 @@ function appendSolutionMoveToTree(rc: PuzzleRoundCtrl, uci: string): void {
   if (!newNode) return;
   addNode(rc.treeRoot, rc.treePath, newNode);
   rc.treePath = rc.treePath + newNode.id;
+  rc.livePath = rc.treePath;
   rc.treeNode = newNode;
   rc.treeMainline = mainlineNodeList(rc.treeRoot);
 }
@@ -299,6 +300,10 @@ export class PuzzleRoundCtrl {
   private puzzleTreeRoot: TreeNode;
   /** Saved puzzle tree path — restored when leaving analysis mode. */
   private puzzleTreePath: TreePath;
+  /** The tree path at the actual live play position (not a browsed position). Updated as moves are confirmed. */
+  livePath: TreePath;
+  /** Path within gameTree being previewed read-only. Null when not in context-peek mode. */
+  contextPeekPath: TreePath | null;
 
   // --- Move tree ---
   // Full tree structure for analysis-board-style move list and navigation.
@@ -350,6 +355,8 @@ export class PuzzleRoundCtrl {
     this.treeMainline = mainlineNodeList(root);
     this.puzzleTreeRoot = root;
     this.puzzleTreePath = path;
+    this.livePath = path;
+    this.contextPeekPath = null;
   }
 
   /**
@@ -441,10 +448,11 @@ export class PuzzleRoundCtrl {
     redraw();
   }
 
-  /** Navigate the tree to a given path. Updates treeNode and syncs the board. */
+  /** Navigate the tree to a given path. Updates treeNode and syncs the board. Exits context-peek mode. */
   setTreePath(path: TreePath): void {
     const target = nodeAtPath(this.treeRoot, path);
     if (!target) return;
+    this.contextPeekPath = null;
     this.treePath = path;
     this.treeNode = target;
     this.treeMainline = mainlineNodeList(this.treeRoot);
@@ -1427,15 +1435,39 @@ export function syncPuzzleBoard(): void {
   const cg = puzzleCg;
   const rc = activeRoundCtrl;
   if (!cg || !rc) return;
+
+  // Context-peek mode: show a game-tree position as read-only.
+  // The user is browsing pre-puzzle game moves without affecting puzzle state.
+  if (rc.contextPeekPath !== null && rc.gameTree) {
+    const ctxNode = nodeAtPath(rc.gameTree, rc.contextPeekPath);
+    if (ctxNode) {
+      const ctxSetup = parseFen(ctxNode.fen);
+      const ctxTurn: 'white' | 'black' = ctxSetup.isOk && Chess.fromSetup(ctxSetup.value).isOk
+        ? Chess.fromSetup(ctxSetup.value).value.turn : 'white';
+      const ctxLastMove = ctxNode.uci
+        ? [ctxNode.uci.slice(0, 2) as Key, ctxNode.uci.slice(2, 4) as Key] : undefined;
+      cg.set({
+        fen: ctxNode.fen,
+        turnColor: ctxTurn,
+        lastMove: ctxLastMove,
+        movable: { color: rc.pov, dests: new Map<Key, Key[]>() },
+      });
+      return;
+    }
+  }
+
   const node = rc.treeNode;
   const setup = parseFen(node.fen);
   if (setup.isErr) return;
   const pos = Chess.fromSetup(setup.value);
   if (pos.isErr) return;
-  const dests = chessgroundDests(pos.value) as Map<Key, Key[]>;
   const turn: 'white' | 'black' = pos.value.turn;
   const lastMove = node.uci ? [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] : undefined;
   const movableColor = (rc.mode === 'view' || rc.analysisMode) ? 'both' as const : rc.pov;
+  // When browsed away from the live position during play, pass empty dests to prevent
+  // accidental moves from a position that isn't the current solve state.
+  const isBrowsed = rc.mode !== 'view' && !rc.analysisMode && rc.treePath !== rc.livePath;
+  const dests = isBrowsed ? new Map<Key, Key[]>() : (chessgroundDests(pos.value) as Map<Key, Key[]>);
   cg.set({
     fen: node.fen,
     turnColor: turn,
@@ -1445,6 +1477,134 @@ export function syncPuzzleBoard(): void {
       dests,
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard navigation — Adapted from lichess-org/lila: ui/puzzle/src/control.ts
+// prev/next/first/last work across context-peek, puzzle tree, and analysis mode.
+// ---------------------------------------------------------------------------
+
+/**
+ * Preview a pre-puzzle game position read-only.
+ * Sets contextPeekPath and updates the board without affecting puzzle state.
+ * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts userJump (backward navigation)
+ */
+export function peekPuzzleContext(gameTreePath: TreePath, redraw: () => void): void {
+  const rc = activeRoundCtrl;
+  if (!rc || !rc.gameTree) return;
+  rc.contextPeekPath = gameTreePath;
+  syncPuzzleBoard();
+  redraw();
+}
+
+/**
+ * Navigate backward: through puzzle tree, then into context-peek if at root.
+ * Adapted from lichess-org/lila: ui/puzzle/src/control.ts prev
+ */
+export function puzzlePrev(redraw: () => void): void {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+
+  if (rc.contextPeekPath !== null) {
+    // Backward within context (game tree before puzzle start)
+    const parent = pathInit(rc.contextPeekPath);
+    if (parent === rc.contextPeekPath) return; // already at game root
+    rc.contextPeekPath = parent;
+    syncPuzzleBoard();
+    redraw();
+    return;
+  }
+
+  if (rc.treePath === '') {
+    // At puzzle tree root — enter context peek at puzzle start in game tree
+    if (rc.gameTree && rc.gameTreePuzzlePath !== null) {
+      rc.contextPeekPath = rc.gameTreePuzzlePath;
+      syncPuzzleBoard();
+      redraw();
+    }
+    return;
+  }
+
+  // Backward within puzzle tree (always safe — root/trigger are already-known positions)
+  rc.setTreePath(pathInit(rc.treePath));
+  syncPuzzleBoard();
+  redraw();
+}
+
+/**
+ * Navigate forward: through context-peek into puzzle tree, then advance played moves.
+ * During play, only advances to positions at or before the live path.
+ * Adapted from lichess-org/lila: ui/puzzle/src/control.ts next
+ */
+export function puzzleNext(redraw: () => void): void {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+
+  if (rc.contextPeekPath !== null && rc.gameTree) {
+    const ctxNode = nodeAtPath(rc.gameTree, rc.contextPeekPath);
+    const child = ctxNode?.children[0];
+    if (child) {
+      // Advance within context
+      rc.contextPeekPath = rc.contextPeekPath + child.id;
+      syncPuzzleBoard();
+      redraw();
+    } else {
+      // End of context — transition to puzzle tree root (same FEN as last context node)
+      rc.contextPeekPath = null;
+      syncPuzzleBoard();
+      redraw();
+    }
+    return;
+  }
+
+  const child = rc.treeNode.children[0];
+  if (!child) return;
+  const nextPath = rc.treePath + child.id;
+
+  if (rc.mode === 'view' || rc.analysisMode) {
+    rc.setTreePath(nextPath);
+    syncPuzzleBoard();
+    redraw();
+    return;
+  }
+
+  // During play: only advance toward the live (confirmed) position
+  if (rc.livePath.startsWith(nextPath)) {
+    rc.setTreePath(nextPath);
+    syncPuzzleBoard();
+    redraw();
+  }
+}
+
+/**
+ * Jump to the start (puzzle tree root = position before trigger).
+ * Adapted from lichess-org/lila: ui/puzzle/src/control.ts first
+ */
+export function puzzleFirst(redraw: () => void): void {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+  rc.setTreePath(''); // clears contextPeekPath via setTreePath
+  syncPuzzleBoard();
+  redraw();
+}
+
+/**
+ * Jump to the end of already-played moves (live path during play, full mainline post-solve).
+ * Adapted from lichess-org/lila: ui/puzzle/src/control.ts last
+ */
+export function puzzleLast(redraw: () => void): void {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+  if (rc.mode === 'view' || rc.analysisMode) {
+    const mainline = mainlineNodeList(rc.treeRoot);
+    let path = '';
+    for (const node of mainline.slice(1)) path += node.id;
+    rc.setTreePath(path);
+  } else {
+    rc.setTreePath(rc.livePath);
+  }
+  syncPuzzleBoard();
+  redraw();
 }
 
 /**

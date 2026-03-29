@@ -185,6 +185,7 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
 - [x] CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
 - [x] CCP-069 - Refine Eval Graph Fill And Resize Handle
+- [ ] CCP-069-F1 - Keep Eval Graph Markers Fixed During Resize
 - [x] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 - [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
@@ -267,6 +268,25 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-229 - Client Sync Service
 - [x] CCP-230 - Admin UI Login Panel and Sync Controls
 - [x] CCP-231 - Auth and Sync Sprint Batch Manager
+- [x] CCP-232 - Opening Explorer API and Streaming Layer
+- [x] CCP-233 - Opening Explorer Controller and Config State
+- [x] CCP-234 - Opening Explorer Moves Table and Result Bars
+- [x] CCP-235 - Opening Explorer Config Panel
+- [x] CCP-236 - Opening Explorer Top and Recent Games Tables
+- [x] CCP-237 - Opening Explorer Loading Empty and Error States
+- [x] CCP-238 - Integrate Opening Explorer Into Analysis Board
+- [ ] CCP-239 - Opening Explorer Tablebase Panel
+- [x] CCP-240 - Opening Explorer Sprint Batch Manager
+- [ ] CCP-153-F3 - Unify Puzzle Trigger Move And Pre-Solve Navigation
+- [ ] CCP-241 - Extract Analysis Controls Owner
+- [ ] CCP-242 - Add Analysis Control Bar Shell
+- [ ] CCP-243 - Add Analysis Action Menu Overlay
+- [ ] CCP-244 - Move Existing Analysis Actions Into Menu
+- [ ] CCP-245 - Add Opening Explorer Control-Bar Button
+- [ ] CCP-246 - Split Engine Gear And Analysis Menu
+- [ ] CCP-247 - Remove Duplicate Header Analysis Items
+- [ ] CCP-248 - Analysis Controls Foundations Batch Manager
+- [ ] CCP-249 - Analysis Controls Migration Batch Manager
 
 ## Detailed Log
 
@@ -323,8 +343,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: execute the openings board follow-up batch for played-line arrows and optional engine controls in order
   - Created by: `Codex`
   - Created at: `2026-03-28T07:12:05Z`
-  - Started at: not started
-  - Claude used: no
+  - Started at: `2026-03-29T20:03:24.610Z`
+  - Claude used: yes
   - Review outcome: pending
   - Review issues: pending
   - Execution target: `Claude Code`
@@ -3850,6 +3870,26 @@ Use this file to track Claude Code prompts from creation through review.
   - Execution target: `Codex`
 ```
 
+## CCP-069-F1 - Keep Eval Graph Markers Fixed During Resize
+
+```
+- [ ] Reviewed
+  - ID: `CCP-069-F1`
+  - Task ID: `CCP-069`
+  - Parent prompt ID: `CCP-069`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `keep eval-graph styling and markers fixed-size while only vertical graph height changes; ensure the grey middle line renders behind the graph`
+  - Task: fix the eval-graph resize behavior so dragging the graph larger only changes its vertical graph area, keeps markers visually fixed-size and undistorted, and renders the grey middle line behind the graph content
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:41:23Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
 ## CCP-065 - Add Toggle For Review Label Visibility
 
 ```
@@ -5487,5 +5527,385 @@ Use this file to track Claude Code prompts from creation through review.
   - Claude used: yes
   - Review outcome: issues found
   - Review issues: child prompts CCP-226 and CCP-229 are not review-clean, so the auth and sync manager batch does not pass.
+  - Execution target: `Claude Code`
+```
+
+## CCP-232 - Opening Explorer API and Streaming Layer
+
+```
+- [x] Reviewed
+  - ID: `CCP-232`
+  - Task ID: `CCP-232`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprint A — API layer`
+  - Task: replace the current one-shot explorer fetch with a typed opening explorer HTTP layer for masters, lichess, and player databases, including NDJSON streaming and abortable requests
+  - Created by: `Codex`
+  - Created at: `2026-03-29T19:52:11Z`
+  - Started at: `2026-03-29T20:12:28.775Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-233 - Opening Explorer Controller and Config State
+
+```
+- [x] Reviewed
+  - ID: `CCP-233`
+  - Task ID: `CCP-233`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprint B — ExplorerCtrl`
+  - Task: add a Lichess-style opening explorer controller and config owner with state, FEN cache, setNode, and localStorage-backed settings
+  - Created by: `Codex`
+  - Created at: `2026-03-29T19:52:11Z`
+  - Started at: `2026-03-29T20:13:17.389Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-234 - Opening Explorer Moves Table and Result Bars
+
+```
+- [x] Reviewed
+  - ID: `CCP-234`
+  - Task ID: `CCP-234`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprint C — Moves table`
+  - Task: upgrade the explorer move list into a Lichess-style moves table with result bars, hover arrows, and click-to-play
+  - Created by: `Codex`
+  - Created at: `2026-03-29T19:52:11Z`
+  - Started at: `2026-03-29T20:14:34.215Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: src/openings/view.ts leaves explorer move-table hover/click board integration in a type-broken state around Chessground dests, brushes, and auto-shapes, so the moves-table step is not validation-clean.
+  - Execution target: `Claude Code`
+```
+
+## CCP-235 - Opening Explorer Config Panel
+
+```
+- [x] Reviewed
+  - ID: `CCP-235`
+  - Task ID: `CCP-235`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprint D — Config panel`
+  - Task: add the Lichess-style opening explorer config panel with masters, lichess, and player filters backed by persisted config state
+  - Created by: `Codex`
+  - Created at: `2026-03-29T19:52:11Z`
+  - Started at: `2026-03-29T20:16:10.430Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-236 - Opening Explorer Top and Recent Games Tables
+
+```
+- [x] Reviewed
+  - ID: `CCP-236`
+  - Task ID: `CCP-236`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprint E — Top / Recent games table`
+  - Task: add top and recent explorer game tables with ratings, names, results, dates, and safe row-open behavior
+  - Created by: `Codex`
+  - Created at: `2026-03-29T19:52:11Z`
+  - Started at: `2026-03-29T20:19:29.716Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: explorerCtrl still forces topGames/recentGames off for every DB, so the new explorer games tables render no live explorer game data.
+  - Execution target: `Claude Code`
+```
+
+## CCP-237 - Opening Explorer Loading Empty and Error States
+
+```
+- [x] Reviewed
+  - ID: `CCP-237`
+  - Task ID: `CCP-237`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprint F — Empty / loading / error states`
+  - Task: upgrade the opening explorer panel with real loading, empty, max-depth, indexing, and error states
+  - Created by: `Codex`
+  - Created at: `2026-03-29T19:52:11Z`
+  - Started at: `2026-03-29T20:22:04.853Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-238 - Integrate Opening Explorer Into Analysis Board
+
+```
+- [x] Reviewed
+  - ID: `CCP-238`
+  - Task ID: `CCP-238`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprint G — Integration into analysis board`
+  - Task: integrate the upgraded opening explorer into the analysis board with a toolbar toggle, tools-column panel, and node-sync on navigation
+  - Created by: `Codex`
+  - Created at: `2026-03-29T19:52:11Z`
+  - Started at: `2026-03-29T20:23:34.643Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: analysis-board explorer integration currently leaves src/main.ts with a duplicate cgInstance import/typecheck failure, so the integration step is not review-clean.
+  - Execution target: `Claude Code`
+```
+
+## CCP-239 - Opening Explorer Tablebase Panel
+
+```
+- [ ] Reviewed
+  - ID: `CCP-239`
+  - Task ID: `CCP-239`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprint H — Tablebase (optional / later)`
+  - Task: add the optional tablebase mode for low-piece-count explorer positions with DTZ and DTM style output
+  - Created by: `Codex`
+  - Created at: `2026-03-29T19:52:11Z`
+  - Started at: `2026-03-29T21:11:23.126Z`
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-240 - Opening Explorer Sprint Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-240`
+  - Task ID: `CCP-240`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-232`, `CCP-233`, `CCP-234`, `CCP-235`, `CCP-236`, `CCP-237`, `CCP-238`
+  - Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - Source step: `Sprints A-G batch manager`
+  - Task: execute the opening explorer rollout batch for API, controller, table, config, game tables, states, and analysis-board integration
+  - Created by: `Codex`
+  - Created at: `2026-03-29T20:04:01Z`
+  - Started at: `2026-03-29T20:04:42.288Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: child prompts CCP-234, CCP-236, and CCP-238 are not review-clean, so the Sprints A-G explorer batch manager does not pass.
+  - Execution target: `Claude Code`
+```
+
+## CCP-153-F3 - Unify Puzzle Trigger Move And Pre-Solve Navigation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-153-F3`
+  - Task ID: `CCP-153`
+  - Parent prompt ID: `CCP-153-F2`
+  - Batch prompt IDs: none
+  - Source document: `docs/PUZZLE_V1_PLAN.md`
+  - Source step: `Puzzle Round Move List Continuity And Pre-Solve Navigation`
+  - Task: fix the puzzle-round move-list continuity bug so the trigger move and cached game context are navigable as one pre-solve path with puzzle-aware arrow-key stepping
+  - Created by: `Codex`
+  - Created at: `2026-03-29T20:54:49Z`
+  - Started at: `2026-03-29T20:57:42.339Z`
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-241 - Extract Analysis Controls Owner
+
+```
+- [ ] Reviewed
+  - ID: `CCP-241`
+  - Task ID: `CCP-241`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Task 1 — Extract a dedicated analysis-controls owner`
+  - Task: extract a real analysis-controls owner under src/analyse so control-bar and future action-menu state stop living as ad hoc glue in main.ts
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-242 - Add Analysis Control Bar Shell
+
+```
+- [ ] Reviewed
+  - ID: `CCP-242`
+  - Task ID: `CCP-242`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Task 2 — Add the Lichess-style control bar shell`
+  - Task: replace the current custom controls row with a real analysis control-bar shell that adds first/last and a right-side hamburger trigger while preserving current review actions
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-243 - Add Analysis Action Menu Overlay
+
+```
+- [ ] Reviewed
+  - ID: `CCP-243`
+  - Task ID: `CCP-243`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Task 3 — Add the analysis-local hamburger menu overlay`
+  - Task: add a Lichess-style analysis-local action-menu overlay inside the tools column, opened by the control-bar hamburger
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-244 - Move Existing Analysis Actions Into Menu
+
+```
+- [ ] Reviewed
+  - ID: `CCP-244`
+  - Task ID: `CCP-244`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Task 4 — Move existing analysis-local actions into the new menu`
+  - Task: move the first safe set of existing analysis-local actions into the new analysis menu without rewriting their storage owners
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-245 - Add Opening Explorer Control-Bar Button
+
+```
+- [ ] Reviewed
+  - ID: `CCP-245`
+  - Task ID: `CCP-245`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Task 5 — Add opening explorer as a first-class control-bar tool`
+  - Task: add an opening explorer button to the analysis control bar and wire it into Patzer's existing explorer state as a real analysis-local tool
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-246 - Split Engine Gear And Analysis Menu
+
+```
+- [ ] Reviewed
+  - ID: `CCP-246`
+  - Task ID: `CCP-246`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Task 6 — Split engine gear from analysis menu more honestly`
+  - Task: keep engine-search settings in the ceval gear while moving broader display toggles into the analysis action menu
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-247 - Remove Duplicate Header Analysis Items
+
+```
+- [ ] Reviewed
+  - ID: `CCP-247`
+  - Task ID: `CCP-247`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Task 7 — Clean duplicates out of the global header menu`
+  - Task: remove duplicated analysis-local header menu items once their replacements are live in the analysis controls/menu
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-248 - Analysis Controls Foundations Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-248`
+  - Task ID: `CCP-248`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-241`, `CCP-242`, `CCP-243`, `CCP-244`
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Foundation batch manager`
+  - Task: execute the analysis controls parity foundation batch for owner extraction, control-bar shell, local action-menu overlay, and first migrated actions
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-249 - Analysis Controls Migration Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-249`
+  - Task ID: `CCP-249`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-245`, `CCP-246`, `CCP-247`
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Migration batch manager`
+  - Task: execute the analysis controls parity migration batch for explorer button parity, gear/menu split, and header cleanup
+  - Created by: `Codex`
+  - Created at: `2026-03-29T21:21:12Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
   - Execution target: `Claude Code`
 ```

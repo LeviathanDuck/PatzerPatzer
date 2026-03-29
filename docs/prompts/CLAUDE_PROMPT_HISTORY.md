@@ -196,7 +196,7 @@ Also include a short manual test checklist with concrete user actions and expect
 - Source step: `openings board arrow-and-engine follow-up batch`
 - Created by: `Codex`
 - Created at: `2026-03-28T07:12:05Z`
-- Started at: not started
+- Started at: `2026-03-29T20:03:24.610Z`
 - Status: created
 - Review outcome: pending
 - Commit: unknown
@@ -11391,6 +11391,105 @@ Original prompt text was not recovered for CCP-044-F4.
 Original prompt text was not recovered for CCP-069.
 ```
 
+## CCP-069-F1 — Created
+
+- Task: fix the eval-graph resize behavior so dragging the graph larger only changes its vertical graph area, keeps markers visually fixed-size and undistorted, and renders the grey middle line behind the graph content
+- Task ID: `CCP-069`
+- Parent prompt ID: `CCP-069`
+- Source document: `ad hoc user request`
+- Source step: `keep eval-graph styling and markers fixed-size while only vertical graph height changes; ensure the grey middle line renders behind the graph`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:41:23Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: follow-up prompt for eval-graph resize rendering so dots stay circular and stable while only the graph height changes.
+
+```
+Prompt ID: CCP-069-F1
+Task ID: CCP-069
+Parent Prompt ID: CCP-069
+Source Document: ad hoc user request
+Source Step: keep eval-graph styling and markers fixed-size while only vertical graph height changes; ensure the grey middle line renders behind the graph
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-069-F1`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same eval-graph / analysis-view / chart-styling / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix the eval-graph resize behavior so dragging the graph larger only changes its vertical graph area, not the apparent size or shape of internal styling elements like dots and markers, and ensure the grey middle line renders behind the graph rather than in front of it.
+
+Current repo-grounded diagnosis to confirm:
+- `src/analyse/evalView.ts` currently renders the graph as a single SVG with:
+  - `viewBox="0 0 600 80"`
+  - `height: renderedGraphHeight`
+  - `preserveAspectRatio: 'none'`
+- the graph resize changes SVG height directly
+- dots are rendered as SVG `circle` elements inside that same stretched SVG
+- because the SVG is being non-uniformly scaled, dots can visually distort from circles into odd stretched shapes as the graph gets taller
+- the current middle line / hover line layering also needs verification so the neutral grey midline is behind the main graph content, not sitting visually on top of it
+
+Inspect first:
+- Patzer:
+  - `src/analyse/evalView.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md` only if useful for graph placement context
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/chart/src/acpl.ts`
+  - `~/Development/lichess-source/lila/ui/chart/src/division.ts`
+
+Implementation goal:
+- make eval-graph resize change only the vertical graph space
+- keep dots/markers visually circular and the same apparent size regardless of graph height
+- keep the line styling honest and stable as the graph is resized
+- ensure the grey middle line is behind the graph trace/fill rather than in front of it
+
+Constraints:
+- keep this scoped to eval-graph rendering and styling only
+- do not redesign the resize handle
+- do not bundle unrelated graph fill/color changes unless a tiny shared render fix is required
+- do not change graph interaction behavior beyond what is necessary to keep markers and layering correct
+- prefer the smallest safe render-structure change over a broad chart rewrite
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for eval-graph resize rendering
+- explicitly report:
+  - how graph height is now changed
+  - why markers/dots keep their shape and size
+  - whether the middle line now renders behind the graph content
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
 ## CCP-065 — Reviewed
 
 - Task: verify exact Lichess move-review label rendering and add a persisted engine-setting toggle that shows or hides visible review labels in Patzer
@@ -15245,6 +15344,1969 @@ Execution rules:
 
 After each completed child prompt, report briefly:
 - Prompt ID, task title, build result, validation result, whether batch continues or stops
+
+If the batch finishes, report a compact summary of completed Prompt IDs.
+```
+
+## CCP-232 — Reviewed
+
+- Task: replace the current one-shot explorer fetch with a typed opening explorer HTTP layer for masters, lichess, and player databases, including NDJSON streaming and abortable requests
+- Task ID: `CCP-232`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprint A — API layer`
+- Created by: `Codex`
+- Created at: `2026-03-29T19:52:11Z`
+- Started at: `2026-03-29T20:12:28.775Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: opening explorer audit sprint A
+
+```
+Prompt ID: CCP-232
+Task ID: CCP-232
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprint A — API layer
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-232`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / API / streaming / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: replace the current one-shot Lichess-only explorer fetch with the smallest safe typed opening-explorer HTTP layer modeled on Lichess, supporting `masters`, `lichess`, and `player` databases, honest parameter building, NDJSON streaming for opening responses, and abortable requests.
+
+Current repo-grounded starting point to confirm:
+- `src/openings/explorer.ts` currently fetches only `https://explorer.lichess.ovh/lichess`
+- it uses a single `res.json()` path rather than the streamed NDJSON pattern from Lichess
+- it does not yet expose typed source-specific request params for `masters` / `lichess` / `player`
+- it is a small comparison helper, not yet a real explorer transport layer
+
+Inspect first:
+- Patzer:
+  - `src/openings/explorer.ts`
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/openings/types.ts`
+- Patzer references:
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/interfaces.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerXhr.ts`
+
+Implementation goal:
+- introduce typed explorer request / response interfaces that match the audited Lichess data model closely enough for future controller and view work
+- add a dedicated explorer fetch layer that can request:
+  - `/masters`
+  - `/lichess`
+  - `/player`
+- support NDJSON merge-stream handling for opening responses
+- support abortable fetches cleanly
+- keep the current Patzer explorer owner honest by evolving or replacing the current `src/openings/explorer.ts` seam rather than creating a second parallel fetch stack
+
+Constraints:
+- do not build the config panel yet
+- do not build the games tables yet
+- do not build tablebase yet
+- do not integrate into the analysis board yet
+- keep this scoped to data-layer ownership plus the minimum adapter work needed so current explorer callers still compile
+- if the final navigation debounce belongs in the later controller prompt, keep only the smallest reusable debounce/abort seam here
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the new explorer fetch layer
+- explicitly report:
+  - which explorer DBs are now supported by the transport layer
+  - how NDJSON streaming is handled
+  - how abortable requests are handled
+  - whether current explorer callers were kept working or adapted
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+- if live API validation cannot be performed in the environment, say that clearly rather than guessing
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-233 — Reviewed
+
+- Task: add a Lichess-style opening explorer controller and config owner with state, FEN cache, setNode, and localStorage-backed settings
+- Task ID: `CCP-233`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprint B — ExplorerCtrl`
+- Created by: `Codex`
+- Created at: `2026-03-29T19:52:11Z`
+- Started at: `2026-03-29T20:13:17.389Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: opening explorer audit sprint B
+
+```
+Prompt ID: CCP-233
+Task ID: CCP-233
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprint B — ExplorerCtrl
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-233`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / controller / localStorage / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add the smallest safe Lichess-style opening-explorer controller and config owner on top of the new fetch layer, with explorer state, FEN cache, `setNode()` entrypoint, DB/filter persistence, and a shape that can later be reused by the analysis board instead of staying a loose global helper.
+
+Current repo-grounded starting point to confirm:
+- `src/openings/explorer.ts` currently owns a little global state, but not a real controller
+- there is no `setNode()` contract tied to board navigation
+- there is no audited Lichess-style config owner with DB-specific settings and localStorage persistence
+- there is no real `movesAway`, `hovering`, or structured `failing` state
+
+Inspect first:
+- Patzer:
+  - `src/openings/explorer.ts`
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/openings/db.ts`
+  - `src/main.ts`
+- Patzer references:
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerCtrl.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerConfig.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+
+Implementation goal:
+- add a dedicated explorer state owner with the equivalent core fields:
+  - `enabled`
+  - `loading`
+  - `failing`
+  - `hovering`
+  - `movesAway`
+  - in-memory FEN cache
+- add a config owner for the audited DB/filter state
+- persist the relevant explorer settings in localStorage
+- expose a clean `setNode()` style seam for later analysis-board integration
+- keep the current openings-page explorer usable through this owner rather than bypassing it
+
+Constraints:
+- do not build the richer moves table yet
+- do not build the top/recent games tables yet
+- do not build tablebase yet
+- do not stuff large explorer logic directly into `src/main.ts`
+- keep ownership explicit and small
+- if a separate `src/openings/explorerCtrl.ts` and `src/openings/explorerConfig.ts` split is the smallest safe move, prefer that over growing the current single file further
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for controller/config behavior
+- explicitly report:
+  - what explorer state now exists
+  - what localStorage-backed settings now exist
+  - how `setNode()` or its equivalent is exposed
+  - how cache hits/misses are handled
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-234 — Reviewed
+
+- Task: upgrade the explorer move list into a Lichess-style moves table with result bars, hover arrows, and click-to-play
+- Task ID: `CCP-234`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprint C — Moves table`
+- Created by: `Codex`
+- Created at: `2026-03-29T19:52:11Z`
+- Started at: `2026-03-29T20:14:34.215Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: opening explorer audit sprint C
+
+```
+Prompt ID: CCP-234
+Task ID: CCP-234
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprint C — Moves table
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-234`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / board-hover / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: upgrade the current simple explorer move rows into a Lichess-style moves table with compact game counts, move-share percentages, stacked W/D/B result bars, hover-to-arrow board integration, and click-to-play behavior.
+
+Current repo-grounded starting point to confirm:
+- `src/openings/view.ts` currently renders a simple explorer list with SAN, raw count, and three text percentages
+- it does not yet render a true moves table
+- it does not yet match the audited stacked result-bar presentation
+- it does not yet wire row hover and row click through a Lichess-like explorer move interaction model
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/explorer.ts`
+  - `src/openings/ctrl.ts`
+  - `src/board/index.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerView.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerUtil.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/explorer/_explorer.scss`
+
+Implementation goal:
+- replace the current simple explorer move rows with a real table/list structure that clearly reads as a move table
+- show:
+  - move SAN
+  - share of games at that position
+  - compact total game count
+  - stacked White / Draw / Black result bar
+- on hover, draw the candidate move on the board
+- on click, play the move on the board through the current board/session owner instead of inventing a fake parallel path
+
+Constraints:
+- keep this scoped to the moves table only
+- do not build the config panel yet
+- do not build top/recent games tables yet
+- do not build tablebase yet
+- do not redesign the whole openings page
+- keep hover/click integration honest to the current board owner instead of faking a disconnected UI-only row state
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for explorer move interactions
+- explicitly report:
+  - how the result bar works
+  - how move-share percentage is computed/displayed
+  - how hover arrows are drawn
+  - how clicking a move updates the board/session
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-235 — Reviewed
+
+- Task: add the Lichess-style opening explorer config panel with masters, lichess, and player filters backed by persisted config state
+- Task ID: `CCP-235`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprint D — Config panel`
+- Created by: `Codex`
+- Created at: `2026-03-29T19:52:11Z`
+- Started at: `2026-03-29T20:16:10.430Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: opening explorer audit sprint D
+
+```
+Prompt ID: CCP-235
+Task ID: CCP-235
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprint D — Config panel
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-235`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / config UI / localStorage / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add the Lichess-style opening-explorer config panel and DB switching surface, including the relevant filter controls for `masters`, `lichess`, and `player`, while keeping the implementation grounded in the controller/config owner from the previous sprint rather than scattering settings through the view.
+
+Current repo-grounded starting point to confirm:
+- the current explorer surface has no real DB tabs and no config panel
+- Patzer currently only exposes a tiny optional Lichess-only comparison surface
+- there is no audited player-name history list, color toggle, mode toggle, rating-band selector, or month/year range UI
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/explorer.ts`
+  - `src/openings/ctrl.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerView.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerConfig.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/explorer/_config.scss`
+  - `~/Development/lichess-source/lila/ui/analyse/css/explorer/_explorer.scss`
+
+Implementation goal:
+- add a DB switcher for:
+  - `masters`
+  - `lichess`
+  - `player`
+- add a config panel with the audited DB-specific controls
+- persist settings through the controller/config owner rather than view-local ad hoc state
+- keep the current openings explorer small but clearly on the path toward the audited Lichess explorer shape
+
+Constraints:
+- keep this scoped to config / filters / DB switching
+- do not build the top/recent games tables yet
+- do not build tablebase yet
+- for player search, be honest about what Patzer can and cannot autocomplete today
+- if full username autocomplete is not safely supported, the smallest honest version is:
+  - player name entry
+  - previous-player list
+  - persisted last-used player
+- do not use this prompt to redesign the overall openings page shell
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for explorer configuration
+- explicitly report:
+  - which DBs can now be selected
+  - which filters are available for each DB
+  - what settings are persisted
+  - whether player previous-name history landed
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-236 — Reviewed
+
+- Task: add top and recent explorer game tables with ratings, names, results, dates, and safe row-open behavior
+- Task ID: `CCP-236`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprint E — Top / Recent games table`
+- Created by: `Codex`
+- Created at: `2026-03-29T19:52:11Z`
+- Started at: `2026-03-29T20:19:29.716Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: opening explorer audit sprint E
+
+```
+Prompt ID: CCP-236
+Task ID: CCP-236
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprint E — Top / Recent games table
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-236`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / game-row / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add the Lichess-style explorer top/recent games tables, using explorer response data rather than the current unrelated sample-game cards, so each position can surface concrete game examples with ratings, player names, result badge, date, and speed where available.
+
+Current repo-grounded starting point to confirm:
+- the explorer panel does not yet show top or recent games from explorer responses
+- `src/openings/view.ts` does already have sample-game rendering elsewhere in the openings page, but that is not the audited explorer games-table behavior
+- the explorer audit expects separate top/recent game rows tied to the current explorer position
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/explorer.ts`
+  - `src/openings/types.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerView.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/explorer/_explorer.scss`
+
+Implementation goal:
+- add top/recent games tables for explorer data
+- show:
+  - ratings
+  - white / black names
+  - result badge
+  - date
+  - speed icon or equivalent when available
+- make clicking a game open it safely in a new tab for now
+- keep this as the smallest safe version; do not invent study-only inline action menus that Patzer does not have
+
+Constraints:
+- keep this scoped to explorer game tables
+- do not redesign the rest of the openings page
+- do not build study insertion/citation flows
+- do not bundle tablebase
+- if some explorer DBs return game data differently, handle that honestly rather than forcing fake columns
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for explorer game rows
+- explicitly report:
+  - how top/recent games are shown
+  - what clicking a game row does
+  - what columns differ by DB, if any
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-237 — Reviewed
+
+- Task: upgrade the opening explorer panel with real loading, empty, max-depth, indexing, and error states
+- Task ID: `CCP-237`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprint F — Empty / loading / error states`
+- Created by: `Codex`
+- Created at: `2026-03-29T19:52:11Z`
+- Started at: `2026-03-29T20:22:04.853Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: opening explorer audit sprint F
+
+```
+Prompt ID: CCP-237
+Task ID: CCP-237
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprint F — Empty / loading / error states
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-237`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / status UI / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: upgrade the opening-explorer status handling so loading, empty, max-depth, indexing, and error states behave like a real explorer panel instead of the current simple text messages.
+
+Current repo-grounded starting point to confirm:
+- `src/openings/view.ts` currently shows very simple loading / error / empty strings
+- there is no audited loading overlay
+- there is no dedicated max-depth message
+- there is no player-indexing queue message
+- there is no explorer-specific retry or graceful degraded state
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/explorer.ts`
+  - `src/openings/ctrl.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerCtrl.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerView.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/explorer/_explorer.scss`
+
+Implementation goal:
+- add clearer explorer loading / error / empty states
+- support the audited cases where possible:
+  - loading overlay
+  - max depth reached
+  - no data
+  - player indexing queue
+  - error with retry
+- preserve cached data when safe rather than needlessly blanking the panel
+
+Constraints:
+- keep this scoped to explorer status handling
+- do not build tablebase yet
+- do not turn this into a broad networking framework rewrite
+- be honest about which audited states Patzer can support immediately from its actual data model
+- if a 429/rate-limit path is visible, report it honestly and degrade cleanly instead of pretending it is a generic error
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for explorer state transitions
+- explicitly report:
+  - which explorer states are now distinct
+  - how retry works, if added
+  - whether cached data is preserved on failure
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-238 — Reviewed
+
+- Task: integrate the upgraded opening explorer into the analysis board with a toolbar toggle, tools-column panel, and node-sync on navigation
+- Task ID: `CCP-238`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprint G — Integration into analysis board`
+- Created by: `Codex`
+- Created at: `2026-03-29T19:52:11Z`
+- Started at: `2026-03-29T20:23:34.643Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: opening explorer audit sprint G
+
+```
+Prompt ID: CCP-238
+Task ID: CCP-238
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprint G — Integration into analysis board
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-238`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-board / explorer / tools-column / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: integrate the upgraded opening explorer into the analysis board in the Lichess pattern, with a toolbar toggle, tools-column panel placement, and node-sync on board navigation, while keeping `src/main.ts` as orchestration rather than stuffing the full explorer system into it.
+
+Current repo-grounded starting point to confirm:
+- Patzer currently has only a partial explorer surface in the openings subsystem
+- the analysis board does not yet have a real Lichess-style opening explorer panel in its tools area
+- the current analysis-board tools and controls still live largely in `src/main.ts`
+- there are already older optional comparison-surface prompts in the repo, so this work must reuse or supersede the current explorer seam rather than create a third parallel explorer path
+
+Inspect first:
+- Patzer:
+  - `src/main.ts`
+  - `src/openings/explorer.ts`
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/board/index.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/ctrl.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerCtrl.ts`
+
+Implementation goal:
+- add an explorer toggle in the analysis-board controls/toolbar area
+- render the explorer in the analysis tools column in a Lichess-like placement
+- keep it synchronized with analysis-board navigation through a `setNode()`-style seam
+- reuse the explorer owner built in earlier prompts rather than re-implementing fetch/state logic in the analysis view
+
+Constraints:
+- do not add a large new feature system directly to `src/main.ts`
+- if helper extraction is needed, keep it narrow and explicit
+- do not bundle tablebase yet
+- do not redesign unrelated analysis tools
+- preserve the current openings-page explorer behavior unless a small shared extraction is the safer path
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for analysis-board explorer integration
+- explicitly report:
+  - where the explorer now appears on the analysis board
+  - how the toolbar toggle works
+  - how node changes trigger explorer updates
+  - what explorer ownership still remains outside `src/main.ts`
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-239 — Created
+
+- Task: add the optional tablebase mode for low-piece-count explorer positions with DTZ and DTM style output
+- Task ID: `CCP-239`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprint H — Tablebase (optional / later)`
+- Created by: `Codex`
+- Created at: `2026-03-29T19:52:11Z`
+- Started at: `2026-03-29T21:11:23.126Z`
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: opening explorer audit sprint H
+
+```
+Prompt ID: CCP-239
+Task ID: CCP-239
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprint H — Tablebase (optional / later)
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-239`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / tablebase / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add the smallest safe optional tablebase mode to the opening explorer so low-piece-count positions can switch from opening stats to a tablebase-style view with outcome and DTZ/DTM information, following the audited Lichess shape where practical.
+
+Current repo-grounded starting point to confirm:
+- Patzer does not currently have an explorer tablebase panel
+- there is no piece-count gate that swaps explorer modes
+- the current explorer work is still opening-stats only
+
+Inspect first:
+- Patzer:
+  - `src/openings/explorer.ts`
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/tablebaseView.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerView.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/explorer/_explorer.scss`
+
+Implementation goal:
+- detect when the explorer should switch to a tablebase path
+- render a distinct tablebase view with move outcome badges and DTZ / DTM style data when available
+- keep the feature optional and honest if endpoint or variant support is limited
+
+Constraints:
+- keep this small and isolated
+- do not redesign the main explorer UI
+- if Patzer does not yet have a safe tablebase endpoint/config seam, add the smallest honest seam rather than hard-coding a messy dependency
+- be explicit about which variants/positions are supported
+- preserve the normal explorer mode when tablebase is unavailable
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the tablebase gate/view
+- explicitly report:
+  - how tablebase mode is entered
+  - what endpoint or data source is used
+  - which tablebase fields are shown
+  - what happens when tablebase is unavailable
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-240 — Reviewed
+
+- Task: execute the opening explorer rollout batch for API, controller, table, config, game tables, states, and analysis-board integration
+- Task ID: `CCP-240`
+- Parent prompt ID: none
+- Source document: `docs/reference/OPENING_EXPLORER_AUDIT.md`
+- Source step: `Sprints A-G batch manager`
+- Created by: `Codex`
+- Created at: `2026-03-29T20:04:01Z`
+- Started at: `2026-03-29T20:04:42.288Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: manager prompt for opening explorer sprints A through G; intentionally excludes optional tablebase step CCP-239
+
+```
+Prompt ID: CCP-240
+Task ID: CCP-240
+Source Document: docs/reference/OPENING_EXPLORER_AUDIT.md
+Source Step: Sprints A-G batch manager
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-240`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-232`
+- `CCP-233`
+- `CCP-234`
+- `CCP-235`
+- `CCP-236`
+- `CCP-237`
+- `CCP-238`
+
+Manager-prompt rule:
+- `CCP-240` is the manager prompt id only
+- do not execute or recurse into `CCP-240` as if it were one of the child prompts
+- `CCP-239` is intentionally excluded from this batch because it is the optional/later tablebase step
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings explorer / analysis-board integration / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from their prompt item files in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Prompt sources:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-232.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-233.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-234.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-235.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-236.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-237.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-238.md`
+
+Do not modify:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during this batch
+- do not continue past a known issue just to finish the batch
+- if a child prompt's startup state step already ran successfully in the current batch flow, do not rerun it a second time just because the child prompt text repeats it
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
+- only continue into a child prompt after that command succeeds
+- use internal validation/self-check only; external review and prompt closeout happen separately
+
+After each completed child prompt, report briefly:
+- Prompt ID
+- task title
+- build result
+- validation result
+- internal check result
+- whether the batch will continue or stop
+
+If the batch stops, clearly report:
+- which child Prompt ID stopped the batch
+- why it stopped
+- what issue or failure was found
+
+If the batch finishes, report a compact summary of completed Prompt IDs.
+```
+
+## CCP-153-F3 — Created
+
+- Task: fix the puzzle-round move-list continuity bug so the trigger move and cached game context are navigable as one pre-solve path with puzzle-aware arrow-key stepping
+- Task ID: `CCP-153`
+- Parent prompt ID: `CCP-153-F2`
+- Source document: `docs/PUZZLE_V1_PLAN.md`
+- Source step: `Puzzle Round Move List Continuity And Pre-Solve Navigation`
+- Created by: `Codex`
+- Created at: `2026-03-29T20:54:49Z`
+- Started at: `2026-03-29T20:57:42.339Z`
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: follow-up to the puzzle move-list surface so the auto-played trigger move no longer feels disconnected and pre-solve stepping works through already-known context
+
+```
+Prompt ID: CCP-153-F3
+Task ID: CCP-153
+Parent Prompt ID: CCP-153-F2
+Source Document: docs/PUZZLE_V1_PLAN.md
+Source Step: Puzzle Round Move List Continuity And Pre-Solve Navigation
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-153-F3`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / move-list / PGN-cache / navigation / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix the puzzle-round move-list continuity bug so the auto-played trigger move and the cached full-game PGN context are no longer treated like disconnected move sources, and add pre-solve keyboard navigation so the user can arrow back through already-known context moves before solving.
+
+Current repo-grounded issue to confirm:
+- `src/puzzles/view.ts` currently renders pre-puzzle context from `rc.gameTree` via `renderContextMoves(...)`, then renders the active puzzle line from a separate `rc.treeRoot` via `renderMoveList(...)`
+- `src/puzzles/ctrl.ts` auto-applies the trigger move directly to Chessground in `mountPuzzleBoard(...)`
+- the board therefore starts from the post-trigger position, but the visible move-list flow is split across two different tree owners
+- during active solve, navigation is intentionally blocked unless `rc.mode === 'view'` or `rc.analysisMode`, so left/right arrow navigation before solving does not currently exist
+- the result is that the last move played before the solve starts can feel visually detached from the move list, and the user cannot step backward through the already-known pre-solve path with arrow keys
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/ctrl.ts`
+  - `src/puzzles/view.ts`
+  - `src/analyse/moveList.ts`
+  - `src/keyboard.ts`
+  - any puzzle route/view wiring that owns keyboard behavior
+- Patzer references:
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/STANDARD_PUZZLE_FLOW.md`
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/puzzle/src/moveTree.ts`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/tree.ts`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/control.ts`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/chessground.ts`
+
+Implementation goal:
+- make the pre-solve puzzle board state and the visible move-list path feel continuous
+- ensure the auto-played trigger move is represented in the same navigable move flow as the puzzle board state, not as an effectively disconnected visual seam
+- allow pre-solve left/right navigation through already-known context + trigger moves
+- keep future solution moves hidden until they are legitimately reached or the round is in view/analysis mode
+- preserve strict puzzle correctness and do not turn the puzzle page into unrestricted full-analysis mode during solve
+
+Constraints:
+- scope this to move-list continuity and pre-solve navigation only
+- do not rebuild the whole puzzle round architecture
+- do not weaken strict solution-line validation
+- do not reveal future solution moves just to make navigation easier
+- do not add large new puzzle logic to `src/main.ts`
+- if the smallest safe fix is to unify the visible pre-solve path around one tree/path seam rather than maintaining two separate move-list segments, prefer that over UI-only patching
+- keyboard behavior should be puzzle-aware and limited to already-known pre-solve positions while the round is still active
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for puzzle-round move-list continuity and keyboard navigation
+- explicitly report:
+  - whether the trigger move and pre-solve move list now read as one continuous flow
+  - how pre-solve backward/forward navigation works
+  - what positions remain intentionally unavailable before solve
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+
+Output shape:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+- implementation
+- validation
+- manual test checklist
+- remaining risks
+```
+
+## CCP-241 — Created
+
+- Task: extract a real analysis-controls owner under src/analyse so control-bar and future action-menu state stop living as ad hoc glue in main.ts
+- Task ID: `CCP-241`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Task 1 — Extract a dedicated analysis-controls owner`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: analysis controls parity sprint task 1 foundation seam
+
+```
+Prompt ID: CCP-241
+Task ID: CCP-241
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Task 1 — Extract a dedicated analysis-controls owner
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-241`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-controls / analysis-menu / ceval / header / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: extract a real analysis-controls owner under `src/analyse/` so Patzer's control-bar state and future action-menu state stop living as ad hoc render glue in `src/main.ts`.
+
+Inspect first:
+- Patzer:
+  - `src/main.ts`
+  - `src/analyse/pgnExport.ts`
+  - `src/ceval/view.ts`
+  - `src/header/index.ts`
+  - any existing analysis control helpers under `src/analyse/`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+
+Implementation goal:
+- create the smallest safe analysis-controls owner in `src/analyse/`
+- move control-bar state and action-menu open/close ownership behind that seam
+- preserve current visible behavior as much as possible in this prompt
+- reduce future control-bar growth in `src/main.ts`
+
+Constraints:
+- do not add the full Lichess menu yet
+- do not reshuffle existing settings into new menus yet
+- do not rewrite storage keys
+- do not add medium-sized new logic to `src/main.ts`
+- keep this step architectural and behavior-preserving
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the extracted analysis-controls seam
+- explicitly report:
+  - what state now lives under the new analysis-controls owner
+  - what remained in place intentionally
+  - whether visible analysis-board behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-242 — Created
+
+- Task: replace the current custom controls row with a real analysis control-bar shell that adds first/last and a right-side hamburger trigger while preserving current review actions
+- Task ID: `CCP-242`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Task 2 — Add the Lichess-style control bar shell`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: analysis controls parity sprint task 2 control-bar shell
+
+```
+Prompt ID: CCP-242
+Task ID: CCP-242
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Task 2 — Add the Lichess-style control bar shell
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-242`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-controls / analysis-board layout / styles / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: replace Patzer's current custom analysis controls row with a real Lichess-style control-bar shell that introduces left / middle / right zones, adds first and last jump buttons, and adds the right-side hamburger trigger while keeping current review and retrospection actions accessible.
+
+Inspect first:
+- Patzer:
+  - `src/main.ts`
+  - `src/analyse/pgnExport.ts`
+  - any new analysis-controls owner files created by the previous step
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/_tools.scss`
+  - `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
+
+Implementation goal:
+- create a three-zone analysis control bar
+- add first / prev / next / last navigation
+- add a right-side hamburger button that will later open the local action menu
+- keep `Review` / `Re-analyze` and the retrospection entry reachable in the new shell
+
+Constraints:
+- do not wire the full action menu contents yet
+- do not add the opening explorer button yet
+- do not move settings out of the header or engine gear yet
+- keep mobile from regressing even if full mobile parity is deferred
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the new control bar
+- explicitly report:
+  - whether first / last now work
+  - where review and retrospection entry now live
+  - whether the hamburger trigger exists but remains safely scoped
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-243 — Created
+
+- Task: add a Lichess-style analysis-local action-menu overlay inside the tools column, opened by the control-bar hamburger
+- Task ID: `CCP-243`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Task 3 — Add the analysis-local hamburger menu overlay`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: analysis controls parity sprint task 3 tools-area action menu shell
+
+```
+Prompt ID: CCP-243
+Task ID: CCP-243
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Task 3 — Add the analysis-local hamburger menu overlay
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-243`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-menu / tools-panel / ceval / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: add a Lichess-style analysis-local action-menu overlay inside Patzer's tools column, opened by the control-bar hamburger and structured with honest section shells for future analysis actions and toggles.
+
+Inspect first:
+- Patzer:
+  - `src/main.ts`
+  - any new analysis-controls owner/view files
+  - `src/ceval/view.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/_action-menu.scss`
+
+Implementation goal:
+- open a local analysis menu inside `.analyse__tools`
+- make it overlay the tools column rather than open a global modal
+- give it real section structure, scroll behavior, and close behavior
+- use honest placeholders where future items are not wired yet
+- keep the visual direction compatible with Patzer's preferred iOS-style toggles later
+
+Constraints:
+- do not migrate all settings yet
+- do not invent fake working controls for not-yet-implemented items
+- do not break ceval, move list, explorer, or retrospection rendering when the menu is closed
+- keep this focused on shell + overlay behavior
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the local action-menu overlay
+- explicitly report:
+  - where the menu renders
+  - how it opens and closes
+  - which sections are real vs honest placeholders
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-244 — Created
+
+- Task: move the first safe set of existing analysis-local actions into the new analysis menu without rewriting their storage owners
+- Task ID: `CCP-244`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Task 4 — Move existing analysis-local actions into the new menu`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: analysis controls parity sprint task 4 first migrated menu actions
+
+```
+Prompt ID: CCP-244
+Task ID: CCP-244
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Task 4 — Move existing analysis-local actions into the new menu
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-244`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-menu / header-menu / retrospection / board-cosmetics / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: migrate the first set of already-existing analysis-local actions into the new analysis hamburger menu without rewriting their storage owners.
+
+Inspect first:
+- Patzer:
+  - `src/header/index.ts`
+  - `src/ceval/view.ts`
+  - `src/board/cosmetics.ts`
+  - `src/analyse/retroConfig.ts`
+  - any new analysis-menu files
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+
+Implementation goal:
+- move a first safe set of existing actions into the analysis menu
+- recommended first set:
+  - Flip board
+  - Learn From Your Mistakes entry
+  - board review / move annotation display control
+  - review dots user-only only if it is safe and still reads as analysis-local
+- keep state in the existing owning modules where possible
+
+Constraints:
+- do not migrate `Mistake Detection` yet
+- do not move board themes / pieces / sounds
+- do not silently delete existing header controls unless the replacement is clearly live and safe
+- keep this prompt focused on rehoming existing actions, not adding entirely new ones
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for migrated analysis actions
+- explicitly report:
+  - which existing actions were moved into the analysis menu
+  - which ones were intentionally deferred
+  - whether existing persistence/storage owners were preserved
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-245 — Created
+
+- Task: add an opening explorer button to the analysis control bar and wire it into Patzer's existing explorer state as a real analysis-local tool
+- Task ID: `CCP-245`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Task 5 — Add opening explorer as a first-class control-bar tool`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: analysis controls parity sprint task 5 explorer button parity
+
+```
+Prompt ID: CCP-245
+Task ID: CCP-245
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Task 5 — Add opening explorer as a first-class control-bar tool
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-245`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-controls / opening-explorer / tools-panel / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: make opening explorer a first-class control-bar tool, like Lichess, by adding a dedicated explorer button to the analysis controls and wiring it cleanly into Patzer's existing explorer state and tools-column rendering.
+
+Inspect first:
+- Patzer:
+  - `src/main.ts`
+  - `src/openings/explorerCtrl.ts`
+  - `src/openings/explorerConfig.ts`
+  - any analysis-controls / analysis-menu files created earlier
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/reference/OPENING_EXPLORER_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+
+Implementation goal:
+- add an opening explorer button to the control bar
+- make it behave as a real analysis-local tool toggle
+- keep it coordinated with the action menu and retrospection so tool ownership stays honest
+- reuse existing explorer persistence and controller state instead of inventing a second explorer owner
+
+Constraints:
+- do not rebuild explorer internals
+- do not add tablebase here
+- do not duplicate explorer toggles in multiple places if that can be avoided
+- keep this prompt focused on control-bar integration and local tool-state behavior
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for explorer control-bar integration
+- explicitly report:
+  - how the explorer button behaves
+  - how it interacts with the action menu and retrospection
+  - whether existing explorer persistence remained intact
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-246 — Created
+
+- Task: keep engine-search settings in the ceval gear while moving broader display toggles into the analysis action menu
+- Task ID: `CCP-246`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Task 6 — Split engine gear from analysis menu more honestly`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: analysis controls parity sprint task 6 gear/menu ownership split
+
+```
+Prompt ID: CCP-246
+Task ID: CCP-246
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Task 6 — Split engine gear from analysis menu more honestly
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-246`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same ceval-settings / analysis-menu / display-toggle / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: split Patzer's current engine gear more honestly so engine-search settings stay in the ceval gear while broader analysis display toggles move into the new analysis action menu, using Patzer's preferred iOS-style toggle treatment there if it can be done safely.
+
+Inspect first:
+- Patzer:
+  - `src/ceval/view.ts`
+  - `src/engine/ctrl.ts`
+  - any analysis action-menu files created earlier
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+
+Implementation goal:
+- keep engine gear focused on engine runtime settings like lines and depths
+- move display-oriented toggles into the analysis menu
+- use one coherent action-menu toggle row style there
+- improve ownership clarity without changing underlying storage unless required
+
+Constraints:
+- do not redesign all app toggles globally
+- do not move board themes, sounds, or broad app settings into this menu
+- do not invent new display settings unless a tiny missing seam is required
+- keep this step focused on ownership split and menu wiring
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the engine-gear / analysis-menu split
+- explicitly report:
+  - which controls remained in the engine gear
+  - which controls moved into the analysis menu
+  - whether the new toggle styling is scoped correctly
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-247 — Created
+
+- Task: remove duplicated analysis-local header menu items once their replacements are live in the analysis controls/menu
+- Task ID: `CCP-247`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Task 7 — Clean duplicates out of the global header menu`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: analysis controls parity sprint task 7 header cleanup
+
+```
+Prompt ID: CCP-247
+Task ID: CCP-247
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Task 7 — Clean duplicates out of the global header menu
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-247`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same header-menu / analysis-menu / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: remove duplicated analysis-local items from the global header menu after their replacements are live in the new analysis controls/menu, while preserving truly global app settings in the header.
+
+Inspect first:
+- Patzer:
+  - `src/header/index.ts`
+  - any analysis action-menu files created earlier
+  - `src/board/cosmetics.ts`
+  - `src/board/sound.ts`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+
+Implementation goal:
+- remove only duplicated analysis-local header entries once the analysis-menu replacements are real
+- keep truly global header items intact
+- leave the header menu cleaner and less confusing after the parity migration
+
+Constraints:
+- do not remove anything whose replacement is not actually live
+- do not move board themes / pieces / sounds out of the header in this prompt
+- do not touch import/global workflows
+- keep this as a cleanup pass, not a redesign
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for duplicate-control cleanup
+- explicitly report:
+  - which header items were removed
+  - which header items intentionally remain
+  - whether any analysis controls are now stranded or duplicated
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-248 — Created
+
+- Task: execute the analysis controls parity foundation batch for owner extraction, control-bar shell, local action-menu overlay, and first migrated actions
+- Task ID: `CCP-248`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Foundation batch manager`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: manager prompt for the analysis controls parity foundation batch
+
+```
+Prompt ID: CCP-248
+Task ID: CCP-248
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Foundation batch manager
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-248`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-241`
+- `CCP-242`
+- `CCP-243`
+- `CCP-244`
+
+Manager-prompt rule:
+- `CCP-248` is the manager prompt id only
+- do not execute or recurse into `CCP-248` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-controls / analysis-menu / ceval / header / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Do not modify:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during this batch
+- do not continue past a known issue just to finish the batch
+- if a child prompt's startup step already ran successfully in the current batch flow, do not rerun it
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
+- only continue into a child prompt after that command succeeds
+- use internal validation/self-check only; external review and prompt closeout happen separately
+
+After each completed child prompt, report briefly:
+- Prompt ID
+- task title
+- build result
+- validation result
+- internal check result
+- whether the batch will continue or stop
+
+If the batch stops, clearly report:
+- which child Prompt ID stopped the batch
+- why it stopped
+- what issue or failure was found
+
+If the batch finishes, report a compact summary of completed Prompt IDs.
+```
+
+## CCP-249 — Created
+
+- Task: execute the analysis controls parity migration batch for explorer button parity, gear/menu split, and header cleanup
+- Task ID: `CCP-249`
+- Parent prompt ID: none
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Migration batch manager`
+- Created by: `Codex`
+- Created at: `2026-03-29T21:21:12Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: manager prompt for the analysis controls parity migration batch after the foundation pass
+
+```
+Prompt ID: CCP-249
+Task ID: CCP-249
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Migration batch manager
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-249`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-245`
+- `CCP-246`
+- `CCP-247`
+
+Manager-prompt rule:
+- `CCP-249` is the manager prompt id only
+- do not execute or recurse into `CCP-249` as if it were one of the child prompts
+- this manager assumes the foundation sequence from `CCP-241` through `CCP-244` is already present
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-controls / opening-explorer / analysis-menu / header / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Do not modify:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during this batch
+- do not continue past a known issue just to finish the batch
+- if a child prompt's startup step already ran successfully in the current batch flow, do not rerun it
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
+- only continue into a child prompt after that command succeeds
+- use internal validation/self-check only; external review and prompt closeout happen separately
+
+After each completed child prompt, report briefly:
+- Prompt ID
+- task title
+- build result
+- validation result
+- internal check result
+- whether the batch will continue or stop
+
+If the batch stops, clearly report:
+- which child Prompt ID stopped the batch
+- why it stopped
+- what issue or failure was found
 
 If the batch finishes, report a compact summary of completed Prompt IDs.
 ```

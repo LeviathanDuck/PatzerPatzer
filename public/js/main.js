@@ -1183,13 +1183,15 @@ var StockfishProtocol = class {
     this.send(`position fen ${fen}`);
   }
   /**
-   * Start a fixed-depth search on the current position.
-   * multiPv controls how many candidate lines the engine returns.
+   * Start a search on the current position.
+   * Stops at whichever limit is hit first: depth or movetime (milliseconds).
+   * Omit movetime to search to depth only.
    * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork go command.
    */
-  go(depth, multiPv2 = 1) {
+  go(depth, multiPv2 = 1, movetime) {
     this.send(`setoption name MultiPV value ${multiPv2}`);
-    this.send(`go depth ${depth}`);
+    const timeClause = movetime !== void 0 ? ` movetime ${movetime}` : "";
+    this.send(`go depth ${depth}${timeClause}`);
   }
   /** Interrupt a running search. */
   stop() {
@@ -1714,6 +1716,7 @@ var evalNodePath = "";
 var evalNodePly = 0;
 var evalParentPath = "";
 var engineSearchActive = false;
+var searchStartedAt = null;
 var pendingStopCount = 0;
 var pendingEval = false;
 function storedInt(key, def, min, max) {
@@ -1722,6 +1725,8 @@ function storedInt(key, def, min, max) {
 }
 var multiPv = storedInt("patzer.multiPv", 3, 1, 5);
 var analysisDepth = storedInt("patzer.analysisDepth", 30, 18, 30);
+var searchTime = storedInt("patzer.searchTime", 1e4, 1e3, 6e4);
+var searchUntilDepth = localStorage.getItem("patzer.searchUntilDepth") !== "false";
 var showEngineArrows = true;
 var arrowAllLines = true;
 var showPlayedArrow = true;
@@ -1759,6 +1764,23 @@ function setMultiPv(v) {
 function setAnalysisDepth(v) {
   analysisDepth = v;
   localStorage.setItem("patzer.analysisDepth", String(v));
+}
+function setSearchTime(v) {
+  searchTime = v;
+  localStorage.setItem("patzer.searchTime", String(v));
+}
+function setSearchUntilDepth(v) {
+  searchUntilDepth = v;
+  localStorage.setItem("patzer.searchUntilDepth", String(v));
+}
+function isEngineSearching() {
+  return engineSearchActive;
+}
+function getSearchProgress() {
+  if (!engineSearchActive || currentEval.depth === void 0 && searchStartedAt === null) return 0;
+  const depthFraction = currentEval.depth !== void 0 ? currentEval.depth / analysisDepth : 0;
+  const timeFraction = searchStartedAt !== null ? (Date.now() - searchStartedAt) / searchTime : 0;
+  return Math.min(1, Math.max(depthFraction, timeFraction));
 }
 function clearPendingLines() {
   pendingLines = [];
@@ -2218,7 +2240,7 @@ function evalThreatPosition() {
   evalIsThreat = true;
   protocol.stop();
   protocol.setPosition(flipFenColor(_getCtrl().node.fen));
-  protocol.go(analysisDepth);
+  protocol.go(analysisDepth, 1, searchUntilDepth ? void 0 : searchTime);
 }
 function toggleThreatMode() {
   threatMode = !threatMode;
@@ -2260,12 +2282,13 @@ function evalCurrentPosition() {
     }
     pendingEval = false;
     engineSearchActive = true;
+    searchStartedAt = Date.now();
     evalNodeId = "";
     evalNodePath = "";
     evalNodePly = 0;
     evalParentPath = "";
     protocol.setPosition(_evalFenOverride);
-    protocol.go(analysisDepth, multiPv);
+    protocol.go(analysisDepth, multiPv, searchUntilDepth ? void 0 : searchTime);
     return;
   }
   const ctrl2 = _getCtrl();
@@ -2295,13 +2318,14 @@ function evalCurrentPosition() {
   }
   pendingEval = false;
   engineSearchActive = true;
+  searchStartedAt = Date.now();
   evalNodeId = ctrl2.node.id;
   evalNodePath = ctrl2.path;
   evalNodePly = ctrl2.node.ply;
   evalParentPath = ctrl2.path.length >= 2 ? ctrl2.path.slice(0, -2) : "";
   console.log("[live-diag] starting live eval \u2014 path:", evalNodePath, "ply:", evalNodePly, "multiPv:", multiPv);
   protocol.setPosition(ctrl2.node.fen);
-  protocol.go(analysisDepth, multiPv);
+  protocol.go(analysisDepth, multiPv, searchUntilDepth ? void 0 : searchTime);
 }
 function toggleEngine() {
   engineEnabled = !engineEnabled;
@@ -6838,9 +6862,13 @@ function renderCeval() {
   const pearlStr = engineEnabled ? hasEval ? formatScore(currentEval) : engineReady ? "\u2026" : "" : "";
   const engineLabel = protocol.engineName ?? "Stockfish 18";
   const statusText = !engineEnabled ? "Local analysis" : !engineReady ? "Loading\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "Engine on";
+  const evalDone = engineEnabled && engineReady && !isEngineSearching() && currentEval.depth !== void 0;
+  const progressPct = evalDone ? 100 : Math.round(getSearchProgress() * 100);
   const progressBar = engineEnabled && engineReady ? h("div.ceval__progress", [
-    h("div.ceval__progress-pulse"),
-    h("div.ceval__progress-pulse.ceval__progress-pulse--delayed")
+    h("div.ceval__progress-fill", {
+      class: { "ceval__progress-fill--done": evalDone },
+      attrs: { style: `width:${progressPct}%` }
+    })
   ]) : null;
   return h("div.ceval", { class: { enabled: engineEnabled } }, [
     progressBar,
@@ -7102,6 +7130,31 @@ function renderEngineSettings() {
       }, [18, 20, 24, 30].map(
         (d) => h("option", { attrs: { value: d, selected: d === analysisDepth } }, String(d))
       ))
+    ]),
+    h("div.ceval-settings__row", [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-until-depth" } }, "Search to depth"),
+      h("input#ceval-until-depth", {
+        attrs: { type: "checkbox", checked: searchUntilDepth },
+        on: {
+          change: (e) => {
+            setSearchUntilDepth(e.target.checked);
+            _redraw4();
+          }
+        }
+      })
+    ]),
+    h("div.ceval-settings__row", { class: { "ceval-settings__row--disabled": searchUntilDepth } }, [
+      h("label.ceval-settings__label", { attrs: { for: "ceval-search-time" } }, "Search time"),
+      h("input#ceval-search-time", {
+        attrs: { type: "range", min: 1e3, max: 6e4, step: 1e3, value: searchTime, disabled: searchUntilDepth },
+        on: {
+          input: (e) => {
+            setSearchTime(parseInt(e.target.value));
+            _redraw4();
+          }
+        }
+      }),
+      h("span.ceval-settings__val", `${searchTime / 1e3}s`)
     ]),
     h("div.ceval-settings__row", [
       h("label.ceval-settings__label", { attrs: { for: "ceval-arrows" } }, "Arrows"),
@@ -7485,282 +7538,47 @@ function renderAnalysisControls(extraButtons) {
   ]);
 }
 
-// src/keyboard.ts
-var _getCtrl6 = () => {
-  throw new Error("keyboard not initialised");
-};
-var _navigate3 = () => {
-};
-var _next = () => {
-};
-var _prev = () => {
-};
-var _first = () => {
-};
-var _last = () => {
-};
-var _flip = () => {
-};
-var _completeMove = () => {
-};
-var _redraw6 = () => {
-};
-function bindKeyboardHandlers(deps) {
-  _getCtrl6 = deps.getCtrl;
-  _navigate3 = deps.navigate;
-  _next = deps.next;
-  _prev = deps.prev;
-  _first = deps.first;
-  _last = deps.last;
-  _flip = deps.flip;
-  _completeMove = deps.completeMove;
-  _redraw6 = deps.redraw;
-  document.addEventListener("keydown", (e) => {
-    const tag = e.target.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
-    if (e.shiftKey) {
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        previousBranch();
-        _redraw6();
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        nextBranch();
-        _redraw6();
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        nextSibling2();
-        _redraw6();
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        prevSibling();
-        _redraw6();
-      }
-      return;
-    }
-    if (e.key === "ArrowRight") {
-      _next();
-      _redraw6();
-    } else if (e.key === "ArrowLeft") {
-      _prev();
-      _redraw6();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      _first();
-      _redraw6();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      _last();
-      _redraw6();
-    } else if (e.key === "f" || e.key === "F") _flip();
-    else if (e.key === "x" || e.key === "X") toggleThreatMode();
-    else if (e.key === "l" || e.key === "L") toggleEngine();
-    else if (e.key === "a" || e.key === "A") {
-      setShowEngineArrows(!showEngineArrows);
-      syncArrow();
-      _redraw6();
-    } else if (e.key === " ") {
-      e.preventDefault();
-      playBestMove();
-    } else if (e.key === "?") {
-      showKeyboardHelp = !showKeyboardHelp;
-      _redraw6();
-    }
-  });
-}
-function previousBranch() {
-  const ctrl2 = _getCtrl6();
-  let path = pathInit(ctrl2.path);
-  while (path.length > 0) {
-    const parent = (() => {
-      let p = ctrl2.root;
-      const parts = [];
-      for (let i = 0; i < path.length; i += 2) parts.push(path.slice(i, i + 2));
-      for (const id of parts.slice(0, -1)) {
-        const child = p.children.find((c) => c.id === id);
-        if (!child) return null;
-        p = child;
-      }
-      return p;
-    })();
-    if (parent && parent.children.length >= 2) {
-      _navigate3(path);
-      return;
-    }
-    path = pathInit(path);
-  }
-  _navigate3("");
-}
-function nextBranch() {
-  const ctrl2 = _getCtrl6();
-  let path = ctrl2.path;
-  let node = ctrl2.node;
-  while (node.children.length === 1) {
-    const onlyChild = node.children[0];
-    if (!onlyChild) break;
-    path += onlyChild.id;
-    node = onlyChild;
-  }
-  const firstChild = node.children[0];
-  if (node.children.length >= 2 && firstChild) _navigate3(path + firstChild.id);
-  else _last();
-}
-function nextSibling2() {
-  const ctrl2 = _getCtrl6();
-  const parentPath = pathInit(ctrl2.path);
-  const parentNode2 = ctrl2.nodeList[ctrl2.nodeList.length - 2];
-  if (!parentNode2 || parentNode2.children.length < 2) return;
-  const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
-  const next2 = parentNode2.children[(idx + 1) % parentNode2.children.length];
-  if (!next2) return;
-  _navigate3(parentPath + next2.id);
-}
-function prevSibling() {
-  const ctrl2 = _getCtrl6();
-  const parentPath = pathInit(ctrl2.path);
-  const parentNode2 = ctrl2.nodeList[ctrl2.nodeList.length - 2];
-  if (!parentNode2 || parentNode2.children.length < 2) return;
-  const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
-  const prev2 = parentNode2.children[(idx - 1 + parentNode2.children.length) % parentNode2.children.length];
-  if (!prev2) return;
-  _navigate3(parentPath + prev2.id);
-}
-function playBestMove() {
-  const best = currentEval.best;
-  if (!best || best.length < 4) return;
-  const orig = best.slice(0, 2);
-  const dest = best.slice(2, 4);
-  const promotion = best.length > 4 ? best.slice(4) : void 0;
-  _completeMove(orig, dest, promotion);
-}
-var showKeyboardHelp = false;
-function renderKeyboardHelp() {
-  if (!showKeyboardHelp) return null;
-  return h("div.keyboard-help", {
-    on: { click: () => {
-      showKeyboardHelp = false;
-      _redraw6();
-    } }
-  }, [
-    h("div.keyboard-help__box", { on: { click: (e) => e.stopPropagation() } }, [
-      h("h2", "Keyboard shortcuts"),
-      h("table", [
-        h("tbody", [
-          ["\u2190  /  \u2192", "Previous / next move"],
-          ["\u2191  /  \u2193", "First / last move"],
-          ["Shift + \u2190", "Jump to previous fork"],
-          ["Shift + \u2192", "Jump to next fork"],
-          ["Shift + \u2191\u2193", "Switch variation at fork"],
-          ["Space", "Play engine best move"],
-          ["l", "Toggle engine"],
-          ["a", "Toggle engine arrows"],
-          ["x", "Toggle threat mode"],
-          ["f", "Flip board"],
-          ["?", "Show this help"]
-        ].map(([key, desc]) => h("tr", [h("td", key), h("td", desc)])))
-      ]),
-      h("button.keyboard-help__close", {
-        on: { click: () => {
-          showKeyboardHelp = false;
-          _redraw6();
-        } }
-      }, "\u2715")
-    ])
-  ]);
-}
-
-// src/import/types.ts
-var gameIdCounter = 0;
-function nextGameId() {
-  return `game-${++gameIdCounter}`;
-}
-function restoreGameIdCounter(max) {
-  if (max > gameIdCounter) gameIdCounter = max;
-}
-function parsePgnHeader(pgn, tag) {
-  return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
-}
-function parseRating(s) {
-  if (typeof s === "number") return s > 0 ? s : void 0;
-  if (!s) return void 0;
-  const n = parseInt(s, 10);
-  return isNaN(n) || n <= 0 ? void 0 : n;
-}
-function timeClassFromTimeControl(tc) {
-  if (!tc || tc === "-") return void 0;
-  const secs = parseInt(tc, 10);
-  if (isNaN(secs)) return void 0;
-  if (secs < 180) return "ultrabullet";
-  if (secs < 600) return "bullet";
-  if (secs < 1800) return "blitz";
-  if (secs <= 10800) return "rapid";
-  return "classical";
-}
-
-// src/import/filters.ts
-var importFilters2 = {
-  rated: true,
-  speeds: /* @__PURE__ */ new Set(),
-  // empty = all speeds
-  dateRange: "1month",
-  customFrom: "",
-  customTo: "",
-  autoReview: false
-};
-var SPEED_OPTIONS = [
-  { value: "bullet", label: "Bullet", icon: "\uE032" },
-  // licon.Bullet
-  { value: "blitz", label: "Blitz", icon: "\uE008" },
-  // licon.FlameBlitz
-  { value: "rapid", label: "Rapid", icon: "\uE002" }
-  // licon.Rabbit
+// src/router.ts
+var routes = [
+  { pattern: ["analysis", ":id"], name: "analysis-game" },
+  { pattern: ["analysis"], name: "analysis" },
+  { pattern: ["openings"], name: "openings" },
+  { pattern: ["stats"], name: "stats" },
+  { pattern: ["games"], name: "games" },
+  { pattern: ["puzzles", ":id"], name: "puzzle-round" },
+  { pattern: ["puzzles"], name: "puzzles" },
+  { pattern: ["admin"], name: "admin" },
+  { pattern: [], name: "analysis" }
 ];
-var DATE_RANGE_OPTIONS = [
-  { value: "24h", label: "24h" },
-  { value: "1week", label: "1 wk" },
-  { value: "1month", label: "1 mo" },
-  { value: "3months", label: "3 mo" },
-  { value: "1year", label: "1 yr" },
-  { value: "all", label: "All" },
-  { value: "custom", label: "Custom" }
-];
-function filterGamesByDate(games) {
-  if (importFilters2.dateRange === "all") return games;
-  if (importFilters2.dateRange === "custom") {
-    return games.filter((g) => {
-      const d = g.date?.slice(0, 10);
-      if (!d) return true;
-      if (importFilters2.customFrom && d < importFilters2.customFrom) return false;
-      if (importFilters2.customTo && d > importFilters2.customTo) return false;
-      return true;
-    });
+function parse(hash2) {
+  const path = hash2.replace(/^#\/?/, "");
+  const parts = path ? path.split("/") : [];
+  for (const { pattern, name } of routes) {
+    if (pattern.length !== parts.length) continue;
+    const params = {};
+    let matched = true;
+    for (let i = 0; i < pattern.length; i++) {
+      const seg = pattern[i];
+      if (!seg) {
+        matched = false;
+        break;
+      }
+      if (seg.startsWith(":")) {
+        params[seg.slice(1)] = parts[i];
+      } else if (seg !== parts[i]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return { name, params };
   }
-  const now = /* @__PURE__ */ new Date();
-  let cutoff;
-  switch (importFilters2.dateRange) {
-    case "24h":
-      cutoff = new Date(now.getTime() - 864e5);
-      break;
-    case "1week":
-      cutoff = new Date(now.getTime() - 7 * 864e5);
-      break;
-    case "1month":
-      cutoff = new Date(now);
-      cutoff.setMonth(cutoff.getMonth() - 1);
-      break;
-    case "3months":
-      cutoff = new Date(now);
-      cutoff.setMonth(cutoff.getMonth() - 3);
-      break;
-    case "1year":
-      cutoff = new Date(now);
-      cutoff.setFullYear(cutoff.getFullYear() - 1);
-      break;
-    default:
-      return games;
-  }
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
-  return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
+  return { name: "analysis", params: {} };
+}
+function current() {
+  return parse(window.location.hash);
+}
+function onChange2(fn) {
+  window.addEventListener("hashchange", () => fn(current()));
 }
 
 // node_modules/.pnpm/chessops@0.15.0/node_modules/chessops/dist/esm/variant.js
@@ -8832,6 +8650,2235 @@ function pgnToTree(pgn) {
     fen: startFen,
     children
   };
+}
+
+// src/puzzles/puzzleDb.ts
+var DB_NAME = "patzer-puzzle-v1";
+var DB_VERSION = 1;
+var STORE_DEFINITIONS = "definitions";
+var STORE_ATTEMPTS = "attempts";
+var STORE_USER_META = "user-meta";
+var _db;
+function openPuzzleDb() {
+  if (_db) return Promise.resolve(_db);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_DEFINITIONS)) {
+        const store = db.createObjectStore(STORE_DEFINITIONS, { keyPath: "id" });
+        store.createIndex("sourceKind", "sourceKind", { unique: false });
+        store.createIndex("createdAt", "createdAt", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_ATTEMPTS)) {
+        const store = db.createObjectStore(STORE_ATTEMPTS, { autoIncrement: true });
+        store.createIndex("puzzleId", "puzzleId", { unique: false });
+        store.createIndex("completedAt", "completedAt", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_USER_META)) {
+        db.createObjectStore(STORE_USER_META, { keyPath: "puzzleId" });
+      }
+    };
+    req.onsuccess = () => {
+      _db = req.result;
+      resolve(_db);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function savePuzzleDefinition(def) {
+  try {
+    const db = await openPuzzleDb();
+    const tx = db.transaction(STORE_DEFINITIONS, "readwrite");
+    tx.objectStore(STORE_DEFINITIONS).put(def);
+  } catch (e) {
+    console.warn("[puzzleDb] definition save failed", e);
+  }
+}
+async function getPuzzleDefinition(id) {
+  try {
+    const db = await openPuzzleDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(STORE_DEFINITIONS, "readonly").objectStore(STORE_DEFINITIONS).get(id);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] definition get failed", e);
+    return void 0;
+  }
+}
+async function listPuzzleDefinitions() {
+  try {
+    const db = await openPuzzleDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(STORE_DEFINITIONS, "readonly").objectStore(STORE_DEFINITIONS).getAll();
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] definition list failed", e);
+    return [];
+  }
+}
+async function saveAttempt(attempt) {
+  try {
+    const db = await openPuzzleDb();
+    const tx = db.transaction(STORE_ATTEMPTS, "readwrite");
+    tx.objectStore(STORE_ATTEMPTS).add(attempt);
+  } catch (e) {
+    console.warn("[puzzleDb] attempt save failed", e);
+  }
+}
+async function getAttempts(puzzleId) {
+  try {
+    const db = await openPuzzleDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_ATTEMPTS, "readonly");
+      const index = tx.objectStore(STORE_ATTEMPTS).index("puzzleId");
+      const req = index.getAll(puzzleId);
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] attempts get failed", e);
+    return [];
+  }
+}
+async function saveMeta(meta) {
+  try {
+    const db = await openPuzzleDb();
+    const tx = db.transaction(STORE_USER_META, "readwrite");
+    tx.objectStore(STORE_USER_META).put(meta);
+  } catch (e) {
+    console.warn("[puzzleDb] meta save failed", e);
+  }
+}
+async function getMeta(puzzleId) {
+  try {
+    const db = await openPuzzleDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(STORE_USER_META, "readonly").objectStore(STORE_USER_META).get(puzzleId);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] meta get failed", e);
+    return void 0;
+  }
+}
+
+// src/puzzles/shardLoader.ts
+var BASE_PATH = "/generated/lichess-puzzles";
+var _manifest = null;
+var _manifestLoading = false;
+var _shardCache = /* @__PURE__ */ new Map();
+async function loadManifest() {
+  if (_manifest) return _manifest;
+  if (_manifestLoading) {
+    return new Promise((resolve, reject) => {
+      const check = setInterval(() => {
+        if (_manifest) {
+          clearInterval(check);
+          resolve(_manifest);
+        }
+        if (!_manifestLoading) {
+          clearInterval(check);
+          reject(new Error("manifest load failed"));
+        }
+      }, 50);
+    });
+  }
+  _manifestLoading = true;
+  try {
+    const res = await fetch(`${BASE_PATH}/manifest.json`);
+    if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`);
+    _manifest = await res.json();
+    return _manifest;
+  } catch (e) {
+    _manifestLoading = false;
+    throw e;
+  }
+}
+async function loadShard(shardId) {
+  const cached = _shardCache.get(shardId);
+  if (cached) return cached;
+  const manifest = await loadManifest();
+  const meta = manifest.shards.find((s) => s.id === shardId);
+  if (!meta) throw new Error(`shard ${shardId} not found in manifest`);
+  const res = await fetch(`${BASE_PATH}/${meta.file}`);
+  if (!res.ok) throw new Error(`shard fetch failed: ${res.status}`);
+  const records = await res.json();
+  _shardCache.set(shardId, records);
+  return records;
+}
+function findMatchingShards(manifest, filters) {
+  return manifest.shards.filter((shard) => {
+    if (filters.ratingMin !== void 0 && shard.ratingMax !== void 0 && shard.ratingMax < filters.ratingMin) return false;
+    if (filters.ratingMax !== void 0 && shard.ratingMin !== void 0 && shard.ratingMin > filters.ratingMax) return false;
+    if (filters.theme && !shard.themes.includes(filters.theme)) return false;
+    return true;
+  });
+}
+async function loadFilteredShard(shardId, filters) {
+  const records = await loadShard(shardId);
+  return records.filter((r) => {
+    if (filters.ratingMin !== void 0 && r.rating < filters.ratingMin) return false;
+    if (filters.ratingMax !== void 0 && r.rating > filters.ratingMax) return false;
+    if (filters.theme && !r.themes.includes(filters.theme)) return false;
+    return true;
+  });
+}
+function getManifestThemes() {
+  return _manifest?.themes ?? [];
+}
+function getManifestOpenings() {
+  return _manifest?.openings ?? [];
+}
+
+// src/puzzles/adapters.ts
+function retroCandidateToDefinition(candidate, opts) {
+  const idBase = candidate.gameId ? `${candidate.gameId}_${candidate.path}` : `user_${simpleHash(candidate.fenBefore + candidate.bestMove)}`;
+  const solutionLine = candidate.bestLine && candidate.bestLine.length > 0 ? candidate.bestLine : [candidate.bestMove];
+  const def = {
+    id: idBase,
+    sourceKind: "user-library",
+    startFen: candidate.fenBefore,
+    solutionLine,
+    strictSolutionMove: candidate.bestMove,
+    createdAt: Date.now(),
+    sourcePath: candidate.parentPath,
+    sourceReason: candidate.reason.code
+  };
+  if (candidate.gameId != null) def.sourceGameId = candidate.gameId;
+  if (opts?.title != null) def.title = opts.title;
+  if (opts?.notes != null) def.notes = opts.notes;
+  if (opts?.tags != null) def.tags = opts.tags;
+  if (opts?.sourcePgn != null) def.sourcePgn = opts.sourcePgn;
+  return def;
+}
+function lichessShardRecordToDefinition(record) {
+  if (record.moves.length < 2) return void 0;
+  const triggerMove = record.moves[0];
+  const solutionLine = record.moves.slice(1);
+  const def = {
+    id: `lichess_${record.id}`,
+    sourceKind: "imported-lichess",
+    startFen: record.fen,
+    triggerMove,
+    solutionLine,
+    strictSolutionMove: solutionLine[0],
+    createdAt: Date.now(),
+    lichessPuzzleId: record.id,
+    rating: record.rating,
+    themes: record.themes,
+    openingTags: record.openingTags
+  };
+  if (record.ratingDeviation != null) def.ratingDeviation = record.ratingDeviation;
+  if (record.popularity != null) def.popularity = record.popularity;
+  if (record.plays != null) def.plays = record.plays;
+  if (record.gameUrl != null) def.gameUrl = record.gameUrl;
+  return def;
+}
+function simpleHash(input) {
+  let h2 = 0;
+  for (let i = 0; i < input.length; i++) {
+    h2 = (h2 << 5) - h2 + input.charCodeAt(i) | 0;
+  }
+  return (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+// src/puzzles/ctrl.ts
+var altCastles = {
+  e1a1: "e1c1",
+  e1h1: "e1g1",
+  e8a8: "e8c8",
+  e8h8: "e8g8"
+};
+function uciMatches(played, expected) {
+  if (played === expected) return true;
+  if (altCastles[played] === expected) return true;
+  if (altCastles[expected] === played) return true;
+  return false;
+}
+function uciToSanAtPos(pos, uci) {
+  const move3 = parseUci(uci);
+  if (!move3) return uci;
+  try {
+    return makeSan(pos, move3);
+  } catch {
+    return uci;
+  }
+}
+function positionAfterMoves(fen, uciMoves) {
+  const setup = parseFen(fen);
+  if (setup.isErr) return void 0;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return void 0;
+  const chess = pos.value;
+  for (const uci of uciMoves) {
+    const move3 = parseUci(uci);
+    if (!move3) return void 0;
+    chess.play(move3);
+  }
+  return chess;
+}
+function buildInitialPuzzleTree(def) {
+  const fenParts = def.startFen.split(" ");
+  const fullMove = parseInt(fenParts[5] ?? "1", 10);
+  const isBlack = fenParts[1] === "b";
+  const startPly = (fullMove - 1) * 2 + (isBlack ? 1 : 0);
+  const root = {
+    id: "",
+    ply: startPly,
+    fen: def.startFen,
+    children: []
+  };
+  let currentNode = root;
+  let currentPath = "";
+  if (def.triggerMove) {
+    const triggerNode = makeTreeNode(def.startFen, def.triggerMove, startPly + 1);
+    if (triggerNode) {
+      root.children.push(triggerNode);
+      currentNode = triggerNode;
+      currentPath = triggerNode.id;
+    }
+  }
+  return { root, path: currentPath, node: currentNode };
+}
+function makeTreeNode(fen, uci, ply) {
+  const setup = parseFen(fen);
+  if (setup.isErr) return void 0;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return void 0;
+  const move3 = parseUci(uci);
+  if (!move3) return void 0;
+  const san = makeSan(pos.value, move3);
+  const id = scalachessCharPair(move3);
+  pos.value.play(move3);
+  const newFen = makeFen(pos.value.toSetup());
+  return { id, ply, uci, san, fen: newFen, children: [] };
+}
+function appendSolutionMoveToTree(rc, uci) {
+  const parentNode2 = rc.treeNode;
+  const newPly = parentNode2.ply + 1;
+  const newNode = makeTreeNode(parentNode2.fen, uci, newPly);
+  if (!newNode) return;
+  addNode(rc.treeRoot, rc.treePath, newNode);
+  rc.treePath = rc.treePath + newNode.id;
+  rc.livePath = rc.treePath;
+  rc.treeNode = newNode;
+  rc.treeMainline = mainlineNodeList(rc.treeRoot);
+}
+function completeSolutionTree(rc) {
+  for (let i = rc.progressPly; i < rc.solutionLine.length; i++) {
+    appendSolutionMoveToTree(rc, rc.solutionLine[i]);
+  }
+}
+var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
+  constructor(definition, redraw2) {
+    this.definition = definition;
+    this.solutionLine = definition.solutionLine;
+    this.status = "playing";
+    this.progressPly = 0;
+    this.startedAt = Date.now();
+    this.feedback = "none";
+    this.failureReasons = [];
+    this.usedHint = false;
+    this.usedEngineReveal = false;
+    this.revealedSolution = false;
+    this.firstWrongPly = void 0;
+    this.attemptRecorded = false;
+    this.redraw = redraw2;
+    this.puzzleEngineEnabled = false;
+    this.currentSessionMode = "practice";
+    this.moveQualities = [];
+    this.mode = "play";
+    this.canViewSolution = false;
+    this.gamePgn = void 0;
+    this.gameTree = null;
+    this.gameTreePuzzlePath = null;
+    this.analysisMode = false;
+    const setup = parseFen(definition.startFen);
+    this.pov = setup.isOk ? setup.value.turn === "white" ? "black" : "white" : "white";
+    const { root, path, node } = buildInitialPuzzleTree(definition);
+    this.treeRoot = root;
+    this.treePath = path;
+    this.treeNode = node;
+    this.treeMainline = mainlineNodeList(root);
+    this.puzzleTreeRoot = root;
+    this.puzzleTreePath = path;
+    this.livePath = path;
+    this.contextPeekPath = null;
+  }
+  /**
+   * Returns the next expected user move from the solution line,
+   * or undefined if the puzzle is complete or out of bounds.
+   */
+  /** All moves from startFen to reach the current position (trigger + solution moves played). */
+  allMovesPlayed() {
+    const moves = [];
+    if (this.definition.triggerMove) moves.push(this.definition.triggerMove);
+    moves.push(...this.solutionLine.slice(0, this.progressPly));
+    return moves;
+  }
+  /**
+   * Parse the full game PGN into a tree and find the puzzle start position.
+   * Switches to the game tree when analysis mode is activated.
+   */
+  loadGameTree() {
+    if (!this.gamePgn) return false;
+    try {
+      this.gameTree = pgnToTree(this.gamePgn);
+      const puzzleFenParts = this.definition.startFen.split(" ").slice(0, 4).join(" ");
+      const mainline = mainlineNodeList(this.gameTree);
+      for (let i = 0; i < mainline.length; i++) {
+        const nodeFenParts = mainline[i].fen.split(" ").slice(0, 4).join(" ");
+        if (nodeFenParts === puzzleFenParts) {
+          let path = "";
+          for (let j = 1; j <= i; j++) path += mainline[j].id;
+          this.gameTreePuzzlePath = path;
+          return true;
+        }
+      }
+      this.gameTreePuzzlePath = null;
+      return true;
+    } catch (e) {
+      console.warn("[puzzle-ctrl] failed to parse game PGN", e);
+      return false;
+    }
+  }
+  /**
+   * Toggle analysis mode — switches between puzzle tree and full game tree.
+   */
+  toggleAnalysisMode(redraw2) {
+    if (this.analysisMode) {
+      this.analysisMode = false;
+      this.treeRoot = this.puzzleTreeRoot;
+      this.setTreePath(this.puzzleTreePath);
+    } else {
+      if (!this.gameTree && !this.loadGameTree()) return;
+      if (!this.gameTree) return;
+      this.puzzleTreeRoot = this.treeRoot;
+      this.puzzleTreePath = this.treePath;
+      this.analysisMode = true;
+      this.treeRoot = this.gameTree;
+      const startPath = this.gameTreePuzzlePath ?? "";
+      this.setTreePath(startPath);
+    }
+    syncPuzzleBoard();
+    redraw2();
+  }
+  /**
+   * Navigate to a specific position in the full game tree without changing puzzle state.
+   * Used when the user clicks a pre-puzzle context move to browse the game.
+   * Puzzle progress, status, and solution state are preserved — only the board view changes.
+   */
+  browseGameAt(path, redraw2) {
+    if (!this.gameTree && !this.loadGameTree()) return;
+    if (!this.gameTree) return;
+    if (!this.analysisMode) {
+      this.puzzleTreeRoot = this.treeRoot;
+      this.puzzleTreePath = this.treePath;
+    }
+    this.analysisMode = true;
+    this.treeRoot = this.gameTree;
+    this.setTreePath(path);
+    syncPuzzleBoard();
+    redraw2();
+  }
+  /** Navigate the tree to a given path. Updates treeNode and syncs the board. Exits context-peek mode. */
+  setTreePath(path) {
+    const target = nodeAtPath(this.treeRoot, path);
+    if (!target) return;
+    this.contextPeekPath = null;
+    this.treePath = path;
+    this.treeNode = target;
+    this.treeMainline = mainlineNodeList(this.treeRoot);
+  }
+  /** Add a variation move at the current tree position (post-solve free play). */
+  addVariationMove(uci) {
+    const newNode = makeTreeNode(this.treeNode.fen, uci, this.treeNode.ply + 1);
+    if (!newNode) return void 0;
+    addNode(this.treeRoot, this.treePath, newNode);
+    this.treePath = this.treePath + newNode.id;
+    this.treeNode = newNode;
+    this.treeMainline = mainlineNodeList(this.treeRoot);
+    return newNode;
+  }
+  /** Delete a variation node at a given path. If currently inside the deleted variation, navigate up to its parent. */
+  deleteVariation(path) {
+    deleteNodeAt(this.treeRoot, path);
+    if (this.treePath.startsWith(path)) {
+      this.setTreePath(pathInit(path));
+    }
+    this.treeMainline = mainlineNodeList(this.treeRoot);
+  }
+  currentExpectedMove() {
+    if (this.progressPly >= this.solutionLine.length) return void 0;
+    return this.solutionLine[this.progressPly];
+  }
+  /**
+   * Evaluate the quality of a played move relative to the expected solution move.
+   * Uses engine win-chance evaluation to classify the move independently of
+   * whether it matched the strict solution line.
+   *
+   * This is the shared concept used by both the puzzle product and Learn From
+   * Your Mistakes to provide contextual "how good was your move" feedback.
+   *
+   * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts
+   * povDiff threshold model and ui/lib/src/ceval/winningChances.ts.
+   *
+   * @param playedUci   - the UCI move the user actually played
+   * @param expectedUci - the UCI move the solution line expected
+   * @param matched     - whether playedUci matched expectedUci (from strict check)
+   * @param fenBefore   - FEN of the position before the move was played
+   */
+  evaluateMove(playedUci, expectedUci, matched, fenBefore) {
+    if (matched) {
+      const quality2 = {
+        playedUci,
+        expectedUci,
+        matched: true,
+        quality: "best",
+        fenBefore
+      };
+      this.moveQualities.push(quality2);
+      return quality2;
+    }
+    const setupBefore = parseFen(fenBefore);
+    if (setupBefore.isErr) {
+      const quality2 = {
+        playedUci,
+        expectedUci,
+        matched: false,
+        quality: "blunder",
+        fenBefore
+      };
+      this.moveQualities.push(quality2);
+      return quality2;
+    }
+    const posBefore = Chess.fromSetup(setupBefore.value);
+    if (posBefore.isErr) {
+      const quality2 = {
+        playedUci,
+        expectedUci,
+        matched: false,
+        quality: "blunder",
+        fenBefore
+      };
+      this.moveQualities.push(quality2);
+      return quality2;
+    }
+    const posAfterPlayed = posBefore.value.clone();
+    const move3 = parseUci(playedUci);
+    if (!move3) {
+      const quality2 = {
+        playedUci,
+        expectedUci,
+        matched: false,
+        quality: "blunder",
+        fenBefore
+      };
+      this.moveQualities.push(quality2);
+      return quality2;
+    }
+    posAfterPlayed.play(move3);
+    const posAfterExpected = posBefore.value.clone();
+    const expectedMove = parseUci(expectedUci);
+    if (expectedMove) {
+      posAfterExpected.play(expectedMove);
+    }
+    const currentEngineEval = this.puzzleEngineEnabled ? currentEval : {};
+    const evalBefore = currentEngineEval.cp !== void 0 || currentEngineEval.mate !== void 0 ? { cp: currentEngineEval.cp, mate: currentEngineEval.mate } : void 0;
+    if (!evalBefore) {
+      const quality2 = {
+        playedUci,
+        expectedUci,
+        matched: false,
+        quality: "mistake",
+        fenBefore
+      };
+      this.moveQualities.push(quality2);
+      return quality2;
+    }
+    const povSign = this.pov === "white" ? 1 : -1;
+    const eb = {};
+    if (evalBefore.cp !== void 0) eb.cp = evalBefore.cp;
+    if (evalBefore.mate !== void 0) eb.mate = evalBefore.mate;
+    const wcBefore = evalWinChances(eb);
+    if (wcBefore === void 0) {
+      const quality2 = {
+        playedUci,
+        expectedUci,
+        matched: false,
+        evalBefore: eb,
+        quality: "mistake",
+        fenBefore
+      };
+      this.moveQualities.push(quality2);
+      return quality2;
+    }
+    const wcBeforePov = wcBefore * povSign;
+    const quality = {
+      playedUci,
+      expectedUci,
+      matched: false,
+      evalBefore: eb,
+      fenBefore,
+      quality: "mistake"
+    };
+    this.moveQualities.push(quality);
+    return quality;
+  }
+  /**
+   * Synchronously classify a move quality from pre-computed win-chance loss.
+   * Uses the same thresholds as game analysis (LOSS_THRESHOLDS from winchances.ts).
+   *
+   * @param wcLoss - win-chance loss from solver's perspective (0–0.5 scale)
+   * @returns quality classification
+   */
+  static classifyMoveQuality(wcLoss) {
+    if (wcLoss <= 0) return "good";
+    if (wcLoss < LOSS_THRESHOLDS.inaccuracy) return "good";
+    if (wcLoss < LOSS_THRESHOLDS.mistake) return "inaccuracy";
+    if (wcLoss < LOSS_THRESHOLDS.blunder) return "mistake";
+    return "blunder";
+  }
+  /**
+   * Refine a previously recorded move quality with engine evaluation data.
+   * Called when async engine eval becomes available for the position.
+   * This allows the initial evaluateMove() call to be synchronous while
+   * still providing accurate quality data once the engine finishes.
+   */
+  refineMoveQuality(index, evalBefore, evalAfter) {
+    const mq = this.moveQualities[index];
+    if (!mq || mq.matched) return;
+    mq.evalBefore = evalBefore;
+    mq.evalAfter = evalAfter;
+    const povSign = this.pov === "white" ? 1 : -1;
+    const wcBefore = evalWinChances(evalBefore);
+    const wcAfter = evalWinChances(evalAfter);
+    if (wcBefore !== void 0 && wcAfter !== void 0) {
+      const wcBeforePov = wcBefore * povSign;
+      const wcAfterPov = wcAfter * povSign;
+      const loss = (wcBeforePov - wcAfterPov) / 2;
+      mq.wcLoss = Math.max(0, loss);
+      mq.quality = _PuzzleRoundCtrl.classifyMoveQuality(mq.wcLoss);
+    }
+    if (evalBefore.cp !== void 0 && evalAfter.cp !== void 0) {
+      const cpBeforePov = evalBefore.cp * povSign;
+      const cpAfterPov = evalAfter.cp * povSign;
+      mq.cpLoss = Math.max(0, cpBeforePov - cpAfterPov);
+    }
+  }
+  /**
+   * Whether the current position is the user's turn to move.
+   * Even progressPly indices (0, 2, 4…) are user moves in our convention.
+   */
+  isUserTurn() {
+    return this.progressPly % 2 === 0;
+  }
+  /**
+   * Validate a user move against the stored solution line.
+   * Adapted from lichess-org/lila: ui/puzzle/src/moveTest.ts
+   *
+   * On correct move: advances progressPly, sets feedback='good',
+   * checks for solve completion.
+   * On wrong move: sets status='failed', records failure reason.
+   */
+  submitUserMove(uci) {
+    if (this.status !== "playing") return { accepted: false };
+    if (this.mode === "view") return { accepted: false };
+    const expected = this.currentExpectedMove();
+    if (!expected) return { accepted: false };
+    const posBefore = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
+    const fenBefore = posBefore ? makeFen(posBefore.toSetup()) : this.definition.startFen;
+    const matched = uciMatches(uci, expected);
+    const cg = getPuzzleCg();
+    if (cg) cg.setAutoShapes([]);
+    this.evaluateMove(uci, expected, matched, fenBefore);
+    if (matched) {
+      if (posBefore) playMoveSound(uciToSanAtPos(posBefore, uci));
+      this.feedback = "good";
+      this.progressPly++;
+      appendSolutionMoveToTree(this, uci);
+      if (this.progressPly >= this.solutionLine.length) {
+        this.status = "solved";
+        this.mode = "view";
+        this.recordAttempt();
+        syncPuzzleBoard();
+      }
+      this.redraw();
+      return { accepted: true };
+    }
+    if (this.firstWrongPly === void 0) {
+      this.firstWrongPly = this.progressPly;
+    }
+    this.feedback = "fail";
+    const reason = this.progressPly === 0 ? "wrong-first-move" : "wrong-later-move";
+    if (!this.failureReasons.includes(reason)) {
+      this.failureReasons.push(reason);
+    }
+    if (this.mode === "play") {
+      this.mode = "try";
+      this.canViewSolution = true;
+    }
+    this.revertUserMove();
+    this.redraw();
+    return { accepted: false };
+  }
+  /**
+   * Revert the last wrong user move on the board — snap piece back.
+   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts revertUserMove
+   */
+  revertUserMove() {
+    setTimeout(() => {
+      const cg = getPuzzleCg();
+      if (!cg) return;
+      const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
+      if (pos) {
+        const dests = chessgroundDests(pos);
+        cg.set({
+          fen: makeFen(pos.toSetup()),
+          turnColor: pos.turn,
+          movable: {
+            color: this.pov,
+            dests
+          }
+        });
+      }
+      this.redraw();
+    }, 300);
+  }
+  /**
+   * Give up and view the solution. Marks the puzzle as failed.
+   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts viewSolution
+   */
+  viewSolution(redraw2) {
+    if (this.mode === "view") return;
+    this.status = "failed";
+    this.mode = "view";
+    this.revealedSolution = true;
+    this.recordAttempt();
+    completeSolutionTree(this);
+    syncPuzzleBoard();
+    redraw2();
+  }
+  /**
+   * After a correct user move, play the opponent's scripted reply from the
+   * solution line on the Chessground board.
+   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts playUci / sendMoveAt
+   *
+   * Does nothing if:
+   * - puzzle is already solved/failed
+   * - it's the user's turn (no opponent reply pending)
+   * - there's no next move in the solution line
+   */
+  playOpponentReply() {
+    if (this.status !== "playing") return;
+    if (this.isUserTurn()) return;
+    const opponentUci = this.currentExpectedMove();
+    if (!opponentUci) return;
+    const cg = getPuzzleCg();
+    if (!cg) return;
+    const preOpponentPos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
+    if (preOpponentPos) playMoveSound(uciToSanAtPos(preOpponentPos, opponentUci));
+    appendSolutionMoveToTree(this, opponentUci);
+    this.progressPly++;
+    if (this.progressPly >= this.solutionLine.length) {
+      this.status = "solved";
+      this.recordAttempt();
+      this.redraw();
+      return;
+    }
+    const orig = opponentUci.slice(0, 2);
+    const dest = opponentUci.slice(2, 4);
+    const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
+    if (pos) {
+      const dests = chessgroundDests(pos);
+      cg.set({
+        fen: makeFen(pos.toSetup()),
+        turnColor: pos.turn,
+        lastMove: [orig, dest],
+        movable: {
+          color: this.pov,
+          dests
+        }
+      });
+    }
+    setTimeout(() => {
+      if (this.status === "playing") {
+        this.feedback = "none";
+        this.redraw();
+      }
+    }, 200);
+    this.redraw();
+  }
+  /**
+   * Build a PuzzleAttempt from the current round state and persist it to IDB.
+   * Idempotent — only records once per round lifecycle.
+   */
+  recordAttempt() {
+    if (this.attemptRecorded) return void 0;
+    if (this.status !== "solved" && this.status !== "failed") return void 0;
+    this.attemptRecorded = true;
+    const result = this.computeSolveResult();
+    const attempt = {
+      puzzleId: this.definition.id,
+      startedAt: this.startedAt,
+      completedAt: Date.now(),
+      result,
+      failureReasons: [...this.failureReasons],
+      usedHint: this.usedHint,
+      usedEngineReveal: this.usedEngineReveal,
+      revealedSolution: this.revealedSolution,
+      openedNotesDuringSolve: false,
+      // not implemented yet
+      skipped: false,
+      sessionMode: this.currentSessionMode
+      // ratingBefore / ratingAfter: populated by the future rating algorithm
+      // when currentSessionMode === 'rated'. Left undefined for practice mode.
+    };
+    if (this.firstWrongPly !== void 0) attempt.firstWrongPly = this.firstWrongPly;
+    let sessionResult;
+    if (this.status !== "solved") {
+      sessionResult = "failed";
+    } else if (this.failureReasons.length > 0 || this.usedHint || this.usedEngineReveal || this.revealedSolution || this.mode === "try") {
+      sessionResult = "assisted";
+    } else {
+      sessionResult = "clean";
+    }
+    sessionRecordResult(this.definition.id, sessionResult);
+    if (_autoNext && this.status === "solved") {
+      const redraw2 = this.redraw;
+      setTimeout(() => {
+        nextPuzzle(redraw2);
+      }, 800);
+    }
+    saveAttempt(attempt).then(() => getAttempts(this.definition.id)).then((allAttempts) => updateDueMeta(this.definition.id, allAttempts)).catch((e) => console.warn("[puzzle-round] attempt save / due-meta update failed", e));
+    return attempt;
+  }
+  /**
+   * Determine the SolveResult from the current round state.
+   * Priority: skipped > failed > assisted-solve > recovered-solve > clean-solve
+   */
+  computeSolveResult() {
+    if (this.status === "failed") return "failed";
+    if (this.usedHint || this.usedEngineReveal || this.revealedSolution) {
+      return "assisted-solve";
+    }
+    if (this.failureReasons.length > 0 || this.firstWrongPly !== void 0) {
+      return "recovered-solve";
+    }
+    return "clean-solve";
+  }
+  /**
+   * Skip the current puzzle — marks as failed with 'skipped' result.
+   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts skip action
+   */
+  skipPuzzle() {
+    if (this.status !== "playing") return;
+    if (!this.failureReasons.includes("skip-pressed")) {
+      this.failureReasons.push("skip-pressed");
+    }
+    this.status = "failed";
+    this.mode = "view";
+    this.feedback = "fail";
+    if (!this.attemptRecorded) {
+      this.attemptRecorded = true;
+      const attempt = {
+        puzzleId: this.definition.id,
+        startedAt: this.startedAt,
+        completedAt: Date.now(),
+        result: "skipped",
+        failureReasons: [...this.failureReasons],
+        usedHint: this.usedHint,
+        usedEngineReveal: this.usedEngineReveal,
+        revealedSolution: this.revealedSolution,
+        openedNotesDuringSolve: false,
+        skipped: true,
+        sessionMode: this.currentSessionMode
+      };
+      if (this.firstWrongPly !== void 0) attempt.firstWrongPly = this.firstWrongPly;
+      saveAttempt(attempt).then(() => getAttempts(this.definition.id)).then((allAttempts) => updateDueMeta(this.definition.id, allAttempts)).catch((e) => console.warn("[puzzle-round] skip attempt save / due-meta update failed", e));
+    }
+    this.redraw();
+  }
+  // --- Assist action methods ---
+  // These methods log assist actions (hint, engine reveal, solution reveal)
+  // so the attempt record captures WHY a solve was assisted. Each sets the
+  // relevant boolean flag and appends a FailureReason if not already present.
+  // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts hint / ceval / solution
+  /**
+   * Mark that the user requested a hint.
+   * Sets usedHint flag and records 'hint-used' failure reason.
+   * The actual hint display is a future UI task — this just marks the flag.
+   */
+  useHint(redraw2) {
+    if (this.status !== "playing") return;
+    this.usedHint = true;
+    if (!this.failureReasons.includes("hint-used")) {
+      this.failureReasons.push("hint-used");
+    }
+    const expected = this.currentExpectedMove();
+    const cg = getPuzzleCg();
+    if (expected && cg) {
+      const orig = expected.slice(0, 2);
+      cg.setAutoShapes([{
+        orig,
+        brush: "green"
+      }]);
+    }
+    redraw2();
+  }
+  /**
+   * Mark that the user revealed the solution.
+   * Sets revealedSolution flag and records 'solution-revealed' failure reason.
+   * Available during play or after failure.
+   */
+  revealSolution(redraw2) {
+    if (this.status !== "playing" && this.status !== "failed") return;
+    this.revealedSolution = true;
+    if (!this.failureReasons.includes("solution-revealed")) {
+      this.failureReasons.push("solution-revealed");
+    }
+    redraw2();
+  }
+  /**
+   * Mark that the user requested engine lines and activate the engine.
+   * Sets usedEngineReveal flag and records 'engine-lines-shown' failure reason.
+   * Only available after solve/fail (post-round viewing).
+   */
+  showEngineLines(redraw2) {
+    if (this.status !== "solved" && this.status !== "failed") return;
+    if (this.status === "failed") {
+      this.usedEngineReveal = true;
+      if (!this.failureReasons.includes("engine-lines-shown")) {
+        this.failureReasons.push("engine-lines-shown");
+      }
+    }
+    this.enablePuzzleEngine(redraw2);
+  }
+  /**
+   * Mark that the user requested engine arrows on the board.
+   * Sets usedEngineReveal flag and records 'engine-arrows-shown' failure reason.
+   * Only available after solve/fail (post-round viewing).
+   */
+  showEngineArrows(redraw2) {
+    if (this.status !== "solved" && this.status !== "failed") return;
+    if (this.status === "failed") {
+      this.usedEngineReveal = true;
+      if (!this.failureReasons.includes("engine-arrows-shown")) {
+        this.failureReasons.push("engine-arrows-shown");
+      }
+    }
+    redraw2();
+  }
+  // --- Post-solve engine assist ---
+  // These methods provide a seam for requesting/stopping engine evaluation of
+  // the current puzzle position AFTER a solve attempt completes. The engine
+  // eval is purely for viewing — it never influences submitUserMove or the
+  // strict solutionLine correctness model.
+  // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts cevalEnabled / doStartCeval
+  /**
+   * Activate engine evaluation for the current puzzle position.
+   * Only permitted after the round has ended (solved or failed).
+   * Uses the shared Stockfish protocol to evaluate the puzzle board's
+   * current FEN — does NOT go through the analysis board's evalCurrentPosition.
+   */
+  enablePuzzleEngine(redraw2) {
+    if (this.status !== "solved" && this.status !== "failed") return;
+    if (this.puzzleEngineEnabled) return;
+    this.puzzleEngineEnabled = true;
+    setEngineEnabledFlag(true);
+    const fenStr = this.treeNode.fen;
+    if (engineReady) {
+      protocol.setPosition(fenStr);
+      protocol.go(analysisDepth, multiPv);
+      redraw2();
+    } else {
+      redraw2();
+      void protocol.init("/stockfish-web").then(() => {
+        if (this.puzzleEngineEnabled) {
+          protocol.setPosition(fenStr);
+          protocol.go(analysisDepth, multiPv);
+          redraw2();
+        }
+      }).catch((err) => {
+        console.error("[puzzle-engine] failed to load:", err);
+        this.puzzleEngineEnabled = false;
+        setEngineEnabledFlag(false);
+        redraw2();
+      });
+    }
+  }
+  /**
+   * Called by the view whenever the shared engine toggle is on during an active
+   * solve.  Idempotent — only marks the round the first time.
+   * Triggers are: mode === 'play' or 'try' AND engineEnabled() returns true.
+   */
+  notifyEngineUsedDuringSolve() {
+    if (this.usedEngineReveal) return;
+    if (this.status === "solved" || this.status === "failed") return;
+    this.usedEngineReveal = true;
+    if (!this.failureReasons.includes("engine-lines-shown")) {
+      this.failureReasons.push("engine-lines-shown");
+    }
+  }
+  /**
+   * Stop engine evaluation for the puzzle position.
+   */
+  disablePuzzleEngine() {
+    if (!this.puzzleEngineEnabled) return;
+    this.puzzleEngineEnabled = false;
+    setEngineEnabledFlag(false);
+    protocol.stop();
+  }
+  /**
+   * Returns the current engine eval from the shared engine state.
+   * Only meaningful when puzzleEngineEnabled is true — otherwise returns
+   * an empty eval. The caller should check puzzleEngineEnabled before
+   * using the result for display.
+   */
+  getPuzzleEval() {
+    if (!this.puzzleEngineEnabled) return {};
+    return currentEval;
+  }
+};
+var activeRoundCtrl = null;
+function startPuzzleRound(definition, redraw2) {
+  activeRoundCtrl = new PuzzleRoundCtrl(definition, redraw2);
+  return activeRoundCtrl;
+}
+function getActiveRoundCtrl() {
+  return activeRoundCtrl;
+}
+var state = { view: "library" };
+var libraryCounts;
+var roundState = null;
+function initPuzzlePage(view2, puzzleId) {
+  const s = { view: view2 };
+  if (puzzleId !== void 0) s.puzzleId = puzzleId;
+  state = s;
+}
+function getLibraryCounts() {
+  return libraryCounts;
+}
+function getPuzzleRoundState() {
+  return roundState;
+}
+async function openPuzzleRound(id, redraw2) {
+  if (roundState && state.puzzleId === id && roundState.status !== "error") return;
+  state = { view: "round", puzzleId: id };
+  roundState = { definition: null, status: "loading" };
+  redraw2();
+  try {
+    const def = await getPuzzleDefinition(id);
+    if (!def) {
+      roundState = { definition: null, status: "error", error: `Puzzle "${id}" not found` };
+    } else {
+      roundState = { definition: def, status: "ready" };
+      startPuzzleRound(def, redraw2);
+      sessionRecordStart(def.id);
+      loadPuzzleMeta(id).then(() => redraw2());
+      dequeueSessionPuzzle(def.id);
+      loadPuzzlePgn(def).then((pgn) => {
+        console.log("[pgn] loadPuzzlePgn resolved", { pgn: !!pgn, defId: def.id, ctrlId: activeRoundCtrl?.definition.id });
+        if (pgn && activeRoundCtrl?.definition.id === def.id) {
+          activeRoundCtrl.gamePgn = pgn;
+          const treeOk = activeRoundCtrl.loadGameTree();
+          console.log("[pgn] loadGameTree result", treeOk);
+          redraw2();
+        }
+      });
+      prefetchSessionPgns();
+    }
+  } catch (e) {
+    roundState = {
+      definition: null,
+      status: "error",
+      error: e instanceof Error ? e.message : "Failed to load puzzle"
+    };
+  }
+  redraw2();
+}
+var puzzleCg;
+var puzzleOrientation = "white";
+function getPuzzleCg() {
+  return puzzleCg;
+}
+function mountPuzzleBoard(el, redraw2) {
+  const def = roundState?.definition;
+  if (!def) return;
+  const rc = getActiveRoundCtrl();
+  const setup = parseFen(def.startFen);
+  if (setup.isErr) {
+    console.error("[puzzle-ctrl] invalid startFen", def.startFen);
+    return;
+  }
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) {
+    console.error("[puzzle-ctrl] invalid position from startFen", def.startFen);
+    return;
+  }
+  const turn = pos.value.turn;
+  puzzleOrientation = rc ? rc.pov : turn === "white" ? "black" : "white";
+  const solverColor = puzzleOrientation;
+  const dests = chessgroundDests(pos.value);
+  puzzleCg?.destroy();
+  puzzleCg = Chessground(el, {
+    orientation: puzzleOrientation,
+    fen: def.startFen,
+    turnColor: turn,
+    viewOnly: false,
+    movable: {
+      free: false,
+      // Initially no pieces are movable — the trigger move plays first
+      color: void 0,
+      dests: /* @__PURE__ */ new Map(),
+      showDests: true
+    },
+    drawable: { enabled: true },
+    animation: { enabled: true, duration: 300 },
+    events: {
+      move: (orig, dest, _capturedPiece) => {
+        if (!rc) return;
+        const uci = `${orig}${dest}`;
+        if (rc.mode === "view" || rc.analysisMode) {
+          const newNode = rc.addVariationMove(uci);
+          if (newNode) {
+            playMoveSound(newNode.san);
+            syncPuzzleBoard();
+          }
+          redraw2();
+          return;
+        }
+        if (rc.status !== "playing") return;
+        const result = rc.submitUserMove(uci);
+        if (result.accepted) {
+          if (rc.status === "solved") {
+            redraw2();
+            return;
+          }
+          setTimeout(() => {
+            rc.playOpponentReply();
+          }, 300);
+        } else {
+          redraw2();
+        }
+      }
+    }
+  });
+  bindBoardResizeHandle(el);
+  if (def.triggerMove) {
+    setTimeout(() => {
+      const cg = getPuzzleCg();
+      if (!cg) return;
+      const prePos = positionAfterMoves(def.startFen, []);
+      if (prePos) playMoveSound(uciToSanAtPos(prePos, def.triggerMove));
+      const triggerPos = positionAfterMoves(def.startFen, [def.triggerMove]);
+      if (!triggerPos) return;
+      const orig = def.triggerMove.slice(0, 2);
+      const dest = def.triggerMove.slice(2, 4);
+      const dests2 = chessgroundDests(triggerPos);
+      const solverColor2 = rc ? rc.pov : triggerPos.turn;
+      cg.set({
+        fen: makeFen(triggerPos.toSetup()),
+        turnColor: triggerPos.turn,
+        lastMove: [orig, dest],
+        movable: {
+          color: solverColor2,
+          dests: dests2,
+          showDests: true
+        }
+      });
+      redraw2();
+    }, 500);
+  }
+  if (rc) {
+    setTimeout(() => {
+      if (rc.mode !== "view") {
+        rc.canViewSolution = true;
+        redraw2();
+      }
+    }, 4e3);
+  }
+}
+function destroyPuzzleBoard() {
+  puzzleCg?.destroy();
+  puzzleCg = void 0;
+}
+function syncPuzzleBoard() {
+  const cg = puzzleCg;
+  const rc = activeRoundCtrl;
+  if (!cg || !rc) return;
+  if (rc.contextPeekPath !== null && rc.gameTree) {
+    const ctxNode = nodeAtPath(rc.gameTree, rc.contextPeekPath);
+    if (ctxNode) {
+      const ctxSetup = parseFen(ctxNode.fen);
+      const ctxTurn = ctxSetup.isOk && Chess.fromSetup(ctxSetup.value).isOk ? Chess.fromSetup(ctxSetup.value).value.turn : "white";
+      const ctxLastMove = ctxNode.uci ? [ctxNode.uci.slice(0, 2), ctxNode.uci.slice(2, 4)] : void 0;
+      cg.set({
+        fen: ctxNode.fen,
+        turnColor: ctxTurn,
+        lastMove: ctxLastMove,
+        movable: { color: rc.pov, dests: /* @__PURE__ */ new Map() }
+      });
+      return;
+    }
+  }
+  const node = rc.treeNode;
+  const setup = parseFen(node.fen);
+  if (setup.isErr) return;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return;
+  const turn = pos.value.turn;
+  const lastMove = node.uci ? [node.uci.slice(0, 2), node.uci.slice(2, 4)] : void 0;
+  const movableColor = rc.mode === "view" || rc.analysisMode ? "both" : rc.pov;
+  const isBrowsed = rc.mode !== "view" && !rc.analysisMode && rc.treePath !== rc.livePath;
+  const dests = isBrowsed ? /* @__PURE__ */ new Map() : chessgroundDests(pos.value);
+  cg.set({
+    fen: node.fen,
+    turnColor: turn,
+    lastMove,
+    movable: {
+      color: movableColor,
+      dests
+    }
+  });
+}
+function peekPuzzleContext(gameTreePath, redraw2) {
+  const rc = activeRoundCtrl;
+  if (!rc || !rc.gameTree) return;
+  rc.contextPeekPath = gameTreePath;
+  syncPuzzleBoard();
+  redraw2();
+}
+function puzzlePrev(redraw2) {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+  if (rc.contextPeekPath !== null) {
+    const parent = pathInit(rc.contextPeekPath);
+    if (parent === rc.contextPeekPath) return;
+    rc.contextPeekPath = parent;
+    syncPuzzleBoard();
+    redraw2();
+    return;
+  }
+  if (rc.treePath === "") {
+    if (rc.gameTree && rc.gameTreePuzzlePath !== null) {
+      rc.contextPeekPath = rc.gameTreePuzzlePath;
+      syncPuzzleBoard();
+      redraw2();
+    }
+    return;
+  }
+  rc.setTreePath(pathInit(rc.treePath));
+  syncPuzzleBoard();
+  redraw2();
+}
+function puzzleNext(redraw2) {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+  if (rc.contextPeekPath !== null && rc.gameTree) {
+    const ctxNode = nodeAtPath(rc.gameTree, rc.contextPeekPath);
+    const child2 = ctxNode?.children[0];
+    if (child2) {
+      rc.contextPeekPath = rc.contextPeekPath + child2.id;
+      syncPuzzleBoard();
+      redraw2();
+    } else {
+      rc.contextPeekPath = null;
+      syncPuzzleBoard();
+      redraw2();
+    }
+    return;
+  }
+  const child = rc.treeNode.children[0];
+  if (!child) return;
+  const nextPath = rc.treePath + child.id;
+  if (rc.mode === "view" || rc.analysisMode) {
+    rc.setTreePath(nextPath);
+    syncPuzzleBoard();
+    redraw2();
+    return;
+  }
+  if (rc.livePath.startsWith(nextPath)) {
+    rc.setTreePath(nextPath);
+    syncPuzzleBoard();
+    redraw2();
+  }
+}
+function puzzleFirst(redraw2) {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+  rc.setTreePath("");
+  syncPuzzleBoard();
+  redraw2();
+}
+function puzzleLast(redraw2) {
+  const rc = activeRoundCtrl;
+  if (!rc) return;
+  if (rc.mode === "view" || rc.analysisMode) {
+    const mainline = mainlineNodeList(rc.treeRoot);
+    let path = "";
+    for (const node of mainline.slice(1)) path += node.id;
+    rc.setTreePath(path);
+  } else {
+    rc.setTreePath(rc.livePath);
+  }
+  syncPuzzleBoard();
+  redraw2();
+}
+function mountIdleBoard(el) {
+  if (puzzleCg) {
+    puzzleCg.destroy();
+    puzzleCg = void 0;
+  }
+  puzzleCg = Chessground(el, {
+    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    orientation: "white",
+    viewOnly: true,
+    coordinates: true,
+    animation: { enabled: false },
+    drawable: { enabled: false }
+  });
+}
+var metaCache = /* @__PURE__ */ new Map();
+function defaultMeta(puzzleId) {
+  return { puzzleId, folders: [], favorite: false, updatedAt: Date.now() };
+}
+async function loadPuzzleMeta(puzzleId) {
+  try {
+    const meta = await getMeta(puzzleId);
+    if (meta) metaCache.set(puzzleId, meta);
+    return meta;
+  } catch (e) {
+    console.warn("[puzzle-meta] loadPuzzleMeta failed", e);
+    return void 0;
+  }
+}
+async function savePuzzleMeta(meta) {
+  meta.updatedAt = Date.now();
+  metaCache.set(meta.puzzleId, meta);
+  try {
+    await saveMeta(meta);
+  } catch (e) {
+    console.warn("[puzzle-meta] savePuzzleMeta failed", e);
+  }
+}
+async function toggleFavorite(puzzleId, redraw2) {
+  let meta = metaCache.get(puzzleId) ?? await getMeta(puzzleId) ?? defaultMeta(puzzleId);
+  meta = { ...meta, favorite: !meta.favorite };
+  await savePuzzleMeta(meta);
+  redraw2();
+}
+function getOrCreateMeta(puzzleId) {
+  let meta = metaCache.get(puzzleId);
+  if (!meta) {
+    meta = defaultMeta(puzzleId);
+    metaCache.set(puzzleId, meta);
+  }
+  return meta;
+}
+async function loadLibraryCounts(redraw2) {
+  try {
+    const all = await listPuzzleDefinitions();
+    let user = 0;
+    for (const p of all) {
+      if (p.sourceKind === "user-library") user++;
+    }
+    let imported = 0;
+    try {
+      const manifest = await loadManifest();
+      imported = manifest.totalCount;
+    } catch {
+      imported = all.filter((p) => p.sourceKind === "imported-lichess").length;
+    }
+    libraryCounts = { imported, user };
+  } catch (e) {
+    console.warn("[puzzle-ctrl] loadLibraryCounts failed", e);
+    libraryCounts = { imported: 0, user: 0 };
+  }
+  redraw2();
+}
+var LIST_PAGE_SIZE = 50;
+var puzzleListState = null;
+function getPuzzleListState() {
+  return puzzleListState;
+}
+function closePuzzleList(redraw2) {
+  puzzleListState = null;
+  redraw2();
+}
+function applyListFilters(ls) {
+  let filtered = ls.allForSource;
+  if (ls.filters.ratingMin !== void 0) {
+    filtered = filtered.filter(
+      (p) => p.sourceKind === "imported-lichess" ? p.rating >= ls.filters.ratingMin : true
+    );
+  }
+  if (ls.filters.ratingMax !== void 0) {
+    filtered = filtered.filter(
+      (p) => p.sourceKind === "imported-lichess" ? p.rating <= ls.filters.ratingMax : true
+    );
+  }
+  if (ls.filters.theme) {
+    const theme = ls.filters.theme;
+    filtered = filtered.filter(
+      (p) => p.sourceKind === "imported-lichess" ? p.themes.includes(theme) : false
+    );
+  }
+  ls.filtered = filtered;
+  ls.page = 1;
+  ls.visible = filtered.slice(0, ls.pageSize);
+}
+var _importedShards = [];
+var _importedShardIndex = 0;
+async function openPuzzleList(source, redraw2) {
+  puzzleListState = {
+    source,
+    allForSource: [],
+    filtered: [],
+    visible: [],
+    filters: {},
+    page: 1,
+    pageSize: LIST_PAGE_SIZE,
+    availableThemes: [],
+    availableOpenings: [],
+    loading: true
+  };
+  redraw2();
+  try {
+    if (source === "imported-lichess") {
+      await openImportedList(redraw2);
+    } else {
+      await openUserLibraryList(redraw2);
+    }
+  } catch (e) {
+    console.warn("[puzzle-ctrl] openPuzzleList failed", e);
+    if (puzzleListState) puzzleListState.loading = false;
+  }
+  redraw2();
+}
+async function openUserLibraryList(redraw2) {
+  const all = await listPuzzleDefinitions();
+  const forSource = all.filter((p) => p.sourceKind === "user-library");
+  forSource.sort((a, b) => b.createdAt - a.createdAt);
+  puzzleListState.allForSource = forSource;
+  puzzleListState.availableThemes = [];
+  puzzleListState.availableOpenings = [];
+  puzzleListState.loading = false;
+  applyListFilters(puzzleListState);
+}
+async function openImportedList(redraw2) {
+  const manifest = await loadManifest();
+  _importedShards = manifest.shards;
+  _importedShardIndex = 0;
+  puzzleListState.availableThemes = getManifestThemes();
+  puzzleListState.availableOpenings = getManifestOpenings();
+  if (_importedShards.length > 0) {
+    await loadNextImportedShard();
+  }
+  puzzleListState.loading = false;
+  applyListFilters(puzzleListState);
+  redraw2();
+}
+async function loadNextImportedShard() {
+  if (_importedShardIndex >= _importedShards.length) return false;
+  const shard = _importedShards[_importedShardIndex];
+  _importedShardIndex++;
+  const filters = puzzleListState?.filters ?? {};
+  const records = await loadFilteredShard(shard.id, filters);
+  const defs = records.map((r) => lichessShardRecordToDefinition(r)).filter((d) => d !== void 0);
+  puzzleListState.allForSource.push(...defs);
+  puzzleListState.allForSource.sort((a, b) => {
+    const ra = a.sourceKind === "imported-lichess" ? a.rating : 0;
+    const rb = b.sourceKind === "imported-lichess" ? b.rating : 0;
+    return ra - rb;
+  });
+  applyListFilters(puzzleListState);
+  return true;
+}
+async function startImportedSession(themes, openings, ratingMin, ratingMax, redraw2) {
+  const manifest = await loadManifest();
+  const filters = {};
+  if (ratingMin !== void 0) filters.ratingMin = ratingMin;
+  if (ratingMax !== void 0) filters.ratingMax = ratingMax;
+  const matchingShards = findMatchingShards(manifest, filters);
+  if (matchingShards.length === 0) {
+    console.warn("[puzzle-ctrl] no shards match filters");
+    return;
+  }
+  const candidates = [];
+  for (const shard of matchingShards) {
+    const records = await loadFilteredShard(shard.id, filters);
+    for (const r of records) {
+      if (themes.length > 0 && !themes.some((t) => r.themes.includes(t))) continue;
+      if (openings.length > 0 && !openings.some((o) => r.openingTags.includes(o))) continue;
+      const def = lichessShardRecordToDefinition(r);
+      if (def) candidates.push(def);
+      if (candidates.length >= 200) break;
+    }
+    if (candidates.length >= 200) break;
+  }
+  if (candidates.length === 0) {
+    console.warn("[puzzle-ctrl] no imported puzzles match selection");
+    _importedSessionError = "No puzzles match your selection. Try widening the rating range or selecting different themes.";
+    redraw2();
+    return;
+  }
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+  const pick = candidates[0];
+  await savePuzzleDefinition(pick);
+  _importedSessionError = null;
+  _sessionQueue = candidates.slice(1);
+  _activeSession = {
+    themes: [...themes],
+    openings: [...openings],
+    ratingMin: ratingMin ?? 0,
+    ratingMax: ratingMax ?? 3200,
+    history: [{ puzzleId: pick.id, result: "in-progress" }]
+  };
+  saveSessionToStorage();
+  saveQueueToStorage();
+  prefetchSessionPgns();
+  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+}
+async function retryFailedPuzzles(redraw2) {
+  if (!_activeSession) return;
+  const failedIds = _activeSession.history.filter((e) => e.result === "failed" || e.result === "assisted").map((e) => e.puzzleId);
+  if (failedIds.length === 0) return;
+  const defs = [];
+  for (const id of failedIds) {
+    const def = await getPuzzleDefinition(id);
+    if (def) defs.push(def);
+  }
+  if (defs.length === 0) return;
+  for (let i = defs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [defs[i], defs[j]] = [defs[j], defs[i]];
+  }
+  const pick = defs[0];
+  _sessionQueue = defs.slice(1);
+  _activeSession.history.push({ puzzleId: pick.id, result: "in-progress" });
+  saveSessionToStorage();
+  saveQueueToStorage();
+  prefetchSessionPgns();
+  roundState = null;
+  activeRoundCtrl = null;
+  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+}
+var PGN_CACHE_STORE = "puzzle-pgn-cache";
+var PGN_DB_NAME = "patzer-puzzle-pgn";
+var PGN_DB_VERSION = 1;
+var _pgnDb = null;
+function openPgnDb() {
+  if (_pgnDb) return Promise.resolve(_pgnDb);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PGN_DB_NAME, PGN_DB_VERSION);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(PGN_CACHE_STORE);
+    };
+    req.onsuccess = () => {
+      _pgnDb = req.result;
+      resolve(req.result);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getCachedPgn(gameId) {
+  const db = await openPgnDb();
+  return new Promise((resolve) => {
+    const tx = db.transaction(PGN_CACHE_STORE, "readonly");
+    const req = tx.objectStore(PGN_CACHE_STORE).get(gameId);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(void 0);
+  });
+}
+async function cachePgn(gameId, pgn) {
+  const db = await openPgnDb();
+  return new Promise((resolve) => {
+    const tx = db.transaction(PGN_CACHE_STORE, "readwrite");
+    tx.objectStore(PGN_CACHE_STORE).put(pgn, gameId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  });
+}
+function extractGameId(gameUrl) {
+  try {
+    const parts = gameUrl.replace("https://lichess.org/", "").split(/[/#]/);
+    return parts[0] && parts[0].length >= 8 ? parts[0] : void 0;
+  } catch {
+    return void 0;
+  }
+}
+async function fetchGamePgn(gameUrl) {
+  const gameId = extractGameId(gameUrl);
+  if (!gameId) {
+    console.warn("[pgn] extractGameId failed for", gameUrl);
+    return void 0;
+  }
+  const cached = await getCachedPgn(gameId);
+  if (cached) {
+    console.log("[pgn] cache hit for", gameId);
+    return cached;
+  }
+  console.log("[pgn] fetching from Lichess:", gameId);
+  try {
+    const res = await fetch(`https://lichess.org/game/export/${gameId}?evals=true&clocks=true`, {
+      headers: { "Accept": "application/x-chess-pgn" }
+    });
+    if (!res.ok) {
+      console.warn("[pgn] fetch failed", res.status, gameId);
+      return void 0;
+    }
+    const pgn = await res.text();
+    console.log("[pgn] fetched ok, length", pgn.length, "for", gameId);
+    await cachePgn(gameId, pgn);
+    return pgn;
+  } catch (e) {
+    console.warn("[pgn] fetch error", e);
+    return void 0;
+  }
+}
+var PREFETCH_AHEAD = 10;
+var _sessionQueue = [];
+var _prefetchInFlight = /* @__PURE__ */ new Set();
+function prefetchSessionPgns() {
+  let fetched = 0;
+  for (const def of _sessionQueue) {
+    if (fetched >= PREFETCH_AHEAD) break;
+    const url = def.sourceKind === "imported-lichess" ? def.gameUrl : void 0;
+    if (!url) continue;
+    const gameId = extractGameId(url);
+    if (!gameId || _prefetchInFlight.has(gameId)) continue;
+    _prefetchInFlight.add(gameId);
+    fetched++;
+    fetchGamePgn(url).finally(() => _prefetchInFlight.delete(gameId));
+  }
+}
+function dequeueSessionPuzzle(id) {
+  _sessionQueue = _sessionQueue.filter((d) => d.id !== id);
+  saveQueueToStorage();
+}
+async function loadPuzzlePgn(def) {
+  if (def.sourceKind === "user-library") return def.sourcePgn;
+  if (!def.gameUrl) return void 0;
+  return fetchGamePgn(def.gameUrl);
+}
+var _importedSessionError = null;
+function getImportedSessionError() {
+  return _importedSessionError;
+}
+function clearImportedSessionError() {
+  _importedSessionError = null;
+}
+var SESSION_STORAGE_KEY = "puzzleSession";
+var QUEUE_STORAGE_KEY = "puzzleSessionQueue";
+var AUTONEXT_STORAGE_KEY = "puzzleAutoNext";
+var _activeSession = null;
+var _autoNext = false;
+function saveSessionToStorage() {
+  if (_activeSession) {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(_activeSession));
+  } else {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+}
+function saveQueueToStorage() {
+  if (_sessionQueue.length > 0) {
+    const compact = _sessionQueue.map((d) => d.id);
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(compact));
+  } else {
+    localStorage.removeItem(QUEUE_STORAGE_KEY);
+  }
+}
+function restoreSessionFromStorage() {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (raw) _activeSession = JSON.parse(raw);
+  } catch {
+  }
+  try {
+    const v = localStorage.getItem(AUTONEXT_STORAGE_KEY);
+    if (v === "true") _autoNext = true;
+  } catch {
+  }
+}
+function getAutoNext() {
+  return _autoNext;
+}
+function setAutoNext(v) {
+  _autoNext = v;
+  localStorage.setItem(AUTONEXT_STORAGE_KEY, String(v));
+}
+function getActiveSession() {
+  return _activeSession;
+}
+function clearActiveSession() {
+  _activeSession = null;
+  _sessionQueue = [];
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+  localStorage.removeItem(QUEUE_STORAGE_KEY);
+}
+function getResumePuzzleId() {
+  if (!_activeSession) return void 0;
+  const inProgress = _activeSession.history.find((e) => e.result === "in-progress");
+  if (inProgress) return inProgress.puzzleId;
+  const last2 = _activeSession.history[_activeSession.history.length - 1];
+  return last2?.puzzleId;
+}
+restoreSessionFromStorage();
+function sessionRecordStart(puzzleId) {
+  if (!_activeSession) return;
+  if (_activeSession.history.some((e) => e.puzzleId === puzzleId)) return;
+  _activeSession.history.push({ puzzleId, result: "in-progress" });
+  saveSessionToStorage();
+}
+function sessionRecordResult(puzzleId, result) {
+  if (!_activeSession) return;
+  const entry = _activeSession.history.find((e) => e.puzzleId === puzzleId);
+  if (entry) entry.result = result;
+  saveSessionToStorage();
+}
+function filterPuzzleList(filters, redraw2) {
+  if (!puzzleListState) return;
+  puzzleListState.filters = filters;
+  applyListFilters(puzzleListState);
+  redraw2();
+}
+function loadMorePuzzles(redraw2) {
+  if (!puzzleListState) return;
+  const ls = puzzleListState;
+  const nextEnd = (ls.page + 1) * ls.pageSize;
+  ls.page++;
+  ls.visible = ls.filtered.slice(0, nextEnd);
+  redraw2();
+}
+async function selectPuzzleFromList(id, redraw2) {
+  if (puzzleListState) {
+    const def = puzzleListState.allForSource.find((p) => p.id === id);
+    if (def) {
+      await savePuzzleDefinition(def);
+    }
+  }
+  window.location.hash = `#/puzzles/${encodeURIComponent(id)}`;
+}
+async function nextPuzzle(redraw2) {
+  const currentDef = roundState?.definition;
+  if (!currentDef) return;
+  if (_sessionQueue.length > 0) {
+    const pick = _sessionQueue[0];
+    await savePuzzleDefinition(pick);
+    roundState = null;
+    activeRoundCtrl = null;
+    window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+    return;
+  }
+  const sourceKind = currentDef.sourceKind;
+  try {
+    const all = await listPuzzleDefinitions();
+    const candidates = all.filter(
+      (p) => p.sourceKind === sourceKind && p.id !== currentDef.id
+    );
+    if (candidates.length === 0) {
+      console.warn("[puzzle-ctrl] no more puzzles of kind", sourceKind);
+      return;
+    }
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    roundState = null;
+    activeRoundCtrl = null;
+    window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+  } catch (e) {
+    console.warn("[puzzle-ctrl] nextPuzzle failed", e);
+  }
+}
+async function retryPuzzle(redraw2) {
+  const currentDef = roundState?.definition;
+  if (!currentDef) return;
+  const id = currentDef.id;
+  roundState = null;
+  activeRoundCtrl = null;
+  await openPuzzleRound(id, redraw2);
+}
+var RETRY_RESULTS = /* @__PURE__ */ new Set([
+  "failed",
+  "skipped",
+  "assisted-solve"
+]);
+var retryQueue = [];
+var retryIndex = -1;
+var retrySessionActive = false;
+var retryCount;
+function getRetryQueue() {
+  return retryQueue;
+}
+function getRetryIndex() {
+  return retryIndex;
+}
+function isRetrySessionActive() {
+  return retrySessionActive;
+}
+function getRetryCount() {
+  return retryCount;
+}
+async function buildRetryQueue() {
+  const allDefs = await listPuzzleDefinitions();
+  const queue2 = [];
+  for (const def of allDefs) {
+    const attempts = await getAttempts(def.id);
+    if (attempts.length === 0) {
+      queue2.push(def);
+      continue;
+    }
+    let latest = attempts[0];
+    for (let i = 1; i < attempts.length; i++) {
+      if (attempts[i].completedAt > latest.completedAt) {
+        latest = attempts[i];
+      }
+    }
+    if (RETRY_RESULTS.has(latest.result)) {
+      queue2.push(def);
+    }
+  }
+  return queue2;
+}
+async function loadRetryCount(redraw2) {
+  try {
+    const queue2 = await buildRetryQueue();
+    retryCount = queue2.length;
+  } catch (e) {
+    console.warn("[puzzle-ctrl] loadRetryCount failed", e);
+    retryCount = 0;
+  }
+  redraw2();
+}
+async function startRetrySession(redraw2) {
+  try {
+    const queue2 = await buildRetryQueue();
+    if (queue2.length === 0) {
+      console.warn("[puzzle-ctrl] no puzzles need retry");
+      return;
+    }
+    retryQueue = queue2;
+    retryIndex = 0;
+    retrySessionActive = true;
+    const first2 = retryQueue[0];
+    window.location.hash = `#/puzzles/${encodeURIComponent(first2.id)}`;
+  } catch (e) {
+    console.warn("[puzzle-ctrl] startRetrySession failed", e);
+    retrySessionActive = false;
+  }
+}
+async function nextRetryPuzzle(redraw2) {
+  if (!retrySessionActive || retryQueue.length === 0) {
+    return nextPuzzle(redraw2);
+  }
+  retryIndex++;
+  if (retryIndex >= retryQueue.length) {
+    retrySessionActive = false;
+    retryQueue = [];
+    retryIndex = -1;
+    loadRetryCount(redraw2);
+    console.log("[puzzle-ctrl] retry queue complete");
+    return;
+  }
+  const next2 = retryQueue[retryIndex];
+  window.location.hash = `#/puzzles/${encodeURIComponent(next2.id)}`;
+}
+var DAY_MS = 864e5;
+var DUE_INTERVALS = {
+  "clean-solve": 7 * DAY_MS,
+  "recovered-solve": 3 * DAY_MS,
+  "assisted-solve": 1 * DAY_MS,
+  "failed": 1 * DAY_MS,
+  "skipped": 1 * DAY_MS
+};
+function computeDueDate(attempts) {
+  if (attempts.length === 0) return 0;
+  let latest = attempts[0];
+  for (let i = 1; i < attempts.length; i++) {
+    if (attempts[i].completedAt > latest.completedAt) {
+      latest = attempts[i];
+    }
+  }
+  const interval = DUE_INTERVALS[latest.result];
+  if (interval === void 0) return void 0;
+  return latest.completedAt + interval;
+}
+async function updateDueMeta(puzzleId, attempts) {
+  const dueAt = computeDueDate(attempts);
+  if (dueAt === void 0) return;
+  let latest = attempts[0];
+  for (let i = 1; i < attempts.length; i++) {
+    if (attempts[i].completedAt > latest.completedAt) {
+      latest = attempts[i];
+    }
+  }
+  const existing = metaCache.get(puzzleId) ?? await getMeta(puzzleId) ?? defaultMeta(puzzleId);
+  const updated = {
+    ...existing,
+    dueAt,
+    lastAttemptResult: latest.result
+  };
+  await savePuzzleMeta(updated);
+}
+var dueCount;
+function getDueCount() {
+  return dueCount;
+}
+async function getDuePuzzles() {
+  const allDefs = await listPuzzleDefinitions();
+  const now = Date.now();
+  const due = [];
+  for (const def of allDefs) {
+    const meta = metaCache.get(def.id) ?? await getMeta(def.id);
+    if (meta && meta.dueAt !== void 0) {
+      if (meta.dueAt <= now) due.push(def);
+    } else {
+      const attempts = await getAttempts(def.id);
+      if (attempts.length === 0) {
+        due.push(def);
+      } else {
+        const dueAt = computeDueDate(attempts);
+        if (dueAt !== void 0 && dueAt <= now) due.push(def);
+      }
+    }
+  }
+  return due;
+}
+async function loadDueCount(redraw2) {
+  try {
+    const duePuzzles = await getDuePuzzles();
+    dueCount = duePuzzles.length;
+  } catch (e) {
+    console.warn("[puzzle-ctrl] loadDueCount failed", e);
+    dueCount = 0;
+  }
+  redraw2();
+}
+async function startDueSession(redraw2) {
+  try {
+    const queue2 = await getDuePuzzles();
+    if (queue2.length === 0) {
+      console.warn("[puzzle-ctrl] no puzzles due for review");
+      return;
+    }
+    retryQueue = queue2;
+    retryIndex = 0;
+    retrySessionActive = true;
+    const first2 = retryQueue[0];
+    window.location.hash = `#/puzzles/${encodeURIComponent(first2.id)}`;
+  } catch (e) {
+    console.warn("[puzzle-ctrl] startDueSession failed", e);
+    retrySessionActive = false;
+  }
+}
+
+// src/keyboard.ts
+var _getCtrl6 = () => {
+  throw new Error("keyboard not initialised");
+};
+var _navigate3 = () => {
+};
+var _next = () => {
+};
+var _prev = () => {
+};
+var _first = () => {
+};
+var _last = () => {
+};
+var _flip = () => {
+};
+var _completeMove = () => {
+};
+var _redraw6 = () => {
+};
+function bindKeyboardHandlers(deps) {
+  _getCtrl6 = deps.getCtrl;
+  _navigate3 = deps.navigate;
+  _next = deps.next;
+  _prev = deps.prev;
+  _first = deps.first;
+  _last = deps.last;
+  _flip = deps.flip;
+  _completeMove = deps.completeMove;
+  _redraw6 = deps.redraw;
+  document.addEventListener("keydown", (e) => {
+    const tag = e.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (current().name === "puzzle-round" && getActiveRoundCtrl()) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        puzzlePrev(_redraw6);
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        puzzleNext(_redraw6);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        puzzleFirst(_redraw6);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        puzzleLast(_redraw6);
+        return;
+      }
+      return;
+    }
+    if (e.shiftKey) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        previousBranch();
+        _redraw6();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        nextBranch();
+        _redraw6();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        nextSibling2();
+        _redraw6();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        prevSibling();
+        _redraw6();
+      }
+      return;
+    }
+    if (e.key === "ArrowRight") {
+      _next();
+      _redraw6();
+    } else if (e.key === "ArrowLeft") {
+      _prev();
+      _redraw6();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      _first();
+      _redraw6();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      _last();
+      _redraw6();
+    } else if (e.key === "f" || e.key === "F") _flip();
+    else if (e.key === "x" || e.key === "X") toggleThreatMode();
+    else if (e.key === "l" || e.key === "L") toggleEngine();
+    else if (e.key === "a" || e.key === "A") {
+      setShowEngineArrows(!showEngineArrows);
+      syncArrow();
+      _redraw6();
+    } else if (e.key === " ") {
+      e.preventDefault();
+      playBestMove();
+    } else if (e.key === "?") {
+      showKeyboardHelp = !showKeyboardHelp;
+      _redraw6();
+    }
+  });
+}
+function previousBranch() {
+  const ctrl2 = _getCtrl6();
+  let path = pathInit(ctrl2.path);
+  while (path.length > 0) {
+    const parent = (() => {
+      let p = ctrl2.root;
+      const parts = [];
+      for (let i = 0; i < path.length; i += 2) parts.push(path.slice(i, i + 2));
+      for (const id of parts.slice(0, -1)) {
+        const child = p.children.find((c) => c.id === id);
+        if (!child) return null;
+        p = child;
+      }
+      return p;
+    })();
+    if (parent && parent.children.length >= 2) {
+      _navigate3(path);
+      return;
+    }
+    path = pathInit(path);
+  }
+  _navigate3("");
+}
+function nextBranch() {
+  const ctrl2 = _getCtrl6();
+  let path = ctrl2.path;
+  let node = ctrl2.node;
+  while (node.children.length === 1) {
+    const onlyChild = node.children[0];
+    if (!onlyChild) break;
+    path += onlyChild.id;
+    node = onlyChild;
+  }
+  const firstChild = node.children[0];
+  if (node.children.length >= 2 && firstChild) _navigate3(path + firstChild.id);
+  else _last();
+}
+function nextSibling2() {
+  const ctrl2 = _getCtrl6();
+  const parentPath = pathInit(ctrl2.path);
+  const parentNode2 = ctrl2.nodeList[ctrl2.nodeList.length - 2];
+  if (!parentNode2 || parentNode2.children.length < 2) return;
+  const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
+  const next2 = parentNode2.children[(idx + 1) % parentNode2.children.length];
+  if (!next2) return;
+  _navigate3(parentPath + next2.id);
+}
+function prevSibling() {
+  const ctrl2 = _getCtrl6();
+  const parentPath = pathInit(ctrl2.path);
+  const parentNode2 = ctrl2.nodeList[ctrl2.nodeList.length - 2];
+  if (!parentNode2 || parentNode2.children.length < 2) return;
+  const idx = parentNode2.children.findIndex((c) => c.id === ctrl2.node.id);
+  const prev2 = parentNode2.children[(idx - 1 + parentNode2.children.length) % parentNode2.children.length];
+  if (!prev2) return;
+  _navigate3(parentPath + prev2.id);
+}
+function playBestMove() {
+  const best = currentEval.best;
+  if (!best || best.length < 4) return;
+  const orig = best.slice(0, 2);
+  const dest = best.slice(2, 4);
+  const promotion = best.length > 4 ? best.slice(4) : void 0;
+  _completeMove(orig, dest, promotion);
+}
+var showKeyboardHelp = false;
+function renderKeyboardHelp() {
+  if (!showKeyboardHelp) return null;
+  return h("div.keyboard-help", {
+    on: { click: () => {
+      showKeyboardHelp = false;
+      _redraw6();
+    } }
+  }, [
+    h("div.keyboard-help__box", { on: { click: (e) => e.stopPropagation() } }, [
+      h("h2", "Keyboard shortcuts"),
+      h("table", [
+        h("tbody", [
+          ["\u2190  /  \u2192", "Previous / next move"],
+          ["\u2191  /  \u2193", "First / last move"],
+          ["Shift + \u2190", "Jump to previous fork"],
+          ["Shift + \u2192", "Jump to next fork"],
+          ["Shift + \u2191\u2193", "Switch variation at fork"],
+          ["Space", "Play engine best move"],
+          ["l", "Toggle engine"],
+          ["a", "Toggle engine arrows"],
+          ["x", "Toggle threat mode"],
+          ["f", "Flip board"],
+          ["?", "Show this help"]
+        ].map(([key, desc]) => h("tr", [h("td", key), h("td", desc)])))
+      ]),
+      h("button.keyboard-help__close", {
+        on: { click: () => {
+          showKeyboardHelp = false;
+          _redraw6();
+        } }
+      }, "\u2715")
+    ])
+  ]);
+}
+
+// src/import/types.ts
+var gameIdCounter = 0;
+function nextGameId() {
+  return `game-${++gameIdCounter}`;
+}
+function restoreGameIdCounter(max) {
+  if (max > gameIdCounter) gameIdCounter = max;
+}
+function parsePgnHeader(pgn, tag) {
+  return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
+}
+function parseRating(s) {
+  if (typeof s === "number") return s > 0 ? s : void 0;
+  if (!s) return void 0;
+  const n = parseInt(s, 10);
+  return isNaN(n) || n <= 0 ? void 0 : n;
+}
+function timeClassFromTimeControl(tc) {
+  if (!tc || tc === "-") return void 0;
+  const secs = parseInt(tc, 10);
+  if (isNaN(secs)) return void 0;
+  if (secs < 180) return "ultrabullet";
+  if (secs < 600) return "bullet";
+  if (secs < 1800) return "blitz";
+  if (secs <= 10800) return "rapid";
+  return "classical";
+}
+
+// src/import/filters.ts
+var importFilters2 = {
+  rated: true,
+  speeds: /* @__PURE__ */ new Set(),
+  // empty = all speeds
+  dateRange: "1month",
+  customFrom: "",
+  customTo: "",
+  autoReview: false
+};
+var SPEED_OPTIONS = [
+  { value: "bullet", label: "Bullet", icon: "\uE032" },
+  // licon.Bullet
+  { value: "blitz", label: "Blitz", icon: "\uE008" },
+  // licon.FlameBlitz
+  { value: "rapid", label: "Rapid", icon: "\uE002" }
+  // licon.Rabbit
+];
+var DATE_RANGE_OPTIONS = [
+  { value: "24h", label: "24h" },
+  { value: "1week", label: "1 wk" },
+  { value: "1month", label: "1 mo" },
+  { value: "3months", label: "3 mo" },
+  { value: "1year", label: "1 yr" },
+  { value: "all", label: "All" },
+  { value: "custom", label: "Custom" }
+];
+function filterGamesByDate(games) {
+  if (importFilters2.dateRange === "all") return games;
+  if (importFilters2.dateRange === "custom") {
+    return games.filter((g) => {
+      const d = g.date?.slice(0, 10);
+      if (!d) return true;
+      if (importFilters2.customFrom && d < importFilters2.customFrom) return false;
+      if (importFilters2.customTo && d > importFilters2.customTo) return false;
+      return true;
+    });
+  }
+  const now = /* @__PURE__ */ new Date();
+  let cutoff;
+  switch (importFilters2.dateRange) {
+    case "24h":
+      cutoff = new Date(now.getTime() - 864e5);
+      break;
+    case "1week":
+      cutoff = new Date(now.getTime() - 7 * 864e5);
+      break;
+    case "1month":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 1);
+      break;
+    case "3months":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 3);
+      break;
+    case "1year":
+      cutoff = new Date(now);
+      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      break;
+    default:
+      return games;
+  }
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
 }
 
 // src/import/chesscom.ts
@@ -10073,1831 +12120,6 @@ function renderMoveList(root, currentPath, getEval, navigate2, userColor, userOn
   return h("div.move-list-inner", [h("div.tview2.tview2-column", nodes)]);
 }
 
-// src/puzzles/puzzleDb.ts
-var DB_NAME = "patzer-puzzle-v1";
-var DB_VERSION = 1;
-var STORE_DEFINITIONS = "definitions";
-var STORE_ATTEMPTS = "attempts";
-var STORE_USER_META = "user-meta";
-var _db;
-function openPuzzleDb() {
-  if (_db) return Promise.resolve(_db);
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE_DEFINITIONS)) {
-        const store = db.createObjectStore(STORE_DEFINITIONS, { keyPath: "id" });
-        store.createIndex("sourceKind", "sourceKind", { unique: false });
-        store.createIndex("createdAt", "createdAt", { unique: false });
-      }
-      if (!db.objectStoreNames.contains(STORE_ATTEMPTS)) {
-        const store = db.createObjectStore(STORE_ATTEMPTS, { autoIncrement: true });
-        store.createIndex("puzzleId", "puzzleId", { unique: false });
-        store.createIndex("completedAt", "completedAt", { unique: false });
-      }
-      if (!db.objectStoreNames.contains(STORE_USER_META)) {
-        db.createObjectStore(STORE_USER_META, { keyPath: "puzzleId" });
-      }
-    };
-    req.onsuccess = () => {
-      _db = req.result;
-      resolve(_db);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-async function savePuzzleDefinition(def) {
-  try {
-    const db = await openPuzzleDb();
-    const tx = db.transaction(STORE_DEFINITIONS, "readwrite");
-    tx.objectStore(STORE_DEFINITIONS).put(def);
-  } catch (e) {
-    console.warn("[puzzleDb] definition save failed", e);
-  }
-}
-async function getPuzzleDefinition(id) {
-  try {
-    const db = await openPuzzleDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(STORE_DEFINITIONS, "readonly").objectStore(STORE_DEFINITIONS).get(id);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[puzzleDb] definition get failed", e);
-    return void 0;
-  }
-}
-async function listPuzzleDefinitions() {
-  try {
-    const db = await openPuzzleDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(STORE_DEFINITIONS, "readonly").objectStore(STORE_DEFINITIONS).getAll();
-      req.onsuccess = () => resolve(req.result ?? []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[puzzleDb] definition list failed", e);
-    return [];
-  }
-}
-async function saveAttempt(attempt) {
-  try {
-    const db = await openPuzzleDb();
-    const tx = db.transaction(STORE_ATTEMPTS, "readwrite");
-    tx.objectStore(STORE_ATTEMPTS).add(attempt);
-  } catch (e) {
-    console.warn("[puzzleDb] attempt save failed", e);
-  }
-}
-async function getAttempts(puzzleId) {
-  try {
-    const db = await openPuzzleDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_ATTEMPTS, "readonly");
-      const index = tx.objectStore(STORE_ATTEMPTS).index("puzzleId");
-      const req = index.getAll(puzzleId);
-      req.onsuccess = () => resolve(req.result ?? []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[puzzleDb] attempts get failed", e);
-    return [];
-  }
-}
-async function saveMeta(meta) {
-  try {
-    const db = await openPuzzleDb();
-    const tx = db.transaction(STORE_USER_META, "readwrite");
-    tx.objectStore(STORE_USER_META).put(meta);
-  } catch (e) {
-    console.warn("[puzzleDb] meta save failed", e);
-  }
-}
-async function getMeta(puzzleId) {
-  try {
-    const db = await openPuzzleDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(STORE_USER_META, "readonly").objectStore(STORE_USER_META).get(puzzleId);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[puzzleDb] meta get failed", e);
-    return void 0;
-  }
-}
-
-// src/puzzles/shardLoader.ts
-var BASE_PATH = "/generated/lichess-puzzles";
-var _manifest = null;
-var _manifestLoading = false;
-var _shardCache = /* @__PURE__ */ new Map();
-async function loadManifest() {
-  if (_manifest) return _manifest;
-  if (_manifestLoading) {
-    return new Promise((resolve, reject) => {
-      const check = setInterval(() => {
-        if (_manifest) {
-          clearInterval(check);
-          resolve(_manifest);
-        }
-        if (!_manifestLoading) {
-          clearInterval(check);
-          reject(new Error("manifest load failed"));
-        }
-      }, 50);
-    });
-  }
-  _manifestLoading = true;
-  try {
-    const res = await fetch(`${BASE_PATH}/manifest.json`);
-    if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`);
-    _manifest = await res.json();
-    return _manifest;
-  } catch (e) {
-    _manifestLoading = false;
-    throw e;
-  }
-}
-async function loadShard(shardId) {
-  const cached = _shardCache.get(shardId);
-  if (cached) return cached;
-  const manifest = await loadManifest();
-  const meta = manifest.shards.find((s) => s.id === shardId);
-  if (!meta) throw new Error(`shard ${shardId} not found in manifest`);
-  const res = await fetch(`${BASE_PATH}/${meta.file}`);
-  if (!res.ok) throw new Error(`shard fetch failed: ${res.status}`);
-  const records = await res.json();
-  _shardCache.set(shardId, records);
-  return records;
-}
-function findMatchingShards(manifest, filters) {
-  return manifest.shards.filter((shard) => {
-    if (filters.ratingMin !== void 0 && shard.ratingMax !== void 0 && shard.ratingMax < filters.ratingMin) return false;
-    if (filters.ratingMax !== void 0 && shard.ratingMin !== void 0 && shard.ratingMin > filters.ratingMax) return false;
-    if (filters.theme && !shard.themes.includes(filters.theme)) return false;
-    return true;
-  });
-}
-async function loadFilteredShard(shardId, filters) {
-  const records = await loadShard(shardId);
-  return records.filter((r) => {
-    if (filters.ratingMin !== void 0 && r.rating < filters.ratingMin) return false;
-    if (filters.ratingMax !== void 0 && r.rating > filters.ratingMax) return false;
-    if (filters.theme && !r.themes.includes(filters.theme)) return false;
-    return true;
-  });
-}
-function getManifestThemes() {
-  return _manifest?.themes ?? [];
-}
-function getManifestOpenings() {
-  return _manifest?.openings ?? [];
-}
-
-// src/puzzles/adapters.ts
-function retroCandidateToDefinition(candidate, opts) {
-  const idBase = candidate.gameId ? `${candidate.gameId}_${candidate.path}` : `user_${simpleHash(candidate.fenBefore + candidate.bestMove)}`;
-  const solutionLine = candidate.bestLine && candidate.bestLine.length > 0 ? candidate.bestLine : [candidate.bestMove];
-  const def = {
-    id: idBase,
-    sourceKind: "user-library",
-    startFen: candidate.fenBefore,
-    solutionLine,
-    strictSolutionMove: candidate.bestMove,
-    createdAt: Date.now(),
-    sourcePath: candidate.parentPath,
-    sourceReason: candidate.reason.code
-  };
-  if (candidate.gameId != null) def.sourceGameId = candidate.gameId;
-  if (opts?.title != null) def.title = opts.title;
-  if (opts?.notes != null) def.notes = opts.notes;
-  if (opts?.tags != null) def.tags = opts.tags;
-  if (opts?.sourcePgn != null) def.sourcePgn = opts.sourcePgn;
-  return def;
-}
-function lichessShardRecordToDefinition(record) {
-  if (record.moves.length < 2) return void 0;
-  const triggerMove = record.moves[0];
-  const solutionLine = record.moves.slice(1);
-  const def = {
-    id: `lichess_${record.id}`,
-    sourceKind: "imported-lichess",
-    startFen: record.fen,
-    triggerMove,
-    solutionLine,
-    strictSolutionMove: solutionLine[0],
-    createdAt: Date.now(),
-    lichessPuzzleId: record.id,
-    rating: record.rating,
-    themes: record.themes,
-    openingTags: record.openingTags
-  };
-  if (record.ratingDeviation != null) def.ratingDeviation = record.ratingDeviation;
-  if (record.popularity != null) def.popularity = record.popularity;
-  if (record.plays != null) def.plays = record.plays;
-  if (record.gameUrl != null) def.gameUrl = record.gameUrl;
-  return def;
-}
-function simpleHash(input) {
-  let h2 = 0;
-  for (let i = 0; i < input.length; i++) {
-    h2 = (h2 << 5) - h2 + input.charCodeAt(i) | 0;
-  }
-  return (h2 >>> 0).toString(16).padStart(8, "0");
-}
-
-// src/puzzles/ctrl.ts
-var altCastles = {
-  e1a1: "e1c1",
-  e1h1: "e1g1",
-  e8a8: "e8c8",
-  e8h8: "e8g8"
-};
-function uciMatches(played, expected) {
-  if (played === expected) return true;
-  if (altCastles[played] === expected) return true;
-  if (altCastles[expected] === played) return true;
-  return false;
-}
-function uciToSanAtPos(pos, uci) {
-  const move3 = parseUci(uci);
-  if (!move3) return uci;
-  try {
-    return makeSan(pos, move3);
-  } catch {
-    return uci;
-  }
-}
-function positionAfterMoves(fen, uciMoves) {
-  const setup = parseFen(fen);
-  if (setup.isErr) return void 0;
-  const pos = Chess.fromSetup(setup.value);
-  if (pos.isErr) return void 0;
-  const chess = pos.value;
-  for (const uci of uciMoves) {
-    const move3 = parseUci(uci);
-    if (!move3) return void 0;
-    chess.play(move3);
-  }
-  return chess;
-}
-function buildInitialPuzzleTree(def) {
-  const fenParts = def.startFen.split(" ");
-  const fullMove = parseInt(fenParts[5] ?? "1", 10);
-  const isBlack = fenParts[1] === "b";
-  const startPly = (fullMove - 1) * 2 + (isBlack ? 1 : 0);
-  const root = {
-    id: "",
-    ply: startPly,
-    fen: def.startFen,
-    children: []
-  };
-  let currentNode = root;
-  let currentPath = "";
-  if (def.triggerMove) {
-    const triggerNode = makeTreeNode(def.startFen, def.triggerMove, startPly + 1);
-    if (triggerNode) {
-      root.children.push(triggerNode);
-      currentNode = triggerNode;
-      currentPath = triggerNode.id;
-    }
-  }
-  return { root, path: currentPath, node: currentNode };
-}
-function makeTreeNode(fen, uci, ply) {
-  const setup = parseFen(fen);
-  if (setup.isErr) return void 0;
-  const pos = Chess.fromSetup(setup.value);
-  if (pos.isErr) return void 0;
-  const move3 = parseUci(uci);
-  if (!move3) return void 0;
-  const san = makeSan(pos.value, move3);
-  const id = scalachessCharPair(move3);
-  pos.value.play(move3);
-  const newFen = makeFen(pos.value.toSetup());
-  return { id, ply, uci, san, fen: newFen, children: [] };
-}
-function appendSolutionMoveToTree(rc, uci) {
-  const parentNode2 = rc.treeNode;
-  const newPly = parentNode2.ply + 1;
-  const newNode = makeTreeNode(parentNode2.fen, uci, newPly);
-  if (!newNode) return;
-  addNode(rc.treeRoot, rc.treePath, newNode);
-  rc.treePath = rc.treePath + newNode.id;
-  rc.treeNode = newNode;
-  rc.treeMainline = mainlineNodeList(rc.treeRoot);
-}
-function completeSolutionTree(rc) {
-  for (let i = rc.progressPly; i < rc.solutionLine.length; i++) {
-    appendSolutionMoveToTree(rc, rc.solutionLine[i]);
-  }
-}
-var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
-  constructor(definition, redraw2) {
-    this.definition = definition;
-    this.solutionLine = definition.solutionLine;
-    this.status = "playing";
-    this.progressPly = 0;
-    this.startedAt = Date.now();
-    this.feedback = "none";
-    this.failureReasons = [];
-    this.usedHint = false;
-    this.usedEngineReveal = false;
-    this.revealedSolution = false;
-    this.firstWrongPly = void 0;
-    this.attemptRecorded = false;
-    this.redraw = redraw2;
-    this.puzzleEngineEnabled = false;
-    this.currentSessionMode = "practice";
-    this.moveQualities = [];
-    this.mode = "play";
-    this.canViewSolution = false;
-    this.gamePgn = void 0;
-    this.gameTree = null;
-    this.gameTreePuzzlePath = null;
-    this.analysisMode = false;
-    const setup = parseFen(definition.startFen);
-    this.pov = setup.isOk ? setup.value.turn === "white" ? "black" : "white" : "white";
-    const { root, path, node } = buildInitialPuzzleTree(definition);
-    this.treeRoot = root;
-    this.treePath = path;
-    this.treeNode = node;
-    this.treeMainline = mainlineNodeList(root);
-    this.puzzleTreeRoot = root;
-    this.puzzleTreePath = path;
-  }
-  /**
-   * Returns the next expected user move from the solution line,
-   * or undefined if the puzzle is complete or out of bounds.
-   */
-  /** All moves from startFen to reach the current position (trigger + solution moves played). */
-  allMovesPlayed() {
-    const moves = [];
-    if (this.definition.triggerMove) moves.push(this.definition.triggerMove);
-    moves.push(...this.solutionLine.slice(0, this.progressPly));
-    return moves;
-  }
-  /**
-   * Parse the full game PGN into a tree and find the puzzle start position.
-   * Switches to the game tree when analysis mode is activated.
-   */
-  loadGameTree() {
-    if (!this.gamePgn) return false;
-    try {
-      this.gameTree = pgnToTree(this.gamePgn);
-      const puzzleFenParts = this.definition.startFen.split(" ").slice(0, 4).join(" ");
-      const mainline = mainlineNodeList(this.gameTree);
-      for (let i = 0; i < mainline.length; i++) {
-        const nodeFenParts = mainline[i].fen.split(" ").slice(0, 4).join(" ");
-        if (nodeFenParts === puzzleFenParts) {
-          let path = "";
-          for (let j = 1; j <= i; j++) path += mainline[j].id;
-          this.gameTreePuzzlePath = path;
-          return true;
-        }
-      }
-      this.gameTreePuzzlePath = null;
-      return true;
-    } catch (e) {
-      console.warn("[puzzle-ctrl] failed to parse game PGN", e);
-      return false;
-    }
-  }
-  /**
-   * Toggle analysis mode — switches between puzzle tree and full game tree.
-   */
-  toggleAnalysisMode(redraw2) {
-    if (this.analysisMode) {
-      this.analysisMode = false;
-      this.treeRoot = this.puzzleTreeRoot;
-      this.setTreePath(this.puzzleTreePath);
-    } else {
-      if (!this.gameTree && !this.loadGameTree()) return;
-      if (!this.gameTree) return;
-      this.puzzleTreeRoot = this.treeRoot;
-      this.puzzleTreePath = this.treePath;
-      this.analysisMode = true;
-      this.treeRoot = this.gameTree;
-      const startPath = this.gameTreePuzzlePath ?? "";
-      this.setTreePath(startPath);
-    }
-    syncPuzzleBoard();
-    redraw2();
-  }
-  /**
-   * Navigate to a specific position in the full game tree without changing puzzle state.
-   * Used when the user clicks a pre-puzzle context move to browse the game.
-   * Puzzle progress, status, and solution state are preserved — only the board view changes.
-   */
-  browseGameAt(path, redraw2) {
-    if (!this.gameTree && !this.loadGameTree()) return;
-    if (!this.gameTree) return;
-    if (!this.analysisMode) {
-      this.puzzleTreeRoot = this.treeRoot;
-      this.puzzleTreePath = this.treePath;
-    }
-    this.analysisMode = true;
-    this.treeRoot = this.gameTree;
-    this.setTreePath(path);
-    syncPuzzleBoard();
-    redraw2();
-  }
-  /** Navigate the tree to a given path. Updates treeNode and syncs the board. */
-  setTreePath(path) {
-    const target = nodeAtPath(this.treeRoot, path);
-    if (!target) return;
-    this.treePath = path;
-    this.treeNode = target;
-    this.treeMainline = mainlineNodeList(this.treeRoot);
-  }
-  /** Add a variation move at the current tree position (post-solve free play). */
-  addVariationMove(uci) {
-    const newNode = makeTreeNode(this.treeNode.fen, uci, this.treeNode.ply + 1);
-    if (!newNode) return void 0;
-    addNode(this.treeRoot, this.treePath, newNode);
-    this.treePath = this.treePath + newNode.id;
-    this.treeNode = newNode;
-    this.treeMainline = mainlineNodeList(this.treeRoot);
-    return newNode;
-  }
-  /** Delete a variation node at a given path. If currently inside the deleted variation, navigate up to its parent. */
-  deleteVariation(path) {
-    deleteNodeAt(this.treeRoot, path);
-    if (this.treePath.startsWith(path)) {
-      this.setTreePath(pathInit(path));
-    }
-    this.treeMainline = mainlineNodeList(this.treeRoot);
-  }
-  currentExpectedMove() {
-    if (this.progressPly >= this.solutionLine.length) return void 0;
-    return this.solutionLine[this.progressPly];
-  }
-  /**
-   * Evaluate the quality of a played move relative to the expected solution move.
-   * Uses engine win-chance evaluation to classify the move independently of
-   * whether it matched the strict solution line.
-   *
-   * This is the shared concept used by both the puzzle product and Learn From
-   * Your Mistakes to provide contextual "how good was your move" feedback.
-   *
-   * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts
-   * povDiff threshold model and ui/lib/src/ceval/winningChances.ts.
-   *
-   * @param playedUci   - the UCI move the user actually played
-   * @param expectedUci - the UCI move the solution line expected
-   * @param matched     - whether playedUci matched expectedUci (from strict check)
-   * @param fenBefore   - FEN of the position before the move was played
-   */
-  evaluateMove(playedUci, expectedUci, matched, fenBefore) {
-    if (matched) {
-      const quality2 = {
-        playedUci,
-        expectedUci,
-        matched: true,
-        quality: "best",
-        fenBefore
-      };
-      this.moveQualities.push(quality2);
-      return quality2;
-    }
-    const setupBefore = parseFen(fenBefore);
-    if (setupBefore.isErr) {
-      const quality2 = {
-        playedUci,
-        expectedUci,
-        matched: false,
-        quality: "blunder",
-        fenBefore
-      };
-      this.moveQualities.push(quality2);
-      return quality2;
-    }
-    const posBefore = Chess.fromSetup(setupBefore.value);
-    if (posBefore.isErr) {
-      const quality2 = {
-        playedUci,
-        expectedUci,
-        matched: false,
-        quality: "blunder",
-        fenBefore
-      };
-      this.moveQualities.push(quality2);
-      return quality2;
-    }
-    const posAfterPlayed = posBefore.value.clone();
-    const move3 = parseUci(playedUci);
-    if (!move3) {
-      const quality2 = {
-        playedUci,
-        expectedUci,
-        matched: false,
-        quality: "blunder",
-        fenBefore
-      };
-      this.moveQualities.push(quality2);
-      return quality2;
-    }
-    posAfterPlayed.play(move3);
-    const posAfterExpected = posBefore.value.clone();
-    const expectedMove = parseUci(expectedUci);
-    if (expectedMove) {
-      posAfterExpected.play(expectedMove);
-    }
-    const currentEngineEval = this.puzzleEngineEnabled ? currentEval : {};
-    const evalBefore = currentEngineEval.cp !== void 0 || currentEngineEval.mate !== void 0 ? { cp: currentEngineEval.cp, mate: currentEngineEval.mate } : void 0;
-    if (!evalBefore) {
-      const quality2 = {
-        playedUci,
-        expectedUci,
-        matched: false,
-        quality: "mistake",
-        fenBefore
-      };
-      this.moveQualities.push(quality2);
-      return quality2;
-    }
-    const povSign = this.pov === "white" ? 1 : -1;
-    const eb = {};
-    if (evalBefore.cp !== void 0) eb.cp = evalBefore.cp;
-    if (evalBefore.mate !== void 0) eb.mate = evalBefore.mate;
-    const wcBefore = evalWinChances(eb);
-    if (wcBefore === void 0) {
-      const quality2 = {
-        playedUci,
-        expectedUci,
-        matched: false,
-        evalBefore: eb,
-        quality: "mistake",
-        fenBefore
-      };
-      this.moveQualities.push(quality2);
-      return quality2;
-    }
-    const wcBeforePov = wcBefore * povSign;
-    const quality = {
-      playedUci,
-      expectedUci,
-      matched: false,
-      evalBefore: eb,
-      fenBefore,
-      quality: "mistake"
-    };
-    this.moveQualities.push(quality);
-    return quality;
-  }
-  /**
-   * Synchronously classify a move quality from pre-computed win-chance loss.
-   * Uses the same thresholds as game analysis (LOSS_THRESHOLDS from winchances.ts).
-   *
-   * @param wcLoss - win-chance loss from solver's perspective (0–0.5 scale)
-   * @returns quality classification
-   */
-  static classifyMoveQuality(wcLoss) {
-    if (wcLoss <= 0) return "good";
-    if (wcLoss < LOSS_THRESHOLDS.inaccuracy) return "good";
-    if (wcLoss < LOSS_THRESHOLDS.mistake) return "inaccuracy";
-    if (wcLoss < LOSS_THRESHOLDS.blunder) return "mistake";
-    return "blunder";
-  }
-  /**
-   * Refine a previously recorded move quality with engine evaluation data.
-   * Called when async engine eval becomes available for the position.
-   * This allows the initial evaluateMove() call to be synchronous while
-   * still providing accurate quality data once the engine finishes.
-   */
-  refineMoveQuality(index, evalBefore, evalAfter) {
-    const mq = this.moveQualities[index];
-    if (!mq || mq.matched) return;
-    mq.evalBefore = evalBefore;
-    mq.evalAfter = evalAfter;
-    const povSign = this.pov === "white" ? 1 : -1;
-    const wcBefore = evalWinChances(evalBefore);
-    const wcAfter = evalWinChances(evalAfter);
-    if (wcBefore !== void 0 && wcAfter !== void 0) {
-      const wcBeforePov = wcBefore * povSign;
-      const wcAfterPov = wcAfter * povSign;
-      const loss = (wcBeforePov - wcAfterPov) / 2;
-      mq.wcLoss = Math.max(0, loss);
-      mq.quality = _PuzzleRoundCtrl.classifyMoveQuality(mq.wcLoss);
-    }
-    if (evalBefore.cp !== void 0 && evalAfter.cp !== void 0) {
-      const cpBeforePov = evalBefore.cp * povSign;
-      const cpAfterPov = evalAfter.cp * povSign;
-      mq.cpLoss = Math.max(0, cpBeforePov - cpAfterPov);
-    }
-  }
-  /**
-   * Whether the current position is the user's turn to move.
-   * Even progressPly indices (0, 2, 4…) are user moves in our convention.
-   */
-  isUserTurn() {
-    return this.progressPly % 2 === 0;
-  }
-  /**
-   * Validate a user move against the stored solution line.
-   * Adapted from lichess-org/lila: ui/puzzle/src/moveTest.ts
-   *
-   * On correct move: advances progressPly, sets feedback='good',
-   * checks for solve completion.
-   * On wrong move: sets status='failed', records failure reason.
-   */
-  submitUserMove(uci) {
-    if (this.status !== "playing") return { accepted: false };
-    if (this.mode === "view") return { accepted: false };
-    const expected = this.currentExpectedMove();
-    if (!expected) return { accepted: false };
-    const posBefore = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
-    const fenBefore = posBefore ? makeFen(posBefore.toSetup()) : this.definition.startFen;
-    const matched = uciMatches(uci, expected);
-    const cg = getPuzzleCg();
-    if (cg) cg.setAutoShapes([]);
-    this.evaluateMove(uci, expected, matched, fenBefore);
-    if (matched) {
-      if (posBefore) playMoveSound(uciToSanAtPos(posBefore, uci));
-      this.feedback = "good";
-      this.progressPly++;
-      appendSolutionMoveToTree(this, uci);
-      if (this.progressPly >= this.solutionLine.length) {
-        this.status = "solved";
-        this.mode = "view";
-        this.recordAttempt();
-        syncPuzzleBoard();
-      }
-      this.redraw();
-      return { accepted: true };
-    }
-    if (this.firstWrongPly === void 0) {
-      this.firstWrongPly = this.progressPly;
-    }
-    this.feedback = "fail";
-    const reason = this.progressPly === 0 ? "wrong-first-move" : "wrong-later-move";
-    if (!this.failureReasons.includes(reason)) {
-      this.failureReasons.push(reason);
-    }
-    if (this.mode === "play") {
-      this.mode = "try";
-      this.canViewSolution = true;
-    }
-    this.revertUserMove();
-    this.redraw();
-    return { accepted: false };
-  }
-  /**
-   * Revert the last wrong user move on the board — snap piece back.
-   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts revertUserMove
-   */
-  revertUserMove() {
-    setTimeout(() => {
-      const cg = getPuzzleCg();
-      if (!cg) return;
-      const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
-      if (pos) {
-        const dests = chessgroundDests(pos);
-        cg.set({
-          fen: makeFen(pos.toSetup()),
-          turnColor: pos.turn,
-          movable: {
-            color: this.pov,
-            dests
-          }
-        });
-      }
-      this.redraw();
-    }, 300);
-  }
-  /**
-   * Give up and view the solution. Marks the puzzle as failed.
-   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts viewSolution
-   */
-  viewSolution(redraw2) {
-    if (this.mode === "view") return;
-    this.status = "failed";
-    this.mode = "view";
-    this.revealedSolution = true;
-    this.recordAttempt();
-    completeSolutionTree(this);
-    syncPuzzleBoard();
-    redraw2();
-  }
-  /**
-   * After a correct user move, play the opponent's scripted reply from the
-   * solution line on the Chessground board.
-   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts playUci / sendMoveAt
-   *
-   * Does nothing if:
-   * - puzzle is already solved/failed
-   * - it's the user's turn (no opponent reply pending)
-   * - there's no next move in the solution line
-   */
-  playOpponentReply() {
-    if (this.status !== "playing") return;
-    if (this.isUserTurn()) return;
-    const opponentUci = this.currentExpectedMove();
-    if (!opponentUci) return;
-    const cg = getPuzzleCg();
-    if (!cg) return;
-    const preOpponentPos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
-    if (preOpponentPos) playMoveSound(uciToSanAtPos(preOpponentPos, opponentUci));
-    appendSolutionMoveToTree(this, opponentUci);
-    this.progressPly++;
-    if (this.progressPly >= this.solutionLine.length) {
-      this.status = "solved";
-      this.recordAttempt();
-      this.redraw();
-      return;
-    }
-    const orig = opponentUci.slice(0, 2);
-    const dest = opponentUci.slice(2, 4);
-    const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
-    if (pos) {
-      const dests = chessgroundDests(pos);
-      cg.set({
-        fen: makeFen(pos.toSetup()),
-        turnColor: pos.turn,
-        lastMove: [orig, dest],
-        movable: {
-          color: this.pov,
-          dests
-        }
-      });
-    }
-    setTimeout(() => {
-      if (this.status === "playing") {
-        this.feedback = "none";
-        this.redraw();
-      }
-    }, 200);
-    this.redraw();
-  }
-  /**
-   * Build a PuzzleAttempt from the current round state and persist it to IDB.
-   * Idempotent — only records once per round lifecycle.
-   */
-  recordAttempt() {
-    if (this.attemptRecorded) return void 0;
-    if (this.status !== "solved" && this.status !== "failed") return void 0;
-    this.attemptRecorded = true;
-    const result = this.computeSolveResult();
-    const attempt = {
-      puzzleId: this.definition.id,
-      startedAt: this.startedAt,
-      completedAt: Date.now(),
-      result,
-      failureReasons: [...this.failureReasons],
-      usedHint: this.usedHint,
-      usedEngineReveal: this.usedEngineReveal,
-      revealedSolution: this.revealedSolution,
-      openedNotesDuringSolve: false,
-      // not implemented yet
-      skipped: false,
-      sessionMode: this.currentSessionMode
-      // ratingBefore / ratingAfter: populated by the future rating algorithm
-      // when currentSessionMode === 'rated'. Left undefined for practice mode.
-    };
-    if (this.firstWrongPly !== void 0) attempt.firstWrongPly = this.firstWrongPly;
-    let sessionResult;
-    if (this.status !== "solved") {
-      sessionResult = "failed";
-    } else if (this.failureReasons.length > 0 || this.usedHint || this.usedEngineReveal || this.revealedSolution || this.mode === "try") {
-      sessionResult = "assisted";
-    } else {
-      sessionResult = "clean";
-    }
-    sessionRecordResult(this.definition.id, sessionResult);
-    if (_autoNext && this.status === "solved") {
-      const redraw2 = this.redraw;
-      setTimeout(() => {
-        nextPuzzle(redraw2);
-      }, 800);
-    }
-    saveAttempt(attempt).then(() => getAttempts(this.definition.id)).then((allAttempts) => updateDueMeta(this.definition.id, allAttempts)).catch((e) => console.warn("[puzzle-round] attempt save / due-meta update failed", e));
-    return attempt;
-  }
-  /**
-   * Determine the SolveResult from the current round state.
-   * Priority: skipped > failed > assisted-solve > recovered-solve > clean-solve
-   */
-  computeSolveResult() {
-    if (this.status === "failed") return "failed";
-    if (this.usedHint || this.usedEngineReveal || this.revealedSolution) {
-      return "assisted-solve";
-    }
-    if (this.failureReasons.length > 0 || this.firstWrongPly !== void 0) {
-      return "recovered-solve";
-    }
-    return "clean-solve";
-  }
-  /**
-   * Skip the current puzzle — marks as failed with 'skipped' result.
-   * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts skip action
-   */
-  skipPuzzle() {
-    if (this.status !== "playing") return;
-    if (!this.failureReasons.includes("skip-pressed")) {
-      this.failureReasons.push("skip-pressed");
-    }
-    this.status = "failed";
-    this.mode = "view";
-    this.feedback = "fail";
-    if (!this.attemptRecorded) {
-      this.attemptRecorded = true;
-      const attempt = {
-        puzzleId: this.definition.id,
-        startedAt: this.startedAt,
-        completedAt: Date.now(),
-        result: "skipped",
-        failureReasons: [...this.failureReasons],
-        usedHint: this.usedHint,
-        usedEngineReveal: this.usedEngineReveal,
-        revealedSolution: this.revealedSolution,
-        openedNotesDuringSolve: false,
-        skipped: true,
-        sessionMode: this.currentSessionMode
-      };
-      if (this.firstWrongPly !== void 0) attempt.firstWrongPly = this.firstWrongPly;
-      saveAttempt(attempt).then(() => getAttempts(this.definition.id)).then((allAttempts) => updateDueMeta(this.definition.id, allAttempts)).catch((e) => console.warn("[puzzle-round] skip attempt save / due-meta update failed", e));
-    }
-    this.redraw();
-  }
-  // --- Assist action methods ---
-  // These methods log assist actions (hint, engine reveal, solution reveal)
-  // so the attempt record captures WHY a solve was assisted. Each sets the
-  // relevant boolean flag and appends a FailureReason if not already present.
-  // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts hint / ceval / solution
-  /**
-   * Mark that the user requested a hint.
-   * Sets usedHint flag and records 'hint-used' failure reason.
-   * The actual hint display is a future UI task — this just marks the flag.
-   */
-  useHint(redraw2) {
-    if (this.status !== "playing") return;
-    this.usedHint = true;
-    if (!this.failureReasons.includes("hint-used")) {
-      this.failureReasons.push("hint-used");
-    }
-    const expected = this.currentExpectedMove();
-    const cg = getPuzzleCg();
-    if (expected && cg) {
-      const orig = expected.slice(0, 2);
-      cg.setAutoShapes([{
-        orig,
-        brush: "green"
-      }]);
-    }
-    redraw2();
-  }
-  /**
-   * Mark that the user revealed the solution.
-   * Sets revealedSolution flag and records 'solution-revealed' failure reason.
-   * Available during play or after failure.
-   */
-  revealSolution(redraw2) {
-    if (this.status !== "playing" && this.status !== "failed") return;
-    this.revealedSolution = true;
-    if (!this.failureReasons.includes("solution-revealed")) {
-      this.failureReasons.push("solution-revealed");
-    }
-    redraw2();
-  }
-  /**
-   * Mark that the user requested engine lines and activate the engine.
-   * Sets usedEngineReveal flag and records 'engine-lines-shown' failure reason.
-   * Only available after solve/fail (post-round viewing).
-   */
-  showEngineLines(redraw2) {
-    if (this.status !== "solved" && this.status !== "failed") return;
-    if (this.status === "failed") {
-      this.usedEngineReveal = true;
-      if (!this.failureReasons.includes("engine-lines-shown")) {
-        this.failureReasons.push("engine-lines-shown");
-      }
-    }
-    this.enablePuzzleEngine(redraw2);
-  }
-  /**
-   * Mark that the user requested engine arrows on the board.
-   * Sets usedEngineReveal flag and records 'engine-arrows-shown' failure reason.
-   * Only available after solve/fail (post-round viewing).
-   */
-  showEngineArrows(redraw2) {
-    if (this.status !== "solved" && this.status !== "failed") return;
-    if (this.status === "failed") {
-      this.usedEngineReveal = true;
-      if (!this.failureReasons.includes("engine-arrows-shown")) {
-        this.failureReasons.push("engine-arrows-shown");
-      }
-    }
-    redraw2();
-  }
-  // --- Post-solve engine assist ---
-  // These methods provide a seam for requesting/stopping engine evaluation of
-  // the current puzzle position AFTER a solve attempt completes. The engine
-  // eval is purely for viewing — it never influences submitUserMove or the
-  // strict solutionLine correctness model.
-  // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts cevalEnabled / doStartCeval
-  /**
-   * Activate engine evaluation for the current puzzle position.
-   * Only permitted after the round has ended (solved or failed).
-   * Uses the shared Stockfish protocol to evaluate the puzzle board's
-   * current FEN — does NOT go through the analysis board's evalCurrentPosition.
-   */
-  enablePuzzleEngine(redraw2) {
-    if (this.status !== "solved" && this.status !== "failed") return;
-    if (this.puzzleEngineEnabled) return;
-    this.puzzleEngineEnabled = true;
-    setEngineEnabledFlag(true);
-    const fenStr = this.treeNode.fen;
-    if (engineReady) {
-      protocol.setPosition(fenStr);
-      protocol.go(analysisDepth, multiPv);
-      redraw2();
-    } else {
-      redraw2();
-      void protocol.init("/stockfish-web").then(() => {
-        if (this.puzzleEngineEnabled) {
-          protocol.setPosition(fenStr);
-          protocol.go(analysisDepth, multiPv);
-          redraw2();
-        }
-      }).catch((err) => {
-        console.error("[puzzle-engine] failed to load:", err);
-        this.puzzleEngineEnabled = false;
-        setEngineEnabledFlag(false);
-        redraw2();
-      });
-    }
-  }
-  /**
-   * Called by the view whenever the shared engine toggle is on during an active
-   * solve.  Idempotent — only marks the round the first time.
-   * Triggers are: mode === 'play' or 'try' AND engineEnabled() returns true.
-   */
-  notifyEngineUsedDuringSolve() {
-    if (this.usedEngineReveal) return;
-    if (this.status === "solved" || this.status === "failed") return;
-    this.usedEngineReveal = true;
-    if (!this.failureReasons.includes("engine-lines-shown")) {
-      this.failureReasons.push("engine-lines-shown");
-    }
-  }
-  /**
-   * Stop engine evaluation for the puzzle position.
-   */
-  disablePuzzleEngine() {
-    if (!this.puzzleEngineEnabled) return;
-    this.puzzleEngineEnabled = false;
-    setEngineEnabledFlag(false);
-    protocol.stop();
-  }
-  /**
-   * Returns the current engine eval from the shared engine state.
-   * Only meaningful when puzzleEngineEnabled is true — otherwise returns
-   * an empty eval. The caller should check puzzleEngineEnabled before
-   * using the result for display.
-   */
-  getPuzzleEval() {
-    if (!this.puzzleEngineEnabled) return {};
-    return currentEval;
-  }
-};
-var activeRoundCtrl = null;
-function startPuzzleRound(definition, redraw2) {
-  activeRoundCtrl = new PuzzleRoundCtrl(definition, redraw2);
-  return activeRoundCtrl;
-}
-function getActiveRoundCtrl() {
-  return activeRoundCtrl;
-}
-var state = { view: "library" };
-var libraryCounts;
-var roundState = null;
-function initPuzzlePage(view2, puzzleId) {
-  const s = { view: view2 };
-  if (puzzleId !== void 0) s.puzzleId = puzzleId;
-  state = s;
-}
-function getLibraryCounts() {
-  return libraryCounts;
-}
-function getPuzzleRoundState() {
-  return roundState;
-}
-async function openPuzzleRound(id, redraw2) {
-  if (roundState && state.puzzleId === id && roundState.status !== "error") return;
-  state = { view: "round", puzzleId: id };
-  roundState = { definition: null, status: "loading" };
-  redraw2();
-  try {
-    const def = await getPuzzleDefinition(id);
-    if (!def) {
-      roundState = { definition: null, status: "error", error: `Puzzle "${id}" not found` };
-    } else {
-      roundState = { definition: def, status: "ready" };
-      startPuzzleRound(def, redraw2);
-      sessionRecordStart(def.id);
-      loadPuzzleMeta(id).then(() => redraw2());
-      dequeueSessionPuzzle(def.id);
-      loadPuzzlePgn(def).then((pgn) => {
-        console.log("[pgn] loadPuzzlePgn resolved", { pgn: !!pgn, defId: def.id, ctrlId: activeRoundCtrl?.definition.id });
-        if (pgn && activeRoundCtrl?.definition.id === def.id) {
-          activeRoundCtrl.gamePgn = pgn;
-          const treeOk = activeRoundCtrl.loadGameTree();
-          console.log("[pgn] loadGameTree result", treeOk);
-          redraw2();
-        }
-      });
-      prefetchSessionPgns();
-    }
-  } catch (e) {
-    roundState = {
-      definition: null,
-      status: "error",
-      error: e instanceof Error ? e.message : "Failed to load puzzle"
-    };
-  }
-  redraw2();
-}
-var puzzleCg;
-var puzzleOrientation = "white";
-function getPuzzleCg() {
-  return puzzleCg;
-}
-function mountPuzzleBoard(el, redraw2) {
-  const def = roundState?.definition;
-  if (!def) return;
-  const rc = getActiveRoundCtrl();
-  const setup = parseFen(def.startFen);
-  if (setup.isErr) {
-    console.error("[puzzle-ctrl] invalid startFen", def.startFen);
-    return;
-  }
-  const pos = Chess.fromSetup(setup.value);
-  if (pos.isErr) {
-    console.error("[puzzle-ctrl] invalid position from startFen", def.startFen);
-    return;
-  }
-  const turn = pos.value.turn;
-  puzzleOrientation = rc ? rc.pov : turn === "white" ? "black" : "white";
-  const solverColor = puzzleOrientation;
-  const dests = chessgroundDests(pos.value);
-  puzzleCg?.destroy();
-  puzzleCg = Chessground(el, {
-    orientation: puzzleOrientation,
-    fen: def.startFen,
-    turnColor: turn,
-    viewOnly: false,
-    movable: {
-      free: false,
-      // Initially no pieces are movable — the trigger move plays first
-      color: void 0,
-      dests: /* @__PURE__ */ new Map(),
-      showDests: true
-    },
-    drawable: { enabled: true },
-    animation: { enabled: true, duration: 300 },
-    events: {
-      move: (orig, dest, _capturedPiece) => {
-        if (!rc) return;
-        const uci = `${orig}${dest}`;
-        if (rc.mode === "view" || rc.analysisMode) {
-          const newNode = rc.addVariationMove(uci);
-          if (newNode) {
-            playMoveSound(newNode.san);
-            syncPuzzleBoard();
-          }
-          redraw2();
-          return;
-        }
-        if (rc.status !== "playing") return;
-        const result = rc.submitUserMove(uci);
-        if (result.accepted) {
-          if (rc.status === "solved") {
-            redraw2();
-            return;
-          }
-          setTimeout(() => {
-            rc.playOpponentReply();
-          }, 300);
-        } else {
-          redraw2();
-        }
-      }
-    }
-  });
-  bindBoardResizeHandle(el);
-  if (def.triggerMove) {
-    setTimeout(() => {
-      const cg = getPuzzleCg();
-      if (!cg) return;
-      const prePos = positionAfterMoves(def.startFen, []);
-      if (prePos) playMoveSound(uciToSanAtPos(prePos, def.triggerMove));
-      const triggerPos = positionAfterMoves(def.startFen, [def.triggerMove]);
-      if (!triggerPos) return;
-      const orig = def.triggerMove.slice(0, 2);
-      const dest = def.triggerMove.slice(2, 4);
-      const dests2 = chessgroundDests(triggerPos);
-      const solverColor2 = rc ? rc.pov : triggerPos.turn;
-      cg.set({
-        fen: makeFen(triggerPos.toSetup()),
-        turnColor: triggerPos.turn,
-        lastMove: [orig, dest],
-        movable: {
-          color: solverColor2,
-          dests: dests2,
-          showDests: true
-        }
-      });
-      redraw2();
-    }, 500);
-  }
-  if (rc) {
-    setTimeout(() => {
-      if (rc.mode !== "view") {
-        rc.canViewSolution = true;
-        redraw2();
-      }
-    }, 4e3);
-  }
-}
-function destroyPuzzleBoard() {
-  puzzleCg?.destroy();
-  puzzleCg = void 0;
-}
-function syncPuzzleBoard() {
-  const cg = puzzleCg;
-  const rc = activeRoundCtrl;
-  if (!cg || !rc) return;
-  const node = rc.treeNode;
-  const setup = parseFen(node.fen);
-  if (setup.isErr) return;
-  const pos = Chess.fromSetup(setup.value);
-  if (pos.isErr) return;
-  const dests = chessgroundDests(pos.value);
-  const turn = pos.value.turn;
-  const lastMove = node.uci ? [node.uci.slice(0, 2), node.uci.slice(2, 4)] : void 0;
-  const movableColor = rc.mode === "view" || rc.analysisMode ? "both" : rc.pov;
-  cg.set({
-    fen: node.fen,
-    turnColor: turn,
-    lastMove,
-    movable: {
-      color: movableColor,
-      dests
-    }
-  });
-}
-function mountIdleBoard(el) {
-  if (puzzleCg) {
-    puzzleCg.destroy();
-    puzzleCg = void 0;
-  }
-  puzzleCg = Chessground(el, {
-    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    orientation: "white",
-    viewOnly: true,
-    coordinates: true,
-    animation: { enabled: false },
-    drawable: { enabled: false }
-  });
-}
-var metaCache = /* @__PURE__ */ new Map();
-function defaultMeta(puzzleId) {
-  return { puzzleId, folders: [], favorite: false, updatedAt: Date.now() };
-}
-async function loadPuzzleMeta(puzzleId) {
-  try {
-    const meta = await getMeta(puzzleId);
-    if (meta) metaCache.set(puzzleId, meta);
-    return meta;
-  } catch (e) {
-    console.warn("[puzzle-meta] loadPuzzleMeta failed", e);
-    return void 0;
-  }
-}
-async function savePuzzleMeta(meta) {
-  meta.updatedAt = Date.now();
-  metaCache.set(meta.puzzleId, meta);
-  try {
-    await saveMeta(meta);
-  } catch (e) {
-    console.warn("[puzzle-meta] savePuzzleMeta failed", e);
-  }
-}
-async function toggleFavorite(puzzleId, redraw2) {
-  let meta = metaCache.get(puzzleId) ?? await getMeta(puzzleId) ?? defaultMeta(puzzleId);
-  meta = { ...meta, favorite: !meta.favorite };
-  await savePuzzleMeta(meta);
-  redraw2();
-}
-function getOrCreateMeta(puzzleId) {
-  let meta = metaCache.get(puzzleId);
-  if (!meta) {
-    meta = defaultMeta(puzzleId);
-    metaCache.set(puzzleId, meta);
-  }
-  return meta;
-}
-async function loadLibraryCounts(redraw2) {
-  try {
-    const all = await listPuzzleDefinitions();
-    let user = 0;
-    for (const p of all) {
-      if (p.sourceKind === "user-library") user++;
-    }
-    let imported = 0;
-    try {
-      const manifest = await loadManifest();
-      imported = manifest.totalCount;
-    } catch {
-      imported = all.filter((p) => p.sourceKind === "imported-lichess").length;
-    }
-    libraryCounts = { imported, user };
-  } catch (e) {
-    console.warn("[puzzle-ctrl] loadLibraryCounts failed", e);
-    libraryCounts = { imported: 0, user: 0 };
-  }
-  redraw2();
-}
-var LIST_PAGE_SIZE = 50;
-var puzzleListState = null;
-function getPuzzleListState() {
-  return puzzleListState;
-}
-function closePuzzleList(redraw2) {
-  puzzleListState = null;
-  redraw2();
-}
-function applyListFilters(ls) {
-  let filtered = ls.allForSource;
-  if (ls.filters.ratingMin !== void 0) {
-    filtered = filtered.filter(
-      (p) => p.sourceKind === "imported-lichess" ? p.rating >= ls.filters.ratingMin : true
-    );
-  }
-  if (ls.filters.ratingMax !== void 0) {
-    filtered = filtered.filter(
-      (p) => p.sourceKind === "imported-lichess" ? p.rating <= ls.filters.ratingMax : true
-    );
-  }
-  if (ls.filters.theme) {
-    const theme = ls.filters.theme;
-    filtered = filtered.filter(
-      (p) => p.sourceKind === "imported-lichess" ? p.themes.includes(theme) : false
-    );
-  }
-  ls.filtered = filtered;
-  ls.page = 1;
-  ls.visible = filtered.slice(0, ls.pageSize);
-}
-var _importedShards = [];
-var _importedShardIndex = 0;
-async function openPuzzleList(source, redraw2) {
-  puzzleListState = {
-    source,
-    allForSource: [],
-    filtered: [],
-    visible: [],
-    filters: {},
-    page: 1,
-    pageSize: LIST_PAGE_SIZE,
-    availableThemes: [],
-    availableOpenings: [],
-    loading: true
-  };
-  redraw2();
-  try {
-    if (source === "imported-lichess") {
-      await openImportedList(redraw2);
-    } else {
-      await openUserLibraryList(redraw2);
-    }
-  } catch (e) {
-    console.warn("[puzzle-ctrl] openPuzzleList failed", e);
-    if (puzzleListState) puzzleListState.loading = false;
-  }
-  redraw2();
-}
-async function openUserLibraryList(redraw2) {
-  const all = await listPuzzleDefinitions();
-  const forSource = all.filter((p) => p.sourceKind === "user-library");
-  forSource.sort((a, b) => b.createdAt - a.createdAt);
-  puzzleListState.allForSource = forSource;
-  puzzleListState.availableThemes = [];
-  puzzleListState.availableOpenings = [];
-  puzzleListState.loading = false;
-  applyListFilters(puzzleListState);
-}
-async function openImportedList(redraw2) {
-  const manifest = await loadManifest();
-  _importedShards = manifest.shards;
-  _importedShardIndex = 0;
-  puzzleListState.availableThemes = getManifestThemes();
-  puzzleListState.availableOpenings = getManifestOpenings();
-  if (_importedShards.length > 0) {
-    await loadNextImportedShard();
-  }
-  puzzleListState.loading = false;
-  applyListFilters(puzzleListState);
-  redraw2();
-}
-async function loadNextImportedShard() {
-  if (_importedShardIndex >= _importedShards.length) return false;
-  const shard = _importedShards[_importedShardIndex];
-  _importedShardIndex++;
-  const filters = puzzleListState?.filters ?? {};
-  const records = await loadFilteredShard(shard.id, filters);
-  const defs = records.map((r) => lichessShardRecordToDefinition(r)).filter((d) => d !== void 0);
-  puzzleListState.allForSource.push(...defs);
-  puzzleListState.allForSource.sort((a, b) => {
-    const ra = a.sourceKind === "imported-lichess" ? a.rating : 0;
-    const rb = b.sourceKind === "imported-lichess" ? b.rating : 0;
-    return ra - rb;
-  });
-  applyListFilters(puzzleListState);
-  return true;
-}
-async function startImportedSession(themes, openings, ratingMin, ratingMax, redraw2) {
-  const manifest = await loadManifest();
-  const filters = {};
-  if (ratingMin !== void 0) filters.ratingMin = ratingMin;
-  if (ratingMax !== void 0) filters.ratingMax = ratingMax;
-  const matchingShards = findMatchingShards(manifest, filters);
-  if (matchingShards.length === 0) {
-    console.warn("[puzzle-ctrl] no shards match filters");
-    return;
-  }
-  const candidates = [];
-  for (const shard of matchingShards) {
-    const records = await loadFilteredShard(shard.id, filters);
-    for (const r of records) {
-      if (themes.length > 0 && !themes.some((t) => r.themes.includes(t))) continue;
-      if (openings.length > 0 && !openings.some((o) => r.openingTags.includes(o))) continue;
-      const def = lichessShardRecordToDefinition(r);
-      if (def) candidates.push(def);
-      if (candidates.length >= 200) break;
-    }
-    if (candidates.length >= 200) break;
-  }
-  if (candidates.length === 0) {
-    console.warn("[puzzle-ctrl] no imported puzzles match selection");
-    _importedSessionError = "No puzzles match your selection. Try widening the rating range or selecting different themes.";
-    redraw2();
-    return;
-  }
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-  }
-  const pick = candidates[0];
-  await savePuzzleDefinition(pick);
-  _importedSessionError = null;
-  _sessionQueue = candidates.slice(1);
-  _activeSession = {
-    themes: [...themes],
-    openings: [...openings],
-    ratingMin: ratingMin ?? 0,
-    ratingMax: ratingMax ?? 3200,
-    history: [{ puzzleId: pick.id, result: "in-progress" }]
-  };
-  saveSessionToStorage();
-  saveQueueToStorage();
-  prefetchSessionPgns();
-  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
-}
-async function retryFailedPuzzles(redraw2) {
-  if (!_activeSession) return;
-  const failedIds = _activeSession.history.filter((e) => e.result === "failed" || e.result === "assisted").map((e) => e.puzzleId);
-  if (failedIds.length === 0) return;
-  const defs = [];
-  for (const id of failedIds) {
-    const def = await getPuzzleDefinition(id);
-    if (def) defs.push(def);
-  }
-  if (defs.length === 0) return;
-  for (let i = defs.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [defs[i], defs[j]] = [defs[j], defs[i]];
-  }
-  const pick = defs[0];
-  _sessionQueue = defs.slice(1);
-  _activeSession.history.push({ puzzleId: pick.id, result: "in-progress" });
-  saveSessionToStorage();
-  saveQueueToStorage();
-  prefetchSessionPgns();
-  roundState = null;
-  activeRoundCtrl = null;
-  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
-}
-var PGN_CACHE_STORE = "puzzle-pgn-cache";
-var PGN_DB_NAME = "patzer-puzzle-pgn";
-var PGN_DB_VERSION = 1;
-var _pgnDb = null;
-function openPgnDb() {
-  if (_pgnDb) return Promise.resolve(_pgnDb);
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(PGN_DB_NAME, PGN_DB_VERSION);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(PGN_CACHE_STORE);
-    };
-    req.onsuccess = () => {
-      _pgnDb = req.result;
-      resolve(req.result);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-async function getCachedPgn(gameId) {
-  const db = await openPgnDb();
-  return new Promise((resolve) => {
-    const tx = db.transaction(PGN_CACHE_STORE, "readonly");
-    const req = tx.objectStore(PGN_CACHE_STORE).get(gameId);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(void 0);
-  });
-}
-async function cachePgn(gameId, pgn) {
-  const db = await openPgnDb();
-  return new Promise((resolve) => {
-    const tx = db.transaction(PGN_CACHE_STORE, "readwrite");
-    tx.objectStore(PGN_CACHE_STORE).put(pgn, gameId);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
-  });
-}
-function extractGameId(gameUrl) {
-  try {
-    const parts = gameUrl.replace("https://lichess.org/", "").split(/[/#]/);
-    return parts[0] && parts[0].length >= 8 ? parts[0] : void 0;
-  } catch {
-    return void 0;
-  }
-}
-async function fetchGamePgn(gameUrl) {
-  const gameId = extractGameId(gameUrl);
-  if (!gameId) {
-    console.warn("[pgn] extractGameId failed for", gameUrl);
-    return void 0;
-  }
-  const cached = await getCachedPgn(gameId);
-  if (cached) {
-    console.log("[pgn] cache hit for", gameId);
-    return cached;
-  }
-  console.log("[pgn] fetching from Lichess:", gameId);
-  try {
-    const res = await fetch(`https://lichess.org/game/export/${gameId}?evals=true&clocks=true`, {
-      headers: { "Accept": "application/x-chess-pgn" }
-    });
-    if (!res.ok) {
-      console.warn("[pgn] fetch failed", res.status, gameId);
-      return void 0;
-    }
-    const pgn = await res.text();
-    console.log("[pgn] fetched ok, length", pgn.length, "for", gameId);
-    await cachePgn(gameId, pgn);
-    return pgn;
-  } catch (e) {
-    console.warn("[pgn] fetch error", e);
-    return void 0;
-  }
-}
-var PREFETCH_AHEAD = 10;
-var _sessionQueue = [];
-var _prefetchInFlight = /* @__PURE__ */ new Set();
-function prefetchSessionPgns() {
-  let fetched = 0;
-  for (const def of _sessionQueue) {
-    if (fetched >= PREFETCH_AHEAD) break;
-    const url = def.sourceKind === "imported-lichess" ? def.gameUrl : void 0;
-    if (!url) continue;
-    const gameId = extractGameId(url);
-    if (!gameId || _prefetchInFlight.has(gameId)) continue;
-    _prefetchInFlight.add(gameId);
-    fetched++;
-    fetchGamePgn(url).finally(() => _prefetchInFlight.delete(gameId));
-  }
-}
-function dequeueSessionPuzzle(id) {
-  _sessionQueue = _sessionQueue.filter((d) => d.id !== id);
-  saveQueueToStorage();
-}
-async function loadPuzzlePgn(def) {
-  if (def.sourceKind === "user-library") return def.sourcePgn;
-  if (!def.gameUrl) return void 0;
-  return fetchGamePgn(def.gameUrl);
-}
-var _importedSessionError = null;
-function getImportedSessionError() {
-  return _importedSessionError;
-}
-function clearImportedSessionError() {
-  _importedSessionError = null;
-}
-var SESSION_STORAGE_KEY = "puzzleSession";
-var QUEUE_STORAGE_KEY = "puzzleSessionQueue";
-var AUTONEXT_STORAGE_KEY = "puzzleAutoNext";
-var _activeSession = null;
-var _autoNext = false;
-function saveSessionToStorage() {
-  if (_activeSession) {
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(_activeSession));
-  } else {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-  }
-}
-function saveQueueToStorage() {
-  if (_sessionQueue.length > 0) {
-    const compact = _sessionQueue.map((d) => d.id);
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(compact));
-  } else {
-    localStorage.removeItem(QUEUE_STORAGE_KEY);
-  }
-}
-function restoreSessionFromStorage() {
-  try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (raw) _activeSession = JSON.parse(raw);
-  } catch {
-  }
-  try {
-    const v = localStorage.getItem(AUTONEXT_STORAGE_KEY);
-    if (v === "true") _autoNext = true;
-  } catch {
-  }
-}
-function getAutoNext() {
-  return _autoNext;
-}
-function setAutoNext(v) {
-  _autoNext = v;
-  localStorage.setItem(AUTONEXT_STORAGE_KEY, String(v));
-}
-function getActiveSession() {
-  return _activeSession;
-}
-function clearActiveSession() {
-  _activeSession = null;
-  _sessionQueue = [];
-  localStorage.removeItem(SESSION_STORAGE_KEY);
-  localStorage.removeItem(QUEUE_STORAGE_KEY);
-}
-function getResumePuzzleId() {
-  if (!_activeSession) return void 0;
-  const inProgress = _activeSession.history.find((e) => e.result === "in-progress");
-  if (inProgress) return inProgress.puzzleId;
-  const last2 = _activeSession.history[_activeSession.history.length - 1];
-  return last2?.puzzleId;
-}
-restoreSessionFromStorage();
-function sessionRecordStart(puzzleId) {
-  if (!_activeSession) return;
-  if (_activeSession.history.some((e) => e.puzzleId === puzzleId)) return;
-  _activeSession.history.push({ puzzleId, result: "in-progress" });
-  saveSessionToStorage();
-}
-function sessionRecordResult(puzzleId, result) {
-  if (!_activeSession) return;
-  const entry = _activeSession.history.find((e) => e.puzzleId === puzzleId);
-  if (entry) entry.result = result;
-  saveSessionToStorage();
-}
-function filterPuzzleList(filters, redraw2) {
-  if (!puzzleListState) return;
-  puzzleListState.filters = filters;
-  applyListFilters(puzzleListState);
-  redraw2();
-}
-function loadMorePuzzles(redraw2) {
-  if (!puzzleListState) return;
-  const ls = puzzleListState;
-  const nextEnd = (ls.page + 1) * ls.pageSize;
-  ls.page++;
-  ls.visible = ls.filtered.slice(0, nextEnd);
-  redraw2();
-}
-async function selectPuzzleFromList(id, redraw2) {
-  if (puzzleListState) {
-    const def = puzzleListState.allForSource.find((p) => p.id === id);
-    if (def) {
-      await savePuzzleDefinition(def);
-    }
-  }
-  window.location.hash = `#/puzzles/${encodeURIComponent(id)}`;
-}
-async function nextPuzzle(redraw2) {
-  const currentDef = roundState?.definition;
-  if (!currentDef) return;
-  if (_sessionQueue.length > 0) {
-    const pick = _sessionQueue[0];
-    await savePuzzleDefinition(pick);
-    roundState = null;
-    activeRoundCtrl = null;
-    window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
-    return;
-  }
-  const sourceKind = currentDef.sourceKind;
-  try {
-    const all = await listPuzzleDefinitions();
-    const candidates = all.filter(
-      (p) => p.sourceKind === sourceKind && p.id !== currentDef.id
-    );
-    if (candidates.length === 0) {
-      console.warn("[puzzle-ctrl] no more puzzles of kind", sourceKind);
-      return;
-    }
-    const pick = candidates[Math.floor(Math.random() * candidates.length)];
-    roundState = null;
-    activeRoundCtrl = null;
-    window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
-  } catch (e) {
-    console.warn("[puzzle-ctrl] nextPuzzle failed", e);
-  }
-}
-async function retryPuzzle(redraw2) {
-  const currentDef = roundState?.definition;
-  if (!currentDef) return;
-  const id = currentDef.id;
-  roundState = null;
-  activeRoundCtrl = null;
-  await openPuzzleRound(id, redraw2);
-}
-var RETRY_RESULTS = /* @__PURE__ */ new Set([
-  "failed",
-  "skipped",
-  "assisted-solve"
-]);
-var retryQueue = [];
-var retryIndex = -1;
-var retrySessionActive = false;
-var retryCount;
-function getRetryQueue() {
-  return retryQueue;
-}
-function getRetryIndex() {
-  return retryIndex;
-}
-function isRetrySessionActive() {
-  return retrySessionActive;
-}
-function getRetryCount() {
-  return retryCount;
-}
-async function buildRetryQueue() {
-  const allDefs = await listPuzzleDefinitions();
-  const queue2 = [];
-  for (const def of allDefs) {
-    const attempts = await getAttempts(def.id);
-    if (attempts.length === 0) {
-      queue2.push(def);
-      continue;
-    }
-    let latest = attempts[0];
-    for (let i = 1; i < attempts.length; i++) {
-      if (attempts[i].completedAt > latest.completedAt) {
-        latest = attempts[i];
-      }
-    }
-    if (RETRY_RESULTS.has(latest.result)) {
-      queue2.push(def);
-    }
-  }
-  return queue2;
-}
-async function loadRetryCount(redraw2) {
-  try {
-    const queue2 = await buildRetryQueue();
-    retryCount = queue2.length;
-  } catch (e) {
-    console.warn("[puzzle-ctrl] loadRetryCount failed", e);
-    retryCount = 0;
-  }
-  redraw2();
-}
-async function startRetrySession(redraw2) {
-  try {
-    const queue2 = await buildRetryQueue();
-    if (queue2.length === 0) {
-      console.warn("[puzzle-ctrl] no puzzles need retry");
-      return;
-    }
-    retryQueue = queue2;
-    retryIndex = 0;
-    retrySessionActive = true;
-    const first2 = retryQueue[0];
-    window.location.hash = `#/puzzles/${encodeURIComponent(first2.id)}`;
-  } catch (e) {
-    console.warn("[puzzle-ctrl] startRetrySession failed", e);
-    retrySessionActive = false;
-  }
-}
-async function nextRetryPuzzle(redraw2) {
-  if (!retrySessionActive || retryQueue.length === 0) {
-    return nextPuzzle(redraw2);
-  }
-  retryIndex++;
-  if (retryIndex >= retryQueue.length) {
-    retrySessionActive = false;
-    retryQueue = [];
-    retryIndex = -1;
-    loadRetryCount(redraw2);
-    console.log("[puzzle-ctrl] retry queue complete");
-    return;
-  }
-  const next2 = retryQueue[retryIndex];
-  window.location.hash = `#/puzzles/${encodeURIComponent(next2.id)}`;
-}
-var DAY_MS = 864e5;
-var DUE_INTERVALS = {
-  "clean-solve": 7 * DAY_MS,
-  "recovered-solve": 3 * DAY_MS,
-  "assisted-solve": 1 * DAY_MS,
-  "failed": 1 * DAY_MS,
-  "skipped": 1 * DAY_MS
-};
-function computeDueDate(attempts) {
-  if (attempts.length === 0) return 0;
-  let latest = attempts[0];
-  for (let i = 1; i < attempts.length; i++) {
-    if (attempts[i].completedAt > latest.completedAt) {
-      latest = attempts[i];
-    }
-  }
-  const interval = DUE_INTERVALS[latest.result];
-  if (interval === void 0) return void 0;
-  return latest.completedAt + interval;
-}
-async function updateDueMeta(puzzleId, attempts) {
-  const dueAt = computeDueDate(attempts);
-  if (dueAt === void 0) return;
-  let latest = attempts[0];
-  for (let i = 1; i < attempts.length; i++) {
-    if (attempts[i].completedAt > latest.completedAt) {
-      latest = attempts[i];
-    }
-  }
-  const existing = metaCache.get(puzzleId) ?? await getMeta(puzzleId) ?? defaultMeta(puzzleId);
-  const updated = {
-    ...existing,
-    dueAt,
-    lastAttemptResult: latest.result
-  };
-  await savePuzzleMeta(updated);
-}
-var dueCount;
-function getDueCount() {
-  return dueCount;
-}
-async function getDuePuzzles() {
-  const allDefs = await listPuzzleDefinitions();
-  const now = Date.now();
-  const due = [];
-  for (const def of allDefs) {
-    const meta = metaCache.get(def.id) ?? await getMeta(def.id);
-    if (meta && meta.dueAt !== void 0) {
-      if (meta.dueAt <= now) due.push(def);
-    } else {
-      const attempts = await getAttempts(def.id);
-      if (attempts.length === 0) {
-        due.push(def);
-      } else {
-        const dueAt = computeDueDate(attempts);
-        if (dueAt !== void 0 && dueAt <= now) due.push(def);
-      }
-    }
-  }
-  return due;
-}
-async function loadDueCount(redraw2) {
-  try {
-    const duePuzzles = await getDuePuzzles();
-    dueCount = duePuzzles.length;
-  } catch (e) {
-    console.warn("[puzzle-ctrl] loadDueCount failed", e);
-    dueCount = 0;
-  }
-  redraw2();
-}
-async function startDueSession(redraw2) {
-  try {
-    const queue2 = await getDuePuzzles();
-    if (queue2.length === 0) {
-      console.warn("[puzzle-ctrl] no puzzles due for review");
-      return;
-    }
-    retryQueue = queue2;
-    retryIndex = 0;
-    retrySessionActive = true;
-    const first2 = retryQueue[0];
-    window.location.hash = `#/puzzles/${encodeURIComponent(first2.id)}`;
-  } catch (e) {
-    console.warn("[puzzle-ctrl] startDueSession failed", e);
-    retrySessionActive = false;
-  }
-}
-
 // src/puzzles/view.ts
 function sourceCard(title, description, count, sourceKind, redraw2) {
   const loaded = count !== void 0;
@@ -12997,10 +13219,11 @@ function renderPuzzleMoveList(_def, rc, redraw2) {
         return { node, path: nodePath };
       });
       children.push(h("div.move-list-inner.puzzle-game-context", [
-        renderContextMoves(pathNodes, (p) => {
-          rc.browseGameAt(p, redraw2);
-          redraw2();
-        }, "")
+        renderContextMoves(
+          pathNodes,
+          (p) => peekPuzzleContext(p, redraw2),
+          rc.contextPeekPath ?? ""
+        )
       ]));
       children.push(h("div.puzzle-game-context__sep"));
     }
@@ -13227,58 +13450,40 @@ function renderPuzzleRound(redraw2) {
 }
 
 // src/sync/client.ts
-var AUTH_TOKEN_KEY = "adminAuthToken";
 var LAST_SYNC_KEY = "lastSyncedAt";
-function setAuthToken(token) {
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
-}
-function getAuthToken() {
-  return localStorage.getItem(AUTH_TOKEN_KEY);
-}
-function clearAuthToken() {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-}
-function isAuthenticated() {
-  return !!getAuthToken();
-}
 function getLastSyncedAt() {
   return localStorage.getItem(LAST_SYNC_KEY);
 }
 function setLastSyncedAt() {
   localStorage.setItem(LAST_SYNC_KEY, (/* @__PURE__ */ new Date()).toISOString());
 }
-function authHeaders() {
-  const token = getAuthToken();
-  return token ? { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
-}
 async function apiGet(path) {
-  const res = await fetch(path, { headers: authHeaders() });
+  const res = await fetch(path, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`GET ${path}: ${res.status} ${res.statusText}`);
   return res.json();
 }
 async function apiPost(path, body) {
   const res = await fetch(path, {
     method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(body)
+    credentials: "same-origin",
+    headers: body !== void 0 ? { "Content-Type": "application/json" } : {},
+    body: body !== void 0 ? JSON.stringify(body) : void 0
   });
   if (!res.ok) throw new Error(`POST ${path}: ${res.status} ${res.statusText}`);
   return res.json();
 }
-async function login(token) {
+async function checkAuth() {
   try {
-    const result = await apiPost("/api/auth/login", { token });
-    if (result.authenticated) {
-      setAuthToken(token);
-      return true;
-    }
-    return false;
+    return await apiGet("/api/auth/status");
   } catch {
-    return false;
+    return { authenticated: false, username: null };
   }
 }
-function logout() {
-  clearAuthToken();
+async function logout() {
+  try {
+    await apiPost("/api/auth/logout");
+  } catch {
+  }
 }
 function openIdb(name, version) {
   return new Promise((resolve, reject) => {
@@ -13406,9 +13611,8 @@ async function getLocalDataCounts() {
 }
 
 // src/admin/view.ts
-var authState = isAuthenticated() ? "logged-in" : "logged-out";
-var tokenInput = "";
-var loginError = "";
+var authState = "unknown";
+var authUser = null;
 var syncStatus = "idle";
 var syncMessage = "";
 var dataCounts = null;
@@ -13418,64 +13622,48 @@ function loadCounts(redraw2) {
     redraw2();
   });
 }
-function renderAdminPage(redraw2) {
-  if (dataCounts === null) loadCounts(redraw2);
-  if (authState !== "logged-in") {
-    return renderLoginForm(redraw2);
-  }
-  return renderSyncPanel(redraw2);
-}
-function renderLoginForm(redraw2) {
-  return h("div.admin-page", [
-    h("div.admin-card", [
-      h("h2.admin-title", "Admin Login"),
-      h("p.admin-desc", "Enter admin token to access sync controls."),
-      h("div.admin-form", [
-        h("input.admin-input", {
-          attrs: { type: "password", placeholder: "Admin token" },
-          props: { value: tokenInput },
-          on: {
-            input: (e) => {
-              tokenInput = e.target.value;
-            },
-            keydown: (e) => {
-              if (e.key === "Enter") doLogin(redraw2);
-            }
-          }
-        }),
-        h("button.admin-btn.admin-btn--primary", {
-          on: { click: () => doLogin(redraw2) }
-        }, "Login")
-      ]),
-      loginError ? h("div.admin-error", loginError) : null
-    ])
-  ]);
-}
-function doLogin(redraw2) {
-  if (!tokenInput.trim()) return;
-  loginError = "";
-  login(tokenInput.trim()).then((ok) => {
-    if (ok) {
-      authState = "logged-in";
-      tokenInput = "";
-      loadCounts(redraw2);
-    } else {
-      loginError = "Invalid token";
-    }
+function ensureAuthCheck(redraw2) {
+  if (authState !== "unknown") return;
+  authState = "logged-out";
+  checkAuth().then(({ authenticated, username }) => {
+    authState = authenticated ? "logged-in" : "logged-out";
+    authUser = username;
     redraw2();
   });
+}
+function renderAdminPage(redraw2) {
+  ensureAuthCheck(redraw2);
+  if (authState === "unknown") {
+    return h("div.admin-page", [h("div.admin-card", [h("p", "Loading\u2026")])]);
+  }
+  if (authState === "logged-in" && dataCounts === null) loadCounts(redraw2);
+  if (authState !== "logged-in") return renderLoginForm();
+  return renderSyncPanel(redraw2);
+}
+function renderLoginForm() {
+  return h("div.admin-page", [
+    h("div.admin-card", [
+      h("h2.admin-title", "Sign in"),
+      h("p.admin-desc", "Sign in with your Lichess account to access sync controls."),
+      h("a.admin-btn.admin-btn--primary", {
+        attrs: { href: "/api/lichess/connect" }
+      }, "Login with Lichess")
+    ])
+  ]);
 }
 function renderSyncPanel(redraw2) {
   const lastSync = getLastSyncedAt();
   return h("div.admin-page", [
     h("div.admin-card", [
       h("div.admin-header", [
-        h("h2.admin-title", "Sync Controls"),
+        h("h2.admin-title", authUser ? `Sync Controls (${authUser})` : "Sync Controls"),
         h("button.admin-btn.admin-btn--muted", {
           on: { click: () => {
-            logout();
-            authState = "logged-out";
-            redraw2();
+            logout().then(() => {
+              authState = "logged-out";
+              authUser = null;
+              redraw2();
+            });
           } }
         }, "Logout")
       ]),
@@ -13643,6 +13831,35 @@ var showDetectionModal = false;
 var showRetroModal = false;
 var showReviewMenu = false;
 var showMobileNav = false;
+var headerAuthUser = null;
+var headerAuthChecked = false;
+function ensureHeaderAuth(redraw2) {
+  if (headerAuthChecked) return;
+  headerAuthChecked = true;
+  checkAuth().then(({ username }) => {
+    headerAuthUser = username;
+    redraw2();
+  });
+}
+function renderUserArea(redraw2) {
+  if (headerAuthUser) {
+    return h("div.header__user", [
+      h("span.header__username", headerAuthUser),
+      h("button.header__logout", {
+        attrs: { title: "Log out" },
+        on: { click: () => {
+          logout().then(() => {
+            headerAuthUser = null;
+            redraw2();
+          });
+        } }
+      }, "\u2715")
+    ]);
+  }
+  return h("a.header__login", {
+    attrs: { href: "/api/lichess/connect", title: "Login with Lichess" }
+  }, "Login");
+}
 function activeSection(route) {
   switch (route.name) {
     case "analysis":
@@ -14265,6 +14482,7 @@ function renderHeader(deps) {
     resetAllData: resetAllData2,
     redraw: redraw2
   } = deps;
+  ensureHeaderAuth(redraw2);
   const loading = importPlatform === "chesscom" ? chesscom.loading : lichess.loading;
   const error = importPlatform === "chesscom" ? chesscom.error : lichess.error;
   const username = importPlatform === "chesscom" ? chesscom.username : lichess.username;
@@ -14485,53 +14703,11 @@ function renderHeader(deps) {
     ]),
     renderNav(route),
     renderReviewMenu(redraw2),
+    renderUserArea(redraw2),
     renderGlobalMenu(deps),
     showDetectionModal ? renderDetectionModal(redraw2) : null,
     showRetroModal ? renderRetroModal(redraw2) : null
   ]);
-}
-
-// src/router.ts
-var routes = [
-  { pattern: ["analysis", ":id"], name: "analysis-game" },
-  { pattern: ["analysis"], name: "analysis" },
-  { pattern: ["openings"], name: "openings" },
-  { pattern: ["stats"], name: "stats" },
-  { pattern: ["games"], name: "games" },
-  { pattern: ["puzzles", ":id"], name: "puzzle-round" },
-  { pattern: ["puzzles"], name: "puzzles" },
-  { pattern: ["admin"], name: "admin" },
-  { pattern: [], name: "analysis" }
-];
-function parse(hash2) {
-  const path = hash2.replace(/^#\/?/, "");
-  const parts = path ? path.split("/") : [];
-  for (const { pattern, name } of routes) {
-    if (pattern.length !== parts.length) continue;
-    const params = {};
-    let matched = true;
-    for (let i = 0; i < pattern.length; i++) {
-      const seg = pattern[i];
-      if (!seg) {
-        matched = false;
-        break;
-      }
-      if (seg.startsWith(":")) {
-        params[seg.slice(1)] = parts[i];
-      } else if (seg !== parts[i]) {
-        matched = false;
-        break;
-      }
-    }
-    if (matched) return { name, params };
-  }
-  return { name: "analysis", params: {} };
-}
-function current() {
-  return parse(window.location.hash);
-}
-function onChange2(fn) {
-  window.addEventListener("hashchange", () => fn(current()));
 }
 
 // src/openings/db.ts
@@ -15515,6 +15691,22 @@ async function openingFetch(params, onData, signal) {
     onData(chunk);
   });
 }
+var TABLEBASE_ENDPOINT = "https://tablebase.lichess.ovh/standard";
+function countPieces(fen) {
+  return (fen.split(" ")[0] ?? "").replace(/[^a-zA-Z]/g, "").length;
+}
+function isTablebasePosition(fen) {
+  return countPieces(fen) <= 7;
+}
+async function tablebaseFetch(fen, signal) {
+  const url = new URL(TABLEBASE_ENDPOINT);
+  url.searchParams.set("fen", fen);
+  const res = await fetch(url.href, { signal, credentials: "omit" });
+  if (!res.ok) throw new Error(`Tablebase API error ${res.status}`);
+  const data = await res.json();
+  data.fen = fen;
+  return data;
+}
 
 // src/openings/explorerConfig.ts
 var LS_DB = "explorer.db2.standard";
@@ -15627,7 +15819,10 @@ var LS_ENABLED = "analyse.explorer.enabled";
 var MAX_EXPLORER_DEPTH = 50;
 var ExplorerCtrl = class {
   constructor() {
+    /** Populated when the current position is tablebase territory (≤7 pieces). */
+    this.tablebaseData = null;
     this.cache = /* @__PURE__ */ new Map();
+    this.tablebaseCache = /* @__PURE__ */ new Map();
     this.abortCtrl = null;
     this.debounceTimer = null;
     this.enabled = localStorage.getItem(LS_ENABLED) === "true";
@@ -15735,9 +15930,45 @@ var ExplorerCtrl = class {
       recentGames: false
     };
   }
+  /** True when player DB is selected but no username has been entered yet. */
+  get needsPlayerName() {
+    return this.config.db === "player" && !this.config.playerName;
+  }
   _fetch(fen, redraw2) {
+    if (this.needsPlayerName) {
+      this.loading = false;
+      this.failing = null;
+      redraw2();
+      return;
+    }
     this.abortCtrl?.abort();
     this.abortCtrl = new AbortController();
+    if (isTablebasePosition(fen)) {
+      this.tablebaseData = null;
+      const cached = this.tablebaseCache.get(fen);
+      if (cached) {
+        this.tablebaseData = cached;
+        this.loading = false;
+        this.failing = null;
+        redraw2();
+        return;
+      }
+      tablebaseFetch(fen, this.abortCtrl.signal).then((data) => {
+        this.tablebaseCache.set(fen, data);
+        this.tablebaseData = data;
+        this.loading = false;
+        this.failing = null;
+        redraw2();
+      }).catch((err) => {
+        if (err.name === "AbortError") return;
+        this.loading = false;
+        this.tablebaseData = null;
+        this.failing = null;
+        redraw2();
+      });
+      return;
+    }
+    this.tablebaseData = null;
     let params;
     try {
       params = this._buildParams(fen);
@@ -16574,6 +16805,96 @@ function extractLichessUrl(pgn) {
   const site = pgn.match(/\[Site\s+"([^"]+)"]/)?.[1];
   return site && site.includes("lichess.org") ? site : "#";
 }
+function tablebaseCategoryClass(fen, category) {
+  const turnWhite = (fen.split(" ")[1] ?? "w") === "w";
+  if (category === "loss" || category === "blessed-loss" || category === "syzygy-loss" || category === "maybe-loss") {
+    return turnWhite ? "white" : "black";
+  }
+  if (category === "win" || category === "cursed-win" || category === "syzygy-win" || category === "maybe-win") {
+    return turnWhite ? "black" : "white";
+  }
+  return "draws";
+}
+var CATEGORY_LABELS = {
+  "loss": "Winning",
+  "maybe-loss": "Win or 50-move",
+  "blessed-loss": "Win (prevented by 50-move)",
+  "syzygy-loss": "Win (prior mistake)",
+  "unknown": "Unknown",
+  "draw": "Draw",
+  "cursed-win": "Loss (saved by 50-move)",
+  "maybe-win": "Loss or 50-move",
+  "syzygy-win": "Loss (prior mistake)",
+  "win": "Losing"
+};
+function renderTablebaseMoveRow(fen, move3, onMoveClick) {
+  const cls = tablebaseCategoryClass(fen, move3.category);
+  const badge = [];
+  if (move3.checkmate) badge.push(h(`result.${cls}`, "Checkmate"));
+  else if (move3.stalemate) badge.push(h("result.draws", "Stalemate"));
+  else if (move3.insufficient_material) badge.push(h("result.draws", "Insufficient"));
+  else if (move3.dtz === 0) badge.push(h("result.draws", "Draw"));
+  else if (move3.dtz !== void 0) badge.push(h(`result.${cls}`, { attrs: { title: "Distance To Zeroing" } }, `DTZ ${Math.abs(move3.dtz)}`));
+  else if (move3.dtm !== void 0) badge.push(h(`result.${cls}`, { attrs: { title: "Distance To Mate" } }, `DTM ${Math.abs(move3.dtm)}`));
+  else badge.push(h(`result.${cls}`, CATEGORY_LABELS[move3.category] ?? move3.category));
+  return h("tr.tablebase__row", {
+    attrs: { "data-uci": move3.uci },
+    on: { click: () => onMoveClick(move3.uci) }
+  }, [
+    h("td.tablebase__san", move3.san),
+    h("td.tablebase__result", badge)
+  ]);
+}
+function renderTablebaseSection(fen, title, moves, onMoveClick) {
+  if (!moves.length) return null;
+  return h("div.tablebase__section", [
+    h("div.tablebase__section-title", title),
+    h("table.tablebase", [
+      h("tbody", moves.map((m) => renderTablebaseMoveRow(fen, m, onMoveClick)))
+    ])
+  ]);
+}
+function renderTablebasePanel(data, _redraw8) {
+  const onMoveClick = (uci) => {
+    explorerCtrl.hovering = { fen: data.fen, uci };
+    _redraw8();
+  };
+  if (data.checkmate) return h("div.openings__explorer-box", [h("div.openings__explorer-message", [h("strong", "Checkmate")])]);
+  if (data.stalemate) return h("div.openings__explorer-box", [h("div.openings__explorer-message", [h("strong", "Stalemate")])]);
+  const sections = [
+    renderTablebaseSection(data.fen, "Winning", data.moves.filter((m) => m.category === "loss"), onMoveClick),
+    renderTablebaseSection(data.fen, "Win or 50-move draw", data.moves.filter((m) => m.category === "maybe-loss"), onMoveClick),
+    renderTablebaseSection(data.fen, "Win (50-move)", data.moves.filter((m) => m.category === "blessed-loss"), onMoveClick),
+    renderTablebaseSection(data.fen, "Win (prior mistake)", data.moves.filter((m) => m.category === "syzygy-loss"), onMoveClick),
+    renderTablebaseSection(data.fen, "Unknown", data.moves.filter((m) => m.category === "unknown"), onMoveClick),
+    renderTablebaseSection(data.fen, "Drawing", data.moves.filter((m) => m.category === "draw"), onMoveClick),
+    renderTablebaseSection(data.fen, "Loss (50-move)", data.moves.filter((m) => m.category === "cursed-win"), onMoveClick),
+    renderTablebaseSection(data.fen, "Loss or 50-move draw", data.moves.filter((m) => m.category === "maybe-win"), onMoveClick),
+    renderTablebaseSection(data.fen, "Loss (prior mistake)", data.moves.filter((m) => m.category === "syzygy-win"), onMoveClick),
+    renderTablebaseSection(data.fen, "Losing", data.moves.filter((m) => m.category === "win"), onMoveClick)
+  ].filter(Boolean);
+  return h("div.openings__explorer-box.tablebase-view", [
+    h("div.tablebase__header", [
+      h("span.tablebase__label", "Tablebase"),
+      h("span.tablebase__pieces", `${data.moves.length} move${data.moves.length !== 1 ? "s" : ""}`)
+    ]),
+    sections.length ? h("div.tablebase__body", sections) : h("div.openings__explorer-message", "No tablebase data for this position.")
+  ]);
+}
+function renderPlayerNamePrompt(redraw2) {
+  return h("div.openings__explorer-box", [
+    h("div.openings__explorer-message", [
+      h("strong", "Enter a player name"),
+      h("p.openings__explorer-explanation", "Open the settings panel and enter a Lichess username to search player games."),
+      h("button.openings__explorer-retry", {
+        on: { click: () => {
+          explorerCtrl.toggleConfig();
+          redraw2();
+        } }
+      }, "Open settings")
+    ])
+  ]);
+}
 function renderExplorerErrorBox(err, fen, redraw2) {
   const isAuthError = err.message.includes("401") || err.message.includes("Unauthorized") || err.message.includes("Not connected");
   if (isAuthError) {
@@ -16742,13 +17063,15 @@ function renderExplorerConfigPanel(redraw2) {
 function renderExplorerPanel(node, redraw2) {
   if (!node) return h("div.openings__explorer-empty", "No position selected.");
   const data = explorerCtrl.current(node.fen);
-  if (!data && !explorerCtrl.loading && !explorerCtrl.failing) {
+  if (!data && !explorerCtrl.loading && !explorerCtrl.failing && !explorerCtrl.needsPlayerName) {
     explorerCtrl.setNode(node.fen, redraw2);
   }
   const loading = explorerCtrl.loading;
   const failing = explorerCtrl.failing;
   const movesAway = explorerCtrl.movesAway;
   const isMasters = explorerCtrl.config.db === "masters";
+  if (explorerCtrl.needsPlayerName) return renderPlayerNamePrompt(redraw2);
+  if (explorerCtrl.tablebaseData) return renderTablebasePanel(explorerCtrl.tablebaseData, redraw2);
   if (failing && !data) return renderExplorerErrorBox(failing, node.fen, redraw2);
   if (!loading && !data) {
     const tooDeep = movesAway >= MAX_EXPLORER_DEPTH;
@@ -16935,12 +17258,14 @@ function renderAnalysisExplorerSection(fen, cg, onMoveClick, redraw2) {
 }
 function renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw2) {
   const data = explorerCtrl.current(fen);
-  if (!data && !explorerCtrl.loading && !explorerCtrl.failing) {
+  if (!data && !explorerCtrl.loading && !explorerCtrl.failing && !explorerCtrl.needsPlayerName) {
     explorerCtrl.setNode(fen, redraw2);
   }
   const loading = explorerCtrl.loading;
   const failing = explorerCtrl.failing;
   const movesAway = explorerCtrl.movesAway;
+  if (explorerCtrl.needsPlayerName) return renderPlayerNamePrompt(redraw2);
+  if (explorerCtrl.tablebaseData) return renderTablebasePanel(explorerCtrl.tablebaseData, redraw2);
   if (failing && !data) return renderExplorerErrorBox(failing, fen, redraw2);
   if (!loading && !data) {
     const tooDeep = movesAway >= MAX_EXPLORER_DEPTH;
