@@ -2,18 +2,23 @@ deployment:
   tasks:
     - >-
       /bin/bash -c 'set -e;
-      DEPLOYPATH="/home1/leftcoc0/public_html/patzerpro";
-      SOURCEPATH="$PWD/public";
-      [ "$DEPLOYPATH" = "/home1/leftcoc0/public_html/patzerpro" ] || { echo "ABORT: deploy path mismatch"; exit 1; };
-      command -v git >/dev/null 2>&1 || { echo "ABORT: git not available"; exit 1; };
-      cd "$PWD";
-      echo "Deploy working directory: $PWD";
+      APPROOT="/home1/leftcoc0/public_html/patzerpro";
       echo "Deploy commit: $(git rev-parse HEAD)";
-      echo "Deploy path: $DEPLOYPATH";
-      echo "Source path: $SOURCEPATH";
-      [ -z "$(git status --porcelain)" ] || { echo "ABORT: repository is not clean before deployment"; git status --short; exit 1; };
-      [ -d "$SOURCEPATH" ] || { echo "ABORT: build output public/ not found"; exit 1; };
-      echo "Deploying prebuilt public/ contents:";
-      /bin/ls -la "$SOURCEPATH";
-      /bin/mkdir -p "$DEPLOYPATH";
-      /usr/bin/rsync -a --delete --exclude=".git" --exclude="generated/lichess-puzzles" "$SOURCEPATH/" "$DEPLOYPATH/";'
+
+      echo "--- Deploying server files ---";
+      /bin/cp "$PWD/server.mjs" "$APPROOT/server.mjs";
+      /bin/cp "$PWD/package.json" "$APPROOT/package.json";
+      /usr/bin/rsync -a --delete "$PWD/server/" "$APPROOT/server/";
+
+      echo "--- Deploying static files to public/ ---";
+      /bin/mkdir -p "$APPROOT/public";
+      /usr/bin/rsync -a --delete
+        --exclude=".git"
+        --exclude="generated/lichess-puzzles"
+        "$PWD/public/" "$APPROOT/public/";
+
+      echo "--- Signalling app restart ---";
+      /bin/mkdir -p "$APPROOT/tmp";
+      /bin/touch "$APPROOT/tmp/restart.txt";
+
+      echo "--- Deployment complete ---";'
