@@ -81,7 +81,8 @@ export function disconnectLichess() {
  * Generates PKCE params and redirects the browser to the Lichess OAuth consent page.
  */
 export function startOAuth(req, res) {
-  const origin   = `http://${req.headers.host}`;
+  const proto  = req.headers['x-forwarded-proto'] ?? 'http';
+  const origin = `${proto}://${req.headers.host}`;
   _verifier      = crypto.randomBytes(32).toString('base64url');
   const challenge = crypto.createHash('sha256').update(_verifier).digest('base64url');
 
@@ -104,9 +105,10 @@ export function startOAuth(req, res) {
  * creates a session, and redirects back to the app with the session cookie set.
  */
 export async function handleCallback(req, res) {
-  const url    = new URL(req.url, `http://${req.headers.host}`);
+  const proto  = req.headers['x-forwarded-proto'] ?? 'http';
+  const origin = `${proto}://${req.headers.host}`;
+  const url    = new URL(req.url, origin);
   const code   = url.searchParams.get('code');
-  const origin = `http://${req.headers.host}`;
 
   if (!code || !_verifier) {
     res.writeHead(302, { Location: '/#' });
