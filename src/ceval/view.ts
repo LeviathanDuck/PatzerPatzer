@@ -27,6 +27,7 @@ import {
   showBoardReviewGlyphs, setShowBoardReviewGlyphs,
   arrowLabelSize, setArrowLabelSize,
   syncArrow, toggleEngine, evalCurrentPosition,
+  setEvalFenOverride,
   type EvalLine, type PositionEval,
 } from '../engine/ctrl';
 import {
@@ -44,9 +45,12 @@ let _getCtrl:  () => AnalyseCtrl = () => { throw new Error('cevalView not initia
 let _navigate: (path: string) => void = () => {};
 let _redraw:   () => void = () => {};
 
-/** Optional FEN override for puzzle mode — bypasses _getCtrl().node.fen */
+/** Optional FEN override — bypasses _getCtrl().node.fen in ceval UI and engine eval. */
 let _fenOverride: string | null = null;
-export function setCevalFenOverride(fen: string | null): void { _fenOverride = fen; }
+export function setCevalFenOverride(fen: string | null): void {
+  _fenOverride = fen;
+  setEvalFenOverride(fen); // keep engine/ctrl in sync
+}
 
 export function initCevalView(deps: {
   getCtrl:  () => AnalyseCtrl;
@@ -89,7 +93,16 @@ export function renderCeval(): VNode {
         ? `Reviewing ${batchDone}/${batchQueue.length}…`
         : 'Engine on';
 
+  // Thin scanning bar along the top of the ceval panel while engine is searching.
+  const progressBar = engineEnabled && engineReady
+    ? h('div.ceval__progress', [
+        h('div.ceval__progress-pulse'),
+        h('div.ceval__progress-pulse.ceval__progress-pulse--delayed'),
+      ])
+    : null;
+
   return h('div.ceval', { class: { enabled: engineEnabled } }, [
+    progressBar,
     // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
     h('button.cmn-toggle', {
       class: { active: engineEnabled },

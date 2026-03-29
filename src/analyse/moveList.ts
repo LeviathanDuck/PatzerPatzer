@@ -255,6 +255,37 @@ function renderColumnNodes(
 }
 
 /**
+ * Render a flat mainline sequence of nodes (e.g. game-context prefix before a
+ * puzzle) using the same tview2 column index/move elements, without recursing
+ * into children.  Returns a div.tview2.tview2-column.
+ *
+ * @param nodes        - ordered flat nodes (pre-computed paths, no children traversal)
+ * @param pathOf       - returns the tree path string for each node in order
+ * @param navigate     - called when user clicks a move
+ * @param currentPath  - active path for highlight; pass '' to suppress
+ * @param extraClass   - optional extra CSS class on the wrapper div
+ */
+export function renderContextMoves(
+  nodes:      { node: TreeNode; path: string }[],
+  navigate:   (p: string) => void,
+  currentPath: string,
+  extraClass?: string,
+): VNode {
+  const out: VNode[] = [];
+  for (const { node, path } of nodes) {
+    const isWhite = node.ply % 2 === 1;
+    if (isWhite) out.push(h('index', String(Math.ceil(node.ply / 2))));
+    out.push(h('move', {
+      class: { active: path === currentPath },
+      attrs: { p: path },
+      on: { click: () => navigate(path) },
+    }, [h('san', node.san ?? '')]));
+  }
+  const cls = ['tview2', 'tview2-column', ...(extraClass ? [extraClass] : [])].join('.');
+  return h(`div.${cls}`, out);
+}
+
+/**
  * Render the full move list for the current game.
  * @param root            - root node of the current game tree
  * @param currentPath     - currently active tree path (for active-move highlight)
