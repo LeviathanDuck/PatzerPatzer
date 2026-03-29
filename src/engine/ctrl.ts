@@ -833,6 +833,14 @@ export function toggleEngine(): void {
   _redraw();
 }
 
+/**
+ * Force-set the engineEnabled flag without triggering analysis-board side effects.
+ * Used by the puzzle page to make renderCeval/renderPvBox reflect puzzle engine state.
+ */
+export function setEngineEnabledFlag(on: boolean): void {
+  engineEnabled = on;
+}
+
 // Export internal state getters for batch.ts (avoids exporting mutable internals)
 export function getEvalNodePath(): string   { return evalNodePath; }
 export function getEvalNodePly(): number    { return evalNodePly; }
