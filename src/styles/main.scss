@@ -502,6 +502,33 @@ main {
     }
   }
 
+  // Text inputs (username, max-games)
+  &__text-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    background: #111;
+    border: 1px solid #383838;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    margin-top: 6px;
+
+    &::placeholder { color: #444; }
+
+    &:focus {
+      border-color: #5a9a5a;
+      box-shadow: 0 0 0 2px rgba(90, 154, 90, 0.15);
+    }
+
+    &--short {
+      width: 80px;
+    }
+  }
+
   // PGN paste textarea
   &__pgn-input {
     width: 100%;
@@ -918,10 +945,11 @@ main {
 
     &--toggle {
       cursor: default;
+      padding-top: 7px;
+      padding-bottom: 7px;
 
-      input {
-        margin: 0;
-        cursor: pointer;
+      .settings-toggle-row {
+        width: 100%;
       }
     }
   }
@@ -1318,7 +1346,17 @@ body.resizing {
   &__display {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 2px;
+
+    // Settings toggle rows inside the Display section (CCP-250).
+    .settings-toggle-row {
+      padding: 5px 0;
+      border-bottom: 1px solid #222;
+      font-size: 0.9em;
+
+      &:last-of-type { border-bottom: none; }
+      &:hover .settings-toggle-row__label { color: #9cc9f5; }
+    }
   }
 
   &__coming {
@@ -1326,30 +1364,6 @@ body.resizing {
     font-size: 0.8em;
     font-style: italic;
     padding: 6px 0;
-  }
-
-  // Toggle rows inside the Display section.
-  &__toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 0;
-    border-bottom: 1px solid #222;
-    cursor: pointer;
-    font-size: 0.9em;
-    color: #ccc;
-
-    &:last-child { border-bottom: none; }
-
-    input[type='checkbox'] {
-      flex: 0 0 auto;
-      width: 16px;
-      height: 16px;
-      cursor: pointer;
-      accent-color: #3893e8;
-    }
-
-    &:hover { color: #9cc9f5; }
   }
 
   // Slider rows (range inputs) inside the Display section — CCP-246.
@@ -1681,6 +1695,14 @@ body.resizing {
       letter-spacing: 0;
       text-transform: none;
     }
+
+    // First/last jump buttons are visually secondary — smaller than prev/next
+    &:first-child,
+    &:last-child {
+      font-size: 0.9rem;
+      min-width: 32px;
+      padding: 5px 7px;
+    }
   }
 }
 
@@ -1734,17 +1756,26 @@ body.resizing {
 // Three-zone analysis control bar — left / middle / right.
 // Mirrors lichess-org/lila: ui/analyse/src/view/controls.ts zone split.
 // Inserted inside .analyse__controls (the grid-area cell).
-.analyse-controls {
+//
+// Desktop layout (flex-wrap: wrap, two rows):
+//   Row 1: __left (action buttons — Review, Mistakes, Explorer) — full width
+//   Row 2: __middle (jump buttons) + __right (hamburger)
+// Two-row split avoids horizontal overflow in the 240–380px tools column.
+//
+// Mobile layout (flex-wrap: nowrap, overridden in the @media block):
+//   Single row: [action tabs] | [jump tabs] | [hamburger tab]
+.move-nav-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   width: 100%;
-  gap: 4px;
+  column-gap: 4px;
+  row-gap: 10px;
 
   &__left {
-    flex: 1 1 auto;
+    flex: 0 0 100%; // full-width own row on desktop; overridden to flex: 0 0 auto on mobile
     display: flex;
     align-items: center;
-    min-width: 0;
   }
 
   &__middle {
@@ -1790,11 +1821,11 @@ body.resizing {
       'board'
       'controls'
       'tools'
-      'actions'
       'under';
     // Tools row is auto height — expands when engine panel is visible rather than
     // compressing the move list. Move list holds its own min-height.
-    grid-template-rows: auto auto auto auto auto;
+    // CCP-249-F1: 'actions' row removed — action buttons now live in the controls bar.
+    grid-template-rows: auto auto auto auto;
     padding: 12px 10px 18px;
     gap: 8px 0;
     overflow-x: hidden;
@@ -1825,22 +1856,71 @@ body.resizing {
     overflow: hidden;
     flex-wrap: nowrap;
 
-    // Hide desktop action buttons — shown via .analyse__actions below the move list.
-    .analyse-review-controls {
-      display: none;
-    }
-
     // Three-zone bar fills the full mobile controls bar height.
-    .analyse-controls {
+    // Left zone (action buttons) + middle (jumps) + right (hamburger) in one bar.
+    // flex-wrap: nowrap overrides the desktop flex-wrap: wrap — single row on mobile.
+    // Mirrors lichess-org/lila: _tools-mobile.scss — all controls in one tab row.
+    .move-nav-bar {
       height: 100%;
       gap: 2px;
+      flex-wrap: nowrap; // override desktop two-row wrap; keep single-row tab bar on mobile
 
-      // Left zone (review/retro) hidden on mobile — moved to .analyse__actions.
+      // Left zone — action buttons (Review, Mistakes, Explorer) shown in the bar on mobile.
+      // CCP-249-F1: was display:none; now shown as compact tabs alongside jump buttons.
+      // Mirrors lichess-org/lila: _tools-mobile.scss mode/explorer buttons in the controls bar.
       &__left {
-        display: none;
+        flex: 0 0 auto;
+        height: 100%;
+
+        // Unwrap the review-controls container so buttons flow directly in the bar.
+        .analyse-review-controls {
+          display: flex;
+          height: 100%;
+
+          &__row {
+            display: flex;
+            align-items: stretch;
+            height: 100%;
+            gap: 2px;
+            flex-wrap: nowrap;
+          }
+
+          // Status text ("Analyzing… N of M") is too wide for the compact bar — hide it.
+          &__status {
+            display: none;
+          }
+        }
+
+        // All action buttons in the left zone get the same tab style as the jump buttons.
+        // Overrides the shared .analyse__controls .analyse-review-controls__row > button rule.
+        button {
+          height: 100%;
+          min-width: 0;
+          padding: 4px 8px;
+          border-radius: 6px 6px 0 0;
+          border: 1px solid #2e2e2e;
+          border-bottom: none;
+          background: #1a1a1a;
+          color: #bbb;
+          font-size: 0.72rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+          white-space: nowrap;
+          cursor: pointer;
+          line-height: 1.2;
+
+          &.active {
+            color: #9cc9f5;
+            background: rgba(56, 147, 232, 0.15);
+            border-color: rgba(56, 147, 232, 0.35);
+          }
+
+          &[disabled] { opacity: 0.35; cursor: default; }
+        }
       }
 
-      // Middle zone (jump buttons) grows to fill available width.
+      // Middle zone (jump buttons) fills remaining width between left and right zones.
       &__middle {
         flex: 1 1 auto;
         height: 100%;
@@ -1888,33 +1968,20 @@ body.resizing {
     }
 
     // Legacy .jumps rule no longer applies directly inside .analyse__controls on mobile
-    // (jumps are now nested inside .analyse-controls__middle). Rule kept for safety.
+    // (jumps are now nested inside .move-nav-bar__middle). Rule kept for safety.
     .jumps {
       flex: unset;
+
+      // Last-move button not needed on mobile — prev/next/first is sufficient.
+      .fbt:last-child { display: none; }
     }
   }
 
-  // Mobile action buttons row — below the move list.
+  // Mobile action buttons row — suppressed on mobile now that the left zone of the
+  // controls bar shows Review/Mistakes/Explorer inline (CCP-249-F1).
+  // Mirrors lichess-org/lila: _tools-mobile.scss — all controls in one compact bar.
   .analyse__actions {
-    grid-area: actions;
-    display: flex;
-    padding: 4px 4px;
-    gap: 4px;
-
-    .analyse-review-controls {
-      width: 100%;
-    }
-
-    .analyse-review-controls__row {
-      flex-wrap: nowrap;
-      gap: 4px;
-
-      > button {
-        flex: 1 1 0;
-        height: 2.8rem;
-        font-size: 0.82rem;
-      }
-    }
+    display: none;
   }
 
   // Eval graph background layer — absolutely fills controls bar, no pointer events.
@@ -4509,6 +4576,33 @@ body[data-board='newspaper'] cg-board::before {
   overflow-y: auto;
 }
 
+// Desktop layout for the right-hand side panel.
+// Flat flex column: ceval → move list → feedback, matching lichess-org/lila puzzle__tools.
+// All children are direct flex items; analyse__moves uses flex: 2 1 0 to fill remaining space.
+.puzzle__side {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  min-height: 0;
+  overflow: hidden;
+  background: #1a1a1a;
+
+  // Move list fills remaining space between ceval and feedback.
+  // Adapted from lichess-org/lila: ui/puzzle/css/_tools.scss .puzzle__moves flex: 2 1 auto
+  .analyse__moves {
+    flex: 2 1 0;
+    overflow-y: auto;
+    border-bottom: 1px solid #2a2a2a;
+  }
+
+  // Feedback anchored at bottom with a minimum height, can grow into leftover space.
+  // Adapted from lichess-org/lila: ui/puzzle/css/_tools.scss .puzzle__feedback flex: 1 0 9rem
+  .puzzle__feedback {
+    flex: 1 0 auto;
+    overflow-y: auto;
+  }
+}
+
 .session-info {
   background: #222;
   border: 1px solid #333;
@@ -4591,6 +4685,74 @@ body[data-board='newspaper'] cg-board::before {
     font-size: 0.78rem;
     color: #888;
     user-select: none;
+  }
+}
+
+// Settings toggle row — shared across ceval, action-menu, header, and openings.
+// CSS-driven pill: hidden checkbox + label; mirrors lichess-org/lila ui/lib/src/view/cmn-toggle.ts
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+
+  &__label {
+    flex: 1 1 auto;
+    font-size: 0.85rem;
+    color: #ccc;
+  }
+}
+
+.settings-toggle {
+  flex-shrink: 0;
+  position: relative;
+  width: 36px;
+  height: 20px;
+
+  input[type='checkbox'] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+
+  label {
+    display: block;
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    background: #444;
+    cursor: pointer;
+    transition: background 0.2s;
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #ccc;
+      transition: transform 0.2s, background 0.2s;
+    }
+  }
+
+  input[type='checkbox']:checked + label {
+    background: #4a9;
+
+    &::after {
+      transform: translateX(16px);
+      background: #fff;
+    }
+  }
+
+  input[type='checkbox']:disabled + label {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 }
 
@@ -5031,24 +5193,24 @@ body[data-board='newspaper'] cg-board::before {
 }
 
 // --- Analysis toggle button ---
+// Styled the same as .puzzle__hint / .puzzle__reveal — added to shared group below.
 
 .puzzle__analyse {
-  font-size: 1.1rem !important;
-  padding: 4px 8px !important;
-  line-height: 1;
   transition: background 0.15s, color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 
   &.active {
     background: #4a9 !important;
     color: #111 !important;
     border-color: #4a9 !important;
   }
-}
 
-.puzzle__analyse-icon {
-  width: 20px;
-  height: 20px;
-  vertical-align: middle;
+  svg {
+    display: block;
+    color: inherit; // ensures currentColor on stroke follows button text color
+  }
 }
 
 // --- Puzzle ceval wrapper (reuses analysis board ceval components) ---
@@ -5143,7 +5305,8 @@ body[data-board='newspaper'] cg-board::before {
 .puzzle__reveal,
 .puzzle__skip,
 .puzzle__engine-lines,
-.puzzle__engine-arrows {
+.puzzle__engine-arrows,
+.puzzle__analyse {
   padding: 5px 12px;
   background: #333;
   color: #ccc;
@@ -5419,17 +5582,19 @@ body[data-board='newspaper'] cg-board::before {
     gap: 8px;
   }
 
-  // Feedback (bottom half) appears first on mobile — right after board
-  .puzzle__side-bottom {
+  // Feedback first on mobile — appears right after board
+  .puzzle__side .puzzle__feedback {
     order: 1;
     flex: none;
     overflow-y: visible;
   }
 
-  // Engine/move list (top half) appears after feedback
-  .puzzle__side-top {
+  // Ceval + move list after feedback on mobile
+  .puzzle__side .puzzle-ceval,
+  .puzzle__side .analyse__moves {
     order: 2;
     flex: none;
+    overflow-y: visible;
     border-bottom: none;
   }
 
@@ -5685,13 +5850,13 @@ body[data-board='newspaper'] cg-board::before {
 .openings__new-btn,
 .openings__start-btn {
   padding: 8px 16px;
-  background: #629924;
-  color: #fff;
+  background: #2a4a2a;
+  color: #8f8;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.95em;
-  &:hover { background: #4e7e1e; }
+  &:hover { background: #335533; }
 }
 
 .openings__empty {
@@ -6036,7 +6201,25 @@ body[data-board='newspaper'] cg-board::before {
   margin-top: 16px;
 }
 
-.openings__import-btn,
+.openings__import-btn {
+  display: block;
+  width: 100%;
+  padding: 13px 20px;
+  margin-top: 4px;
+  background: #629924;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-align: center;
+  transition: background 0.12s;
+  &:disabled { opacity: 0.4; cursor: default; }
+  &:hover:not(:disabled) { background: #4e7e1e; }
+}
+
 .openings__next-btn {
   padding: 8px 20px;
   background: #629924;
@@ -6404,6 +6587,30 @@ body[data-board='newspaper'] cg-board::before {
   background: #333;
   color: #ddd;
   box-shadow: inset 0 3px 5px rgba(255, 255, 255, 0.08);
+}
+
+// --- Opening move list (tview2 + move-nav-bar nav bar) ---
+.openings__move-list {
+  margin-top: 12px;
+
+  .analyse__moves {
+    // Override the flex: 2 1 0 grow from the analysis board context.
+    // In the openings panel we want a compact scrollable box, not a flex-fill.
+    flex: 0 0 auto;
+    max-height: 16em;
+    overflow-y: auto;
+    background: #1e1e1e;
+    border-radius: 4px 4px 0 0;
+    padding: 6px 4px;
+  }
+
+  .move-nav-bar {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    padding: 0;
+  }
 }
 
 // --- Sample games panel ---

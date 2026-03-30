@@ -1652,20 +1652,13 @@ export function renderPuzzleRound(redraw: () => void): VNode {
           bottomStrip,
         ]);
       })(),
-      // Side panel — split into engine/moves top half + feedback/tools bottom half
+      // Side panel — flat flex column: ceval → move list → feedback.
+      // Mirrors lichess-org/lila: ui/puzzle/css/_tools.scss puzzle__tools structure.
+      // All children are direct flex items so analyse__moves can flex-grow correctly.
       h('aside.puzzle__side', [
-        // --- Top half: engine eval + move list ---
-        h('div.puzzle__side-top', [
-          // Engine eval bar + lines (always present as a container)
-          rc ? renderPuzzleEnginePanel(rc, redraw) : null,
-          // Move list
-          renderPuzzleMoveList(def, rc, redraw),
-        ]),
-        // --- Bottom half: feedback ---
-        h('div.puzzle__side-bottom', [
-          // Feedback panel
-          rc ? renderFeedbackPanel(rc, redraw) : null,
-        ]),
+        rc ? renderPuzzleEnginePanel(rc, redraw) : null,
+        renderPuzzleMoveList(def, rc, redraw),
+        rc ? renderFeedbackPanel(rc, redraw) : null,
       ]),
     ]),
   ]);
