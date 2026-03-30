@@ -5,17 +5,20 @@
  * Import workflow follows OpeningTree-style: source -> details -> actions.
  */
 import { h, type VNode } from 'snabbdom';
+import { renderToggleRow } from '../ui';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import { parseFen } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
 import { bindBoardResizeHandle } from '../board/index';
+import { renderMoveList } from '../analyse/moveList';
+import type { TreeNode } from '../tree/types';
 import {
   collections, collectionsLoaded, loadSavedCollections,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter,
-  openCollection, closeSession, navigateToMove, navigateBack, navigateToRoot, navigateToPath,
+  openCollection, closeSession, navigateToMove, navigateBack, navigateToRoot, navigateToPath, navigateToEnd,
   removeCollection, renameCollection,
   treeBuilding, treeBuildProgress, treeBuildTotal,
   importStep, importSource, importUsername, importColor, importError,
@@ -34,6 +37,7 @@ import type { OpeningMoveStats, ExplorerDb, TablebaseData, TablebaseMoveStats, T
 import { explorerCtrl, MAX_EXPLORER_DEPTH } from './explorerCtrl';
 import { ALL_SPEEDS, ALL_RATINGS, ALL_MODES } from './explorerConfig';
 import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
+import { renderMoveNavBar } from '../analyse/analysisControls';
 import { engineEnabled, evalCurrentPosition } from '../engine/ctrl';
 
 let _openingsCg: CgApi | undefined;
@@ -69,7 +73,7 @@ function renderLibraryPage(redraw: () => void): VNode {
       h('h1.openings__title', 'Opening Preparation'),
       step === 'idle'
         ? h('button.openings__new-btn', {
-            on: { click: () => { setImportStep('source'); redraw(); } },
+            on: { click: () => { setImportStep('details'); redraw(); } },
           }, 'New Research')
         : null,
     ]),
@@ -89,7 +93,7 @@ function renderEmptyState(redraw: () => void): VNode {
     h('p', 'Research your opponents\u2019 openings by importing their games.'),
     h('p.openings__hint', 'Games are stored separately from your analysis library.'),
     h('button.openings__start-btn', {
-      on: { click: () => { setImportStep('source'); redraw(); } },
+      on: { click: () => { setImportStep('details'); redraw(); } },
     }, 'Start New Research'),
   ]);
 }
@@ -143,38 +147,9 @@ function renderImportWorkflow(redraw: () => void): VNode {
         on: { click: () => { resetImport(); redraw(); } },
       }, 'Cancel'),
     ]),
-    step === 'source' ? renderSourceStep(redraw) : null,
     step === 'details' ? renderDetailsStep(redraw) : null,
     step === 'importing' ? renderImportingStep(redraw) : null,
     step === 'done' ? renderDoneStep(redraw) : null,
-  ]);
-}
-
-function renderSourceStep(redraw: () => void): VNode {
-  const src = importSource();
-  const sources: { value: ResearchSource; label: string }[] = [
-    { value: 'lichess', label: 'Lichess' },
-    { value: 'chesscom', label: 'Chess.com' },
-    { value: 'pgn', label: 'PGN Upload' },
-  ];
-  return h('div.openings__step', [
-    h('div.header__panel-section', [
-      h('div.header__panel-label', 'Source'),
-      h('div.header__panel-row', sources.map(s =>
-        h('button.header__pill', {
-          class: { active: src === s.value },
-          on: { click: () => { setImportSource(s.value); redraw(); } },
-        }, s.label),
-      )),
-    ]),
-    h('div.header__panel-divider'),
-    h('div.header__panel-section', [
-      h('div.header__panel-row', [
-        h('button.header__panel-btn', {
-          on: { click: () => { setImportStep('details'); redraw(); } },
-        }, 'Next \u2192'),
-      ]),
-    ]),
   ]);
 }
 
@@ -186,6 +161,23 @@ function renderDetailsStep(redraw: () => void): VNode {
   const dateRange = importDateRange();
 
   const sections: (VNode | null)[] = [];
+
+  // --- Source ---
+  const sources: { value: ResearchSource; label: string }[] = [
+    { value: 'lichess', label: 'Lichess' },
+    { value: 'chesscom', label: 'Chess.com' },
+    { value: 'pgn', label: 'PGN Upload' },
+  ];
+  sections.push(h('div.header__panel-section', [
+    h('div.header__panel-label', 'Source'),
+    h('div.header__panel-row', sources.map(s =>
+      h('button.header__pill', {
+        class: { active: src === s.value },
+        on: { click: () => { setImportSource(s.value); redraw(); } },
+      }, s.label),
+    )),
+  ]));
+  sections.push(h('div.header__panel-divider'));
 
   // --- Username / PGN input ---
   sections.push(
@@ -307,15 +299,10 @@ function renderDetailsStep(redraw: () => void): VNode {
   sections.push(h('div.header__panel-divider'));
   sections.push(h('div.header__panel-section', [
     err ? h('div.header__panel-error', err) : null,
-    h('div.header__panel-row', [
-      h('button.header__panel-btn', {
-        on: { click: () => { setImportStep('source'); redraw(); } },
-      }, '\u2190 Back'),
-      h('button.header__panel-btn', {
-        attrs: { disabled: src !== 'pgn' && importUsername().trim() === '' },
-        on: { click: () => { void executeResearchImport(redraw); } },
-      }, 'Import'),
-    ]),
+    h('button.openings__import-btn', {
+      attrs: { disabled: src !== 'pgn' && importUsername().trim() === '' },
+      on: { click: () => { void executeResearchImport(redraw); } },
+    }, 'Import Games'),
   ]));
 
   return h('div.openings__step', sections);
@@ -414,12 +401,12 @@ function renderSessionPage(redraw: () => void): VNode {
       h('div.openings__color-filter', [
         h('button.openings__color-btn', {
           class: { active: colorFilter() === 'white' },
-          on: { click: () => { setColorFilter('white'); _lastBoardFen = ''; syncOpeningsBoard(redraw); redraw(); }},
+          on: { click: () => { _lastBoardFen = ''; setColorFilter('white', redraw); syncOpeningsBoard(redraw); }},
           attrs: { title: 'Show games as White' },
         }, 'White'),
         h('button.openings__color-btn', {
           class: { active: colorFilter() === 'black' },
-          on: { click: () => { setColorFilter('black'); _lastBoardFen = ''; syncOpeningsBoard(redraw); redraw(); }},
+          on: { click: () => { _lastBoardFen = ''; setColorFilter('black', redraw); syncOpeningsBoard(redraw); }},
           attrs: { title: 'Show games as Black' },
         }, 'Black'),
       ]),
@@ -444,8 +431,6 @@ function renderSessionPage(redraw: () => void): VNode {
       ]),
       h('div.openings__session-panel', [
         treeBuilding() ? renderTreeBuildBar() : null,
-        renderMovePath(path, redraw),
-        renderMoveNav(path, redraw),
         // Keep FEN override in sync with the current openings position on every render.
         // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
         (() => {
@@ -456,6 +441,7 @@ function renderSessionPage(redraw: () => void): VNode {
         renderEngineSettings(),
         engineEnabled ? renderPvBox() : null,
         node ? renderPlayedLinesPanel(node, redraw) : null,
+        openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
         renderSampleGamesPanel(),
         renderExplorerToggle(node, redraw),
       ]),
@@ -512,6 +498,93 @@ function renderPlayerStrip(
   ]);
 }
 
+// Icon codepoints for first/prev/next/last navigation buttons.
+// Adapted from lichess-org/lila: ui/lib/src/licon.ts
+/**
+ * Convert the opening session path into a minimal TreeNode chain for renderMoveList.
+ * Each node gets a 2-char hex ID so paths concatenate cleanly (e.g. "000102").
+ * Adapted from lichess-org/lila: ui/lib/src/tree/types.ts TreeNode shape.
+ */
+function buildOpeningsMoveTree(
+  tree: OpeningTreeNode,
+  path: readonly string[],
+): { root: TreeNode; currentPath: string } {
+  const root: TreeNode = {
+    id: '', ply: 0, fen: tree.fen,
+    children: [], glyphs: [], comments: [],
+  };
+  let treeNode = root;
+  let openingNode: OpeningTreeNode = tree;
+  for (let i = 0; i < path.length; i++) {
+    const child = openingNode.children.find(c => c.uci === path[i]);
+    if (!child) break;
+    const id = i.toString(16).padStart(2, '0');
+    const next: TreeNode = {
+      id, ply: i + 1, uci: child.uci, san: child.san, fen: child.fen,
+      children: [], glyphs: [], comments: [],
+    };
+    treeNode.children.push(next);
+    treeNode = next;
+    openingNode = child;
+  }
+  const currentPath = Array.from(
+    { length: path.length },
+    (_, i) => i.toString(16).padStart(2, '0'),
+  ).join('');
+  return { root, currentPath };
+}
+
+/**
+ * Render the move list for the current opening line using the analysis-board
+ * tview2 column layout, followed by the move-nav-bar navigation bar.
+ * Placed between the lines panel and the sample games panel.
+ * Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts + controls.ts
+ */
+function renderOpeningsMoveList(
+  tree: OpeningTreeNode,
+  path: readonly string[],
+  node: OpeningTreeNode | null,
+  redraw: () => void,
+): VNode {
+  const { root, currentPath } = buildOpeningsMoveTree(tree, path);
+
+  const navigate = (treePath: string) => {
+    const depth = treePath.length / 2;
+    navigateToPath([...sessionPath().slice(0, depth)]);
+    syncOpeningsBoard(redraw);
+    redraw();
+  };
+
+  const canPrev = path.length > 0;
+  const canNext = node !== null && node.children.length > 0;
+
+  return h('div.openings__move-list', [
+    h('div.analyse__moves.areplay', [
+      renderMoveList(root, currentPath, () => undefined, navigate, null, false),
+    ]),
+    renderMoveNavBar([], {
+      canPrev,
+      canNext,
+      first:      () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); },
+      prev:       () => { navigateBack(); syncOpeningsBoard(redraw); redraw(); },
+      next:       () => {
+        if (node && node.children.length > 0) {
+          navigateToMove(node.children[0]!.uci);
+          syncOpeningsBoard(redraw);
+          redraw();
+        }
+      },
+      last:       () => { navigateToEnd(); syncOpeningsBoard(redraw); redraw(); },
+      bookActive: explorerCtrl.enabled,
+      onBook:     () => {
+        explorerCtrl.toggle();
+        if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw);
+        redraw();
+      },
+    }),
+  ]);
+}
+
 function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): VNode {
   const fen = node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -532,8 +605,8 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
             dests,
           },
           draggable: {
-            enabled: false,
-            showGhost: false,
+            enabled: true,
+            showGhost: true,
           },
           drawable: {
             enabled: true,
@@ -546,10 +619,10 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
           },
           events: {
             move: (orig, dest) => {
-              // Find matching child by checking UCI
               const uci = `${orig}${dest}`;
-              if (node) {
-                const match = node.children.find(c =>
+              const current = sessionNode();
+              if (current) {
+                const match = current.children.find(c =>
                   c.uci === uci || c.uci.startsWith(uci),
                 );
                 if (match) {
@@ -1022,32 +1095,17 @@ function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VN
   ]);
 }
 
-function renderExplorerToggle(node: OpeningTreeNode | null, redraw: () => void): VNode {
-  const enabled = explorerCtrl.enabled;
+function renderExplorerToggle(node: OpeningTreeNode | null, redraw: () => void): VNode | null {
+  if (!explorerCtrl.enabled) return null;
   return h('div.openings__explorer', [
     h('div.openings__explorer-header', [
-      h('label.openings__explorer-label', [
-        h('input', {
-          attrs: { type: 'checkbox', checked: enabled },
-          on: {
-            change: () => {
-              explorerCtrl.toggle();
-              if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw);
-              redraw();
-            },
-          },
-        }),
-        ' Opening Book',
-      ]),
-      enabled ? h('button.openings__explorer-gear', {
+      h('button.openings__explorer-gear', {
         attrs: { title: 'Configure explorer' },
         on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
-      }, '\u2699\uFE0F') : null,
+      }, '\u2699\uFE0F'),
     ]),
-    enabled ? renderExplorerDbTabs(node, redraw) : null,
-    enabled
-      ? (explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw) : renderExplorerPanel(node, redraw))
-      : null,
+    renderExplorerDbTabs(node, redraw),
+    explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw) : renderExplorerPanel(node, redraw),
   ]);
 }
 
@@ -1412,36 +1470,22 @@ export function renderAnalysisExplorerSection(
   cg: CgApi | undefined,
   onMoveClick: (uci: string) => void,
   redraw: () => void,
-): VNode {
-  const enabled = explorerCtrl.enabled;
+): VNode | null {
+  if (!explorerCtrl.enabled) return null;
+
   const isMasters = explorerCtrl.config.db === 'masters';
 
   return h('div.openings__explorer', [
     h('div.openings__explorer-header', [
-      h('label.openings__explorer-label', [
-        h('input', {
-          attrs: { type: 'checkbox', checked: enabled },
-          on: {
-            change: () => {
-              explorerCtrl.toggle();
-              if (explorerCtrl.enabled) explorerCtrl.setNode(fen, redraw);
-              redraw();
-            },
-          },
-        }),
-        ' Opening Book',
-      ]),
-      enabled ? h('button.openings__explorer-gear', {
+      h('button.openings__explorer-gear', {
         attrs: { title: 'Configure explorer' },
         on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
-      }, '\u2699\uFE0F') : null,
+      }, '\u2699\uFE0F'),
     ]),
-    enabled ? renderExplorerDbTabs(null, redraw) : null,
-    enabled
-      ? (explorerCtrl.configOpen
-          ? renderExplorerConfigPanel(redraw)
-          : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw))
-      : null,
+    renderExplorerDbTabs(null, redraw),
+    explorerCtrl.configOpen
+      ? renderExplorerConfigPanel(redraw)
+      : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw),
   ]);
 }
 

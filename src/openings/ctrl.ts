@@ -11,7 +11,7 @@ import {
   saveSessionState, loadSessionState, clearSessionState,
   type StoredOpeningsSession,
 } from './db';
-import { buildOpeningTree, OpeningTreeBuilder, nodeAtMoves, findSampleGames, type OpeningTreeNode } from './tree';
+import { OpeningTreeBuilder, nodeAtMoves, findSampleGames, type OpeningTreeNode } from './tree';
 import type { ImportSpeed, ImportDateRange } from '../import/filters';
 
 export type OpeningsPage = 'library' | 'loading' | 'session';
@@ -21,10 +21,10 @@ let _collections: ResearchCollection[] = [];
 let _collectionsLoaded = false;
 
 // --- Import workflow state ---
-export type ImportStep = 'idle' | 'source' | 'details' | 'importing' | 'done';
+export type ImportStep = 'idle' | 'details' | 'importing' | 'done';
 
 let _importStep: ImportStep = 'idle';
-let _importSource: ResearchSource = 'lichess';
+let _importSource: ResearchSource = 'chesscom';
 let _importUsername = '';
 let _importColor: 'white' | 'black' | 'both' = 'both';
 let _importError: string | null = null;
@@ -165,10 +165,19 @@ export function flipBoard(): void { _boardOrientation = _boardOrientation === 'w
 export function openingTree(): OpeningTreeNode | null { return _openingTree; }
 export function colorFilter(): 'white' | 'black' | 'both' { return _colorFilter; }
 
-/** Change which color's games are included in the tree and rebuild. */
-export function setColorFilter(color: 'white' | 'black' | 'both', redraw?: () => void): void {
+/** Change which color's games are included in the tree and rebuild.
+ *  Mirrors the openCollection() async chunked pattern so the board flips
+ *  immediately while the new tree streams in incrementally.
+ */
+export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => void): void {
   _colorFilter = color;
-  if (!_activeCollection) return;
+
+  // Flip board orientation immediately — first visible feedback.
+  if (color === 'white') _boardOrientation = 'white';
+  else if (color === 'black') _boardOrientation = 'black';
+
+  if (!_activeCollection) { redraw(); return; }
+
   const target = _activeCollection.target?.toLowerCase() ?? '';
   let games = _activeCollection.games;
   if (color !== 'both' && target) {
@@ -178,12 +187,49 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw?: () =>
       return color === 'white' ? isWhite : isBlack;
     });
   }
-  _openingTree = buildOpeningTree(games);
+
+  // Clear the tree immediately so the view shows an empty state while building.
+  const emptyBuilder = new OpeningTreeBuilder();
+  _openingTree = emptyBuilder.freeze();
   _sessionPath = [];
   _sessionNode = _openingTree;
   invalidateSampleCache();
-  if (color === 'white') _boardOrientation = 'white';
-  else if (color === 'black') _boardOrientation = 'black';
+
+  // Start chunked async build — same as openCollection().
+  _treeBuildProgress = 0;
+  _treeBuildTotal = games.length;
+  _treeBuilding = true;
+  redraw();
+
+  const CHUNK = 200;
+  const builder = new OpeningTreeBuilder();
+  let index = 0;
+  let chunkCount = 0;
+
+  function processChunk(): void {
+    const end = Math.min(index + CHUNK, games.length);
+    builder.addGames(games.slice(index, end));
+    index = end;
+    chunkCount++;
+    _treeBuildProgress = index;
+
+    const done = index >= games.length;
+    if (done || chunkCount % 4 === 0) {
+      _openingTree = builder.freeze();
+      _sessionNode = _openingTree;
+      invalidateSampleCache();
+    }
+    redraw();
+
+    if (!done) {
+      setTimeout(processChunk, 0);
+    } else {
+      _treeBuilding = false;
+      redraw();
+    }
+  }
+
+  setTimeout(processChunk, 0);
 }
 export function sessionPath(): readonly string[] { return _sessionPath; }
 export function sessionNode(): OpeningTreeNode | null { return _sessionNode; }
@@ -305,6 +351,23 @@ export function navigateToRoot(): void {
   _sessionPath = [];
   _sessionNode = _openingTree;
   persistSession();
+}
+
+/** Navigate to the deepest position following the most popular child at each step. */
+export function navigateToEnd(): void {
+  if (!_openingTree) return;
+  let node = _sessionNode;
+  const newPath = [..._sessionPath];
+  while (node && node.children.length > 0) {
+    const child = node.children[0]!;
+    newPath.push(child.uci);
+    node = child;
+  }
+  if (newPath.length !== _sessionPath.length) {
+    _sessionPath = newPath;
+    _sessionNode = node ?? _sessionNode;
+    persistSession();
+  }
 }
 
 /** Navigate to a specific path (list of UCI moves). */

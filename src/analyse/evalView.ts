@@ -295,6 +295,12 @@ export function renderEvalGraph(
 ): VNode {
   const n = mainline.length - 1; // non-root move count
   const renderedGraphHeight = Math.round((GRAPH_H * graphHeightPct) / 100);
+  // svgH: the Y coordinate range used inside the SVG.
+  // In non-bg mode we match the viewBox height to the rendered pixel height so that
+  // scaleY = renderedGraphHeight / renderedGraphHeight = 1 — this keeps circle markers
+  // circular regardless of graph height. In bg mode the SVG is CSS-sized (height:100%)
+  // so we keep the fixed 80-unit coordinate space to preserve its fill geometry.
+  const svgH = bg ? GRAPH_H : renderedGraphHeight;
 
   if (n < 2) {
     // Background mode: render nothing when there is no data — empty transparent div
@@ -348,7 +354,7 @@ export function renderEvalGraph(
         : null;
       pts.push({
         x: ((i - 1) / (n - 1)) * GRAPH_W,
-        y: ((1 - wc) / 2) * GRAPH_H, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
+        y: ((1 - wc) / 2) * svgH, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
         path,
         label,
         hasMate: cached?.mate !== undefined,
@@ -367,7 +373,7 @@ export function renderEvalGraph(
     ]);
   }
 
-  const cy = GRAPH_H / 2;
+  const cy = svgH / 2;
   const svgNodes: VNode[] = [];
   const hideHover = (svg: SVGSVGElement | null): void => {
     const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
@@ -413,10 +419,14 @@ export function renderEvalGraph(
   // bottom of the chart to the eval line, matching the intended Lichess-style read.
   // This keeps the interaction model intact while removing the center-origin look.
   const polyPts = [
-    `${valid[0]!.x},${GRAPH_H}`,
+    `${valid[0]!.x},${svgH}`,
     ...valid.map(p => `${p.x},${p.y}`),
-    `${valid[valid.length - 1]!.x},${GRAPH_H}`,
+    `${valid[valid.length - 1]!.x},${svgH}`,
   ].join(' ');
+
+  // Center line (eval = 0) — pushed first so it renders behind the fill polygon and trace.
+  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#999', 'stroke-width': 1, opacity: bg ? '0.6' : '1' } }));
+
   svgNodes.push(h('polygon', {
     attrs: {
       points: polyPts,
@@ -424,9 +434,6 @@ export function renderEvalGraph(
       stroke: 'none',
     },
   }));
-
-  // Center line (eval = 0)
-  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#999', 'stroke-width': 1, opacity: bg ? '0.6' : '1' } }));
 
   // Eval trace
   svgNodes.push(h('polyline', { attrs: {
@@ -443,7 +450,7 @@ export function renderEvalGraph(
   const curPt = valid.find(p => p.path === currentPath);
   if (curPt) {
     svgNodes.push(h('line', { attrs: {
-      x1: curPt.x, y1: 0, x2: curPt.x, y2: GRAPH_H,
+      x1: curPt.x, y1: 0, x2: curPt.x, y2: svgH,
       stroke: '#4a8', 'stroke-width': 1, opacity: '0.55',
     } }));
   }
@@ -452,7 +459,7 @@ export function renderEvalGraph(
   if (!bg) svgNodes.push(h('line', {
     attrs: {
       'data-hover': '1',
-      x1: 0, y1: 0, x2: 0, y2: GRAPH_H,
+      x1: 0, y1: 0, x2: 0, y2: svgH,
       stroke: '#aaa', 'stroke-width': 1.5, opacity: '0',
       'pointer-events': 'none',
     },
@@ -486,7 +493,7 @@ export function renderEvalGraph(
       x: 0,
       y: 0,
       width: GRAPH_W,
-      height: GRAPH_H,
+      height: svgH,
       fill: 'transparent',
     },
     on: {
@@ -538,7 +545,10 @@ export function renderEvalGraph(
     },
   }, [
     h('svg', { attrs: {
-      viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
+      // viewBox matches the rendered pixel height so scaleY = 1, keeping circle
+      // markers circular at any graph height. scaleX still stretches to fill
+      // container width, which is the intended horizontal-fill behavior.
+      viewBox: `0 0 ${GRAPH_W} ${svgH}`,
       width: '100%',
       height: renderedGraphHeight,
       preserveAspectRatio: 'none',
