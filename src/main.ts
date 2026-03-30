@@ -46,6 +46,9 @@ import {
 import {
   renderAnalysisControls, downloadPgn, initPgnExport, copyLinePgn, isMainlinePath,
 } from './analyse/pgnExport';
+import {
+  initAnalysisControls, renderMoveNavBar, renderActionMenu, renderExplorerEntry,
+} from './analyse/analysisControls';
 import { bindKeyboardHandlers, renderKeyboardHelp } from './keyboard';
 import {
   renderGameList, renderGamesView, type GamesViewDeps,
@@ -894,6 +897,11 @@ function routeContent(route: Route): VNode {
             },
             redraw,
           ),
+          // Analysis-local action menu — overlays the tools column when opened.
+          // position: absolute; inset: 0 on .action-menu ensures it covers all tool content.
+          // Returns null when closed, so tools render normally.
+          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts ctrl.actionMenu() && actionMenu(ctrl)
+          renderActionMenu(),
         ]),
 
         // Controls — below tools (grid-area: controls)
@@ -907,28 +915,19 @@ function routeContent(route: Route): VNode {
           // bg:true strips interactivity — graph still tracks current move position.
           renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, redraw, currentUserColor, reviewDotsUserOnly, true),
           // Action buttons — desktop only (mobile uses .analyse__actions below the move list).
-          renderAnalysisControls([
-            // Mistake-review entry: available after review completes.
-            // Jumps to the position before the first candidate mistake.
-            // Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroView.ts entry affordance.
-            renderRetroEntry({
-              retro:            ctrl.retro,
-              analysisComplete,
-              batchAnalyzing,
-              onToggle:         toggleRetro,
-            }),
-          ]),
-          // Navigation jump buttons — mirrors lichess-org/lila: ui/analyse/src/view/controls.ts .jumps
-          // data-icon values: LessThan \ue027 (prev), GreaterThan \ue026 (next)
-          h('div.jumps', [
-            h('button.fbt', {
-              attrs: { 'data-icon': '\ue027', disabled: ctrl.path === '', title: 'Previous move' },
-              on: { click: prev },
-            }),
-            h('button.fbt', {
-              attrs: { 'data-icon': '\ue026', disabled: !ctrl.node.children[0], title: 'Next move' },
-              on: { click: next },
-            }),
+          // Three-zone Lichess-style control bar (CCP-242).
+          // Left: review/retro entry + opening explorer (CCP-245). Middle: jumps. Right: hamburger.
+          renderMoveNavBar([
+            renderAnalysisControls(
+              [
+                renderRetroEntry({
+                  retro:            ctrl.retro,
+                  analysisComplete,
+                  batchAnalyzing,
+                  onToggle:         toggleRetro,
+                }),
+              ].filter((n): n is VNode => n !== null)
+            ),
           ]),
         ]),
 
@@ -999,7 +998,6 @@ function view(route: Route): VNode {
       gameSourceUrl,
       downloadPgn,
       resetAllData,
-      onFlipBoard: flip,
       redraw,
     } satisfies HeaderDeps),
     h('main', [routeContent(route)]),
@@ -1093,6 +1091,20 @@ initPgnExport({
   getSelectedGameId: () => selectedGameId,
   clearGameAnalysis,
   redraw,
+});
+initAnalysisControls({
+  getCtrl:          () => ctrl,
+  prev,
+  next,
+  first,
+  last,
+  navigate,
+  redraw,
+  onFlipBoard:      flip,
+  onToggleRetro:    toggleRetro,
+  // CCP-245: opening explorer toggle
+  onToggleExplorer: () => { explorerCtrl.toggle(); explorerCtrl.setNode(ctrl.node.fen, redraw); },
+  explorerEnabled:  () => explorerCtrl.enabled,
 });
 initEngine({
   getCtrl:       () => ctrl,
