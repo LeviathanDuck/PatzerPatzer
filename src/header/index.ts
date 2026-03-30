@@ -2,6 +2,7 @@
 // Adapted from docs/reference/TopNav.jsx and AppShell.jsx (previous React iteration).
 
 import { h, type VNode } from 'snabbdom';
+import { renderToggleRow } from '../ui';
 import { chesscom, importChesscom } from '../import/chesscom';
 import { lichess, importLichess } from '../import/lichess';
 import { pgnState, importPgn } from '../import/pgn';
@@ -11,10 +12,8 @@ import {
 } from '../import/filters';
 import {
   boardWheelNavEnabled,
-  reviewDotsUserOnly,
   renderBoardSettings,
   setBoardWheelNavEnabled,
-  setReviewDotsUserOnly,
 } from '../board/cosmetics';
 import { boardSoundEnabled, setBoardSoundEnabled, soundVolume, setSoundVolume } from '../board/sound';
 import {
@@ -75,7 +74,6 @@ export interface HeaderDeps {
   gameSourceUrl:       (game: ImportedGame) => string | undefined;
   downloadPgn:         (annotated: boolean) => void;
   resetAllData:        () => void;
-  onFlipBoard:         () => void;
   redraw:              () => void;
 }
 
@@ -165,18 +163,10 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         )),
       ]),
 
-      h('label.review-menu__toggle', [
-        h('span', 'Auto-review on import'),
-        h('input', {
-          attrs: { type: 'checkbox', checked: auto },
-          on: {
-            change: (e: Event) => {
-              localStorage.setItem('patzer.autoReview', String((e.target as HTMLInputElement).checked));
-              redraw();
-            },
-          },
-        }),
-      ]),
+      renderToggleRow('review-auto', 'Auto-review on import', auto, (v) => {
+        localStorage.setItem('patzer.autoReview', String(v));
+        redraw();
+      }),
 
     ]) : null,
   ]);
@@ -392,13 +382,7 @@ function renderRetroModal(redraw: () => void): VNode {
           h('p.detection-modal__desc',
             'Flag positions where you were clearly winning but squandered the advantage. ' +
             'Reuses the same thresholds as the engine\'s collapse detection.'),
-          h('label.detection-modal__toggle', [
-            h('input', {
-              attrs: { type: 'checkbox', checked: cfg.collapseEnabled },
-              on: { change: (e: Event) => { setRetroConfig({ collapseEnabled: (e.target as HTMLInputElement).checked }); redraw(); } },
-            }),
-            h('span', 'Enabled'),
-          ]),
+          renderToggleRow('detection-collapse', 'Enabled', cfg.collapseEnabled, (v) => { setRetroConfig({ collapseEnabled: v }); redraw(); }),
           ...(cfg.collapseEnabled ? [
             h('div.detection-modal__row-header', [
               h('span.detection-modal__label', 'Win Chance Floor'),
@@ -430,13 +414,7 @@ function renderRetroModal(redraw: () => void): VNode {
           ]),
           h('p.detection-modal__desc',
             'Flag positions where you were losing but had a significantly better defensive move available.'),
-          h('label.detection-modal__toggle', [
-            h('input', {
-              attrs: { type: 'checkbox', checked: cfg.defensiveEnabled },
-              on: { change: (e: Event) => { setRetroConfig({ defensiveEnabled: (e.target as HTMLInputElement).checked }); redraw(); } },
-            }),
-            h('span', 'Enabled'),
-          ]),
+          renderToggleRow('detection-defensive', 'Enabled', cfg.defensiveEnabled, (v) => { setRetroConfig({ defensiveEnabled: v }); redraw(); }),
           ...(cfg.defensiveEnabled ? [
             h('div.detection-modal__row-header', [
               h('span.detection-modal__label', 'Position Ceiling'),
@@ -468,13 +446,7 @@ function renderRetroModal(redraw: () => void): VNode {
           ]),
           h('p.detection-modal__desc',
             'Flag positions where the opponent blundered but you failed to exploit the mistake.'),
-          h('label.detection-modal__toggle', [
-            h('input', {
-              attrs: { type: 'checkbox', checked: cfg.punishEnabled },
-              on: { change: (e: Event) => { setRetroConfig({ punishEnabled: (e.target as HTMLInputElement).checked }); redraw(); } },
-            }),
-            h('span', 'Enabled'),
-          ]),
+          renderToggleRow('detection-punish', 'Enabled', cfg.punishEnabled, (v) => { setRetroConfig({ punishEnabled: v }); redraw(); }),
           ...(cfg.punishEnabled ? [
             h('div.detection-modal__row-header', [
               h('span.detection-modal__label', 'Opponent Swing'),
@@ -513,7 +485,7 @@ function renderRetroModal(redraw: () => void): VNode {
 }
 
 function renderGlobalMenu(deps: HeaderDeps): VNode {
-  const { downloadPgn, resetAllData, onFlipBoard, selectedGameId, redraw } = deps;
+  const { downloadPgn, resetAllData, selectedGameId, redraw } = deps;
   const hasGame = selectedGameId !== null;
   return h('div.global-menu', [
     h('button.global-menu__trigger', {
@@ -551,9 +523,8 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         }},
       }, 'Game Review'),
 
-      h('button.global-menu__item', {
-        on: { click: () => { onFlipBoard(); closeGlobalMenu(redraw); } },
-      }, 'Flip Board'),
+      // 'Flip Board' removed — now in analysis action menu (CCP-247).
+      // It is analysis-board-local; use the hamburger menu on the analysis board.
 
       h('button.global-menu__item', {
         on: { click: () => { closeGlobalMenu(redraw); downloadPgn(true); } },
@@ -563,45 +534,16 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         on: { click: () => { closeGlobalMenu(redraw); downloadPgn(false); } },
       }, 'Export PGN (Plain)'),
 
-      h('label.global-menu__item.global-menu__item--toggle', [
-        h('span', 'Board Wheel Navigation'),
-        h('input', {
-          attrs: { type: 'checkbox', checked: boardWheelNavEnabled },
-          on: {
-            change: (e: Event) => {
-              setBoardWheelNavEnabled((e.target as HTMLInputElement).checked);
-              redraw();
-            },
-          },
-        }),
-      ]),
+      h('div.global-menu__item.global-menu__item--toggle',
+        renderToggleRow('board-wheel-nav', 'Board Wheel Navigation', boardWheelNavEnabled, (v) => { setBoardWheelNavEnabled(v); redraw(); }),
+      ),
 
-      h('label.global-menu__item.global-menu__item--toggle', [
-        h('span', 'Review Dots: User Only'),
-        h('input', {
-          attrs: { type: 'checkbox' },
-          props: { checked: reviewDotsUserOnly },
-          on: {
-            change: (e: Event) => {
-              setReviewDotsUserOnly((e.target as HTMLInputElement).checked);
-              redraw();
-            },
-          },
-        }),
-      ]),
+      // 'Review Dots: User Only' moved to analysis action menu (CCP-244).
+      // It is analysis-board-local and belongs in the analysis menu, not the global header.
 
-      h('label.global-menu__item.global-menu__item--toggle', [
-        h('span', 'Board Sounds'),
-        h('input', {
-          attrs: { type: 'checkbox', checked: boardSoundEnabled },
-          on: {
-            change: (e: Event) => {
-              setBoardSoundEnabled((e.target as HTMLInputElement).checked);
-              redraw();
-            },
-          },
-        }),
-      ]),
+      h('div.global-menu__item.global-menu__item--toggle',
+        renderToggleRow('board-sounds', 'Board Sounds', boardSoundEnabled, (v) => { setBoardSoundEnabled(v); redraw(); }),
+      ),
 
       h('div.global-menu__item.global-menu__item--slider', [
         h('span', `Volume: ${Math.round(soundVolume * 100)}%`),
@@ -767,15 +709,9 @@ export function renderHeader(deps: HeaderDeps): VNode {
         ]),
       ]),
 
-      h('div.header__panel-row.--mt', [
-        h('label.header__panel-check', [
-          h('input', {
-            attrs: { type: 'checkbox', checked: importFilters.autoReview },
-            on: { change: (e: Event) => { importFilters.autoReview = (e.target as HTMLInputElement).checked; redraw(); } },
-          }),
-          'Auto-review after import',
-        ]),
-      ]),
+      h('div.header__panel-row.--mt',
+        renderToggleRow('import-auto-review', 'Auto-review after import', importFilters.autoReview, (v) => { importFilters.autoReview = v; redraw(); }),
+      ),
       importFilters.autoReview ? h('p.header__panel-hint.header__panel-warn',
         'Large imports may take a long time to review. Each game runs through the engine at the configured review depth.'
       ) : null,

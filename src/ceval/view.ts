@@ -11,6 +11,7 @@ import { makeFen, parseFen } from 'chessops/fen';
 import { makeSanAndPlay } from 'chessops/san';
 import { makeUci, parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
+import { renderToggleRow } from '../ui';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import {
   protocol,
@@ -22,13 +23,6 @@ import {
   searchUntilDepth, setSearchUntilDepth,
   isEngineSearching, getSearchProgress,
   clearPendingLines,
-  showEngineArrows, setShowEngineArrows,
-  arrowAllLines, setArrowAllLines,
-  showPlayedArrow, setShowPlayedArrow,
-  showArrowLabels, setShowArrowLabels,
-  showReviewLabels, setShowReviewLabels,
-  showBoardReviewGlyphs, setShowBoardReviewGlyphs,
-  arrowLabelSize, setArrowLabelSize,
   syncArrow, toggleEngine, evalCurrentPosition,
   setEvalFenOverride,
   type EvalLine, type PositionEval,
@@ -448,18 +442,7 @@ export function renderEngineSettings(): VNode | null {
         h('option', { attrs: { value: d, selected: d === analysisDepth } }, String(d))
       )),
     ]),
-    h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-until-depth' } }, 'Search to depth'),
-      h('input#ceval-until-depth', {
-        attrs: { type: 'checkbox', checked: searchUntilDepth },
-        on: {
-          change: (e: Event) => {
-            setSearchUntilDepth((e.target as HTMLInputElement).checked);
-            _redraw();
-          },
-        },
-      }),
-    ]),
+    renderToggleRow('ceval-until-depth', 'Search to depth', searchUntilDepth, (v) => { setSearchUntilDepth(v); _redraw(); }),
     h('div.ceval-settings__row', { class: { 'ceval-settings__row--disabled': searchUntilDepth } }, [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-search-time' } }, 'Search time'),
       h('input#ceval-search-time', {
@@ -473,96 +456,7 @@ export function renderEngineSettings(): VNode | null {
       }),
       h('span.ceval-settings__val', `${searchTime / 1000}s`),
     ]),
-    h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-arrows' } }, 'Arrows'),
-      h('input#ceval-arrows', {
-        attrs: { type: 'checkbox', checked: showEngineArrows },
-        on: {
-          change: (e: Event) => {
-            setShowEngineArrows((e.target as HTMLInputElement).checked);
-            syncArrow();
-            _redraw();
-          },
-        },
-      }),
-    ]),
-    h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-arrow-lines' } }, 'All lines'),
-      h('input#ceval-arrow-lines', {
-        attrs: { type: 'checkbox', checked: arrowAllLines },
-        on: {
-          change: (e: Event) => {
-            setArrowAllLines((e.target as HTMLInputElement).checked);
-            syncArrow();
-            _redraw();
-          },
-        },
-      }),
-    ]),
-    h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-played-arrow' } }, 'Played'),
-      h('input#ceval-played-arrow', {
-        attrs: { type: 'checkbox', checked: showPlayedArrow },
-        on: {
-          change: (e: Event) => {
-            setShowPlayedArrow((e.target as HTMLInputElement).checked);
-            syncArrow();
-            _redraw();
-          },
-        },
-      }),
-    ]),
-    h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-arrow-labels' } }, 'Labels'),
-      h('input#ceval-arrow-labels', {
-        attrs: { type: 'checkbox', checked: showArrowLabels },
-        on: {
-          change: (e: Event) => {
-            setShowArrowLabels((e.target as HTMLInputElement).checked);
-            syncArrow();
-            _redraw();
-          },
-        },
-      }),
-    ]),
-    h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-label-size' } }, 'Label size'),
-      h('input#ceval-label-size', {
-        attrs: { type: 'range', min: 6, max: 18, step: 1, value: arrowLabelSize },
-        on: {
-          input: (e: Event) => {
-            setArrowLabelSize(parseInt((e.target as HTMLInputElement).value));
-            syncArrow();
-            _redraw();
-          },
-        },
-      }),
-      h('span.ceval-settings__val', `${arrowLabelSize}px`),
-    ]),
-    h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-review-labels' } }, 'Review'),
-      h('input#ceval-review-labels', {
-        attrs: { type: 'checkbox', checked: showReviewLabels },
-        on: {
-          change: (e: Event) => {
-            setShowReviewLabels((e.target as HTMLInputElement).checked);
-            _redraw();
-          },
-        },
-      }),
-    ]),
-    h('div.ceval-settings__row', [
-      h('label.ceval-settings__label', { attrs: { for: 'ceval-board-review-glyphs' } }, 'Board review'),
-      h('input#ceval-board-review-glyphs', {
-        attrs: { type: 'checkbox', checked: showBoardReviewGlyphs },
-        on: {
-          change: (e: Event) => {
-            setShowBoardReviewGlyphs((e.target as HTMLInputElement).checked);
-            syncArrow();
-            _redraw();
-          },
-        },
-      }),
-    ]),
   ]);
 }
+// Arrow display settings, review labels, and board review glyphs moved to
+// analysis action menu (CCP-246). Engine gear now contains search settings only.

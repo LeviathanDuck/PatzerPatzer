@@ -6838,6 +6838,20 @@ function playMoveSound(san) {
   playBuffer(name);
 }
 
+// src/ui.ts
+function renderToggleRow(id, label, checked, onChange3, disabled) {
+  return h("label.settings-toggle-row", [
+    h("span.settings-toggle-row__label", label),
+    h("span.settings-toggle", [
+      h(`input#stg-${id}`, {
+        attrs: { type: "checkbox", checked, ...disabled ? { disabled: true } : {} },
+        on: { change: (e) => onChange3(e.target.checked) }
+      }),
+      h("label", { attrs: { for: `stg-${id}` } })
+    ])
+  ]);
+}
+
 // src/ceval/view.ts
 var _getCtrl4 = () => {
   throw new Error("cevalView not initialised");
@@ -7135,18 +7149,10 @@ function renderEngineSettings() {
         (d) => h("option", { attrs: { value: d, selected: d === analysisDepth } }, String(d))
       ))
     ]),
-    h("div.ceval-settings__row", [
-      h("label.ceval-settings__label", { attrs: { for: "ceval-until-depth" } }, "Search to depth"),
-      h("input#ceval-until-depth", {
-        attrs: { type: "checkbox", checked: searchUntilDepth },
-        on: {
-          change: (e) => {
-            setSearchUntilDepth(e.target.checked);
-            _redraw4();
-          }
-        }
-      })
-    ]),
+    renderToggleRow("ceval-until-depth", "Search to depth", searchUntilDepth, (v) => {
+      setSearchUntilDepth(v);
+      _redraw4();
+    }),
     h("div.ceval-settings__row", { class: { "ceval-settings__row--disabled": searchUntilDepth } }, [
       h("label.ceval-settings__label", { attrs: { for: "ceval-search-time" } }, "Search time"),
       h("input#ceval-search-time", {
@@ -7483,34 +7489,31 @@ function renderExplorerEntry() {
     } }
   });
 }
-function renderControlBar(leftNodes) {
-  const deps = _deps;
-  const ctrl2 = deps.getCtrl();
-  const canPrev = ctrl2.path !== "";
-  const canNext = !!ctrl2.node.children[0];
-  return h("div.analyse-controls", [
-    h("div.analyse-controls__left", leftNodes.filter((n) => n !== null)),
-    h("div.analyse-controls__middle", [
-      h("div.jumps", [
-        h("button.fbt", {
-          attrs: { "data-icon": ICON_JUMP_FIRST, disabled: !canPrev, title: "First move" },
-          on: { click: deps.first }
-        }),
-        h("button.fbt", {
-          attrs: { "data-icon": ICON_PREV, disabled: !canPrev, title: "Previous move" },
-          on: { click: deps.prev }
-        }),
-        h("button.fbt", {
-          attrs: { "data-icon": ICON_NEXT, disabled: !canNext, title: "Next move" },
-          on: { click: deps.next }
-        }),
-        h("button.fbt", {
-          attrs: { "data-icon": ICON_JUMP_LAST, disabled: !canNext, title: "Last move" },
-          on: { click: deps.last }
-        })
-      ])
-    ]),
-    h("div.analyse-controls__right", [
+function renderMoveNavBar(leftNodes, nav) {
+  let canPrev, canNext, first2, prev2, next2, last2;
+  let explorerBtn = null;
+  let rightZone;
+  if (nav) {
+    ({ canPrev, canNext, first: first2, prev: prev2, next: next2, last: last2 } = nav);
+    if (nav.onBook !== void 0) {
+      explorerBtn = h("button.fbt", {
+        class: { active: !!nav.bookActive },
+        attrs: { "data-icon": ICON_BOOK, title: "Opening explorer" },
+        on: { click: nav.onBook }
+      });
+    }
+    rightZone = h("div.move-nav-bar__right", nav.rightSlot ? [nav.rightSlot] : []);
+  } else {
+    const deps = _deps;
+    const ctrl2 = deps.getCtrl();
+    canPrev = ctrl2.path !== "";
+    canNext = !!ctrl2.node.children[0];
+    first2 = deps.first;
+    prev2 = deps.prev;
+    next2 = deps.next;
+    last2 = deps.last;
+    explorerBtn = renderExplorerEntry();
+    rightZone = h("div.move-nav-bar__right", [
       h("button.fbt", {
         class: { active: _actionMenuOpen },
         attrs: { "data-icon": ICON_HAMBURGER, title: "Analysis menu" },
@@ -7519,7 +7522,32 @@ function renderControlBar(leftNodes) {
           deps.redraw();
         } }
       })
-    ])
+    ]);
+  }
+  return h("div.move-nav-bar", [
+    h("div.move-nav-bar__left", leftNodes.filter((n) => n !== null)),
+    ...explorerBtn ? [explorerBtn] : [],
+    h("div.move-nav-bar__middle", [
+      h("div.jumps", [
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_JUMP_FIRST, disabled: !canPrev, title: "First move" },
+          on: { click: first2 }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_PREV, disabled: !canPrev, title: "Previous move" },
+          on: { click: prev2 }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_NEXT, disabled: !canNext, title: "Next move" },
+          on: { click: next2 }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_JUMP_LAST, disabled: !canNext, title: "Last move" },
+          on: { click: last2 }
+        })
+      ])
+    ]),
+    rightZone
   ]);
 }
 var ICON_FLIP = "\uE020";
@@ -7572,86 +7600,43 @@ function renderActionMenu() {
     // reviewDotsUserOnly moved here from global header menu (CCP-244).
     h("h2", "Display"),
     h("div.action-menu__display", [
-      h("label.action-menu__toggle-row", [
-        h("span", "Move markers on board"),
-        h("input", {
-          attrs: { type: "checkbox", checked: showBoardReviewGlyphs },
-          on: { change: (e) => {
-            setShowBoardReviewGlyphs(e.target.checked);
-            syncArrow();
-            deps.redraw();
-          } }
-        })
-      ]),
-      h("label.action-menu__toggle-row", [
-        h("span", "Move labels"),
-        h("input", {
-          attrs: { type: "checkbox", checked: showReviewLabels },
-          on: { change: (e) => {
-            setShowReviewLabels(e.target.checked);
-            deps.redraw();
-          } }
-        })
-      ]),
-      // Review dots user-only — moved from global header menu (previously in src/header/index.ts).
+      renderToggleRow("am-board-glyphs", "Move markers on board", showBoardReviewGlyphs, (v) => {
+        setShowBoardReviewGlyphs(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      renderToggleRow("am-move-labels", "Move labels", showReviewLabels, (v) => {
+        setShowReviewLabels(v);
+        deps.redraw();
+      }),
+      // Review dots user-only — moved from global header menu (CCP-244).
       // Storage owner (reviewDotsUserOnly / setReviewDotsUserOnly in src/board/cosmetics.ts) unchanged.
-      h("label.action-menu__toggle-row", [
-        h("span", "Review dots: my moves only"),
-        h("input", {
-          attrs: { type: "checkbox" },
-          props: { checked: reviewDotsUserOnly },
-          on: { change: (e) => {
-            setReviewDotsUserOnly(e.target.checked);
-            deps.redraw();
-          } }
-        })
-      ]),
+      renderToggleRow("am-review-dots", "Review dots: my moves only", reviewDotsUserOnly, (v) => {
+        setReviewDotsUserOnly(v);
+        deps.redraw();
+      }),
       // Arrow display settings — moved from engine gear (CCP-246).
       // Storage owners in engine/ctrl.ts unchanged.
-      h("label.action-menu__toggle-row", [
-        h("span", "Engine arrows"),
-        h("input", {
-          attrs: { type: "checkbox", checked: showEngineArrows },
-          on: { change: (e) => {
-            setShowEngineArrows(e.target.checked);
-            syncArrow();
-            deps.redraw();
-          } }
-        })
-      ]),
-      h("label.action-menu__toggle-row", [
-        h("span", "All lines"),
-        h("input", {
-          attrs: { type: "checkbox", checked: arrowAllLines },
-          on: { change: (e) => {
-            setArrowAllLines(e.target.checked);
-            syncArrow();
-            deps.redraw();
-          } }
-        })
-      ]),
-      h("label.action-menu__toggle-row", [
-        h("span", "Played move arrow"),
-        h("input", {
-          attrs: { type: "checkbox", checked: showPlayedArrow },
-          on: { change: (e) => {
-            setShowPlayedArrow(e.target.checked);
-            syncArrow();
-            deps.redraw();
-          } }
-        })
-      ]),
-      h("label.action-menu__toggle-row", [
-        h("span", "Arrow labels"),
-        h("input", {
-          attrs: { type: "checkbox", checked: showArrowLabels },
-          on: { change: (e) => {
-            setShowArrowLabels(e.target.checked);
-            syncArrow();
-            deps.redraw();
-          } }
-        })
-      ]),
+      renderToggleRow("am-engine-arrows", "Engine arrows", showEngineArrows, (v) => {
+        setShowEngineArrows(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      renderToggleRow("am-all-lines", "All lines", arrowAllLines, (v) => {
+        setArrowAllLines(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      renderToggleRow("am-played-arrow", "Played move arrow", showPlayedArrow, (v) => {
+        setShowPlayedArrow(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      renderToggleRow("am-arrow-labels", "Arrow labels", showArrowLabels, (v) => {
+        setShowArrowLabels(v);
+        syncArrow();
+        deps.redraw();
+      }),
       h("div.action-menu__slider-row", [
         h("label", { attrs: { for: "action-menu-label-size" } }, "Label size"),
         h("input#action-menu-label-size", {
@@ -13704,20 +13689,13 @@ function renderPuzzleRound(redraw2) {
           bottomStrip
         ]);
       })(),
-      // Side panel — split into engine/moves top half + feedback/tools bottom half
+      // Side panel — flat flex column: ceval → move list → feedback.
+      // Mirrors lichess-org/lila: ui/puzzle/css/_tools.scss puzzle__tools structure.
+      // All children are direct flex items so analyse__moves can flex-grow correctly.
       h("aside.puzzle__side", [
-        // --- Top half: engine eval + move list ---
-        h("div.puzzle__side-top", [
-          // Engine eval bar + lines (always present as a container)
-          rc ? renderPuzzleEnginePanel(rc, redraw2) : null,
-          // Move list
-          renderPuzzleMoveList(def, rc, redraw2)
-        ]),
-        // --- Bottom half: feedback ---
-        h("div.puzzle__side-bottom", [
-          // Feedback panel
-          rc ? renderFeedbackPanel(rc, redraw2) : null
-        ])
+        rc ? renderPuzzleEnginePanel(rc, redraw2) : null,
+        renderPuzzleMoveList(def, rc, redraw2),
+        rc ? renderFeedbackPanel(rc, redraw2) : null
       ])
     ])
   ]);
@@ -14211,18 +14189,10 @@ function renderReviewMenu(redraw2) {
           }, String(d))
         ))
       ]),
-      h("label.review-menu__toggle", [
-        h("span", "Auto-review on import"),
-        h("input", {
-          attrs: { type: "checkbox", checked: auto },
-          on: {
-            change: (e) => {
-              localStorage.setItem("patzer.autoReview", String(e.target.checked));
-              redraw2();
-            }
-          }
-        })
-      ])
+      renderToggleRow("review-auto", "Auto-review on import", auto, (v) => {
+        localStorage.setItem("patzer.autoReview", String(v));
+        redraw2();
+      })
     ]) : null
   ]);
 }
@@ -14422,16 +14392,10 @@ function renderRetroModal(redraw2) {
             "p.detection-modal__desc",
             "Flag positions where you were clearly winning but squandered the advantage. Reuses the same thresholds as the engine's collapse detection."
           ),
-          h("label.detection-modal__toggle", [
-            h("input", {
-              attrs: { type: "checkbox", checked: cfg.collapseEnabled },
-              on: { change: (e) => {
-                setRetroConfig({ collapseEnabled: e.target.checked });
-                redraw2();
-              } }
-            }),
-            h("span", "Enabled")
-          ]),
+          renderToggleRow("detection-collapse", "Enabled", cfg.collapseEnabled, (v) => {
+            setRetroConfig({ collapseEnabled: v });
+            redraw2();
+          }),
           ...cfg.collapseEnabled ? [
             h("div.detection-modal__row-header", [
               h("span.detection-modal__label", "Win Chance Floor"),
@@ -14470,16 +14434,10 @@ function renderRetroModal(redraw2) {
             "p.detection-modal__desc",
             "Flag positions where you were losing but had a significantly better defensive move available."
           ),
-          h("label.detection-modal__toggle", [
-            h("input", {
-              attrs: { type: "checkbox", checked: cfg.defensiveEnabled },
-              on: { change: (e) => {
-                setRetroConfig({ defensiveEnabled: e.target.checked });
-                redraw2();
-              } }
-            }),
-            h("span", "Enabled")
-          ]),
+          renderToggleRow("detection-defensive", "Enabled", cfg.defensiveEnabled, (v) => {
+            setRetroConfig({ defensiveEnabled: v });
+            redraw2();
+          }),
           ...cfg.defensiveEnabled ? [
             h("div.detection-modal__row-header", [
               h("span.detection-modal__label", "Position Ceiling"),
@@ -14518,16 +14476,10 @@ function renderRetroModal(redraw2) {
             "p.detection-modal__desc",
             "Flag positions where the opponent blundered but you failed to exploit the mistake."
           ),
-          h("label.detection-modal__toggle", [
-            h("input", {
-              attrs: { type: "checkbox", checked: cfg.punishEnabled },
-              on: { change: (e) => {
-                setRetroConfig({ punishEnabled: e.target.checked });
-                redraw2();
-              } }
-            }),
-            h("span", "Enabled")
-          ]),
+          renderToggleRow("detection-punish", "Enabled", cfg.punishEnabled, (v) => {
+            setRetroConfig({ punishEnabled: v });
+            redraw2();
+          }),
           ...cfg.punishEnabled ? [
             h("div.detection-modal__row-header", [
               h("span.detection-modal__label", "Opponent Swing"),
@@ -14572,7 +14524,7 @@ function renderRetroModal(redraw2) {
   ]);
 }
 function renderGlobalMenu(deps) {
-  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, onFlipBoard, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
+  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
   const hasGame = selectedGameId2 !== null;
   return h("div.global-menu", [
     h("button.global-menu__trigger", {
@@ -14606,12 +14558,8 @@ function renderGlobalMenu(deps) {
           window.location.hash = "#/analysis";
         } }
       }, "Game Review"),
-      h("button.global-menu__item", {
-        on: { click: () => {
-          onFlipBoard();
-          closeGlobalMenu(redraw2);
-        } }
-      }, "Flip Board"),
+      // 'Flip Board' removed — now in analysis action menu (CCP-247).
+      // It is analysis-board-local; use the hamburger menu on the analysis board.
       h("button.global-menu__item", {
         on: { click: () => {
           closeGlobalMenu(redraw2);
@@ -14624,32 +14572,22 @@ function renderGlobalMenu(deps) {
           downloadPgn2(false);
         } }
       }, "Export PGN (Plain)"),
-      h("label.global-menu__item.global-menu__item--toggle", [
-        h("span", "Board Wheel Navigation"),
-        h("input", {
-          attrs: { type: "checkbox", checked: boardWheelNavEnabled },
-          on: {
-            change: (e) => {
-              setBoardWheelNavEnabled(e.target.checked);
-              redraw2();
-            }
-          }
+      h(
+        "div.global-menu__item.global-menu__item--toggle",
+        renderToggleRow("board-wheel-nav", "Board Wheel Navigation", boardWheelNavEnabled, (v) => {
+          setBoardWheelNavEnabled(v);
+          redraw2();
         })
-      ]),
+      ),
       // 'Review Dots: User Only' moved to analysis action menu (CCP-244).
       // It is analysis-board-local and belongs in the analysis menu, not the global header.
-      h("label.global-menu__item.global-menu__item--toggle", [
-        h("span", "Board Sounds"),
-        h("input", {
-          attrs: { type: "checkbox", checked: boardSoundEnabled },
-          on: {
-            change: (e) => {
-              setBoardSoundEnabled(e.target.checked);
-              redraw2();
-            }
-          }
+      h(
+        "div.global-menu__item.global-menu__item--toggle",
+        renderToggleRow("board-sounds", "Board Sounds", boardSoundEnabled, (v) => {
+          setBoardSoundEnabled(v);
+          redraw2();
         })
-      ]),
+      ),
       h("div.global-menu__item.global-menu__item--slider", [
         h("span", `Volume: ${Math.round(soundVolume * 100)}%`),
         h("input", {
@@ -14832,18 +14770,13 @@ function renderHeader(deps) {
           "Rated only"
         ])
       ]),
-      h("div.header__panel-row.--mt", [
-        h("label.header__panel-check", [
-          h("input", {
-            attrs: { type: "checkbox", checked: importFilters2.autoReview },
-            on: { change: (e) => {
-              importFilters2.autoReview = e.target.checked;
-              redraw2();
-            } }
-          }),
-          "Auto-review after import"
-        ])
-      ]),
+      h(
+        "div.header__panel-row.--mt",
+        renderToggleRow("import-auto-review", "Auto-review after import", importFilters2.autoReview, (v) => {
+          importFilters2.autoReview = v;
+          redraw2();
+        })
+      ),
       importFilters2.autoReview ? h(
         "p.header__panel-hint.header__panel-warn",
         "Large imports may take a long time to review. Each game runs through the engine at the configured review depth."
@@ -15148,11 +15081,6 @@ var OpeningTreeBuilder = class {
     return freezeGraph(this.root, this.positions, /* @__PURE__ */ new Set());
   }
 };
-function buildOpeningTree(games) {
-  const builder = new OpeningTreeBuilder();
-  builder.addGames(games);
-  return builder.freeze();
-}
 function freezeGraph(pos, allPositions, visited) {
   visited.add(pos.posKey);
   const children = [];
@@ -15253,7 +15181,7 @@ var _currentPage = "library";
 var _collections = [];
 var _collectionsLoaded = false;
 var _importStep = "idle";
-var _importSource = "lichess";
+var _importSource = "chesscom";
 var _importUsername = "";
 var _importColor = "both";
 var _importError = null;
@@ -15428,7 +15356,12 @@ function colorFilter() {
 }
 function setColorFilter(color, redraw2) {
   _colorFilter = color;
-  if (!_activeCollection) return;
+  if (color === "white") _boardOrientation = "white";
+  else if (color === "black") _boardOrientation = "black";
+  if (!_activeCollection) {
+    redraw2();
+    return;
+  }
   const target = _activeCollection.target?.toLowerCase() ?? "";
   let games = _activeCollection.games;
   if (color !== "both" && target) {
@@ -15438,12 +15371,40 @@ function setColorFilter(color, redraw2) {
       return color === "white" ? isWhite : isBlack;
     });
   }
-  _openingTree = buildOpeningTree(games);
+  const emptyBuilder = new OpeningTreeBuilder();
+  _openingTree = emptyBuilder.freeze();
   _sessionPath = [];
   _sessionNode = _openingTree;
   invalidateSampleCache();
-  if (color === "white") _boardOrientation = "white";
-  else if (color === "black") _boardOrientation = "black";
+  _treeBuildProgress = 0;
+  _treeBuildTotal = games.length;
+  _treeBuilding = true;
+  redraw2();
+  const CHUNK = 200;
+  const builder = new OpeningTreeBuilder();
+  let index = 0;
+  let chunkCount = 0;
+  function processChunk() {
+    const end3 = Math.min(index + CHUNK, games.length);
+    builder.addGames(games.slice(index, end3));
+    index = end3;
+    chunkCount++;
+    _treeBuildProgress = index;
+    const done = index >= games.length;
+    if (done || chunkCount % 4 === 0) {
+      _openingTree = builder.freeze();
+      _sessionNode = _openingTree;
+      invalidateSampleCache();
+    }
+    redraw2();
+    if (!done) {
+      setTimeout(processChunk, 0);
+    } else {
+      _treeBuilding = false;
+      redraw2();
+    }
+  }
+  setTimeout(processChunk, 0);
 }
 function sessionPath() {
   return _sessionPath;
@@ -15547,6 +15508,21 @@ function navigateToRoot() {
   _sessionPath = [];
   _sessionNode = _openingTree;
   persistSession();
+}
+function navigateToEnd() {
+  if (!_openingTree) return;
+  let node = _sessionNode;
+  const newPath = [..._sessionPath];
+  while (node && node.children.length > 0) {
+    const child = node.children[0];
+    newPath.push(child.uci);
+    node = child;
+  }
+  if (newPath.length !== _sessionPath.length) {
+    _sessionPath = newPath;
+    _sessionNode = node ?? _sessionNode;
+    persistSession();
+  }
 }
 function navigateToPath(moves) {
   if (!_openingTree) return;
@@ -16284,7 +16260,7 @@ function renderLibraryPage(redraw2) {
       h("h1.openings__title", "Opening Preparation"),
       step2 === "idle" ? h("button.openings__new-btn", {
         on: { click: () => {
-          setImportStep("source");
+          setImportStep("details");
           redraw2();
         } }
       }, "New Research") : null
@@ -16303,7 +16279,7 @@ function renderEmptyState(redraw2) {
     h("p.openings__hint", "Games are stored separately from your analysis library."),
     h("button.openings__start-btn", {
       on: { click: () => {
-        setImportStep("source");
+        setImportStep("details");
         redraw2();
       } }
     }, "Start New Research")
@@ -16360,43 +16336,9 @@ function renderImportWorkflow(redraw2) {
         } }
       }, "Cancel")
     ]),
-    step2 === "source" ? renderSourceStep(redraw2) : null,
     step2 === "details" ? renderDetailsStep(redraw2) : null,
     step2 === "importing" ? renderImportingStep(redraw2) : null,
     step2 === "done" ? renderDoneStep(redraw2) : null
-  ]);
-}
-function renderSourceStep(redraw2) {
-  const src = importSource();
-  const sources = [
-    { value: "lichess", label: "Lichess" },
-    { value: "chesscom", label: "Chess.com" },
-    { value: "pgn", label: "PGN Upload" }
-  ];
-  return h("div.openings__step", [
-    h("div.header__panel-section", [
-      h("div.header__panel-label", "Source"),
-      h("div.header__panel-row", sources.map(
-        (s) => h("button.header__pill", {
-          class: { active: src === s.value },
-          on: { click: () => {
-            setImportSource(s.value);
-            redraw2();
-          } }
-        }, s.label)
-      ))
-    ]),
-    h("div.header__panel-divider"),
-    h("div.header__panel-section", [
-      h("div.header__panel-row", [
-        h("button.header__panel-btn", {
-          on: { click: () => {
-            setImportStep("details");
-            redraw2();
-          } }
-        }, "Next \u2192")
-      ])
-    ])
   ]);
 }
 function renderDetailsStep(redraw2) {
@@ -16406,6 +16348,24 @@ function renderDetailsStep(redraw2) {
   const speeds = importSpeeds();
   const dateRange = importDateRange();
   const sections = [];
+  const sources = [
+    { value: "lichess", label: "Lichess" },
+    { value: "chesscom", label: "Chess.com" },
+    { value: "pgn", label: "PGN Upload" }
+  ];
+  sections.push(h("div.header__panel-section", [
+    h("div.header__panel-label", "Source"),
+    h("div.header__panel-row", sources.map(
+      (s) => h("button.header__pill", {
+        class: { active: src === s.value },
+        on: { click: () => {
+          setImportSource(s.value);
+          redraw2();
+        } }
+      }, s.label)
+    ))
+  ]));
+  sections.push(h("div.header__panel-divider"));
   sections.push(
     src !== "pgn" ? h("div.header__panel-section", [
       h("div.header__panel-label", "Username"),
@@ -16540,20 +16500,12 @@ function renderDetailsStep(redraw2) {
   sections.push(h("div.header__panel-divider"));
   sections.push(h("div.header__panel-section", [
     err ? h("div.header__panel-error", err) : null,
-    h("div.header__panel-row", [
-      h("button.header__panel-btn", {
-        on: { click: () => {
-          setImportStep("source");
-          redraw2();
-        } }
-      }, "\u2190 Back"),
-      h("button.header__panel-btn", {
-        attrs: { disabled: src !== "pgn" && importUsername().trim() === "" },
-        on: { click: () => {
-          void executeResearchImport(redraw2);
-        } }
-      }, "Import")
-    ])
+    h("button.openings__import-btn", {
+      attrs: { disabled: src !== "pgn" && importUsername().trim() === "" },
+      on: { click: () => {
+        void executeResearchImport(redraw2);
+      } }
+    }, "Import Games")
   ]));
   return h("div.openings__step", sections);
 }
@@ -16652,20 +16604,18 @@ function renderSessionPage(redraw2) {
         h("button.openings__color-btn", {
           class: { active: colorFilter() === "white" },
           on: { click: () => {
-            setColorFilter("white");
             _lastBoardFen = "";
+            setColorFilter("white", redraw2);
             syncOpeningsBoard(redraw2);
-            redraw2();
           } },
           attrs: { title: "Show games as White" }
         }, "White"),
         h("button.openings__color-btn", {
           class: { active: colorFilter() === "black" },
           on: { click: () => {
-            setColorFilter("black");
             _lastBoardFen = "";
+            setColorFilter("black", redraw2);
             syncOpeningsBoard(redraw2);
-            redraw2();
           } },
           attrs: { title: "Show games as Black" }
         }, "Black")
@@ -16691,8 +16641,6 @@ function renderSessionPage(redraw2) {
       ]),
       h("div.openings__session-panel", [
         treeBuilding() ? renderTreeBuildBar() : null,
-        renderMovePath(path, redraw2),
-        renderMoveNav(path, redraw2),
         // Keep FEN override in sync with the current openings position on every render.
         // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
         (() => {
@@ -16703,6 +16651,7 @@ function renderSessionPage(redraw2) {
         renderEngineSettings(),
         engineEnabled ? renderPvBox() : null,
         node ? renderPlayedLinesPanel(node, redraw2) : null,
+        openingTree() ? renderOpeningsMoveList(openingTree(), path, node, redraw2) : null,
         renderSampleGamesPanel(),
         renderExplorerToggle(node, redraw2)
       ])
@@ -16740,6 +16689,89 @@ function renderPlayerStrip(collection, position) {
     h("span.openings__player-name", label)
   ]);
 }
+function buildOpeningsMoveTree(tree, path) {
+  const root = {
+    id: "",
+    ply: 0,
+    fen: tree.fen,
+    children: [],
+    glyphs: [],
+    comments: []
+  };
+  let treeNode = root;
+  let openingNode = tree;
+  for (let i = 0; i < path.length; i++) {
+    const child = openingNode.children.find((c) => c.uci === path[i]);
+    if (!child) break;
+    const id = i.toString(16).padStart(2, "0");
+    const next2 = {
+      id,
+      ply: i + 1,
+      uci: child.uci,
+      san: child.san,
+      fen: child.fen,
+      children: [],
+      glyphs: [],
+      comments: []
+    };
+    treeNode.children.push(next2);
+    treeNode = next2;
+    openingNode = child;
+  }
+  const currentPath = Array.from(
+    { length: path.length },
+    (_, i) => i.toString(16).padStart(2, "0")
+  ).join("");
+  return { root, currentPath };
+}
+function renderOpeningsMoveList(tree, path, node, redraw2) {
+  const { root, currentPath } = buildOpeningsMoveTree(tree, path);
+  const navigate2 = (treePath) => {
+    const depth = treePath.length / 2;
+    navigateToPath([...sessionPath().slice(0, depth)]);
+    syncOpeningsBoard(redraw2);
+    redraw2();
+  };
+  const canPrev = path.length > 0;
+  const canNext = node !== null && node.children.length > 0;
+  return h("div.openings__move-list", [
+    h("div.analyse__moves.areplay", [
+      renderMoveList(root, currentPath, () => void 0, navigate2, null, false)
+    ]),
+    renderMoveNavBar([], {
+      canPrev,
+      canNext,
+      first: () => {
+        navigateToRoot();
+        syncOpeningsBoard(redraw2);
+        redraw2();
+      },
+      prev: () => {
+        navigateBack();
+        syncOpeningsBoard(redraw2);
+        redraw2();
+      },
+      next: () => {
+        if (node && node.children.length > 0) {
+          navigateToMove(node.children[0].uci);
+          syncOpeningsBoard(redraw2);
+          redraw2();
+        }
+      },
+      last: () => {
+        navigateToEnd();
+        syncOpeningsBoard(redraw2);
+        redraw2();
+      },
+      bookActive: explorerCtrl.enabled,
+      onBook: () => {
+        explorerCtrl.toggle();
+        if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw2);
+        redraw2();
+      }
+    })
+  ]);
+}
 function renderOpeningsBoard(node, redraw2) {
   const fen = node?.fen ?? "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
   return h("div.cg-wrap.openings__board", {
@@ -16759,8 +16791,8 @@ function renderOpeningsBoard(node, redraw2) {
             dests
           },
           draggable: {
-            enabled: false,
-            showGhost: false
+            enabled: true,
+            showGhost: true
           },
           drawable: {
             enabled: true,
@@ -16774,8 +16806,9 @@ function renderOpeningsBoard(node, redraw2) {
           events: {
             move: (orig, dest) => {
               const uci = `${orig}${dest}`;
-              if (node) {
-                const match = node.children.find(
+              const current2 = sessionNode();
+              if (current2) {
+                const match = current2.children.find(
                   (c) => c.uci === uci || c.uci.startsWith(uci)
                 );
                 if (match) {
@@ -16871,76 +16904,6 @@ function renderTreeBuildBar() {
       "span.openings__tree-build-label",
       `Building tree\u2026 ${progress.toLocaleString()} / ${total.toLocaleString()} games (${pct}%)`
     )
-  ]);
-}
-function renderMoveNav(path, redraw2) {
-  const node = sessionNode();
-  const canForward = node !== null && node.children.length > 0;
-  return h("div.openings__nav", [
-    h("button.openings__nav-btn", {
-      attrs: { disabled: path.length === 0, title: "Go to start" },
-      on: { click: () => {
-        navigateToRoot();
-        syncOpeningsBoard(redraw2);
-        redraw2();
-      } }
-    }, "\u23EE"),
-    h("button.openings__nav-btn", {
-      attrs: { disabled: path.length === 0, title: "Back one move" },
-      on: { click: () => {
-        navigateBack();
-        syncOpeningsBoard(redraw2);
-        redraw2();
-      } }
-    }, "\u25C0"),
-    h("button.openings__nav-btn", {
-      attrs: { disabled: !canForward, title: "Most popular continuation" },
-      on: { click: () => {
-        if (node && node.children.length > 0) {
-          navigateToMove(node.children[0].uci);
-          syncOpeningsBoard(redraw2);
-          redraw2();
-        }
-      } }
-    }, "\u25B6"),
-    h("span.openings__nav-depth", `Move ${Math.ceil(path.length / 2)}`)
-  ]);
-}
-function renderMovePath(path, redraw2) {
-  if (path.length === 0) {
-    return h("div.openings__path", [h("span.openings__path-start", "Starting position")]);
-  }
-  const tree = openingTree();
-  const labels = [];
-  if (tree) {
-    let current2 = tree;
-    for (let i = 0; i < path.length; i++) {
-      const child = current2?.children.find((c) => c.uci === path[i]);
-      if (!child) break;
-      labels.push({ san: child.san, pathTo: path.slice(0, i + 1) });
-      current2 = child;
-    }
-  }
-  return h("div.openings__path", [
-    h("span.openings__path-start", {
-      on: { click: () => {
-        navigateToRoot();
-        syncOpeningsBoard(redraw2);
-        redraw2();
-      } }
-    }, "Start"),
-    ...labels.map((l, i) => {
-      const moveNum = Math.floor(i / 2) + 1;
-      const isWhite = i % 2 === 0;
-      const prefix = isWhite ? `${moveNum}. ` : i === 0 ? "1... " : "";
-      return h("span.openings__path-move", {
-        on: { click: () => {
-          navigateToPath(l.pathTo);
-          syncOpeningsBoard(redraw2);
-          redraw2();
-        } }
-      }, `${prefix}${l.san}`);
-    })
   ]);
 }
 function renderPlayedLinesPanel(node, redraw2) {
@@ -17182,32 +17145,19 @@ function renderExplorerErrorBox(err, fen, redraw2) {
   ]);
 }
 function renderExplorerToggle(node, redraw2) {
-  const enabled = explorerCtrl.enabled;
+  if (!explorerCtrl.enabled) return null;
   return h("div.openings__explorer", [
     h("div.openings__explorer-header", [
-      h("label.openings__explorer-label", [
-        h("input", {
-          attrs: { type: "checkbox", checked: enabled },
-          on: {
-            change: () => {
-              explorerCtrl.toggle();
-              if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw2);
-              redraw2();
-            }
-          }
-        }),
-        " Opening Book"
-      ]),
-      enabled ? h("button.openings__explorer-gear", {
+      h("button.openings__explorer-gear", {
         attrs: { title: "Configure explorer" },
         on: { click: () => {
           explorerCtrl.toggleConfig();
           redraw2();
         } }
-      }, "\u2699\uFE0F") : null
+      }, "\u2699\uFE0F")
     ]),
-    enabled ? renderExplorerDbTabs(node, redraw2) : null,
-    enabled ? explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw2) : renderExplorerPanel(node, redraw2) : null
+    renderExplorerDbTabs(node, redraw2),
+    explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw2) : renderExplorerPanel(node, redraw2)
   ]);
 }
 function renderExplorerDbTabs(node, redraw2) {
@@ -17485,33 +17435,20 @@ function renderExplorerMovesTable(data, fen, redraw2, onMoveClick, cgBoard) {
   ]);
 }
 function renderAnalysisExplorerSection(fen, cg, onMoveClick, redraw2) {
-  const enabled = explorerCtrl.enabled;
+  if (!explorerCtrl.enabled) return null;
   const isMasters = explorerCtrl.config.db === "masters";
   return h("div.openings__explorer", [
     h("div.openings__explorer-header", [
-      h("label.openings__explorer-label", [
-        h("input", {
-          attrs: { type: "checkbox", checked: enabled },
-          on: {
-            change: () => {
-              explorerCtrl.toggle();
-              if (explorerCtrl.enabled) explorerCtrl.setNode(fen, redraw2);
-              redraw2();
-            }
-          }
-        }),
-        " Opening Book"
-      ]),
-      enabled ? h("button.openings__explorer-gear", {
+      h("button.openings__explorer-gear", {
         attrs: { title: "Configure explorer" },
         on: { click: () => {
           explorerCtrl.toggleConfig();
           redraw2();
         } }
-      }, "\u2699\uFE0F") : null
+      }, "\u2699\uFE0F")
     ]),
-    enabled ? renderExplorerDbTabs(null, redraw2) : null,
-    enabled ? explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw2) : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw2) : null
+    renderExplorerDbTabs(null, redraw2),
+    explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw2) : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw2)
   ]);
 }
 function renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw2) {
@@ -18867,16 +18804,17 @@ function routeContent(route) {
           // Action buttons — desktop only (mobile uses .analyse__actions below the move list).
           // Three-zone Lichess-style control bar (CCP-242).
           // Left: review/retro entry + opening explorer (CCP-245). Middle: jumps. Right: hamburger.
-          renderControlBar([
-            renderAnalysisControls([
-              renderRetroEntry({
-                retro: ctrl.retro,
-                analysisComplete,
-                batchAnalyzing,
-                onToggle: toggleRetro
-              }),
-              renderExplorerEntry()
-            ])
+          renderMoveNavBar([
+            renderAnalysisControls(
+              [
+                renderRetroEntry({
+                  retro: ctrl.retro,
+                  analysisComplete,
+                  batchAnalyzing,
+                  onToggle: toggleRetro
+                })
+              ].filter((n) => n !== null)
+            )
           ])
         ]),
         // Mobile-only action buttons row — sits below the move list.
@@ -18943,7 +18881,6 @@ function view(route) {
       gameSourceUrl,
       downloadPgn,
       resetAllData,
-      onFlipBoard: flip,
       redraw
     }),
     h("main", [routeContent(route)]),

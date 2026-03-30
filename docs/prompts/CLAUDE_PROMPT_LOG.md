@@ -8,7 +8,7 @@ Use this file to track Claude Code prompts from creation through review.
 
 - [x] CCP-190-F5 - Openings Board Full Follow-Up Batch Manager
 - [x] CCP-190-F4 - Add Resizable Openings Board Handle
-- [ ] CCP-190-F3 - Openings Board Arrow And Engine Batch Manager
+- [x] CCP-190-F3 - Openings Board Arrow And Engine Batch Manager
 - [x] CCP-190-F2 - Add Optional Engine Controls To Openings Board
 - [x] CCP-190-F1 - Add Played-Line Gradient Arrows To Openings Board
 - [x] CCP-194-F1 - Refine Openings WDL Viewer Styling
@@ -185,7 +185,7 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-067-F1 - Fix Eval Graph Fill To Rise From Bottom
 - [x] CCP-044-F4 - Fade In Engine Arrow Labels And Arrows
 - [x] CCP-069 - Refine Eval Graph Fill And Resize Handle
-- [ ] CCP-069-F1 - Keep Eval Graph Markers Fixed During Resize
+- [x] CCP-069-F1 - Keep Eval Graph Markers Fixed During Resize
 - [x] CCP-065 - Add Toggle For Review Label Visibility
 - [x] CCP-015-F3 - Restore Per-Candidate Show Engine Toggle In Mistakes Mode
 - [x] CCP-021-F1 - Fix Retrospection Tools Render Corruption
@@ -275,18 +275,29 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-236 - Opening Explorer Top and Recent Games Tables
 - [x] CCP-237 - Opening Explorer Loading Empty and Error States
 - [x] CCP-238 - Integrate Opening Explorer Into Analysis Board
-- [ ] CCP-239 - Opening Explorer Tablebase Panel
+- [x] CCP-239 - Opening Explorer Tablebase Panel
 - [x] CCP-240 - Opening Explorer Sprint Batch Manager
-- [ ] CCP-153-F3 - Unify Puzzle Trigger Move And Pre-Solve Navigation
-- [ ] CCP-241 - Extract Analysis Controls Owner
-- [ ] CCP-242 - Add Analysis Control Bar Shell
-- [ ] CCP-243 - Add Analysis Action Menu Overlay
-- [ ] CCP-244 - Move Existing Analysis Actions Into Menu
-- [ ] CCP-245 - Add Opening Explorer Control-Bar Button
-- [ ] CCP-246 - Split Engine Gear And Analysis Menu
-- [ ] CCP-247 - Remove Duplicate Header Analysis Items
-- [ ] CCP-248 - Analysis Controls Foundations Batch Manager
-- [ ] CCP-249 - Analysis Controls Migration Batch Manager
+- [x] CCP-153-F3 - Unify Puzzle Trigger Move And Pre-Solve Navigation
+- [x] CCP-241 - Extract Analysis Controls Owner
+- [x] CCP-242 - Add Analysis Control Bar Shell
+- [x] CCP-243 - Add Analysis Action Menu Overlay
+- [x] CCP-244 - Move Existing Analysis Actions Into Menu
+- [x] CCP-245 - Add Opening Explorer Control-Bar Button
+- [x] CCP-245-F1 - Fix Nullable Explorer Entry Wiring
+- [x] CCP-246 - Split Engine Gear And Analysis Menu
+- [x] CCP-247 - Remove Duplicate Header Analysis Items
+- [x] CCP-248 - Analysis Controls Foundations Batch Manager
+- [x] CCP-249 - Analysis Controls Migration Batch Manager
+- [x] CCP-249-F1 - Fix Mobile Analysis Controls Layout
+- [x] CCP-249-F2 - Fix Analysis Controls Layout Regression
+- [x] CCP-250 - Adopt Shared Settings Toggles Across The App
+- [x] CCP-251 - Unify Openings Import Flow Onto One Page
+- [ ] CCP-252 - Add Openings Session Hamburger And Action Menu
+- [ ] CCP-253 - Adopt Shared MoveNavBar In Puzzle Round
+- [ ] CCP-254 - Add Puzzle Round Action Menu And Book Toggle
+- [ ] CCP-255 - Add In-Place Preview Mode To Puzzle Library
+- [ ] CCP-256 - Add Puzzle Library Preview Action Menu And Book Toggle
+- [ ] CCP-257 - Chess Board Standard Rollout Batch Manager
 
 ## Detailed Log
 
@@ -333,7 +344,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-190-F3 - Openings Board Arrow And Engine Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-190-F3`
   - Task ID: `CCP-190`
   - Parent prompt ID: `CCP-190`
@@ -345,8 +356,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: `2026-03-28T07:12:05Z`
   - Started at: `2026-03-29T20:03:24.610Z`
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: pending
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
@@ -3873,7 +3884,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-069-F1 - Keep Eval Graph Markers Fixed During Resize
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-069-F1`
   - Task ID: `CCP-069`
   - Parent prompt ID: `CCP-069`
@@ -3883,10 +3894,10 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: fix the eval-graph resize behavior so dragging the graph larger only changes its vertical graph area, keeps markers visually fixed-size and undistorted, and renders the grey middle line behind the graph content
   - Created by: `Codex`
   - Created at: `2026-03-29T21:41:23Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T21:51:00.681Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
@@ -5673,7 +5684,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-239 - Opening Explorer Tablebase Panel
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-239`
   - Task ID: `CCP-239`
   - Parent prompt ID: none
@@ -5685,8 +5696,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T21:11:23.126Z`
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: pending
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
@@ -5713,7 +5724,7 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-153-F3 - Unify Puzzle Trigger Move And Pre-Solve Navigation
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-153-F3`
   - Task ID: `CCP-153`
   - Parent prompt ID: `CCP-153-F2`
@@ -5725,15 +5736,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created at: `2026-03-29T20:54:49Z`
   - Started at: `2026-03-29T20:57:42.339Z`
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: pending
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-241 - Extract Analysis Controls Owner
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-241`
   - Task ID: `CCP-241`
   - Parent prompt ID: none
@@ -5743,17 +5754,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: extract a real analysis-controls owner under src/analyse so control-bar and future action-menu state stop living as ad hoc glue in main.ts
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T22:11:43.516Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-242 - Add Analysis Control Bar Shell
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-242`
   - Task ID: `CCP-242`
   - Parent prompt ID: none
@@ -5763,17 +5774,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: replace the current custom controls row with a real analysis control-bar shell that adds first/last and a right-side hamburger trigger while preserving current review actions
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T22:12:49.351Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-243 - Add Analysis Action Menu Overlay
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-243`
   - Task ID: `CCP-243`
   - Parent prompt ID: none
@@ -5783,17 +5794,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: add a Lichess-style analysis-local action-menu overlay inside the tools column, opened by the control-bar hamburger
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T22:18:57.451Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-244 - Move Existing Analysis Actions Into Menu
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-244`
   - Task ID: `CCP-244`
   - Parent prompt ID: none
@@ -5803,17 +5814,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: move the first safe set of existing analysis-local actions into the new analysis menu without rewriting their storage owners
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T22:22:21.949Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-245 - Add Opening Explorer Control-Bar Button
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-245`
   - Task ID: `CCP-245`
   - Parent prompt ID: none
@@ -5823,17 +5834,37 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: add an opening explorer button to the analysis control bar and wire it into Patzer's existing explorer state as a real analysis-local tool
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T22:37:50.440Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: renderExplorerEntry returns null but is passed into renderAnalysisControls as a VNode, leaving a real main.ts typecheck failure.
+  - Execution target: `Claude Code`
+```
+
+## CCP-245-F1 - Fix Nullable Explorer Entry Wiring
+
+```
+- [x] Reviewed
+  - ID: `CCP-245-F1`
+  - Task ID: `CCP-245`
+  - Parent prompt ID: `CCP-245`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+  - Source step: `Task 5 follow-up fix — nullable explorer entry wiring`
+  - Task: fix the nullable explorer control-bar entry wiring so the analysis page stays typecheck-clean when the explorer button is hidden during retrospection
+  - Created by: `Codex`
+  - Created at: `2026-03-29T23:30:23Z`
+  - Started at: `2026-03-29T23:31:10.366Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-246 - Split Engine Gear And Analysis Menu
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-246`
   - Task ID: `CCP-246`
   - Parent prompt ID: none
@@ -5843,17 +5874,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: keep engine-search settings in the ceval gear while moving broader display toggles into the analysis action menu
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T22:39:43.711Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-247 - Remove Duplicate Header Analysis Items
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-247`
   - Task ID: `CCP-247`
   - Parent prompt ID: none
@@ -5863,17 +5894,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: remove duplicated analysis-local header menu items once their replacements are live in the analysis controls/menu
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T22:41:16.290Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-248 - Analysis Controls Foundations Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-248`
   - Task ID: `CCP-248`
   - Parent prompt ID: none
@@ -5883,17 +5914,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: execute the analysis controls parity foundation batch for owner extraction, control-bar shell, local action-menu overlay, and first migrated actions
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
-  - Review issues: pending
+  - Started at: `2026-03-29T22:08:35.936Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-249 - Analysis Controls Migration Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-249`
   - Task ID: `CCP-249`
   - Parent prompt ID: none
@@ -5903,8 +5934,208 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: execute the analysis controls parity migration batch for explorer button parity, gear/menu split, and header cleanup
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
+  - Started at: `2026-03-29T22:35:43.899Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: child batch includes CCP-245, which leaves a real main.ts typecheck failure in the explorer control-bar integration.
+  - Execution target: `Claude Code`
+```
+
+## CCP-249-F1 - Fix Mobile Analysis Controls Layout
+
+```
+- [x] Reviewed
+  - ID: `CCP-249-F1`
+  - Task ID: `CCP-249`
+  - Parent prompt ID: `CCP-249`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `fix the mobile analysis navigation/control bar layout after the controls parity prompts`
+  - Task: fix the mobile analysis controls layout so the review and mistakes actions, jump controls, and hamburger render as a clean non-overlapping navigation surface instead of clipping and stacking awkwardly
+  - Created by: `Codex`
+  - Created at: `2026-03-29T23:32:25Z`
+  - Started at: `2026-03-29T23:37:20.284Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: the landed layout fix is concentrated in the mobile-only analysis controls CSS block and does not demonstrate the broader desktop-plus-mobile regression fix the prompt asked for.
+  - Execution target: `Claude Code`
+```
+
+## CCP-249-F2 - Fix Analysis Controls Layout Regression
+
+```
+- [x] Reviewed
+  - ID: `CCP-249-F2`
+  - Task ID: `CCP-249`
+  - Parent prompt ID: `CCP-249-F1`
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `fix the desktop and mobile analysis controls layout regression after the controls parity prompts`
+  - Task: fix the analysis controls layout regression so the review and mistakes actions, jump controls, explorer entry when present, and hamburger render as a clean intentional navigation surface on both desktop and mobile instead of overlapping, clipping, or stacking awkwardly
+  - Created by: `Codex`
+  - Created at: `2026-03-29T23:38:33Z`
+  - Started at: `2026-03-29T23:43:43.176Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: still leaves the legacy .analyse__actions render path in main.ts and relies on CSS suppression rather than fully resolving the split analysis-controls surface
+  - Execution target: `Claude Code`
+```
+
+## CCP-250 - Adopt Shared Settings Toggles Across The App
+
+```
+- [x] Reviewed
+  - ID: `CCP-250`
+  - Task ID: `CCP-250`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `use Lichess-style on/off toggle treatment everywhere there is a settings toggle`
+  - Task: introduce a shared settings-toggle presentation and migrate existing settings-style checkboxes across the app to it, using Lichess-style on/off row semantics and Patzer's existing toggle-switch visual language
+  - Created by: `Codex`
+  - Created at: `2026-03-29T23:42:51Z`
+  - Started at: `2026-03-29T23:44:42.713Z`
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: bundled unrelated analysis-controls and puzzle-side layout CSS into a shared settings-toggle prompt instead of staying scoped to toggle treatment
+  - Execution target: `Claude Code`
+```
+
+## CCP-251 - Unify Openings Import Flow Onto One Page
+
+```
+- [x] Reviewed
+  - ID: `CCP-251`
+  - Task ID: `CCP-251`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `make the openings import flow one continuous page instead of separate source/details pages`
+  - Task: refine the openings import workflow so source selection and import details live on one continuous openings page instead of a two-step source/details wizard
+  - Created by: `Codex`
+  - Created at: `2026-03-29T23:51:52Z`
+  - Started at: `2026-03-29T23:56:13.128Z`
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-252 - Add Openings Session Hamburger And Action Menu
+
+```
+- [ ] Reviewed
+  - ID: `CCP-252`
+  - Task ID: `CCP-252`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - Source step: `Step 1 — Openings: hamburger + action menu`
+  - Task: bring the openings session up to the board standard by adding the missing hamburger action menu and moving the first safe openings-local controls into it
+  - Created by: `Codex`
+  - Created at: `2026-03-30T00:31:16Z`
+  - Started at: `2026-03-30T00:48:12.118Z`
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-253 - Adopt Shared MoveNavBar In Puzzle Round
+
+```
+- [ ] Reviewed
+  - ID: `CCP-253`
+  - Task ID: `CCP-253`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - Source step: `Step 2 — Puzzle round: add MoveNavBar`
+  - Task: replace the puzzle round's ad hoc move navigation with the shared renderMoveNavBar standard before adding puzzle-round menu controls
+  - Created by: `Codex`
+  - Created at: `2026-03-30T00:31:16Z`
   - Started at: not started
   - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-254 - Add Puzzle Round Action Menu And Book Toggle
+
+```
+- [ ] Reviewed
+  - ID: `CCP-254`
+  - Task ID: `CCP-254`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - Source step: `Step 3 — Puzzle round: action menu`
+  - Task: complete the puzzle round board standard by adding the hamburger action menu and wiring the book icon to the opening explorer for the current puzzle position
+  - Created by: `Codex`
+  - Created at: `2026-03-30T00:31:16Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-255 - Add In-Place Preview Mode To Puzzle Library
+
+```
+- [ ] Reviewed
+  - ID: `CCP-255`
+  - Task ID: `CCP-255`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - Source step: `Step 4 — Puzzle library: in-place preview mode`
+  - Task: change the puzzle library into an in-place preview surface with a real board, move list, and shared move-nav bar instead of routing away immediately
+  - Created by: `Codex`
+  - Created at: `2026-03-30T00:31:16Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-256 - Add Puzzle Library Preview Action Menu And Book Toggle
+
+```
+- [ ] Reviewed
+  - ID: `CCP-256`
+  - Task ID: `CCP-256`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - Source step: `Step 5 — Puzzle library: action menu + book`
+  - Task: finish the puzzle library preview board standard by adding the hamburger action menu and book icon behavior to the in-place preview surface
+  - Created by: `Codex`
+  - Created at: `2026-03-30T00:31:16Z`
+  - Started at: not started
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: pending
+  - Execution target: `Claude Code`
+```
+
+## CCP-257 - Chess Board Standard Rollout Batch Manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-257`
+  - Task ID: `CCP-257`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-252`, `CCP-253`, `CCP-254`, `CCP-255`, `CCP-256`
+  - Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - Source step: `Full chess-board standard rollout batch manager`
+  - Task: execute the full chess-board standard rollout batch for openings session, puzzle round, and puzzle library controls in order
+  - Created by: `Codex`
+  - Created at: `2026-03-30T00:31:16Z`
+  - Started at: `2026-03-30T00:47:31.961Z`
+  - Claude used: yes
   - Review outcome: pending
   - Review issues: pending
   - Execution target: `Claude Code`

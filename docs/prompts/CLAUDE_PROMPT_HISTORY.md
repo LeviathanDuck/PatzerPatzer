@@ -187,7 +187,7 @@ Validation is required after coding:
 Also include a short manual test checklist with concrete user actions and expected results.
 ```
 
-## CCP-190-F3 — Created
+## CCP-190-F3 — Reviewed
 
 - Task: execute the openings board follow-up batch for played-line arrows and optional engine controls in order
 - Task ID: `CCP-190`
@@ -197,8 +197,8 @@ Also include a short manual test checklist with concrete user actions and expect
 - Created by: `Codex`
 - Created at: `2026-03-28T07:12:05Z`
 - Started at: `2026-03-29T20:03:24.610Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: manager prompt for openings board arrow and engine follow-up work
 
@@ -11391,7 +11391,7 @@ Original prompt text was not recovered for CCP-044-F4.
 Original prompt text was not recovered for CCP-069.
 ```
 
-## CCP-069-F1 — Created
+## CCP-069-F1 — Reviewed
 
 - Task: fix the eval-graph resize behavior so dragging the graph larger only changes its vertical graph area, keeps markers visually fixed-size and undistorted, and renders the grey middle line behind the graph content
 - Task ID: `CCP-069`
@@ -11400,9 +11400,9 @@ Original prompt text was not recovered for CCP-069.
 - Source step: `keep eval-graph styling and markers fixed-size while only vertical graph height changes; ensure the grey middle line renders behind the graph`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:41:23Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T21:51:00.681Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: follow-up prompt for eval-graph resize rendering so dots stay circular and stable while only the graph height changes.
 
@@ -16175,7 +16175,7 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-239 — Created
+## CCP-239 — Reviewed
 
 - Task: add the optional tablebase mode for low-piece-count explorer positions with DTZ and DTM style output
 - Task ID: `CCP-239`
@@ -16185,8 +16185,8 @@ Output shape:
 - Created by: `Codex`
 - Created at: `2026-03-29T19:52:11Z`
 - Started at: `2026-03-29T21:11:23.126Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: opening explorer audit sprint H
 
@@ -16386,7 +16386,7 @@ If the batch stops, clearly report:
 If the batch finishes, report a compact summary of completed Prompt IDs.
 ```
 
-## CCP-153-F3 — Created
+## CCP-153-F3 — Reviewed
 
 - Task: fix the puzzle-round move-list continuity bug so the trigger move and cached game context are navigable as one pre-solve path with puzzle-aware arrow-key stepping
 - Task ID: `CCP-153`
@@ -16396,8 +16396,8 @@ If the batch finishes, report a compact summary of completed Prompt IDs.
 - Created by: `Codex`
 - Created at: `2026-03-29T20:54:49Z`
 - Started at: `2026-03-29T20:57:42.339Z`
-- Status: created
-- Review outcome: pending
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: follow-up to the puzzle move-list surface so the auto-played trigger move no longer feels disconnected and pre-solve stepping works through already-known context
 
@@ -16510,7 +16510,7 @@ Output shape:
 - remaining risks
 ```
 
-## CCP-241 — Created
+## CCP-241 — Reviewed
 
 - Task: extract a real analysis-controls owner under src/analyse so control-bar and future action-menu state stop living as ad hoc glue in main.ts
 - Task ID: `CCP-241`
@@ -16519,9 +16519,9 @@ Output shape:
 - Source step: `Task 1 — Extract a dedicated analysis-controls owner`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:11:43.516Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: analysis controls parity sprint task 1 foundation seam
 
@@ -16600,7 +16600,7 @@ Validation is required after coding:
 Also include a short manual test checklist with concrete user actions and expected results.
 ```
 
-## CCP-242 — Created
+## CCP-242 — Reviewed
 
 - Task: replace the current custom controls row with a real analysis control-bar shell that adds first/last and a right-side hamburger trigger while preserving current review actions
 - Task ID: `CCP-242`
@@ -16609,9 +16609,9 @@ Also include a short manual test checklist with concrete user actions and expect
 - Source step: `Task 2 — Add the Lichess-style control bar shell`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:12:49.351Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: analysis controls parity sprint task 2 control-bar shell
 
@@ -16690,7 +16690,7 @@ Validation is required after coding:
 Also include a short manual test checklist with concrete user actions and expected results.
 ```
 
-## CCP-243 — Created
+## CCP-243 — Reviewed
 
 - Task: add a Lichess-style analysis-local action-menu overlay inside the tools column, opened by the control-bar hamburger
 - Task ID: `CCP-243`
@@ -16699,9 +16699,9 @@ Also include a short manual test checklist with concrete user actions and expect
 - Source step: `Task 3 — Add the analysis-local hamburger menu overlay`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:18:57.451Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: analysis controls parity sprint task 3 tools-area action menu shell
 
@@ -16781,7 +16781,7 @@ Validation is required after coding:
 Also include a short manual test checklist with concrete user actions and expected results.
 ```
 
-## CCP-244 — Created
+## CCP-244 — Reviewed
 
 - Task: move the first safe set of existing analysis-local actions into the new analysis menu without rewriting their storage owners
 - Task ID: `CCP-244`
@@ -16790,9 +16790,9 @@ Also include a short manual test checklist with concrete user actions and expect
 - Source step: `Task 4 — Move existing analysis-local actions into the new menu`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:22:21.949Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: analysis controls parity sprint task 4 first migrated menu actions
 
@@ -16873,7 +16873,7 @@ Validation is required after coding:
 Also include a short manual test checklist with concrete user actions and expected results.
 ```
 
-## CCP-245 — Created
+## CCP-245 — Reviewed
 
 - Task: add an opening explorer button to the analysis control bar and wire it into Patzer's existing explorer state as a real analysis-local tool
 - Task ID: `CCP-245`
@@ -16882,9 +16882,9 @@ Also include a short manual test checklist with concrete user actions and expect
 - Source step: `Task 5 — Add opening explorer as a first-class control-bar tool`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:37:50.440Z`
+- Status: reviewed
+- Review outcome: issues found
 - Commit: unknown
 - Notes: analysis controls parity sprint task 5 explorer button parity
 
@@ -16963,7 +16963,102 @@ Validation is required after coding:
 Also include a short manual test checklist with concrete user actions and expected results.
 ```
 
-## CCP-246 — Created
+## CCP-245-F1 — Reviewed
+
+- Task: fix the nullable explorer control-bar entry wiring so the analysis page stays typecheck-clean when the explorer button is hidden during retrospection
+- Task ID: `CCP-245`
+- Parent prompt ID: `CCP-245`
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Source step: `Task 5 follow-up fix — nullable explorer entry wiring`
+- Created by: `Codex`
+- Created at: `2026-03-29T23:30:23Z`
+- Started at: `2026-03-29T23:31:10.366Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: follow-up fix for the nullable explorer button entry causing a main.ts VNode|null type mismatch
+
+```
+Prompt ID: CCP-245-F1
+Task ID: CCP-245
+Parent Prompt ID: CCP-245
+Source Document: docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md
+Source Step: Task 5 follow-up fix — nullable explorer entry wiring
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-245-F1`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-controls / analysis-board / opening-explorer / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix the `CCP-245` follow-up bug where the nullable opening-explorer control-bar entry is passed into a render path that expects only real `VNode`s, leaving the analysis page typecheck-broken even though the explorer button works behaviorally.
+
+Current repo-grounded issue to confirm:
+- `src/analyse/analysisControls.ts` intentionally lets `renderExplorerEntry()` return `null` while retrospection is active
+- `src/main.ts` currently passes `renderExplorerEntry()` directly into `renderAnalysisControls([...])`
+- `renderAnalysisControls(...)` expects `VNode[]`, not `(VNode | null)[]`
+- `npm run typecheck -- --pretty false` therefore fails in `src/main.ts` on the explorer control-bar integration
+
+Inspect first:
+- Patzer:
+  - `src/main.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/analyse/pgnExport.ts`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/tools.ts`
+
+Implementation goal:
+- keep the explorer button behavior exactly as intended
+- preserve the `null`-when-retro-active behavior
+- make the control-bar render path type-safe
+- keep this fix scoped to the nullable explorer entry wiring only
+
+Constraints:
+- do not redesign the control bar
+- do not rebuild explorer state or persistence
+- do not bundle unrelated analysis-controls cleanup
+- prefer the smallest safe fix, such as filtering nullable entries at the correct seam
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run `npm run typecheck -- --pretty false`
+- explicitly report:
+  - how the nullable explorer entry is now handled
+  - whether the explorer button behavior changed intentionally
+  - whether the `src/main.ts` control-bar type error is gone
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-246 — Reviewed
 
 - Task: keep engine-search settings in the ceval gear while moving broader display toggles into the analysis action menu
 - Task ID: `CCP-246`
@@ -16972,9 +17067,9 @@ Also include a short manual test checklist with concrete user actions and expect
 - Source step: `Task 6 — Split engine gear from analysis menu more honestly`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:39:43.711Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: analysis controls parity sprint task 6 gear/menu ownership split
 
@@ -17052,7 +17147,7 @@ Validation is required after coding:
 Also include a short manual test checklist with concrete user actions and expected results.
 ```
 
-## CCP-247 — Created
+## CCP-247 — Reviewed
 
 - Task: remove duplicated analysis-local header menu items once their replacements are live in the analysis controls/menu
 - Task ID: `CCP-247`
@@ -17061,9 +17156,9 @@ Also include a short manual test checklist with concrete user actions and expect
 - Source step: `Task 7 — Clean duplicates out of the global header menu`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:41:16.290Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: analysis controls parity sprint task 7 header cleanup
 
@@ -17139,7 +17234,7 @@ Validation is required after coding:
 Also include a short manual test checklist with concrete user actions and expected results.
 ```
 
-## CCP-248 — Created
+## CCP-248 — Reviewed
 
 - Task: execute the analysis controls parity foundation batch for owner extraction, control-bar shell, local action-menu overlay, and first migrated actions
 - Task ID: `CCP-248`
@@ -17148,9 +17243,9 @@ Also include a short manual test checklist with concrete user actions and expect
 - Source step: `Foundation batch manager`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:08:35.936Z`
+- Status: reviewed
+- Review outcome: passed
 - Commit: unknown
 - Notes: manager prompt for the analysis controls parity foundation batch
 
@@ -17225,7 +17320,7 @@ If the batch stops, clearly report:
 If the batch finishes, report a compact summary of completed Prompt IDs.
 ```
 
-## CCP-249 — Created
+## CCP-249 — Reviewed
 
 - Task: execute the analysis controls parity migration batch for explorer button parity, gear/menu split, and header cleanup
 - Task ID: `CCP-249`
@@ -17234,9 +17329,9 @@ If the batch finishes, report a compact summary of completed Prompt IDs.
 - Source step: `Migration batch manager`
 - Created by: `Codex`
 - Created at: `2026-03-29T21:21:12Z`
-- Started at: not started
-- Status: created
-- Review outcome: pending
+- Started at: `2026-03-29T22:35:43.899Z`
+- Status: reviewed
+- Review outcome: issues found
 - Commit: unknown
 - Notes: manager prompt for the analysis controls parity migration batch after the foundation pass
 
@@ -17280,6 +17375,1012 @@ Task:
 - execute them sequentially in the exact order listed above
 - perform internal validation and self-check after each prompt
 - stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Do not modify:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/code-review.md`
+
+Execution rules:
+- do not reorder child prompts
+- do not create new prompts during this batch
+- do not continue past a known issue just to finish the batch
+- if a child prompt's startup step already ran successfully in the current batch flow, do not rerun it
+- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
+- only continue into a child prompt after that command succeeds
+- use internal validation/self-check only; external review and prompt closeout happen separately
+
+After each completed child prompt, report briefly:
+- Prompt ID
+- task title
+- build result
+- validation result
+- internal check result
+- whether the batch will continue or stop
+
+If the batch stops, clearly report:
+- which child Prompt ID stopped the batch
+- why it stopped
+- what issue or failure was found
+
+If the batch finishes, report a compact summary of completed Prompt IDs.
+```
+
+## CCP-249-F1 — Reviewed
+
+- Task: fix the mobile analysis controls layout so the review and mistakes actions, jump controls, and hamburger render as a clean non-overlapping navigation surface instead of clipping and stacking awkwardly
+- Task ID: `CCP-249`
+- Parent prompt ID: `CCP-249`
+- Source document: `ad hoc user request`
+- Source step: `fix the mobile analysis navigation/control bar layout after the controls parity prompts`
+- Created by: `Codex`
+- Created at: `2026-03-29T23:32:25Z`
+- Started at: `2026-03-29T23:37:20.284Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: follow-up fix for the post-migration mobile analysis controls layout regression shown in screenshot evidence
+
+```
+Prompt ID: CCP-249-F1
+Task ID: CCP-249
+Parent Prompt ID: CCP-249
+Source Document: ad hoc user request
+Source Step: fix the mobile analysis navigation/control bar layout after the controls parity prompts
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-249-F1`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-controls / mobile analysis layout / styles / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix the mobile analysis controls/navigation layout regression so the migrated analysis control bar no longer looks clipped, stacked, or overlapped. The review/mistakes actions, jump controls, and hamburger should read as one clean intentional mobile navigation surface.
+
+Current repo-grounded issue to confirm:
+- the current mobile layout splits analysis controls across `.analyse__controls` and `.analyse__actions`
+- the screenshot evidence shows the review/mistakes actions visually colliding with or sitting awkwardly behind the jump-controls/hamburger bar
+- the current mobile CSS in `src/styles/main.scss` is likely over-constraining height and tab styling for `.analyse__controls` while separately rendering `.analyse__actions`
+- the result does not look like a clean Lichess-aligned mobile analysis navigation surface
+
+Inspect first:
+- Patzer:
+  - `src/styles/main.scss`
+  - `src/main.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/analyse/pgnExport.ts`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+
+Implementation goal:
+- make the mobile analysis controls feel like one deliberate compact navigation area
+- remove the visible overlap/clipping between review/mistakes actions and the jump/hamburger controls
+- keep the migrated ownership split intact
+- prefer the smallest safe mobile layout fix rather than another controls redesign
+
+Constraints:
+- scope this to the mobile analysis controls layout only
+- do not redesign desktop analysis controls
+- do not rebuild explorer or retrospection behavior
+- do not move substantial new logic into `src/main.ts`
+- prefer CSS/layout fixes first unless a tiny render-structure adjustment is clearly required
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the mobile analysis controls layout
+- explicitly report:
+  - how the mobile controls are now structured
+  - whether the review/mistakes actions still remain accessible
+  - whether the jump controls and hamburger still remain accessible
+  - whether overlap/clipping is resolved
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-249-F2 — Reviewed
+
+- Task: fix the analysis controls layout regression so the review and mistakes actions, jump controls, explorer entry when present, and hamburger render as a clean intentional navigation surface on both desktop and mobile instead of overlapping, clipping, or stacking awkwardly
+- Task ID: `CCP-249`
+- Parent prompt ID: `CCP-249-F1`
+- Source document: `ad hoc user request`
+- Source step: `fix the desktop and mobile analysis controls layout regression after the controls parity prompts`
+- Created by: `Codex`
+- Created at: `2026-03-29T23:38:33Z`
+- Started at: `2026-03-29T23:43:43.176Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: follow-up fix replacing the too-narrow mobile-only framing of CCP-249-F1; should cover desktop and mobile analysis controls layout together
+
+```
+Prompt ID: CCP-249-F2
+Task ID: CCP-249
+Parent Prompt ID: CCP-249-F1
+Source Document: ad hoc user request
+Source Step: fix the desktop and mobile analysis controls layout regression after the controls parity prompts
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-249-F2`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same analysis-controls / analysis layout / styles / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: fix the analysis controls layout regression introduced by the controls parity work so the navigation surface reads cleanly on both desktop and mobile. The `Review` / `Mistakes` actions, jump controls, explorer entry when present, and hamburger should no longer overlap, clip, stack awkwardly, or feel like disconnected layers.
+
+Current repo-grounded issue to confirm:
+- the current analysis controls are split across `.analyse__controls` and `.analyse__actions`
+- the screenshot evidence shows the action buttons and navigation controls colliding visually instead of reading as one coherent surface
+- this may not be mobile-only; the regression should be treated as a general analysis-controls layout problem unless the current code proves otherwise
+- the likely implementation points are in:
+  - `src/styles/main.scss`
+  - `src/main.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/analyse/pgnExport.ts`
+
+Inspect first:
+- Patzer:
+  - `src/styles/main.scss`
+  - `src/main.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/analyse/pgnExport.ts`
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/css/_tools.scss`
+  - `~/Development/lichess-source/lila/ui/analyse/css/_tools-mobile.scss`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+
+Implementation goal:
+- make the analysis controls feel like one deliberate compact navigation area
+- fix layout issues on desktop and mobile, not just one breakpoint
+- remove visible overlap/clipping between review/mistakes actions and jump/hamburger controls
+- preserve the migrated ownership split from the parity prompts unless a tiny structural adjustment is required
+- prefer the smallest safe render/CSS fix rather than another broad controls redesign
+
+Constraints:
+- scope this to analysis-controls layout and composition only
+- do not redesign desktop analysis behavior beyond what is needed to fix the broken layout
+- do not rebuild explorer or retrospection behavior
+- do not move substantial new logic into `src/main.ts`
+- prefer CSS/layout fixes first, but if the current render split between `.analyse__controls` and `.analyse__actions` is the real cause, make the smallest honest render-structure adjustment needed
+
+Before coding, provide:
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the analysis controls layout
+- explicitly report:
+  - how the analysis controls are now structured on desktop
+  - how they are now structured on mobile
+  - whether the review/mistakes actions still remain accessible
+  - whether the jump controls, explorer entry, and hamburger still remain accessible
+  - whether overlap/clipping is resolved
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-250 — Reviewed
+
+- Task: introduce a shared settings-toggle presentation and migrate existing settings-style checkboxes across the app to it, using Lichess-style on/off row semantics and Patzer's existing toggle-switch visual language
+- Task ID: `CCP-250`
+- Parent prompt ID: none
+- Source document: `ad hoc user request`
+- Source step: `use Lichess-style on/off toggle treatment everywhere there is a settings toggle`
+- Created by: `Codex`
+- Created at: `2026-03-29T23:42:51Z`
+- Started at: `2026-03-29T23:44:42.713Z`
+- Status: reviewed
+- Review outcome: issues found
+- Commit: unknown
+- Notes: new prompt created because the original analysis-controls sprint explicitly limited iOS-style switches to the analysis action menu rather than app-wide toggle migration
+
+```
+Prompt ID: CCP-250
+Task ID: CCP-250
+Source Document: ad hoc user request
+Source Step: use Lichess-style on/off toggle treatment everywhere there is a settings toggle
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-250`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same settings-toggle / header / analysis-menu / ceval / openings-view / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: adopt a shared on/off settings-toggle treatment across the app for existing settings-style toggles. Use Lichess-style toggle-row semantics where appropriate, but render them with Patzer's existing switch visual language instead of leaving these settings as raw browser checkboxes.
+
+Important scope clarification:
+- this is not a request to restyle every checkbox in the app indiscriminately
+- focus on settings-style toggles and persistent UI/config toggles
+- do not convert selection checkboxes that are part of list selection, imports, or theme picking unless they truly behave like settings toggles
+
+Current repo-grounded context to confirm:
+- the analysis controls sprint explicitly deferred app-wide toggle restyling and only recommended iOS-style switches inside the analysis action menu
+- Patzer already has an existing switch visual in `src/styles/main.scss` as `.toggle-switch`
+- many settings surfaces still use raw checkbox inputs today, including likely areas such as:
+  - `src/analyse/analysisControls.ts`
+  - `src/header/index.ts`
+  - `src/ceval/view.ts`
+  - `src/openings/view.ts`
+- Lichess uses common toggle-row helpers in the analysis action menu rather than ad hoc per-toggle markup
+
+Inspect first:
+- Patzer:
+  - `src/styles/main.scss`
+  - `src/analyse/analysisControls.ts`
+  - `src/header/index.ts`
+  - `src/ceval/view.ts`
+  - `src/openings/view.ts`
+  - any existing shared UI helper location that could honestly own a reusable toggle row helper
+- Patzer references:
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+  - `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+  - any referenced common toggle helper used there
+  - `~/Development/lichess-source/lila/ui/analyse/css/_action-menu.scss`
+
+Implementation goal:
+- create one shared reusable settings-toggle presentation seam
+- migrate the current settings-style raw checkboxes to that shared toggle treatment
+- keep behavior, storage keys, and ownership unchanged
+- align the row behavior with Lichess-style on/off settings rows while keeping Patzer's preferred switch look
+
+Constraints:
+- do not rewrite app settings ownership
+- do not bundle unrelated layout redesign
+- do not convert non-settings selection checkboxes just for visual consistency
+- do not move substantial new logic into `src/main.ts`
+- prefer a shared helper + targeted migrations over repeated one-off toggle markup edits
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the shared-toggle migration
+- explicitly report:
+  - what shared toggle seam was introduced
+  - which settings surfaces were migrated
+  - which checkbox surfaces were intentionally left alone
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-251 — Reviewed
+
+- Task: refine the openings import workflow so source selection and import details live on one continuous openings page instead of a two-step source/details wizard
+- Task ID: `CCP-251`
+- Parent prompt ID: none
+- Source document: `ad hoc user request`
+- Source step: `make the openings import flow one continuous page instead of separate source/details pages`
+- Created by: `Codex`
+- Created at: `2026-03-29T23:51:52Z`
+- Started at: `2026-03-29T23:56:13.128Z`
+- Status: reviewed
+- Review outcome: passed
+- Commit: unknown
+- Notes: new prompt created because the current openings import workflow is split into source/details steps but the intended UX is one continuous openings page
+
+```
+Prompt ID: CCP-251
+Task ID: CCP-251
+Source Document: ad hoc user request
+Source Step: make the openings import flow one continuous page instead of separate source/details pages
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-251`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings import / openings view / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: change the openings import workflow so it behaves as one continuous openings page instead of two separate source/details pages. Source selection, username/PGN input, perspective, time controls, period, rated-only, and max-games settings should all live together in one coherent page-level import surface.
+
+Current repo-grounded issue to confirm:
+- `src/openings/view.ts` currently renders a step-based import wizard:
+  - `renderSourceStep(...)`
+  - `renderDetailsStep(...)`
+- the current UI forces the user to move from a first source-only page to a second details page
+- the user expectation is that these are not separate pages and should instead be one continuous openings import page
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/openings/ctrl.ts`
+  - `src/openings/import.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Relevant Lichess references:
+  - inspect only if there is a useful comparable single-surface import/filter pattern; do not force a fake Lichess match if this is primarily a Patzer product-flow issue
+
+Implementation goal:
+- keep the openings import experience on one page
+- preserve the existing import options and validation
+- remove the feeling of “page 1 vs page 2”
+- keep the change scoped to import flow composition rather than a broader openings redesign
+
+Constraints:
+- do not redesign the whole openings page
+- do not rebuild openings persistence or import backends
+- do not push medium-sized new logic into `src/main.ts`
+- prefer reusing the existing import state where possible, but if the `source/details` step split is the real cause, remove or simplify that split honestly
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the openings import flow
+- explicitly report:
+  - whether source selection and import details now live on one page
+  - what import state/step logic changed
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-252 — Created
+
+- Task: bring the openings session up to the board standard by adding the missing hamburger action menu and moving the first safe openings-local controls into it
+- Task ID: `CCP-252`
+- Parent prompt ID: none
+- Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+- Source step: `Step 1 — Openings: hamburger + action menu`
+- Created by: `Codex`
+- Created at: `2026-03-30T00:31:16Z`
+- Started at: `2026-03-30T00:48:12.118Z`
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: board-standard rollout step 1 for openings session controls parity
+
+```
+Prompt ID: CCP-252
+Task ID: CCP-252
+Source Document: docs/CHESS_BOARD_STANDARD_AUDIT.md
+Source Step: Step 1 — Openings: hamburger + action menu
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-252`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings-session / move-nav / action-menu / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: bring the openings session up to the Patzer board standard by adding the missing hamburger action menu to the existing `renderMoveNavBar()` surface and moving the first safe openings-local controls into that overlay.
+
+Inspect first:
+- Patzer:
+  - `src/openings/view.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/styles/main.scss`
+  - any shared toggle helpers the openings session can already reuse
+- Patzer references:
+  - `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - `docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/_action-menu.scss`
+
+Current repo-grounded target to confirm:
+- `src/openings/view.ts` already uses `renderMoveNavBar()` and already wires the book icon through `bookActive` / `onBook`
+- the openings move list therefore already matches the left and center parts of the board standard
+- the missing piece is the right-side hamburger and a local overlay menu rendered in the same side column as the openings move list
+- the first safe actions to migrate are:
+  - flip board
+  - openings color filter
+  - existing engine-display toggles that are already local to this surface
+
+Implementation goal:
+- add an openings-local hamburger in `rightSlot`
+- add an `.action-menu` overlay inside the openings session side column
+- move the first safe openings-local controls into that overlay
+- preserve existing explorer behavior and current move-list ownership
+
+Constraints:
+- keep this scoped to the openings session view
+- do not redesign the openings explorer itself
+- do not rewrite engine setting storage owners
+- do not introduce a new global menu system
+- prefer reusing the existing analysis action-menu structure and shared toggle rows over inventing a second menu pattern
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for the openings session controls surface
+- explicitly report:
+  - whether the openings session now has the full three-zone nav pattern
+  - what moved into the hamburger menu
+  - what intentionally remained outside the menu
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-253 — Created
+
+- Task: replace the puzzle round's ad hoc move navigation with the shared renderMoveNavBar standard before adding puzzle-round menu controls
+- Task ID: `CCP-253`
+- Parent prompt ID: none
+- Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+- Source step: `Step 2 — Puzzle round: add MoveNavBar`
+- Created by: `Codex`
+- Created at: `2026-03-30T00:31:16Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: board-standard rollout step 2 for puzzle round nav parity
+
+```
+Prompt ID: CCP-253
+Task ID: CCP-253
+Source Document: docs/CHESS_BOARD_STANDARD_AUDIT.md
+Source Step: Step 2 — Puzzle round: add MoveNavBar
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-253`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / move-list / move-nav / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: replace the puzzle round’s ad hoc move navigation with the shared `renderMoveNavBar()` standard so the round uses the same board-nav pattern as analysis and openings before adding the hamburger/menu layer.
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/chessground.ts`
+
+Current repo-grounded target to confirm:
+- the puzzle round already has a move list in `src/puzzles/view.ts`
+- it does not yet use the shared `renderMoveNavBar()` standard
+- this step should swap in the shared nav bar without yet fully landing the puzzle-round hamburger menu or full puzzle-round action menu
+
+Implementation goal:
+- render the shared move-nav bar in the puzzle round beside the move list
+- wire first / prev / next / last correctly for the current puzzle-round state
+- preserve current strict puzzle behavior
+- prepare a clean seam for the later puzzle-round hamburger menu prompt
+
+Constraints:
+- keep this step scoped to puzzle-round navigation only
+- do not add the puzzle-round action menu yet
+- do not add opening-explorer behavior yet unless a tiny placeholder hook is strictly required by `renderMoveNavBar()`
+- do not weaken puzzle validation or solve-state rules
+- do not redesign the puzzle side column
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for puzzle-round navigation
+- explicitly report:
+  - whether the puzzle round now uses `renderMoveNavBar()`
+  - what navigation callbacks are wired
+  - what puzzle behavior intentionally remains unchanged
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-254 — Created
+
+- Task: complete the puzzle round board standard by adding the hamburger action menu and wiring the book icon to the opening explorer for the current puzzle position
+- Task ID: `CCP-254`
+- Parent prompt ID: none
+- Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+- Source step: `Step 3 — Puzzle round: action menu`
+- Created by: `Codex`
+- Created at: `2026-03-30T00:31:16Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: board-standard rollout step 3 for puzzle round control-bar parity
+
+```
+Prompt ID: CCP-254
+Task ID: CCP-254
+Source Document: docs/CHESS_BOARD_STANDARD_AUDIT.md
+Source Step: Step 3 — Puzzle round: action menu
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-254`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-round / action-menu / opening-explorer / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: complete the puzzle round’s board-standard controls by adding the hamburger action menu and wiring the book icon to the opening explorer for the current puzzle position.
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/openings/explorerCtrl.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/FILTERS_THEMES_AND_SELECTION.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/_action-menu.scss`
+
+Current repo-grounded target to confirm:
+- after the previous step, the puzzle round should already have the shared nav bar
+- this step should finish the pattern by adding:
+  - a hamburger menu in the right slot
+  - a puzzle-round action menu overlay
+  - book icon behavior for the puzzle round FEN through `explorerCtrl`
+- the first safe menu items are:
+  - flip board
+  - auto-next
+  - engine display settings already owned elsewhere
+
+Implementation goal:
+- make the puzzle round match the full board standard
+- wire the book icon honestly to the current puzzle position
+- keep the action menu local to the puzzle side column
+- preserve puzzle-round solve behavior
+
+Constraints:
+- keep this scoped to puzzle-round controls and local menu behavior
+- do not redesign puzzle session layout broadly
+- do not change puzzle selection, rating, or library flows
+- do not rewrite engine setting storage owners
+- do not invent a separate menu pattern when the existing `.action-menu` structure can be reused
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for puzzle-round controls
+- explicitly report:
+  - whether the puzzle round now has book + nav + hamburger
+  - what appears in the puzzle-round action menu
+  - how the explorer is wired from the puzzle round
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-255 — Created
+
+- Task: change the puzzle library into an in-place preview surface with a real board, move list, and shared move-nav bar instead of routing away immediately
+- Task ID: `CCP-255`
+- Parent prompt ID: none
+- Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+- Source step: `Step 4 — Puzzle library: in-place preview mode`
+- Created by: `Codex`
+- Created at: `2026-03-30T00:31:16Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: board-standard rollout step 4 for puzzle library preview mode
+
+```
+Prompt ID: CCP-255
+Task ID: CCP-255
+Source Document: docs/CHESS_BOARD_STANDARD_AUDIT.md
+Source Step: Step 4 — Puzzle library: in-place preview mode
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-255`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / preview-board / move-list / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: change the puzzle library from a decorative idle-board list into an in-place preview surface where clicking a puzzle loads it onto the library board, shows its move list, and shows the shared move-nav bar without leaving the page.
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+  - `docs/reference/lichess-puzzle-ux/BOARD_AND_INTERACTION_MODEL.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
+  - `~/Development/lichess-source/lila/ui/puzzle/src/view/chessground.ts`
+  - any closely related puzzle preview / session shell files you need
+
+Current repo-grounded target to confirm:
+- the puzzle library currently mounts an idle decorative board
+- selecting a puzzle from the list routes away into the dedicated puzzle round
+- this step should instead load a preview puzzle in place on the library page
+- the preview should show:
+  - a real board
+  - the puzzle move list
+  - the shared `renderMoveNavBar()`
+  - a clear way to enter the full round afterward
+
+Implementation goal:
+- create an in-place preview mode for the puzzle library
+- keep browsing and previewing on the same page
+- add move-list + nav-bar parity to the preview surface
+- preserve the dedicated puzzle round as the actual solve mode
+
+Constraints:
+- keep this step scoped to preview-mode behavior
+- do not add the puzzle-library hamburger menu yet
+- do not redesign the puzzle-round solve flow
+- do not bundle rating/history/session analytics work
+- prefer a small preview-state seam in `src/puzzles/ctrl.ts` over route-level churn
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for puzzle-library preview mode
+- explicitly report:
+  - whether puzzle selection now previews in place
+  - whether the preview board has a move list and nav bar
+  - how the user enters the full puzzle round from preview
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-256 — Created
+
+- Task: finish the puzzle library preview board standard by adding the hamburger action menu and book icon behavior to the in-place preview surface
+- Task ID: `CCP-256`
+- Parent prompt ID: none
+- Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+- Source step: `Step 5 — Puzzle library: action menu + book`
+- Created by: `Codex`
+- Created at: `2026-03-30T00:31:16Z`
+- Started at: not started
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: board-standard rollout step 5 for puzzle library preview controls parity
+
+```
+Prompt ID: CCP-256
+Task ID: CCP-256
+Source Document: docs/CHESS_BOARD_STANDARD_AUDIT.md
+Source Step: Step 5 — Puzzle library: action menu + book
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-256`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle-library / preview-controls / opening-explorer / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task: finish the puzzle library board-standard rollout by adding the hamburger action menu and book icon behavior to the new in-place preview surface.
+
+Inspect first:
+- Patzer:
+  - `src/puzzles/view.ts`
+  - `src/puzzles/ctrl.ts`
+  - `src/openings/explorerCtrl.ts`
+  - `src/analyse/analysisControls.ts`
+  - `src/styles/main.scss`
+- Patzer references:
+  - `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+  - `docs/PUZZLE_V1_PLAN.md`
+  - `docs/reference/lichess-puzzle-ux/README.md`
+- Relevant Lichess source:
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
+  - `~/Development/lichess-source/lila/ui/analyse/css/_action-menu.scss`
+
+Current repo-grounded target to confirm:
+- after the previous step, the puzzle library preview should already have the board, move list, and nav bar
+- this final step should add:
+  - book icon wiring for the preview puzzle FEN
+  - a hamburger action menu in the preview side column
+  - the first safe preview-specific controls such as flip board and display settings
+
+Implementation goal:
+- complete the same three-zone nav standard on the puzzle-library preview surface
+- keep the menu local to preview mode
+- reuse existing action-menu styling and toggle components
+- preserve the dedicated puzzle round as the real solve environment
+
+Constraints:
+- keep this scoped to the library preview surface
+- do not redesign puzzle browsing or filtering
+- do not create a separate explorer implementation for puzzles
+- do not rewrite engine setting storage owners
+- do not merge library preview and round mode into one controller
+
+Before coding, provide:
+- prompt id
+- task id
+- source document
+- source step
+- task title
+- relevant Patzer Pro files
+- relevant Lichess files
+- diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+Then implement the change directly.
+
+Validation is required after coding:
+- run `npm run build`
+- run the most relevant task-specific check you can for puzzle-library preview controls
+- explicitly report:
+  - whether the preview surface now has book + nav + hamburger
+  - what appears in the preview action menu
+  - how the preview explorer wiring works
+  - whether behavior changed intentionally
+  - whether there are console/runtime errors
+  - remaining risks and limitations
+
+Also include a short manual test checklist with concrete user actions and expected results.
+```
+
+## CCP-257 — Created
+
+- Task: execute the full chess-board standard rollout batch for openings session, puzzle round, and puzzle library controls in order
+- Task ID: `CCP-257`
+- Parent prompt ID: none
+- Source document: `docs/CHESS_BOARD_STANDARD_AUDIT.md`
+- Source step: `Full chess-board standard rollout batch manager`
+- Created by: `Codex`
+- Created at: `2026-03-30T00:31:16Z`
+- Started at: `2026-03-30T00:47:31.961Z`
+- Status: created
+- Review outcome: pending
+- Commit: unknown
+- Notes: manager prompt for the full board-standard rollout; intentionally tracked but not queued by default
+
+```
+Prompt ID: CCP-257
+Task ID: CCP-257
+Source Document: docs/CHESS_BOARD_STANDARD_AUDIT.md
+Source Step: Full chess-board standard rollout batch manager
+Execution Target: Claude Code
+
+You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+
+Queue execution marker step:
+- As the first task before startup coordination or implementation work, run:
+  - `npm run prompt:start -- CCP-257`
+- Only continue implementation work after that command succeeds.
+- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
+
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
+
+Batch prompt IDs to execute in order:
+- `CCP-252`
+- `CCP-253`
+- `CCP-254`
+- `CCP-255`
+- `CCP-256`
+
+Manager-prompt rule:
+- `CCP-257` is the manager prompt id only
+- do not execute or recurse into `CCP-257` as if it were one of the child prompts
+
+Startup coordination step:
+- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings-session / puzzle-round / puzzle-library / move-nav / action-menu / prompt-tracking files.
+- If overlapping work exists, stop and report it before editing.
+
+Task:
+- read the child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
+- execute them sequentially in the exact order listed above
+- perform internal validation and self-check after each prompt
+- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
+
+Prompt sources:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-252.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-253.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-254.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-255.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-256.md`
 
 Do not modify:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
