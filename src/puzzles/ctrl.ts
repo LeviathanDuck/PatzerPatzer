@@ -23,12 +23,13 @@ import { parsePgn } from 'chessops/pgn';
 import type { TreeNode, TreePath } from '../tree/types';
 import { nodeAtPath, mainlineNodeList, nodeListAt, addNode, deleteNodeAt, pathInit } from '../tree/ops';
 import { pgnToTree } from '../tree/pgn';
-import { listPuzzleDefinitions, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getMeta, saveMeta } from './puzzleDb';
+import { listPuzzleDefinitions, listPuzzleDefinitionsBySource, countPuzzleDefinitionsBySource, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getAllAttemptsByPuzzle, getMeta, saveMeta, getUserPuzzlePerf, saveUserPuzzlePerf, getPuzzleRatedEligibility, appendRatingHistory, syncRatedLadder, findRatedPuzzleInShards } from './puzzleDb';
 import { bindBoardResizeHandle } from '../board/index';
 import { playMoveSound } from '../board/sound';
 import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestOpenings, getManifestTotalCount, type ShardMeta } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
-import type { PuzzleDefinition, PuzzleAttempt, SolveResult, FailureReason, PuzzleSourceKind, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSessionMode } from './types';
+import type { PuzzleDefinition, PuzzleAttempt, SolveResult, FailureReason, PuzzleSourceKind, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSessionMode, UserPuzzlePerf, RatedEligibility, NonRatedReason, PuzzleDifficulty, PuzzleRatingDelta, RatedScoringOutcome, ImportedLichessPuzzleDefinition, PuzzleRatingSnapshot } from './types';
+import { DEFAULT_USER_PUZZLE_PERF, PUZZLE_DIFFICULTY_OFFSETS, DEFAULT_PUZZLE_DIFFICULTY, PUZZLE_GLICKO_CAPS } from './types';
 import {
   protocol as engineProtocol,
   engineEnabled as sharedEngineEnabled,
@@ -276,11 +277,44 @@ export class PuzzleRoundCtrl {
   puzzleEngineEnabled: boolean;
 
   /**
-   * Session mode for this round — always 'practice' for now.
-   * When rated puzzle mode is implemented, this will be set to 'rated' and the
-   * round will populate ratingBefore/ratingAfter on the PuzzleAttempt record.
+   * Session mode for this round. Copied from the module-level _currentSessionMode
+   * at construction time. Immutable after construction — switch-to-casual changes
+   * this field on the active round to downgrade it.
    */
   currentSessionMode: PuzzleSessionMode;
+
+  // --- Rated assistance warning state ---
+  // These fields mediate the flow when the user triggers a restricted tool
+  // (hints, engine reveal, solution reveal, notes) during a rated round.
+  // Adapted from the Lichess rated puzzle UX described in docs/reference/LICHESS_PUZZLE_RATING_SYSTEM_AUDIT.md
+
+  /**
+   * Whether the rated assistance warning modal is currently visible.
+   * Set to true when the user triggers a restricted tool in a rated round.
+   */
+  showAssistanceWarning: boolean;
+
+  /**
+   * The tool action that triggered the warning. Used by the modal to label
+   * what tool was requested so the user can confirm or cancel.
+   */
+  pendingAssistanceAction: FailureReason | null;
+
+  /**
+   * Whether the user has checked "remember my choice" in the warning modal.
+   * Scope: current puzzle-solving session only. Reset when this round controller
+   * is replaced (new puzzle loaded). Never persisted.
+   */
+  rememberAssistanceChoice: boolean;
+
+  /**
+   * The remembered choice from a prior warning in this session.
+   * null = no remembered choice.
+   * 'switch-to-casual' = user previously chose to switch for this puzzle session.
+   * 'stay-rated' = user previously chose to stay rated (accept immediate-fail).
+   * Scope: current puzzle-solving session only.
+   */
+  rememberedAssistanceChoice: 'switch-to-casual' | 'stay-rated' | null;
 
   /**
    * Engine-based quality assessments for each user move played during the round.
@@ -377,7 +411,14 @@ export class PuzzleRoundCtrl {
     this.attemptRecorded = false;
     this.redraw = redraw;
     this.puzzleEngineEnabled = false;
-    this.currentSessionMode = 'practice';
+    // Copy the module-level session mode at round construction time.
+    // Imported-lichess puzzles honour the mode; user-library puzzles are
+    // always practice regardless (enforced at completion, not here).
+    this.currentSessionMode = _currentSessionMode;
+    this.showAssistanceWarning = false;
+    this.pendingAssistanceAction = null;
+    this.rememberAssistanceChoice = false;
+    this.rememberedAssistanceChoice = null;
     this.moveQualities = [];
     this.mode = 'play';
     this.canViewSolution = false;
@@ -957,6 +998,91 @@ export class PuzzleRoundCtrl {
     };
     if (this.firstWrongPly !== undefined) attempt.firstWrongPly = this.firstWrongPly;
 
+    // --- Rated completion path ---
+    // Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleFinisher.scala
+    // Branches mirror: casual → record only; rated first-play → update perf + history
+    if (this.currentSessionMode === 'rated' && this.definition.sourceKind === 'imported-lichess') {
+      // Source gating already passed (imported-lichess). Compute rated outcome async.
+      const puzzleDef = this.definition as ImportedLichessPuzzleDefinition;
+      const now = Date.now();
+      const snapshotBefore: PuzzleRatingSnapshot = {
+        rating: _currentUserPerf.glicko.rating,
+        deviation: _currentUserPerf.glicko.deviation,
+        timestamp: now,
+      };
+      attempt.ratingBefore = snapshotBefore;
+      attempt.sessionMode = 'rated';
+
+      // Determine win/loss for the Glicko computation:
+      // - ratedImmediateFailTriggered → rated-immediate-fail (loss)
+      // - status === 'solved' and not immediate-fail → rated-success (win)
+      // - status === 'failed' → rated-failure (loss)
+      const isWin = this.status === 'solved' && !this.ratedImmediateFailTriggered;
+      const ratedOutcome: RatedScoringOutcome = this.ratedImmediateFailTriggered
+        ? 'rated-immediate-fail'
+        : (isWin ? 'rated-success' : 'rated-failure');
+
+      attempt.ratedOutcome = ratedOutcome;
+
+      // Fire the async rating update after the attempt is persisted.
+      // We use an IIFE to capture current state cleanly.
+      const capturedPerf = { ..._currentUserPerf };
+      const capturedPuzzleRating = puzzleDef.rating;
+      const capturedAttempt = attempt;
+      (async () => {
+        // Check eligibility (already-solved / cooldown) — only update if eligible.
+        const eligibility = await getPuzzleRatedEligibility(puzzleDef.id);
+        if (!eligibility.eligible) {
+          capturedAttempt.ratedOutcome = 'not-rated';
+          capturedAttempt.nonRatedReason = eligibility.reason;
+          if (eligibility.reason === 'already-solved') this.ratedOutcomeResolved = 'already-solved';
+          return;
+        }
+        const { newPerf, delta } = computeRatedUpdate(capturedPerf, capturedPuzzleRating, isWin, now);
+        capturedAttempt.ratingAfter = {
+          rating: newPerf.glicko.rating,
+          deviation: newPerf.glicko.deviation,
+          timestamp: now,
+        };
+        capturedAttempt.ratingDelta = delta;
+        this.ratedOutcomeResolved = capturedAttempt.ratedOutcome ?? null;
+        this.lastRatingDelta = delta.delta;
+        await persistUserPerf(newPerf);
+        await appendRatingHistory({
+          timestamp: now,
+          rating: Math.round(newPerf.glicko.rating),
+          deviation: newPerf.glicko.deviation,
+        });
+
+        // Auto-advance rated stream: after rating is persisted, load next puzzle.
+        // Guard: only fires when the user is in an active rated stream session.
+        if (_ratedStreamActive) {
+          const completedId = capturedAttempt.puzzleId ?? this.definition.id;
+          _sessionSeenIds.add(completedId);
+          const redrawFn = this.redraw;
+          setTimeout(async () => {
+            if (!_ratedStreamActive) return; // user may have stopped stream
+            redrawFn(); // refresh rating display first
+            const next = await selectNextRatedPuzzle();
+            if (next) {
+              _ratedStreamCount++;
+              _sessionSeenIds.add(next.id);
+              await openPuzzleRound(next.id, redrawFn);
+            } else {
+              _emptyRatedStream = true;
+              _ratedStreamActive = false;
+              redrawFn();
+            }
+          }, 300);
+        }
+      })().catch(e => console.warn('[puzzle-round] rated update failed', e));
+    } else {
+      attempt.ratedOutcome = 'not-rated';
+      attempt.nonRatedReason = this.currentSessionMode === 'practice'
+        ? 'session-practice'
+        : 'source-not-rated';
+    }
+
     // Update active session history with granular result:
     // 'clean' = solved with no wrong moves, no hints, no engine assists
     // 'assisted' = solved but had wrong moves, used hints, or used engine
@@ -1207,6 +1333,99 @@ export class PuzzleRoundCtrl {
     if (!this.puzzleEngineEnabled) return {};
     return sharedCurrentEval;
   }
+
+  // --- Rated assistance warning handlers ---
+  // These three methods implement the three choices presented by the warning modal.
+  // Adapted from the Lichess rated puzzle assistance flow documented in the audit.
+
+  /**
+   * Show the rated assistance warning modal for the given tool action.
+   * If the user has a remembered choice for this session, apply it immediately
+   * without showing the modal.
+   * Returns true if the action should proceed immediately (remembered choice),
+   * false if the modal is now visible and the caller should wait.
+   */
+  requestAssistanceDuringRated(action: FailureReason): boolean {
+    if (this.currentSessionMode !== 'rated') return true; // not rated — allow freely
+    if (this.rememberedAssistanceChoice === 'switch-to-casual') {
+      // Already chose to switch for this session — silently continue as casual
+      this.currentSessionMode = 'practice';
+      return true;
+    }
+    if (this.rememberedAssistanceChoice === 'stay-rated') {
+      // Already chose to stay rated — record immediate fail and allow tool
+      this.ratedImmediateFailTriggered = true;
+      return true;
+    }
+    // Show the modal
+    this.pendingAssistanceAction = action;
+    this.showAssistanceWarning = true;
+    return false;
+  }
+
+  /**
+   * User chose to cancel — do not use the tool, leave round as rated.
+   * The warning closes and the round continues in rated mode untouched.
+   */
+  dismissAssistanceWarning(): void {
+    this.showAssistanceWarning = false;
+    this.pendingAssistanceAction = null;
+    this.rememberAssistanceChoice = false;
+  }
+
+  /**
+   * User chose to switch this round to casual (practice) mode.
+   * The round is downgraded — no rated scoring will apply at completion.
+   * If rememberAssistanceChoice is true, the choice is saved for this session.
+   */
+  chooseAssistanceSwitchToCasual(): void {
+    this.currentSessionMode = 'practice';
+    if (this.rememberAssistanceChoice) {
+      this.rememberedAssistanceChoice = 'switch-to-casual';
+    }
+    this.showAssistanceWarning = false;
+    this.pendingAssistanceAction = null;
+    this.rememberAssistanceChoice = false;
+  }
+
+  /**
+   * User chose to stay rated and proceed with tool use.
+   * This records an immediate rated failure for the round regardless of whether
+   * the user eventually finds the correct solution.
+   * The tool action is allowed to proceed after this call.
+   * Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleFinisher.scala
+   * (the rated=true path where the round is already "won" by the puzzle).
+   */
+  chooseStayRatedAndProceed(): void {
+    this.ratedImmediateFailTriggered = true;
+    if (this.rememberAssistanceChoice) {
+      this.rememberedAssistanceChoice = 'stay-rated';
+    }
+    this.showAssistanceWarning = false;
+    this.rememberAssistanceChoice = false;
+    // pendingAssistanceAction is intentionally left set so the caller can
+    // perform the requested tool action after this method returns.
+  }
+
+  /**
+   * Whether the round took a rated immediate-fail due to assistance in stay-rated mode.
+   * Read by the completion path to apply the correct outcome.
+   */
+  ratedImmediateFailTriggered = false;
+
+  /**
+   * The resolved rated outcome for this round, populated after `recordAttempt()` completes.
+   * Used by the UI to show already-solved notice or practice-mode label.
+   * Undefined until the round completes.
+   */
+  ratedOutcomeResolved: RatedScoringOutcome | 'already-solved' | null = null;
+
+  /**
+   * Integer rating delta from the last completed rated round.
+   * Populated after `computeRatedUpdate()` resolves.
+   * Used by `renderRatingDisplay` to show "+8" or "-12".
+   */
+  lastRatingDelta: number | undefined = undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -1236,14 +1455,403 @@ export function getActiveRoundCtrl(): PuzzleRoundCtrl | null {
   return activeRoundCtrl;
 }
 
+// --- Preview puzzle state (CCP-255) ---
+// In-place preview for the puzzle library — no navigation away from the library.
+let _previewPuzzleId: string | null = null;
+let _previewRoundCtrl: PuzzleRoundCtrl | null = null;
+
+export function getPreviewPuzzleId(): string | null { return _previewPuzzleId; }
+export function getPreviewRoundCtrl(): PuzzleRoundCtrl | null { return _previewRoundCtrl; }
+
+export function clearPreview(): void {
+  _previewPuzzleId = null;
+  _previewRoundCtrl = null;
+}
+
+/**
+ * Load a puzzle definition into the library preview mode.
+ * Creates a view-only PuzzleRoundCtrl so navigation works without triggering solve logic.
+ * Mirrors the Lichess pattern of using an existing ctrl in 'view' mode post-solve.
+ */
+export async function selectPuzzleForPreview(id: string, redraw: () => void): Promise<void> {
+  // Persist the definition if it came from a shard (not yet in IDB)
+  if (puzzleListState) {
+    const def = puzzleListState.allForSource.find(p => p.id === id);
+    if (def) await savePuzzleDefinition(def);
+  }
+  const def = await getPuzzleDefinition(id);
+  if (!def) return;
+  _previewPuzzleId = id;
+  const rc = new PuzzleRoundCtrl(def, redraw);
+  rc.mode = 'view'; // preview is view-only: no solve logic runs
+  _previewRoundCtrl = rc;
+  redraw();
+}
+
+/**
+ * Mount a view-only preview board for the current preview puzzle.
+ * Reuses the shared puzzleCg slot; shows start position with free exploration.
+ * Adapted from mountPuzzleBoard, stripped of solve callbacks.
+ */
+export function mountPreviewBoard(el: HTMLElement, _redraw: () => void): void {
+  const rc = _previewRoundCtrl;
+  if (!rc) return;
+  const setup = parseFen(rc.treeNode.fen);
+  if (setup.isErr) return;
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) return;
+  const dests = chessgroundDests(pos.value) as Map<Key, Key[]>;
+  const turn: 'white' | 'black' = pos.value.turn;
+  puzzleOrientation = rc.pov;
+  puzzleCg?.destroy();
+  puzzleCg = makeChessground(el, {
+    orientation: puzzleOrientation,
+    fen: rc.treeNode.fen,
+    turnColor: turn,
+    movable: { free: false, color: 'both', dests, showDests: true },
+    draggable: { enabled: true, showGhost: true },
+    events: {},
+  });
+  bindBoardResizeHandle(el);
+}
+
 let state: PuzzlePageState = { view: 'library' };
 let libraryCounts: LibraryCounts | undefined;
 let roundState: PuzzleRoundState | null = null;
+
+// ---------------------------------------------------------------------------
+// Session mode — rated vs practice
+// Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleSession.scala
+//
+// This module-level flag owns whether the user is currently playing rated or
+// practice. It persists across individual puzzle rounds within the same
+// page session. Later prompts read it via getCurrentSessionMode() and set it
+// via setSessionMode(). Individual PuzzleRoundCtrl instances copy it at
+// construction time so the round owns its own immutable mode record.
+// ---------------------------------------------------------------------------
+
+let _currentSessionMode: PuzzleSessionMode = 'practice';
+
+/** Return the current puzzle session mode (rated or practice). */
+export function getCurrentSessionMode(): PuzzleSessionMode {
+  return _currentSessionMode;
+}
+
+/**
+ * Set the session mode. Affects newly opened puzzle rounds.
+ * Switching to 'rated' is only meaningful for imported-lichess puzzles;
+ * user-library rounds will still be treated as practice regardless.
+ */
+export function setSessionMode(mode: PuzzleSessionMode): void {
+  _currentSessionMode = mode;
+}
+
+// ---------------------------------------------------------------------------
+// Rated puzzle stream — auto-advance session state
+// Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleSession.scala
+// (session tracking concept; Patzer uses client-side module state instead of
+// a per-user server-side cache).
+// ---------------------------------------------------------------------------
+
+/** IDs of puzzles already served in the current stream session — excludes repeats. */
+let _sessionSeenIds: Set<string> = new Set();
+/** True while the user is in an active auto-advance rated stream. */
+let _ratedStreamActive = false;
+/** Number of puzzles served in the current stream session. */
+let _ratedStreamCount = 0;
+/** True if selectNextRatedPuzzle() returned null on the last stream attempt. */
+let _emptyRatedStream = false;
+
+export function isRatedStreamActive(): boolean { return _ratedStreamActive; }
+export function getRatedStreamCount(): number { return _ratedStreamCount; }
+export function isEmptyRatedStream(): boolean { return _emptyRatedStream; }
+
+/**
+ * Start an auto-advance rated stream session.
+ * Sets session mode to 'rated', resets stream state, and opens the first puzzle.
+ */
+export async function startRatedSession(redraw: () => void): Promise<void> {
+  _currentSessionMode = 'rated';
+  _sessionSeenIds = new Set();
+  _ratedStreamCount = 0;
+  _ratedStreamActive = true;
+  _emptyRatedStream = false;
+
+  const def = await selectNextRatedPuzzle();
+  if (def) {
+    _ratedStreamCount++;
+    _sessionSeenIds.add(def.id);
+    await openPuzzleRound(def.id, redraw);
+  } else {
+    _emptyRatedStream = true;
+    _ratedStreamActive = false;
+    redraw();
+  }
+}
+
+/**
+ * Stop the rated stream without leaving rated mode.
+ * The user remains in rated mode but auto-advance is disabled.
+ */
+export function stopRatedStream(): void {
+  _ratedStreamActive = false;
+  syncRatedLadder().catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// User puzzle rating calculator
+// Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleFinisher.scala
+// and modules/rating/src/main/Perf.scala (PerfExt.addOrReset)
+// and chess.rating.glicko.GlickoCalculator
+//
+// Intentional Patzer divergence from full Lichess parity:
+// - Only the USER rating updates; imported puzzle ratings stay fixed.
+// - The full Lichess system updates both user and puzzle Glicko as a game.
+//   Patzer treats the fixed puzzle rating as the "opponent" but does not
+//   update it. This simplifies the system while preserving the signal.
+// - dubiousPuzzle suppression is not implemented (single-user tool).
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply Glicko-2 updates to the user's puzzle perf after a rated solve.
+ *
+ * Lichess GlickoCalculator uses the formula from Glicko-2 paper (Glickman 2012).
+ * We implement a simplified version that captures the key behaviours:
+ * - win/loss probability based on rating difference
+ * - deviation decay (larger deviation → bigger update)
+ * - hard delta cap (maxRatingDelta = 700 per Glicko.scala)
+ * - sanity check and cap on result (from GlickoExt)
+ *
+ * Returns the updated UserPuzzlePerf and the integer delta.
+ */
+export function computeRatedUpdate(
+  perf: UserPuzzlePerf,
+  puzzleRating: number,
+  win: boolean,
+  now: number,
+): { newPerf: UserPuzzlePerf; delta: PuzzleRatingDelta } {
+  const { rating, deviation, volatility } = perf.glicko;
+
+  // Glicko-2 step 1: convert to mu/phi scale
+  const MU_SCALE = 173.7178;
+  const mu = (rating - 1500) / MU_SCALE;
+  const phi = deviation / MU_SCALE;
+  const mu_j = (puzzleRating - 1500) / MU_SCALE;
+  // phi_j is the puzzle's deviation — Patzer uses a fixed approximation since
+  // puzzle ratings are static. We use the standard default (c ≈ 0.0977 per period).
+  const PHI_J_APPROX = 0.5;
+
+  // Glicko-2 step 2: g function and E function
+  const g = (p: number) => 1 / Math.sqrt(1 + 3 * p * p / (Math.PI * Math.PI));
+  const E = (mu_i: number, mu_j: number, phi_j: number) =>
+    1 / (1 + Math.exp(-g(phi_j) * (mu_i - mu_j)));
+
+  const g_j = g(PHI_J_APPROX);
+  const E_j = E(mu, mu_j, PHI_J_APPROX);
+  const s_j = win ? 1 : 0;
+
+  // Glicko-2 step 3: estimated variance v
+  const v = 1 / (g_j * g_j * E_j * (1 - E_j));
+
+  // step 4: delta (improvement)
+  const delta = v * g_j * (s_j - E_j);
+
+  // step 5: new phi* (phi with volatility update — simplified: use current volatility)
+  const sigma_prime = volatility; // full volatility update (Illinois algorithm) deferred
+  const phi_star = Math.sqrt(phi * phi + sigma_prime * sigma_prime);
+
+  // step 6: new phi and mu
+  const phi_prime = 1 / Math.sqrt(1 / (phi_star * phi_star) + 1 / v);
+  const mu_prime = mu + phi_prime * phi_prime * g_j * (s_j - E_j);
+
+  // Convert back to standard scale
+  let newRating = mu_prime * MU_SCALE + 1500;
+  let newDeviation = phi_prime * MU_SCALE;
+
+  // Apply Lichess hard delta cap (maxRatingDelta = 700) — PerfExt.addOrReset
+  newRating = Math.min(newRating, rating + PUZZLE_GLICKO_CAPS.maxRatingDelta);
+  newRating = Math.max(newRating, rating - PUZZLE_GLICKO_CAPS.maxRatingDelta);
+
+  // Clamp to cap values (GlickoExt.cap)
+  newRating = Math.max(newRating, PUZZLE_GLICKO_CAPS.minRating);
+  newRating = Math.min(newRating, PUZZLE_GLICKO_CAPS.maxRating);
+  newDeviation = Math.max(newDeviation, PUZZLE_GLICKO_CAPS.minDeviation);
+  newDeviation = Math.min(newDeviation, PUZZLE_GLICKO_CAPS.maxDeviation);
+
+  // Sanity check (GlickoExt.sanityCheck): if values are wild, revert to default
+  const sane =
+    newRating > 0 && newRating < 4000 &&
+    newDeviation > 0 && newDeviation < 1000 &&
+    volatility > 0 && volatility < PUZZLE_GLICKO_CAPS.maxVolatility * 2;
+  if (!sane) {
+    newRating = rating; // do not apply insane update
+    newDeviation = deviation;
+  }
+
+  const intRatingBefore = Math.round(rating);
+  const intRatingAfter = Math.round(newRating);
+
+  // Build the updated perf (matches PerfExt.addOrReset structure)
+  const recentMaxSize = 12;
+  const newRecent = [intRatingAfter, ...perf.recent].slice(0, recentMaxSize);
+  const newPerf: UserPuzzlePerf = {
+    glicko: { rating: newRating, deviation: newDeviation, volatility },
+    nb: perf.nb + 1,
+    recent: newRecent,
+    latest: now,
+  };
+
+  const ratingDelta: PuzzleRatingDelta = {
+    delta: intRatingAfter - intRatingBefore,
+    ratingBefore: intRatingBefore,
+    ratingAfter: intRatingAfter,
+  };
+
+  return { newPerf, delta: ratingDelta };
+}
+
+// ---------------------------------------------------------------------------
+// Rated difficulty — module-level setting, persisted per-session only
+// ---------------------------------------------------------------------------
+
+let _currentDifficulty: PuzzleDifficulty = DEFAULT_PUZZLE_DIFFICULTY;
+
+export function getCurrentDifficulty(): PuzzleDifficulty { return _currentDifficulty; }
+export function setDifficulty(d: PuzzleDifficulty): void { _currentDifficulty = d; }
+
+// ---------------------------------------------------------------------------
+// Rating-aware puzzle selection
+// Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleSelector.scala
+// and modules/puzzle/src/main/PuzzleDifficulty.scala
+//
+// Simplified vs Lichess: no MongoDB path/tier infrastructure. We load from
+// the in-memory shard cache (filtered by rating window) and pick randomly
+// from eligible candidates. Lichess uses path-based sequential IDs;
+// Patzer uses random selection within a rating band.
+// ---------------------------------------------------------------------------
+
+/** Rating window half-width for initial puzzle selection. */
+const RATED_SELECTION_WINDOW = 100;
+/** Widened window used when no eligible puzzles found in initial window. */
+const RATED_SELECTION_WINDOW_WIDE = 250;
+
+/**
+/**
+ * Select the next rated puzzle for the current user.
+ *
+ * Algorithm:
+ * 1. Compute target rating = user rating + difficulty offset
+ * 2. Search IDB definitions for imported-lichess puzzles within ±window of target
+ * 3. Filter by rated eligibility (already-solved / recent-failure-cooldown)
+ *    and session exclusion list (_sessionSeenIds)
+ * 4. If none found: fall back to shard files (findRatedPuzzleInShards)
+ * 5. Widen window once and retry both paths if still nothing
+ * 6. Return null if all paths miss
+ *
+ * Lichess uses path-based sequential IDs; Patzer uses random selection within
+ * a rating band (IDB first, shard fallback second).
+ */
+export async function selectNextRatedPuzzle(): Promise<PuzzleDefinition | null> {
+  const perf = _currentUserPerf;
+  const userRating = Math.round(perf.glicko.rating);
+  const offset = PUZZLE_DIFFICULTY_OFFSETS[_currentDifficulty];
+  const targetRating = userRating + offset;
+
+  const allDefs = await listPuzzleDefinitions();
+  const importedDefs = allDefs.filter(d => d.sourceKind === 'imported-lichess');
+
+  async function pickFromIdb(window: number): Promise<PuzzleDefinition | null> {
+    const rMin = targetRating - window;
+    const rMax = targetRating + window;
+    const candidates = importedDefs.filter(d => {
+      const r = (d as { rating?: number }).rating;
+      return typeof r === 'number' && r >= rMin && r <= rMax && !_sessionSeenIds.has(d.id);
+    });
+    if (candidates.length === 0) return null;
+
+    // Filter by rated eligibility — check in random order to avoid bias
+    const shuffled = candidates.sort(() => Math.random() - 0.5);
+    for (const def of shuffled) {
+      const eligibility = await getPuzzleRatedEligibility(def.id);
+      if (eligibility.eligible) return def;
+    }
+    return null;
+  }
+
+  // IDB path (narrow window)
+  let result = await pickFromIdb(RATED_SELECTION_WINDOW);
+  if (result) return result;
+
+  // Shard fallback (narrow window)
+  result = await findRatedPuzzleInShards(targetRating, RATED_SELECTION_WINDOW, _sessionSeenIds);
+  if (result) return result;
+
+  // IDB path (wide window)
+  result = await pickFromIdb(RATED_SELECTION_WINDOW_WIDE);
+  if (result) return result;
+
+  // Shard fallback (wide window)
+  return findRatedPuzzleInShards(targetRating, RATED_SELECTION_WINDOW_WIDE, _sessionSeenIds);
+}
+
+// ---------------------------------------------------------------------------
+// Rated eligibility — source gating
+// Only imported-lichess puzzles may enter rated flow.
+// User-library puzzles are practice-only regardless of session mode.
+// ---------------------------------------------------------------------------
+
+/**
+ * Return whether a puzzle definition is eligible for rated scoring.
+ * Source gating only — repeat/cooldown checks are separate (CCP-285, CCP-286).
+ *
+ * Patzer divergence from Lichess: user-library puzzles never receive a rating
+ * from the Lichess puzzle database, so they cannot participate in the Glicko
+ * rating model. Only imported-lichess puzzles have a fixed reference rating.
+ */
+export function getPuzzleSourceEligibility(def: PuzzleDefinition): RatedEligibility {
+  if (def.sourceKind !== 'imported-lichess') {
+    return { eligible: false, reason: 'source-not-rated' as NonRatedReason };
+  }
+  return { eligible: true };
+}
+
+// ---------------------------------------------------------------------------
+// User puzzle perf — local restore seam
+// Loaded once when the puzzle subsystem initializes.
+// All rated-mode code reads/writes this module-level value and persists
+// via saveUserPuzzlePerf(). Nothing in main.ts manages this.
+// ---------------------------------------------------------------------------
+
+let _currentUserPerf: UserPuzzlePerf = { ...DEFAULT_USER_PUZZLE_PERF };
+
+/** Return the current cached UserPuzzlePerf. */
+export function getCurrentUserPerf(): UserPuzzlePerf {
+  return _currentUserPerf;
+}
+
+/** Update the cached perf and persist it to IDB. */
+export async function persistUserPerf(perf: UserPuzzlePerf): Promise<void> {
+  _currentUserPerf = perf;
+  await saveUserPuzzlePerf(perf);
+}
+
+/**
+ * Load the user's puzzle perf from IDB into module-level state.
+ * Called once during puzzle subsystem initialisation (from initPuzzlePage
+ * or route entry). Safe to call multiple times.
+ */
+export async function loadUserPerfFromStorage(): Promise<void> {
+  _currentUserPerf = await getUserPuzzlePerf();
+}
 
 export function initPuzzlePage(view: PuzzleView, puzzleId?: string): void {
   const s: PuzzlePageState = { view };
   if (puzzleId !== undefined) s.puzzleId = puzzleId;
   state = s;
+  // Load the user's puzzle rating from IDB in the background.
+  // The perf is available immediately via getCurrentUserPerf() (returns the
+  // cached default until the async load completes).
+  loadUserPerfFromStorage().catch(e => console.warn('[puzzle] loadUserPerfFromStorage failed', e));
 }
 
 export function getPuzzlePageState(): PuzzlePageState {
@@ -1366,8 +1974,6 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
     viewOnly: false,
     movable: {
       free: false,
-      // Initially no pieces are movable — the trigger move plays first
-      color: undefined,
       dests: new Map(),
       showDests: true,
     },
@@ -1480,9 +2086,9 @@ export function puzzleNavigate(path: TreePath, redraw: () => void): void {
 /**
  * Sync the puzzle Chessground board to the current tree node.
  */
-export function syncPuzzleBoard(): void {
+export function syncPuzzleBoard(rcOverride?: PuzzleRoundCtrl): void {
   const cg = puzzleCg;
-  const rc = activeRoundCtrl;
+  const rc = rcOverride ?? activeRoundCtrl;
   if (!cg || !rc) return;
 
   // Context-peek mode: show a game-tree position as read-only.
@@ -1491,16 +2097,20 @@ export function syncPuzzleBoard(): void {
     const ctxNode = nodeAtPath(rc.gameTree, rc.contextPeekPath);
     if (ctxNode) {
       const ctxSetup = parseFen(ctxNode.fen);
-      const ctxTurn: 'white' | 'black' = ctxSetup.isOk && Chess.fromSetup(ctxSetup.value).isOk
-        ? Chess.fromSetup(ctxSetup.value).value.turn : 'white';
-      const ctxLastMove = ctxNode.uci
-        ? [ctxNode.uci.slice(0, 2) as Key, ctxNode.uci.slice(2, 4) as Key] : undefined;
-      cg.set({
+      let ctxTurn: 'white' | 'black' = 'white';
+      if (ctxSetup.isOk) {
+        const ctxPos = Chess.fromSetup(ctxSetup.value);
+        if (ctxPos.isOk) ctxTurn = ctxPos.value.turn;
+      }
+      const ctxCfg: Record<string, unknown> = {
         fen: ctxNode.fen,
         turnColor: ctxTurn,
-        lastMove: ctxLastMove,
         movable: { color: rc.pov, dests: new Map<Key, Key[]>() },
-      });
+      };
+      if (ctxNode.uci) {
+        ctxCfg.lastMove = [ctxNode.uci.slice(0, 2) as Key, ctxNode.uci.slice(2, 4) as Key];
+      }
+      cg.set(ctxCfg as Parameters<typeof cg.set>[0]);
       return;
     }
   }
@@ -1511,21 +2121,20 @@ export function syncPuzzleBoard(): void {
   const pos = Chess.fromSetup(setup.value);
   if (pos.isErr) return;
   const turn: 'white' | 'black' = pos.value.turn;
-  const lastMove = node.uci ? [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] : undefined;
   const movableColor = (rc.mode === 'view' || rc.analysisMode) ? 'both' as const : rc.pov;
   // When browsed away from the live position during play, pass empty dests to prevent
   // accidental moves from a position that isn't the current solve state.
   const isBrowsed = rc.mode !== 'view' && !rc.analysisMode && rc.treePath !== rc.livePath;
   const dests = isBrowsed ? new Map<Key, Key[]>() : (chessgroundDests(pos.value) as Map<Key, Key[]>);
-  cg.set({
+  const setCfg: Record<string, unknown> = {
     fen: node.fen,
     turnColor: turn,
-    lastMove,
-    movable: {
-      color: movableColor,
-      dests,
-    },
-  });
+    movable: { color: movableColor, dests },
+  };
+  if (node.uci) {
+    setCfg.lastMove = [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key];
+  }
+  cg.set(setCfg as Parameters<typeof cg.set>[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1736,20 +2345,16 @@ export function getOrCreateMeta(puzzleId: string): PuzzleUserMeta {
  */
 export async function loadLibraryCounts(redraw: () => void): Promise<void> {
   try {
-    // User library count from IDB
-    const all = await listPuzzleDefinitions();
-    let user = 0;
-    for (const p of all) {
-      if (p.sourceKind === 'user-library') user++;
-    }
+    // Count user-library puzzles using sourceKind index — avoids loading all records.
+    const user = await countPuzzleDefinitionsBySource('user-library');
     // Imported count: use manifest totalCount (the full Lichess database)
     let imported = 0;
     try {
       const manifest = await loadManifest();
       imported = manifest.totalCount;
     } catch {
-      // Manifest not available — fall back to IDB count
-      imported = all.filter(p => p.sourceKind === 'imported-lichess').length;
+      // Manifest not available — fall back to IDB count by source
+      imported = await countPuzzleDefinitionsBySource('imported-lichess');
     }
     libraryCounts = { imported, user };
   } catch (e) {
@@ -1849,8 +2454,7 @@ export async function openPuzzleList(
 
 /** Load user-library puzzles from IDB. */
 async function openUserLibraryList(redraw: () => void): Promise<void> {
-  const all = await listPuzzleDefinitions();
-  const forSource = all.filter(p => p.sourceKind === 'user-library');
+  const forSource = await listPuzzleDefinitionsBySource('user-library');
   forSource.sort((a, b) => b.createdAt - a.createdAt);
 
   puzzleListState!.allForSource = forSource;
@@ -1943,61 +2547,100 @@ export async function startImportedSession(
     return;
   }
 
-  // Load records from shards and filter by themes/openings + rating
-  const candidates: PuzzleDefinition[] = [];
-  for (const shard of matchingShards) {
-    const records = await loadFilteredShard(shard.id, filters);
+  // Eager first-puzzle strategy: scan shards in order and navigate as soon as
+  // the first matching puzzle is found. Remaining shards continue loading in
+  // the background to fill the session queue. Shards are cached after first
+  // fetch so the background pass costs only CPU filtering.
+  let firstPick: PuzzleDefinition | null = null;
+  let firstPickShardIndex = 0;
+
+  for (let si = 0; si < matchingShards.length; si++) {
+    const records = await loadFilteredShard(matchingShards[si]!.id, filters);
     for (const r of records) {
-      // If themes are selected, the puzzle must match at least one
       if (themes.length > 0 && !themes.some(t => r.themes.includes(t))) continue;
-      // If openings are selected, the puzzle must match at least one
       if (openings.length > 0 && !openings.some(o => r.openingTags.includes(o))) continue;
       const def = lichessShardRecordToDefinition(r);
-      if (def) candidates.push(def);
-      // Stop early once we have enough candidates for a session
-      if (candidates.length >= 200) break;
+      if (def) { firstPick = def; firstPickShardIndex = si; break; }
     }
-    if (candidates.length >= 200) break;
+    if (firstPick) break;
   }
 
-  if (candidates.length === 0) {
+  if (!firstPick) {
     console.warn('[puzzle-ctrl] no imported puzzles match selection');
     _importedSessionError = 'No puzzles match your selection. Try widening the rating range or selecting different themes.';
     redraw();
     return;
   }
 
-  // Shuffle candidates for variety
-  for (let i = candidates.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [candidates[i], candidates[j]] = [candidates[j]!, candidates[i]!];
-  }
-
-  const pick = candidates[0]!;
-  await savePuzzleDefinition(pick);
+  // Save the first puzzle and navigate immediately — no waiting for the rest.
+  await savePuzzleDefinition(firstPick);
   _importedSessionError = null;
+  _sessionQueue = [];
 
-  // Store the session queue for prefetching and next-puzzle navigation
-  _sessionQueue = candidates.slice(1);
-
-  // Create active session tracker
   _activeSession = {
     themes: [...themes],
     openings: [...openings],
     ratingMin: ratingMin ?? 0,
     ratingMax: ratingMax ?? 3200,
-    history: [{ puzzleId: pick.id, result: 'in-progress' }],
+    history: [{ puzzleId: firstPick.id, result: 'in-progress' }],
   };
 
-  // Persist session + queue
   saveSessionToStorage();
   saveQueueToStorage();
 
-  // Start prefetching PGNs for upcoming puzzles
-  prefetchSessionPgns();
+  // Navigate immediately — queue fills behind the scenes.
+  window.location.hash = `#/puzzles/${encodeURIComponent(firstPick.id)}`;
 
-  // Navigate to the puzzle round route
-  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+  // Background: continue scanning remaining shards to populate the queue.
+  // Uses the shard cache so already-fetched shards are free to re-scan.
+  void fillSessionQueueBackground(
+    matchingShards,
+    firstPickShardIndex,
+    themes,
+    openings,
+    filters,
+    firstPick.id,
+  );
+}
+
+/**
+ * Background queue filler — called after the first puzzle is already navigated to.
+ * Scans remaining shards (starting from the shard that yielded the first puzzle)
+ * and populates _sessionQueue with up to 199 additional candidates.
+ */
+async function fillSessionQueueBackground(
+  shards: ShardMeta[],
+  startShardIndex: number,
+  themes: string[],
+  openings: string[],
+  filters: { ratingMin?: number; ratingMax?: number },
+  excludeId: string,
+): Promise<void> {
+  const candidates: PuzzleDefinition[] = [];
+
+  for (let si = startShardIndex; si < shards.length && candidates.length < 199; si++) {
+    const records = await loadFilteredShard(shards[si]!.id, filters);
+    for (const r of records) {
+      if (themes.length > 0 && !themes.some(t => r.themes.includes(t))) continue;
+      if (openings.length > 0 && !openings.some(o => r.openingTags.includes(o))) continue;
+      const def = lichessShardRecordToDefinition(r);
+      if (!def || def.id === excludeId) continue;
+      candidates.push(def);
+      if (candidates.length >= 199) break;
+    }
+  }
+
+  if (candidates.length === 0) return;
+
+  // Shuffle for variety before storing
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j]!, candidates[i]!];
+  }
+
+  _sessionQueue = candidates;
+  saveQueueToStorage();
+  prefetchSessionPgns();
 }
 
 /**
@@ -2402,10 +3045,12 @@ export function getRetryCount(): number | undefined { return retryCount; }
  */
 export async function buildRetryQueue(): Promise<PuzzleDefinition[]> {
   const allDefs = await listPuzzleDefinitions();
+  // Single pass over all attempts instead of N serial getAttempts() calls.
+  const attemptsByPuzzle = await getAllAttemptsByPuzzle();
   const queue: PuzzleDefinition[] = [];
 
   for (const def of allDefs) {
-    const attempts = await getAttempts(def.id);
+    const attempts = attemptsByPuzzle.get(def.id) ?? [];
     if (attempts.length === 0) {
       // Never attempted — include in retry queue
       queue.push(def);
@@ -2578,6 +3223,10 @@ export async function getDuePuzzles(): Promise<PuzzleDefinition[]> {
   const now = Date.now();
   const due: PuzzleDefinition[] = [];
 
+  // Pre-load all attempts once for puzzles that lack cached meta.
+  // Replaces N serial getAttempts() calls with a single cursor scan.
+  const attemptsByPuzzle = await getAllAttemptsByPuzzle();
+
   for (const def of allDefs) {
     const meta = metaCache.get(def.id) ?? (await getMeta(def.id));
 
@@ -2585,8 +3234,8 @@ export async function getDuePuzzles(): Promise<PuzzleDefinition[]> {
       // Has due metadata — check if due
       if (meta.dueAt <= now) due.push(def);
     } else {
-      // No due metadata — fall back to attempt check
-      const attempts = await getAttempts(def.id);
+      // No due metadata — fall back to attempt check from pre-loaded map
+      const attempts = attemptsByPuzzle.get(def.id) ?? [];
       if (attempts.length === 0) {
         // Never attempted → due immediately
         due.push(def);

@@ -26,6 +26,7 @@ import {
   getLichessToken, getLichessStatus, disconnectLichess,
 } from './server/lichess-oauth.mjs';
 import { runMigrations } from './server/db.mjs';
+import { buildSprintDashboardData } from './scripts/sprint-registry-lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC    = path.join(__dirname, 'public');
@@ -110,7 +111,7 @@ const server = http.createServer((req, res) => {
   // Prompt dashboard: regenerate from registry and redirect back.
   if (url === '/api/refresh-dashboard') {
     try {
-      execSync('node scripts/generate-prompt-dashboard.mjs', { cwd: __dirname, timeout: 10000 });
+      execSync('npm run dashboard:generate', { cwd: __dirname, timeout: 15000 });
       res.writeHead(302, { Location: '/dashboard' });
       res.end();
     } catch (e) {
@@ -129,7 +130,7 @@ const server = http.createServer((req, res) => {
       fs.createReadStream(DASHBOARD_PATH).pipe(res);
     } else {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Dashboard not generated yet. Run: npm run prompts:dashboard');
+      res.end('Dashboard not generated yet. Run: npm run dashboard:generate');
     }
     return;
   }
@@ -145,6 +146,20 @@ const server = http.createServer((req, res) => {
     } else {
       res.writeHead(404);
       res.end('{}');
+    }
+    return;
+  }
+
+  if (url === '/api/sprint-registry') {
+    try {
+      const data = buildSprintDashboardData(__dirname);
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.writeHead(200);
+      res.end(JSON.stringify({ sprints: data.sprints }));
+    } catch (error) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
     }
     return;
   }

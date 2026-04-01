@@ -1,0 +1,914 @@
+# Sprint Status
+
+> Generated from `docs/mini-sprints/sprint-registry.json`, sprint markdown docs, and `docs/prompts/prompt-registry.json`. Do not hand-edit this file.
+
+## Sprint Index
+
+- SPR-001 — Mini Sprint — Analysis Controls Parity (completed)
+- SPR-002 — Auth & Sync Sprint (blocked)
+- SPR-003 — Sprint: Play Against Computer at Various Strength Levels (planned)
+- SPR-004 — Mini Sprint — Improvement Intelligence Platform (implementation-partial)
+- SPR-005 — Mini Sprint — Mobile Analysis Usability (completed-with-issues)
+- SPR-006 — Openings Opponent Tool Suite Sprint (active)
+- SPR-007 — Openings Page Implementation Sprint (completed)
+- SPR-008 — Openings Research Report Upgrade Sprint (active)
+- SPR-009 — Mini Sprint — Opponent Research Platform (implementation-partial)
+- SPR-010 — Mini Sprint — Puzzle Page Mobile Usability (completed)
+- SPR-011 — Patzer Pro — Puzzle V1 Phased Execution Record (active)
+- SPR-012 — Rated Puzzle Ladder And Cloud Ownership Sprint (implementation-partial)
+- SPR-013 — Rated Puzzle Stream Sprint (completed-with-issues)
+- SPR-014 — Sprint Plan: Stable Background Bulk Review (completed)
+- SPR-015 — Study Page Sprint Plan (active)
+
+## Detailed Status
+
+## SPR-001 — Mini Sprint — Analysis Controls Parity
+
+- Source document: `docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md`
+- Status: `completed`
+- Tasks: 7
+- Plan coverage: 100%
+- Execution progress: 100%
+- Implementation progress: 71%
+- Linked prompts: 10
+- Unreviewed linked prompts: 0
+- Summary: Foundation done. Migration incomplete — legacy render path and typecheck failures remain.
+- Audits:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md` — Source audit (present)
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Analysis Controls Parity Sprint (present)
+- Recommended next steps:
+  - [low] Implement **Not confirmed**
+  - [low] Implement **Not confirmed**
+- Tasks:
+  - SPR-001-T01 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-241`
+  - SPR-001-T02 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-242`
+  - SPR-001-T03 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-243`
+  - SPR-001-T04 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-244`
+  - SPR-001-T05 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-245`, `CCP-245-F1`
+  - SPR-001-T06 — **Not confirmed**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-246`
+  - SPR-001-T07 — **Not confirmed**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-247`
+- Unassigned sprint prompts: `CCP-248`, `CCP-249`
+
+## SPR-002 — Auth & Sync Sprint
+
+- Source document: `docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md`
+- Status: `blocked`
+- Tasks: 6
+- Plan coverage: 83%
+- Execution progress: 83%
+- Implementation progress: 83%
+- Linked prompts: 6
+- Unreviewed linked prompts: 0
+- Summary: Auth works. Sync is partially broken — push works, pull doesn't write to IDB, merge logic missing.
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Auth & Sync Sprint (present)
+- Recommended next steps:
+  - [low] Implement **Fixed (CCP-466)**
+- Tasks:
+  - SPR-002-T01 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-226`
+  - SPR-002-T02 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-227`
+  - SPR-002-T03 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-228`
+  - SPR-002-T04 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-229`
+  - SPR-002-T05 — **Fixed (CCP-466)**
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-230`
+  - SPR-002-T06 — **Not done**
+    - Audit status: `implemented`
+    - Execution state: `planned`
+    - Linked prompts: none
+- Unassigned sprint prompts: `CCP-231`
+
+## SPR-003 — Sprint: Play Against Computer at Various Strength Levels
+
+- Source document: `docs/mini-sprints/ENGINE_STRENGTH_LEVELS_SPRINT_2026-03-30.md`
+- Status: `planned`
+- Tasks: 26
+- Plan coverage: 100%
+- Execution progress: 77%
+- Implementation progress: 0%
+- Linked prompts: 27
+- Unreviewed linked prompts: 0
+- Summary: planned, not yet started
+- Recommended next steps:
+  - [low] Implement Execute Phase 1 children
+  - [low] Implement Audit SF18 WASM UCI options for strength limiting; read Lichess rateBot.ts
+  - [low] Implement Define `EngineMode`, `EngineStrengthConfig`, `STRENGTH_LEVELS[1-8]`
+  - [low] Implement Add `setPlayStrength(config)`, `setAnalysisMode()`, `goPlay(depth)` to StockfishProtocol
+  - [low] Implement Build + typecheck validation
+- Tasks:
+  - SPR-003-T01 — Execute Phase 1 children
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-565`
+  - SPR-003-T02 — Audit SF18 WASM UCI options for strength limiting; read Lichess rateBot.ts
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-566`
+  - SPR-003-T03 — Define `EngineMode`, `EngineStrengthConfig`, `STRENGTH_LEVELS[1-8]`
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-567`
+  - SPR-003-T04 — Add `setPlayStrength(config)`, `setAnalysisMode()`, `goPlay(depth)` to StockfishProtocol
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-568`
+  - SPR-003-T05 — Build + typecheck validation
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-569`
+  - SPR-003-T06 — Execute Phase 2 children
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-571`
+  - SPR-003-T07 — Trace engine lifecycle in ctrl.ts, identify safe mode-switch injection points
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-572`
+  - SPR-003-T08 — Add `engineMode`, `playStrengthConfig`, `enterPlayMode()`, `exitPlayMode()` to ctrl.ts; guard `evalCurrentPosition()` and `evalThreatPosition()`
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-573`
+  - SPR-003-T09 — Persist last-used strength level in localStorage (`patzer.playStrengthLevel`)
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-574`
+  - SPR-003-T10 — Build + typecheck + manual console validation
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-575`
+  - SPR-003-T11 — Execute Phase 3 children
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-577`
+  - SPR-003-T12 — Design bestmove routing for play mode — callback slot in ctrl.ts vs dedicated listener
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-578`
+  - SPR-003-T13 — Implement `requestPlayMove()` and `cancelPlayMove()` with one-shot bestmove callback routing
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-579`
+  - SPR-003-T14 — Add `playMoveWithDelay()` — variable delay scaled by strength level + random jitter
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-580`
+  - SPR-003-T15 — Build + typecheck + console integration test (call from devtools, verify move returned)
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-581`
+  - SPR-003-T16 — Execute Phase 4 children
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-582`
+  - SPR-003-T17 — Add `strengthLevel` to PracticeSession type; accept in `startPractice()`
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-583`
+  - SPR-003-T18 — Wire `requestPlayMove` into `schedulePracticeOpponentResponse` at the `'request-engine'` branch (view.ts:2320); call `exitPlayMode()` on practice stop
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-584`
+  - SPR-003-T19 — Update practice banner to show strength level label when source is 'engine'
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-585`
+  - SPR-003-T20 — End-to-end validation: practice until repertoire exhausts, verify engine plays at reduced strength, verify analysis resumes after stop
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-586`
+  - SPR-003-T21 — Execute Phase 5 children
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-587`
+  - SPR-003-T22 — Audit Lichess AI level selector UI pattern — see [`docs/reference/LICHESS_AI_LEVEL_SELECTOR_AUDIT.md`](../reference/LICHESS_AI_LEVEL_SELECTOR_AUDIT.md)
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-588`
+  - SPR-003-T23 — Create `renderStrengthSelector(level, onChange)` Snabbdom view function
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-589`
+  - SPR-003-T24 — Embed selector in practice setup panel (view.ts `renderPracticeSetupPanel`)
+    - Audit status: `planned`
+    - Execution state: `reviewed-with-notes`
+    - Linked prompts: `CCP-590`
+  - SPR-003-T25 — Add `.strength-selector` styles, responsive for mobile
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-591`
+  - SPR-003-T26 — Visual + functional validation across viewports
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-592`
+- Unassigned sprint prompts: `CCP-564`
+
+## SPR-004 — Mini Sprint — Improvement Intelligence Platform
+
+- Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+- Status: `implementation-partial`
+- Tasks: 16
+- Plan coverage: 100%
+- Execution progress: 100%
+- Implementation progress: 44%
+- Linked prompts: 20
+- Unreviewed linked prompts: 0
+- Summary: Data layer (tasks 1–6, 12) is solid. UI layer (tasks 7–11, 13–15) is mostly placeholder or missing. 11 prompts still unreviewed.
+- Audits:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/audits/CHESS_IMPROVEMENT_PLATFORM_AUDIT.md` — Source audit (present)
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Improvement Intelligence Platform Sprint (present)
+- Recommended next steps:
+  - [normal] Complete **Partial**
+  - [normal] Complete **Partial**
+  - [low] Implement **Not started**
+  - [low] Implement **Not started**
+  - [low] Implement **Not started**
+- Tasks:
+  - SPR-004-T01 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-379`, `CCP-388`, `CCP-389`, `CCP-390`, `CCP-391`, `CCP-392`, `CCP-393`
+  - SPR-004-T02 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-380`
+  - SPR-004-T03 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-381`
+  - SPR-004-T04 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-382`
+  - SPR-004-T05 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-383`
+  - SPR-004-T06 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-384`
+  - SPR-004-T07 — **Partial**
+    - Audit status: `implementation-partial`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-385`
+  - SPR-004-T08 — **Partial**
+    - Audit status: `implementation-partial`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-386`
+  - SPR-004-T09 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-387`
+  - SPR-004-T10 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-387`
+  - SPR-004-T11 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-388`
+  - SPR-004-T12 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-389`
+  - SPR-004-T13 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-390`
+  - SPR-004-T14 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-391`
+  - SPR-004-T15 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-392`
+  - SPR-004-T16 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-393`
+- Unassigned sprint prompts: `CCP-394`, `CCP-395`, `CCP-396`, `CCP-397`, `CCP-398`
+
+## SPR-005 — Mini Sprint — Mobile Analysis Usability
+
+- Source document: `docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md`
+- Status: `completed-with-issues`
+- Tasks: 1
+- Plan coverage: 0%
+- Execution progress: 0%
+- Implementation progress: 100%
+- Linked prompts: 6
+- Unreviewed linked prompts: 0
+- Summary: Complete. One minor regression noted.
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Mobile Analysis Usability Sprint (present)
+- Tasks:
+  - SPR-005-T01 — Mini Sprint — Mobile Analysis Usability
+    - Audit status: `implemented`
+    - Execution state: `planned`
+    - Linked prompts: none
+- Unassigned sprint prompts: `CCP-059`, `CCP-060`, `CCP-061`, `CCP-062`, `CCP-063`, `CCP-064`
+
+## SPR-006 — Openings Opponent Tool Suite Sprint
+
+- Source document: `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
+- Status: `active`
+- Tasks: 7
+- Plan coverage: 100%
+- Execution progress: 57%
+- Implementation progress: 0%
+- Linked prompts: 57
+- Unreviewed linked prompts: 4
+- Summary: Analytics computation exists. UI framework (left-rail, tool views, dashboards) not built. 11 prompts still unreviewed.
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Openings Opponent Tool Suite Sprint (present)
+- Recommended next steps:
+  - [low] Implement **Not started**
+  - [low] Implement **Not started**
+  - [low] Implement **Not started**
+  - [low] Implement **Prompts ran, unreviewed**
+  - [low] Implement **Prompts ran, unreviewed**
+- Tasks:
+  - SPR-006-T01 — **Prompts ran, unreviewed**
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-324`, `CCP-325`, `CCP-326`, `CCP-327`, `CCP-328`, `CCP-329`, `CCP-330`
+  - SPR-006-T02 — **Prompts ran, unreviewed**
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-331`, `CCP-332`, `CCP-333`, `CCP-334`, `CCP-335`, `CCP-336`, `CCP-337`, `CCP-338`
+  - SPR-006-T03 — **Prompts ran, unreviewed**
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-339`, `CCP-340`, `CCP-341`, `CCP-342`, `CCP-343`, `CCP-344`, `CCP-345`, `CCP-346`
+  - SPR-006-T04 — **Prompts ran, unreviewed**
+    - Audit status: `planned`
+    - Execution state: `reviewed-with-notes`
+    - Linked prompts: `CCP-347`, `CCP-348`, `CCP-349`, `CCP-350`, `CCP-351`, `CCP-352`, `CCP-353`, `CCP-354`
+  - SPR-006-T05 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-355`, `CCP-356`, `CCP-357`, `CCP-358`, `CCP-359`, `CCP-360`, `CCP-361`, `CCP-362`
+  - SPR-006-T06 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-363`, `CCP-364`, `CCP-365`, `CCP-366`, `CCP-367`, `CCP-368`, `CCP-369`, `CCP-370`
+  - SPR-006-T07 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-371`, `CCP-372`, `CCP-373`, `CCP-374`, `CCP-375`, `CCP-376`, `CCP-377`, `CCP-378`
+- Unassigned sprint prompts: `CCP-323`, `CCP-511`
+
+## SPR-007 — Openings Page Implementation Sprint
+
+- Source document: `docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md`
+- Status: `completed`
+- Tasks: 5
+- Plan coverage: 100%
+- Execution progress: 100%
+- Implementation progress: 0%
+- Linked prompts: 26
+- Unreviewed linked prompts: 0
+- Summary: Complete.
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Openings Page OpeningTree Implementation (present)
+- Recommended next steps:
+  - [low] Implement Phase 0 — Ownership And Separate Research Persistence
+  - [low] Implement Phase 1 — Opponent Research Import Flow
+  - [low] Implement Phase 2 — Tree Build And Board Shell
+  - [low] Implement Phase 3 — Played Lines, Percentages, And Report Surface
+  - [low] Implement Phase 4 — Collections Management And Product Polish
+- Tasks:
+  - SPR-007-T01 — Phase 0 — Ownership And Separate Research Persistence
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-178`, `CCP-179`, `CCP-180`, `CCP-181`, `CCP-182`
+  - SPR-007-T02 — Phase 1 — Opponent Research Import Flow
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-183`, `CCP-184`, `CCP-185`, `CCP-186`, `CCP-187`
+  - SPR-007-T03 — Phase 2 — Tree Build And Board Shell
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-188`, `CCP-189`, `CCP-190`, `CCP-191`, `CCP-192`
+  - SPR-007-T04 — Phase 3 — Played Lines, Percentages, And Report Surface
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-193`, `CCP-194`, `CCP-195`, `CCP-196`, `CCP-197`
+  - SPR-007-T05 — Phase 4 — Collections Management And Product Polish
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-198`, `CCP-199`, `CCP-200`, `CCP-201`, `CCP-202`
+- Unassigned sprint prompts: `CCP-203`
+
+## SPR-008 — Openings Research Report Upgrade Sprint
+
+- Source document: `docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md`
+- Status: `active`
+- Tasks: 3
+- Plan coverage: 100%
+- Execution progress: 100%
+- Implementation progress: 0%
+- Linked prompts: 16
+- Unreviewed linked prompts: 0
+- Summary: Core accuracy work done. Import typecheck issues and comparative view remain.
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Openings Research Report Upgrade Sprint (present)
+- Recommended next steps:
+  - [low] Implement Phase 5 — Research Model And Import Integrity
+  - [low] Implement Phase 6 — Position Graph And Session Report Upgrade
+  - [low] Implement Phase 7 — Comparative Prep And Session Polish
+- Tasks:
+  - SPR-008-T01 — Phase 5 — Research Model And Import Integrity
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-214`, `CCP-213`, `CCP-212`, `CCP-211`, `CCP-210`
+  - SPR-008-T02 — Phase 6 — Position Graph And Session Report Upgrade
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-219`, `CCP-218`, `CCP-217`, `CCP-216`, `CCP-215`
+  - SPR-008-T03 — Phase 7 — Comparative Prep And Session Polish
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-224`, `CCP-223`, `CCP-222`, `CCP-221`, `CCP-220`
+- Unassigned sprint prompts: `CCP-225`
+
+## SPR-009 — Mini Sprint — Opponent Research Platform
+
+- Source document: `docs/mini-sprints/OPPONENT_RESEARCH_PLATFORM_SPRINT_2026-03-29.md`
+- Status: `implementation-partial`
+- Tasks: 10
+- Plan coverage: 0%
+- Execution progress: 0%
+- Implementation progress: 40%
+- Linked prompts: 59
+- Unreviewed linked prompts: 0
+- Summary: Phases 1–4 partially landed with bugs. Phases 5–9 not implemented.
+- Audits:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/research/OPPONENT_RESEARCH_AUDIT.md` — Source audit (present)
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Opponent Research Platform Sprint (present)
+- Recommended next steps:
+  - [normal] Complete **Code only**
+  - [low] Implement **Not started**
+  - [low] Implement **Not started**
+  - [low] Implement **Not started**
+  - [low] Implement **Not started**
+- Tasks:
+  - SPR-009-T01 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T02 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T03 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T04 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T05 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T06 — **Code only**
+    - Audit status: `implementation-partial`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T07 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T08 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T09 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-009-T10 — **Not started**
+    - Audit status: `not-started`
+    - Execution state: `planned`
+    - Linked prompts: none
+- Unassigned sprint prompts: `CCP-399`, `CCP-400`, `CCP-401`, `CCP-402`, `CCP-403`, `CCP-404`, `CCP-405`, `CCP-406`, `CCP-407`, `CCP-408`, `CCP-409`, `CCP-410`, `CCP-411`, `CCP-412`, `CCP-413`, `CCP-414`, `CCP-415`, `CCP-416`, `CCP-417`, `CCP-418`, `CCP-419`, `CCP-420`, `CCP-421`, `CCP-422`, `CCP-423`, `CCP-424`, `CCP-425`, `CCP-426`, `CCP-427`, `CCP-428`, `CCP-429`, `CCP-430`, `CCP-431`, `CCP-432`, `CCP-433`, `CCP-434`, `CCP-435`, `CCP-436`, `CCP-437`, `CCP-438`, `CCP-439`, `CCP-440`, `CCP-441`, `CCP-442`, `CCP-443`, `CCP-444`, `CCP-445`, `CCP-446`, `CCP-447`, `CCP-448`, `CCP-449`, `CCP-450`, `CCP-451`, `CCP-452`, `CCP-453`, `CCP-454`, `CCP-455`, `CCP-456`, `CCP-457`
+
+## SPR-010 — Mini Sprint — Puzzle Page Mobile Usability
+
+- Source document: `docs/mini-sprints/PUZZLE_PAGE_MOBILE_USABILITY_SPRINT_2026-03-28.md`
+- Status: `completed`
+- Tasks: 1
+- Plan coverage: 0%
+- Execution progress: 0%
+- Implementation progress: 100%
+- Linked prompts: 6
+- Unreviewed linked prompts: 0
+- Summary: Complete. All passed review.
+- Dependencies: `SPR-005`
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Puzzle Page Mobile Usability Sprint (present)
+- Tasks:
+  - SPR-010-T01 — Mini Sprint — Puzzle Page Mobile Usability
+    - Audit status: `verified`
+    - Execution state: `planned`
+    - Linked prompts: none
+- Unassigned sprint prompts: `CCP-209`, `CCP-204`, `CCP-205`, `CCP-206`, `CCP-207`, `CCP-208`
+
+## SPR-011 — Patzer Pro — Puzzle V1 Phased Execution Record
+
+- Source document: `docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md`
+- Status: `active`
+- Tasks: 7
+- Plan coverage: 100%
+- Execution progress: 43%
+- Implementation progress: 0%
+- Linked prompts: 35
+- Unreviewed linked prompts: 0
+- Summary: Built. Known issues with save-puzzle consistency and bulk-save first-attempt info (CCP-166/167).
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Puzzle V1 Phased Execution (present)
+- Recommended next steps:
+  - [low] Implement Phase 0 — Ownership And Data Foundations
+  - [low] Implement Phase 1 — Minimal Puzzle Product Shell
+  - [low] Implement Phase 1.5 — Restore Puzzle Header Entry
+  - [low] Implement Phase 2 — Strict Puzzle Solve Loop
+  - [low] Implement Phase 3 — Engine Assist Layer
+- Tasks:
+  - SPR-011-T01 — Phase 0 — Ownership And Data Foundations
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-148`, `CCP-143`, `CCP-144`, `CCP-145`, `CCP-146`, `CCP-147`
+  - SPR-011-T02 — Phase 1 — Minimal Puzzle Product Shell
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-175`, `CCP-154`, `CCP-153`, `CCP-152`, `CCP-151`, `CCP-150`
+  - SPR-011-T03 — Phase 1.5 — Restore Puzzle Header Entry
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-175`
+  - SPR-011-T04 — Phase 2 — Strict Puzzle Solve Loop
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-164-F1`, `CCP-159`, `CCP-158`, `CCP-157`, `CCP-156`, `CCP-155`
+  - SPR-011-T05 — Phase 3 — Engine Assist Layer
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-164-F1`, `CCP-164`, `CCP-163`, `CCP-162`, `CCP-161`, `CCP-160`
+  - SPR-011-T06 — Phase 4 — User Library Authoring
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-166-F1`, `CCP-168-F1`, `CCP-169`, `CCP-168`, `CCP-167`, `CCP-166`, `CCP-165`
+  - SPR-011-T07 — Phase 5 — Repetition And Imported-Library Scale
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-174`, `CCP-173`, `CCP-172`, `CCP-171`, `CCP-170`
+
+## SPR-012 — Rated Puzzle Ladder And Cloud Ownership Sprint
+
+- Source document: `docs/mini-sprints/RATED_PUZZLE_LADDER_AND_CLOUD_OWNERSHIP_SPRINT_2026-03-29.md`
+- Status: `implementation-partial`
+- Tasks: 8
+- Plan coverage: 100%
+- Execution progress: 88%
+- Implementation progress: 88%
+- Linked prompts: 49
+- Unreviewed linked prompts: 0
+- Summary: Phases 1–6 implemented. Phase 7 (cloud sync) is dead code. Phase 8 has unresolved typecheck issues.
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Rated Puzzle Ladder & Cloud Ownership Sprint (present)
+- Recommended next steps:
+  - [low] Implement **Wired (CCP-463)**
+- Tasks:
+  - SPR-012-T01 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-264`, `CCP-263`, `CCP-262`, `CCP-261`, `CCP-260`, `CCP-259`
+  - SPR-012-T02 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-270`, `CCP-269`, `CCP-268`, `CCP-267`, `CCP-266`, `CCP-265`
+  - SPR-012-T03 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-276`, `CCP-275`, `CCP-274`, `CCP-273`, `CCP-272`, `CCP-271`
+  - SPR-012-T04 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-282`, `CCP-281`, `CCP-280`, `CCP-279`, `CCP-278`, `CCP-277`
+  - SPR-012-T05 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-288`, `CCP-287`, `CCP-286`, `CCP-285`, `CCP-284`, `CCP-283`
+  - SPR-012-T06 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-294`, `CCP-293`, `CCP-292`, `CCP-291`, `CCP-290`, `CCP-289`
+  - SPR-012-T07 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-300`, `CCP-299`, `CCP-298`, `CCP-297`, `CCP-296`, `CCP-295`
+  - SPR-012-T08 — **Wired (CCP-463)**
+    - Audit status: `planned`
+    - Execution state: `issues-found`
+    - Linked prompts: `CCP-306`, `CCP-305`, `CCP-304`, `CCP-303`, `CCP-302`, `CCP-301`
+- Unassigned sprint prompts: `CCP-258`
+
+## SPR-013 — Rated Puzzle Stream Sprint
+
+- Source document: `docs/mini-sprints/RATED_PUZZLE_STREAM_SPRINT_2026-03-29.md`
+- Status: `completed-with-issues`
+- Tasks: 4
+- Plan coverage: 75%
+- Execution progress: 75%
+- Implementation progress: 100%
+- Linked prompts: 15
+- Unreviewed linked prompts: 0
+- Summary: Core stream works. Shard integration has lingering typecheck issues.
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Rated Puzzle Stream Sprint (present)
+- Tasks:
+  - SPR-013-T01 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-312`, `CCP-313`, `CCP-314`
+  - SPR-013-T02 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-318`
+  - SPR-013-T03 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-310`
+  - SPR-013-T04 — **Done**
+    - Audit status: `implemented`
+    - Execution state: `planned`
+    - Linked prompts: none
+- Unassigned sprint prompts: `CCP-307`, `CCP-308`, `CCP-309`, `CCP-311`, `CCP-315`, `CCP-316`, `CCP-317`, `CCP-319`, `CCP-320`, `CCP-321`
+
+## SPR-014 — Sprint Plan: Stable Background Bulk Review
+
+- Source document: `docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md`
+- Status: `completed`
+- Tasks: 1
+- Plan coverage: 0%
+- Execution progress: 0%
+- Implementation progress: 100%
+- Linked prompts: 7
+- Unreviewed linked prompts: 0
+- Summary: Complete. All passed review.
+- Audits:
+  - `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md` — Background Bulk Review Sprint (present)
+- Tasks:
+  - SPR-014-T01 — Sprint Plan: Stable Background Bulk Review
+    - Audit status: `verified`
+    - Execution state: `planned`
+    - Linked prompts: none
+- Unassigned sprint prompts: `CCP-126`, `CCP-125`, `CCP-124`, `CCP-123`, `CCP-122`, `CCP-121`, `CCP-120`
+
+## SPR-015 — Study Page Sprint Plan
+
+- Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+- Status: `active`
+- Tasks: 48
+- Plan coverage: 73%
+- Execution progress: 52%
+- Implementation progress: 0%
+- Linked prompts: 44
+- Unreviewed linked prompts: 10
+- Recommended next steps:
+  - [low] Implement Study domain types
+  - [low] Implement Study IDB persistence layer
+  - [low] Implement Route and page shell
+  - [low] Implement Save action core logic
+  - [low] Implement Context menu integration — "Save to Library"
+- Tasks:
+  - SPR-015-T01 — Study domain types
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-519`
+  - SPR-015-T02 — Study IDB persistence layer
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-520`
+  - SPR-015-T03 — Route and page shell
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-521`
+  - SPR-015-T04 — Save action core logic
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-523`
+  - SPR-015-T05 — Context menu integration — "Save to Library"
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-524`
+  - SPR-015-T06 — Board gear/menu integration — "Save game to Library"
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-525`
+  - SPR-015-T07 — Toast notification for save confirmation
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-526`
+  - SPR-015-T08 — Study library controller
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-528`
+  - SPR-015-T09 — Library list view
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-529`
+  - SPR-015-T10 — Study metadata editing
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-530`
+  - SPR-015-T11 — PGN import to library
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-531`
+  - SPR-015-T12 — Study detail page shell
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-533`
+  - SPR-015-T13 — Text comment editing
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-534`
+  - SPR-015-T14 — NAG glyph insertion
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-535`
+  - SPR-015-T15 — Variation creation and management
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-536`
+  - SPR-015-T16 — Variation fold/expand
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-537`
+  - SPR-015-T17 — Arrow and shape annotation persistence
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-538`
+  - SPR-015-T18 — Engine analysis integration in study workspace
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-539`
+  - SPR-015-T19 — Position bookmarking
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-540`
+  - SPR-015-T20 — Auto-save and PGN export
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-541`
+  - SPR-015-T21 — Scheduling engine
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-543`
+  - SPR-015-T22 — Move grader
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-544`
+  - SPR-015-T23 — Drill session controller
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-545`
+  - SPR-015-T24 — Session builder
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-546`
+  - SPR-015-T25 — Practice line extraction
+    - Audit status: `planned`
+    - Execution state: `reviewed-passed`
+    - Linked prompts: `CCP-547`
+  - SPR-015-T26 — Board adapter for drill mode
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-549`
+  - SPR-015-T27 — Drill session UI — active session view
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-550`
+  - SPR-015-T28 — Drill session UI — session summary
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-551`
+  - SPR-015-T29 — Practice entry from study detail — "Practice this line"
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-552`
+  - SPR-015-T30 — Progress persistence
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-554`
+  - SPR-015-T31 — Practice dashboard
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-555`
+  - SPR-015-T32 — Learn flow
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-556`
+  - SPR-015-T33 — Multi-line extraction
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-558`
+  - SPR-015-T34 — Practice line manager
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-559`
+  - SPR-015-T35 — Sequence scope selection UI
+    - Audit status: `planned`
+    - Execution state: `completed`
+    - Linked prompts: `CCP-560`
+  - SPR-015-T36 — Save from openings research
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T37 — Save from puzzle session
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T38 — Keyboard shortcuts for drill mode
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T39 — Sound effects for drill feedback
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T40 — Warmup position behavior
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T41 — Study library performance optimization
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T42 — Folder hierarchy data model
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T43 — Folder sidebar and navigation
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T44 — Create, rename, and delete folders
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T45 — Drag-and-drop studies into folders
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T46 — Multi-select and bulk operations
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T47 — View mode toggle (list vs grid)
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+  - SPR-015-T48 — Search across annotations
+    - Audit status: `planned`
+    - Execution state: `planned`
+    - Linked prompts: none
+- Unassigned sprint prompts: `CCP-522`, `CCP-527`, `CCP-532`, `CCP-542`, `CCP-548`, `CCP-553`, `CCP-557`, `CCP-561`, `CCP-563`

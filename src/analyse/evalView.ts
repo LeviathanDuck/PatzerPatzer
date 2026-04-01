@@ -210,6 +210,64 @@ export function renderAnalysisSummary(
   ]);
 }
 
+// --- Post-game summary panel ---
+// Collapsible panel rendered below the analysis controls.
+// Shows per-player accuracy + worst-move info with a navigation link.
+// Collapsed/open state persisted in localStorage.
+
+const POST_GAME_PANEL_KEY = 'patzer.postGameSummaryOpen';
+
+function getPostGamePanelOpen(): boolean {
+  return localStorage.getItem(POST_GAME_PANEL_KEY) !== 'false';
+}
+
+function setPostGamePanelOpen(open: boolean): void {
+  localStorage.setItem(POST_GAME_PANEL_KEY, open ? 'true' : 'false');
+}
+
+/**
+ * Find the path of the move with the highest win-chance loss for the given player color.
+ * Returns null if evalCache has no loss data.
+ */
+function findWorstMovePath(
+  mainline:   TreeNode[],
+  evalCache:  EvalCache,
+  userColor?: 'white' | 'black',
+): { path: string; loss: number; ply: number } | null {
+  let worstPath: string | null = null;
+  let worstLoss = 0;
+  let worstPly  = 0;
+  let path = '';
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i]!;
+    path += node.id;
+    const isWhiteMove = node.ply % 2 === 1;
+    if (userColor === 'white'  && !isWhiteMove) continue;
+    if (userColor === 'black'  && isWhiteMove) continue;
+    const ev = evalCache.get(path);
+    if (ev?.loss !== undefined && ev.loss > worstLoss) {
+      worstLoss = ev.loss;
+      worstPath = path;
+      worstPly  = node.ply;
+    }
+  }
+  return worstPath ? { path: worstPath, loss: worstLoss, ply: worstPly } : null;
+}
+
+export function renderPostGameSummaryPanel(
+  _analysisComplete: boolean,
+  _evalCache:        EvalCache,
+  _mainline:         TreeNode[],
+  _whiteName:        string,
+  _blackName:        string,
+  _userColor:        'white' | 'black' | null | undefined,
+  _navigate:         (path: string) => void,
+  _redraw:           () => void,
+): VNode {
+  // Temporarily hidden — panel will be redesigned with more useful content.
+  return h('div');
+}
+
 // --- Eval bar ---
 // Adapted from lichess-org/lila: ui/analyse/src/view/ (evaluation bar)
 

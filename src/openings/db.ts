@@ -5,7 +5,7 @@
  * touches the main analysis/puzzle persistence in 'patzer-pro'.
  */
 
-import type { ResearchCollection } from './types';
+import type { ResearchCollection, OpeningsTool, SavedVariation } from './types';
 
 /** Persisted session resume state. */
 export interface StoredOpeningsSession {
@@ -15,6 +15,11 @@ export interface StoredOpeningsSession {
   path: string[];
   /** Board orientation. */
   orientation: 'white' | 'black';
+  /**
+   * Active tool at time of save. Optional for backward compatibility with
+   * records written before this field existed. Falls back to 'repertoire' on restore.
+   */
+  activeTool?: OpeningsTool;
   /** Timestamp of last save. */
   savedAt: number;
 }
@@ -24,7 +29,7 @@ let _db: IDBDatabase | undefined;
 function openDb(): Promise<IDBDatabase> {
   if (_db) return Promise.resolve(_db);
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('patzer-openings', 2);
+    const req = indexedDB.open('patzer-openings', 3);
     req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
       const db = (e.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains('collections')) {
@@ -32,6 +37,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('session')) {
         db.createObjectStore('session');
+      }
+      if (!db.objectStoreNames.contains('training-variations')) {
+        db.createObjectStore('training-variations', { keyPath: 'id' });
       }
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };
@@ -124,5 +132,47 @@ export async function clearSessionState(): Promise<void> {
     tx.objectStore('session').delete('current');
   } catch (e) {
     console.warn('[openings-db] session clear failed', e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ORP — saved training variations
+// ---------------------------------------------------------------------------
+
+/** Save a variation for Opening Repetition Practice. */
+export async function saveVariation(variation: SavedVariation): Promise<void> {
+  try {
+    const db = await openDb();
+    const tx = db.transaction('training-variations', 'readwrite');
+    tx.objectStore('training-variations').put(variation);
+  } catch (e) {
+    console.warn('[openings-db] variation save failed', e);
+  }
+}
+
+/** Load all saved training variations. */
+export async function loadVariations(): Promise<SavedVariation[]> {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('training-variations', 'readonly');
+      const req = tx.objectStore('training-variations').getAll();
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[openings-db] variation load failed', e);
+    return [];
+  }
+}
+
+/** Delete a saved training variation by id. */
+export async function deleteVariation(id: string): Promise<void> {
+  try {
+    const db = await openDb();
+    const tx = db.transaction('training-variations', 'readwrite');
+    tx.objectStore('training-variations').delete(id);
+  } catch (e) {
+    console.warn('[openings-db] variation delete failed', e);
   }
 }

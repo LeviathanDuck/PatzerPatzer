@@ -52,6 +52,8 @@ interface AnalysisControlsDeps {
   // CCP-245: opening explorer toggle
   onToggleExplorer: () => void;
   explorerEnabled:  () => boolean;
+  // CCP-525: save current game to Study Library
+  onSaveToLibrary:  () => void;
 }
 
 let _deps: AnalysisControlsDeps | null = null;
@@ -210,6 +212,12 @@ export function renderActionMenu(): VNode | null {
     // Tools section — mirrors lichess-org/lila: actionMenu.ts Tools group
     h('h2', 'Tools'),
     h('div.action-menu__tools', [
+      // Save game to Study Library (CCP-525)
+      h('button', {
+        attrs: { title: 'Save this game to Study Library' },
+        on:    { click: () => { deps.onSaveToLibrary(); close(); } },
+      }, 'Save game to Library'),
+
       // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
       h('button', {
         attrs: { 'data-icon': ICON_FLIP, title: 'Flip board (hotkey: f)' },

@@ -1,9 +1,21 @@
 # Mini Sprint — Analysis Controls Parity
 
 Date: 2026-03-29
-Status: proposed
+Status: foundation done, migration incomplete (audited 2026-03-30)
 Source audit: [docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md](/Users/leftcoast/Development/PatzerPatzer/docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md)
 Scope: smallest safe sequence to move Patzer's analysis controls toward Lichess-style ownership and behavior without destabilizing the analysis board
+
+### Task Status (as of 2026-03-30)
+
+| Task | Status | Notes |
+|---|---|---|
+| Task 1 — Extract analysis-controls owner | **Done** | `analyse/analysisControls.ts` |
+| Task 2 — Lichess-style control bar shell | **Done** | |
+| Task 3 — Hamburger menu overlay | **Done** | |
+| Task 4 — Migrate existing actions | **Done** | Legacy `.analyse__actions` path removed (CCP-467) |
+| Task 5 — Explorer button | **Done** | Typecheck fixed (CCP-462) |
+| Task 6 — Split engine gear | **Not confirmed** | |
+| Task 7 — Clean header duplicates | **Not confirmed** | |
 
 ---
 

@@ -70,6 +70,20 @@ In this repo, `Game Review` means the Review-button workflow on the analysis boa
 This is Patzer Pro's term for the Lichess `Request Computer Analysis` / computer-analysis flow.
 Do not interpret `Game Review` as generic commentary, PR review, or a separate non-engine feature.
 
+For the future openings spaced-repetition feature, use this naming consistently in source-controlled
+docs, prompts, comments, and plans:
+
+- canonical feature name: `Opening Repetition Practice`
+- short internal alias: `ORP`
+- acceptable generic category terms:
+  - `opening practice`
+  - `repertoire practice`
+  - `line repetition`
+  - `opening drill flow`
+
+Do not use third-party product names or third-party feature names as in-repo shorthand for this
+feature. We are building something distinct, and unique. Not a copy cat
+
 ## Mandatory workflow for non-trivial implementation tasks
 
 For every non-trivial task, always do this in order:
@@ -81,6 +95,8 @@ For every non-trivial task, always do this in order:
    - how Patzer Pro currently works
    - how Lichess works
    - where they differ
+   - Detect if the difference is internal based off prompt language
+   - If necessary ask the user if the difference is intentional
 5. Identify the smallest safe implementation step
 6. Explain diagnosis before coding
 7. Implement
@@ -126,55 +142,116 @@ Rules:
 - if the change is docs-only, prompt-only, or tooling-only, explicitly say that no manual app test is needed
 - do not pad the review with speculative test ideas for unchanged areas
 
+## Prompt execution rule
+
+When a CCP prompt body is received for execution (i.e. a message whose primary content
+is a `CCP-###` prompt body), the agent must:
+
+1. Run `npm run prompt:start -- <PROMPT_ID>` before making any code changes
+2. Execute the prompt
+3. Run `npm run prompt:complete -- <PROMPT_ID> --checklist "..."` after the work is done
+
+This applies even when the prompt is the first message in a thread.
+Skipping these commands leaves the prompt stuck at `queued-pending` with no record it ran.
+
+The checklist must contain concrete manual verification steps matching what was implemented.
+
+## Prompt command output rule
+
+Lifecycle commands must NEVER have their output truncated:
+- never pipe `prompt:reserve`, `prompt:start`, `prompt:complete`, `prompt:create`,
+  `prompt:release`, or `prompt:review` through `head`, `tail`, or any output limiter
+- always let the full output run so the allocated ID and refresh results are visible
+- if a reserve command output was truncated and the ID is unknown, run
+  `npm run prompt:reservations` to find it before proceeding — do not re-run the reserve
+
+## Prompt creation output rule
+
+When creating a prompt, the agent must:
+1. State the reserved prompt ID visibly before writing the body
+2. Output the Pre-Creation Checklist from `PROMPT_CREATION_PROCESS.md` visibly in the
+   response so the user can verify each step was followed
+3. After `prompt:create`, verify the created registry record uses the correct prompt taxonomy:
+   - `kind`
+   - `category`
+   and confirm they match the repo's actual dashboard conventions before reporting success
+
 ## Claude prompt tracking
 
-When Codex is asked to create a prompt for Claude Code:
+Prompt workflow rules are owned by the canonical prompt docs, not by this file.
 
-- first read `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md` and follow it
-- assign or reuse a stable prompt identifier in the form `CCP-###`
-- add an entry to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
-- add the full prompt text to `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
-- include the same prompt identifier near the top of the generated Claude prompt
-- instruct Claude Code to echo the `Prompt ID` in its final report so the exact prompt instance can be traced later
-- include enough metadata to trace the prompt later:
-  - task id
-  - source document, if applicable
-  - source step, if applicable
-  - short task title
+If the task involves:
+- prompt creation
+- prompt review
+- prompt tracking
+- manager prompts
+- follow-up fix prompts
+- prompt workflow changes
 
-When Codex is asked to review Claude Code work or to verify whether a prompt/task id was accomplished:
+first read:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REGISTRY_README.md`
 
-- update `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md` as part of the review workflow
-- update the matching entry in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
-- if the prompt id is known, mark the history entry heading so it clearly shows the prompt was used in Claude Code
-- record review state separately from completion state
-- if the prompt id must be inferred rather than confirmed, say so explicitly in both the review response and the log entry
+then read the relevant process doc:
+- id reservation / follow-up ids / release:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_ID_PROCESS.md`
+- prompt creation:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_CREATION_PROCESS.md`
+- prompt review / closeout:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REVIEW_PROCESS.md`
+- manager prompts:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_MANAGER_PROCESS.md`
+- user phrasing / examples:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_USER_GUIDE.md`
 
-Prompt log expectations:
+Hard rules:
+- deprecated or removed prompt docs are non-authoritative and must not be followed
+- if the user’s natural language clearly maps to one prompt workflow, follow that workflow even if the user did not use the exact process name
+- if prompt-related intent is materially ambiguous, ask a clarifying question before mutating files
+- if the user asks to change prompt IDs, prompt creation, prompt review, manager prompts, prompt tracking, or the prompt docs themselves, treat it as a workflow-change request and update the canonical prompt docs before considering the work complete
+- if the user says `update our prompt workflow so that ...`, automatically treat that as a full workflow-change request with the workflow-change propagation rule implied by default
+- do not assume allocator input labels are the same thing as final registry/dashboard taxonomy; verify the final created prompt record after `prompt:create`
 
-- `CLAUDE_PROMPT_LOG.md` is the compact index of prompt ids, provenance, and review state
-- `CLAUDE_PROMPT_HISTORY.md` is the full archive of generated Claude prompts plus later status updates
-- treat prompt creation and prompt review as log-writing tasks, not optional follow-up work
+Tracked Prompt Gate:
+- before ANY code change — regardless of size — first determine whether the work is already covered by an existing `CCP-###` prompt
+- if it is not already tracked, stop and ask whether the work should be handled as a tracked prompt before making code changes
+- tracked prompts are the default for all code work
+- untracked code work is allowed only when the user explicitly opts out
+- "small" or "trivial" changes are NOT exceptions — a one-line change still requires the gate check
+- the gate resets for every distinct user request, even within the same conversation session
+- the existing CCP prompt exception is scope-limited: it only covers work explicitly described in that prompt — a new or different request in the same session is a new gate check
+- this gate does not apply to docs-only work, prompt-only work, or reviews/audits with no code mutation
 
-Follow-up fix prompt rule:
+## Sprint tracking
 
-- if the user asks in natural language to fix a bug, issue, regression, or missed behavior from an existing `CCP-###` task or reviewed prompt, treat it as a follow-up fix prompt by default
-- natural-language signals include phrases like:
-  - `I have a bug to fix with this`
-  - `I want to fix something from this task`
-  - `this needs a follow-up fix`
-  - `create a follow-up fix for CCP-###`
-- when that intent is clear, do not create a brand-new root `CCP-###`
-- instead, keep the same root task family id and use the next follow-up prompt id:
-  - original: `CCP-013`
-  - first follow-up fix prompt: `CCP-013-F1`
-  - second follow-up fix prompt: `CCP-013-F2`
-- for follow-up fix prompts:
-  - `Prompt ID` is the unique follow-up id, such as `CCP-013-F1`
-  - `Task ID` remains the root family id, such as `CCP-013`
-  - `Parent Prompt ID` should point to the prompt being fixed
-- if the user’s wording is natural-language-only but the current task family is clear from context, infer the follow-up relationship and use the next `-F#` id automatically
-- only create a brand-new root `CCP-###` when the user is starting a genuinely new task rather than refining or fixing an existing one
+Sprint workflow rules are owned by the canonical sprint docs, not by this file.
+
+If the task involves:
+- sprint creation
+- sprint tracking
+- sprint progress reporting
+- sprint audits
+- sprint dashboard work
+- prompt-to-sprint linkage
+- sprint workflow changes
+
+first read:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_REGISTRY_README.md`
+
+then read the relevant process doc:
+- sprint creation / registration:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_CREATION_PROCESS.md`
+- sprint progress / task state / dashboard rollups:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_PROGRESS_PROCESS.md`
+- sprint audits / next-best-step updates:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_AUDIT_PROCESS.md`
+- user phrasing / examples:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_USER_GUIDE.md`
+
+Hard rules:
+- if the user asks to create a sprint plan, create or update both the sprint markdown doc and the sprint registry entry
+- if the user asks to create prompts for a sprint, prompt records must include `sprintId`, `sprintPhaseId`, and `sprintTaskId` when the work maps to a concrete sprint task
+- if the user asks to review or audit a sprint, use the sprint registry first, then cross-check linked prompts, audits, and code evidence
+- if the user asks to change sprint creation, sprint tracking, sprint audits, sprint dashboard behavior, or sprint docs, treat it as a sprint-workflow change request and update the canonical sprint docs before considering the work complete
 
 ## Lichess-first rule
 
@@ -390,15 +467,52 @@ Before coding, provide:
 
 ## Required validation after coding
 
-After implementation, always report:
+After implementation, always run BOTH:
 
-- build result
+1. `npm run build` — confirms esbuild bundling succeeds
+2. `npx tsc --noEmit` — confirms full TypeScript type-checking passes
+
+Both must pass. esbuild does NOT type-check, so a passing build does NOT mean the code is type-safe. Shipping code that passes `npm run build` but fails `npx tsc --noEmit` is a known failure mode that has caused cascading issues across multiple sprints (see `docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md`).
+
+After both pass, report:
+
+- build result AND typecheck result
 - feature-specific smoke tests
 - whether behavior changed intentionally
 - whether there are console/runtime errors
 - any remaining risks or limitations
 
 If validation could not be run, say so explicitly.
+
+## Manual verification checklist requirement
+
+Manual checklist rules are owned by:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REVIEW_PROCESS.md`
+
+Do not redefine checklist requirements in this file. Follow the canonical review process doc.
+
+## Fix prompts — linking back to the original reviewed prompt
+
+Fix-prompt linkage rules are owned by:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REVIEW_PROCESS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_CREATION_PROCESS.md`
+
+Use those docs for `--fixes`, follow-up relationships, and review-driven rework flow.
+
+## Setting fixPromptSuggestion during review
+
+`fixPromptSuggestion` behavior is owned by:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REVIEW_PROCESS.md`
+
+Do not redefine it here. Follow the canonical review process doc.
+
+## Wiring validation rule
+
+When implementing a new function, service, or data path, verify that it is actually called from at least one live code path. Shipping implemented-but-never-called code is dead code. The audit found multiple instances of functions that were fully implemented but never wired into the runtime (cloud sync, lifecycle hooks, IDB writes). Before marking a task complete, grep for at least one call site outside the defining file.
+
+## Cross-module consistency check
+
+When a task touches persistence (IDB database names, store names, server endpoints), verify that ALL modules referencing that persistence layer use the same identifiers. The audit found a DB name mismatch (`patzer-puzzle-db` vs `patzer-puzzle-v1`) that silently broke sync for weeks.
 
 ## Prompt output rule
 

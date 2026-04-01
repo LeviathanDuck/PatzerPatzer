@@ -54,3 +54,21 @@ Current code paths:
 
 Likely current cause:
 - auto-review state appears split between `importFilters.autoReview` and a separate persisted review-queue setting, so the visible checkbox state and the actual post-import review trigger may not stay in sync
+
+## [MEDIUM] Mistake Detection severity controls are ambiguous and may look broken
+
+In the `Mistake Detection` modal, the `Inaccuracy` / `Mistake` / `Blunder` controls currently act
+as a pill picker for the single `minClassification` setting, but the UI can make it look like
+selecting those options should reveal or update additional sliders. Right now the only visible
+slider nearby is `Missed Mate in N`, which makes the severity controls feel incomplete or broken.
+
+Impact:
+- users cannot tell whether the severity buttons are working as intended
+- the settings UI creates confusion about whether more parameters should appear for each severity level
+
+Current code path:
+- `src/header/index.ts` renders `Minimum Severity` as a pill selector and `Missed Mate in N` as a separate slider in `renderRetroModal()`
+
+Current behavior from code inspection:
+- selecting `Inaccuracy`, `Mistake`, or `Blunder` only updates `retroConfig.minClassification`
+- it does not currently swap in or retune additional slider values

@@ -8,6 +8,7 @@
 import { h, type VNode } from 'snabbdom';
 import type { RetroCtrl } from './retroCtrl';
 import type { RetroCandidate } from './retro';
+import { type EvalDiff } from './evalDiff';
 import { retroCandidateToDefinition } from '../puzzles/adapters';
 import { savePuzzleDefinition, saveAttempt } from '../puzzles/puzzleDb';
 import type { PuzzleAttempt, FailureReason, SolveResult } from '../puzzles/types';
@@ -75,6 +76,15 @@ const MAX_DEPTH = 18;
 function renderEvalProgress(depth: number | undefined): VNode {
   const pct = depth ? Math.min(100, Math.max(0, (100 * (depth - MIN_DEPTH)) / (MAX_DEPTH - MIN_DEPTH))) : 0;
   return h('div.retro-progress', h('div', { attrs: { style: `width: ${pct}%` } }));
+}
+
+/** Render the eval diff value when available. Copy/styling is deferred to a polish task. */
+function renderEvalDiff(diff: EvalDiff | undefined): VNode | null {
+  if (!diff) return null;
+  // Hide the badge when the difference is zero or negative (eval noise / near-equal move).
+  // For cp-backed diffs use cpDiff; for mate-miss cases (cpDiff null) fall back to wcDiff.
+  if (diff.cpDiff !== null ? diff.cpDiff <= 0 : diff.wcDiff <= 0) return null;
+  return h('span.retro-feedback__eval-diff', diff.formatted);
 }
 
 // Shared "view solution / skip" choice links.
@@ -385,6 +395,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
         h('div.retro-icon.retro-icon--fail', '✗'),
         h('div.retro-instruction', [
           h('strong', strongText),
+          renderEvalDiff(cand?.evalDiff),
           h('em', `Try another move for ${color}`),
           renderSkipOrView(retro, navigate, redraw),
           renderSaveToLibrary(cand, retro, redraw),
@@ -416,6 +427,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('div.retro-icon.retro-icon--win', '✓'),
           h('div.retro-instruction', [
             h('strong', msg),
+            renderEvalDiff(cand?.evalDiff),
             renderReasonNote(cand),
             renderSaveToLibrary(cand, retro, redraw),
           ]),
@@ -434,6 +446,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('div.retro-instruction', [
             h('strong', 'Solution'),
             h('em', ['Best was ', h('strong', bestSan)]),
+            renderEvalDiff(cand?.evalDiff),
             renderReasonNote(cand),
             renderSaveToLibrary(cand, retro, redraw),
           ]),

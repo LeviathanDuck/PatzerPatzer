@@ -55,15 +55,15 @@ export function parseRating(s: string | number | undefined): number | undefined 
 
 /**
  * Converts a PGN TimeControl header value (e.g. "600+0", "180+2") to a time class name.
- * Adapted from external reference-game-history-reference.md time class thresholds.
+ * Standard time class thresholds for PGN TimeControl classification.
  */
 export function timeClassFromTimeControl(tc: string | undefined): string | undefined {
   if (!tc || tc === '-') return undefined;
   const secs = parseInt(tc, 10); // base time in seconds (ignores increment)
   if (isNaN(secs)) return undefined;
-  if (secs < 180)    return 'ultrabullet';
-  if (secs < 600)    return 'bullet';
-  if (secs < 1800)   return 'blitz';
-  if (secs <= 10800) return 'rapid';
+  if (secs < 30)     return 'ultrabullet';
+  if (secs < 180)    return 'bullet';
+  if (secs < 480)    return 'blitz';
+  if (secs < 1500)   return 'rapid';
   return 'classical';
 }

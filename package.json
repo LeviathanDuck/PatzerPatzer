@@ -12,17 +12,33 @@
     "serve": "node server.mjs",
     "typecheck": "tsc --noEmit",
     "prompts:generate": "node scripts/generate-prompt-docs.mjs",
-    "prompts:refresh": "npm run prompts:generate && npm run prompts:dashboard && npm run audit:prompts",
+    "sprints:generate": "node scripts/generate-sprint-docs.mjs",
+    "dashboard:generate": "node scripts/generate-prompt-dashboard.mjs",
+    "prompts:refresh": "npm run prompts:generate && npm run sprints:generate && npm run dashboard:generate && npm run audit:prompts && npm run audit:sprints",
+    "sprints:refresh": "npm run prompts:generate && npm run sprints:generate && npm run dashboard:generate && npm run audit:prompts && npm run audit:sprints",
     "prompts:migrate": "node scripts/migrate-prompt-registry.mjs && npm run prompts:generate",
     "audit:prompts": "node scripts/audit-prompt-tracking.mjs",
+    "audit:sprints": "node scripts/audit-sprint-tracking.mjs",
     "prompts:dashboard": "node scripts/generate-prompt-dashboard.mjs",
-    "prompt:start": "node scripts/prompt-start.mjs"
+    "prompt:reserve": "node scripts/prompt-reserve.mjs",
+    "prompt:reserve-followup": "node scripts/prompt-reserve-followup.mjs",
+    "prompt:create": "node scripts/prompt-create.mjs",
+    "prompts:repair-active": "node scripts/repair-active-prompt-bodies.mjs",
+    "prompt:reservations": "node scripts/prompt-reservations.mjs",
+    "prompt:release": "node scripts/prompt-release.mjs",
+    "prompt:start": "node scripts/prompt-start.mjs",
+    "prompt:complete": "node scripts/prompt-complete.mjs",
+    "prompt:review": "node scripts/prompt-review.mjs",
+    "prompt:campaign:status": "node scripts/prompt-review-campaign-status.mjs",
+    "sprint:create": "node scripts/sprint-create.mjs",
+    "sprint:backfill": "node scripts/sprint-backfill.mjs",
+    "sprint:status": "node scripts/sprint-status.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.0",
     "@lichess-org/stockfish-web": "^0.2.3",
+    "better-sqlite3": "^12.8.0",
     "chessops": "^0.15.0",
-    "mysql2": "^3.20.0",
     "snabbdom": "^3.6.2",
     "stockfish": "^16.0.0"
   },
@@ -34,7 +50,8 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
-      "@parcel/watcher"
+      "@parcel/watcher",
+      "better-sqlite3"
     ]
   }
 }
