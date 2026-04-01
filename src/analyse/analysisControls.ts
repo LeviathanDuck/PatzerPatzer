@@ -52,6 +52,8 @@ interface AnalysisControlsDeps {
 
   onToggleExplorer: () => void;
   explorerEnabled:  () => boolean;
+
+  onSaveToLibrary:  () => void;
 }
 
 let _deps: AnalysisControlsDeps | null = null;
@@ -210,6 +212,12 @@ export function renderActionMenu(): VNode | null {
     // Tools section — mirrors lichess-org/lila: actionMenu.ts Tools group
     h('h2', 'Tools'),
     h('div.action-menu__tools', [
+
+      h('button', {
+        attrs: { title: 'Save this game to Study Library' },
+        on:    { click: () => { deps.onSaveToLibrary(); close(); } },
+      }, 'Save game to Library'),
+
       // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
       h('button', {
         attrs: { 'data-icon': ICON_FLIP, title: 'Flip board (hotkey: f)' },

@@ -208,6 +208,13 @@ export function makeRetroCtrl(
   getNodeEval: () => { cp?: number; mate?: number; depth?: number } | undefined = () => undefined,
   getEval: (path: string) => { cp?: number; mate?: number } | undefined = () => undefined,
   navigateTo: (path: string) => void = () => {},
+  /**
+   * Optional callback fired after any candidate outcome is recorded.
+   * Receives the current outcomes map and total candidate count so the caller
+   * can persist partial and complete sessions without probing internal state.
+   * Does not affect solve behavior.
+   */
+  onPersist?: (outcomes: Map<number, RetroOutcome>, total: number) => void,
 ): RetroCtrl {
   // Mirrors retroCtrl.ts: solvedPlies (tracks which plies have been resolved)
   let solvedPlies: number[] = [];
@@ -234,6 +241,13 @@ export function makeRetroCtrl(
 
   const isPlySolved = (ply: number): boolean => solvedPlies.includes(ply);
 
+  // Fire the optional persistence callback after any outcome is recorded.
+  // Called with the live outcomes map and candidate count so the caller can
+  // persist partial and complete sessions without probing internal state.
+  const notifyPersist = (): void => {
+    if (onPersist) onPersist(outcomes, candidates.length);
+  };
+
   // Mirrors retroCtrl.ts findNextNode: find the first unsolved candidate.
   function findNextIdx(): number {
     return candidates.findIndex(c => !isPlySolved(c.ply));
@@ -257,6 +271,7 @@ export function makeRetroCtrl(
     const c = candidates[currentIdx];
     if (c) outcomes.set(c.ply, 'skip');
     solveCurrent();
+    notifyPersist();
     jumpToNext();
   }
 
@@ -267,6 +282,7 @@ export function makeRetroCtrl(
     // viewing the solution after failing is still a fail for bulk-save purposes).
     if (c && !outcomes.has(c.ply)) outcomes.set(c.ply, 'view');
     solveCurrent();
+    notifyPersist();
   }
 
   // Initialise: jump to the first unsolved candidate immediately.
@@ -360,6 +376,7 @@ export function makeRetroCtrl(
           if (c) outcomes.set(c.ply, 'win');
           _winKind  = 'near-best';
           _feedback = 'win';
+          notifyPersist();
         } else {
           // Classify fail: compare played move against the actual game mistake.
           // 'better' = played move is better than what they played in the game
@@ -375,6 +392,7 @@ export function makeRetroCtrl(
           if (c) outcomes.set(c.ply, 'fail');
           _feedback = 'fail';
           navigateTo(c.parentPath); // return user to exercise start for retry
+          notifyPersist();
         }
       } else {
         // No parent eval available — cannot compute povDiff; fall back to fail.
@@ -382,6 +400,7 @@ export function makeRetroCtrl(
         _failKind = null;
         _feedback = 'fail';
         navigateTo(c.parentPath);
+        notifyPersist();
       }
     },
 
@@ -393,6 +412,7 @@ export function makeRetroCtrl(
       if (c) outcomes.set(c.ply, 'win');
       _winKind  = 'exact';
       _feedback = 'win';
+      notifyPersist();
     },
 
     onFail(): void {
@@ -401,6 +421,7 @@ export function makeRetroCtrl(
       const c = candidates[currentIdx];
       if (c) outcomes.set(c.ply, 'fail');
       _feedback = 'fail';
+      notifyPersist();
     },
 
     onMergeAnalysisData(): void {

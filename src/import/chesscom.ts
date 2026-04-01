@@ -4,6 +4,7 @@
 import { filterGamesByDate, importFilters, type ImportDateRange, type ImportSpeed } from './filters';
 import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating } from './types';
 import { pgnToTree } from '../tree/pgn';
+import { classifyOpening } from '../openings/eco';
 
 const CHESSCOM_BASE = 'https://api.chess.com/pub/player';
 
@@ -36,6 +37,8 @@ export const chesscom = {
   username: 'LeviathanDuck',
   loading:  false,
   error:    null as string | null,
+  /** Live count of games parsed so far during an active import. */
+  gameCount: 0,
 };
 
 function normalizeChesscomResult(whiteResult: string, blackResult: string): string {
@@ -46,6 +49,7 @@ function normalizeChesscomResult(whiteResult: string, blackResult: string): stri
 
 export async function fetchChesscomGames(
   username: string, rated: boolean, speeds: Set<ImportSpeed>,
+  onProgress?: (count: number) => void,
 ): Promise<ImportedGame[]> {
   // 1. Fetch archive list (one URL per month the player has games)
   const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
@@ -98,8 +102,15 @@ export async function fetchChesscomGames(
     const black = raw.black?.username;
     const date = parsePgnHeader(pgn, 'Date')?.replace(/\./g, '-');
     const timeClass = raw.time_class as string | undefined;
-    const opening = parsePgnHeader(pgn, 'Opening');
-    const eco = parsePgnHeader(pgn, 'ECO');
+    let opening = parsePgnHeader(pgn, 'Opening');
+    let eco = parsePgnHeader(pgn, 'ECO');
+    if (!opening || !eco) {
+      const classified = classifyOpening(pgn);
+      if (classified) {
+        if (!opening) opening = classified.name;
+        if (!eco) eco = classified.eco;
+      }
+    }
     const whiteRating = parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, 'WhiteElo'));
     const blackRating = parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, 'BlackElo'));
     result.push({
@@ -117,6 +128,7 @@ export async function fetchChesscomGames(
       ...(whiteRating !== undefined ? { whiteRating } : {}),
       ...(blackRating !== undefined ? { blackRating } : {}),
     });
+    onProgress?.(result.length);
   }
   return result;
 }
@@ -126,9 +138,13 @@ export async function importChesscom(callbacks: ImportCallbacks): Promise<void> 
   if (!name || chesscom.loading) return;
   chesscom.loading = true;
   chesscom.error = null;
+  chesscom.gameCount = 0;
   callbacks.redraw();
   try {
-    const games = filterGamesByDate(await fetchChesscomGames(name, importFilters.rated, importFilters.speeds));
+    const games = filterGamesByDate(await fetchChesscomGames(name, importFilters.rated, importFilters.speeds,
+      (partial) => { chesscom.gameCount = partial; callbacks.redraw(); },
+    ));
+    chesscom.gameCount = games.length;
     if (games.length === 0) {
       chesscom.error = 'No games found matching current filters.';
     } else {

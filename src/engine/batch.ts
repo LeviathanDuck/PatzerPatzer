@@ -27,7 +27,9 @@ import {
 import { evalWinChances } from './winchances';
 import { hasMissedMoments, detectMissedMoments, setMissedMoments } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
-import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
+import { buildAnalysisNodes, saveAnalysisToIdb, saveGameSummary } from '../idb/index';
+import { extractGameSummary } from '../stats/extract';
+import { invalidateSummariesCache } from '../stats/ctrl';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import type { ImportedGame } from '../import/types';
 
@@ -215,6 +217,18 @@ export function advanceBatch(): void {
       const liveSummary = computeAnalysisSummary(_getCtrl().mainline, evalCache);
       if (liveSummary) {
         _analyzedGameAccuracy.set(gameId, { white: liveSummary.white.accuracy, black: liveSummary.black.accuracy });
+      }
+      if (userColor) {
+        const summary = extractGameSummary(
+          game!,
+          _getCtrl().mainline,
+          p => evalCache.get(p),
+          userColor,
+          moments,
+          reviewDepth,
+        );
+        void saveGameSummary(summary);
+        invalidateSummariesCache();
       }
     }
     if (gameId) void saveAnalysisToIdb('complete', gameId, buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)), reviewDepth);

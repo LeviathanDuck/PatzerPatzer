@@ -4,6 +4,8 @@
 // Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts onWin / onFail.
 
 import type { AnalyseCtrl } from './ctrl';
+import { evalCache, evalFenSilent } from '../engine/ctrl';
+import { requestRetroBackgroundEval } from './retro';
 import {
   onBeforeBoardUserMove,
   onBoardUserMove,
@@ -44,7 +46,10 @@ export function initRetroMoveHandler(getCtrl: () => AnalyseCtrl): { unsubscribe:
   // --- After-move hook: handle wrong-move eval state ---
   const unsubAfter = onBoardUserMove((info: MoveHookInfo) => {
     const ctrl = getCtrl();
-    const retro = ctrl.retro?.isSolving() ? ctrl.retro : undefined;
+    // Do NOT gate on isSolving() here: onJump() runs during navigate() and sets
+    // feedback='offTrack' before this hook fires, making isSolving() return false
+    // even for moves played from the exercise position.
+    const retro = ctrl.retro;
     if (!retro) return;
     const cand = retro.current();
     if (!cand) return;
@@ -66,6 +71,24 @@ export function initRetroMoveHandler(getCtrl: () => AnalyseCtrl): { unsubscribe:
     if (!atRetroExercise) return;
 
     if (info.uci !== cand.bestMove) {
+      // Refresh evalDiff from the current cache before feedback renders.
+      // The live ceval has just evaluated the played-move position (after navigate),
+      // so the cache may now be deeper than at session-build time.
+      const updatedDiff = requestRetroBackgroundEval(cand, path => evalCache.get(path));
+
+      // If the candidate still has no cp-quality diff after the cache refresh,
+      // trigger a real silent one-shot background eval of the parent position.
+      // This populates evalCache at cand.parentPath without any visible engine noise.
+      // Mirrors lichess-org/lila: retroCtrl.ts background eval of the candidate FEN.
+      if (!updatedDiff || updatedDiff.confidence !== 'cp') {
+        evalFenSilent(
+          cand.fenBefore,
+          cand.parentPath,
+          cand.parentPath.length >= 2 ? cand.parentPath.slice(0, -2) : '',
+          cand.ply - 1,
+        );
+      }
+
       // Enter eval state so ceval can judge whether the played move is near-best.
       // Mirrors lichess-org/lila: retroCtrl.ts feedback('eval') + checkCeval.
       // If near-best (povDiff > -0.04): onCeval -> onWin().

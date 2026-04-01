@@ -170,8 +170,8 @@ export async function openingFetch(
 
   if (params.db === 'masters') {
     if (params.variant && params.variant !== 'standard') p.set('variant', params.variant);
-    if (params.since) p.set('since', params.since.split('-')[0]);  // year only for masters
-    if (params.until) p.set('until', params.until.split('-')[0]);
+    if (params.since) p.set('since', params.since.split('-')[0]!);  // year only for masters
+    if (params.until) p.set('until', params.until.split('-')[0]!);
   } else if (params.db === 'lichess') {
     if (params.variant && params.variant !== 'standard') p.set('variant', params.variant);
     if (params.speeds?.length) p.set('speeds', params.speeds.join(','));
@@ -191,7 +191,7 @@ export async function openingFetch(
   const res = await fetch(url.href, {
     cache: 'default',
     credentials: 'omit',
-    signal,
+    ...(signal ? { signal } : {}),
   });
 
   await readNdJson<Partial<OpeningData>>(res, chunk => {
@@ -275,7 +275,7 @@ export async function tablebaseFetch(
 ): Promise<TablebaseData> {
   const url = new URL(TABLEBASE_ENDPOINT);
   url.searchParams.set('fen', fen);
-  const res = await fetch(url.href, { signal, credentials: 'omit' });
+  const res = await fetch(url.href, { ...(signal ? { signal } : {}), credentials: 'omit' });
   if (!res.ok) throw new Error(`Tablebase API error ${res.status}`);
   const data = await res.json() as TablebaseData;
   data.fen = fen;

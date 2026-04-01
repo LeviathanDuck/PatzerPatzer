@@ -38,7 +38,33 @@ const BASE_PATH = '/generated/lichess-puzzles';
 
 let _manifest: PuzzleManifest | null = null;
 let _manifestLoading = false;
+/**
+ * LRU shard cache — bounded to SHARD_CACHE_MAX entries.
+ * Uses Map insertion-order: the first key() is the least-recently-used entry.
+ * On cache hit, the entry is deleted and re-inserted to move it to the end.
+ * Adapted from lichess-org/lila: ui/lib/src/lru.ts eviction pattern.
+ */
+const SHARD_CACHE_MAX = 5;
 const _shardCache: Map<string, LichessShardRecord[]> = new Map();
+
+function shardCacheGet(shardId: string): LichessShardRecord[] | undefined {
+  const value = _shardCache.get(shardId);
+  if (value === undefined) return undefined;
+  // Refresh position — move to end (most recently used).
+  _shardCache.delete(shardId);
+  _shardCache.set(shardId, value);
+  return value;
+}
+
+function shardCacheSet(shardId: string, records: LichessShardRecord[]): void {
+  _shardCache.delete(shardId);
+  _shardCache.set(shardId, records);
+  // Evict the oldest (first) entry if we exceed the cap.
+  if (_shardCache.size > SHARD_CACHE_MAX) {
+    const oldest = _shardCache.keys().next().value;
+    if (oldest !== undefined) _shardCache.delete(oldest);
+  }
+}
 
 // --- Manifest ---
 
@@ -72,7 +98,7 @@ export function getManifest(): PuzzleManifest | null {
 // --- Shard loading ---
 
 export async function loadShard(shardId: string): Promise<LichessShardRecord[]> {
-  const cached = _shardCache.get(shardId);
+  const cached = shardCacheGet(shardId);
   if (cached) return cached;
 
   const manifest = await loadManifest();
@@ -82,7 +108,7 @@ export async function loadShard(shardId: string): Promise<LichessShardRecord[]> 
   const res = await fetch(`${BASE_PATH}/${meta.file}`);
   if (!res.ok) throw new Error(`shard fetch failed: ${res.status}`);
   const records = (await res.json()) as LichessShardRecord[];
-  _shardCache.set(shardId, records);
+  shardCacheSet(shardId, records);
   return records;
 }
 

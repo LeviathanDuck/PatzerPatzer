@@ -25,6 +25,7 @@ import { reviewDepth, setReviewDepth } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
 import { checkAuth, logout } from '../sync/client';
+import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 
@@ -49,6 +50,7 @@ function ensureHeaderAuth(redraw: () => void): void {
   checkAuth().then(({ username }) => {
     headerAuthUser = username;
     redraw();
+    if (username) syncRatedLadder().catch(() => {});
   });
 }
 
@@ -87,9 +89,11 @@ function activeSection(route: Route): string {
     case 'puzzles':
     case 'puzzle-round':
       return 'puzzles';
-    case 'openings': return 'openings';
+    case 'opponents': return 'opponents';
     case 'stats':    return 'stats';
     case 'games':    return 'games';
+    case 'study':
+    case 'study-detail': return 'study';
     default:         return '';
   }
 }
@@ -98,8 +102,9 @@ const navLinks: { label: string; href: string; section: string }[] = [
   { label: 'Analysis', href: '#/analysis', section: 'analysis' },
   { label: 'Puzzles',  href: '#/puzzles',  section: 'puzzles'  },
   { label: 'Games',    href: '#/games',    section: 'games'    },
-  { label: 'Openings', href: '#/openings', section: 'openings' },
+  { label: 'Opponents', href: '#/opponents', section: 'opponents' },
   { label: 'Stats',    href: '#/stats',    section: 'stats'    },
+  { label: 'Study',   href: '#/study',    section: 'study'    },
 ];
 
 function renderNav(route: Route): VNode {
@@ -332,7 +337,10 @@ function renderRetroModal(redraw: () => void): VNode {
         h('div.detection-modal__row', [
           h('div.detection-modal__row-header', [
             h('span.detection-modal__label', 'Minimum Severity'),
-            h('span.detection-modal__value', cfg.minClassification),
+            h('span.detection-modal__value',
+              cfg.minClassification === 'inaccuracy' ? 'loss ≥ 5%' :
+              cfg.minClassification === 'mistake'    ? 'loss ≥ 10%' :
+                                                       'loss ≥ 15%'),
           ]),
           h('p.detection-modal__desc',
             'Minimum move classification to include as a Learn From Your Mistakes candidate. ' +
@@ -803,7 +811,11 @@ export function renderHeader(deps: HeaderDeps): VNode {
         h('button.header__import', {
           attrs: { disabled: loading || !username.trim() },
           on: { click: doImport },
-        }, loading ? 'Importing…' : 'Import'),
+        }, loading
+          ? `Importing…${(importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount) > 0
+              ? ` (${importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount})`
+              : ''}`
+          : 'Import'),
 
         importedGames.length > 0 && !error
           ? h('span.header__count', { on: { click: () => { showImportPanel = !showImportPanel; redraw(); } } },

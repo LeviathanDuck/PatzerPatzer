@@ -176,8 +176,12 @@ let gamesFilterColor:    '' | 'white' | 'black' = '';
 // Tactics severity filter: '!' inaccuracy+, '!!' mistake+, '!!!' blunder, 'M?!' missed mate
 // Multi-select OR: show games matching any selected severity.
 let gamesFilterTactics:  Set<string>            = new Set();
+// Opening name / ECO code substring filter (case-insensitive).
+let gamesFilterOpening = '';
 let gamesSortField: GamesSortField = 'date';
 let gamesSortDir:   'asc' | 'desc' = 'desc';
+const GAMES_PAGE_SIZE = 50;
+let gamesPage = 0;
 
 // Separate filter state for the compact underboard game list.
 // Kept independent of the Games-tab filter state so the two views don't cross-contaminate.
@@ -211,7 +215,7 @@ function toggleGamesSort(field: GamesSortField, redraw: () => void): void {
 function gamesFilterActive(): boolean {
   return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 ||
     gamesFilterOpponent.trim() !== '' || gamesFilterColor !== '' ||
-    gamesFilterTactics.size > 0;
+    gamesFilterTactics.size > 0 || gamesFilterOpening.trim() !== '';
 }
 
 function clearGamesFilters(redraw: () => void): void {
@@ -220,6 +224,8 @@ function clearGamesFilters(redraw: () => void): void {
   gamesFilterOpponent = '';
   gamesFilterColor    = '';
   gamesFilterTactics  = new Set();
+  gamesFilterOpening  = '';
+  gamesPage = 0;
   redraw();
 }
 
@@ -273,6 +279,13 @@ function filteredGames(deps: GamesViewDeps): ImportedGame[] {
       }
       return false;
     });
+  }
+
+  if (gamesFilterOpening.trim()) {
+    const q = gamesFilterOpening.trim().toLowerCase();
+    list = list.filter(g =>
+      g.opening?.toLowerCase().includes(q) || g.eco?.toLowerCase().includes(q)
+    );
   }
 
   // Sort
@@ -564,6 +577,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const s = new Set(gamesFilterResults);
             s.has(r) ? s.delete(r) : s.add(r);
             gamesFilterResults = s;
+            gamesPage = 0;
             redraw();
           }},
         }, r.charAt(0).toUpperCase() + r.slice(1))
@@ -581,6 +595,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const s = new Set(gamesFilterSpeeds);
             s.has(tc) ? s.delete(tc) : s.add(tc);
             gamesFilterSpeeds = s;
+            gamesPage = 0;
             redraw();
           }},
         }, tc.charAt(0).toUpperCase() + tc.slice(1))
@@ -592,11 +607,11 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       h('span.games-view__filter-label', 'Color'),
       h('button.games-view__pill', {
         class: { active: gamesFilterColor === 'white' },
-        on: { click: () => { gamesFilterColor = gamesFilterColor === 'white' ? '' : 'white'; redraw(); } },
+        on: { click: () => { gamesFilterColor = gamesFilterColor === 'white' ? '' : 'white'; gamesPage = 0; redraw(); } },
       }, 'White'),
       h('button.games-view__pill', {
         class: { active: gamesFilterColor === 'black' },
-        on: { click: () => { gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black'; redraw(); } },
+        on: { click: () => { gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black'; gamesPage = 0; redraw(); } },
       }, 'Black'),
     ]),
 
@@ -610,6 +625,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const s = new Set(gamesFilterTactics);
             s.has(sev) ? s.delete(sev) : s.add(sev);
             gamesFilterTactics = s;
+            gamesPage = 0;
             redraw();
           }},
         }, sev)
@@ -621,7 +637,16 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       h('span.games-view__filter-label', 'Opponent'),
       h('input.games-view__search', {
         attrs: { type: 'search', placeholder: 'Name…', value: gamesFilterOpponent },
-        on: { input: (e: Event) => { gamesFilterOpponent = (e.target as HTMLInputElement).value; redraw(); } },
+        on: { input: (e: Event) => { gamesFilterOpponent = (e.target as HTMLInputElement).value; gamesPage = 0; redraw(); } },
+      }),
+    ]),
+
+    // Opening filter
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Opening'),
+      h('input.games-view__search', {
+        attrs: { type: 'search', placeholder: 'Name or ECO…', value: gamesFilterOpening },
+        on: { input: (e: Event) => { gamesFilterOpening = (e.target as HTMLInputElement).value; gamesPage = 0; redraw(); } },
       }),
     ]),
 
@@ -653,6 +678,25 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     ]);
   }
 
+  // Pagination: clamp page to valid range, slice filtered games.
+  const totalPages = Math.max(1, Math.ceil(games.length / GAMES_PAGE_SIZE));
+  if (gamesPage >= totalPages) gamesPage = totalPages - 1;
+  if (gamesPage < 0) gamesPage = 0;
+  const pageStart = gamesPage * GAMES_PAGE_SIZE;
+  const pageGames = games.slice(pageStart, pageStart + GAMES_PAGE_SIZE);
+
+  const paginationBar = totalPages > 1 ? h('div.games-view__pagination', [
+    h('button.games-view__page-btn', {
+      attrs: { disabled: gamesPage === 0 },
+      on: { click: () => { gamesPage--; redraw(); } },
+    }, '← Prev'),
+    h('span.games-view__page-info', `Page ${gamesPage + 1} of ${totalPages}`),
+    h('button.games-view__page-btn', {
+      attrs: { disabled: gamesPage >= totalPages - 1 },
+      on: { click: () => { gamesPage++; redraw(); } },
+    }, 'Next →'),
+  ]) : null;
+
   // Table
   const table = h('div.games-view__table-wrap', [
     h('table.games-view__table', [
@@ -667,8 +711,8 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         h('th.games-view__puzzles-th', 'Puzzles'),
         h('th'),
       ])),
-      h('tbody', games.length > 0
-        ? games.map(game => {
+      h('tbody', pageGames.length > 0
+        ? pageGames.map(game => {
             const r       = deps.gameResult(game);
             const opp     = opponentName(game, deps.getUserColor) ?? '–';
             const date    = game.date ? game.date.slice(0, 10) : '–';
@@ -777,5 +821,5 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     ]),
   ]);
 
-  return h('div.games-view', [filterBar, table]);
+  return h('div.games-view', [filterBar, table, paginationBar]);
 }

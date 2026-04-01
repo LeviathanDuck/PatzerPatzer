@@ -126,6 +126,9 @@ export function setOrientation(v: 'white' | 'black'): void {
   // without waiting for the next full renderBoard() cycle.
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts flip() cgInstance.set pattern.
   cgInstance?.set({ orientation: v });
+  // When orientation changes, Chessground calls redrawAll() → renderWrap() →
+  // element.innerHTML = '', which destroys cg-resize. Re-attach it.
+  if (_cgWrap) bindBoardResizeHandle(_cgWrap);
 }
 
 // --- Board sync ---
@@ -493,8 +496,18 @@ export function renderPlayerStrips(): [VNode, VNode] {
 // Appended to cg-container (the absolutely-positioned inner element) so that
 // position: absolute on cg-resize resolves against an element with defined
 // width/height — matching Lichess resizeHandle(els.container) exactly.
+//
+// Stored so setOrientation() can re-attach after Chessground's redrawAll()
+// wipes element.innerHTML and destroys the handle.
+let _cgWrap: HTMLElement | undefined;
+
 export function bindBoardResizeHandle(wrap: HTMLElement): void {
+  _cgWrap = wrap;
   const container = (wrap.querySelector('cg-container') as HTMLElement | null) ?? wrap;
+  // Idempotent: remove any existing handle before adding a fresh one.
+  // Required because setOrientation() triggers Chessground's redrawAll() →
+  // renderWrap() → element.innerHTML = '', destroying the previous cg-resize.
+  container.querySelector('cg-resize')?.remove();
   const el = document.createElement('cg-resize');
   container.appendChild(el);
 

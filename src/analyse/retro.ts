@@ -6,6 +6,7 @@
 // later UI and session steps can consume without coupling to the puzzle subsystem.
 
 import { classifyLoss, evalWinChances, type MoveLabel } from '../engine/winchances';
+import { computeEvalDiff, type EvalDiff } from './evalDiff';
 import { retroConfig } from './retroConfig';
 import { LEARNABLE_REASONS, type LearnableReason, type TreeNode } from '../tree/types';
 
@@ -121,6 +122,14 @@ export interface RetroCandidate {
    * Carried forward to PuzzleCandidate when a RetroCandidate is promoted to a saved puzzle.
    */
   reason:         LearnableReason;
+  /**
+   * Evaluation difference between the engine best move and the played move,
+   * from the mover's perspective. Populated at session-build time when both
+   * parentEval and nodeEval are in the cache. Absent when the game has not
+   * been reviewed or when the cache was incomplete at build time.
+   * Can be refreshed post-build via requestRetroBackgroundEval().
+   */
+  evalDiff?:      EvalDiff;
 }
 
 /**
@@ -275,6 +284,11 @@ export function buildRetroCandidates(
     if (parentEval.moves && parentEval.moves.length > 0) {
       candidate.bestLine = parentEval.moves;
     }
+    // Populate eval diff at build time from cache data.
+    // nodeEval.loss is the preferred source (same-depth batch consistency).
+    // Will be absent only when the game is partially analyzed or loss not yet stored.
+    const diff = computeEvalDiff({ parentEval, nodeEval, playerColor });
+    if (diff) candidate.evalDiff = diff;
     candidates.push(candidate);
   }
 
@@ -325,7 +339,7 @@ export function buildRetroCandidates(
         playedMove:      node.uci,
         playedMoveSan:   node.san ?? '',
         bestMove:        parentEv.best,
-        bestLine:        parentEv.moves?.length ? parentEv.moves : undefined,
+        ...(parentEv.moves?.length ? { bestLine: parentEv.moves } : {}),
         classification:  defClassification,
         loss:            nodeEv.loss,
         isMissedMate:    false,
@@ -400,7 +414,7 @@ export function buildRetroCandidates(
         playedMove:      node.uci,
         playedMoveSan:   node.san ?? '',
         bestMove:        parentEval.best,
-        bestLine:        parentEval.moves?.length ? parentEval.moves : undefined,
+        ...(parentEval.moves?.length ? { bestLine: parentEval.moves } : {}),
         classification:  punishClassification,
         loss:            punishLoss,
         isMissedMate:    false,
@@ -412,4 +426,42 @@ export function buildRetroCandidates(
   }
 
   return candidates;
+}
+
+/**
+ * Refresh a candidate's evalDiff from the current eval cache state.
+ *
+ * Called from the board move handler after a retro exercise is resolved so
+ * that the feedback panel shows the freshest available diff. The live ceval
+ * naturally evaluates the played-move position after the user makes a move,
+ * so the cache may be deeper than at session-build time by the time this runs.
+ *
+ * No engine calls are made here — this is a pure cache read. If the engine
+ * has not yet produced an improved eval since session build, the existing
+ * evalDiff (from batch analysis) is preserved as-is.
+ *
+ * @param candidate  The retro candidate to refresh.
+ * @param getEval    Current eval cache getter (path → PositionEval | undefined).
+ * @returns          The refreshed EvalDiff, or the existing one if no improvement.
+ */
+export function requestRetroBackgroundEval(
+  candidate: RetroCandidate,
+  getEval: (path: string) => { cp?: number; mate?: number; loss?: number; depth?: number } | undefined,
+): EvalDiff | null {
+  // Already high-confidence from cp data — no improvement possible from cache alone.
+  if (candidate.evalDiff?.confidence === 'cp') return candidate.evalDiff;
+
+  const parentEval = getEval(candidate.parentPath);
+  const nodeEval   = getEval(candidate.path);
+  if (!parentEval || !nodeEval) return candidate.evalDiff ?? null;
+
+  const diff = computeEvalDiff({
+    parentEval,
+    nodeEval,
+    playerColor: candidate.playerColor,
+  });
+  // At this point candidate.evalDiff is absent or wc-approx (returned early if 'cp').
+  // Always take the new result — any update is an improvement.
+  if (diff) candidate.evalDiff = diff;
+  return candidate.evalDiff ?? null;
 }

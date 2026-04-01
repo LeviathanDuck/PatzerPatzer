@@ -2,6 +2,7 @@
 
 import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating, timeClassFromTimeControl } from './types';
 import { pgnToTree } from '../tree/pgn';
+import { classifyOpening } from '../openings/eco';
 
 export const pgnState = {
   input: '',
@@ -19,8 +20,15 @@ export function importPgn(callbacks: ImportCallbacks): void {
     const result = parsePgnHeader(raw, 'Result');
     const date = parsePgnHeader(raw, 'Date')?.replace(/\./g, '-');
     const timeClass = timeClassFromTimeControl(parsePgnHeader(raw, 'TimeControl'));
-    const opening = parsePgnHeader(raw, 'Opening');
-    const eco = parsePgnHeader(raw, 'ECO');
+    let opening = parsePgnHeader(raw, 'Opening');
+    let eco = parsePgnHeader(raw, 'ECO');
+    if (!opening || !eco) {
+      const classified = classifyOpening(raw);
+      if (classified) {
+        if (!opening) opening = classified.name;
+        if (!eco) eco = classified.eco;
+      }
+    }
     const whiteRating = parseRating(parsePgnHeader(raw, 'WhiteElo'));
     const blackRating = parseRating(parsePgnHeader(raw, 'BlackElo'));
     const game: ImportedGame = {

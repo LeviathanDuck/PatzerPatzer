@@ -54,8 +54,9 @@ export interface Glyph {
 export type Clock = number; // milliseconds remaining
 
 export interface Shape {
-  orig: string; // square key e.g. "e2"
-  dest?: string; // arrow destination, absent for square highlight
+  orig: string;   // square key e.g. "e2"
+  dest?: string;  // arrow destination, absent for square highlight
+  brush?: string; // color key e.g. "green", "blue", "red", "yellow"
 }
 
 // Base fields shared by all nodes (including incomplete/partial nodes)
@@ -155,4 +156,11 @@ export interface PuzzleCandidate {
    * extractions used the win-chance swing path only).
    */
   reason?:  LearnableReason;
+  /**
+   * Retro session outcome recorded when the user solved (or skipped/viewed) this
+   * candidate during a game review session before saving it as a puzzle.
+   * Absent when saved outside of a retro session or on records written before this
+   * field existed (backward compatible).
+   */
+  retroOutcome?: 'win' | 'fail' | 'view' | 'skip';
 }
