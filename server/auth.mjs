@@ -73,6 +73,32 @@ export function requireAuth(req, res) {
   return false;
 }
 
+// ── User-identity helpers for user-scoped data ──────────────────────────────
+
+/**
+ * Return the authenticated user's Lichess username, or null.
+ * Use this for user-scoped data operations (rated puzzle perf, history).
+ * Separate from the admin-only assumption so any authenticated user can
+ * read/write their own data once the product supports multiple users.
+ */
+export function getAuthenticatedUsername(req) {
+  return getSession(req)?.username ?? null;
+}
+
+/**
+ * Middleware-style guard that requires authentication and returns the username.
+ * Writes 401 and returns null if not authenticated.
+ */
+export function requireAuthAndGetUsername(req, res) {
+  const session = getSession(req);
+  if (!session) {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Unauthorized' }));
+    return null;
+  }
+  return session.username;
+}
+
 // ── Route handlers ───────────────────────────────────────────────────────────
 
 /** GET /api/auth/status — returns { authenticated, username } */

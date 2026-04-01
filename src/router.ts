@@ -7,11 +7,14 @@ export interface Route {
 const routes: { pattern: string[]; name: string }[] = [
   { pattern: ['analysis', ':id'], name: 'analysis-game' },
   { pattern: ['analysis'], name: 'analysis' },
-  { pattern: ['openings'], name: 'openings' },
+  { pattern: ['opponents'], name: 'opponents' },
+  { pattern: ['openings'], name: 'opponents' },
   { pattern: ['stats'], name: 'stats' },
   { pattern: ['games'], name: 'games' },
   { pattern: ['puzzles', ':id'], name: 'puzzle-round' },
   { pattern: ['puzzles'], name: 'puzzles' },
+  { pattern: ['study', ':id'], name: 'study-detail' },
+  { pattern: ['study'], name: 'study' },
   { pattern: ['admin'], name: 'admin' },
   { pattern: [], name: 'analysis' },
 ];

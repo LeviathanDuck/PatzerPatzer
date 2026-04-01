@@ -12,6 +12,7 @@ import type { ResearchGame, ResearchSource, ResearchCollection, ResearchSettings
 import { parsePgnHeader, parseRating, timeClassFromTimeControl } from '../import/types';
 import { pgnToTree } from '../tree/pgn';
 import { saveCollection } from './db';
+import { classifyOpening } from './eco';
 import {
   importSource, importUsername, importColor,
   importSpeeds, importDateRange, importCustomFrom, importCustomTo,
@@ -33,26 +34,50 @@ function nextCollectionId(): string {
 // --- PGN parsing into ResearchGame ---
 
 function pgnToResearchGame(pgn: string, source: ResearchSource): ResearchGame | null {
+  let tree;
   try {
-    pgnToTree(pgn); // validate
+    tree = pgnToTree(pgn); // validate and parse
   } catch {
     return null;
   }
+
+  // Extract per-move clock data from the parsed tree mainline
+  const clocks: number[] = [];
+  let node = tree.children[0];
+  while (node) {
+    if (node.clock !== undefined) clocks.push(node.clock);
+    node = node.children?.[0];
+  }
+
   const date = (parsePgnHeader(pgn, 'UTCDate') ?? parsePgnHeader(pgn, 'Date'))?.replace(/\./g, '-');
-  return {
-    id: nextResearchId(),
-    pgn,
-    source,
-    white: parsePgnHeader(pgn, 'White'),
-    black: parsePgnHeader(pgn, 'Black'),
-    result: parsePgnHeader(pgn, 'Result'),
-    date,
-    timeClass: timeClassFromTimeControl(parsePgnHeader(pgn, 'TimeControl')),
-    opening: parsePgnHeader(pgn, 'Opening'),
-    eco: parsePgnHeader(pgn, 'ECO'),
-    whiteRating: parseRating(parsePgnHeader(pgn, 'WhiteElo')),
-    blackRating: parseRating(parsePgnHeader(pgn, 'BlackElo')),
-  };
+  const white = parsePgnHeader(pgn, 'White');
+  const black = parsePgnHeader(pgn, 'Black');
+  const result = parsePgnHeader(pgn, 'Result');
+  const timeClass = timeClassFromTimeControl(parsePgnHeader(pgn, 'TimeControl'));
+  let opening = parsePgnHeader(pgn, 'Opening');
+  let eco = parsePgnHeader(pgn, 'ECO');
+  if (!opening || !eco) {
+    const classified = classifyOpening(pgn);
+    if (classified) {
+      if (!opening) opening = classified.name;
+      if (!eco) eco = classified.eco;
+    }
+  }
+  const whiteRating = parseRating(parsePgnHeader(pgn, 'WhiteElo'));
+  const blackRating = parseRating(parsePgnHeader(pgn, 'BlackElo'));
+
+  const game: ResearchGame = { id: nextResearchId(), pgn, source };
+  if (white !== undefined) game.white = white;
+  if (black !== undefined) game.black = black;
+  if (result !== undefined) game.result = result;
+  if (date !== undefined) game.date = date;
+  if (timeClass !== undefined) game.timeClass = timeClass;
+  if (opening !== undefined) game.opening = opening;
+  if (eco !== undefined) game.eco = eco;
+  if (whiteRating !== undefined) game.whiteRating = whiteRating;
+  if (blackRating !== undefined) game.blackRating = blackRating;
+  if (clocks.length > 0) game.clocks = clocks;
+  return game;
 }
 
 /**
@@ -100,6 +125,7 @@ async function fetchLichessResearch(username: string, signal: AbortSignal): Prom
   if (isFinite(max)) params.set('max', String(max));
   if (rated) params.set('rated', 'true');
   if (speeds.size > 0) params.set('perfType', [...speeds].join(','));
+  params.set('clocks', 'true');
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
   const res = await fetch(url, { headers: { Accept: 'application/x-chess-pgn' }, signal });
   if (!res.ok) {

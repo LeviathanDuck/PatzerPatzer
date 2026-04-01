@@ -1,0 +1,4521 @@
+{
+  "version": 1,
+  "allocator": {
+    "nextSprintNumber": 16
+  },
+  "sprints": [
+    {
+      "id": "SPR-001",
+      "title": "Mini Sprint — Analysis Controls Parity",
+      "sourceDocument": "docs/mini-sprints/ANALYSIS_CONTROLS_PARITY_SPRINT_2026-03-29.md",
+      "status": "completed",
+      "createdAt": "2026-04-01T20:50:12.286Z",
+      "updatedAt": "2026-04-01T22:28:50.865Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-001-P1"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-001-audit-source",
+          "sourceDocument": "/Users/leftcoast/Development/PatzerPatzer/docs/reference/LICHESS_ANALYSIS_CONTROLS_AUDIT.md",
+          "title": "Source audit",
+          "type": "audit",
+          "status": "present",
+          "date": "2026-03-29"
+        },
+        {
+          "id": "SPR-001-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Analysis Controls Parity Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-001-T06-next",
+          "title": "Implement **Not confirmed**",
+          "reason": "Audit marked this task as not started.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-001-T06"
+          ],
+          "suggestedPromptIds": [
+            "CCP-246"
+          ]
+        },
+        {
+          "id": "SPR-001-T07-next",
+          "title": "Implement **Not confirmed**",
+          "reason": "Audit marked this task as not started.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-001-T07"
+          ],
+          "suggestedPromptIds": [
+            "CCP-247"
+          ]
+        }
+      ],
+      "completionSummary": "Foundation done. Migration incomplete — legacy render path and typecheck failures remain.",
+      "unassignedPromptIds": [
+        "CCP-248",
+        "CCP-249"
+      ],
+      "scope": "smallest safe sequence to move Patzer's analysis controls toward Lichess-style ownership and behavior without destabilizing the analysis board",
+      "date": "2026-03-29"
+    },
+    {
+      "id": "SPR-002",
+      "title": "Auth & Sync Sprint",
+      "sourceDocument": "docs/mini-sprints/AUTH_AND_SYNC_SPRINT_2026-03-28.md",
+      "status": "blocked",
+      "createdAt": "2026-04-01T20:50:12.287Z",
+      "updatedAt": "2026-04-01T22:28:50.866Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-002-P1"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-002-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Auth & Sync Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-002-T05-next",
+          "title": "Implement **Fixed (CCP-466)**",
+          "reason": "DB name corrected, attempts now written",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-002-T05"
+          ],
+          "suggestedPromptIds": [
+            "CCP-230"
+          ]
+        }
+      ],
+      "completionSummary": "Auth works. Sync is partially broken — push works, pull doesn't write to IDB, merge logic missing.",
+      "unassignedPromptIds": [
+        "CCP-231"
+      ],
+      "scope": "",
+      "date": ""
+    },
+    {
+      "id": "SPR-003",
+      "title": "Sprint: Play Against Computer at Various Strength Levels",
+      "sourceDocument": "docs/mini-sprints/ENGINE_STRENGTH_LEVELS_SPRINT_2026-03-30.md",
+      "status": "planned",
+      "createdAt": "2026-04-01T20:50:12.288Z",
+      "updatedAt": "2026-04-01T22:28:50.867Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-003-P1",
+        "SPR-003-P2",
+        "SPR-003-P3",
+        "SPR-003-P4",
+        "SPR-003-P5"
+      ],
+      "auditRefs": [],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-003-T01-next",
+          "title": "Implement Execute Phase 1 children",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-003-T01"
+          ],
+          "suggestedPromptIds": [
+            "CCP-565"
+          ]
+        },
+        {
+          "id": "SPR-003-T02-next",
+          "title": "Implement Audit SF18 WASM UCI options for strength limiting; read Lichess rateBot.ts",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-003-T02"
+          ],
+          "suggestedPromptIds": [
+            "CCP-566"
+          ]
+        },
+        {
+          "id": "SPR-003-T03-next",
+          "title": "Implement Define `EngineMode`, `EngineStrengthConfig`, `STRENGTH_LEVELS[1-8]`",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-003-T03"
+          ],
+          "suggestedPromptIds": [
+            "CCP-567"
+          ]
+        },
+        {
+          "id": "SPR-003-T04-next",
+          "title": "Implement Add `setPlayStrength(config)`, `setAnalysisMode()`, `goPlay(depth)` to StockfishProtocol",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-003-T04"
+          ],
+          "suggestedPromptIds": [
+            "CCP-568"
+          ]
+        },
+        {
+          "id": "SPR-003-T05-next",
+          "title": "Implement Build + typecheck validation",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-003-T05"
+          ],
+          "suggestedPromptIds": [
+            "CCP-569"
+          ]
+        }
+      ],
+      "completionSummary": "planned, not yet started",
+      "unassignedPromptIds": [
+        "CCP-564"
+      ],
+      "scope": "",
+      "date": "2026-03-30"
+    },
+    {
+      "id": "SPR-004",
+      "title": "Mini Sprint — Improvement Intelligence Platform",
+      "sourceDocument": "docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md",
+      "status": "implementation-partial",
+      "createdAt": "2026-04-01T20:50:12.289Z",
+      "updatedAt": "2026-04-01T22:28:50.867Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-004-P1"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-004-audit-source",
+          "sourceDocument": "/Users/leftcoast/Development/PatzerPatzer/docs/audits/CHESS_IMPROVEMENT_PLATFORM_AUDIT.md",
+          "title": "Source audit",
+          "type": "audit",
+          "status": "present",
+          "date": "2026-03-29"
+        },
+        {
+          "id": "SPR-004-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Improvement Intelligence Platform Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-004-T07-next",
+          "title": "Complete **Partial**",
+          "reason": "`stats/view.ts` has placeholder sections, not full cards",
+          "priority": "normal",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-004-T07"
+          ],
+          "suggestedPromptIds": [
+            "CCP-385"
+          ]
+        },
+        {
+          "id": "SPR-004-T08-next",
+          "title": "Complete **Partial**",
+          "reason": "SVG polyline chart exists but minimal",
+          "priority": "normal",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-004-T08"
+          ],
+          "suggestedPromptIds": [
+            "CCP-386"
+          ]
+        },
+        {
+          "id": "SPR-004-T09-next",
+          "title": "Implement **Not started**",
+          "reason": "No analysis required; pure W/D/L aggregation",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-004-T09"
+          ],
+          "suggestedPromptIds": [
+            "CCP-387"
+          ]
+        },
+        {
+          "id": "SPR-004-T10-next",
+          "title": "Implement **Not started**",
+          "reason": "No opening-specific stats view",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-004-T10"
+          ],
+          "suggestedPromptIds": [
+            "CCP-387"
+          ]
+        },
+        {
+          "id": "SPR-004-T11-next",
+          "title": "Implement **Not started**",
+          "reason": "No tactical breakdown view",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-004-T11"
+          ],
+          "suggestedPromptIds": [
+            "CCP-388"
+          ]
+        }
+      ],
+      "completionSummary": "Data layer (tasks 1–6, 12) is solid. UI layer (tasks 7–11, 13–15) is mostly placeholder or missing. 11 prompts still unreviewed.",
+      "unassignedPromptIds": [
+        "CCP-394",
+        "CCP-395",
+        "CCP-396",
+        "CCP-397",
+        "CCP-398"
+      ],
+      "scope": "build the data foundation, weakness diagnosis engine, and stats dashboard that turns Patzer from \"analyze individual games\" into \"understand and improve your chess\"",
+      "date": "2026-03-29"
+    },
+    {
+      "id": "SPR-005",
+      "title": "Mini Sprint — Mobile Analysis Usability",
+      "sourceDocument": "docs/mini-sprints/MOBILE_ANALYSIS_USABILITY_SPRINT_2026-03-21.md",
+      "status": "completed-with-issues",
+      "createdAt": "2026-04-01T20:50:12.289Z",
+      "updatedAt": "2026-04-01T22:28:50.867Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-005-P1"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-005-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Mobile Analysis Usability Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [],
+      "completionSummary": "Complete. One minor regression noted.",
+      "unassignedPromptIds": [
+        "CCP-059",
+        "CCP-060",
+        "CCP-061",
+        "CCP-062",
+        "CCP-063",
+        "CCP-064"
+      ],
+      "scope": "smallest safe mobile-usability pass for the Patzer analysis board, informed by local Lichess mobile analysis behavior",
+      "date": "2026-03-21"
+    },
+    {
+      "id": "SPR-006",
+      "title": "Openings Opponent Tool Suite Sprint",
+      "sourceDocument": "docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md",
+      "status": "active",
+      "createdAt": "2026-04-01T20:50:12.289Z",
+      "updatedAt": "2026-04-01T22:28:50.868Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-006-P1",
+        "SPR-006-P2",
+        "SPR-006-P3",
+        "SPR-006-P4",
+        "SPR-006-P5",
+        "SPR-006-P6",
+        "SPR-006-P7"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-006-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Openings Opponent Tool Suite Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-006-T05-next",
+          "title": "Implement **Not started**",
+          "reason": "CCP-355 manager ran, children unreviewed",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-006-T05"
+          ],
+          "suggestedPromptIds": [
+            "CCP-355",
+            "CCP-356",
+            "CCP-357",
+            "CCP-358",
+            "CCP-359",
+            "CCP-360",
+            "CCP-361",
+            "CCP-362"
+          ]
+        },
+        {
+          "id": "SPR-006-T06-next",
+          "title": "Implement **Not started**",
+          "reason": "Prompts created but not queued",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-006-T06"
+          ],
+          "suggestedPromptIds": [
+            "CCP-363",
+            "CCP-364",
+            "CCP-365",
+            "CCP-366",
+            "CCP-367",
+            "CCP-368",
+            "CCP-369",
+            "CCP-370"
+          ]
+        },
+        {
+          "id": "SPR-006-T07-next",
+          "title": "Implement **Not started**",
+          "reason": "Prompts created but not queued",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-006-T07"
+          ],
+          "suggestedPromptIds": [
+            "CCP-371",
+            "CCP-372",
+            "CCP-373",
+            "CCP-374",
+            "CCP-375",
+            "CCP-376",
+            "CCP-377",
+            "CCP-378"
+          ]
+        },
+        {
+          "id": "SPR-006-T01-next",
+          "title": "Implement **Prompts ran, unreviewed**",
+          "reason": "CCP-324–330 started but not reviewed",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-006-T01"
+          ],
+          "suggestedPromptIds": [
+            "CCP-324",
+            "CCP-325",
+            "CCP-326",
+            "CCP-327",
+            "CCP-328",
+            "CCP-329",
+            "CCP-330"
+          ]
+        },
+        {
+          "id": "SPR-006-T02-next",
+          "title": "Implement **Prompts ran, unreviewed**",
+          "reason": "CCP-331–338 started but not reviewed",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-006-T02"
+          ],
+          "suggestedPromptIds": [
+            "CCP-331",
+            "CCP-332",
+            "CCP-333",
+            "CCP-334",
+            "CCP-335",
+            "CCP-336",
+            "CCP-337",
+            "CCP-338"
+          ]
+        }
+      ],
+      "completionSummary": "Analytics computation exists. UI framework (left-rail, tool views, dashboards) not built. 11 prompts still unreviewed.",
+      "unassignedPromptIds": [
+        "CCP-323",
+        "CCP-511"
+      ],
+      "scope": "",
+      "date": "2026-03-29"
+    },
+    {
+      "id": "SPR-007",
+      "title": "Openings Page Implementation Sprint",
+      "sourceDocument": "docs/mini-sprints/OPENINGS_PAGE_OPENINGTREE_IMPLEMENTATION_2026-03-27.md",
+      "status": "completed",
+      "createdAt": "2026-04-01T20:50:12.290Z",
+      "updatedAt": "2026-04-01T22:28:50.868Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-007-P1",
+        "SPR-007-P2",
+        "SPR-007-P3",
+        "SPR-007-P4",
+        "SPR-007-P5"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-007-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Openings Page OpeningTree Implementation",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-007-T01-next",
+          "title": "Implement Phase 0 — Ownership And Separate Research Persistence",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-007-T01"
+          ],
+          "suggestedPromptIds": [
+            "CCP-178",
+            "CCP-179",
+            "CCP-180",
+            "CCP-181",
+            "CCP-182"
+          ]
+        },
+        {
+          "id": "SPR-007-T02-next",
+          "title": "Implement Phase 1 — Opponent Research Import Flow",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-007-T02"
+          ],
+          "suggestedPromptIds": [
+            "CCP-183",
+            "CCP-184",
+            "CCP-185",
+            "CCP-186",
+            "CCP-187"
+          ]
+        },
+        {
+          "id": "SPR-007-T03-next",
+          "title": "Implement Phase 2 — Tree Build And Board Shell",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-007-T03"
+          ],
+          "suggestedPromptIds": [
+            "CCP-188",
+            "CCP-189",
+            "CCP-190",
+            "CCP-191",
+            "CCP-192"
+          ]
+        },
+        {
+          "id": "SPR-007-T04-next",
+          "title": "Implement Phase 3 — Played Lines, Percentages, And Report Surface",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-007-T04"
+          ],
+          "suggestedPromptIds": [
+            "CCP-193",
+            "CCP-194",
+            "CCP-195",
+            "CCP-196",
+            "CCP-197"
+          ]
+        },
+        {
+          "id": "SPR-007-T05-next",
+          "title": "Implement Phase 4 — Collections Management And Product Polish",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-007-T05"
+          ],
+          "suggestedPromptIds": [
+            "CCP-198",
+            "CCP-199",
+            "CCP-200",
+            "CCP-201",
+            "CCP-202"
+          ]
+        }
+      ],
+      "completionSummary": "Complete.",
+      "unassignedPromptIds": [
+        "CCP-203"
+      ],
+      "scope": "",
+      "date": "2026-03-27"
+    },
+    {
+      "id": "SPR-008",
+      "title": "Openings Research Report Upgrade Sprint",
+      "sourceDocument": "docs/mini-sprints/OPENINGS_RESEARCH_REPORT_UPGRADE_SPRINT_2026-03-28.md",
+      "status": "active",
+      "createdAt": "2026-04-01T20:50:12.290Z",
+      "updatedAt": "2026-04-01T22:28:50.868Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-008-P1",
+        "SPR-008-P2",
+        "SPR-008-P3"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-008-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Openings Research Report Upgrade Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-008-T01-next",
+          "title": "Implement Phase 5 — Research Model And Import Integrity",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-008-T01"
+          ],
+          "suggestedPromptIds": [
+            "CCP-214",
+            "CCP-213",
+            "CCP-212",
+            "CCP-211",
+            "CCP-210"
+          ]
+        },
+        {
+          "id": "SPR-008-T02-next",
+          "title": "Implement Phase 6 — Position Graph And Session Report Upgrade",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-008-T02"
+          ],
+          "suggestedPromptIds": [
+            "CCP-219",
+            "CCP-218",
+            "CCP-217",
+            "CCP-216",
+            "CCP-215"
+          ]
+        },
+        {
+          "id": "SPR-008-T03-next",
+          "title": "Implement Phase 7 — Comparative Prep And Session Polish",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-008-T03"
+          ],
+          "suggestedPromptIds": [
+            "CCP-224",
+            "CCP-223",
+            "CCP-222",
+            "CCP-221",
+            "CCP-220"
+          ]
+        }
+      ],
+      "completionSummary": "Core accuracy work done. Import typecheck issues and comparative view remain.",
+      "unassignedPromptIds": [
+        "CCP-225"
+      ],
+      "scope": "",
+      "date": "2026-03-28"
+    },
+    {
+      "id": "SPR-009",
+      "title": "Mini Sprint — Opponent Research Platform",
+      "sourceDocument": "docs/mini-sprints/OPPONENT_RESEARCH_PLATFORM_SPRINT_2026-03-29.md",
+      "status": "implementation-partial",
+      "createdAt": "2026-04-01T20:50:12.290Z",
+      "updatedAt": "2026-04-01T22:28:50.868Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-009-P1",
+        "SPR-009-P2",
+        "SPR-009-P3",
+        "SPR-009-P4",
+        "SPR-009-P5",
+        "SPR-009-P6",
+        "SPR-009-P7",
+        "SPR-009-P8",
+        "SPR-009-P9",
+        "SPR-009-P10"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-009-audit-source",
+          "sourceDocument": "/Users/leftcoast/Development/PatzerPatzer/docs/research/OPPONENT_RESEARCH_AUDIT.md",
+          "title": "Source audit",
+          "type": "audit",
+          "status": "present",
+          "date": "2026-03-29"
+        },
+        {
+          "id": "SPR-009-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Opponent Research Platform Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-009-T06-next",
+          "title": "Complete **Code only**",
+          "reason": "`openings/traps.ts` detection logic exists, no UI",
+          "priority": "normal",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-009-T06"
+          ],
+          "suggestedPromptIds": []
+        },
+        {
+          "id": "SPR-009-T05-next",
+          "title": "Implement **Not started**",
+          "reason": "Audit marked this task as not started.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-009-T05"
+          ],
+          "suggestedPromptIds": []
+        },
+        {
+          "id": "SPR-009-T07-next",
+          "title": "Implement **Not started**",
+          "reason": "Audit marked this task as not started.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-009-T07"
+          ],
+          "suggestedPromptIds": []
+        },
+        {
+          "id": "SPR-009-T08-next",
+          "title": "Implement **Not started**",
+          "reason": "Audit marked this task as not started.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-009-T08"
+          ],
+          "suggestedPromptIds": []
+        },
+        {
+          "id": "SPR-009-T09-next",
+          "title": "Implement **Not started**",
+          "reason": "ORP drill system deferred",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-009-T09"
+          ],
+          "suggestedPromptIds": []
+        }
+      ],
+      "completionSummary": "Phases 1–4 partially landed with bugs. Phases 5–9 not implemented.",
+      "unassignedPromptIds": [
+        "CCP-399",
+        "CCP-400",
+        "CCP-401",
+        "CCP-402",
+        "CCP-403",
+        "CCP-404",
+        "CCP-405",
+        "CCP-406",
+        "CCP-407",
+        "CCP-408",
+        "CCP-409",
+        "CCP-410",
+        "CCP-411",
+        "CCP-412",
+        "CCP-413",
+        "CCP-414",
+        "CCP-415",
+        "CCP-416",
+        "CCP-417",
+        "CCP-418",
+        "CCP-419",
+        "CCP-420",
+        "CCP-421",
+        "CCP-422",
+        "CCP-423",
+        "CCP-424",
+        "CCP-425",
+        "CCP-426",
+        "CCP-427",
+        "CCP-428",
+        "CCP-429",
+        "CCP-430",
+        "CCP-431",
+        "CCP-432",
+        "CCP-433",
+        "CCP-434",
+        "CCP-435",
+        "CCP-436",
+        "CCP-437",
+        "CCP-438",
+        "CCP-439",
+        "CCP-440",
+        "CCP-441",
+        "CCP-442",
+        "CCP-443",
+        "CCP-444",
+        "CCP-445",
+        "CCP-446",
+        "CCP-447",
+        "CCP-448",
+        "CCP-449",
+        "CCP-450",
+        "CCP-451",
+        "CCP-452",
+        "CCP-453",
+        "CCP-454",
+        "CCP-455",
+        "CCP-456",
+        "CCP-457"
+      ],
+      "scope": "Rename \"Openings\" to \"Opponents\", add scouting features (deviation detection, termination profile, sparklines, recommendations, traps, ORP variation save), strengthen data honesty",
+      "date": "2026-03-29"
+    },
+    {
+      "id": "SPR-010",
+      "title": "Mini Sprint — Puzzle Page Mobile Usability",
+      "sourceDocument": "docs/mini-sprints/PUZZLE_PAGE_MOBILE_USABILITY_SPRINT_2026-03-28.md",
+      "status": "completed",
+      "createdAt": "2026-04-01T20:50:12.291Z",
+      "updatedAt": "2026-04-01T22:28:50.868Z",
+      "dependencySprintIds": [
+        "SPR-005"
+      ],
+      "phaseIds": [
+        "SPR-010-P1"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-010-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Puzzle Page Mobile Usability Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [],
+      "completionSummary": "Complete. All passed review.",
+      "unassignedPromptIds": [
+        "CCP-209",
+        "CCP-204",
+        "CCP-205",
+        "CCP-206",
+        "CCP-207",
+        "CCP-208"
+      ],
+      "scope": "smallest safe mobile-usability pass for the live Patzer puzzle page, informed by the existing analysis mobile sprint and local Lichess puzzle/mobile references",
+      "date": "2026-03-28"
+    },
+    {
+      "id": "SPR-011",
+      "title": "Patzer Pro — Puzzle V1 Phased Execution Record",
+      "sourceDocument": "docs/mini-sprints/PUZZLE_V1_PHASED_EXECUTION_2026-03-27.md",
+      "status": "active",
+      "createdAt": "2026-04-01T20:50:12.291Z",
+      "updatedAt": "2026-04-01T22:28:50.868Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-011-P1",
+        "SPR-011-P2",
+        "SPR-011-P3",
+        "SPR-011-P4",
+        "SPR-011-P5",
+        "SPR-011-P6",
+        "SPR-011-P7"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-011-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Puzzle V1 Phased Execution",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-011-T01-next",
+          "title": "Implement Phase 0 — Ownership And Data Foundations",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-011-T01"
+          ],
+          "suggestedPromptIds": [
+            "CCP-148",
+            "CCP-143",
+            "CCP-144",
+            "CCP-145",
+            "CCP-146",
+            "CCP-147"
+          ]
+        },
+        {
+          "id": "SPR-011-T02-next",
+          "title": "Implement Phase 1 — Minimal Puzzle Product Shell",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-011-T02"
+          ],
+          "suggestedPromptIds": [
+            "CCP-175",
+            "CCP-154",
+            "CCP-153",
+            "CCP-152",
+            "CCP-151",
+            "CCP-150"
+          ]
+        },
+        {
+          "id": "SPR-011-T03-next",
+          "title": "Implement Phase 1.5 — Restore Puzzle Header Entry",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-011-T03"
+          ],
+          "suggestedPromptIds": [
+            "CCP-175"
+          ]
+        },
+        {
+          "id": "SPR-011-T04-next",
+          "title": "Implement Phase 2 — Strict Puzzle Solve Loop",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-011-T04"
+          ],
+          "suggestedPromptIds": [
+            "CCP-164-F1",
+            "CCP-159",
+            "CCP-158",
+            "CCP-157",
+            "CCP-156",
+            "CCP-155"
+          ]
+        },
+        {
+          "id": "SPR-011-T05-next",
+          "title": "Implement Phase 3 — Engine Assist Layer",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-011-T05"
+          ],
+          "suggestedPromptIds": [
+            "CCP-164-F1",
+            "CCP-164",
+            "CCP-163",
+            "CCP-162",
+            "CCP-161",
+            "CCP-160"
+          ]
+        }
+      ],
+      "completionSummary": "Built. Known issues with save-puzzle consistency and bulk-save first-attempt info (CCP-166/167).",
+      "unassignedPromptIds": [],
+      "scope": "",
+      "date": "2026-03-27"
+    },
+    {
+      "id": "SPR-012",
+      "title": "Rated Puzzle Ladder And Cloud Ownership Sprint",
+      "sourceDocument": "docs/mini-sprints/RATED_PUZZLE_LADDER_AND_CLOUD_OWNERSHIP_SPRINT_2026-03-29.md",
+      "status": "implementation-partial",
+      "createdAt": "2026-04-01T20:50:12.291Z",
+      "updatedAt": "2026-04-01T22:28:50.868Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-012-P1",
+        "SPR-012-P2",
+        "SPR-012-P3",
+        "SPR-012-P4",
+        "SPR-012-P5",
+        "SPR-012-P6",
+        "SPR-012-P7",
+        "SPR-012-P8"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-012-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Rated Puzzle Ladder & Cloud Ownership Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-012-T08-next",
+          "title": "Implement **Wired (CCP-463)**",
+          "reason": "Functions existed as dead code; now called on auth + stream stop. DB name mismatch fixed (CCP-466)",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-012-T08"
+          ],
+          "suggestedPromptIds": [
+            "CCP-306",
+            "CCP-305",
+            "CCP-304",
+            "CCP-303",
+            "CCP-302",
+            "CCP-301"
+          ]
+        }
+      ],
+      "completionSummary": "Phases 1–6 implemented. Phase 7 (cloud sync) is dead code. Phase 8 has unresolved typecheck issues.",
+      "unassignedPromptIds": [
+        "CCP-258"
+      ],
+      "scope": "",
+      "date": "2026-03-29"
+    },
+    {
+      "id": "SPR-013",
+      "title": "Rated Puzzle Stream Sprint",
+      "sourceDocument": "docs/mini-sprints/RATED_PUZZLE_STREAM_SPRINT_2026-03-29.md",
+      "status": "completed-with-issues",
+      "createdAt": "2026-04-01T20:50:12.291Z",
+      "updatedAt": "2026-04-01T22:28:50.868Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-013-P1",
+        "SPR-013-P2",
+        "SPR-013-P3",
+        "SPR-013-P4"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-013-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Rated Puzzle Stream Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [],
+      "completionSummary": "Core stream works. Shard integration has lingering typecheck issues.",
+      "unassignedPromptIds": [
+        "CCP-307",
+        "CCP-308",
+        "CCP-309",
+        "CCP-311",
+        "CCP-315",
+        "CCP-316",
+        "CCP-317",
+        "CCP-319",
+        "CCP-320",
+        "CCP-321"
+      ],
+      "scope": "",
+      "date": "2026-03-29"
+    },
+    {
+      "id": "SPR-014",
+      "title": "Sprint Plan: Stable Background Bulk Review",
+      "sourceDocument": "docs/mini-sprints/SPRINT_BACKGROUND_BULK_REVIEW.md",
+      "status": "completed",
+      "createdAt": "2026-04-01T20:50:12.292Z",
+      "updatedAt": "2026-04-01T22:28:50.869Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-014-P1"
+      ],
+      "auditRefs": [
+        {
+          "id": "SPR-014-audit-bootstrap",
+          "sourceDocument": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "title": "Background Bulk Review Sprint",
+          "type": "implementation-review",
+          "status": "present",
+          "date": "2026-03-30"
+        }
+      ],
+      "recommendedNextSteps": [],
+      "completionSummary": "Complete. All passed review.",
+      "unassignedPromptIds": [
+        "CCP-126",
+        "CCP-125",
+        "CCP-124",
+        "CCP-123",
+        "CCP-122",
+        "CCP-121",
+        "CCP-120"
+      ],
+      "scope": "",
+      "date": ""
+    },
+    {
+      "id": "SPR-015",
+      "title": "Study Page Sprint Plan",
+      "sourceDocument": "docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md",
+      "status": "active",
+      "createdAt": "2026-04-01T20:50:12.294Z",
+      "updatedAt": "2026-04-01T22:28:50.869Z",
+      "dependencySprintIds": [],
+      "phaseIds": [
+        "SPR-015-P1",
+        "SPR-015-P2",
+        "SPR-015-P3",
+        "SPR-015-P4",
+        "SPR-015-P5",
+        "SPR-015-P6",
+        "SPR-015-P7",
+        "SPR-015-P8",
+        "SPR-015-P9",
+        "SPR-015-P10"
+      ],
+      "auditRefs": [],
+      "recommendedNextSteps": [
+        {
+          "id": "SPR-015-T01-next",
+          "title": "Implement Study domain types",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-015-T01"
+          ],
+          "suggestedPromptIds": [
+            "CCP-519"
+          ]
+        },
+        {
+          "id": "SPR-015-T02-next",
+          "title": "Implement Study IDB persistence layer",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-015-T02"
+          ],
+          "suggestedPromptIds": [
+            "CCP-520"
+          ]
+        },
+        {
+          "id": "SPR-015-T03-next",
+          "title": "Implement Route and page shell",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-015-T03"
+          ],
+          "suggestedPromptIds": [
+            "CCP-521"
+          ]
+        },
+        {
+          "id": "SPR-015-T04-next",
+          "title": "Implement Save action core logic",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-015-T04"
+          ],
+          "suggestedPromptIds": [
+            "CCP-523"
+          ]
+        },
+        {
+          "id": "SPR-015-T05-next",
+          "title": "Implement Context menu integration — \"Save to Library\"",
+          "reason": "Audit marked this task as planned.",
+          "priority": "low",
+          "sourceAudit": "docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md",
+          "linkedTaskIds": [
+            "SPR-015-T05"
+          ],
+          "suggestedPromptIds": [
+            "CCP-524"
+          ]
+        }
+      ],
+      "completionSummary": "",
+      "unassignedPromptIds": [
+        "CCP-522",
+        "CCP-527",
+        "CCP-532",
+        "CCP-542",
+        "CCP-548",
+        "CCP-553",
+        "CCP-557",
+        "CCP-561",
+        "CCP-563"
+      ],
+      "scope": "",
+      "date": ""
+    }
+  ],
+  "phases": [
+    {
+      "id": "SPR-001-P1",
+      "sprintId": "SPR-001",
+      "title": "Tasks",
+      "order": 1,
+      "status": "active",
+      "taskIds": [
+        "SPR-001-T01",
+        "SPR-001-T02",
+        "SPR-001-T03",
+        "SPR-001-T04",
+        "SPR-001-T05",
+        "SPR-001-T06",
+        "SPR-001-T07"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Tasks"
+    },
+    {
+      "id": "SPR-002-P1",
+      "sprintId": "SPR-002",
+      "title": "Tasks",
+      "order": 1,
+      "status": "active",
+      "taskIds": [
+        "SPR-002-T01",
+        "SPR-002-T02",
+        "SPR-002-T03",
+        "SPR-002-T04",
+        "SPR-002-T05",
+        "SPR-002-T06"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Tasks"
+    },
+    {
+      "id": "SPR-003-P1",
+      "sprintId": "SPR-003",
+      "title": "Phase 1 — Strength Types and UCI Integration",
+      "order": 1,
+      "status": "active",
+      "taskIds": [
+        "SPR-003-T01",
+        "SPR-003-T02",
+        "SPR-003-T03",
+        "SPR-003-T04",
+        "SPR-003-T05"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 1"
+    },
+    {
+      "id": "SPR-003-P2",
+      "sprintId": "SPR-003",
+      "title": "Phase 2 — Engine Mode Switching",
+      "order": 2,
+      "status": "active",
+      "taskIds": [
+        "SPR-003-T06",
+        "SPR-003-T07",
+        "SPR-003-T08",
+        "SPR-003-T09",
+        "SPR-003-T10"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 2"
+    },
+    {
+      "id": "SPR-003-P3",
+      "sprintId": "SPR-003",
+      "title": "Phase 3 — Play Move Service",
+      "order": 3,
+      "status": "active",
+      "taskIds": [
+        "SPR-003-T11",
+        "SPR-003-T12",
+        "SPR-003-T13",
+        "SPR-003-T14",
+        "SPR-003-T15"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 3"
+    },
+    {
+      "id": "SPR-003-P4",
+      "sprintId": "SPR-003",
+      "title": "Phase 4 — Practice Against Them Integration",
+      "order": 4,
+      "status": "active",
+      "taskIds": [
+        "SPR-003-T16",
+        "SPR-003-T17",
+        "SPR-003-T18",
+        "SPR-003-T19",
+        "SPR-003-T20"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 4"
+    },
+    {
+      "id": "SPR-003-P5",
+      "sprintId": "SPR-003",
+      "title": "Phase 5 — Strength Selector UI",
+      "order": 5,
+      "status": "active",
+      "taskIds": [
+        "SPR-003-T21",
+        "SPR-003-T22",
+        "SPR-003-T23",
+        "SPR-003-T24",
+        "SPR-003-T25",
+        "SPR-003-T26"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 5"
+    },
+    {
+      "id": "SPR-004-P1",
+      "sprintId": "SPR-004",
+      "title": "Tasks",
+      "order": 1,
+      "status": "active",
+      "taskIds": [
+        "SPR-004-T01",
+        "SPR-004-T02",
+        "SPR-004-T03",
+        "SPR-004-T04",
+        "SPR-004-T05",
+        "SPR-004-T06",
+        "SPR-004-T07",
+        "SPR-004-T08",
+        "SPR-004-T09",
+        "SPR-004-T10",
+        "SPR-004-T11",
+        "SPR-004-T12",
+        "SPR-004-T13",
+        "SPR-004-T14",
+        "SPR-004-T15",
+        "SPR-004-T16"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Tasks"
+    },
+    {
+      "id": "SPR-005-P1",
+      "sprintId": "SPR-005",
+      "title": "Implementation",
+      "order": 1,
+      "status": "planned",
+      "taskIds": [
+        "SPR-005-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Implementation"
+    },
+    {
+      "id": "SPR-006-P1",
+      "sprintId": "SPR-006",
+      "title": "**Prompts ran, unreviewed**",
+      "order": 1,
+      "status": "planned",
+      "taskIds": [
+        "SPR-006-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "CCP-324–330 started but not reviewed",
+      "sourceAnchor": "Phase 1 — Grounding & Implementation Map"
+    },
+    {
+      "id": "SPR-006-P2",
+      "sprintId": "SPR-006",
+      "title": "**Prompts ran, unreviewed**",
+      "order": 2,
+      "status": "planned",
+      "taskIds": [
+        "SPR-006-T02"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "CCP-331–338 started but not reviewed",
+      "sourceAnchor": "Phase 2 — Session Tool Shell & Mode Architecture"
+    },
+    {
+      "id": "SPR-006-P3",
+      "sprintId": "SPR-006",
+      "title": "**Prompts ran, unreviewed**",
+      "order": 3,
+      "status": "planned",
+      "taskIds": [
+        "SPR-006-T03"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "CCP-339–346 started but not reviewed",
+      "sourceAnchor": "Phase 3 — Shared Opponent Analytics Foundation"
+    },
+    {
+      "id": "SPR-006-P4",
+      "sprintId": "SPR-006",
+      "title": "**Prompts ran, unreviewed**",
+      "order": 4,
+      "status": "planned",
+      "taskIds": [
+        "SPR-006-T04"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "CCP-347–352 started but not reviewed",
+      "sourceAnchor": "Phase 4 — Repertoire Tool Full Page Upgrade"
+    },
+    {
+      "id": "SPR-006-P5",
+      "sprintId": "SPR-006",
+      "title": "**Not started**",
+      "order": 5,
+      "status": "planned",
+      "taskIds": [
+        "SPR-006-T05"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "CCP-355 manager ran, children unreviewed",
+      "sourceAnchor": "Phase 5 — Prep Report Dashboard"
+    },
+    {
+      "id": "SPR-006-P6",
+      "sprintId": "SPR-006",
+      "title": "**Not started**",
+      "order": 6,
+      "status": "planned",
+      "taskIds": [
+        "SPR-006-T06"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Prompts created but not queued",
+      "sourceAnchor": "Phase 6 — Style Dashboard"
+    },
+    {
+      "id": "SPR-006-P7",
+      "sprintId": "SPR-006",
+      "title": "**Not started**",
+      "order": 7,
+      "status": "planned",
+      "taskIds": [
+        "SPR-006-T07"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Prompts created but not queued",
+      "sourceAnchor": "Phase 7 — Practice Against Them"
+    },
+    {
+      "id": "SPR-007-P1",
+      "sprintId": "SPR-007",
+      "title": "Phase 0 — Ownership And Separate Research Persistence",
+      "order": 1,
+      "status": "active",
+      "taskIds": [
+        "SPR-007-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 0"
+    },
+    {
+      "id": "SPR-007-P2",
+      "sprintId": "SPR-007",
+      "title": "Phase 1 — Opponent Research Import Flow",
+      "order": 2,
+      "status": "active",
+      "taskIds": [
+        "SPR-007-T02"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 1"
+    },
+    {
+      "id": "SPR-007-P3",
+      "sprintId": "SPR-007",
+      "title": "Phase 2 — Tree Build And Board Shell",
+      "order": 3,
+      "status": "active",
+      "taskIds": [
+        "SPR-007-T03"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 2"
+    },
+    {
+      "id": "SPR-007-P4",
+      "sprintId": "SPR-007",
+      "title": "Phase 3 — Played Lines, Percentages, And Report Surface",
+      "order": 4,
+      "status": "active",
+      "taskIds": [
+        "SPR-007-T04"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 3"
+    },
+    {
+      "id": "SPR-007-P5",
+      "sprintId": "SPR-007",
+      "title": "Phase 4 — Collections Management And Product Polish",
+      "order": 5,
+      "status": "active",
+      "taskIds": [
+        "SPR-007-T05"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 4"
+    },
+    {
+      "id": "SPR-008-P1",
+      "sprintId": "SPR-008",
+      "title": "Phase 5 — Research Model And Import Integrity",
+      "order": 1,
+      "status": "active",
+      "taskIds": [
+        "SPR-008-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 5"
+    },
+    {
+      "id": "SPR-008-P2",
+      "sprintId": "SPR-008",
+      "title": "Phase 6 — Position Graph And Session Report Upgrade",
+      "order": 2,
+      "status": "active",
+      "taskIds": [
+        "SPR-008-T02"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 6"
+    },
+    {
+      "id": "SPR-008-P3",
+      "sprintId": "SPR-008",
+      "title": "Phase 7 — Comparative Prep And Session Polish",
+      "order": 3,
+      "status": "active",
+      "taskIds": [
+        "SPR-008-T03"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 7"
+    },
+    {
+      "id": "SPR-009-P1",
+      "sprintId": "SPR-009",
+      "title": "**Done**",
+      "order": 1,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Route, nav, and user-facing text updated",
+      "sourceAnchor": "Phase 0 — Rename to Opponents"
+    },
+    {
+      "id": "SPR-009-P2",
+      "sprintId": "SPR-009",
+      "title": "**Done**",
+      "order": 2,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T02"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Typecheck issues fixed (CCP-458)",
+      "sourceAnchor": "Phase 1 — Rating Sparkline"
+    },
+    {
+      "id": "SPR-009-P3",
+      "sprintId": "SPR-009",
+      "title": "**Done**",
+      "order": 3,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T03"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Analytics + display. Typecheck fixed (CCP-460)",
+      "sourceAnchor": "Phase 2 — Termination Profile"
+    },
+    {
+      "id": "SPR-009-P4",
+      "sprintId": "SPR-009",
+      "title": "**Done**",
+      "order": 4,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T04"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Engine, summary panel, and move-row markers (CCP-468)",
+      "sourceAnchor": "Phase 3 — Deviation Detection"
+    },
+    {
+      "id": "SPR-009-P5",
+      "sprintId": "SPR-009",
+      "title": "**Not started**",
+      "order": 5,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T05"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 4 — Recommendations"
+    },
+    {
+      "id": "SPR-009-P6",
+      "sprintId": "SPR-009",
+      "title": "**Code only**",
+      "order": 6,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T06"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "`openings/traps.ts` detection logic exists, no UI",
+      "sourceAnchor": "Phase 5 — Traps"
+    },
+    {
+      "id": "SPR-009-P7",
+      "sprintId": "SPR-009",
+      "title": "**Not started**",
+      "order": 7,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T07"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 6 — Sample Size Warnings"
+    },
+    {
+      "id": "SPR-009-P8",
+      "sprintId": "SPR-009",
+      "title": "**Not started**",
+      "order": 8,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T08"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 7 — Recency-Weighted Default"
+    },
+    {
+      "id": "SPR-009-P9",
+      "sprintId": "SPR-009",
+      "title": "**Not started**",
+      "order": 9,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T09"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "ORP drill system deferred",
+      "sourceAnchor": "Phase 8 — Save to ORP"
+    },
+    {
+      "id": "SPR-009-P10",
+      "sprintId": "SPR-009",
+      "title": "**Not started**",
+      "order": 10,
+      "status": "planned",
+      "taskIds": [
+        "SPR-009-T10"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 9 — Research Tasks"
+    },
+    {
+      "id": "SPR-010-P1",
+      "sprintId": "SPR-010",
+      "title": "Implementation",
+      "order": 1,
+      "status": "planned",
+      "taskIds": [
+        "SPR-010-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Implementation"
+    },
+    {
+      "id": "SPR-011-P1",
+      "sprintId": "SPR-011",
+      "title": "Phase 0 — Ownership And Data Foundations",
+      "order": 1,
+      "status": "active",
+      "taskIds": [
+        "SPR-011-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 0"
+    },
+    {
+      "id": "SPR-011-P2",
+      "sprintId": "SPR-011",
+      "title": "Phase 1 — Minimal Puzzle Product Shell",
+      "order": 2,
+      "status": "active",
+      "taskIds": [
+        "SPR-011-T02"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 1"
+    },
+    {
+      "id": "SPR-011-P3",
+      "sprintId": "SPR-011",
+      "title": "Phase 1.5 — Restore Puzzle Header Entry",
+      "order": 3,
+      "status": "active",
+      "taskIds": [
+        "SPR-011-T03"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 1.5"
+    },
+    {
+      "id": "SPR-011-P4",
+      "sprintId": "SPR-011",
+      "title": "Phase 2 — Strict Puzzle Solve Loop",
+      "order": 4,
+      "status": "active",
+      "taskIds": [
+        "SPR-011-T04"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 2"
+    },
+    {
+      "id": "SPR-011-P5",
+      "sprintId": "SPR-011",
+      "title": "Phase 3 — Engine Assist Layer",
+      "order": 5,
+      "status": "active",
+      "taskIds": [
+        "SPR-011-T05"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 3"
+    },
+    {
+      "id": "SPR-011-P6",
+      "sprintId": "SPR-011",
+      "title": "Phase 4 — User Library Authoring",
+      "order": 6,
+      "status": "active",
+      "taskIds": [
+        "SPR-011-T06"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 4"
+    },
+    {
+      "id": "SPR-011-P7",
+      "sprintId": "SPR-011",
+      "title": "Phase 5 — Repetition And Imported-Library Scale",
+      "order": 7,
+      "status": "active",
+      "taskIds": [
+        "SPR-011-T07"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 5"
+    },
+    {
+      "id": "SPR-012-P1",
+      "sprintId": "SPR-012",
+      "title": "**Done**",
+      "order": 1,
+      "status": "planned",
+      "taskIds": [
+        "SPR-012-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 1 — Research & implementation map"
+    },
+    {
+      "id": "SPR-012-P2",
+      "sprintId": "SPR-012",
+      "title": "**Done**",
+      "order": 2,
+      "status": "planned",
+      "taskIds": [
+        "SPR-012-T02"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "`UserPuzzlePerf` with Glicko-2",
+      "sourceAnchor": "Phase 2 — Local rating domain foundations"
+    },
+    {
+      "id": "SPR-012-P3",
+      "sprintId": "SPR-012",
+      "title": "**Done**",
+      "order": 3,
+      "status": "planned",
+      "taskIds": [
+        "SPR-012-T03"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "`puzzleDb.ts` user-perf and rating-history stores",
+      "sourceAnchor": "Phase 3 — Local persistence and restore"
+    },
+    {
+      "id": "SPR-012-P4",
+      "sprintId": "SPR-012",
+      "title": "**Done**",
+      "order": 4,
+      "status": "planned",
+      "taskIds": [
+        "SPR-012-T04"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Session mode, difficulty selector",
+      "sourceAnchor": "Phase 4 — Rated session policy"
+    },
+    {
+      "id": "SPR-012-P5",
+      "sprintId": "SPR-012",
+      "title": "**Done**",
+      "order": 5,
+      "status": "planned",
+      "taskIds": [
+        "SPR-012-T05"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Cooldown logic, shard fallback",
+      "sourceAnchor": "Phase 5 — Rated eligibility and selection"
+    },
+    {
+      "id": "SPR-012-P6",
+      "sprintId": "SPR-012",
+      "title": "**Done**",
+      "order": 6,
+      "status": "planned",
+      "taskIds": [
+        "SPR-012-T06"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Glicko-2 calculator",
+      "sourceAnchor": "Phase 6 — Rated completion and rating updates"
+    },
+    {
+      "id": "SPR-012-P7",
+      "sprintId": "SPR-012",
+      "title": "**Done**",
+      "order": 7,
+      "status": "planned",
+      "taskIds": [
+        "SPR-012-T07"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Rating delta display, difficulty chart",
+      "sourceAnchor": "Phase 7 — Rated ladder UI and feedback surfaces"
+    },
+    {
+      "id": "SPR-012-P8",
+      "sprintId": "SPR-012",
+      "title": "**Wired (CCP-463)**",
+      "order": 8,
+      "status": "planned",
+      "taskIds": [
+        "SPR-012-T08"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Functions existed as dead code; now called on auth + stream stop. DB name mismatch fixed (CCP-466)",
+      "sourceAnchor": "Phase 8 — Cloud ownership and sync"
+    },
+    {
+      "id": "SPR-013-P1",
+      "sprintId": "SPR-013",
+      "title": "**Done**",
+      "order": 1,
+      "status": "planned",
+      "taskIds": [
+        "SPR-013-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Typecheck issues fixed (CCP-461)",
+      "sourceAnchor": "Shard loader integration"
+    },
+    {
+      "id": "SPR-013-P2",
+      "sprintId": "SPR-013",
+      "title": "**Done**",
+      "order": 2,
+      "status": "planned",
+      "taskIds": [
+        "SPR-013-T02"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Rated stream with auto-next in ctrl.ts",
+      "sourceAnchor": "Auto-advance stream"
+    },
+    {
+      "id": "SPR-013-P3",
+      "sprintId": "SPR-013",
+      "title": "**Done**",
+      "order": 3,
+      "status": "planned",
+      "taskIds": [
+        "SPR-013-T03"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "`findRatedPuzzleInShards` guards fixed",
+      "sourceAnchor": "Gap-fixing for shard loader"
+    },
+    {
+      "id": "SPR-013-P4",
+      "sprintId": "SPR-013",
+      "title": "**Done**",
+      "order": 4,
+      "status": "planned",
+      "taskIds": [
+        "SPR-013-T04"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "Rating delta, difficulty selector",
+      "sourceAnchor": "Stream UI polish"
+    },
+    {
+      "id": "SPR-014-P1",
+      "sprintId": "SPR-014",
+      "title": "Implementation",
+      "order": 1,
+      "status": "planned",
+      "taskIds": [
+        "SPR-014-T01"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Implementation"
+    },
+    {
+      "id": "SPR-015-P1",
+      "sprintId": "SPR-015",
+      "title": "Phase 0 — Foundation — Types, Persistence, and Route Shell",
+      "order": 1,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T01",
+        "SPR-015-T02",
+        "SPR-015-T03"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 0"
+    },
+    {
+      "id": "SPR-015-P2",
+      "sprintId": "SPR-015",
+      "title": "Phase 1 — Save Action — \"Save to Library\" from Anywhere",
+      "order": 2,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T04",
+        "SPR-015-T05",
+        "SPR-015-T06",
+        "SPR-015-T07"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 1"
+    },
+    {
+      "id": "SPR-015-P3",
+      "sprintId": "SPR-015",
+      "title": "Phase 2 — Study Library Browser",
+      "order": 3,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T08",
+        "SPR-015-T09",
+        "SPR-015-T10",
+        "SPR-015-T11"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 2"
+    },
+    {
+      "id": "SPR-015-P4",
+      "sprintId": "SPR-015",
+      "title": "Phase 3 — Study Detail — Annotation Workspace",
+      "order": 4,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T12",
+        "SPR-015-T13",
+        "SPR-015-T14",
+        "SPR-015-T15",
+        "SPR-015-T16",
+        "SPR-015-T17",
+        "SPR-015-T18",
+        "SPR-015-T19",
+        "SPR-015-T20"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 3"
+    },
+    {
+      "id": "SPR-015-P5",
+      "sprintId": "SPR-015",
+      "title": "Phase 4 — Repetition Practice — Core Engine",
+      "order": 5,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T21",
+        "SPR-015-T22",
+        "SPR-015-T23",
+        "SPR-015-T24",
+        "SPR-015-T25"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 4"
+    },
+    {
+      "id": "SPR-015-P6",
+      "sprintId": "SPR-015",
+      "title": "Phase 5 — Repetition Practice — Board and UI",
+      "order": 6,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T26",
+        "SPR-015-T27",
+        "SPR-015-T28",
+        "SPR-015-T29"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 5"
+    },
+    {
+      "id": "SPR-015-P7",
+      "sprintId": "SPR-015",
+      "title": "Phase 6 — Scheduling and Review",
+      "order": 7,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T30",
+        "SPR-015-T31",
+        "SPR-015-T32"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 6"
+    },
+    {
+      "id": "SPR-015-P8",
+      "sprintId": "SPR-015",
+      "title": "Phase 7 — Practice Line Selection",
+      "order": 8,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T33",
+        "SPR-015-T34",
+        "SPR-015-T35"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 7"
+    },
+    {
+      "id": "SPR-015-P9",
+      "sprintId": "SPR-015",
+      "title": "Phase 8 — Polish and Integration",
+      "order": 9,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T36",
+        "SPR-015-T37",
+        "SPR-015-T38",
+        "SPR-015-T39",
+        "SPR-015-T40",
+        "SPR-015-T41"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 8"
+    },
+    {
+      "id": "SPR-015-P10",
+      "sprintId": "SPR-015",
+      "title": "Phase 9 — Library Navigation and Organization UX",
+      "order": 10,
+      "status": "active",
+      "taskIds": [
+        "SPR-015-T42",
+        "SPR-015-T43",
+        "SPR-015-T44",
+        "SPR-015-T45",
+        "SPR-015-T46",
+        "SPR-015-T47",
+        "SPR-015-T48"
+      ],
+      "dependencyPhaseIds": [],
+      "notes": "",
+      "sourceAnchor": "Phase 9"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "SPR-001-T01",
+      "sprintId": "SPR-001",
+      "phaseId": "SPR-001-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-241"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`analyse/analysisControls.ts`",
+      "acceptance": "",
+      "sourceAnchor": "Task 1 — Extract analysis-controls owner"
+    },
+    {
+      "id": "SPR-001-T02",
+      "sprintId": "SPR-001",
+      "phaseId": "SPR-001-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-242"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 2 — Lichess-style control bar shell"
+    },
+    {
+      "id": "SPR-001-T03",
+      "sprintId": "SPR-001",
+      "phaseId": "SPR-001-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-243"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3 — Hamburger menu overlay"
+    },
+    {
+      "id": "SPR-001-T04",
+      "sprintId": "SPR-001",
+      "phaseId": "SPR-001-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-244"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Legacy `.analyse__actions` path removed (CCP-467)",
+      "acceptance": "",
+      "sourceAnchor": "Task 4 — Migrate existing actions"
+    },
+    {
+      "id": "SPR-001-T05",
+      "sprintId": "SPR-001",
+      "phaseId": "SPR-001-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-245",
+        "CCP-245-F1"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Typecheck fixed (CCP-462)",
+      "acceptance": "",
+      "sourceAnchor": "Task 5 — Explorer button"
+    },
+    {
+      "id": "SPR-001-T06",
+      "sprintId": "SPR-001",
+      "phaseId": "SPR-001-P1",
+      "title": "**Not confirmed**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-246"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 6 — Split engine gear"
+    },
+    {
+      "id": "SPR-001-T07",
+      "sprintId": "SPR-001",
+      "phaseId": "SPR-001-P1",
+      "title": "**Not confirmed**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-247"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 7 — Clean header duplicates"
+    },
+    {
+      "id": "SPR-002-T01",
+      "sprintId": "SPR-002",
+      "phaseId": "SPR-002-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-226"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Migrated from MySQL to SQLite (CCP-472)",
+      "acceptance": "",
+      "sourceAnchor": "Task 1 — Server database module"
+    },
+    {
+      "id": "SPR-002-T02",
+      "sprintId": "SPR-002",
+      "phaseId": "SPR-002-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-227"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Lichess OAuth in `server/auth.mjs`",
+      "acceptance": "",
+      "sourceAnchor": "Task 2 — Admin auth / login"
+    },
+    {
+      "id": "SPR-002-T03",
+      "sprintId": "SPR-002",
+      "phaseId": "SPR-002-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-228"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`server/sync.mjs` push/pull endpoints",
+      "acceptance": "",
+      "sourceAnchor": "Task 3 — Server API endpoints"
+    },
+    {
+      "id": "SPR-002-T04",
+      "sprintId": "SPR-002",
+      "phaseId": "SPR-002-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-229"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`src/sync/client.ts` with push/pull",
+      "acceptance": "",
+      "sourceAnchor": "Task 4 — Client sync service"
+    },
+    {
+      "id": "SPR-002-T05",
+      "sprintId": "SPR-002",
+      "phaseId": "SPR-002-P1",
+      "title": "**Fixed (CCP-466)**",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-230"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "DB name corrected, attempts now written",
+      "acceptance": "",
+      "sourceAnchor": "Task 5 — Pull → IDB write"
+    },
+    {
+      "id": "SPR-002-T06",
+      "sprintId": "SPR-002",
+      "phaseId": "SPR-002-P1",
+      "title": "**Not done**",
+      "status": "implemented",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Needs end-to-end testing",
+      "acceptance": "",
+      "sourceAnchor": "Task 6 — Bidirectional validation"
+    },
+    {
+      "id": "SPR-003-T01",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P1",
+      "title": "Execute Phase 1 children",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-565"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-565"
+    },
+    {
+      "id": "SPR-003-T02",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P1",
+      "title": "Audit SF18 WASM UCI options for strength limiting; read Lichess rateBot.ts",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-566"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-566"
+    },
+    {
+      "id": "SPR-003-T03",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P1",
+      "title": "Define `EngineMode`, `EngineStrengthConfig`, `STRENGTH_LEVELS[1-8]`",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-567"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-567"
+    },
+    {
+      "id": "SPR-003-T04",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P1",
+      "title": "Add `setPlayStrength(config)`, `setAnalysisMode()`, `goPlay(depth)` to StockfishProtocol",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-568"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-568"
+    },
+    {
+      "id": "SPR-003-T05",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P1",
+      "title": "Build + typecheck validation",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-569"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-569"
+    },
+    {
+      "id": "SPR-003-T06",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P2",
+      "title": "Execute Phase 2 children",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-571"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-571"
+    },
+    {
+      "id": "SPR-003-T07",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P2",
+      "title": "Trace engine lifecycle in ctrl.ts, identify safe mode-switch injection points",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-572"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-572"
+    },
+    {
+      "id": "SPR-003-T08",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P2",
+      "title": "Add `engineMode`, `playStrengthConfig`, `enterPlayMode()`, `exitPlayMode()` to ctrl.ts; guard `evalCurrentPosition()` and `evalThreatPosition()`",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-573"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-573"
+    },
+    {
+      "id": "SPR-003-T09",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P2",
+      "title": "Persist last-used strength level in localStorage (`patzer.playStrengthLevel`)",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-574"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-574"
+    },
+    {
+      "id": "SPR-003-T10",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P2",
+      "title": "Build + typecheck + manual console validation",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-575"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-575"
+    },
+    {
+      "id": "SPR-003-T11",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P3",
+      "title": "Execute Phase 3 children",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-577"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-577"
+    },
+    {
+      "id": "SPR-003-T12",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P3",
+      "title": "Design bestmove routing for play mode — callback slot in ctrl.ts vs dedicated listener",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-578"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-578"
+    },
+    {
+      "id": "SPR-003-T13",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P3",
+      "title": "Implement `requestPlayMove()` and `cancelPlayMove()` with one-shot bestmove callback routing",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-579"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-579"
+    },
+    {
+      "id": "SPR-003-T14",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P3",
+      "title": "Add `playMoveWithDelay()` — variable delay scaled by strength level + random jitter",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-580"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-580"
+    },
+    {
+      "id": "SPR-003-T15",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P3",
+      "title": "Build + typecheck + console integration test (call from devtools, verify move returned)",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-581"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-581"
+    },
+    {
+      "id": "SPR-003-T16",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P4",
+      "title": "Execute Phase 4 children",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-582"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-582"
+    },
+    {
+      "id": "SPR-003-T17",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P4",
+      "title": "Add `strengthLevel` to PracticeSession type; accept in `startPractice()`",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-583"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-583"
+    },
+    {
+      "id": "SPR-003-T18",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P4",
+      "title": "Wire `requestPlayMove` into `schedulePracticeOpponentResponse` at the `'request-engine'` branch (view.ts:2320); call `exitPlayMode()` on practice stop",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-584"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-584"
+    },
+    {
+      "id": "SPR-003-T19",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P4",
+      "title": "Update practice banner to show strength level label when source is 'engine'",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-585"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-585"
+    },
+    {
+      "id": "SPR-003-T20",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P4",
+      "title": "End-to-end validation: practice until repertoire exhausts, verify engine plays at reduced strength, verify analysis resumes after stop",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-586"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-586"
+    },
+    {
+      "id": "SPR-003-T21",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P5",
+      "title": "Execute Phase 5 children",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-587"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-587"
+    },
+    {
+      "id": "SPR-003-T22",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P5",
+      "title": "Audit Lichess AI level selector UI pattern — see [`docs/reference/LICHESS_AI_LEVEL_SELECTOR_AUDIT.md`](../reference/LICHESS_AI_LEVEL_SELECTOR_AUDIT.md)",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-588"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-588"
+    },
+    {
+      "id": "SPR-003-T23",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P5",
+      "title": "Create `renderStrengthSelector(level, onChange)` Snabbdom view function",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-589"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-589"
+    },
+    {
+      "id": "SPR-003-T24",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P5",
+      "title": "Embed selector in practice setup panel (view.ts `renderPracticeSetupPanel`)",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-590"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-590"
+    },
+    {
+      "id": "SPR-003-T25",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P5",
+      "title": "Add `.strength-selector` styles, responsive for mobile",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-591"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-591"
+    },
+    {
+      "id": "SPR-003-T26",
+      "sprintId": "SPR-003",
+      "phaseId": "SPR-003-P5",
+      "title": "Visual + functional validation across viewports",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-592"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "CCP-592"
+    },
+    {
+      "id": "SPR-004-T01",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-379",
+        "CCP-388",
+        "CCP-389",
+        "CCP-390",
+        "CCP-391",
+        "CCP-392",
+        "CCP-393"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Import adapters extract clocks",
+      "acceptance": "",
+      "sourceAnchor": "Task 1 — Clock data on Lichess import"
+    },
+    {
+      "id": "SPR-004-T02",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-380"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`stats/types.ts` has full schema",
+      "acceptance": "",
+      "sourceAnchor": "Task 2 — GameSummary type and persistence"
+    },
+    {
+      "id": "SPR-004-T03",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-381"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`stats/extract.ts` generates from analysis",
+      "acceptance": "",
+      "sourceAnchor": "Task 3 — GameSummary extraction"
+    },
+    {
+      "id": "SPR-004-T04",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-382"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Backfill for pre-existing analyzed games",
+      "acceptance": "",
+      "sourceAnchor": "Task 4 — Backfill GameSummaries"
+    },
+    {
+      "id": "SPR-004-T05",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-383"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`stats/ctrl.ts` with time-filter",
+      "acceptance": "",
+      "sourceAnchor": "Task 5 — Stats controller and routing"
+    },
+    {
+      "id": "SPR-004-T06",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-384"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`stats/weakness.ts` with 8 detectors",
+      "acceptance": "",
+      "sourceAnchor": "Task 6 — Weakness aggregation engine"
+    },
+    {
+      "id": "SPR-004-T07",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Partial**",
+      "status": "implementation-partial",
+      "linkedPromptIds": [
+        "CCP-385"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`stats/view.ts` has placeholder sections, not full cards",
+      "acceptance": "",
+      "sourceAnchor": "Task 7 — Weakness dashboard panel"
+    },
+    {
+      "id": "SPR-004-T08",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Partial**",
+      "status": "implementation-partial",
+      "linkedPromptIds": [
+        "CCP-386"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "SVG polyline chart exists but minimal",
+      "acceptance": "",
+      "sourceAnchor": "Task 8 — Accuracy and blunder trends"
+    },
+    {
+      "id": "SPR-004-T09",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-387"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "No analysis required; pure W/D/L aggregation",
+      "acceptance": "",
+      "sourceAnchor": "Task 9a — Opening win rate from import data"
+    },
+    {
+      "id": "SPR-004-T10",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-387"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "No opening-specific stats view",
+      "acceptance": "",
+      "sourceAnchor": "Task 9 — Opening performance table (full)"
+    },
+    {
+      "id": "SPR-004-T11",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-388"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "No tactical breakdown view",
+      "acceptance": "",
+      "sourceAnchor": "Task 10 — Tactical profile"
+    },
+    {
+      "id": "SPR-004-T12",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-389"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "No post-game summary in analysis view",
+      "acceptance": "",
+      "sourceAnchor": "Task 11 — Post-game summary panel"
+    },
+    {
+      "id": "SPR-004-T13",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-390"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Retro results stored in IDB",
+      "acceptance": "",
+      "sourceAnchor": "Task 12 — Persist retro session results"
+    },
+    {
+      "id": "SPR-004-T14",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-391"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Detectors suggest actions but no UI",
+      "acceptance": "",
+      "sourceAnchor": "Task 13 — Training recommendations"
+    },
+    {
+      "id": "SPR-004-T15",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-392"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Clock data captured but no stats view",
+      "acceptance": "",
+      "sourceAnchor": "Task 14 — Time management profile"
+    },
+    {
+      "id": "SPR-004-T16",
+      "sprintId": "SPR-004",
+      "phaseId": "SPR-004-P1",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-393"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Data computed but no view",
+      "acceptance": "",
+      "sourceAnchor": "Task 15 — Conversion and resourcefulness"
+    },
+    {
+      "id": "SPR-005-T01",
+      "sprintId": "SPR-005",
+      "phaseId": "SPR-005-P1",
+      "title": "Mini Sprint — Mobile Analysis Usability",
+      "status": "implemented",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Implementation"
+    },
+    {
+      "id": "SPR-006-T01",
+      "sprintId": "SPR-006",
+      "phaseId": "SPR-006-P1",
+      "title": "**Prompts ran, unreviewed**",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-324",
+        "CCP-325",
+        "CCP-326",
+        "CCP-327",
+        "CCP-328",
+        "CCP-329",
+        "CCP-330"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "CCP-324–330 started but not reviewed",
+      "acceptance": "",
+      "sourceAnchor": "Phase 1 — Grounding & Implementation Map"
+    },
+    {
+      "id": "SPR-006-T02",
+      "sprintId": "SPR-006",
+      "phaseId": "SPR-006-P2",
+      "title": "**Prompts ran, unreviewed**",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-331",
+        "CCP-332",
+        "CCP-333",
+        "CCP-334",
+        "CCP-335",
+        "CCP-336",
+        "CCP-337",
+        "CCP-338"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "CCP-331–338 started but not reviewed",
+      "acceptance": "",
+      "sourceAnchor": "Phase 2 — Session Tool Shell & Mode Architecture"
+    },
+    {
+      "id": "SPR-006-T03",
+      "sprintId": "SPR-006",
+      "phaseId": "SPR-006-P3",
+      "title": "**Prompts ran, unreviewed**",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-339",
+        "CCP-340",
+        "CCP-341",
+        "CCP-342",
+        "CCP-343",
+        "CCP-344",
+        "CCP-345",
+        "CCP-346"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "CCP-339–346 started but not reviewed",
+      "acceptance": "",
+      "sourceAnchor": "Phase 3 — Shared Opponent Analytics Foundation"
+    },
+    {
+      "id": "SPR-006-T04",
+      "sprintId": "SPR-006",
+      "phaseId": "SPR-006-P4",
+      "title": "**Prompts ran, unreviewed**",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-347",
+        "CCP-348",
+        "CCP-349",
+        "CCP-350",
+        "CCP-351",
+        "CCP-352",
+        "CCP-353",
+        "CCP-354"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "CCP-347–352 started but not reviewed",
+      "acceptance": "",
+      "sourceAnchor": "Phase 4 — Repertoire Tool Full Page Upgrade"
+    },
+    {
+      "id": "SPR-006-T05",
+      "sprintId": "SPR-006",
+      "phaseId": "SPR-006-P5",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-355",
+        "CCP-356",
+        "CCP-357",
+        "CCP-358",
+        "CCP-359",
+        "CCP-360",
+        "CCP-361",
+        "CCP-362"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "CCP-355 manager ran, children unreviewed",
+      "acceptance": "",
+      "sourceAnchor": "Phase 5 — Prep Report Dashboard"
+    },
+    {
+      "id": "SPR-006-T06",
+      "sprintId": "SPR-006",
+      "phaseId": "SPR-006-P6",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-363",
+        "CCP-364",
+        "CCP-365",
+        "CCP-366",
+        "CCP-367",
+        "CCP-368",
+        "CCP-369",
+        "CCP-370"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Prompts created but not queued",
+      "acceptance": "",
+      "sourceAnchor": "Phase 6 — Style Dashboard"
+    },
+    {
+      "id": "SPR-006-T07",
+      "sprintId": "SPR-006",
+      "phaseId": "SPR-006-P7",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [
+        "CCP-371",
+        "CCP-372",
+        "CCP-373",
+        "CCP-374",
+        "CCP-375",
+        "CCP-376",
+        "CCP-377",
+        "CCP-378"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Prompts created but not queued",
+      "acceptance": "",
+      "sourceAnchor": "Phase 7 — Practice Against Them"
+    },
+    {
+      "id": "SPR-007-T01",
+      "sprintId": "SPR-007",
+      "phaseId": "SPR-007-P1",
+      "title": "Phase 0 — Ownership And Separate Research Persistence",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-178",
+        "CCP-179",
+        "CCP-180",
+        "CCP-181",
+        "CCP-182"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 0"
+    },
+    {
+      "id": "SPR-007-T02",
+      "sprintId": "SPR-007",
+      "phaseId": "SPR-007-P2",
+      "title": "Phase 1 — Opponent Research Import Flow",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-183",
+        "CCP-184",
+        "CCP-185",
+        "CCP-186",
+        "CCP-187"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 1"
+    },
+    {
+      "id": "SPR-007-T03",
+      "sprintId": "SPR-007",
+      "phaseId": "SPR-007-P3",
+      "title": "Phase 2 — Tree Build And Board Shell",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-188",
+        "CCP-189",
+        "CCP-190",
+        "CCP-191",
+        "CCP-192"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 2"
+    },
+    {
+      "id": "SPR-007-T04",
+      "sprintId": "SPR-007",
+      "phaseId": "SPR-007-P4",
+      "title": "Phase 3 — Played Lines, Percentages, And Report Surface",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-193",
+        "CCP-194",
+        "CCP-195",
+        "CCP-196",
+        "CCP-197"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 3"
+    },
+    {
+      "id": "SPR-007-T05",
+      "sprintId": "SPR-007",
+      "phaseId": "SPR-007-P5",
+      "title": "Phase 4 — Collections Management And Product Polish",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-198",
+        "CCP-199",
+        "CCP-200",
+        "CCP-201",
+        "CCP-202"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 4"
+    },
+    {
+      "id": "SPR-008-T01",
+      "sprintId": "SPR-008",
+      "phaseId": "SPR-008-P1",
+      "title": "Phase 5 — Research Model And Import Integrity",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-214",
+        "CCP-213",
+        "CCP-212",
+        "CCP-211",
+        "CCP-210"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 5"
+    },
+    {
+      "id": "SPR-008-T02",
+      "sprintId": "SPR-008",
+      "phaseId": "SPR-008-P2",
+      "title": "Phase 6 — Position Graph And Session Report Upgrade",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-219",
+        "CCP-218",
+        "CCP-217",
+        "CCP-216",
+        "CCP-215"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 6"
+    },
+    {
+      "id": "SPR-008-T03",
+      "sprintId": "SPR-008",
+      "phaseId": "SPR-008-P3",
+      "title": "Phase 7 — Comparative Prep And Session Polish",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-224",
+        "CCP-223",
+        "CCP-222",
+        "CCP-221",
+        "CCP-220"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 7"
+    },
+    {
+      "id": "SPR-009-T01",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Route, nav, and user-facing text updated",
+      "acceptance": "",
+      "sourceAnchor": "Phase 0 — Rename to Opponents"
+    },
+    {
+      "id": "SPR-009-T02",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P2",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Typecheck issues fixed (CCP-458)",
+      "acceptance": "",
+      "sourceAnchor": "Phase 1 — Rating Sparkline"
+    },
+    {
+      "id": "SPR-009-T03",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P3",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Analytics + display. Typecheck fixed (CCP-460)",
+      "acceptance": "",
+      "sourceAnchor": "Phase 2 — Termination Profile"
+    },
+    {
+      "id": "SPR-009-T04",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P4",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Engine, summary panel, and move-row markers (CCP-468)",
+      "acceptance": "",
+      "sourceAnchor": "Phase 3 — Deviation Detection"
+    },
+    {
+      "id": "SPR-009-T05",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P5",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 4 — Recommendations"
+    },
+    {
+      "id": "SPR-009-T06",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P6",
+      "title": "**Code only**",
+      "status": "implementation-partial",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`openings/traps.ts` detection logic exists, no UI",
+      "acceptance": "",
+      "sourceAnchor": "Phase 5 — Traps"
+    },
+    {
+      "id": "SPR-009-T07",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P7",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 6 — Sample Size Warnings"
+    },
+    {
+      "id": "SPR-009-T08",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P8",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 7 — Recency-Weighted Default"
+    },
+    {
+      "id": "SPR-009-T09",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P9",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "ORP drill system deferred",
+      "acceptance": "",
+      "sourceAnchor": "Phase 8 — Save to ORP"
+    },
+    {
+      "id": "SPR-009-T10",
+      "sprintId": "SPR-009",
+      "phaseId": "SPR-009-P10",
+      "title": "**Not started**",
+      "status": "not-started",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 9 — Research Tasks"
+    },
+    {
+      "id": "SPR-010-T01",
+      "sprintId": "SPR-010",
+      "phaseId": "SPR-010-P1",
+      "title": "Mini Sprint — Puzzle Page Mobile Usability",
+      "status": "verified",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Implementation"
+    },
+    {
+      "id": "SPR-011-T01",
+      "sprintId": "SPR-011",
+      "phaseId": "SPR-011-P1",
+      "title": "Phase 0 — Ownership And Data Foundations",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-148",
+        "CCP-143",
+        "CCP-144",
+        "CCP-145",
+        "CCP-146",
+        "CCP-147"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 0"
+    },
+    {
+      "id": "SPR-011-T02",
+      "sprintId": "SPR-011",
+      "phaseId": "SPR-011-P2",
+      "title": "Phase 1 — Minimal Puzzle Product Shell",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-175",
+        "CCP-154",
+        "CCP-153",
+        "CCP-152",
+        "CCP-151",
+        "CCP-150"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 1"
+    },
+    {
+      "id": "SPR-011-T03",
+      "sprintId": "SPR-011",
+      "phaseId": "SPR-011-P3",
+      "title": "Phase 1.5 — Restore Puzzle Header Entry",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-175"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 1.5"
+    },
+    {
+      "id": "SPR-011-T04",
+      "sprintId": "SPR-011",
+      "phaseId": "SPR-011-P4",
+      "title": "Phase 2 — Strict Puzzle Solve Loop",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-164-F1",
+        "CCP-159",
+        "CCP-158",
+        "CCP-157",
+        "CCP-156",
+        "CCP-155"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 2"
+    },
+    {
+      "id": "SPR-011-T05",
+      "sprintId": "SPR-011",
+      "phaseId": "SPR-011-P5",
+      "title": "Phase 3 — Engine Assist Layer",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-164-F1",
+        "CCP-164",
+        "CCP-163",
+        "CCP-162",
+        "CCP-161",
+        "CCP-160"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 3"
+    },
+    {
+      "id": "SPR-011-T06",
+      "sprintId": "SPR-011",
+      "phaseId": "SPR-011-P6",
+      "title": "Phase 4 — User Library Authoring",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-166-F1",
+        "CCP-168-F1",
+        "CCP-169",
+        "CCP-168",
+        "CCP-167",
+        "CCP-166",
+        "CCP-165"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 4"
+    },
+    {
+      "id": "SPR-011-T07",
+      "sprintId": "SPR-011",
+      "phaseId": "SPR-011-P7",
+      "title": "Phase 5 — Repetition And Imported-Library Scale",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-174",
+        "CCP-173",
+        "CCP-172",
+        "CCP-171",
+        "CCP-170"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 5"
+    },
+    {
+      "id": "SPR-012-T01",
+      "sprintId": "SPR-012",
+      "phaseId": "SPR-012-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-264",
+        "CCP-263",
+        "CCP-262",
+        "CCP-261",
+        "CCP-260",
+        "CCP-259"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Phase 1 — Research & implementation map"
+    },
+    {
+      "id": "SPR-012-T02",
+      "sprintId": "SPR-012",
+      "phaseId": "SPR-012-P2",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-270",
+        "CCP-269",
+        "CCP-268",
+        "CCP-267",
+        "CCP-266",
+        "CCP-265"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`UserPuzzlePerf` with Glicko-2",
+      "acceptance": "",
+      "sourceAnchor": "Phase 2 — Local rating domain foundations"
+    },
+    {
+      "id": "SPR-012-T03",
+      "sprintId": "SPR-012",
+      "phaseId": "SPR-012-P3",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-276",
+        "CCP-275",
+        "CCP-274",
+        "CCP-273",
+        "CCP-272",
+        "CCP-271"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`puzzleDb.ts` user-perf and rating-history stores",
+      "acceptance": "",
+      "sourceAnchor": "Phase 3 — Local persistence and restore"
+    },
+    {
+      "id": "SPR-012-T04",
+      "sprintId": "SPR-012",
+      "phaseId": "SPR-012-P4",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-282",
+        "CCP-281",
+        "CCP-280",
+        "CCP-279",
+        "CCP-278",
+        "CCP-277"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Session mode, difficulty selector",
+      "acceptance": "",
+      "sourceAnchor": "Phase 4 — Rated session policy"
+    },
+    {
+      "id": "SPR-012-T05",
+      "sprintId": "SPR-012",
+      "phaseId": "SPR-012-P5",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-288",
+        "CCP-287",
+        "CCP-286",
+        "CCP-285",
+        "CCP-284",
+        "CCP-283"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Cooldown logic, shard fallback",
+      "acceptance": "",
+      "sourceAnchor": "Phase 5 — Rated eligibility and selection"
+    },
+    {
+      "id": "SPR-012-T06",
+      "sprintId": "SPR-012",
+      "phaseId": "SPR-012-P6",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-294",
+        "CCP-293",
+        "CCP-292",
+        "CCP-291",
+        "CCP-290",
+        "CCP-289"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Glicko-2 calculator",
+      "acceptance": "",
+      "sourceAnchor": "Phase 6 — Rated completion and rating updates"
+    },
+    {
+      "id": "SPR-012-T07",
+      "sprintId": "SPR-012",
+      "phaseId": "SPR-012-P7",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-300",
+        "CCP-299",
+        "CCP-298",
+        "CCP-297",
+        "CCP-296",
+        "CCP-295"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Rating delta display, difficulty chart",
+      "acceptance": "",
+      "sourceAnchor": "Phase 7 — Rated ladder UI and feedback surfaces"
+    },
+    {
+      "id": "SPR-012-T08",
+      "sprintId": "SPR-012",
+      "phaseId": "SPR-012-P8",
+      "title": "**Wired (CCP-463)**",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-306",
+        "CCP-305",
+        "CCP-304",
+        "CCP-303",
+        "CCP-302",
+        "CCP-301"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Functions existed as dead code; now called on auth + stream stop. DB name mismatch fixed (CCP-466)",
+      "acceptance": "",
+      "sourceAnchor": "Phase 8 — Cloud ownership and sync"
+    },
+    {
+      "id": "SPR-013-T01",
+      "sprintId": "SPR-013",
+      "phaseId": "SPR-013-P1",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-312",
+        "CCP-313",
+        "CCP-314"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Typecheck issues fixed (CCP-461)",
+      "acceptance": "",
+      "sourceAnchor": "Shard loader integration"
+    },
+    {
+      "id": "SPR-013-T02",
+      "sprintId": "SPR-013",
+      "phaseId": "SPR-013-P2",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-318"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Rated stream with auto-next in ctrl.ts",
+      "acceptance": "",
+      "sourceAnchor": "Auto-advance stream"
+    },
+    {
+      "id": "SPR-013-T03",
+      "sprintId": "SPR-013",
+      "phaseId": "SPR-013-P3",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [
+        "CCP-310"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "`findRatedPuzzleInShards` guards fixed",
+      "acceptance": "",
+      "sourceAnchor": "Gap-fixing for shard loader"
+    },
+    {
+      "id": "SPR-013-T04",
+      "sprintId": "SPR-013",
+      "phaseId": "SPR-013-P4",
+      "title": "**Done**",
+      "status": "implemented",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "Rating delta, difficulty selector",
+      "acceptance": "",
+      "sourceAnchor": "Stream UI polish"
+    },
+    {
+      "id": "SPR-014-T01",
+      "sprintId": "SPR-014",
+      "phaseId": "SPR-014-P1",
+      "title": "Sprint Plan: Stable Background Bulk Review",
+      "status": "verified",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Implementation"
+    },
+    {
+      "id": "SPR-015-T01",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P1",
+      "title": "Study domain types",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-519"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 0.1"
+    },
+    {
+      "id": "SPR-015-T02",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P1",
+      "title": "Study IDB persistence layer",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-520"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 0.2"
+    },
+    {
+      "id": "SPR-015-T03",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P1",
+      "title": "Route and page shell",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-521"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 0.3"
+    },
+    {
+      "id": "SPR-015-T04",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P2",
+      "title": "Save action core logic",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-523"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 1.1"
+    },
+    {
+      "id": "SPR-015-T05",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P2",
+      "title": "Context menu integration — \"Save to Library\"",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-524"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 1.2"
+    },
+    {
+      "id": "SPR-015-T06",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P2",
+      "title": "Board gear/menu integration — \"Save game to Library\"",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-525"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 1.3"
+    },
+    {
+      "id": "SPR-015-T07",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P2",
+      "title": "Toast notification for save confirmation",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-526"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 1.4"
+    },
+    {
+      "id": "SPR-015-T08",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P3",
+      "title": "Study library controller",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-528"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 2.1"
+    },
+    {
+      "id": "SPR-015-T09",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P3",
+      "title": "Library list view",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-529"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 2.2"
+    },
+    {
+      "id": "SPR-015-T10",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P3",
+      "title": "Study metadata editing",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-530"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 2.3"
+    },
+    {
+      "id": "SPR-015-T11",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P3",
+      "title": "PGN import to library",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-531"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 2.4"
+    },
+    {
+      "id": "SPR-015-T12",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "Study detail page shell",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-533"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.1"
+    },
+    {
+      "id": "SPR-015-T13",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "Text comment editing",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-534"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.2"
+    },
+    {
+      "id": "SPR-015-T14",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "NAG glyph insertion",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-535"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.3"
+    },
+    {
+      "id": "SPR-015-T15",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "Variation creation and management",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-536"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.4"
+    },
+    {
+      "id": "SPR-015-T16",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "Variation fold/expand",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-537"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.5"
+    },
+    {
+      "id": "SPR-015-T17",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "Arrow and shape annotation persistence",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-538"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.6"
+    },
+    {
+      "id": "SPR-015-T18",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "Engine analysis integration in study workspace",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-539"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.7"
+    },
+    {
+      "id": "SPR-015-T19",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "Position bookmarking",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-540"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.8"
+    },
+    {
+      "id": "SPR-015-T20",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P4",
+      "title": "Auto-save and PGN export",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-541"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 3.9"
+    },
+    {
+      "id": "SPR-015-T21",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P5",
+      "title": "Scheduling engine",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-543"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 4.1"
+    },
+    {
+      "id": "SPR-015-T22",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P5",
+      "title": "Move grader",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-544"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 4.2"
+    },
+    {
+      "id": "SPR-015-T23",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P5",
+      "title": "Drill session controller",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-545"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 4.3"
+    },
+    {
+      "id": "SPR-015-T24",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P5",
+      "title": "Session builder",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-546"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 4.4"
+    },
+    {
+      "id": "SPR-015-T25",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P5",
+      "title": "Practice line extraction",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-547"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 4.5"
+    },
+    {
+      "id": "SPR-015-T26",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P6",
+      "title": "Board adapter for drill mode",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-549"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 5.1"
+    },
+    {
+      "id": "SPR-015-T27",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P6",
+      "title": "Drill session UI — active session view",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-550"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 5.2"
+    },
+    {
+      "id": "SPR-015-T28",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P6",
+      "title": "Drill session UI — session summary",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-551"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 5.3"
+    },
+    {
+      "id": "SPR-015-T29",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P6",
+      "title": "Practice entry from study detail — \"Practice this line\"",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-552"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 5.4"
+    },
+    {
+      "id": "SPR-015-T30",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P7",
+      "title": "Progress persistence",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-554"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 6.1"
+    },
+    {
+      "id": "SPR-015-T31",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P7",
+      "title": "Practice dashboard",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-555"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 6.2"
+    },
+    {
+      "id": "SPR-015-T32",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P7",
+      "title": "Learn flow",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-556"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 6.3"
+    },
+    {
+      "id": "SPR-015-T33",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P8",
+      "title": "Multi-line extraction",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-558"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 7.1"
+    },
+    {
+      "id": "SPR-015-T34",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P8",
+      "title": "Practice line manager",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-559"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 7.2"
+    },
+    {
+      "id": "SPR-015-T35",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P8",
+      "title": "Sequence scope selection UI",
+      "status": "planned",
+      "linkedPromptIds": [
+        "CCP-560"
+      ],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 7.3"
+    },
+    {
+      "id": "SPR-015-T36",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P9",
+      "title": "Save from openings research",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 8.1"
+    },
+    {
+      "id": "SPR-015-T37",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P9",
+      "title": "Save from puzzle session",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 8.2"
+    },
+    {
+      "id": "SPR-015-T38",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P9",
+      "title": "Keyboard shortcuts for drill mode",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 8.3"
+    },
+    {
+      "id": "SPR-015-T39",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P9",
+      "title": "Sound effects for drill feedback",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 8.4"
+    },
+    {
+      "id": "SPR-015-T40",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P9",
+      "title": "Warmup position behavior",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 8.5"
+    },
+    {
+      "id": "SPR-015-T41",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P9",
+      "title": "Study library performance optimization",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 8.6"
+    },
+    {
+      "id": "SPR-015-T42",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P10",
+      "title": "Folder hierarchy data model",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 9.1"
+    },
+    {
+      "id": "SPR-015-T43",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P10",
+      "title": "Folder sidebar and navigation",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 9.2"
+    },
+    {
+      "id": "SPR-015-T44",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P10",
+      "title": "Create, rename, and delete folders",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 9.3"
+    },
+    {
+      "id": "SPR-015-T45",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P10",
+      "title": "Drag-and-drop studies into folders",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 9.4"
+    },
+    {
+      "id": "SPR-015-T46",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P10",
+      "title": "Multi-select and bulk operations",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 9.5"
+    },
+    {
+      "id": "SPR-015-T47",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P10",
+      "title": "View mode toggle (list vs grid)",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 9.6"
+    },
+    {
+      "id": "SPR-015-T48",
+      "sprintId": "SPR-015",
+      "phaseId": "SPR-015-P10",
+      "title": "Search across annotations",
+      "status": "planned",
+      "linkedPromptIds": [],
+      "dependencyTaskIds": [],
+      "auditRefs": [],
+      "notes": "",
+      "acceptance": "",
+      "sourceAnchor": "Task 9.7"
+    }
+  ]
+}

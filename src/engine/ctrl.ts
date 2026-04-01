@@ -10,6 +10,7 @@ import { formatScore } from '../analyse/evalView';
 import { pathInit, pathIsMainline } from '../tree/ops';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import type { Glyph } from '../tree/types';
+import { type EngineMode, type EngineStrengthConfig, STRENGTH_LEVELS, DEFAULT_STRENGTH_LEVEL } from './types';
 
 // --- Types ---
 
@@ -87,6 +88,8 @@ export const protocol = new StockfishProtocol();
 
 export let engineEnabled     = false;
 export let engineReady       = false;
+export let engineMode: EngineMode = 'analysis';
+export let playStrengthConfig: EngineStrengthConfig | null = null;
 let       engineInitialized  = false;
 export let currentEval: PositionEval = {};
 
@@ -153,6 +156,10 @@ export let showBoardReviewGlyphs = localStorage.getItem('patzer.showBoardReviewG
 const ARROW_LABEL_SIZE_DEFAULT = window.matchMedia('(pointer: coarse)').matches ? 18 : 10;
 export let arrowLabelSize   = storedInt('patzer.arrowLabelSize', ARROW_LABEL_SIZE_DEFAULT, 6, 18);
 
+// Initialize playStrengthConfig from the stored level on module load.
+// Mirrors storedInt pattern used by sibling engine settings above.
+playStrengthConfig = STRENGTH_LEVELS[storedInt('patzer.playStrengthLevel', DEFAULT_STRENGTH_LEVEL, 1, 8) - 1] ?? null;
+
 /** Accumulates secondary PV lines (multipv 2, 3, …) during an active search. */
 export let pendingLines: EvalLine[] = [];
 
@@ -208,6 +215,46 @@ export function setShowBoardReviewGlyphs(v: boolean): void { showBoardReviewGlyp
 export function setArrowLabelSize(v: number): void    { arrowLabelSize = v; localStorage.setItem('patzer.arrowLabelSize', String(v)); }
 export function incrementPendingStopCount(): void { pendingStopCount++; }
 export function stopProtocol(): void              { protocol.stop(); }
+export let _playMoveCallback: ((uci: string) => void) | null = null;
+export function setPlayMoveCallback(cb: ((uci: string) => void) | null): void { _playMoveCallback = cb; }
+
+/**
+ * Switch engine to play mode at the given strength level.
+ * Guards evalCurrentPosition() and evalThreatPosition() from resuming analysis.
+ */
+export function enterPlayMode(config: EngineStrengthConfig): void {
+  engineMode = 'play';
+  playStrengthConfig = config;
+  if (engineSearchActive) {
+    pendingStopCount++;
+    protocol.stop();
+  }
+  protocol.setPlayStrength(config);
+}
+
+/** Returns the last-used strength level (1–8) from localStorage, defaulting to DEFAULT_STRENGTH_LEVEL. */
+export function getPlayStrengthLevel(): number {
+  return storedInt('patzer.playStrengthLevel', DEFAULT_STRENGTH_LEVEL, 1, 8);
+}
+
+/** Persists the selected strength level (1–8) and updates playStrengthConfig. */
+export function setPlayStrengthLevel(level: number): void {
+  if (level < 1 || level > 8) return;
+  localStorage.setItem('patzer.playStrengthLevel', String(level));
+  playStrengthConfig = STRENGTH_LEVELS[level - 1] ?? null;
+}
+
+/**
+ * Return engine to analysis mode and resume evaluating the current position.
+ */
+export function exitPlayMode(): void {
+  engineMode = 'analysis';
+  playStrengthConfig = null;
+  protocol.setAnalysisMode();
+  if (engineEnabled && engineReady) {
+    evalCurrentPosition();
+  }
+}
 
 // --- Arrow rendering ---
 // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts makeShapesFromUci + compute
@@ -537,6 +584,18 @@ function scheduleLiveEngineUiRefresh(includeRetroCheck = false): void {
  */
 function parseEngineLine(line: string): void {
   const parts = line.trim().split(/\s+/);
+  // In play mode, ignore info lines entirely — they must not update currentEval or arrows.
+  // Route bestmove to _playMoveCallback instead of the analysis eval path.
+  if (engineMode === 'play') {
+    if (parts[0] === 'bestmove') {
+      const uci = parts[1];
+      const cb = _playMoveCallback;
+      _playMoveCallback = null;
+      engineSearchActive = false;
+      if (uci && uci !== '(none)' && cb) cb(uci);
+    }
+    return;
+  }
   if (parts[0] === 'info') {
     let isMate = false;
     let score: number | undefined;
@@ -743,6 +802,7 @@ export function flipFenColor(fen: string): string {
 
 export function evalThreatPosition(): void {
   if (!engineEnabled || !engineReady || _isBatchActive()) return;
+  if (engineMode === 'play') return;
   cancelLiveEngineUiRefresh();
   threatEval   = {};
   evalIsThreat = true;
@@ -769,6 +829,7 @@ export function toggleThreatMode(): void {
 export function evalCurrentPosition(): void {
   if (_isBatchActive()) return;
   if (!engineEnabled || !engineReady) return;
+  if (engineMode === 'play') return;
   if (evalIsThreat) { pendingStopCount++; protocol.stop(); evalIsThreat = false; }
   threatEval = {};
 
@@ -905,3 +966,75 @@ export function setEvalNode(id: string, path: string, ply: number, parentPath: s
   evalParentPath = parentPath;
 }
 export function isEngineSearchActive(): boolean { return engineSearchActive; }
+
+/**
+ * Evaluate a single FEN position silently (no UI updates, no arrows, no redraws).
+ * Stores the result in evalCache at `nodePath` when the engine bestmove arrives.
+ *
+ * Uses the batch mechanism so all live-eval UI side effects are suppressed.
+ * Resumes normal live eval after the silent eval completes.
+ *
+ * Used by retro background eval for candidates missing cp-quality diff data.
+ * Adapted from the batch single-item eval pattern in src/engine/batch.ts.
+ * Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts background eval intent
+ * (Lichess fires a silent ceval on the candidate's parent position).
+ */
+export function evalFenSilent(
+  fen:        string,
+  nodePath:   string,
+  parentPath: string,
+  nodePly:    number,
+): void {
+  if (!engineEnabled || !engineReady) return;
+  if (engineMode === 'play') return;
+  if (_isBatchActive()) return;
+  if (engineSearchActive) return;
+
+  // Park the eval-node tracking on the target path so the bestmove path guard
+  // (line 715) does not reject the result as stale.
+  evalNodeId     = '';
+  evalNodePath   = nodePath;
+  evalNodePly    = nodePly;
+  evalParentPath = parentPath;
+
+  // Activate batch mode so info/bestmove handlers skip all UI side effects.
+  _isBatchActive = () => true;
+
+  _onBatchBestmove = () => {
+    // Immediately restore normal state so live eval can resume.
+    _isBatchActive    = () => false;
+    _onBatchBestmove  = null;
+
+    const stored: PositionEval = { ...currentEval };
+    if (stored.depth !== undefined && (stored.cp !== undefined || stored.mate !== undefined)) {
+      const cached = evalCache.get(nodePath);
+      if (!cached || !cached.depth || stored.depth > cached.depth) {
+        const pEval = evalCache.get(parentPath);
+        if (pEval?.cp !== undefined && stored.cp !== undefined) {
+          stored.delta = stored.cp - pEval.cp;
+        }
+        if (pEval) {
+          const nodeWcV    = evalWinChances(stored);
+          const parentWcV  = evalWinChances(pEval);
+          if (nodeWcV !== undefined && parentWcV !== undefined) {
+            const whiteToMove    = nodePly % 2 === 1;
+            const moverNodeWc    = whiteToMove ? nodeWcV   : -nodeWcV;
+            const moverParentWc  = whiteToMove ? parentWcV : -parentWcV;
+            stored.loss = (moverParentWc - moverNodeWc) / 2;
+          }
+        }
+        if (cached?.label && !stored.label) stored.label = cached.label;
+        evalCache.set(nodePath, stored);
+      }
+    }
+    // Resume live analysis once the silent eval is done.
+    evalCurrentPosition();
+  };
+
+  engineSearchActive = true;
+  searchStartedAt    = Date.now();
+  currentEval        = {};
+  pendingLines       = [];
+  protocol.setPosition(fen);
+  protocol.go(analysisDepth, 1, searchUntilDepth ? undefined : searchTime);
+}

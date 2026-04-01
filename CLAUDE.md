@@ -152,22 +152,118 @@ Claude must:
 - follow instructions exactly
 - not add extra features
 
+## Prompt Execution Rule
+
+When Claude receives a CCP prompt to execute (i.e. a message whose primary content is a
+`CCP-###` prompt body), Claude must:
+
+1. Run `npm run prompt:start -- <PROMPT_ID>` before making any code changes
+2. Execute the prompt
+3. Run `npm run prompt:complete -- <PROMPT_ID> --checklist "..."` after the work is done
+
+This applies even when the prompt is delivered as the first message in a conversation.
+Forgetting to call these commands leaves the prompt stuck at `queued-pending` with no
+record that it was ever run.
+
+The checklist passed to `prompt:complete` must contain concrete manual verification steps
+matching what was implemented, not generic placeholders.
+
+## Prompt Command Output Rule
+
+Lifecycle commands must NEVER have their output truncated:
+- never pipe `prompt:reserve`, `prompt:start`, `prompt:complete`, `prompt:create`,
+  `prompt:release`, or `prompt:review` through `head`, `tail`, or any output limiter
+- always let the full output run so the allocated ID and refresh results are visible
+- if a reserve command output was truncated and the ID is unknown, run
+  `npm run prompt:reservations` to find it before proceeding — do not re-run the reserve
+
+## Prompt Creation Output Rule
+
+When creating a prompt, Claude must:
+1. State the reserved prompt ID to the user before writing the body
+2. Output the Pre-Creation Checklist from `PROMPT_CREATION_PROCESS.md` visibly in the
+   response so the user can verify each step was followed
+3. After `prompt:create`, verify the created registry record uses the correct prompt taxonomy:
+   - `kind`
+   - `category`
+   and confirm they match the repo's actual dashboard conventions before reporting success
+
 ## Prompt Tracking Rule
 
-Before implementing any CCP prompt, Claude must run:
+Prompt workflow rules are owned by the canonical prompt docs, not by this file.
 
-```
-npm run prompt:start -- <CCP-ID>
-```
+When the task involves:
+- prompt creation
+- prompt review
+- prompt tracking
+- manager prompts
+- follow-up fix prompts
+- prompt workflow changes
 
-This marks the prompt as started in the registry, sets the timestamp, and regenerates
-tracking docs. This applies whether the prompt was read from the queue file, pasted by
-the user, or dispatched by a manager prompt. No exceptions.
+Claude must first read:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REGISTRY_README.md`
 
-Use that exact command form:
-- do not omit the `--`
-- do not replace it with a piped or truncated variant like `| tail -5`
-- do not continue implementation work until the plain startup command succeeds
+Then Claude must read the matching process doc:
+- id reservation / follow-up ids / release:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_ID_PROCESS.md`
+- prompt creation:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_CREATION_PROCESS.md`
+- prompt review / closeout:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REVIEW_PROCESS.md`
+- manager prompts:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_MANAGER_PROCESS.md`
+- user phrasing / examples:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_USER_GUIDE.md`
+
+Hard rules:
+- deprecated or removed prompt docs are non-authoritative and must not be followed
+- if the user's natural language clearly maps to one prompt workflow, Claude must follow that workflow even if the user did not use the exact process name
+- if prompt-related intent is materially ambiguous or could map to multiple workflows, Claude must clarify before mutating files
+- if the user asks to change prompt IDs, prompt creation, prompt review, manager prompts, prompt tracking, or prompt docs, Claude must treat that as a workflow-change request and update the canonical prompt docs before considering the work complete
+- if the user says `update our prompt workflow so that ...`, Claude must automatically treat that as a full workflow-change request with the workflow-change propagation rule implied by default
+- Claude must not assume allocator input labels are identical to the final registry/dashboard taxonomy; the created prompt record must be verified after `prompt:create`
+
+Tracked Prompt Gate:
+- before ANY code change — regardless of size — Claude must determine whether the work is already covered by an existing `CCP-###` prompt
+- if it is not already tracked, Claude must stop and ask whether the work should be handled as a tracked prompt before making code changes
+- tracked prompts are the default for all code work
+- untracked code work is allowed only when the user explicitly opts out
+- "small" or "trivial" changes are NOT exceptions — a one-line change still requires the gate check
+- the gate resets for every distinct user request, even within the same conversation session
+- the existing CCP prompt exception is scope-limited: it only covers work explicitly described in that prompt — a new or different request in the same session is a new gate check
+- this gate does not apply to docs-only work, prompt-only work, or reviews/audits with no code mutation
+
+## Sprint Tracking Rule
+
+Sprint workflow rules are owned by the canonical sprint docs, not by this file.
+
+When the task involves:
+- sprint creation
+- sprint tracking
+- sprint progress reporting
+- sprint audits
+- sprint dashboard work
+- prompt-to-sprint linkage
+- sprint workflow changes
+
+Claude must first read:
+- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_REGISTRY_README.md`
+
+Then Claude must read the matching process doc:
+- sprint creation / registration:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_CREATION_PROCESS.md`
+- sprint progress / task state / dashboard rollups:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_PROGRESS_PROCESS.md`
+- sprint audits / next-best-step updates:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_AUDIT_PROCESS.md`
+- user phrasing / examples:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_USER_GUIDE.md`
+
+Hard rules:
+- if the user asks to create a sprint plan, Claude must create or update both the sprint markdown doc and the sprint registry entry
+- if the user asks to create prompts for a sprint, Claude must link prompt records with `sprintId`, `sprintPhaseId`, and `sprintTaskId` when the work maps to a concrete sprint task
+- if the user asks to review or audit a sprint, Claude must use the sprint registry first, then cross-check linked prompts, audits, and code evidence
+- if the user asks to change sprint creation, sprint tracking, sprint audits, sprint dashboard behavior, or sprint docs, Claude must treat it as a sprint-workflow change request and update the canonical sprint docs before considering the work complete
 
 ## Stop Condition
 
@@ -492,6 +588,35 @@ Claude must:
 - not add extra features
 
 
+## Prompt Execution Rule
+
+When Claude receives a CCP prompt to execute (i.e. a message whose primary content is a
+`CCP-###` prompt body), Claude must:
+
+1. Run `npm run prompt:start -- <PROMPT_ID>` before making any code changes
+2. Execute the prompt
+3. Run `npm run prompt:complete -- <PROMPT_ID> --checklist "..."` after the work is done
+
+This applies even when the prompt is delivered as the first message in a conversation.
+The `## Lifecycle` section in the prompt body contains the exact commands to run.
+
+## Prompt Command Output Rule
+
+Lifecycle commands must NEVER have their output truncated:
+- never pipe `prompt:reserve`, `prompt:start`, `prompt:complete`, `prompt:create`,
+  `prompt:release`, or `prompt:review` through `head`, `tail`, or any output limiter
+- always let the full output run so the allocated ID and refresh results are visible
+- if a reserve command output was truncated and the ID is unknown, run
+  `npm run prompt:reservations` to find it before proceeding — do not re-run the reserve
+
+## Prompt Creation Output Rule
+
+When creating a prompt, Claude must:
+1. State the reserved prompt ID to the user before writing the body
+2. Output the Pre-Creation Checklist from `PROMPT_CREATION_PROCESS.md` visibly in the
+   response so the user can verify each step was followed
+
+
 ## Stop Condition
 
 Claude must stop if:
@@ -793,12 +918,64 @@ Claude must NOT create new files to:
 
 ---
 
-## Performance Rules
+## Performance Rules (MANDATORY)
+
+Claude must follow `docs/PERFORMANCE_GUIDELINES.md` for all implementation work.
+Violations of Core Rules (CR-1 through CR-10) are blocking — code must not ship
+until they are resolved.
+
+### Quick reference (non-negotiable rules)
+
+- **CR-1:** Never block UI on large dataset queries (>100 records must be async)
+- **CR-2:** Never load an entire object store eagerly (use cursors, pagination, on-demand)
+- **CR-3:** All lists >200 items must be virtualized or paginated
+- **CR-4:** Heavy computation (>1000 records or >50ms) must be deferred or offloaded
+- **CR-5:** Game imports must never freeze the UI
+- **CR-6:** Analysis data stored once — eval cache for runtime, IDB for persistence
+- **CR-7:** IDB records must be individually keyed (never store a collection as one record)
+- **CR-8:** Sync must be differential (transfer only changed records)
+- **CR-9:** Server writes must be batched (multi-row INSERT, not sequential loops)
+- **CR-10:** Engine UI updates must be throttled to 200ms maximum frequency
+
+### Performance pre-implementation step
+
+Before writing any code, Claude must:
+1. Identify performance risks in the proposed approach
+2. Confirm the approach scales to 30k+ games
+3. Check `docs/PERFORMANCE_CHECKLIST.md` against the implementation plan
+4. Compare with Lichess implementation for performance patterns
+5. Verify no anti-patterns from `docs/PERFORMANCE_GUIDELINES.md` (AP-1 through AP-8)
+
+If the task involves data storage, query patterns, list rendering, engine
+integration, or sync, Claude must read the relevant section of
+`docs/DATA_ARCHITECTURE.md` before implementing.
+
+### Known debt
+
+Active performance debt is tracked in `docs/PERFORMANCE_DEBT.md`. Claude must
+not add new features on top of Critical-severity debt without explicit approval.
+When fixing debt items, mark them as resolved in that document.
+
+### Rendering rules
 
 - Do not re-render board unnecessarily (Snabbdom patches only changed vnodes)
-- Throttle engine updates
-- Chunk large imports
+- Throttle engine updates to 200ms (Lichess pattern: `ui/lib/src/ceval/ctrl.ts`)
+- Gate all `redraw()` calls through `requestAnimationFrame`
+- Chunk large imports with `setTimeout(fn, 0)` yielding
 - Cache analysis results (IndexedDB)
+- Use `requestIdleCallback` for non-critical initialization
+- Render page shell immediately; fill data asynchronously
+
+### Anti-patterns (explicitly forbidden)
+
+- Storing collections as single IDB records (AP-1)
+- `getAll()` on stores exceeding 500 records (AP-2)
+- Sequential single-row server inserts in loops (AP-3)
+- Full-dump sync of entire datasets (AP-4)
+- Unthrottled engine-to-UI redraws (AP-5)
+- Dedup via full-content Set (AP-6)
+- Unbounded in-memory caches without eviction (AP-7)
+- Version-based analysis data discard (AP-8)
 
 ---
 

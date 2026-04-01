@@ -36,7 +36,7 @@ import {
   syncBoard, syncBoardAndArrow, flip,
   completeMove, uciToSan,
   renderBoard, renderPromotionDialog, renderPlayerStrips,
-  initGround, cgInstance,
+  initGround,
 } from './board/index';
 import { preloadBoardSounds, playMoveSound } from './board/sound';
 import {
@@ -57,7 +57,7 @@ import {
 import { renderMoveList } from './analyse/moveList';
 import {
   computeAnalysisSummary, renderAnalysisSummary,
-  renderEvalBar, renderEvalGraph,
+  renderEvalBar, renderEvalGraph, renderPostGameSummaryPanel,
 } from './analyse/evalView';
 import {
   clearPuzzleCandidates, renderPuzzleCandidates,
@@ -77,12 +77,18 @@ import { renderHeader, type HeaderDeps } from './header/index';
 import {
   type ImportedGame, restoreGameIdCounter,
 } from './import/types';
+import { importFilters } from './import/filters';
 import {
-  ANALYSIS_VERSION, buildAnalysisNodes, clearAllIdbData, clearAnalysisFromIdb,
+  ANALYSIS_VERSION, backfillOpenings, buildAnalysisNodes, clearAllIdbData, clearAnalysisFromIdb,
   loadAnalysisFromIdb, loadGamesFromIdb,
   loadPuzzlesFromIdb, saveAnalysisToIdb, saveGamesToIdb, saveNavStateToIdb,
+  saveRetroResult,
   savedPuzzles, savePuzzle, setSavedPuzzles,
+  type RetroSessionResult,
 } from './idb/index';
+import { backfillGameSummaries } from './stats/extract';
+import { initStatsPage } from './stats/ctrl';
+import { renderStatsPage } from './stats/view';
 import { current, onChange, type Route } from './router';
 import { deleteNodeAt, nodeAtPath, parentAtPath, pathInit, promoteAt, pruneVariations } from './tree/ops';
 import { pgnToTree } from './tree/pgn';
@@ -94,6 +100,11 @@ import { makeRetroCtrl } from './analyse/retroCtrl';
 import { onRetroConfigChange } from './analyse/retroConfig';
 import { initRetroMoveHandler } from './analyse/retroMoveHandler';
 import { renderRetroEntry, renderRetroStrip } from './analyse/retroView';
+import { renderStudyLibrary } from './study/libraryView';
+import { renderStudyDetail } from './study/studyDetailView';
+import { saveCurrentToLibrary } from './study/saveAction';
+import { initStudyLibrary } from './study/studyCtrl';
+import { showToast } from './ui/toast';
 
 console.log('Patzer Pro');
 
@@ -102,13 +113,24 @@ const PUBLIC_SOURCE_URL = 'https://github.com/LeviathanDuck/PatzerPatzer';
 const PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
 const NAV_STATE_SAVE_MS = 500;
 
+/**
+ * Build a short composite key for a game, used for deduplication.
+ * Avoids holding full PGN strings in the dedup Set (anti-pattern AP-6).
+ * Format: "white:black:date:result" — compact (~40 chars vs ~10 KB per PGN).
+ * Collision risk is negligible for normal game data.
+ */
+function gameCompositeKey(game: ImportedGame): string {
+  return `${game.white ?? ''}:${game.black ?? ''}:${game.date ?? ''}:${game.result ?? ''}`;
+}
+
 function dedupeImportedGames(existing: ImportedGame[], incoming: ImportedGame[]): ImportedGame[] {
-  const seenPgns = new Set(existing.map(game => game.pgn));
+  const seenKeys = new Set(existing.map(gameCompositeKey));
   const deduped: ImportedGame[] = [];
   const importedAt = Date.now();
   for (const game of incoming) {
-    if (seenPgns.has(game.pgn)) continue;
-    seenPgns.add(game.pgn);
+    const key = gameCompositeKey(game);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
     deduped.push({ ...game, importedAt });
   }
   return deduped;
@@ -234,6 +256,20 @@ function renderContextMenu(): VNode | null {
         redraw();
       } },
     }, 'Make main line') : null,
+    // --- Save to Library (CCP-524) ---
+    h('a', {
+      on: { click: () => {
+        const path = contextMenuPath!;
+        contextMenuPath = null; contextMenuPos = null;
+        void saveCurrentToLibrary(getActivePgn(), {
+          source: 'analysis',
+          ...(selectedGameId ? { sourceGameId: selectedGameId } : {}),
+          sourcePath: path,
+        }).then(() => {
+          showToast('Saved to Library');
+        });
+      } },
+    }, 'Save to Library'),
     // --- Create Puzzle actions (CCP-167) ---
     // Only shown when a game is loaded (selectedGameId present).
     // Branch 1: right-clicked move IS the solution; puzzle starts at parent position.
@@ -261,6 +297,24 @@ function renderContextMenu(): VNode | null {
 /** Transient confirmation message shown after puzzle creation. */
 let puzzleCreateMsg: string | null = null;
 let puzzleCreateMsgTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Retro session outcomes captured when the user exits a retro session.
+ * Keyed by candidate ply — used to attach first-attempt outcome data when
+ * saving puzzle candidates from the post-retro candidates panel.
+ * Reset each time a new retro session starts.
+ */
+let lastRetroOutcomes: Map<number, 'win' | 'fail' | 'view' | 'skip'> | null = null;
+
+/**
+ * Wraps savePuzzle to attach the retro session outcome for the candidate's ply,
+ * if a retro session was just exited. Passes through unmodified when no outcome
+ * is available (e.g. candidate was never reached, or saved outside a retro session).
+ */
+function savePuzzleWithRetroOutcome(c: import('./tree/types').PuzzleCandidate, redraw: () => void): void {
+  const outcome = lastRetroOutcomes?.get(c.ply);
+  savePuzzle(outcome ? { ...c, retroOutcome: outcome } : c, redraw);
+}
 
 function flashPuzzleMsg(msg: string): void {
   puzzleCreateMsg = msg;
@@ -675,6 +729,13 @@ function last(): void {
  */
 function toggleRetro(): void {
   if (ctrl.retro) {
+    // Capture outcomes before the session is cleared so they remain available
+    // when the user saves candidates from the post-retro candidates panel.
+    lastRetroOutcomes = new Map(
+      ctrl.retro.candidates
+        .map(c => [c.ply, ctrl.retro!.getOutcome(c.ply)] as const)
+        .filter((entry): entry is [number, 'win' | 'fail' | 'view' | 'skip'] => entry[1] !== undefined),
+    );
     delete ctrl.retro;
     // Restore arrows that were suppressed during retro mode.
     // buildArrowShapes() gates on ctrl.retro presence — syncArrow() must be
@@ -684,6 +745,8 @@ function toggleRetro(): void {
     redraw();
     return;
   }
+  // Reset cached outcomes — a new session for this game is starting.
+  lastRetroOutcomes = null;
   const game = importedGames.find(g => g.id === selectedGameId);
   const userColor = game ? getUserColor(game) : null;
   const openingProvider = buildMainlineOpeningProvider(
@@ -697,12 +760,24 @@ function toggleRetro(): void {
     userColor ?? null,
     openingProvider,
   );
+  const gameIdForRetro = selectedGameId;
   ctrl.retro = makeRetroCtrl(
     candidates,
     userColor ?? null,
     () => currentEval,
     (path) => evalCache.get(path),
     navigate,
+    gameIdForRetro ? (outcomes, total) => {
+      if (outcomes.size === 0) return;
+      const result: RetroSessionResult = {
+        gameId:          gameIdForRetro,
+        savedAt:         Date.now(),
+        totalCandidates: total,
+        outcomes:        Object.fromEntries([...outcomes.entries()].map(([k, v]) => [String(k), v])),
+        complete:        outcomes.size === total && total > 0,
+      };
+      void saveRetroResult(result);
+    } : undefined,
   );
   // Jump to the position before the first candidate mistake.
   // Mirrors lichess-org/lila: retroCtrl.ts jumpToNext → root.userJump(prev.path).
@@ -713,6 +788,11 @@ function toggleRetro(): void {
 
 function clearRetroMode(): void {
   if (!ctrl.retro) return;
+  lastRetroOutcomes = new Map(
+    ctrl.retro.candidates
+      .map(c => [c.ply, ctrl.retro!.getOutcome(c.ply)] as const)
+      .filter((entry): entry is [number, 'win' | 'fail' | 'view' | 'skip'] => entry[1] !== undefined),
+  );
   delete ctrl.retro;
   syncArrow();
 }
@@ -741,12 +821,24 @@ function rebuildRetroSession(): void {
     userColor ?? null,
     openingProvider,
   );
+  const gameIdForRebuild = selectedGameId;
   ctrl.retro = makeRetroCtrl(
     candidates,
     userColor ?? null,
     () => currentEval,
     (path) => evalCache.get(path),
     navigate,
+    gameIdForRebuild ? (outcomes, total) => {
+      if (outcomes.size === 0) return;
+      const result: RetroSessionResult = {
+        gameId:          gameIdForRebuild,
+        savedAt:         Date.now(),
+        totalCandidates: total,
+        outcomes:        Object.fromEntries([...outcomes.entries()].map(([k, v]) => [String(k), v])),
+        complete:        outcomes.size === total && total > 0,
+      };
+      void saveRetroResult(result);
+    } : undefined,
   );
   syncArrow();
   const first = ctrl.retro.current();
@@ -792,7 +884,14 @@ function routeContent(route: Route): VNode {
       //       The game was already selected by the onChange or startup route handler.
       const gameId = route.params['id'] ?? '';
       if (!gamesLibraryLoaded) {
-        return h('p', 'Loading…');
+        return h('div.analyse', [
+          h('div.analyse__board.main-board', [
+            h('div.analyse__board-inner.skeleton-board', 'Loading game…'),
+          ]),
+          h('div.analyse__tools', [
+            h('div.skeleton-block'),
+          ]),
+        ]);
       }
       if (!importedGames.find(g => g.id === gameId)) {
         return h('div', [
@@ -879,7 +978,7 @@ function routeContent(route: Route): VNode {
               engineEnabled, batchAnalyzing, batchState,
               savedPuzzles,
               navigate,
-              savePuzzle,
+              savePuzzle: savePuzzleWithRetroOutcome,
               uciToSan,
               redraw,
             };
@@ -931,30 +1030,42 @@ function routeContent(route: Route): VNode {
           ]),
         ]),
 
-        // Mobile-only action buttons row — sits below the move list.
-        // Hidden on desktop via CSS; desktop shows these inside .analyse__controls.
-        h('div.analyse__actions', [
-          renderAnalysisControls([
-            renderRetroEntry({
-              retro:            ctrl.retro,
-              analysisComplete,
-              batchAnalyzing,
-              onToggle:         toggleRetro,
-            }),
-          ]),
-        ]),
-
         // Underboard — below board (grid-area: under)
         // Import controls moved to header panel; game list appears here and in the header.
         h('div.analyse__underboard', [
           renderEvalGraph(ctrl.mainline, ctrl.path, evalCache, navigate, redraw, currentUserColor, reviewDotsUserOnly),
+          // Post-game summary panel — collapsible, appears only after analysis completes.
+          renderPostGameSummaryPanel(
+            analysisComplete,
+            evalCache,
+            ctrl.mainline,
+            importedGames.find(g => g.id === selectedGameId)?.white ?? 'White',
+            importedGames.find(g => g.id === selectedGameId)?.black ?? 'Black',
+            currentUserColor,
+            navigate,
+            redraw,
+          ),
           renderGameList(deps),
         ]),
 
         renderKeyboardHelp(),
       ]);
-    case 'games':    return renderGamesView(deps);
+    case 'games':
+      if (!gamesLibraryLoaded) {
+        return h('div.games-view__loading', [
+          h('div.skeleton-block'),
+          h('div.skeleton-block'),
+          h('div.skeleton-block'),
+        ]);
+      }
+      return renderGamesView(deps);
     case 'puzzles':
+      if (!gamesLibraryLoaded) {
+        return h('div.puzzle-library.puzzle-library--loading', [
+          h('div.skeleton-block'),
+          h('div.skeleton-block'),
+        ]);
+      }
       initPuzzlePage('library');
       void loadLibraryCounts(redraw);
       return renderPuzzleLibrary(redraw);
@@ -966,9 +1077,26 @@ function routeContent(route: Route): VNode {
       // it calls redraw() internally which re-triggers this render.
       return renderPuzzleRound(redraw);
     }
-    case 'openings': return renderOpeningsPage(redraw);
-    case 'stats':    return h('h1', 'Stats Page');
+    case 'opponents':
+      if (!gamesLibraryLoaded) {
+        return h('div.openings-page.openings-page--loading', [
+          h('div.skeleton-block'),
+          h('div.skeleton-block'),
+        ]);
+      }
+      return renderOpeningsPage(redraw);
+    case 'stats':
+      if (!gamesLibraryLoaded) {
+        return h('div.stats-page.stats-page--loading', [
+          h('div.skeleton-block'),
+          h('div.skeleton-block'),
+          h('div.skeleton-block'),
+        ]);
+      }
+      return renderStatsPage(redraw);
     case 'admin':    return renderAdminPage(redraw);
+    case 'study':    return renderStudyLibrary(redraw);
+    case 'study-detail': return renderStudyDetail(route.params['id'] ?? '', redraw);
     default:         return h('h1', 'Home');
   }
 }
@@ -1030,6 +1158,8 @@ function view(route: Route): VNode {
 // Pixel-mode (trackpad) accumulates delta and requires ≥10px before stepping,
 // preventing accidental triggers on inertia scrolls.
 let wheelPixelAccum = 0;
+let wheelLastStepAt = 0;
+const WHEEL_THROTTLE_MS = 50;
 document.addEventListener('wheel', (e: WheelEvent) => {
   if (!boardWheelNavEnabled) return;
   if (e.ctrlKey) return; // allow pinch-zoom
@@ -1041,6 +1171,9 @@ document.addEventListener('wheel', (e: WheelEvent) => {
     wheelPixelAccum += e.deltaY;
     if (Math.abs(wheelPixelAccum) < 10) return;
   }
+  const now = Date.now();
+  if (now - wheelLastStepAt < WHEEL_THROTTLE_MS) { wheelPixelAccum = 0; return; }
+  wheelLastStepAt = now;
   wheelPixelAccum = 0;
   if (e.deltaY > 0) next();
   else prev();
@@ -1055,7 +1188,19 @@ let currentRoute = current();
 // Typed as the union that Snabbdom's patch() accepts as its first argument.
 let vnode: Parameters<typeof patch>[0] = app;
 
+let _rafScheduled = false;
 function redraw(): void {
+  if (_rafScheduled) return;
+  _rafScheduled = true;
+  requestAnimationFrame(() => {
+    _rafScheduled = false;
+    vnode = patch(vnode, view(currentRoute));
+  });
+}
+
+/** Synchronous redraw for cases that need the DOM updated immediately. */
+function redrawSync(): void {
+  _rafScheduled = false;
   vnode = patch(vnode, view(currentRoute));
 }
 
@@ -1105,6 +1250,15 @@ initAnalysisControls({
   // CCP-245: opening explorer toggle
   onToggleExplorer: () => { explorerCtrl.toggle(); explorerCtrl.setNode(ctrl.node.fen, redraw); },
   explorerEnabled:  () => explorerCtrl.enabled,
+  // CCP-525: save current game to Study Library from the hamburger menu
+  onSaveToLibrary: () => {
+    void saveCurrentToLibrary(getActivePgn(), {
+      source: 'analysis',
+      ...(selectedGameId ? { sourceGameId: selectedGameId } : {}),
+    }).then(() => {
+      showToast('Saved to Library');
+    });
+  },
 });
 initEngine({
   getCtrl:       () => ctrl,
@@ -1177,9 +1331,15 @@ onChange(route => {
     void openPuzzleRound(puzzleId, redraw);
     return; // openPuzzleRound calls redraw() when ready
   }
-  if (route.name === 'openings') {
+  if (route.name === 'opponents') {
     initOpeningsPage('library');
     invalidateCollections();
+  }
+  if (route.name === 'stats') {
+    initStatsPage(redraw);
+  }
+  if (route.name === 'study' || route.name === 'study-detail') {
+    initStudyLibrary(redraw);
   }
   if (route.name === 'analysis-game') {
     const id = route.params['id'] ?? '';
@@ -1197,9 +1357,17 @@ onChange(route => {
 vnode = patch(app, view(currentRoute));
 
 // If the initial route is openings, initialise page state.
-if (currentRoute.name === 'openings') {
+if (currentRoute.name === 'opponents') {
   initOpeningsPage('library');
   invalidateCollections();
+}
+
+if (currentRoute.name === 'stats') {
+  initStatsPage(redraw);
+}
+
+if (currentRoute.name === 'study' || currentRoute.name === 'study-detail') {
+  initStudyLibrary(redraw);
 }
 
 // If the initial route is a puzzle round, load it now.
@@ -1207,6 +1375,9 @@ if (currentRoute.name === 'puzzle-round') {
   const puzzleId = currentRoute.params['id'] ?? '';
   void openPuzzleRound(puzzleId, redraw);
 }
+
+// Request durable storage so the browser is less likely to evict IDB data.
+navigator.storage?.persist?.().catch(() => {});
 
 // --- Startup: restore persisted saved puzzle candidates ---
 void loadPuzzlesFromIdb().then(puzzles => {
@@ -1245,6 +1416,12 @@ void loadGamesFromIdb().then(stored => {
   // Pass restoreGeneration so the guard in loadAndRestoreAnalysis can detect a rapid
   // game switch that occurs before this async restore completes.
   void loadAndRestoreAnalysis(toLoad.id, restoreGeneration);
+
+  // Backfill GameSummary records for games analyzed before the stats platform existed.
+  // Runs in the background after games are loaded; skips games that already have summaries.
+  void backfillGameSummaries(stored.games);
+  // Classify openings for existing games that lack opening/ECO data.
+  void backfillOpenings();
 });
 
 // When mistake-detection settings change, rebuild the active retro session so

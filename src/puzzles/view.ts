@@ -8,7 +8,11 @@
 
 import { h, type VNode } from 'snabbdom';
 import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
-import { protocol as sharedProtocol, engineEnabled, engineReady as sharedEngineReady, multiPv, analysisDepth } from '../engine/ctrl';
+import { protocol as sharedProtocol, engineEnabled, engineReady as sharedEngineReady, multiPv, analysisDepth,
+  showEngineArrows, setShowEngineArrows, showArrowLabels, setShowArrowLabels, syncArrow,
+} from '../engine/ctrl';
+import { explorerCtrl } from '../openings/explorerCtrl';
+import { renderToggleRow } from '../ui';
 import {
   getLibraryCounts, getPuzzleRoundState, getActiveRoundCtrl,
   mountPuzzleBoard, destroyPuzzleBoard, mountIdleBoard, nextPuzzle, retryPuzzle,
@@ -24,19 +28,22 @@ import {
   getActiveSession, clearActiveSession,
   retryFailedPuzzles,
   getAutoNext, setAutoNext,
-  getResumePuzzleId,
+  getResumePuzzleId, getPuzzleCg,
+  getPreviewPuzzleId, getPreviewRoundCtrl, selectPuzzleForPreview, clearPreview, mountPreviewBoard,
   type LibraryCounts, type PuzzleListFilters, type PuzzleListState,
   type ActiveSession,
 } from './ctrl';
 import type { PuzzleRoundCtrl } from './ctrl';
-import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta } from './types';
+import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta, PuzzleDifficulty } from './types';
+import { PUZZLE_DIFFICULTY_OFFSETS } from './types';
 import { parseFen, makeFen } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { renderMoveList, renderContextMoves } from '../analyse/moveList';
-import { syncPuzzleBoard, peekPuzzleContext } from './ctrl';
-import { mainlineNodeList, promoteAt } from '../tree/ops';
+import { renderMoveNavBar } from '../analyse/analysisControls';
+import { syncPuzzleBoard, peekPuzzleContext, getCurrentSessionMode, setSessionMode, getCurrentDifficulty, setDifficulty, getCurrentUserPerf, startRatedSession, stopRatedStream, isRatedStreamActive, getRatedStreamCount, isEmptyRatedStream } from './ctrl';
+import { mainlineNodeList, promoteAt, pathInit } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
 import type { Role } from '@lichess-org/chessground/types';
 
@@ -260,24 +267,39 @@ export function renderPuzzleLibrary(redraw: () => void): VNode {
   _lastPuzzleEngineFen = '';
 
   const listState = getPuzzleListState();
+  const previewRc = getPreviewRoundCtrl();
+  const isPreview = !!previewRc;
 
   // Board-centered layout: sidebar on left, board always visible
+  // When a preview is active: preview panel replaces sidebar on right side of board.
   return h('div.puzzle-page', [
-    h('div.puzzle.puzzle--library', [
-      // Sidebar — shows browse pane when active, otherwise source cards
+    h('div.puzzle.puzzle--library', {
+      class: { 'puzzle--library-preview': isPreview },
+    }, [
+      // Left panel — shows browse pane when active, otherwise source cards
       listState
         ? renderInlineBrowsePane(listState, redraw)
         : renderLibrarySidebar(redraw),
-      // Board area — idle decorative board, always visible
+      // Board area — idle board when no preview; preview board when puzzle selected
       h('div.puzzle__board.main-board', [
-        h('div.cg-wrap', {
-          key: 'puzzle-idle-board',
-          hook: {
-            insert: vnode => { mountIdleBoard(vnode.elm as HTMLElement); },
-            destroy: () => { destroyPuzzleBoard(); },
-          },
-        }),
+        isPreview
+          ? h('div.cg-wrap', {
+              key: `puzzle-preview-board-${getPreviewPuzzleId()}`,
+              hook: {
+                insert: vnode => { mountPreviewBoard(vnode.elm as HTMLElement, redraw); },
+                destroy: () => { destroyPuzzleBoard(); },
+              },
+            })
+          : h('div.cg-wrap', {
+              key: 'puzzle-idle-board',
+              hook: {
+                insert: vnode => { mountIdleBoard(vnode.elm as HTMLElement); },
+                destroy: () => { destroyPuzzleBoard(); },
+              },
+            }),
       ]),
+      // Right panel — preview details when active, otherwise absent
+      isPreview ? renderLibraryPreviewPanel(redraw) : null,
     ]),
   ]);
 }
@@ -409,9 +431,10 @@ function renderPuzzleListRow(
   cells.push(h('span.puzzle-list__row-moves', `${def.solutionLine.length} moves`));
 
   return h('div.puzzle-list__row', {
+    class: { 'puzzle-list__row--selected': getPreviewPuzzleId() === def.id },
     on: {
       click: () => {
-        selectPuzzleFromList(def.id, redraw);
+        void selectPuzzleForPreview(def.id, redraw);
       },
     },
   }, cells);
@@ -862,6 +885,216 @@ function solveResultLabel(result: SolveResult): string {
     case 'failed': return 'Puzzle failed';
     case 'skipped': return 'Skipped';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Rated ladder UI — mode badge, difficulty selector, rating display
+// Adapted from lichess-org/lila: ui/puzzle/src/view/main.ts (session controls)
+// ---------------------------------------------------------------------------
+
+/** Difficulty level display labels. */
+const DIFFICULTY_LABELS: Record<PuzzleDifficulty, string> = {
+  easiest: 'Easiest',
+  easier:  'Easier',
+  normal:  'Normal',
+  harder:  'Harder',
+  hardest: 'Hardest',
+};
+
+/**
+ * Rated stream left-panel entry card.
+ * Shows the user's current rating, difficulty selector, and Start/Stop controls.
+ * Mirrors the Lichess puzzle dashboard entry point (PuzzleSession concept).
+ * Adapted from lichess-org/lila: ui/puzzle/src/view/main.ts
+ */
+export function renderRatedStreamEntry(redraw: () => void): VNode {
+  const perf = getCurrentUserPerf();
+  const intRating = Math.round(perf.glicko.rating);
+  const intDeviation = Math.round(perf.glicko.deviation);
+  const streamActive = isRatedStreamActive();
+  const streamCount = getRatedStreamCount();
+  const empty = isEmptyRatedStream();
+  const difficulty = getCurrentDifficulty();
+
+  const difficultyOptions: Array<[string, string]> = [
+    ['easiest', 'Easiest'],
+    ['easier', 'Easier'],
+    ['normal', 'Normal'],
+    ['harder', 'Harder'],
+    ['hardest', 'Hardest'],
+  ];
+
+  return h('div.puzzle__rated-stream-entry', [
+    // Rating display
+    h('div.puzzle__rated-stream-entry__rating', [
+      h('span.puzzle__rated-stream-entry__rating-label', 'Your Rating'),
+      h('span.puzzle__rated-stream-entry__rating-value', String(intRating)),
+      h('span.puzzle__rated-stream-entry__rating-dev', `\u00b1${intDeviation}`),
+    ]),
+
+    // Difficulty selector
+    h('div.puzzle__rated-stream-entry__difficulty', [
+      h('label.puzzle__rated-stream-entry__difficulty-label', { attrs: { for: 'rated-stream-difficulty' } }, 'Difficulty'),
+      h('select.puzzle__rated-stream-entry__difficulty-select', {
+        attrs: { id: 'rated-stream-difficulty', value: difficulty },
+        props: { value: difficulty },
+        on: {
+          change: (e: Event) => {
+            setDifficulty((e.target as HTMLSelectElement).value as typeof difficulty);
+            redraw();
+          },
+        },
+      }, difficultyOptions.map(([val, label]) =>
+        h('option', { attrs: { value: val, selected: val === difficulty } }, label),
+      )),
+    ]),
+
+    // Stream counter (visible when active)
+    streamActive
+      ? h('div.puzzle__rated-stream-entry__count', `Puzzle ${streamCount}`)
+      : null,
+
+    // Empty state
+    empty
+      ? h('div.puzzle__rated-stream-entry__empty',
+          'No rated puzzles available \u2014 import Lichess puzzles to begin.')
+      : null,
+
+    // Start / Stop button
+    streamActive
+      ? h('button.puzzle__rated-stream-entry__stop', {
+          on: { click: () => { stopRatedStream(); redraw(); } },
+        }, 'Stop')
+      : h('button.puzzle__rated-stream-entry__start', {
+          on: { click: () => { void startRatedSession(redraw); } },
+        }, 'Start Rated'),
+  ]);
+}
+
+/**
+ * Rated session badge + difficulty selector.
+ * Only shown for imported-lichess puzzles. User-library puzzles show a
+ * "Practice only" label so the distinction is clear.
+ * Adapted from Lichess puzzle mode controls.
+ */
+function renderRatedBadge(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
+  const isImported = rc.definition.sourceKind === 'imported-lichess';
+  const sessionMode = getCurrentSessionMode();
+  const perf = getCurrentUserPerf();
+  const intRating = Math.round(perf.glicko.rating);
+
+  if (!isImported) {
+    return h('div.puzzle__rated-badge.puzzle__rated-badge--practice-only', [
+      h('span.puzzle__rated-badge__label', 'Practice only'),
+    ]);
+  }
+
+  const difficulties: PuzzleDifficulty[] = ['easiest', 'easier', 'normal', 'harder', 'hardest'];
+  const currentDiff = getCurrentDifficulty();
+
+  return h('div.puzzle__rated-badge', [
+    h('div.puzzle__rated-badge__mode', [
+      h('button.puzzle__rated-badge__btn', {
+        class: { active: sessionMode === 'practice' },
+        on: { click: () => { setSessionMode('practice'); redraw(); } },
+      }, 'Practice'),
+      h('button.puzzle__rated-badge__btn', {
+        class: { active: sessionMode === 'rated' },
+        on: { click: () => { setSessionMode('rated'); redraw(); } },
+      }, 'Rated'),
+    ]),
+    sessionMode === 'rated'
+      ? h('div.puzzle__rated-badge__controls', [
+          h('span.puzzle__rated-badge__rating', `${intRating}`),
+          h('select.puzzle__rated-badge__difficulty', {
+            props: { value: currentDiff },
+            on: {
+              change: (e: Event) => {
+                const sel = e.target as HTMLSelectElement;
+                setDifficulty(sel.value as PuzzleDifficulty);
+                redraw();
+              },
+            },
+          }, difficulties.map(d =>
+            h('option', { props: { value: d, selected: d === currentDiff } },
+              `${DIFFICULTY_LABELS[d]} (${PUZZLE_DIFFICULTY_OFFSETS[d] >= 0 ? '+' : ''}${PUZZLE_DIFFICULTY_OFFSETS[d]})`),
+          )),
+        ])
+      : null,
+  ]);
+}
+
+/**
+ * Rated assistance warning modal.
+ * Shown when the user triggers a restricted tool during a rated round.
+ * Three choices: cancel (stay rated, don't use tool), switch-to-casual, stay-rated (immediate fail).
+ */
+function renderAssistanceWarning(rc: PuzzleRoundCtrl, redraw: () => void): VNode | null {
+  if (!rc.showAssistanceWarning) return null;
+  return h('div.puzzle__assistance-warning', [
+    h('div.puzzle__assistance-warning__modal', [
+      h('h3.puzzle__assistance-warning__title', 'Using assistance in rated mode'),
+      h('p.puzzle__assistance-warning__body',
+        'Using hints or solutions affects your rated score. How would you like to proceed?'),
+      h('label.puzzle__assistance-warning__remember', [
+        h('input', {
+          attrs: { type: 'checkbox', checked: rc.rememberAssistanceChoice },
+          on: { change: (e: Event) => {
+            rc.rememberAssistanceChoice = (e.target as HTMLInputElement).checked;
+          }},
+        }),
+        'Remember choice for this session',
+      ]),
+      h('div.puzzle__assistance-warning__buttons', [
+        h('button.button.button-red', {
+          on: { click: () => { rc.dismissAssistanceWarning(); redraw(); } },
+        }, 'Cancel'),
+        h('button.button', {
+          on: { click: () => { rc.chooseAssistanceSwitchToCasual(); redraw(); } },
+        }, 'Switch to practice'),
+        h('button.button.button-red', {
+          on: { click: () => { rc.chooseStayRatedAndProceed(); redraw(); } },
+        }, 'Stay rated (lose points)'),
+      ]),
+    ]),
+  ]);
+}
+
+/**
+ * Messaging shown when a previously correctly solved puzzle appears in a rated session.
+ * Makes explicit that this round cannot score rated again.
+ */
+function renderSolvedRepeatNotice(rc: PuzzleRoundCtrl): VNode | null {
+  // Only show for rated imported-lichess puzzles with already-solved outcome.
+  if (rc.currentSessionMode !== 'rated') return null;
+  if (rc.definition.sourceKind !== 'imported-lichess') return null;
+  if (rc.ratedOutcomeResolved !== 'already-solved') return null;
+  return h('div.puzzle__solved-repeat-notice', [
+    h('span.puzzle__solved-repeat-notice__icon', '\u2139'),
+    'You\'ve solved this puzzle before — this round is for practice only.',
+  ]);
+}
+
+/**
+ * Current user rating and last-round delta display.
+ * Shown after a rated round completes so results are immediately visible.
+ */
+function renderRatingDisplay(rc: PuzzleRoundCtrl): VNode | null {
+  if (rc.currentSessionMode !== 'rated') return null;
+  if (rc.definition.sourceKind !== 'imported-lichess') return null;
+  const perf = getCurrentUserPerf();
+  const intRating = Math.round(perf.glicko.rating);
+  const delta = rc.lastRatingDelta;
+
+  return h('div.puzzle__rating-display', [
+    h('span.puzzle__rating-display__label', 'Rating'),
+    h('span.puzzle__rating-display__value', `${intRating}`),
+    delta !== undefined && delta !== 0
+      ? h('span.puzzle__rating-display__delta', {
+          class: { positive: delta > 0, negative: delta < 0 },
+        }, delta > 0 ? `+${delta}` : `${delta}`)
+      : null,
+  ]);
 }
 
 function renderFeedbackPanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
@@ -1344,11 +1577,205 @@ function computeSanMoves(startFen: string, uciMoves: string[]): string[] {
   return sans;
 }
 
+// --- Puzzle round action-menu state ---
+// Mirrors the analysis action-menu pattern in src/analyse/analysisControls.ts
+let _puzzleMenuOpen = false;
+
+// Icon codepoints reused from analysisControls.ts conventions.
+// Adapted from lichess-org/lila: ui/lib/src/licon.ts
+const PUZZLE_ICON_HAMBURGER = '\ue039'; // licon.Hamburger
+const PUZZLE_ICON_FLIP      = '\ue020'; // licon.ChasingArrows — flip board
+
+/**
+ * Puzzle-round action menu overlay.
+ * Renders inside .puzzle__side with position: absolute; inset: 0.
+ * Returns null when the menu is closed so the side panel renders normally.
+ * Adapted from lichess-org/lila: ui/analyse/src/view/actionMenu.ts structure
+ */
+function renderPuzzleRoundActionMenu(rc: PuzzleRoundCtrl, redraw: () => void): VNode | null {
+  if (!_puzzleMenuOpen) return null;
+  const close = () => { _puzzleMenuOpen = false; redraw(); };
+
+  return h('div.action-menu', [
+    h('button.action-menu__close-btn', {
+      attrs: { title: 'Close menu' },
+      on:    { click: close },
+    }, '×'),
+
+    h('h2', 'Tools'),
+    h('div.action-menu__tools', [
+      // Flip board
+      h('button', {
+        attrs: { 'data-icon': PUZZLE_ICON_FLIP, title: 'Flip board' },
+        on: { click: () => {
+          const cg = getPuzzleCg();
+          if (cg) {
+            const cur = cg.state.orientation;
+            cg.set({ orientation: cur === 'white' ? 'black' : 'white' });
+          }
+          close();
+        } },
+      }, 'Flip board'),
+    ]),
+
+    // Auto-next is a per-session setting that triggers after each solve.
+    // Adapted from lichess-org/lila: ui/puzzle/src/autoScroll.ts auto-advance
+    h('h2', 'Behaviour'),
+    h('div.action-menu__display', [
+      renderToggleRow('pz-auto-next', 'Auto next', getAutoNext(), (v) => { setAutoNext(v); redraw(); }),
+    ]),
+
+    h('h2', 'Display'),
+    h('div.action-menu__display', [
+      renderToggleRow('pz-engine-arrows', 'Engine arrows', showEngineArrows, (v) => { setShowEngineArrows(v); syncArrow(); redraw(); }),
+      renderToggleRow('pz-arrow-labels',  'Arrow labels',  showArrowLabels,  (v) => { setShowArrowLabels(v);  syncArrow(); redraw(); }),
+    ]),
+  ]);
+}
+
+/**
+ * Render the shared three-zone move-nav bar for the puzzle round.
+ * Wires first/prev/next/last into puzzleNavigate, book to explorerCtrl, hamburger to local menu.
+ * Adapted from lichess-org/lila: ui/puzzle/src/view/main.ts navigation pattern.
+ */
+function renderPuzzleRoundNavBar(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
+  const canPrev = rc.treePath !== '';
+  const canNext = rc.treeNode.children.length > 0;
+  const lastPath = rc.treeMainline.slice(1).map(n => n.id).join('');
+
+  return renderMoveNavBar([], {
+    canPrev,
+    canNext,
+    first: () => puzzleNavigate(rc, '',                                 redraw),
+    prev:  () => puzzleNavigate(rc, pathInit(rc.treePath),              redraw),
+    next:  () => {
+      if (rc.treeNode.children[0]) puzzleNavigate(rc, rc.treePath + rc.treeNode.children[0].id, redraw);
+    },
+    last:  () => puzzleNavigate(rc, lastPath,                           redraw),
+    bookActive: explorerCtrl.enabled,
+    onBook: () => {
+      explorerCtrl.toggle();
+      if (explorerCtrl.enabled) explorerCtrl.setNode(rc.treeNode.fen, redraw);
+      redraw();
+    },
+    rightSlot: h('button.fbt', {
+      class: { active: _puzzleMenuOpen },
+      attrs: { 'data-icon': PUZZLE_ICON_HAMBURGER, title: 'Puzzle menu' },
+      on:    { click: () => { _puzzleMenuOpen = !_puzzleMenuOpen; redraw(); } },
+    }),
+  });
+}
+
 function puzzleNavigate(rc: PuzzleRoundCtrl, path: string, redraw: () => void): void {
   if (path === rc.treePath) return;
   rc.setTreePath(path);
   syncPuzzleBoard();
   redraw();
+}
+
+function previewNavigate(rc: PuzzleRoundCtrl, path: string, redraw: () => void): void {
+  if (path === rc.treePath) return;
+  rc.setTreePath(path);
+  syncPuzzleBoard(rc);
+  redraw();
+}
+
+// --- Library preview action-menu state (CCP-256) ---
+let _libraryMenuOpen = false;
+
+const LIBRARY_ICON_HAMBURGER = '\ue039'; // licon.Hamburger
+const LIBRARY_ICON_FLIP      = '\ue020'; // licon.ChasingArrows — flip board
+
+/**
+ * Library preview action menu overlay.
+ * Renders inside .puzzle-library__preview-side with position: absolute; inset: 0.
+ * Returns null when the menu is closed so the panel renders normally.
+ * Adapted from lichess-org/lila: ui/analyse/src/view/actionMenu.ts structure
+ */
+function renderLibraryPreviewActionMenu(redraw: () => void): VNode | null {
+  if (!_libraryMenuOpen) return null;
+  const close = () => { _libraryMenuOpen = false; redraw(); };
+
+  return h('div.action-menu', [
+    h('button.action-menu__close-btn', {
+      attrs: { title: 'Close menu' },
+      on:    { click: close },
+    }, '×'),
+
+    h('h2', 'Tools'),
+    h('div.action-menu__tools', [
+      h('button', {
+        attrs: { 'data-icon': LIBRARY_ICON_FLIP, title: 'Flip board' },
+        on: { click: () => {
+          const cg = getPuzzleCg();
+          if (cg) {
+            const cur = cg.state.orientation;
+            cg.set({ orientation: cur === 'white' ? 'black' : 'white' });
+          }
+          close();
+        } },
+      }, 'Flip board'),
+    ]),
+
+    h('h2', 'Display'),
+    h('div.action-menu__display', [
+      renderToggleRow('lib-engine-arrows', 'Engine arrows', showEngineArrows, (v) => { setShowEngineArrows(v); syncArrow(); redraw(); }),
+      renderToggleRow('lib-arrow-labels',  'Arrow labels',  showArrowLabels,  (v) => { setShowArrowLabels(v);  syncArrow(); redraw(); }),
+    ]),
+  ]);
+}
+
+/**
+ * Render the preview panel that replaces the puzzle side when a library puzzle is selected.
+ * Shows move list, nav bar (with book + hamburger), and a "Play this puzzle" button.
+ * Adapted from lichess-org/lila: ui/puzzle/src/view/main.ts aside panel shape.
+ * CCP-255: initial panel + nav bar. CCP-256: adds book + hamburger.
+ */
+function renderLibraryPreviewPanel(redraw: () => void): VNode | null {
+  const rc = getPreviewRoundCtrl();
+  if (!rc) return null;
+  const nav = (path: string) => previewNavigate(rc, path, redraw);
+  const canPrev = rc.treePath !== '';
+  const canNext = rc.treeNode.children.length > 0;
+  const lastPath = rc.treeMainline.slice(1).map(n => n.id).join('');
+
+  return h('aside.puzzle__side.puzzle-library__preview-side', [
+    renderLibraryPreviewActionMenu(redraw),
+    h('div.puzzle-library__preview-header', [
+      h('h2', `Puzzle ${rc.definition.id}`),
+      h('button.button.button-green.puzzle-library__preview-play', {
+        on: { click: () => void selectPuzzleFromList(rc.definition.id, redraw) },
+      }, 'Play this puzzle'),
+      h('button.puzzle-library__preview-close', {
+        attrs: { title: 'Close preview' },
+        on: { click: () => { clearPreview(); redraw(); } },
+      }, '×'),
+    ]),
+    h('div.analyse__moves.areplay', [
+      renderMoveList(rc.treeRoot, rc.treePath, () => undefined, nav, rc.pov, false),
+    ]),
+    renderMoveNavBar([], {
+      canPrev,
+      canNext,
+      first: () => previewNavigate(rc, '',                                     redraw),
+      prev:  () => previewNavigate(rc, pathInit(rc.treePath),                  redraw),
+      next:  () => {
+        if (rc.treeNode.children[0]) previewNavigate(rc, rc.treePath + rc.treeNode.children[0].id, redraw);
+      },
+      last:  () => previewNavigate(rc, lastPath,                               redraw),
+      bookActive: explorerCtrl.enabled,
+      onBook: () => {
+        explorerCtrl.toggle();
+        if (explorerCtrl.enabled) explorerCtrl.setNode(rc.treeNode.fen, redraw);
+        redraw();
+      },
+      rightSlot: h('button.fbt', {
+        class: { active: _libraryMenuOpen },
+        attrs: { 'data-icon': LIBRARY_ICON_HAMBURGER, title: 'Preview menu' },
+        on:    { click: () => { _libraryMenuOpen = !_libraryMenuOpen; redraw(); } },
+      }),
+    }),
+  ]);
 }
 
 function puzzleDeleteVariation(rc: PuzzleRoundCtrl, path: string, redraw: () => void): void {
@@ -1628,6 +2055,7 @@ export function renderPuzzleRound(redraw: () => void): VNode {
               h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
               h('h2.puzzle-round__title', `Puzzle ${def.id}`),
             ]),
+            renderRatedStreamEntry(redraw),
             renderPuzzleInfo(def, redraw),
             renderMetaPanel(def.id, redraw),
           ]),
@@ -1652,12 +2080,19 @@ export function renderPuzzleRound(redraw: () => void): VNode {
           bottomStrip,
         ]);
       })(),
-      // Side panel — flat flex column: ceval → move list → feedback.
+      // Side panel — flat flex column: ceval → move list → nav bar → feedback.
+      // .puzzle__side has position: relative so the .action-menu overlay can cover it.
       // Mirrors lichess-org/lila: ui/puzzle/css/_tools.scss puzzle__tools structure.
       // All children are direct flex items so analyse__moves can flex-grow correctly.
       h('aside.puzzle__side', [
+        rc ? renderAssistanceWarning(rc, redraw) : null,
+        rc ? renderPuzzleRoundActionMenu(rc, redraw) : null,
+        rc ? renderRatedBadge(rc, redraw) : null,
         rc ? renderPuzzleEnginePanel(rc, redraw) : null,
         renderPuzzleMoveList(def, rc, redraw),
+        rc ? renderPuzzleRoundNavBar(rc, redraw) : null,
+        rc ? renderSolvedRepeatNotice(rc) : null,
+        rc ? renderRatingDisplay(rc) : null,
         rc ? renderFeedbackPanel(rc, redraw) : null,
       ]),
     ]),

@@ -4,7 +4,7 @@ Date: 2026-03-27
 
 Scope:
 - what additional "learnable moments" Patzer Pro could extract after a game is reviewed
-- how those ideas compare to Lichess, Chess.com, external training platform, external training platform, and external analysis platform
+- how those ideas compare to Lichess and other training/analysis platforms
 - how each idea would add to, change, or interact with Patzer Pro's current implementation
 
 This document is a product-and-implementation synthesis.
@@ -33,10 +33,10 @@ That is good, but narrow.
 The strongest competing products do something broader:
 
 - Lichess turns reviewed mistakes into retryable board exercises
-- Chess.com turns reviewed games into multi-angle insight categories
-- external training platform turns many analyzed games into weakness categories plus targeted drills
-- external training platform turns mistakes into repeatable, motif-focused training sets
-- external analysis platform turns notable positions into explanation-first learning
+- other platforms turn reviewed games into multi-angle insight categories
+- some tools turn many analyzed games into weakness categories plus targeted drills
+- some tools turn mistakes into repeatable, motif-focused training sets
+- some tools turn notable positions into explanation-first learning
 
 The big opportunity for Patzer is not merely "more puzzles".
 It is to build more kinds of learnable moments from the reviewed game data you already store.
@@ -230,16 +230,12 @@ This is especially relevant for:
 - time management
 - repeated tactical blind spots
 
-## external training platform
+## Category-Driven Training Platforms
 
-Official source:
+Some training platforms are strong examples of turning reviewed games into training categories
+instead of only annotated move labels.
 
-- [external training platform](https://external training platform.com/)
-
-external training platform is the strongest example of turning reviewed games into training categories instead of only
-annotated move labels.
-
-The six top-level weakness categories it advertises are:
+The six top-level weakness categories this class of product advertises are:
 
 - tactics
 - endgame
@@ -248,7 +244,7 @@ The six top-level weakness categories it advertises are:
 - time management
 - opening performance
 
-It then maps those categories into drills such as:
+They then map those categories into drills such as:
 
 - retry mistakes
 - advantage capitalization trainer
@@ -264,13 +260,9 @@ Product lesson for Patzer:
 
 This is a very good fit for Patzer's local-first model.
 
-## external training platform
+## Motif-Focused Training Platforms
 
-Official source:
-
-- [external training platform mobile](https://cftest.external training platform.com/mobile/)
-
-What external training platform contributes to the model:
+Some platforms contribute a model centered on:
 
 - solve past mistakes again
 - defensive and winning training sets
@@ -281,13 +273,9 @@ Product lesson for Patzer:
 
 - once Patzer can tag moments by type, it can build repeatable local sets instead of one-off review
 
-## external analysis platform
+## Explanation-First Platforms
 
-Official source:
-
-- [external analysis platform FAQ](https://external analysis platform.com/faq/)
-
-What external analysis platform emphasizes:
+Some platforms emphasize:
 
 - notable positions
 - threats
@@ -319,8 +307,8 @@ Why it matters:
 
 Market support:
 
-- external training platform calls this "advantage capitalization"
-- Chess.com exposes phase/result/shape insights that often surface this pattern indirectly
+- some platforms call this "advantage capitalization"
+- others expose phase/result/shape insights that often surface this pattern indirectly
 
 Implementation fit:
 
@@ -353,8 +341,8 @@ Why it matters:
 
 Market support:
 
-- external training platform "resourcefulness"
-- external training platform defensive problem types
+- category-driven platforms offer "resourcefulness" drills
+- motif-focused platforms offer defensive problem types
 
 Implementation fit:
 
@@ -387,8 +375,8 @@ Why it matters:
 
 Market support:
 
-- Chess.com "found vs missed" tactical ideas
-- external training platform tactics and retry-mistakes framing
+- "found vs missed" tactical ideas (common in insight-style platforms)
+- retry-mistakes framing (common in category-driven trainers)
 
 Implementation fit:
 
@@ -420,8 +408,8 @@ Why it matters:
 
 Market support:
 
-- Chess.com opening stats
-- external training platform opening performance / opening improver
+- platform opening stats dashboards
+- category-driven opening performance / opening improver drills
 - Lichess opening cancellation logic already proves that opening-aware gating matters
 
 Implementation fit:
@@ -457,9 +445,9 @@ Why it matters:
 
 Market support:
 
-- external training platform endgame
-- Chess.com game phases
-- external training platform endgame training
+- category-driven endgame drills
+- platform game-phase breakdowns
+- motif-focused endgame training sets
 
 Implementation fit:
 
@@ -499,9 +487,9 @@ Why it matters:
 
 Market support:
 
-- external training platform motif taxonomy
-- Chess.com found/missed forks, pins, mates
-- external training platform uses tactical categories heavily even when the public marketing is broader
+- motif-focused platforms offer detailed motif taxonomies
+- insight platforms surface found/missed forks, pins, mates
+- category-driven platforms use tactical categories heavily even when the public marketing is broader
 
 Implementation fit:
 
@@ -535,7 +523,7 @@ Description:
 
 Why it matters:
 
-- this is the biggest gap between Patzer and products like Chess.com / external training platform
+- this is the biggest gap between Patzer and the leading insight/training platforms
 
 Implementation fit:
 
@@ -573,7 +561,7 @@ Why it matters:
 
 Market support:
 
-- external analysis platform is the clearest example here
+- explanation-first platforms are the clearest example here
 
 Implementation fit:
 
@@ -836,7 +824,7 @@ The most promising direction is:
 
 - keep Lichess-style retrospection for replaying concrete mistakes
 - expand the candidate families beyond plain tactical misses
-- add cross-game insight categories inspired by Chess.com and external training platform
+- add cross-game insight categories (common in leading training platforms)
 - eventually add motif-tagged and explanation-backed local training sets
 
 If Patzer does this well, it will stop feeling like:
@@ -858,12 +846,5 @@ Local Patzer / Lichess research:
 - [docs/reference/lichess-retrospection/RETROSPECTION_FLOW.md](/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/RETROSPECTION_FLOW.md)
 - [docs/reference/lichess-retrospection/PATZER_IMPLICATIONS.md](/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/PATZER_IMPLICATIONS.md)
 
-Official / primary external sources:
-
-- Chess.com: [How does Game Review work?](https://support.chess.com/article/364-how-does-the-game-report-analysis-work)
-- Chess.com: [What is Insights on Chess.com?](https://support.chess.com/article/3056-what-is-insights)
-- Chess.com: [How can I see my opening stats?](https://support.chess.com/article/2138-how-can-i-see-my-opening-stats)
-- Chess.com: [What is Practice on Chess.com?](https://support.chess.com/en/articles/8724749-what-is-practice-on-chess-com)
-- external training platform: [external training platform product page](https://external training platform.com/)
-- external training platform: [external training platform mobile / feature overview](https://cftest.external training platform.com/mobile/)
-- external analysis platform: [external analysis platform FAQ](https://external analysis platform.com/faq/)
+External platform research was conducted across several leading chess training and analysis
+products. Specific sources are tracked in internal provenance notes.

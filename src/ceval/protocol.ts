@@ -1,6 +1,8 @@
 // UCI protocol wrapper using @lichess-org/stockfish-web
 // Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts
 //                            and ui/lib/src/ceval/protocol.ts
+
+import type { EngineStrengthConfig } from '../engine/types';
 //
 // Key change from the previous Worker-based approach:
 // stockfish-web runs in the MAIN THREAD — no new Worker() needed.
@@ -144,6 +146,39 @@ export class StockfishProtocol {
   /** Interrupt a running search. */
   stop(): void {
     this.send('stop');
+  }
+
+  /**
+   * Configure engine for play mode at the given strength level.
+   * Levels 1–7 enable UCI_LimitStrength + UCI_Elo; level 8 disables it.
+   * Adapted from sprint plan: docs/mini-sprints/ENGINE_STRENGTH_LEVELS_SPRINT_2026-03-30.md
+   */
+  setPlayStrength(config: EngineStrengthConfig): void {
+    if (config.level < 8) {
+      this.send('setoption name UCI_LimitStrength value true');
+      this.send(`setoption name UCI_Elo value ${config.uciElo}`);
+    } else {
+      this.send('setoption name UCI_LimitStrength value false');
+    }
+    this.send('setoption name UCI_AnalyseMode value false');
+    this.send('setoption name Analysis Contempt value Both');
+  }
+
+  /**
+   * Restore engine to analysis mode (full strength, analyse contempt off).
+   */
+  setAnalysisMode(): void {
+    this.send('setoption name UCI_LimitStrength value false');
+    this.send('setoption name UCI_AnalyseMode value true');
+    this.send('setoption name Analysis Contempt value Off');
+  }
+
+  /**
+   * Start a single-PV search capped at the given depth, for play-mode move generation.
+   */
+  goPlay(depth: number): void {
+    this.send('setoption name MultiPV value 1');
+    this.send(`go depth ${depth}`);
   }
 
   /** Shut down the engine. */

@@ -43,6 +43,8 @@ interface PuzzleDefinitionBase {
   strictSolutionMove: string;
   /** When the puzzle was created or imported. */
   createdAt: number; // epoch ms
+  /** When the record was last written to IDB. Used for differential sync. */
+  updatedAt?: number; // epoch ms
 }
 
 /** A puzzle sourced from the downloaded Lichess puzzle database. */
@@ -92,17 +94,86 @@ export type PuzzleDefinition =
 
 /**
  * Whether a puzzle session is practice (default) or rated.
- * 'rated' mode is reserved for a future rating progression feature.
- * Currently all sessions are 'practice'.
+ * 'rated' mode applies only to imported-lichess puzzles.
+ * User-library puzzles are always practice-only.
  */
 export type PuzzleSessionMode = 'practice' | 'rated';
 
-// --- Rating snapshot (future hook) ---
+// ---------------------------------------------------------------------------
+// User puzzle performance (rating) types
+// Adapted from lichess-org/lila: modules/rating/src/main/Perf.scala
+// and modules/rating/src/main/Glicko.scala
+//
+// Intentional Patzer divergence: imported puzzle ratings stay fixed.
+// Only the user's own puzzle rating is updated on rated solves.
+// ---------------------------------------------------------------------------
 
 /**
- * Shape of a per-attempt rating snapshot for the future rated puzzle mode.
- * Not populated yet — defined here so the PuzzleAttempt schema is forward-compatible
- * and existing IDB records won't need migration when rating support lands.
+ * Glicko-2 parameters for the user's puzzle rating.
+ * Adapted from chess.rating.glicko.Glicko in the Lichess source.
+ *
+ * Defaults (from Glicko.scala):
+ *   rating = 1500, deviation = 500, volatility = 0.09
+ *
+ * Hard caps (from Glicko.scala and GlickoExt.cap):
+ *   minRating = 400, maxRating = 4000
+ *   minDeviation = 45, maxDeviation = 500
+ *   maxVolatility = 0.1
+ */
+export interface PuzzleGlicko {
+  rating: number;
+  deviation: number;
+  volatility: number;
+}
+
+/** Lichess Glicko-2 constants for puzzle rating. Source-confirmed from Glicko.scala. */
+export const PUZZLE_GLICKO_DEFAULTS: PuzzleGlicko = {
+  rating: 1500,
+  deviation: 500,
+  volatility: 0.09,
+};
+
+export const PUZZLE_GLICKO_CAPS = {
+  minRating: 400,
+  maxRating: 4000,
+  minDeviation: 45,
+  maxDeviation: 500,
+  maxVolatility: 0.1,
+  /** Maximum rating gain or loss from a single rated solve. Source-confirmed: Glicko.maxRatingDelta = 700. */
+  maxRatingDelta: 700,
+} as const;
+
+/**
+ * User's current puzzle performance rating.
+ * Analogous to Lichess Perf wrapping Glicko + metadata.
+ * Stored as a single record in IDB under key 'puzzle'.
+ *
+ * `nb` = total rated puzzles completed (not practice attempts).
+ * `recent` = last 12 integer ratings (for mini-chart, matches Perf.recentMaxSize = 12).
+ */
+export interface UserPuzzlePerf {
+  glicko: PuzzleGlicko;
+  /** Total rated attempts that updated the rating. */
+  nb: number;
+  /** Last up to 12 integer ratings (most recent first). */
+  recent: number[];
+  /** Epoch ms of last rated attempt. */
+  latest: number | null;
+}
+
+/** Default starting UserPuzzlePerf — matches Lichess Perf.default. */
+export const DEFAULT_USER_PUZZLE_PERF: UserPuzzlePerf = {
+  glicko: { ...PUZZLE_GLICKO_DEFAULTS },
+  nb: 0,
+  recent: [],
+  latest: null,
+};
+
+// --- Rating snapshot ---
+
+/**
+ * Per-attempt rating snapshot — the user's Glicko state immediately before
+ * or after a rated solve. Stored on PuzzleAttempt for per-round attribution.
  */
 export interface PuzzleRatingSnapshot {
   /** Glicko-2 rating value. */
@@ -111,6 +182,40 @@ export interface PuzzleRatingSnapshot {
   deviation: number;
   /** Epoch ms when this snapshot was recorded. */
   timestamp: number;
+}
+
+// ---------------------------------------------------------------------------
+// Rating history and round delta types
+// Adapted from lichess-org/lila: modules/history/src/main/HistoryApi.scala
+// and modules/puzzle/src/main/JsonView.scala
+// ---------------------------------------------------------------------------
+
+/**
+ * A single entry in the user's puzzle rating history.
+ * Written on each rated puzzle completion.
+ * Analogous to Lichess history points stored by HistoryApi.addPuzzle.
+ */
+export interface PuzzleRatingHistoryEntry {
+  /** Epoch ms when this entry was recorded. */
+  timestamp: number;
+  /** User rating after this rated solve. Integer. */
+  rating: number;
+  /** Rating deviation after this solve. */
+  deviation: number;
+}
+
+/**
+ * Rating delta for a single rated round — the gain or loss attributed to one solve.
+ * Stored on PuzzleAttempt for UI display (e.g. "+8" or "-12").
+ * Mirrors the IntRatingDiff emitted by PuzzleFinisher.batch in Lichess.
+ */
+export interface PuzzleRatingDelta {
+  /** Integer rating points gained (positive) or lost (negative). */
+  delta: number;
+  /** User rating before this solve. */
+  ratingBefore: number;
+  /** User rating after this solve. */
+  ratingAfter: number;
 }
 
 // --- Solve result model ---
@@ -163,23 +268,34 @@ export interface PuzzleAttempt {
   usedEngineReveal: boolean;
   /** Whether the user revealed the stored solution. */
   revealedSolution: boolean;
+  /** When the record was last written to IDB. Used for differential sync. */
+  updatedAt?: number; // epoch ms
   /** Whether the user opened notes during the solve. */
   openedNotesDuringSolve: boolean;
   /** Whether the attempt ended via the skip action. */
   skipped: boolean;
 
-  // --- Rated-mode hooks (future) ---
-  // These fields are not populated yet. They exist so the PuzzleAttempt shape
-  // is forward-compatible with a future rated puzzle mode. When the rating
-  // algorithm is implemented, rated-mode attempts will populate ratingBefore
-  // and ratingAfter; practice-mode attempts will leave them undefined.
+  // --- Rated-mode fields ---
+  // Populated on rated-eligible solves. Practice attempts leave these undefined.
+  // ratingBefore/ratingAfter store the user's Glicko snapshot for per-round attribution.
+  // ratedOutcome records which branch was taken so the UI and sync can read it cleanly.
 
   /** Whether this attempt was recorded in practice or rated mode. */
   sessionMode?: PuzzleSessionMode;
+  /**
+   * Scored outcome for this attempt in rated mode.
+   * 'not-rated' when the round was ineligible or session was practice.
+   * Undefined on legacy attempts (written before this field was added).
+   */
+  ratedOutcome?: RatedScoringOutcome;
+  /** Why the attempt was not rated. Populated when ratedOutcome = 'not-rated'. */
+  nonRatedReason?: NonRatedReason;
   /** User's puzzle rating snapshot immediately before this attempt. */
   ratingBefore?: PuzzleRatingSnapshot;
   /** User's puzzle rating snapshot immediately after this attempt. */
   ratingAfter?: PuzzleRatingSnapshot;
+  /** Rating delta attributed to this solve. Populated on rated-success and rated-failure. */
+  ratingDelta?: PuzzleRatingDelta;
 }
 
 // --- Move quality evaluation (engine assist layer) ---
@@ -223,6 +339,77 @@ export interface PuzzleMoveQuality {
    */
   quality: 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder';
 }
+
+// ---------------------------------------------------------------------------
+// Difficulty offset types and constants
+// Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleDifficulty.scala
+// Source-confirmed offsets: Easiest=-600, Easier=-300, Normal=0, Harder=+300, Hardest=+600
+// ---------------------------------------------------------------------------
+
+/**
+ * Named difficulty levels for rated puzzle selection.
+ * Mirrors PuzzleDifficulty enum from Lichess.
+ */
+export type PuzzleDifficulty = 'easiest' | 'easier' | 'normal' | 'harder' | 'hardest';
+
+/**
+ * Rating offset applied to the user's current puzzle rating to pick a target
+ * puzzle rating for selection. Source-confirmed from PuzzleDifficulty.scala.
+ */
+export const PUZZLE_DIFFICULTY_OFFSETS: Record<PuzzleDifficulty, number> = {
+  easiest: -600,
+  easier:  -300,
+  normal:    0,
+  harder:  +300,
+  hardest: +600,
+} as const;
+
+export const DEFAULT_PUZZLE_DIFFICULTY: PuzzleDifficulty = 'normal';
+
+// ---------------------------------------------------------------------------
+// Rated eligibility, outcome, and non-rated treatment reason types
+// Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleFinisher.scala
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a puzzle round is not eligible to count as a rated solve.
+ * Used by the completion path to decide which branch to take
+ * and to record the reason on the attempt for debugging/display.
+ *
+ * Source mapping:
+ * - 'source-not-rated': user-library puzzle; only imported-lichess puzzles are rateable
+ * - 'session-practice': the user explicitly chose practice mode for this session
+ * - 'already-solved': puzzle was previously correctly solved (solves[0] = clean); cannot score rated again
+ * - 'recent-failure-cooldown': puzzle was failed within the last 7 days; excluded from rated queue
+ * - 'assistance-switch-to-casual': user invoked a restricted tool and chose "switch to casual"
+ */
+export type NonRatedReason =
+  | 'source-not-rated'
+  | 'session-practice'
+  | 'already-solved'
+  | 'recent-failure-cooldown'
+  | 'assistance-switch-to-casual';
+
+/**
+ * Whether a particular puzzle round is eligible for rated scoring, and why not if not.
+ */
+export type RatedEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: NonRatedReason };
+
+/**
+ * The outcome of a rated-eligible solve for rating math purposes.
+ * Mirrors the PuzzleWin / win field in Lichess PuzzleFinisher:
+ * - 'rated-success': user found the correct solution without triggering immediate-fail
+ * - 'rated-failure': user failed (wrong move, gave up, or chose stay-rated after assistance)
+ * - 'rated-immediate-fail': user invoked a restricted tool and chose "stay rated" — recorded as fail
+ * - 'not-rated': the round was not eligible; no rating math applied
+ */
+export type RatedScoringOutcome =
+  | 'rated-success'
+  | 'rated-failure'
+  | 'rated-immediate-fail'
+  | 'not-rated';
 
 // --- Per-puzzle user metadata ---
 

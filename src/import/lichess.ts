@@ -6,19 +6,24 @@
 import { filterGamesByDate, importFilters, type ImportSpeed } from './filters';
 import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating, timeClassFromTimeControl } from './types';
 import { pgnToTree } from '../tree/pgn';
+import { classifyOpening } from '../openings/eco';
 
 export const lichess = {
   username: 'Leviathan_Duck',
   loading:  false,
   error:    null as string | null,
+  /** Count of games parsed so far during an active import. */
+  gameCount: 0,
 };
 
 export async function fetchLichessGames(
   username: string, rated: boolean, speeds: Set<ImportSpeed>,
+  onProgress?: (count: number) => void,
 ): Promise<ImportedGame[]> {
-  const params = new URLSearchParams({ max: '30' });
+  const params = new URLSearchParams({ max: '300' });
   if (rated) params.set('rated', 'true');
   if (speeds.size > 0) params.set('perfType', [...speeds].join(','));
+  params.set('clocks', 'true');
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
   const res = await fetch(url, { headers: { 'Accept': 'application/x-chess-pgn' } });
   if (!res.ok) {
@@ -43,8 +48,15 @@ export async function fetchLichessGames(
     const black = parsePgnHeader(pgn, 'Black');
     const resultLabel = parsePgnHeader(pgn, 'Result');
     const timeClass = timeClassFromTimeControl(parsePgnHeader(pgn, 'TimeControl'));
-    const opening = parsePgnHeader(pgn, 'Opening');
-    const eco = parsePgnHeader(pgn, 'ECO');
+    let opening = parsePgnHeader(pgn, 'Opening');
+    let eco = parsePgnHeader(pgn, 'ECO');
+    if (!opening || !eco) {
+      const classified = classifyOpening(pgn);
+      if (classified) {
+        if (!opening) opening = classified.name;
+        if (!eco) eco = classified.eco;
+      }
+    }
     const whiteRating = parseRating(parsePgnHeader(pgn, 'WhiteElo'));
     const blackRating = parseRating(parsePgnHeader(pgn, 'BlackElo'));
     result.push({
@@ -62,6 +74,7 @@ export async function fetchLichessGames(
       ...(whiteRating !== undefined ? { whiteRating } : {}),
       ...(blackRating !== undefined ? { blackRating } : {}),
     });
+    onProgress?.(result.length);
   }
   return result;
 }
@@ -71,9 +84,13 @@ export async function importLichess(callbacks: ImportCallbacks): Promise<void> {
   if (!name || lichess.loading) return;
   lichess.loading = true;
   lichess.error = null;
+  lichess.gameCount = 0;
   callbacks.redraw();
   try {
-    const games = filterGamesByDate(await fetchLichessGames(name, importFilters.rated, importFilters.speeds));
+    const games = filterGamesByDate(await fetchLichessGames(name, importFilters.rated, importFilters.speeds,
+      (partial) => { lichess.gameCount = partial; callbacks.redraw(); },
+    ));
+    lichess.gameCount = games.length;
     if (games.length === 0) {
       lichess.error = 'No games found matching current filters.';
     } else {
