@@ -14,11 +14,13 @@ import {
 import {
   evalCache,
   currentEval, resetCurrentEval, setCurrentEval, clearEvalCache,
-  engineEnabled, analysisDepth,
+  engineEnabled, toggleEngine, analysisDepth,
   evalCurrentPosition,
   syncArrow,
   initEngine,
   setOnLiveEvalImproved,
+  setOnLiveEvalInfo,
+  setOnLiveEvalUpdated,
   type PositionEval,
 } from './engine/ctrl';
 import {
@@ -26,6 +28,7 @@ import {
   batchState, setBatchState,
   analysisComplete, setAnalysisComplete,
   reviewDepth,
+  stopBatchAnalysis,
   resetBatchState,
   startBatchWhenReady,
   initBatch,
@@ -41,6 +44,7 @@ import {
 import { preloadBoardSounds, playMoveSound } from './board/sound';
 import {
   renderCeval, renderPvBox, renderPvBoard, renderEngineSettings,
+  isRetroVisibleEngineEnabled, resetRetroVisibleEngineUi,
   initCevalView,
 } from './ceval/view';
 import {
@@ -737,6 +741,7 @@ function toggleRetro(): void {
         .filter((entry): entry is [number, 'win' | 'fail' | 'view' | 'skip'] => entry[1] !== undefined),
     );
     delete ctrl.retro;
+    resetRetroVisibleEngineUi();
     // Restore arrows that were suppressed during retro mode.
     // buildArrowShapes() gates on ctrl.retro presence — syncArrow() must be
     // called here so arrows re-appear immediately without waiting for the next
@@ -745,6 +750,11 @@ function toggleRetro(): void {
     redraw();
     return;
   }
+  // LFYM should own the live engine while solving. If a foreground Review batch
+  // is still active, stop it so evalCurrentPosition() can target the exercise path.
+  if (batchAnalyzing) stopBatchAnalysis();
+  if (!engineEnabled) toggleEngine();
+  resetRetroVisibleEngineUi();
   // Reset cached outcomes — a new session for this game is starting.
   lastRetroOutcomes = null;
   const game = importedGames.find(g => g.id === selectedGameId);
@@ -794,6 +804,7 @@ function clearRetroMode(): void {
       .filter((entry): entry is [number, 'win' | 'fail' | 'view' | 'skip'] => entry[1] !== undefined),
   );
   delete ctrl.retro;
+  resetRetroVisibleEngineUi();
   syncArrow();
 }
 
@@ -808,6 +819,9 @@ function clearRetroMode(): void {
  */
 function rebuildRetroSession(): void {
   if (!ctrl.retro) return;
+  if (batchAnalyzing) stopBatchAnalysis();
+  if (!engineEnabled) toggleEngine();
+  resetRetroVisibleEngineUi();
   const game = importedGames.find(g => g.id === selectedGameId);
   const userColor = game ? getUserColor(game) : null;
   const openingProvider = buildMainlineOpeningProvider(
@@ -905,6 +919,14 @@ function routeContent(route: Route): VNode {
     case 'analysis':
       const currentGame = importedGames.find(g => g.id === selectedGameId);
       const currentUserColor = currentGame ? getUserColor(currentGame) : null;
+      const retroVisibleEngineEnabled = ctrl.retro ? isRetroVisibleEngineEnabled() : engineEnabled;
+      // retroSolving: true while user is in the LFYM attempt phase (find | fail).
+      // Used to suppress the eval pearl, eval bar value, and PV lines — all of which
+      // would reveal the engine's assessment of the position and spoil the puzzle.
+      // Resets automatically on the next render after jumpToNext() sets feedback='find'.
+      // Mirrors lichess-org/lila: showCevalPvs: !ctrl.retro?.isSolving() && !ctrl.practice
+      const retroSolving = ctrl.retro?.isSolving() ?? false;
+      const showRetroPv = !ctrl.retro || ctrl.retro.guidanceRevealed() || (retroVisibleEngineEnabled && !retroSolving);
       return h('div.analyse', [
         // Board — left column (grid-area: board)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__board.main-board
@@ -919,24 +941,26 @@ function routeContent(route: Route): VNode {
 
         // Eval gauge — between board and tools (grid-area: gauge)
         // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge grid-area
-        renderEvalBar(engineEnabled, currentEval, ctrl.node.fen),
+        // Pass empty eval during LFYM attempt so the bar shows neutral 50% with no score.
+        // The bar element stays in the layout (no jarring disappearance) but reveals nothing.
+        renderEvalBar(retroVisibleEngineEnabled, retroSolving ? {} : currentEval, ctrl.node.fen),
 
         // Tools — right column (grid-area: tools)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__tools
         h('div.analyse__tools', [
           // Engine header: toggle + pearl + engine-name/status + settings gear
           // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderCeval()
-          renderCeval(),
-          // Engine settings panel — hidden during active retrospection.
-          // Settings are irrelevant while solving; retro is a focused board mode.
-          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts mode-gate pattern.
-          ctrl.retro ? null : renderEngineSettings(),
+          renderCeval({ retroHiddenByDefault: !!ctrl.retro, retroSolving }),
+          // The visible engine UI is independent from LFYM's background engine usage.
+          // Keep the header/settings mounted during retro so the user can opt into
+          // visible analysis without tearing down the hidden engine session.
+          renderEngineSettings(),
           // PV lines — hidden whenever retrospection is active and guidance has not
           // been manually revealed for the current candidate.
           // Covers all retro states so the answer is never accidentally visible.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
           //   showCeval && !ctrl.retro?.isSolving() && cevalView.renderPvs(ctrl)
-          (!ctrl.retro || ctrl.retro.guidanceRevealed()) ? renderPvBox() : null,
+          showRetroPv ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h('div.analyse__moves.areplay', [
             renderMoveList(ctrl.root, ctrl.path, p => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu, (() => {
@@ -1288,6 +1312,68 @@ setOnLiveEvalImproved(() => {
     const nodes = buildAnalysisNodes(ctrl.mainline, p => evalCache.get(p));
     void saveAnalysisToIdb('complete', gameId, nodes, analysisDepth);
   }, LIVE_EVAL_SAVE_DELAY_MS);
+});
+
+// Feed live engine updates into the active retro session.
+// Info-line updates arrive before the final bestmove cache write. Use them to
+// populate the LFYM played-move snapshot immediately so the response boxes can
+// show values during exact-win and in-progress live-search cases.
+setOnLiveEvalInfo((path, ev) => {
+  const cand = ctrl.retro?.current();
+  if (!cand) return;
+  const snap = ctrl.retro!.getSolvingMoveSnapshot();
+  if (!snap) return;
+
+  if (
+    path.length === cand.parentPath.length + 2
+    && path.startsWith(cand.parentPath)
+    && (ev.cp !== undefined || ev.mate !== undefined)
+  ) {
+    ctrl.retro!.setSolvingMoveSnapshot({ ...snap, solvingMoveCp: ev.cp, solvingMoveMate: ev.mate });
+  }
+});
+
+// Feed live engine updates into the active retro session.
+// Handles two update kinds (CCP-633 + CCP-640):
+//   1. parentPath eval → vindication + live best-move tracking + engineBestCp refresh
+//   2. solving move path eval → solvingMoveCp refresh in the snapshot
+// The solving move path is always exactly 2 path chars deeper than cand.parentPath.
+setOnLiveEvalUpdated((path, ev) => {
+  const cand = ctrl.retro?.current();
+  if (!cand) return;
+
+  if (path === cand.parentPath) {
+    // Vindication + live best-move tracking (CCP-633).
+    if (ev.best && ev.depth !== undefined) {
+      ctrl.retro!.onEngineUpdate(ev.best, {
+        ...(ev.cp !== undefined ? { cp: ev.cp } : {}),
+        ...(ev.mate !== undefined ? { mate: ev.mate } : {}),
+        depth: ev.depth,
+      });
+      if (ctrl.retro!.isVindicated()) redraw();
+    }
+    // Refresh engineBestCp in the snapshot with the latest live parent eval (CCP-640).
+    // Skip when the user played the exact engine-best move: in that case engineBestCp
+    // was already set to solvingMoveCp (same child node) so overwriting with the parent
+    // eval would reintroduce the parent-vs-child mismatch that makes the diff non-zero.
+    const snap = ctrl.retro!.getSolvingMoveSnapshot();
+    if (snap && snap.solvingMoveUci !== snap.engineBestUci) {
+      ctrl.retro!.setSolvingMoveSnapshot({ ...snap, engineBestCp: ev.cp, engineBestMate: ev.mate });
+      redraw();
+    }
+    return;
+  }
+
+  // Solving move position: the path the user played to from the exercise start.
+  // It is always 2 chars deeper than cand.parentPath (Snabbdom path ids are 2 chars each).
+  // When the live engine finishes evaluating this position, refresh solvingMoveCp (CCP-640).
+  if (path.length === cand.parentPath.length + 2 && path.startsWith(cand.parentPath)) {
+    const snap = ctrl.retro!.getSolvingMoveSnapshot();
+    if (snap) {
+      ctrl.retro!.setSolvingMoveSnapshot({ ...snap, solvingMoveCp: ev.cp, solvingMoveMate: ev.mate });
+      redraw();
+    }
+  }
 });
 
 initReviewQueue({
