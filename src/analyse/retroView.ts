@@ -6,9 +6,13 @@
 // so this module has no imports from main.ts or module-level side effects.
 
 import { h, type VNode } from 'snabbdom';
-import type { RetroCtrl } from './retroCtrl';
+import type { RetroCtrl, SolvingMoveSnapshot } from './retroCtrl';
 import type { RetroCandidate } from './retro';
+import { playUciMove } from '../board/index';
+import { setRetroVisibleEngineEnabled, resetRetroVisibleEngineUi } from '../ceval/view';
+import { syncArrow } from '../engine/ctrl';
 import { type EvalDiff } from './evalDiff';
+import { evalWinChances } from '../engine/winchances';
 import { retroCandidateToDefinition } from '../puzzles/adapters';
 import { savePuzzleDefinition, saveAttempt } from '../puzzles/puzzleDb';
 import type { PuzzleAttempt, FailureReason, SolveResult } from '../puzzles/types';
@@ -59,8 +63,6 @@ export interface RetroStripDeps {
   redraw:            () => void;
   /** Convert a UCI move string to SAN given a position FEN. */
   uciToSan:          (fen: string, uci: string) => string;
-  /** Reveal engine guidance for the current candidate and redraw. */
-  onRevealGuidance:  () => void;
   /** Close the retro session. */
   onClose:           () => void;
   /** Returns current engine search depth for the progress bar. */
@@ -87,6 +89,142 @@ function renderEvalDiff(diff: EvalDiff | undefined): VNode | null {
   return h('span.retro-feedback__eval-diff', diff.formatted);
 }
 
+function renderGameMoveEvalDiff(cand: RetroCandidate | null): VNode | null {
+  if (!cand) return null;
+  return renderEvalDiff(cand.evalDiff);
+}
+
+// --- Dual eval diff boxes (CCP-634) ---
+
+/**
+ * Convert a white-perspective cp value to mover-perspective cp.
+ * Returns the diff in pawn units, or null if either input is undefined.
+ */
+type DualEvalComparison =
+  | { kind: 'cp'; diff: number }
+  | { kind: 'wc'; diff: number };
+
+function computeDualEvalComparison(
+  a: { cp?: number; mate?: number },
+  b: { cp?: number; mate?: number },
+  color: SolvingMoveSnapshot['playerColor'],
+): DualEvalComparison | null {
+  if (a.cp !== undefined && b.cp !== undefined) {
+    const moverA = color === 'white' ? a.cp : -a.cp;
+    const moverB = color === 'white' ? b.cp : -b.cp;
+    return { kind: 'cp', diff: (moverA - moverB) / 100 };
+  }
+  const wcA = evalWinChances(a);
+  const wcB = evalWinChances(b);
+  if (wcA === undefined || wcB === undefined) return null;
+  const moverA = color === 'white' ? wcA : -wcA;
+  const moverB = color === 'white' ? wcB : -wcB;
+  return { kind: 'wc', diff: ((moverA - moverB) / 2) * 100 };
+}
+
+/**
+ * Format a dual-box comparison display.
+ * Clamp negative/positive zero after rounding so tiny eval noise does not
+ * render as misleading "-0.0" or "+0.0" in the UI.
+ */
+function formatDualEvalDiff(diff: DualEvalComparison): string {
+  if (diff.kind === 'wc') {
+    const rounded = Math.round(diff.diff);
+    const normalized = Object.is(rounded, -0) ? 0 : rounded;
+    return `${normalized}%`;
+  }
+  const rounded = Math.round(diff.diff * 10) / 10;
+  const normalized = Object.is(rounded, -0) ? 0 : rounded;
+  return normalized.toFixed(1);
+}
+
+function renderEvalBox(grade: string, label: string, display: string): VNode {
+  return h('div.retro-eval-box', { class: { [`retro-eval-box--${grade}`]: true } }, [
+    h('span.retro-eval-box__label', label),
+    h('span.retro-eval-box__value', display),
+  ]);
+}
+
+function renderDualEvalBoxes(retro: RetroCtrl): VNode | null {
+  const snapshot = retro.getSolvingMoveSnapshot();
+  if (!snapshot) return null;
+
+  const solvingEval = {
+    ...(snapshot.solvingMoveCp   !== undefined && { cp:   snapshot.solvingMoveCp }),
+    ...(snapshot.solvingMoveMate !== undefined && { mate: snapshot.solvingMoveMate }),
+  };
+  const engineBestEval = {
+    ...(snapshot.engineBestCp   !== undefined && { cp:   snapshot.engineBestCp }),
+    ...(snapshot.engineBestMate !== undefined && { mate: snapshot.engineBestMate }),
+  };
+  const gameMoveEval = {
+    ...(snapshot.gameMoveCp   !== undefined && { cp:   snapshot.gameMoveCp }),
+    ...(snapshot.gameMoveMate !== undefined && { mate: snapshot.gameMoveMate }),
+  };
+
+  const vsBestDiff = computeDualEvalComparison(solvingEval, engineBestEval, snapshot.playerColor);
+  const vsGameDiff = computeDualEvalComparison(solvingEval, gameMoveEval, snapshot.playerColor);
+
+  // --- vs Engine Best box ---
+  let vsBestGrade: string;
+  let vsBestDisplay: string;
+  if (vsBestDiff === null) {
+    vsBestGrade = 'bad';
+    vsBestDisplay = '—';
+  } else if (Math.abs(vsBestDiff.diff) < 0.005) {
+    // Exact best move (within rounding tolerance)
+    vsBestGrade = 'best';
+    vsBestDisplay = '✓';
+  } else if (vsBestDiff.kind === 'cp' && vsBestDiff.diff > -0.5 && vsBestDiff.diff < 0) {
+    // Slightly worse than best
+    vsBestGrade = 'near';
+    vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+  } else if (vsGameDiff !== null && vsGameDiff.diff > 0) {
+    // Clearly worse than best but still better than the game move
+    vsBestGrade = 'ok';
+    vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+  } else {
+    // Worse than or equal to the original game move
+    vsBestGrade = 'bad';
+    vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+  }
+
+  // --- vs Move Played (game move) box ---
+  let vsGameGrade: string;
+  let vsGameDisplay: string;
+  if (vsGameDiff === null) {
+    vsGameGrade = 'bad';
+    vsGameDisplay = '—';
+  } else if (vsGameDiff.diff > 0.005) {
+    const formatted = formatDualEvalDiff(vsGameDiff);
+    if (formatted === '0.0' || formatted === '0%') {
+      vsGameGrade = 'near';
+      vsGameDisplay = formatted;
+    } else {
+      vsGameGrade = 'ok';
+      vsGameDisplay = `+${formatted}`;
+    }
+  } else if (vsGameDiff.diff > -0.005) {
+    const formatted = formatDualEvalDiff(vsGameDiff);
+    vsGameGrade = 'near';
+    vsGameDisplay = formatted;
+  } else {
+    const formatted = formatDualEvalDiff(vsGameDiff);
+    if (formatted === '0.0' || formatted === '0%') {
+      vsGameGrade = 'near';
+      vsGameDisplay = formatted;
+    } else {
+      vsGameGrade = 'bad';
+      vsGameDisplay = formatted;
+    }
+  }
+
+  return h('div.retro-eval-boxes', [
+    renderEvalBox(vsBestGrade, 'vs Engine Best', vsBestDisplay),
+    renderEvalBox(vsGameGrade, 'vs Move Played', vsGameDisplay),
+  ]);
+}
+
 // Shared "view solution / skip" choice links.
 // Mirrors lichess-org/lila: retroView.ts skipOrViewSolution
 function renderSkipOrView(
@@ -99,13 +237,20 @@ function renderSkipOrView(
     h('a', {
       on: { click: () => {
         retro.viewSolution();
-        if (cand) navigate(cand.path);
-        else redraw();
+        retro.revealGuidance();
+        setRetroVisibleEngineEnabled(true);
+        if (cand) {
+          navigate(cand.parentPath);
+          playUciMove(cand.bestMove);
+        } else {
+          redraw();
+        }
       }},
     }, 'View the solution'),
     h('a', {
       on: { click: () => {
         retro.skip();
+        resetRetroVisibleEngineUi();
         const next = retro.current();
         if (next) navigate(next.parentPath);
         else redraw();
@@ -120,6 +265,7 @@ function renderContinue(retro: RetroCtrl, navigate: (path: string) => void, redr
   return h('a.retro-continue', {
     on: { click: () => {
       retro.jumpToNext();
+      resetRetroVisibleEngineUi();
       const next = retro.current();
       if (next) navigate(next.parentPath);
       else redraw();
@@ -309,13 +455,12 @@ function renderBulkSaveToLibrary(
  * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroView.ts
  */
 export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
-  const { retro, navigate, redraw, uciToSan, onRevealGuidance, onClose, getEvalDepth } = deps;
+  const { retro, navigate, redraw, uciToSan, onClose, getEvalDepth } = deps;
   if (!retro) return null;
 
   const feedback        = retro.feedback();
   const cand            = retro.current();
   const [solved, total] = retro.completion();
-  const revealed        = retro.guidanceRevealed();
 
   // Progress counter: "1 / 5" — mirrors Lichess title span
   // Show next-to-solve index (current + 1), capped at total.
@@ -356,7 +501,13 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           renderSkipOrView(retro, navigate, redraw),
         ]),
       ]),
-    ];
+      retro.isVindicated() ? h('div.retro-vindication', [
+        h('div.retro-vindication__icon', '✓'),
+        h('p.retro-vindication__msg',
+          'Actually upon deeper review, you did play the best move during the game.'),
+        renderContinue(retro, navigate, redraw),
+      ]) : null,
+    ].filter(Boolean) as VNode[];
   } else if (feedback === 'offTrack') {
     // User navigated away.
     // Mirrors lichess-org/lila: retroView.ts feedback.offTrack()
@@ -395,10 +546,17 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
         h('div.retro-icon.retro-icon--fail', '✗'),
         h('div.retro-instruction', [
           h('strong', strongText),
-          renderEvalDiff(cand?.evalDiff),
-          h('em', `Try another move for ${color}`),
+          renderGameMoveEvalDiff(cand),
+          renderDualEvalBoxes(retro),
           renderSkipOrView(retro, navigate, redraw),
           renderSaveToLibrary(cand, retro, redraw),
+          h('a', { on: { click: () => {
+            retro.resetForRetry();
+            resetRetroVisibleEngineUi();
+            if (cand) navigate(cand.parentPath);
+            syncArrow();
+            redraw();
+          }}}, 'Try another move'),
         ]),
       ]),
     ];
@@ -427,9 +585,17 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('div.retro-icon.retro-icon--win', '✓'),
           h('div.retro-instruction', [
             h('strong', msg),
-            renderEvalDiff(cand?.evalDiff),
+            renderGameMoveEvalDiff(cand),
+            renderDualEvalBoxes(retro),
             renderReasonNote(cand),
             renderSaveToLibrary(cand, retro, redraw),
+            h('a', { on: { click: () => {
+              retro.resetForRetry();
+              resetRetroVisibleEngineUi();
+              if (cand) navigate(cand.parentPath);
+              syncArrow();
+              redraw();
+            }}}, 'Try another move'),
           ]),
         ]),
       ),
@@ -446,24 +612,23 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('div.retro-instruction', [
             h('strong', 'Solution'),
             h('em', ['Best was ', h('strong', bestSan)]),
-            renderEvalDiff(cand?.evalDiff),
+            renderGameMoveEvalDiff(cand),
+            renderDualEvalBoxes(retro),
             renderReasonNote(cand),
             renderSaveToLibrary(cand, retro, redraw),
+            h('a', { on: { click: () => {
+              retro.resetForRetry();
+              resetRetroVisibleEngineUi();
+              if (cand) navigate(cand.parentPath);
+              syncArrow();
+              redraw();
+            }}}, 'Try another move'),
           ]),
         ]),
       ),
       renderContinue(retro, navigate, redraw),
     ];
   }
-
-  // "Show engine" button — lets the user reveal PV lines for this candidate.
-  // Mirrors lichess-org/lila: retroCtrl.ts showBadNode reveal affordance.
-  // Hidden once guidance is already revealed.
-  const showEngineBtn = (!revealed && cand && feedback !== 'eval') ? [
-    h('div.retro-engine-reveal', [
-      h('a', { on: { click: onRevealGuidance } }, 'Show engine'),
-    ]),
-  ] : [];
 
   return h('div.retro-box.training-box', [
     // Title bar — mirrors lichess-org/lila: retroView.ts div.title
@@ -473,9 +638,6 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
       h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close' } }, '✕'),
     ]),
     // Feedback area — mirrors lichess-org/lila: retroView.ts div.feedback.{state}
-    h('div.retro-feedback.' + feedback, [
-      ...feedbackContent,
-      ...showEngineBtn,
-    ]),
+    h('div.retro-feedback.' + feedback, feedbackContent),
   ]);
 }

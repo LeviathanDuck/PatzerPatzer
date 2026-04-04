@@ -373,14 +373,14 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-320 - Add SCSS For Rated Stream Left-Panel Entry
 - [x] CCP-321 - Rated Stream Sprint Integration Review
 - [x] CCP-322 - Redesign Openings White Black Flip Control Group
-- [ ] CCP-323 - Openings Opponent Tool Suite Full Sprint Batch Manager
+- [x] CCP-323 - Openings Opponent Tool Suite Full Sprint Batch Manager
 - [x] CCP-324 - Grounding And Implementation Map Batch Manager
 - [x] CCP-331 - Tool Shell And Mode Architecture Batch Manager
 - [x] CCP-339 - Opponent Analytics Foundation Batch Manager
 - [x] CCP-347 - Repertoire Tool Full Page Upgrade Batch Manager
-- [ ] CCP-355 - Prep Report Dashboard Batch Manager
-- [ ] CCP-363 - Style Dashboard Batch Manager
-- [ ] CCP-371 - Practice Against Them Tool Batch Manager
+- [x] CCP-355 - Prep Report Dashboard Batch Manager
+- [x] CCP-363 - Style Dashboard Batch Manager
+- [x] CCP-371 - Practice Against Them Tool Batch Manager
 - [x] CCP-325 - Audit Current Openings Session Shell And Ownership Seams
 - [x] CCP-326 - Audit Puzzle Sidebar And Library Patterns Relevant To The Openings Tool Rail
 - [x] CCP-327 - Recheck Lichess References For Board Tool Layout And Practice Flow
@@ -569,7 +569,7 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-514 - Fix dead recency toggle in Prep Report
 - [x] CCP-519 - Study domain types
 - [x] CCP-520 - Study IDB persistence layer
-- [ ] CCP-520-F1 - Fix Study DB Fresh-Opener Store Creation Gap
+- [x] CCP-520-F1 - Fix Study DB Fresh-Opener Store Creation Gap
 - [x] CCP-521 - Study route and page shell
 - [x] CCP-522 - Phase 0 Manager — Study Page Foundation — Types, Persistence, Route Shell
 - [x] CCP-523 - Save action core logic
@@ -598,18 +598,18 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-546 - Session builder
 - [x] CCP-547 - Practice line extraction
 - [x] CCP-548 - Phase 4 Manager — Repetition Practice — Core Engine
-- [ ] CCP-549 - Board adapter for drill mode
-- [ ] CCP-550 - Drill session UI — active view
-- [ ] CCP-551 - Drill session summary
-- [ ] CCP-552 - Practice entry from study detail
+- [x] CCP-549 - Board adapter for drill mode
+- [x] CCP-550 - Drill session UI — active view
+- [x] CCP-551 - Drill session summary
+- [x] CCP-552 - Practice entry from study detail
 - [x] CCP-553 - Phase 5 Manager — Repetition Practice — Board and UI
-- [ ] CCP-554 - Progress persistence wiring
-- [ ] CCP-555 - Practice dashboard
-- [ ] CCP-556 - Learn flow implementation
+- [x] CCP-554 - Progress persistence wiring
+- [x] CCP-555 - Practice dashboard
+- [x] CCP-556 - Learn flow implementation
 - [x] CCP-557 - Phase 6 Manager — Scheduling and Review
-- [ ] CCP-558 - Practice from here context action
-- [ ] CCP-559 - Practice line manager panel
-- [ ] CCP-560 - Sequence scope selection UI
+- [x] CCP-558 - Practice from here context action
+- [x] CCP-559 - Practice line manager panel
+- [x] CCP-560 - Sequence scope selection UI
 - [x] CCP-561 - Phase 7 Manager — Practice Line Selection and Management
 - [x] CCP-563 - Study Page Phases 0-4 Super-Manager
 - [x] CCP-564 - Engine Strength Levels Full Sprint Manager
@@ -645,50 +645,184 @@ Use this file to track Claude Code prompts from creation through review.
 - [x] CCP-596 - Create shared eval diff utility — src/analyse/evalDiff.ts
 - [x] CCP-597 - Wire eval diff into RetroCandidate + silent background eval
 - [x] CCP-598 - Render eval diff placeholder in retroView feedback and solution panels
-- [ ] CCP-503-F1 - Reset Games Pagination On Filter Changes
-- [ ] CCP-504-F1 - Extend Route Skeletons Beyond Analysis Game
-- [ ] CCP-505-F1 - Make Import Count Update During Import
-- [ ] CCP-513-F1 - Keep Inactive Username Slot Empty In Color Toggle
-- [ ] CCP-574-F1 - Initialize Stored Play Strength On Module Load
-- [ ] CCP-580-F1 - Make Delayed Play-Move Requests Cancellable
-- [ ] CCP-592-F1 - Fix Practice Setup Copy For Immediate Start
-- [ ] CCP-597-F1 - Make Retro Background Eval Run A Real One-Shot Analysis
-- [ ] CCP-598-F1 - Hide Zero Or Negative Retro Eval Diff Badges
-- [ ] CCP-604 - Category 1 Root-Cause Fix Batch Manager
-- [ ] CCP-511-F1 - Review Cleanup Manager For Unreviewed CCP-511 Children
-- [ ] CCP-553-F1 - Execute Missing Phase 5 Study Child Prompts
-- [ ] CCP-557-F1 - Execute Missing Phase 6 Study Child Prompts
-- [ ] CCP-561-F1 - Execute Missing Phase 7 Study Child Prompts
-- [ ] CCP-605 - Category 3 Process Cleanup Batch Manager
+- [x] CCP-503-F1 - Reset Games Pagination On Filter Changes
+- [x] CCP-504-F1 - Extend Route Skeletons Beyond Analysis Game
+- [x] CCP-505-F1 - Make Import Count Update During Import
+- [x] CCP-513-F1 - Keep Inactive Username Slot Empty In Color Toggle
+- [x] CCP-574-F1 - Initialize Stored Play Strength On Module Load
+- [x] CCP-580-F1 - Make Delayed Play-Move Requests Cancellable
+- [x] CCP-592-F1 - Fix Practice Setup Copy For Immediate Start
+- [x] CCP-597-F1 - Make Retro Background Eval Run A Real One-Shot Analysis
+- [x] CCP-598-F1 - Hide Zero Or Negative Retro Eval Diff Badges
+- [x] CCP-604 - Category 1 Root-Cause Fix Batch Manager
+- [x] CCP-511-F1 - Review Cleanup Manager For Unreviewed CCP-511 Children
+- [x] CCP-553-F1 - Execute Missing Phase 5 Study Child Prompts
+- [x] CCP-557-F1 - Execute Missing Phase 6 Study Child Prompts
+- [x] CCP-561-F1 - Execute Missing Phase 7 Study Child Prompts
+- [x] CCP-605 - Category 3 Process Cleanup Batch Manager
 - [x] CCP-588-F1 - Backfill Durable Lichess AI Selector Audit Artifact
-- [ ] CCP-606 - Dashboard refresh modal with server setup instructions
-- [ ] CCP-607 - Dashboard next-up urgent block and stable sort
-- [ ] CCP-608 - Dashboard refresh button hard reload after live fetch
-- [ ] CCP-609 - Dashboard next-up flat creation-order sort
-- [ ] CCP-614 - Dashboard header bulk-copy buttons for needs-review and issues-found
-- [ ] CCP-615 - Dashboard simplify filter buttons to 7 presets
+- [x] CCP-606 - Dashboard refresh modal with server setup instructions
+- [x] CCP-607 - Dashboard next-up urgent block and stable sort
+- [x] CCP-608 - Dashboard refresh button hard reload after live fetch
+- [x] CCP-609 - Dashboard next-up flat creation-order sort
+- [x] CCP-614 - Dashboard header bulk-copy buttons for needs-review and issues-found
+- [x] CCP-615 - Dashboard simplify filter buttons to 7 presets
 - [ ] CCP-616 - AI Guided Questions mode for prompt and sprint creation
 - [ ] CCP-617 - AI Guided Questions mode for sprint creation
-- [ ] CCP-618 - Dashboard: pin status and copy button columns
-- [ ] CCP-619 - Dashboard: make refresh button always visible
+- [x] CCP-618 - Dashboard: pin status and copy button columns
+- [x] CCP-619 - Dashboard: make refresh button always visible
 - [x] CCP-619-F1 - Fix: Refresh button hidden at narrow window widths
-- [ ] CCP-619-F2 - Fix: hide header stats at narrow widths to keep header single-line
+- [x] CCP-619-F2 - Fix: hide header stats at narrow widths to keep header single-line
 - [ ] CCP-620 - Dashboard: remove stats block from header
-- [ ] CCP-621 - Dashboard: remove stats block from header
-- [ ] CCP-622 - Dashboard: turn Refresh button amber after 2 minutes
-- [ ] CCP-623 - Old Issues Found Backlog Cleanup Campaign
-- [ ] CCP-624 - Wave 2 Backlog Re-Triage — Manager Fallout
-- [ ] CCP-625 - Wave 3 Backlog Re-Triage — Process And Artifact Prompts
-- [ ] CCP-626 - Wave 1 Backlog Re-Triage — Recent Leaf Issues
-- [ ] CCP-627 - Wave 4 Backlog Re-Triage — Ancient Prompt Sweep
-- [ ] CCP-628 - Investigate Mistake Detection Severity UI Behavior
-- [ ] CCP-566-F1 - Backfill Durable SF18 Strength-Limiting Research Artifact
-- [ ] CCP-578-F1 - Backfill Durable Play-Mode Bestmove Routing Design Artifact
-- [ ] CCP-572-F1 - Backfill Durable Engine Lifecycle And Mode-Switch Research Artifact
-- [ ] CCP-594-F1 - Backfill Durable LFYM Moment-Selection Audit Artifact
-- [ ] CCP-236-F1 - Enable Real Explorer Top/Recent Games Responses
-- [ ] CCP-305-F1 - Complete Rated Ladder History And Attempt Cloud Restore
-- [ ] CCP-615-F1 - Show selected dashboard filter count in filter label
+- [x] CCP-621 - Dashboard: remove stats block from header
+- [x] CCP-622 - Dashboard: turn Refresh button amber after 2 minutes
+- [x] CCP-623 - Old Issues Found Backlog Cleanup Campaign
+- [x] CCP-624 - Wave 2 Backlog Re-Triage — Manager Fallout
+- [x] CCP-625 - Wave 3 Backlog Re-Triage — Process And Artifact Prompts
+- [x] CCP-626 - Wave 1 Backlog Re-Triage — Recent Leaf Issues
+- [x] CCP-627 - Wave 4 Backlog Re-Triage — Ancient Prompt Sweep
+- [x] CCP-628 - Investigate Mistake Detection Severity UI Behavior
+- [x] CCP-566-F1 - Backfill Durable SF18 Strength-Limiting Research Artifact
+- [x] CCP-578-F1 - Backfill Durable Play-Mode Bestmove Routing Design Artifact
+- [x] CCP-572-F1 - Backfill Durable Engine Lifecycle And Mode-Switch Research Artifact
+- [x] CCP-594-F1 - Backfill Durable LFYM Moment-Selection Audit Artifact
+- [x] CCP-236-F1 - Enable Real Explorer Top/Recent Games Responses
+- [x] CCP-305-F1 - Complete Rated Ladder History And Attempt Cloud Restore
+- [x] CCP-615-F1 - Show selected dashboard filter count in filter label
+- [x] CCP-629 - Mistake Detection: replace severity pills with gradient slider
+- [x] CCP-630 - Mistake Detection: continuous loss-threshold slider with classification markers
+- [x] CCP-631 - Retro: style retro-reason label in learn from mistakes feedback
+- [x] CCP-632 - Retro engine: track live best move and detect game-move vindication
+- [x] CCP-633 - Retro wiring: capture solving move and compute dual eval diffs
+- [x] CCP-634 - Retro view: live vindication notice and stacked eval diff boxes
+- [x] CCP-635 - Retro styles: color-coded eval diff boxes
+- [x] CCP-636 - Retro live eval diff manager
+- [ ] CCP-637 - Audit and fix bulk-review accuracy scores
+- [x] CCP-638 - Review button splits into queue-position icons when queue is active
+- [ ] CCP-639 - Audit all buttons for hover text and aria-label accessibility
+- [x] CCP-614-F1 - Bulk-copy dashboard IDs should be comma-separated only
+- [x] CCP-640 - Fix eval diff boxes not populating in Learn From Mistakes
+- [x] CCP-370-F1 - Remove duplicated style concentration signal
+- [x] CCP-378-F1 - Fix practice interactivity refresh and render-time planning
+- [x] CCP-641 - Recommended Next Box: Fallback to Unrun Queued Prompts
+- [x] CCP-642 - Polish Sprint Dashboard Card Layout
+- [x] CCP-643 - Audit Sprint Dashboard UI And Design Plan
+- [x] CCP-644 - Improve Sprint Progress And Status Visualization
+- [x] CCP-645 - Refine Sprint Detail Panel Information Hierarchy
+- [x] CCP-646 - Sprint Dashboard UI Polish Batch Manager
+- [x] CCP-647 - Improve Sprint Dashboard Responsiveness And Accessibility
+- [x] CCP-648 - Polish Sprint Audit Copy Panel Design
+- [x] CCP-649 - Polish Next Phase Prompt Creation Panel
+- [x] CCP-650 - Design Sprint Normalization Warning And Mixed Task Presentation
+- [x] CCP-651 - Polish Sprint Detail Action Panels For Responsive Use
+- [x] CCP-652 - Design Sprint Detail Action Panel Shell
+- [x] CCP-653 - Sprint Detail Action Panels UI Batch Manager
+- [x] CCP-654 - Investigate skipping opponent import dialog in favour of inline loading bar
+- [x] CCP-655 - Restore 'Opponents' label on non-target side of opening tree player strip
+- [x] CCP-656 - Opponent Import: Skip Importing Screen, Show Progress in Tree Build Bar Slot
+- [x] CCP-657 - Curated Master Games Dataset: Fischer and Capablanca
+- [x] CCP-658 - Import Animation: Fast Replay of Master Games During Opponent Fetch
+- [x] CCP-659 - Fix opponents import cancel and progress display
+- [x] CCP-660 - Opening Tree Date Range Filter and Speed Filter Fix
+- [x] CCP-661 - Audit sprint workflow for Claude usability
+- [x] CCP-662 - Sprint card grid visual polish
+- [x] CCP-389-F1 - Implement Post Game Summary Panel
+- [x] CCP-389-F2 - Hide Post Game Summary Panel
+- [x] CCP-385-F1 - Complete Weakness Dashboard Panel
+- [x] CCP-386-F1 - Complete Accuracy and Blunder Trend Charts
+- [x] CCP-387-F1 - Add Opening Win Rate Table from Import Data
+- [x] CCP-387-F2 - Extend Opening Table with Analysis Columns
+- [x] CCP-388-F1 - Add Tactical Profile Section to Stats Page
+- [x] CCP-391-F1 - Wire Training Recommendation UI to Weakness Cards
+- [x] CCP-392-F1 - Add Time Management Profile Section to Stats Page
+- [x] CCP-393-F1 - Add Conversion and Resourcefulness Metrics to Stats Page
+- [x] CCP-663 - SPR-004 UI Layer Completion Manager
+- [x] CCP-664 - PGN file upload for openings import
+- [x] CCP-665 - Global sample size warnings for Prep Report
+- [x] CCP-666 - Investigate Opening Tree sidebar disappearance at certain widths
+- [x] CCP-667 - Lock prompt metadata lines in dashboard editor
+- [x] CCP-667-F1 - Replace separate diff preview with line-by-line stylized editor
+- [x] CCP-668 - Add skipped prompt lifecycle and dashboard control
+- [ ] CCP-669 - Temporary skip validation prompt
+- [x] CCP-667-F2 - Fix prompt editor flicker before entering edit view
+- [x] CCP-667-F3 - Fix sprint panel editor flicker before entering edit view
+- [x] CCP-667-F4 - Fix stylized editor so it is actually editable
+- [x] CCP-670 - Fix New Research username autofocus in opponent research
+- [x] CCP-671 - Fix line editor newline escaping mismatch
+- [x] CCP-672 - Replace line editor with textarea plus diff-on-confirm
+- [x] CCP-673 - Unify sprint panel archival to RETIRED-V# pattern
+- [x] CCP-674 - Update server endpoints for textarea editor and unified archival
+- [x] CCP-675 - Update dashboard and workflow docs for textarea editor and unified archival
+- [x] CCP-676 - Manager: Dashboard editor simplification
+- [x] CCP-677 - Fix sprint grid updated-at accuracy and add created-at timestamp
+- [x] CCP-678 - Add Sprint Recompute To Dashboard Refresh Button
+- [x] CCP-679 - Opponents left-panel label truncation and filter default fixes
+- [x] CCP-680 - Learn From Your Mistakes eval diff showing blank
+- [x] CCP-681 - Learn From Your Mistakes feedback UI text overflow and layout fix
+- [ ] CCP-682 - Learn From Your Mistakes live eval hidden until after move
+- [ ] CCP-683 - Fix evalView TypeScript Strict Errors
+- [x] CCP-684 - Add Per-Phase Prompt Generation Copy Buttons To Sprint Detail
+- [ ] CCP-685 - Fix LFYM eval boxes and puzzle orientation regressions
+- [x] CCP-686 - Review all completed unreviewed prompts batch
+- [ ] CCP-680-F1 - Audit LFYM Dual Eval Box Data Flow
+- [ ] CCP-680-F2 - Fix LFYM Dual Eval Box Live Snapshot
+- [ ] CCP-680-F3 - Fix LFYM Engine Target Ownership
+- [ ] CCP-680-F4 - Fix LFYM hidden engine UX and feedback rendering
+- [ ] CCP-680-F5 - Correct LFYM hidden engine UX
+- [ ] CCP-680-F6 - Audit persistent LFYM feedback box blank state
+- [ ] CCP-680-F7 - Reduce LFYM Next Button Width
+- [ ] CCP-680-F8 - Align LFYM engine-best identity with eval diff comparison
+- [ ] CCP-687 - Study: Save from openings research (8.1 follow-up)
+- [ ] CCP-688 - Study: Save from puzzle session (8.2 follow-up)
+- [ ] CCP-689 - Study: Keyboard shortcuts for drill mode (8.3 follow-up)
+- [ ] CCP-690 - Study: Sound effects for drill feedback (8.4 follow-up)
+- [ ] CCP-691 - Study: Warmup position behavior in drill (8.5 follow-up)
+- [ ] CCP-692 - Study: Library performance optimization (8.6 follow-up)
+- [ ] CCP-693 - Study: Folder hierarchy data model (9.1 follow-up)
+- [ ] CCP-694 - Study: Folder sidebar and navigation (9.2 follow-up)
+- [ ] CCP-695 - Study: Create, rename, and delete folders (9.3 follow-up)
+- [ ] CCP-696 - Study: Drag-and-drop studies into folders (9.4 follow-up)
+- [ ] CCP-697 - Study: Multi-select and bulk operations (9.5 follow-up)
+- [ ] CCP-698 - Study: View mode toggle list vs grid (9.6 follow-up)
+- [ ] CCP-699 - Study: Search across annotations (9.7 follow-up)
+- [ ] CCP-700 - Manager: SPR-015 Phase 8 — Polish and Integration
+- [ ] CCP-701 - Manager: SPR-015 Phase 9 — Library Navigation and Organization UX
+- [ ] CCP-702 - Study: Seed master games as sample library studies
+- [ ] CCP-703 - Fix Opening Tree loading animation and game replay pacing
+- [ ] CCP-704 - Fix Opening Tree player strip White vs Black clarity
+- [ ] CCP-705 - Remove master game label from fetch loading bar
+- [ ] CCP-706 - LFYM engine lines show inaccurate evaluations
+- [ ] CCP-707 - LFYM show solution does not animate correctly
+- [ ] CCP-708 - LFYM wrong move reset delay too short
+- [ ] CCP-709 - LFYM red mistake arrow shows eval number it should not
+- [ ] CCP-710 - Remove fetch-label span from all loading-area render paths
+- [ ] CCP-711 - Stop board animation and reset to start position when tree builds
+- [ ] CCP-712 - Correct CLAUDE/AGENTS slimdown audit docs after accuracy review
+- [ ] CCP-713 - Audit: Played-Move Arrow Sync Coverage
+- [ ] CCP-713-F1 - Fix: Played-Move Arrow Sync Coverage
+- [ ] CCP-714 - Add missing analytics.ts exports to fix build
+- [ ] CCP-715 - Audit: LFYM View-Solution Reveal Flow
+- [ ] CCP-715-F1 - Fix: LFYM View-Solution Board Navigation
+- [ ] CCP-715-F2 - Fix: LFYM View-Solution Engine Reveal and Analysis Unlock
+- [ ] CCP-716 - Add persisted auto-review state and depth config
+- [ ] CCP-717 - Build two-toggle confirmation UI with depth selector for auto-review
+- [ ] CCP-718 - Wire import auto-review trigger to use selected depth
+- [ ] CCP-719 - Replace unicode color indicators with CSS circles in Opening Tree
+- [ ] CCP-720 - Restore missing analytics.ts exports to fix broken build
+- [ ] CCP-721 - Audit: LFYM Engine Suppression and Surfacing Model
+- [ ] CCP-721-F1 - Fix: LFYM Engine Toggle Wiring and Per-Puzzle Reset
+- [ ] CCP-721-F2 - Fix: LFYM Try Another Move Button
+- [ ] CCP-722 - Remove Show Engine button from LFYM retro panel and unify to main toggle
+- [ ] CCP-723 - Add per-puzzle engine output suppression reset in LFYM
+- [ ] CCP-724 - Add Try Another Move button to LFYM retro panel
+- [ ] CCP-725 - Suppress eval text in LFYM panel and arrow labels before first move attempt
+- [ ] CCP-726 - Audit: LFYM Wrong-Move Post-Fail Navigation
+- [ ] CCP-727 - Fix board orientation reset on game load from IDB startup
+- [ ] CCP-728 - Add fallback orientation reset when getUserColor returns null
+- [ ] CCP-726-F1 - Fix: LFYM Wrong-Move Board Hold
+- [ ] CCP-729 - Manager: LFYM View-Solution Follow-Up Fixes
+- [ ] CCP-730 - Fix Pre-existing TypeScript Strict Errors in retroView and Openings
+- [ ] CCP-731 - Overlay LFYM win-icon on Next button
 
 ## Detailed Log
 
@@ -707,6 +841,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-31T22:45:00.000Z`
   - Started at: `2026-04-01T07:31:22.235Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -714,6 +849,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: manager and descendants
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T07:34:56.290Z`
   - Manual checklist:
@@ -737,6 +873,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-31T21:50:00.000Z`
   - Started at: `2026-04-01T00:27:17.130Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -744,6 +881,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixes prompt: `CCP-541` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T00:27:55.484Z`
@@ -770,6 +908,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-31T22:30:00.000Z`
   - Started at: `2026-04-01T07:31:25.658Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -777,6 +916,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T07:34:16.411Z`
   - Manual checklist:
@@ -800,6 +940,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-31T22:30:00.000Z`
   - Started at: `2026-04-01T07:34:19.792Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -807,6 +948,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T07:34:34.642Z`
   - Manual checklist:
@@ -830,6 +972,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-31T22:30:00.000Z`
   - Started at: `2026-04-01T07:34:37.954Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -837,6 +980,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T07:34:51.814Z`
   - Manual checklist:
@@ -858,6 +1002,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-30T12:00:00.000Z`
   - Started at: `2026-03-31T15:26:45.327Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -865,6 +1010,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign sample validation
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T17:01:48.555Z`
   - Manual checklist:
@@ -894,6 +1040,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-30T12:00:00.000Z`
   - Started at: `2026-03-31T16:57:43.569Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -901,6 +1048,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T17:01:29.864Z`
   - Completion errors: Pre-existing TS errors in src/study/studyDetailView.ts (unrelated to this prompt, existed before sprint)
@@ -929,6 +1077,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-30T12:00:00.000Z`
   - Started at: `2026-03-31T16:49:53.611Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -936,6 +1085,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T16:57:40.234Z`
   - Manual checklist:
@@ -961,6 +1111,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-30T12:00:00.000Z`
   - Started at: `2026-03-31T16:49:01.394Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -968,6 +1119,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T16:49:50.530Z`
   - Manual checklist:
@@ -993,6 +1145,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-30T12:00:00.000Z`
   - Started at: `2026-03-31T15:27:11.641Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1000,6 +1153,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T16:48:57.657Z`
   - Manual checklist:
@@ -1025,6 +1179,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:35:14.092Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1032,6 +1187,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P8`
@@ -1053,13 +1209,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:34:43.149Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
+  - Review outcome: issues resolved
   - Review issues: rated ladder runtime now calls syncRatedLadder, but that flow still does not pull/merge rating history or restore rated-attempt state; follow-up CCP-305-F1 created
   - Reviewed at: `2026-04-01T22:53:04.399Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; still a current cross-device ladder gap
+  - Skip reason: none
+  - Fixed by prompt: `CCP-305-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P8`
@@ -1081,6 +1240,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:34:22.575Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1088,6 +1248,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P8`
@@ -1109,6 +1270,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:34:00.441Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1116,6 +1278,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P8`
@@ -1137,6 +1300,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:32:39.827Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1144,6 +1308,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P8`
@@ -1165,13 +1330,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:32:39.499Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: manager remains blocked by child prompt CCP-305, whose cross-device rated-ladder restore gap is being handled in follow-up CCP-305-F1
-  - Reviewed at: `2026-04-01T22:56:31.068Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-01T23:20:28.043Z`
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
-  - Review scope: backlog re-triage; manager-only fallout pending current child fix
+  - Review scope: manager re-review after CCP-305-F1 resolved the last live child blocker
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P8`
@@ -1193,6 +1360,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:32:22.600Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1200,6 +1368,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P7`
@@ -1221,6 +1390,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:32:22.255Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1228,6 +1398,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P7`
@@ -1249,6 +1420,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:32:21.926Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1256,6 +1428,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P7`
@@ -1277,6 +1450,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:32:21.585Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1284,6 +1458,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P7`
@@ -1305,6 +1480,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:24:49.906Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1312,6 +1488,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P7`
@@ -1333,6 +1510,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:24:49.569Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1340,6 +1518,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P7`
@@ -1361,6 +1540,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:24:33.732Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1368,6 +1548,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P6`
@@ -1389,6 +1570,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:24:33.399Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1396,6 +1578,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P6`
@@ -1417,6 +1600,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:23:41.076Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1424,6 +1608,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P6`
@@ -1445,6 +1630,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:23:40.743Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1452,6 +1638,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P6`
@@ -1473,6 +1660,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:22:47.260Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1480,6 +1668,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P6`
@@ -1501,6 +1690,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:22:46.924Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1508,6 +1698,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P6`
@@ -1529,6 +1720,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:22:36.569Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1536,6 +1728,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P5`
@@ -1557,6 +1750,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:21:25.966Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1564,6 +1758,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P5`
@@ -1585,6 +1780,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:21:25.630Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1592,6 +1788,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P5`
@@ -1613,6 +1810,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:20:39.612Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1620,6 +1818,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P5`
@@ -1641,6 +1840,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:19:43.119Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1648,6 +1848,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P5`
@@ -1669,6 +1870,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:19:42.785Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1676,6 +1878,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P5`
@@ -1697,6 +1900,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:19:32.618Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1704,6 +1908,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P4`
@@ -1725,6 +1930,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:19:12.520Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1732,6 +1938,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P4`
@@ -1753,6 +1960,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:18:46.002Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1760,6 +1968,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P4`
@@ -1781,6 +1990,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:18:16.749Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1788,6 +1998,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P4`
@@ -1809,6 +2020,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:17:46.712Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1816,6 +2028,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P4`
@@ -1837,6 +2050,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:17:46.321Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1844,6 +2058,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P4`
@@ -1865,6 +2080,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:17:32.482Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1872,6 +2088,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P3`
@@ -1893,6 +2110,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:16:02.306Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1900,6 +2118,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P3`
@@ -1921,6 +2140,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:15:30.477Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1928,6 +2148,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P3`
@@ -1949,6 +2170,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:15:30.142Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1956,6 +2178,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P3`
@@ -1977,6 +2200,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:14:41.304Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -1984,6 +2208,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P3`
@@ -2005,6 +2230,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:14:40.973Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2012,6 +2238,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P3`
@@ -2033,6 +2260,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:14:31.354Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2040,6 +2268,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P2`
@@ -2061,6 +2290,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:14:16.738Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2068,6 +2298,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P2`
@@ -2089,6 +2320,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:13:58.214Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2096,6 +2328,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P2`
@@ -2117,6 +2350,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:13:47.061Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2124,6 +2358,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P2`
@@ -2145,6 +2380,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:13:14.877Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2152,6 +2388,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P2`
@@ -2173,6 +2410,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:13:14.541Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2180,6 +2418,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P2`
@@ -2201,6 +2440,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:13:03.830Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2208,6 +2448,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P1`
@@ -2229,6 +2470,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:12:28.357Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2236,6 +2478,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P1`
@@ -2257,6 +2500,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:12:24.636Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2264,6 +2508,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P1`
@@ -2285,6 +2530,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:12:23.687Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2292,6 +2538,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P1`
@@ -2313,6 +2560,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:11:32.280Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2320,6 +2568,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P1`
@@ -2341,6 +2590,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:10:22.324Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2348,6 +2598,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-012`
   - Sprint phase ID: `SPR-012-P1`
@@ -2369,15 +2620,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T01:03:19.658Z`
   - Started at: `2026-03-30T01:08:08.338Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: top-level rated-ladder manager remains blocked by child manager CCP-301, which is still red because CCP-305 has a live cloud-restore gap addressed in CCP-305-F1
-  - Reviewed at: `2026-04-01T22:56:31.160Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-01T23:20:27.987Z`
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
-  - Review scope: backlog re-triage; manager-only fallout pending child fix
+  - Review scope: manager re-review after CCP-301 was unblocked by CCP-305-F1
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-012`
 ```
 
 ## CCP-190-F5 - Openings Board Full Follow-Up Batch Manager
@@ -2395,6 +2647,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T07:21:08Z`
   - Started at: `2026-03-28T07:23:24.601Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2402,6 +2655,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -2420,6 +2674,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T07:12:05Z`
   - Started at: `2026-03-28T07:26:31.981Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2427,6 +2682,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -2445,6 +2701,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T07:12:05Z`
   - Started at: `2026-03-29T20:03:24.610Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2452,6 +2709,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -2470,6 +2728,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T07:12:05Z`
   - Started at: `2026-03-28T07:25:28.487Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2477,6 +2736,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -2495,6 +2755,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T07:12:05Z`
   - Started at: `2026-03-28T07:24:27.900Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2502,6 +2763,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -2520,6 +2782,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T07:10:01Z`
   - Started at: `2026-03-28T07:12:23.841Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2527,6 +2790,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -2545,6 +2809,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:56:46.655Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2552,8 +2817,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-008`
 ```
 
 ## CCP-224 - Openings Phase 7 Batch Manager
@@ -2571,6 +2836,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:06:41.589Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2578,6 +2844,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P3`
@@ -2599,6 +2866,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:11:23.850Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2606,6 +2874,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P3`
@@ -2627,6 +2896,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:09:39.812Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2634,6 +2904,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P3`
@@ -2655,6 +2926,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:08:49.749Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2662,6 +2934,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P3`
@@ -2683,6 +2956,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:06:42.785Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2690,6 +2964,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P3`
@@ -2711,6 +2986,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:00:16.012Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2718,6 +2994,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P2`
@@ -2739,6 +3016,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:03:00.101Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2746,6 +3024,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P2`
@@ -2767,6 +3046,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:02:00.280Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2774,6 +3054,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P2`
@@ -2795,6 +3076,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:01:15.212Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2802,6 +3084,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P2`
@@ -2823,6 +3106,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T07:00:17.063Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2830,6 +3114,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P2`
@@ -2851,6 +3136,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:57:06.223Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2858,6 +3144,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P1`
@@ -2879,6 +3166,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:59:28.793Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2886,6 +3174,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P1`
@@ -2907,6 +3196,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:58:45.088Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2914,6 +3204,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P1`
@@ -2935,6 +3226,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:58:00.295Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2942,6 +3234,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P1`
@@ -2963,6 +3256,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:57:07.316Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2970,6 +3264,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-008`
   - Sprint phase ID: `SPR-008-P1`
@@ -2991,6 +3286,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:35:08.302Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -2998,8 +3294,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-010`
 ```
 
 ## CCP-204 - Add Real Mobile Puzzle Layout Mode
@@ -3017,6 +3313,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:35:23.118Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3024,8 +3321,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-010`
+  - Sprint phase ID: `SPR-010-P1`
+  - Sprint task ID: `SPR-010-T01`
 ```
 
 ## CCP-205 - Make Puzzle Library And Session Builder Mobile-Usable
@@ -3043,6 +3343,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:36:57.457Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3050,8 +3351,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-010`
+  - Sprint phase ID: `SPR-010-P1`
+  - Sprint task ID: `SPR-010-T02`
 ```
 
 ## CCP-206 - Make Puzzle Feedback Mobile Board-Adjacent
@@ -3069,6 +3373,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:37:23.934Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3076,8 +3381,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-010`
+  - Sprint phase ID: `SPR-010-P1`
+  - Sprint task ID: `SPR-010-T03`
 ```
 
 ## CCP-207 - Make Puzzle Side Surfaces Readable On Mobile
@@ -3095,6 +3403,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:37:49.270Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3102,8 +3411,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-010`
+  - Sprint phase ID: `SPR-010-P1`
+  - Sprint task ID: `SPR-010-T04`
 ```
 
 ## CCP-208 - Add Puzzle Mobile Touch Polish
@@ -3121,6 +3433,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:31:22Z`
   - Started at: `2026-03-28T06:38:18.433Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3128,8 +3441,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-010`
+  - Sprint phase ID: `SPR-010-P1`
+  - Sprint task ID: `SPR-010-T05`
 ```
 
 ## CCP-203 - Openings Full Batch Manager
@@ -3147,15 +3463,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:14:54.702Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Openings review still has concrete failures in Phase 1 and Phase 2: src/openings/import.ts is not exactOptionalPropertyTypes-clean, and src/openings/view.ts still leaves openings-specific board-sync/path typecheck failures.
-  - Reviewed at: `2026-03-28T06:14:54.702Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:02.517Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: backlog re-triage; openings implementation batch is build and typecheck clean in the current tree and child manager fallout was already resolved
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-007`
 ```
 
 ## CCP-178 - Establish Openings Subsystem And Real Route Owner
@@ -3173,6 +3490,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:15:31.721Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3180,6 +3498,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P1`
@@ -3201,6 +3520,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:16:25.349Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3208,6 +3528,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P1`
@@ -3229,6 +3550,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:17:11.567Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3236,6 +3558,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P1`
@@ -3257,6 +3580,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:17:37.864Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3264,6 +3588,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P1`
@@ -3285,6 +3610,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:18:16.275Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3292,6 +3618,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P2`
@@ -3313,6 +3640,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:19:17.865Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -3320,6 +3648,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; openings import pipeline now stores opponent research games separately and type-safe optional fields landed
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P2`
@@ -3341,6 +3670,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:20:17.888Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3348,6 +3678,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P2`
@@ -3369,6 +3700,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:21:44.754Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3376,6 +3708,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P2`
@@ -3397,6 +3730,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:23:31.126Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3404,6 +3738,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P3`
@@ -3425,6 +3760,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:24:29.809Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3432,6 +3768,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P3`
@@ -3453,6 +3790,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:25:05.821Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3460,6 +3798,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P3`
@@ -3481,6 +3820,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:26:27.141Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -3488,6 +3828,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; openings navigator and board/path sync are present in current code
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P3`
@@ -3509,6 +3850,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:27:24.463Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3516,6 +3858,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P4`
@@ -3537,6 +3880,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:28:14.767Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3544,6 +3888,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P4`
@@ -3565,6 +3910,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:29:31.046Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3572,6 +3918,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P4`
@@ -3593,6 +3940,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:31:40.855Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3600,6 +3948,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P4`
@@ -3621,6 +3970,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:33:14.243Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3628,6 +3978,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P5`
@@ -3649,6 +4000,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:34:20.427Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3656,6 +4008,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P5`
@@ -3677,6 +4030,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:34:54.979Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3684,6 +4038,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P5`
@@ -3705,6 +4060,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:35:24.949Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3712,6 +4068,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P5`
@@ -3733,6 +4090,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:15:25.620Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3740,6 +4098,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P1`
@@ -3761,6 +4120,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:18:15.158Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -3768,6 +4128,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; manager resolved after child prompt CCP-184 was fixed by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P2`
@@ -3789,6 +4150,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:23:02.161Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -3796,6 +4158,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; manager resolved after child prompt CCP-191 was fixed by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P3`
@@ -3817,6 +4180,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:27:23.404Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3824,6 +4188,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P4`
@@ -3845,6 +4210,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-28T06:06:53Z`
   - Started at: `2026-03-28T06:33:12.690Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3852,6 +4218,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-007`
   - Sprint phase ID: `SPR-007-P5`
@@ -3873,6 +4240,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T23:29:35Z`
   - Started at: `2026-03-27T23:47:32.936Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -3880,6 +4248,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; puzzle follow-up batch now passes because CCP-156-F1 was resolved by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -3898,6 +4267,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T23:29:35Z`
   - Started at: `2026-03-27T23:47:55.769Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3905,6 +4275,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -3923,6 +4294,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T23:29:35Z`
   - Started at: `2026-03-27T23:49:13.961Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -3930,6 +4302,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; mountPuzzleBoard no longer assigns movable.color undefined and the original type-level blocker is gone
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -3948,6 +4321,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T23:29:35Z`
   - Started at: `2026-03-27T23:50:48.614Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3955,6 +4329,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -3973,6 +4348,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T23:29:35Z`
   - Started at: `2026-03-27T23:52:52.657Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -3980,6 +4356,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -3998,6 +4375,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T23:15:31Z`
   - Started at: `2026-03-27T23:18:45.915Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -4005,6 +4383,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; superseded by the narrower final session-start fix in CCP-151-F3 and no longer worth reopening as separate product work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -4023,6 +4402,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T15:56:47-07:00`
   - Started at: `2026-03-27T23:02:35.699Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -4030,6 +4410,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; superseded by later puzzle-library flow work in CCP-151-F2 and the narrower final fix in CCP-151-F3
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -4048,6 +4429,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T15:28:06-07:00`
   - Started at: `2026-03-27T22:30:11.883Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -4055,6 +4437,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; superseded by later puzzle-round layout work and the concrete move-list follow-up CCP-153-F2
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -4073,6 +4456,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T15:23:53-07:00`
   - Started at: `2026-03-27T22:51:51.967Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4080,6 +4464,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P6`
@@ -4101,6 +4486,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T15:23:53-07:00`
   - Started at: `2026-03-27T22:54:07.245Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4108,6 +4494,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P6`
@@ -4129,6 +4516,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T14:45:42-07:00`
   - Started at: `2026-03-27T21:46:33.627Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4136,6 +4524,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P5`
@@ -4157,6 +4546,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T14:27:53-07:00`
   - Started at: `2026-03-27T21:28:52.453Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4164,6 +4554,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -4182,6 +4573,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T00:00:00-07:00`
   - Started at: `2026-03-27T21:10:38.043Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4189,6 +4581,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -4207,6 +4600,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T00:00:00-07:00`
   - Started at: `2026-03-27T21:13:40.419Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4214,6 +4608,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -4232,6 +4627,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T00:00:00-07:00`
   - Started at: `2026-03-27T21:10:38.043Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4239,6 +4635,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -4257,6 +4654,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-27T00:00:00-07:00`
   - Started at: `2026-03-27T21:10:38.043Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4264,6 +4662,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P3`
@@ -4285,13 +4684,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T22:18:09.632Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 5 batch is not review-clean because CCP-172 still introduces puzzle-specific typecheck failures in the imported-library filter/loading step
-  - Reviewed at: `2026-03-27T22:18:09.632Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:03.155Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: backlog re-triage; Phase 5 manager resolved after imported-library typecheck debt proved stale in the current tree
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P7`
@@ -4313,13 +4714,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:59:34.497Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 4 batch is not review-clean because bulk-save does not preserve first-attempt outcome info, move-list puzzle authoring can save inconsistent definitions, and puzzle metadata editing still fails typecheck
-  - Reviewed at: `2026-03-27T21:59:34.497Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:02.179Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: backlog re-triage; Phase 4 manager resolved after bulk-save, authoring invariant, and metadata issues were fixed by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P6`
@@ -4341,13 +4744,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:24:15.413Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 3 puzzle engine-assist files still fail typecheck, including exactOptionalPropertyTypes errors in src/puzzles/ctrl.ts and inherited puzzle-model errors in src/puzzles/adapters.ts.
-  - Reviewed at: `2026-03-27T21:24:15.413Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:01.280Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: backlog re-triage; manager resolved after Phase 3 puzzle child typecheck issues proved stale in the current tree
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P5`
@@ -4369,13 +4774,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:23:07.131Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 2 puzzle files still fail typecheck in the code introduced by this batch, including exactOptionalPropertyTypes errors in src/puzzles/adapters.ts and src/puzzles/ctrl.ts.
-  - Reviewed at: `2026-03-27T21:23:07.131Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:46:30.436Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: backlog re-triage; manager resolved after Phase 2 puzzle child issues proved stale in the current tree
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P4`
@@ -4397,6 +4804,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4404,6 +4812,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P2`
@@ -4425,6 +4834,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T22:26:30.440Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4432,6 +4842,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P7`
@@ -4453,13 +4864,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T22:23:33.846Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: the imported-library filter and loading step still introduces new puzzle-specific typecheck failures in filter state assignment and the idle-board helper
-  - Reviewed at: `2026-03-27T22:23:33.846Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:01.644Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; imported puzzle library filter/loading code is now build and typecheck clean
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P7`
@@ -4481,6 +4894,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T22:20:50.863Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4488,6 +4902,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P7`
@@ -4509,6 +4924,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T22:18:26.801Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4516,6 +4932,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P7`
@@ -4537,13 +4954,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:59:36.108Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: the metadata editing UI still fails exactOptionalPropertyTypes because it assigns explicit undefined into optional notes and tags fields
-  - Reviewed at: `2026-03-27T21:59:36.108Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:03.339Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; puzzle metadata editing no longer assigns explicit undefined into optional fields
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P6`
@@ -4565,13 +4984,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:59:35.726Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: the "Create Puzzle (solution)" branch can save a puzzle whose solutionLine starts with the engine PV while strictSolutionMove points at the clicked move
-  - Reviewed at: `2026-03-27T21:59:35.726Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:02.717Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current persistence layer enforces strictSolutionMove equals solutionLine[0] for authored puzzles
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P6`
@@ -4593,13 +5014,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:59:35.213Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: bulk-save still just writes puzzle definitions and does not preserve first-attempt outcome information from the retrospection session
-  - Reviewed at: `2026-03-27T21:59:35.213Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:01.805Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; retro bulk-save now persists first-attempt outcome information
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P6`
@@ -4621,6 +5044,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:59:34.823Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4628,6 +5052,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P6`
@@ -4649,13 +5074,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:24:20.651Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 3 puzzle engine-assist files still fail typecheck, including exactOptionalPropertyTypes errors in src/puzzles/ctrl.ts and inherited puzzle-model errors in src/puzzles/adapters.ts.
-  - Reviewed at: `2026-03-27T21:24:20.651Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:46:30.252Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current puzzle engine-assist files no longer show the old typecheck failures
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P5`
@@ -4677,13 +5104,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:24:19.568Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 3 puzzle engine-assist files still fail typecheck, including exactOptionalPropertyTypes errors in src/puzzles/ctrl.ts and inherited puzzle-model errors in src/puzzles/adapters.ts.
-  - Reviewed at: `2026-03-27T21:24:19.568Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:46:30.697Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current puzzle engine-assist files no longer show the old typecheck failures
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P5`
@@ -4705,13 +5134,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:24:18.252Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 3 puzzle engine-assist files still fail typecheck, including exactOptionalPropertyTypes errors in src/puzzles/ctrl.ts and inherited puzzle-model errors in src/puzzles/adapters.ts.
-  - Reviewed at: `2026-03-27T21:24:18.252Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:46:29.568Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current puzzle engine-assist files no longer show the old typecheck failures
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P5`
@@ -4733,13 +5164,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:24:16.834Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 3 puzzle engine-assist files still fail typecheck, including exactOptionalPropertyTypes errors in src/puzzles/ctrl.ts and inherited puzzle-model errors in src/puzzles/adapters.ts.
-  - Reviewed at: `2026-03-27T21:24:16.834Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:46:31.017Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current puzzle engine-assist seam validates cleanly
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P5`
@@ -4761,13 +5194,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:23:36.694Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 2 puzzle files still fail typecheck in the code introduced by this batch, including exactOptionalPropertyTypes errors in src/puzzles/adapters.ts and src/puzzles/ctrl.ts.
-  - Reviewed at: `2026-03-27T21:23:36.694Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:46:29.400Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current Phase 2 puzzle files validate cleanly
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P4`
@@ -4789,13 +5224,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:23:36.234Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 2 puzzle files still fail typecheck in the code introduced by this batch, including exactOptionalPropertyTypes errors in src/puzzles/adapters.ts and src/puzzles/ctrl.ts.
-  - Reviewed at: `2026-03-27T21:23:36.234Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:47:02.927Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current Phase 2 puzzle files validate cleanly
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P4`
@@ -4817,13 +5254,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:23:35.882Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 2 puzzle files still fail typecheck in the code introduced by this batch, including exactOptionalPropertyTypes errors in src/puzzles/adapters.ts and src/puzzles/ctrl.ts.
-  - Reviewed at: `2026-03-27T21:23:35.882Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:46:29.958Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current strict puzzle solve flow no longer shows the old puzzle typecheck failures
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P4`
@@ -4845,13 +5284,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: `2026-03-27T21:23:35.566Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Phase 2 puzzle files still fail typecheck in the code introduced by this batch, including exactOptionalPropertyTypes errors in src/puzzles/adapters.ts and src/puzzles/ctrl.ts.
-  - Reviewed at: `2026-03-27T21:23:35.566Z`
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:46:29.227Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; current puzzle round controller/solve-loop tree is build and typecheck clean
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P4`
@@ -4873,6 +5314,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4880,6 +5322,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P2`
@@ -4901,6 +5344,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4908,6 +5352,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P2`
@@ -4929,6 +5374,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4936,6 +5382,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P2`
@@ -4957,6 +5404,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4964,6 +5412,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P2`
@@ -4985,6 +5434,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -4992,6 +5442,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Opus`
 ```
 
@@ -5010,6 +5461,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5017,6 +5469,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Opus`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P1`
@@ -5038,6 +5491,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5045,6 +5499,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P1`
@@ -5066,6 +5521,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5073,6 +5529,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P1`
@@ -5094,6 +5551,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5101,6 +5559,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P1`
@@ -5122,6 +5581,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5129,6 +5589,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P1`
@@ -5150,6 +5611,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5157,6 +5619,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-011`
   - Sprint phase ID: `SPR-011-P1`
@@ -5178,6 +5641,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5185,6 +5649,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5203,6 +5668,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5210,6 +5676,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5228,6 +5695,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5235,6 +5703,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5253,6 +5722,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5260,6 +5730,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5278,6 +5749,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5285,6 +5757,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5303,6 +5776,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5310,6 +5784,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5328,6 +5803,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5335,6 +5811,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5353,6 +5830,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5360,6 +5838,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5378,6 +5857,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5385,6 +5865,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5403,6 +5884,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5410,6 +5892,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5428,6 +5911,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5435,6 +5919,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5453,6 +5938,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5460,6 +5946,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5478,6 +5965,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5485,6 +5973,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5503,6 +5992,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5510,6 +6000,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5528,6 +6019,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5535,6 +6027,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5553,6 +6046,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5560,6 +6054,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5578,6 +6073,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5585,6 +6081,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5603,6 +6100,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5610,6 +6108,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5628,6 +6127,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5635,6 +6135,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5653,6 +6154,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5660,6 +6162,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5678,6 +6181,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -5685,6 +6189,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5703,6 +6208,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5710,6 +6216,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5728,6 +6235,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5735,6 +6243,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5753,6 +6262,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5760,6 +6270,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5778,6 +6289,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5785,6 +6297,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5803,6 +6316,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5810,6 +6324,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5828,6 +6343,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5835,6 +6351,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5853,6 +6370,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5860,6 +6378,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -5878,6 +6397,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5885,8 +6405,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-014`
+  - Sprint phase ID: `SPR-014-P5`
+  - Sprint task ID: `SPR-014-T06`
 ```
 
 ## CCP-125 - Bulk Review Settings Submenu in Header
@@ -5904,6 +6427,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5911,8 +6435,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-014`
+  - Sprint phase ID: `SPR-014-P5`
+  - Sprint task ID: `SPR-014-T06`
 ```
 
 ## CCP-124 - Per-Game Progress Display in Games List
@@ -5930,6 +6457,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5937,8 +6465,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-014`
+  - Sprint phase ID: `SPR-014-P4`
+  - Sprint task ID: `SPR-014-T05`
 ```
 
 ## CCP-123 - Route-Change Resilience in main.ts
@@ -5956,6 +6487,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5963,8 +6495,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-014`
+  - Sprint phase ID: `SPR-014-P3`
+  - Sprint task ID: `SPR-014-T04`
 ```
 
 ## CCP-122 - Per-Game Analysis Loop in reviewQueue.ts
@@ -5982,6 +6517,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -5989,8 +6525,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-014`
+  - Sprint phase ID: `SPR-014-P2`
+  - Sprint task ID: `SPR-014-T03`
 ```
 
 ## CCP-121 - Background Review Engine Module Skeleton
@@ -6008,6 +6547,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6015,8 +6555,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-014`
+  - Sprint phase ID: `SPR-014-P2`
+  - Sprint task ID: `SPR-014-T02`
 ```
 
 ## CCP-120 - Configurable StockfishProtocol Engine Options
@@ -6034,6 +6577,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6041,8 +6585,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-014`
+  - Sprint phase ID: `SPR-014-P1`
+  - Sprint task ID: `SPR-014-T01`
 ```
 
 ## CCP-119 - Phase 2 Puzzle Filter Persistence Manager (CCP-116–117)
@@ -6060,6 +6607,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6067,6 +6615,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6085,6 +6634,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6092,6 +6642,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6110,6 +6661,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6117,6 +6669,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6135,6 +6688,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6142,6 +6696,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6160,6 +6715,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6167,6 +6723,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6185,6 +6742,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6192,6 +6750,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6210,6 +6769,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6217,6 +6777,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6235,6 +6796,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6242,6 +6804,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6260,6 +6823,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6267,6 +6831,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6285,6 +6850,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6292,6 +6858,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6310,6 +6877,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6317,6 +6885,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6335,6 +6904,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6342,6 +6912,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6360,6 +6931,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6367,6 +6939,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6385,6 +6958,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6392,6 +6966,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6410,6 +6985,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6417,6 +6993,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6435,6 +7012,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6442,6 +7020,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6460,6 +7039,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6467,6 +7047,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6485,6 +7066,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6492,6 +7074,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6510,6 +7093,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -6517,6 +7101,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later dataset workspace and import pipeline work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6535,6 +7120,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6542,6 +7128,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6560,6 +7147,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6567,6 +7155,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6585,6 +7174,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6592,6 +7182,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6610,6 +7201,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -6617,6 +7209,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later imported puzzle source switching work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6635,6 +7228,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6642,6 +7236,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6660,6 +7255,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6667,6 +7263,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6685,6 +7282,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6692,6 +7290,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6710,6 +7309,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6717,6 +7317,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6735,6 +7336,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -6742,6 +7344,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -6760,6 +7363,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6767,6 +7371,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6785,6 +7390,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6792,6 +7398,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6810,6 +7417,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6817,6 +7425,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6835,6 +7444,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6842,6 +7452,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6860,6 +7471,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6867,6 +7479,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6885,6 +7498,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -6892,6 +7506,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later live book-aware retrospection cancellation wiring
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6910,6 +7525,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6917,6 +7533,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6935,6 +7552,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6942,6 +7560,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6960,6 +7579,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -6967,6 +7587,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later board review glyph rollout
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -6985,6 +7606,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -6992,6 +7614,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -7010,6 +7633,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7017,6 +7641,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -7035,6 +7660,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -7042,6 +7668,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -7060,6 +7687,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -7067,6 +7695,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -7085,6 +7714,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -7092,6 +7722,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -7110,6 +7741,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:41:23Z`
   - Started at: `2026-03-29T21:51:00.681Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7117,6 +7749,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7135,6 +7768,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -7142,6 +7776,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7160,6 +7795,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7167,6 +7803,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7185,6 +7822,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7192,6 +7830,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7210,6 +7849,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7217,6 +7857,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7235,6 +7876,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7242,6 +7884,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7260,6 +7903,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7267,6 +7911,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; retrospection lifecycle work was superseded by later LFYM/retrospection implementation
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7285,6 +7930,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7292,6 +7938,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; missing retrospection lifecycle wiring was superseded by later retrospection implementation
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7310,6 +7957,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7317,6 +7965,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; temporary Find Puzzles suppression is obsolete given the later mistakes/retrospection product direction
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7335,6 +7984,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7342,6 +7992,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7360,6 +8011,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7367,6 +8019,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; review-label UI work was absorbed by later persisted review-label surfaces
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7385,6 +8038,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7392,6 +8046,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; engine-guidance suppression during retrospection was handled by later retrospection UX work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7410,6 +8065,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7417,6 +8073,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7435,6 +8092,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7442,6 +8100,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later retrospection lifecycle work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7460,6 +8119,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7467,6 +8127,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later retrospection tools integration
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7485,6 +8146,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7492,6 +8154,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later retrospection UI suppression work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7510,6 +8173,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7517,6 +8181,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7535,6 +8200,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7542,6 +8208,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later book-aware retrospection cancellation work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7560,6 +8227,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7567,6 +8235,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later retrospection acceptance parity work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7585,6 +8254,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7592,6 +8262,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later move-list context menu infrastructure
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7610,6 +8281,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7617,6 +8289,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later PGN copy actions
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7635,6 +8308,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7642,6 +8316,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later variation deletion actions
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7660,6 +8335,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7667,6 +8343,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later variation promotion work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7685,6 +8362,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7692,6 +8370,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; minimal exact-best retrospection loop was superseded by the later retrospective solve flow
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7710,6 +8389,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7717,6 +8397,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; current-game retrospection entry affordance was superseded by later retrospection UI flows
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7735,6 +8416,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7742,6 +8424,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7760,6 +8443,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7767,6 +8451,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7785,6 +8470,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7792,6 +8478,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7810,6 +8497,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7817,6 +8505,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7835,6 +8524,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7842,6 +8532,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7860,6 +8551,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7867,6 +8559,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; analysis-game route exists now and this early minimum-surface issue is no longer actionable
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7885,6 +8578,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7892,6 +8586,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7910,6 +8605,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none; prompt id was reconstructed after the fact from commit order and review context, so exact original prompt provenance is not confirmed
@@ -7917,6 +8613,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7935,6 +8632,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -7942,6 +8640,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; later move-list and context-menu work superseded this early variation-removal waypoint
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7960,6 +8659,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7967,6 +8667,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -7985,6 +8686,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -7992,6 +8694,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8010,6 +8713,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8017,6 +8721,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8035,6 +8740,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8042,6 +8748,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8060,6 +8767,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8067,6 +8775,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8085,6 +8794,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -8092,6 +8802,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later eval graph hover and scrub work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8110,6 +8821,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8117,6 +8829,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8135,6 +8848,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8142,6 +8856,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8160,6 +8875,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8167,6 +8883,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8185,6 +8902,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8192,6 +8910,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8210,6 +8929,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8217,6 +8937,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8235,6 +8956,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8242,6 +8964,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8260,6 +8983,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8267,6 +8991,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8285,6 +9010,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -8292,6 +9018,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8310,6 +9037,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8317,6 +9045,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8335,6 +9064,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8342,6 +9072,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8360,6 +9091,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8367,6 +9099,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8385,6 +9118,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8392,6 +9126,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8410,6 +9145,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8417,6 +9153,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8435,6 +9172,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8442,6 +9180,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8460,6 +9199,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8467,6 +9207,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8485,6 +9226,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8492,6 +9234,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8510,6 +9253,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8517,6 +9261,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8535,6 +9280,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8542,6 +9288,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8560,6 +9307,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8567,6 +9315,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8585,6 +9334,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8592,6 +9342,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8610,6 +9361,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8617,6 +9369,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8635,6 +9388,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8642,6 +9396,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -8660,6 +9415,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8667,8 +9423,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Sprint ID: `SPR-005`
+  - Sprint phase ID: `SPR-005-P1`
+  - Sprint task ID: `SPR-005-T01`
 ```
 
 ## CCP-060 - Hide Mobile Analysis Chrome
@@ -8686,6 +9445,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8693,8 +9453,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Sprint ID: `SPR-005`
+  - Sprint phase ID: `SPR-005-P1`
+  - Sprint task ID: `SPR-005-T02`
 ```
 
 ## CCP-061 - Make Mobile Controls Board-Adjacent
@@ -8712,6 +9475,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8719,8 +9483,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Sprint ID: `SPR-005`
+  - Sprint phase ID: `SPR-005-P1`
+  - Sprint task ID: `SPR-005-T03`
 ```
 
 ## CCP-062 - Make Mobile Tools Stack Readable
@@ -8738,6 +9505,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8745,8 +9513,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Sprint ID: `SPR-005`
+  - Sprint phase ID: `SPR-005-P1`
+  - Sprint task ID: `SPR-005-T04`
 ```
 
 ## CCP-063 - Make Underboard Secondary On Mobile
@@ -8764,6 +9535,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8771,8 +9543,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Sprint ID: `SPR-005`
+  - Sprint phase ID: `SPR-005-P1`
+  - Sprint task ID: `SPR-005-T05`
 ```
 
 ## CCP-064 - Add One Minimal Mobile Touch Improvement
@@ -8790,6 +9565,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8797,8 +9573,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Sprint ID: `SPR-005`
+  - Sprint phase ID: `SPR-005-P1`
+  - Sprint task ID: `SPR-005-T06`
 ```
 
 ## CCP-043-F1 - Winner And Loser Player-Strip Boxes
@@ -8816,6 +9595,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8823,6 +9603,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8841,6 +9622,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8848,6 +9630,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8866,6 +9649,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8873,6 +9657,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8891,6 +9676,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: issues resolved
   - Review issues: none
@@ -8898,6 +9684,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; superseded by later arrow label styling refinements
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8916,6 +9703,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8923,6 +9711,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8941,6 +9730,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8948,6 +9738,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8966,6 +9757,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: issues resolved
   - Review issues: none
@@ -8973,6 +9765,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later underboard and games search work
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -8991,6 +9784,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -8998,6 +9792,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -9016,6 +9811,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: unknown
   - Created at: unknown
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: passed
   - Review issues: none
@@ -9023,6 +9819,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
 ```
 
@@ -9041,6 +9838,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-28T07:00:19.322Z`
   - Started at: `2026-03-28T07:05:05.595Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9048,6 +9846,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; a SQLite server database module exists now and the original schema details were superseded by later server persistence architecture
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-002`
   - Sprint phase ID: `SPR-002-P1`
@@ -9069,6 +9868,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-28T07:00:19.322Z`
   - Started at: `2026-03-28T07:08:36.900Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9076,6 +9876,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-002`
   - Sprint phase ID: `SPR-002-P1`
@@ -9097,6 +9898,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-28T07:00:19.322Z`
   - Started at: `2026-03-28T07:09:43.341Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9104,6 +9906,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-002`
   - Sprint phase ID: `SPR-002-P1`
@@ -9125,6 +9928,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-28T07:00:19.322Z`
   - Started at: `2026-03-28T07:10:29.231Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9132,6 +9936,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; manual push/pull sync service exists and original token-based auth contract was superseded by session-cookie auth
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-002`
   - Sprint phase ID: `SPR-002-P1`
@@ -9153,6 +9958,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-28T07:00:19.322Z`
   - Started at: `2026-03-28T07:11:23.731Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9160,6 +9966,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-002`
   - Sprint phase ID: `SPR-002-P1`
@@ -9181,6 +9988,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-28T07:00:19.322Z`
   - Started at: `2026-03-28T07:04:58.887Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9188,8 +9996,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; auth and sync manager is now satisfied by later server/sqlite and sync work
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-002`
 ```
 
 ## CCP-232 - Opening Explorer API and Streaming Layer
@@ -9207,6 +10015,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T20:12:28.775Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9214,6 +10023,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9232,6 +10042,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T20:13:17.389Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9239,6 +10050,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9257,6 +10069,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T20:14:34.215Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9264,6 +10077,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; explorer moves table now includes result bar, hover arrows, and click-to-play behavior
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9282,6 +10096,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T20:16:10.430Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9289,6 +10104,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9307,13 +10123,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T20:19:29.716Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
+  - Review outcome: issues resolved
   - Review issues: explorer top/recent games UI exists, but explorerCtrl still requests topGames:false and recentGames:false so the feature remains effectively disabled; follow-up CCP-236-F1 created
   - Reviewed at: `2026-04-01T22:53:04.451Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; still a current product gap
+  - Skip reason: none
+  - Fixed by prompt: `CCP-236-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
 ```
 
@@ -9332,6 +10151,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T20:22:04.853Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9339,6 +10159,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9357,6 +10178,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T20:23:34.643Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9364,6 +10186,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; analysis board now has explorer toggle, tools-column placement, and node sync through shared explorer owner
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9382,6 +10205,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T19:52:11Z`
   - Started at: `2026-03-29T21:11:23.126Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9389,6 +10213,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9407,13 +10232,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T20:04:01Z`
   - Started at: `2026-03-29T20:04:42.288Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: opening-explorer manager remains blocked by child prompt CCP-236, whose real top/recent games request-path gap is being handled in follow-up CCP-236-F1
-  - Reviewed at: `2026-04-01T22:56:31.108Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-01T23:20:27.961Z`
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
-  - Review scope: backlog re-triage; manager-only fallout pending current child fix
+  - Review scope: manager re-review after CCP-236-F1 resolved the last live child blocker
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9432,6 +10259,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T20:54:49Z`
   - Started at: `2026-03-29T20:57:42.339Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9439,6 +10267,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9457,6 +10286,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:11:43.516Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9464,6 +10294,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-001`
   - Sprint phase ID: `SPR-001-P1`
@@ -9485,6 +10316,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:12:49.351Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9492,6 +10324,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-001`
   - Sprint phase ID: `SPR-001-P1`
@@ -9513,6 +10346,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:18:57.451Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9520,6 +10354,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-001`
   - Sprint phase ID: `SPR-001-P1`
@@ -9541,6 +10376,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:22:21.949Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9548,6 +10384,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-001`
   - Sprint phase ID: `SPR-001-P1`
@@ -9569,6 +10406,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:37:50.440Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9576,6 +10414,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later work in CCP-245-F1
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-001`
   - Sprint phase ID: `SPR-001-P1`
@@ -9597,6 +10436,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T23:30:23Z`
   - Started at: `2026-03-29T23:31:10.366Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9604,6 +10444,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-001`
   - Sprint phase ID: `SPR-001-P1`
@@ -9625,6 +10466,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:39:43.711Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9632,6 +10474,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-001`
   - Sprint phase ID: `SPR-001-P1`
@@ -9653,6 +10496,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:41:16.290Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9660,6 +10504,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-001`
   - Sprint phase ID: `SPR-001-P1`
@@ -9681,6 +10526,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:08:35.936Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9688,8 +10534,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-001`
 ```
 
 ## CCP-249 - Analysis Controls Migration Batch Manager
@@ -9707,6 +10553,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T21:21:12Z`
   - Started at: `2026-03-29T22:35:43.899Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9714,8 +10561,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; analysis controls manager resolved after CCP-245 follow-up landed
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-001`
 ```
 
 ## CCP-249-F1 - Fix Mobile Analysis Controls Layout
@@ -9733,6 +10580,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T23:32:25Z`
   - Started at: `2026-03-29T23:37:20.284Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9740,6 +10588,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; obsolete intermediate mobile-only follow-up after the broader controls family was later resolved
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9758,6 +10607,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T23:38:33Z`
   - Started at: `2026-03-29T23:43:43.176Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9765,6 +10615,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; obsolete intermediate layout follow-up after the broader analysis-controls family was later resolved
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9783,6 +10634,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T23:42:51Z`
   - Started at: `2026-03-29T23:44:42.713Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9790,6 +10642,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; historically scope-messy toggle migration no longer warrants a tracked cleanup prompt because later manual cleanup superseded the issue
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9808,6 +10661,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-29T23:51:52Z`
   - Started at: `2026-03-29T23:56:13.128Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9815,6 +10669,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9833,6 +10688,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T00:31:16Z`
   - Started at: `2026-03-30T00:48:12.118Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9840,6 +10696,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9858,6 +10715,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T00:31:16Z`
   - Started at: `2026-03-30T00:52:05.343Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9865,6 +10723,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9883,6 +10742,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T00:31:16Z`
   - Started at: `2026-03-30T00:53:58.189Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9890,6 +10750,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9908,6 +10769,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T00:31:16Z`
   - Started at: `2026-03-30T00:56:17.616Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -9915,6 +10777,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9933,6 +10796,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T00:31:16Z`
   - Started at: `2026-03-30T01:01:33.105Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9940,6 +10804,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; puzzle library preview now has book wiring and hamburger action menu in the preview surface
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9958,6 +10823,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T00:31:16Z`
   - Started at: `2026-03-30T00:47:31.961Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9965,6 +10831,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; board-standard manager resolved after CCP-256 was fixed by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -9983,6 +10850,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:13:41.249Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -9990,8 +10858,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; rated-stream manager resolved after CCP-312 and its child shard fixes were resolved by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-013`
 ```
 
 ## CCP-308 - Rated Stream Research And Implementation Map Batch Manager
@@ -10009,6 +10877,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:13:45.482Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10016,8 +10885,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-013`
 ```
 
 ## CCP-309 - Audit Lichess Puzzle Stream Selection Source
@@ -10035,6 +10904,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:13:48.796Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10042,8 +10912,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
+  - Sprint phase ID: `SPR-013-P1`
+  - Sprint task ID: `SPR-013-T01`
 ```
 
 ## CCP-310 - Audit selectNextRatedPuzzle IDB-Only Gap
@@ -10061,6 +10934,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:15:45.602Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10068,10 +10942,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
-  - Sprint phase ID: `SPR-013-P3`
-  - Sprint task ID: `SPR-013-T03`
+  - Sprint phase ID: `SPR-013-P1`
+  - Sprint task ID: `SPR-013-T02`
 ```
 
 ## CCP-311 - Write Rated Stream Implementation Map
@@ -10089,6 +10964,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:15:45.976Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10096,8 +10972,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
+  - Sprint phase ID: `SPR-013-P1`
+  - Sprint task ID: `SPR-013-T03`
 ```
 
 ## CCP-312 - Shard Loader Integration Batch Manager
@@ -10115,6 +10994,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:16:44.987Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -10122,10 +11002,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; shard integration manager resolved after CCP-313 and CCP-314 were fixed by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-013`
-  - Sprint phase ID: `SPR-013-P1`
-  - Sprint task ID: `SPR-013-T01`
 ```
 
 ## CCP-313 - Add findRatedPuzzleFromShards To puzzleDb
@@ -10143,6 +11021,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:16:45.338Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -10150,10 +11029,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; shard lookup now lives in puzzleDb and is imported from ctrl as originally intended
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
   - Sprint phase ID: `SPR-013-P1`
-  - Sprint task ID: `SPR-013-T01`
+  - Sprint task ID: `SPR-013-T04`
 ```
 
 ## CCP-314 - Wire Shard Fallback Into selectNextRatedPuzzle
@@ -10171,6 +11051,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:17:22.850Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -10178,10 +11059,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; shard fallback wiring typechecks cleanly and uses puzzleDb-owned lookup
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
   - Sprint phase ID: `SPR-013-P1`
-  - Sprint task ID: `SPR-013-T01`
+  - Sprint task ID: `SPR-013-T05`
 ```
 
 ## CCP-315 - Controller And UI Wiring Batch Manager
@@ -10199,6 +11081,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:17:30.528Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10206,8 +11089,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-013`
 ```
 
 ## CCP-316 - Add startRatedSession And Stream State To ctrl
@@ -10225,6 +11108,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:17:30.896Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10232,8 +11116,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
+  - Sprint phase ID: `SPR-013-P2`
+  - Sprint task ID: `SPR-013-T06`
 ```
 
 ## CCP-317 - Add Rated Stream Left-Panel Entry Card To view
@@ -10251,6 +11138,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:18:10.870Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10258,8 +11146,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
+  - Sprint phase ID: `SPR-013-P3`
+  - Sprint task ID: `SPR-013-T08`
 ```
 
 ## CCP-318 - Wire Auto-Advance On Rated Round Completion
@@ -10277,6 +11168,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:19:44.142Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10284,10 +11176,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
   - Sprint phase ID: `SPR-013-P2`
-  - Sprint task ID: `SPR-013-T02`
+  - Sprint task ID: `SPR-013-T07`
 ```
 
 ## CCP-319 - Styles And Integration Review Batch Manager
@@ -10305,6 +11198,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:20:12.220Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10312,8 +11206,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-013`
 ```
 
 ## CCP-320 - Add SCSS For Rated Stream Left-Panel Entry
@@ -10331,6 +11225,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:20:12.606Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10338,8 +11233,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
+  - Sprint phase ID: `SPR-013-P4`
+  - Sprint task ID: `SPR-013-T09`
 ```
 
 ## CCP-321 - Rated Stream Sprint Integration Review
@@ -10357,6 +11255,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-29T00:00:00Z`
   - Started at: `2026-03-30T02:20:43.722Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -10364,8 +11263,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; the shard fallback blockers it missed are now resolved so this historical integration review is no longer actionable
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-013`
+  - Sprint phase ID: `SPR-013-P4`
+  - Sprint task ID: `SPR-013-T10`
 ```
 
 ## CCP-322 - Redesign Openings White Black Flip Control Group
@@ -10383,6 +11285,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T03:54:59Z`
   - Started at: `2026-03-30T03:56:07.658Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -10390,15 +11293,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-323 - Openings Opponent Tool Suite Full Sprint Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-323`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-323`
   - Parent prompt ID: none
   - Batch prompt IDs: `CCP-324`, `CCP-331`, `CCP-339`, `CCP-347`, `CCP-355`, `CCP-363`, `CCP-371`
@@ -10408,15 +11312,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T04:55:45.432Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:04:37.515Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-006`
   - Completed at: `2026-03-31T06:15:25.305Z`
   - Manual checklist:
     - [ ] All 7 child managers/prompts completed: CCP-324, CCP-331, CCP-339, CCP-347, CCP-355, CCP-363, CCP-371
@@ -10442,13 +11347,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T04:58:13.755Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T04:58:13.755Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T01:59:18.731Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P1`
@@ -10470,13 +11377,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:15:42.497Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:15:42.497Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:00:41.378Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P2`
@@ -10498,13 +11407,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:23:23.064Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:23:23.064Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:01:43.361Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P3`
@@ -10526,13 +11437,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:30:28.340Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:30:28.340Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:02:44.550Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P4`
@@ -10542,9 +11455,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-355 - Prep Report Dashboard Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-355`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-355`
   - Parent prompt ID: none
   - Batch prompt IDs: `CCP-356`, `CCP-357`, `CCP-358`, `CCP-359`, `CCP-360`, `CCP-361`, `CCP-362`
@@ -10554,25 +11467,30 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:45:57.267Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:03:41.650Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P5`
   - Sprint task ID: `SPR-006-T05`
+  - Completed at: `2026-04-02T02:03:35.778Z`
+  - Manual checklist:
+    - [ ] Review the validation steps described in CCP-355 and confirm the expected results
 ```
 
 ## CCP-363 - Style Dashboard Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-363`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-363`
   - Parent prompt ID: none
   - Batch prompt IDs: `CCP-364`, `CCP-365`, `CCP-366`, `CCP-367`, `CCP-368`, `CCP-369`, `CCP-370`
@@ -10582,13 +11500,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T06:15:00.263Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: pending
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T02:04:03.696Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P6`
@@ -10604,9 +11524,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-371 - Practice Against Them Tool Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-371`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-371`
   - Parent prompt ID: none
   - Batch prompt IDs: `CCP-372`, `CCP-373`, `CCP-374`, `CCP-375`, `CCP-376`, `CCP-377`, `CCP-378`
@@ -10616,13 +11536,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T06:15:10.221Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: pending
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T02:04:23.994Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P7`
@@ -10652,13 +11574,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T04:58:19.126Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T04:58:19.126Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T01:58:39.027Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P1`
@@ -10680,13 +11604,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T04:59:02.174Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T04:59:02.174Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T01:58:46.528Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P1`
@@ -10708,13 +11634,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T04:59:30.613Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T04:59:30.613Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T01:58:50.663Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P1`
@@ -10736,13 +11664,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:14:24.672Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:14:24.672Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T01:58:56.444Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P1`
@@ -10764,13 +11694,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:14:51.804Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:14:51.804Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T01:59:00.709Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P1`
@@ -10792,13 +11724,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:15:17.934Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:15:17.934Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T01:59:04.767Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P1`
@@ -10820,13 +11754,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:15:54.519Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:15:54.519Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:00:22.809Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P2`
@@ -10848,13 +11784,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:16:41.126Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:16:41.126Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:00:27.626Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P2`
@@ -10876,13 +11814,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:17:38.514Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:17:38.514Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:00:28.872Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P2`
@@ -10904,13 +11844,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:19:43.610Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:19:43.610Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:00:30.146Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P2`
@@ -10932,13 +11874,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:20:51.138Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:20:51.138Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:00:31.399Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P2`
@@ -10960,13 +11904,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:21:41.804Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:21:41.804Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:00:32.652Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P2`
@@ -10988,13 +11934,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:22:57.345Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:22:57.345Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:00:33.908Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P2`
@@ -11016,13 +11964,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:23:32.065Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:23:32.065Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:01:31.171Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P3`
@@ -11044,13 +11994,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:24:51.252Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:24:51.252Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:01:32.429Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P3`
@@ -11072,13 +12024,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:26:00.202Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:26:00.202Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:01:33.672Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P3`
@@ -11100,13 +12054,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:26:56.011Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:26:56.011Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:01:34.934Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P3`
@@ -11128,13 +12084,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:27:48.398Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:27:48.398Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:01:36.278Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P3`
@@ -11156,13 +12114,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:28:43.343Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:28:43.343Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:01:37.638Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P3`
@@ -11184,13 +12144,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:29:58.601Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:29:58.601Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:01:39.017Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P3`
@@ -11212,13 +12174,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:30:34.381Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:30:34.381Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:02:35.567Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P4`
@@ -11240,13 +12204,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:31:45.691Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:31:45.691Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:02:36.854Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P4`
@@ -11268,13 +12234,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:33:21.320Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:33:21.320Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:02:38.152Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P4`
@@ -11296,13 +12264,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:34:39.479Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:34:39.479Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:02:39.413Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P4`
@@ -11324,13 +12294,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:35:57.608Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:35:57.608Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:02:40.692Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P4`
@@ -11352,13 +12324,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:36:48.844Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:36:48.844Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:02:41.991Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P4`
@@ -11380,13 +12354,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:41:09.050Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: passed with notes
-  - Review issues: setActiveTool() does not call persistSession() — tool selection lost on reload without prior navigation; misleading comment says activeTool is not persisted when it is; computeRepertoireProfile/computePrepReport/computePrepReportLines recomputed every render without caching
-  - Reviewed at: `2026-03-30T05:41:09.050Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T02:02:43.275Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P4`
@@ -11408,13 +12384,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:46:07.070Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:46:07.070Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:03:20.841Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P5`
@@ -11436,13 +12414,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T05:47:43.555Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T05:47:43.555Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:03:22.126Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P5`
@@ -11464,13 +12444,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T06:08:19.181Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T06:08:19.181Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:03:23.444Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P5`
@@ -11492,13 +12474,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T06:17:38.845Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T06:17:38.845Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:03:24.758Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P5`
@@ -11520,13 +12504,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T06:24:34.955Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
-  - Reviewed at: `2026-03-30T06:24:34.955Z`
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:03:26.044Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P5`
@@ -11548,6 +12534,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-30T20:38:45.559Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11555,6 +12542,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P5`
@@ -11576,13 +12564,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T01:51:28.632Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Dead recency toggle: recencyMode() state was rendered in toggle UI but never passed to analytics functions at completion time — toggling Recent/All time had no visible effect on Prep Report output. Fix applied in subsequent work (recencyMode() now passed to computeLikelyLineModule in view.ts).
-  - Reviewed at: `2026-04-01T19:35:00.877Z`
-  - Reviewed by: `Claude`
-  - Review method: `full-review`
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:58:04.980Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; prep report recency toggle issue was fixed by later work that passes recencyMode into likely-line analytics
+  - Skip reason: none
   - Fixed by prompt: `CCP-514` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
@@ -11613,6 +12603,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T01:53:06.470Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11620,6 +12611,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P6`
@@ -11646,6 +12638,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T01:55:42.726Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11653,6 +12646,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P6`
@@ -11679,6 +12673,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T01:57:06.155Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11686,6 +12681,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P6`
@@ -11712,6 +12708,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T01:57:41.533Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11719,6 +12716,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P6`
@@ -11747,6 +12745,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T01:59:57.014Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11754,6 +12753,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P6`
@@ -11781,6 +12781,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T02:01:18.699Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11788,6 +12789,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P6`
@@ -11817,13 +12819,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T05:25:08.993Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: Duplication: top3EcoPct rendered as comfort-zone axis in renderStyleAxesBars (style axes section) and again as opening-commitment row in renderStyleBehavioral (behavioral tendencies section) — same metric, nearly identical wording shown to user twice in the same dashboard.
-  - Reviewed at: `2026-04-01T19:35:22.676Z`
-  - Reviewed by: `Claude`
-  - Review method: `full-review`
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: Duplication still present in current Style dashboard: top3EcoPct is rendered both as the Opening variety axis in renderStyleAxesBars and again as the opening-commitment row in renderStyleBehavioral, so the same concentration metric is still shown twice with slightly different wording.
+  - Reviewed at: `2026-04-02T00:58:40.816Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; issue still present in current openings style view
+  - Skip reason: none
+  - Fixed by prompt: `CCP-370-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P6`
@@ -11854,6 +12859,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T05:26:19.767Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11861,6 +12867,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: audit/research only — no code changes; deliverable was identification of board seam for practice state machine
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P7`
@@ -11887,6 +12894,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T05:44:22.370Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11894,6 +12902,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P7`
@@ -11920,6 +12929,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T05:46:13.689Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11927,6 +12937,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P7`
@@ -11953,6 +12964,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T05:47:40.097Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11960,6 +12972,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P7`
@@ -11986,6 +12999,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T05:48:56.786Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -11993,6 +13007,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P7`
@@ -12022,6 +13037,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T05:51:25.380Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12029,6 +13045,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P7`
@@ -12059,13 +13076,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T04:49:15.576Z`
   - Started at: `2026-03-31T05:54:34.360Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: High: movable.color stays stale during practice start/stop due to syncOpeningsBoard FEN guard — opponent pieces may remain draggable when practice starts at same FEN. Medium: planOpponentTurn called in render path for banner display, which calls Math.random() unnecessarily on every redraw.
-  - Reviewed at: `2026-04-01T19:35:46.130Z`
-  - Reviewed by: `Claude`
-  - Review method: `full-review`
-  - Review scope: none
+  - Review outcome: issues resolved
+  - Review issues: Current practice view still has both original review problems: syncOpeningsBoard guards only on FEN so movable.color can stay stale across practice start/stop at the same position, and renderPracticeActivePanel still calls planOpponentTurn during render even though it performs random move selection work.
+  - Reviewed at: `2026-04-02T00:58:41.063Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: backlog re-triage; issues still present in current practice-against-them view
+  - Skip reason: none
+  - Fixed by prompt: `CCP-378-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-006`
   - Sprint phase ID: `SPR-006-P7`
@@ -12096,6 +13116,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:31:48.041Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12103,6 +13124,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12124,6 +13146,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:36:56.369Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12131,6 +13154,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12152,6 +13176,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:38:15.920Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12159,6 +13184,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12180,6 +13206,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:41:25.875Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12187,6 +13214,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12208,6 +13236,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:43:49.912Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12215,6 +13244,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12236,6 +13266,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:46:04.180Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12243,6 +13274,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12264,6 +13296,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:01:43.401Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12271,6 +13304,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12292,6 +13326,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:03:17.370Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12299,6 +13334,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12320,6 +13356,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:04:15.018Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12327,6 +13364,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12348,6 +13386,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:04:56.247Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12355,6 +13394,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12376,6 +13416,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:05:54.551Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12383,6 +13424,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12404,6 +13446,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:32:29.522Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12411,6 +13454,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12432,6 +13476,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:02:29.387Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12439,6 +13484,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12460,6 +13506,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:07:43.927Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12467,6 +13514,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12488,6 +13536,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:08:21.283Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12495,6 +13544,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-004`
   - Sprint phase ID: `SPR-004-P1`
@@ -12516,6 +13566,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:31:47.055Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12523,8 +13574,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-004`
 ```
 
 ## CCP-395 - Improvement Intelligence Foundation Spine Batch Manager
@@ -12542,6 +13593,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:36:55.337Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12549,8 +13601,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-004`
 ```
 
 ## CCP-396 - Improvement Intelligence Weakness Engine Batch Manager
@@ -12568,6 +13620,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:46:03.199Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12575,8 +13628,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-004`
 ```
 
 ## CCP-397 - Improvement Intelligence Stats Surfaces Batch Manager
@@ -12594,6 +13647,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T08:03:16.390Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12601,8 +13655,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-004`
 ```
 
 ## CCP-398 - Improvement Intelligence Platform Full Sprint Batch Manager
@@ -12620,6 +13674,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:20:21Z`
   - Started at: `2026-03-30T06:31:15.201Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12627,8 +13682,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-004`
 ```
 
 ## CCP-399 - Rename Opponents Route In Router
@@ -12646,6 +13701,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:03:55.430Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12653,8 +13709,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P1`
+  - Sprint task ID: `SPR-009-T01`
 ```
 
 ## CCP-400 - Rename Opponents Navigation In Header
@@ -12672,6 +13731,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:04:20.513Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12679,8 +13739,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P1`
+  - Sprint task ID: `SPR-009-T01`
 ```
 
 ## CCP-401 - Rename Opponents Route Handling In Main
@@ -12698,6 +13761,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:04:35.059Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12705,8 +13769,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P1`
+  - Sprint task ID: `SPR-009-T01`
 ```
 
 ## CCP-402 - Rename Opponent Research Titles In View
@@ -12724,6 +13791,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:05:02.228Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12731,8 +13799,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P1`
+  - Sprint task ID: `SPR-009-T02`
 ```
 
 ## CCP-403 - Rename Opponent Research Empty State And Menu Copy
@@ -12750,6 +13821,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:05:03.221Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12757,8 +13829,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P1`
+  - Sprint task ID: `SPR-009-T02`
 ```
 
 ## CCP-404 - Extract Rating Series For Opponent Sparklines
@@ -12776,6 +13851,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:05:47.859Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12783,8 +13859,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P2`
+  - Sprint task ID: `SPR-009-T03`
 ```
 
 ## CCP-405 - Render Opponent Rating Sparkline SVG
@@ -12802,6 +13881,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:07:40.627Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12809,8 +13889,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P2`
+  - Sprint task ID: `SPR-009-T03`
 ```
 
 ## CCP-406 - Add Peak Current And Trend Indicators To Sparklines
@@ -12828,6 +13911,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:07:41.636Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -12835,8 +13919,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; sparkline indicators are present and current code typechecks cleanly
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P2`
+  - Sprint task ID: `SPR-009-T03`
 ```
 
 ## CCP-407 - Integrate Sparklines Into Collection Cards
@@ -12854,6 +13941,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:07:42.653Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12861,8 +13949,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P2`
+  - Sprint task ID: `SPR-009-T03`
 ```
 
 ## CCP-408 - Normalize Termination Headers Into A Termination Profile
@@ -12880,6 +13971,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:10:06.285Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -12887,8 +13979,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; termination profile extraction now narrows the capture safely and typechecks
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P3`
+  - Sprint task ID: `SPR-009-T04`
 ```
 
 ## CCP-409 - Extract Opponent Game Length Profile
@@ -12906,6 +14001,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:10:06.626Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12913,8 +14009,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P3`
+  - Sprint task ID: `SPR-009-T04`
 ```
 
 ## CCP-410 - Render Prep Report Termination Cards
@@ -12932,6 +14031,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:10:06.962Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12939,8 +14039,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P3`
+  - Sprint task ID: `SPR-009-T05`
 ```
 
 ## CCP-411 - Render Prep Report Game Length Cards
@@ -12958,6 +14061,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:10:07.301Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12965,8 +14069,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P3`
+  - Sprint task ID: `SPR-009-T05`
 ```
 
 ## CCP-412 - Define Deviation Point Types And Scan Contract
@@ -12984,6 +14091,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:36.192Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -12991,8 +14099,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T06`
 ```
 
 ## CCP-413 - Walk The Opponent Tree For Deviation Candidates
@@ -13010,6 +14121,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:36.550Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13017,8 +14129,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T06`
 ```
 
 ## CCP-414 - Add Explorer Comparison Adapter For Deviation Detection
@@ -13036,6 +14151,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:36.907Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13043,8 +14159,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T06`
 ```
 
 ## CCP-415 - Add Deviation Scan Rate Limit And Cache
@@ -13062,6 +14181,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:37.262Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13069,8 +14189,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T06`
 ```
 
 ## CCP-416 - Add Progressive Async Deviation Scan Results
@@ -13088,6 +14211,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:37.618Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13095,8 +14219,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T06`
 ```
 
 ## CCP-417 - Add Deviation Markers To Opponent Move Rows
@@ -13114,6 +14241,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:37.967Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -13121,8 +14249,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; deviation badges and theory hints are rendered in move rows in current code
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T07`
 ```
 
 ## CCP-418 - Add Theory Deviations Summary Panel
@@ -13140,6 +14271,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:38.345Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13147,8 +14279,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T07`
 ```
 
 ## CCP-419 - Add Deviation Scan State To Openings Controller
@@ -13166,6 +14301,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:38.689Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13173,8 +14309,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T08`
 ```
 
 ## CCP-420 - Add Manual Deviation Scan Trigger And Progress UI
@@ -13192,6 +14331,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:08:39.067Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13199,8 +14339,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P4`
+  - Sprint task ID: `SPR-009-T08`
 ```
 
 ## CCP-421 - Define Opening Recommendation Types And Confidence Rules
@@ -13218,6 +14361,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:10:07.637Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13225,8 +14369,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P5`
+  - Sprint task ID: `SPR-009-T09`
 ```
 
 ## CCP-422 - Compute Opening Recommendations From Weakness Data
@@ -13244,6 +14391,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:10:07.982Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13251,8 +14399,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P5`
+  - Sprint task ID: `SPR-009-T09`
 ```
 
 ## CCP-423 - Add Recommendation Navigation Targets
@@ -13270,6 +14421,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:10:08.320Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13277,8 +14429,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P5`
+  - Sprint task ID: `SPR-009-T09`
 ```
 
 ## CCP-424 - Render Recommended Preparation Cards
@@ -13296,6 +14451,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:10:08.658Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13303,8 +14459,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P5`
+  - Sprint task ID: `SPR-009-T10`
 ```
 
 ## CCP-425 - Define Trap Pattern Types And Threshold Rules
@@ -13322,6 +14481,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:12:11.058Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13329,8 +14489,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P6`
+  - Sprint task ID: `SPR-009-T11`
 ```
 
 ## CCP-426 - Detect Repeated Loss Trap Patterns
@@ -13348,6 +14511,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:12:11.411Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13355,8 +14519,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P6`
+  - Sprint task ID: `SPR-009-T11`
 ```
 
 ## CCP-427 - Rank Trap Patterns By Severity And Traplikeness
@@ -13374,6 +14541,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:12:11.762Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13381,8 +14549,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P6`
+  - Sprint task ID: `SPR-009-T11`
 ```
 
 ## CCP-428 - Render Vulnerable Positions Section
@@ -13400,6 +14571,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:12:12.120Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13407,8 +14579,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P6`
+  - Sprint task ID: `SPR-009-T12`
 ```
 
 ## CCP-429 - Add Vulnerable Position Navigation Hooks
@@ -13426,6 +14601,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:12:12.471Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13433,8 +14609,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P6`
+  - Sprint task ID: `SPR-009-T12`
 ```
 
 ## CCP-430 - Add Sample Size Labels To Opponent Percentages
@@ -13452,6 +14631,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:08:47.498Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13459,8 +14639,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P7`
+  - Sprint task ID: `SPR-009-T13`
 ```
 
 ## CCP-431 - Add Small Collection Warning Badges
@@ -13478,6 +14661,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:08:48.521Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13485,8 +14669,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P7`
+  - Sprint task ID: `SPR-009-T13`
 ```
 
 ## CCP-432 - Add Prep Report Small Sample Banner
@@ -13504,6 +14691,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:08:49.530Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13511,8 +14699,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P7`
+  - Sprint task ID: `SPR-009-T13`
 ```
 
 ## CCP-433 - Deemphasize Unreliable Opponent Stats
@@ -13530,6 +14721,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:08:50.529Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13537,8 +14729,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P7`
+  - Sprint task ID: `SPR-009-T13`
 ```
 
 ## CCP-434 - Add Recency Mode State To Opponent Research
@@ -13556,6 +14751,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:12.812Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13563,8 +14759,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P8`
+  - Sprint task ID: `SPR-009-T14`
 ```
 
 ## CCP-435 - Make Recency Weighted Ordering The Default
@@ -13582,6 +14781,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:13.173Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13589,8 +14789,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P8`
+  - Sprint task ID: `SPR-009-T14`
 ```
 
 ## CCP-436 - Add Recent First Toggle To Prep Report
@@ -13608,6 +14811,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:13.527Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13615,8 +14819,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P8`
+  - Sprint task ID: `SPR-009-T14`
 ```
 
 ## CCP-437 - Add Recency Auto Fallback Logic
@@ -13634,6 +14841,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:13.873Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13641,8 +14849,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P8`
+  - Sprint task ID: `SPR-009-T14`
 ```
 
 ## CCP-438 - Render Recency Fallback Notice
@@ -13660,6 +14871,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:14.236Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13667,8 +14879,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P8`
+  - Sprint task ID: `SPR-009-T14`
 ```
 
 ## CCP-439 - Add SavedVariation Type For Training
@@ -13686,6 +14901,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:14.587Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13693,8 +14909,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P9`
+  - Sprint task ID: `SPR-009-T15`
 ```
 
 ## CCP-440 - Add Training Variations Store To Openings DB
@@ -13712,6 +14931,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:14.934Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13719,8 +14939,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P9`
+  - Sprint task ID: `SPR-009-T15`
 ```
 
 ## CCP-441 - Add Saved Variation DB Helpers
@@ -13738,6 +14961,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:15.298Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13745,8 +14969,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P9`
+  - Sprint task ID: `SPR-009-T15`
 ```
 
 ## CCP-442 - Add Save To Training In Repertoire Move List
@@ -13764,6 +14991,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:15.653Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13771,8 +14999,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P9`
+  - Sprint task ID: `SPR-009-T16`
 ```
 
 ## CCP-443 - Add Save To Training In Likely Lines
@@ -13790,6 +15021,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:16.004Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13797,8 +15029,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P9`
+  - Sprint task ID: `SPR-009-T16`
 ```
 
 ## CCP-444 - Add Save To Training In Target Lines
@@ -13816,6 +15051,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:16.365Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13823,8 +15059,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P9`
+  - Sprint task ID: `SPR-009-T16`
 ```
 
 ## CCP-445 - Add Saved Confirmation UX For Training Variations
@@ -13842,6 +15081,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:18:16.723Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13849,8 +15089,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P9`
+  - Sprint task ID: `SPR-009-T16`
 ```
 
 ## CCP-446 - Research Low Depth Opponent Collection Analysis Feasibility
@@ -13868,6 +15111,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T17:01:11.571Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13875,8 +15119,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P10`
+  - Sprint task ID: `SPR-009-T17`
 ```
 
 ## CCP-447 - Research Opponent Clock Data Extraction Feasibility
@@ -13894,6 +15141,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T17:01:12.623Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13901,8 +15149,11 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-009`
+  - Sprint phase ID: `SPR-009-P10`
+  - Sprint task ID: `SPR-009-T18`
 ```
 
 ## CCP-448 - Review Opponent Research Platform Sprint Integration
@@ -13920,6 +15171,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T17:01:35.630Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -13927,8 +15179,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; opponent-research integration review is no longer actionable after the underlying blockers were resolved
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-449 - Opponent Research Rename And Shell Batch Manager
@@ -13946,6 +15198,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:03:47.960Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -13953,8 +15206,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-450 - Opponent Research Sparkline And Honesty Batch Manager
@@ -13972,6 +15225,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:05:43.231Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -13979,8 +15233,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; sparkline section manager resolved after CCP-406 was fixed by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-451 - Opponent Research Termination And Recommendations Batch Manager
@@ -13998,6 +15252,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:09:50.751Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -14005,8 +15260,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; termination-profile section manager resolved after CCP-408 was fixed by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-452 - Opponent Research Deviation Scan Batch Manager
@@ -14024,6 +15279,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:12:27.175Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -14031,8 +15287,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; deviation section manager resolved after CCP-417 was fixed by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-453 - Opponent Research Traps And Recency Batch Manager
@@ -14050,6 +15306,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:11:38.178Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14057,8 +15314,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-454 - Opponent Research Training Variation Batch Manager
@@ -14076,6 +15333,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T14:13:52.845Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14083,8 +15341,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-455 - Opponent Research Feasibility Research Batch Manager
@@ -14102,6 +15360,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T17:01:10.505Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14109,8 +15368,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-456 - Opponent Research Implementation Batch Manager
@@ -14128,6 +15387,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:03:46.948Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -14135,8 +15395,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; opponent-research section manager resolved after CCP-450, CCP-451, and CCP-452 were resolved
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-457 - Opponent Research Platform Full Sprint Batch Manager
@@ -14154,6 +15414,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-03-30T06:45:54Z`
   - Started at: `2026-03-30T08:03:21.356Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -14161,8 +15422,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; full opponent-research sprint manager resolved after CCP-448 and CCP-456 were resolved
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-009`
 ```
 
 ## CCP-458 - Fix exactOptionalPropertyTypes Violations In openings/view.ts
@@ -14180,6 +15441,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:25:19.662Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14187,6 +15449,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:29:01.182Z`
 ```
@@ -14206,6 +15469,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:27:22.934Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14213,6 +15477,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:29:30.768Z`
 ```
@@ -14232,6 +15497,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:27:54.938Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14239,6 +15505,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:37:57.217Z`
   - Manual checklist:
@@ -14262,6 +15529,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:28:15.714Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14269,6 +15537,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:39:06.029Z`
   - Manual checklist:
@@ -14290,6 +15559,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:29:32.336Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14297,6 +15567,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14315,6 +15586,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:32:08.260Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14322,6 +15594,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14340,6 +15613,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:44:40.399Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14347,6 +15621,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:29:31.123Z`
   - Completion errors: Skipped: intentionally deferred feature, not dead code
@@ -14367,6 +15642,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:46:01.902Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14374,6 +15650,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14392,6 +15669,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:46:27.679Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14399,6 +15677,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14417,6 +15696,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:46:54.514Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14424,6 +15704,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14442,6 +15723,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:47:34.248Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14449,6 +15731,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14467,6 +15750,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:49:08.226Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14474,6 +15758,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14492,13 +15777,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:50:38.309Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: existing review outcome retained during post-457 campaign re-close
-  - Reviewed at: `2026-04-01T17:34:46.536Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:58:04.661Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
-  - Review scope: campaign re-close of suspicious reviewed state
+  - Review scope: backlog re-triage; retro bulk-save now persists first-attempt outcomes via retro attempt saving and lastRetroOutcomes flow
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14517,13 +15804,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:51:09.352Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: existing review outcome retained during post-457 campaign re-close
-  - Reviewed at: `2026-04-01T17:34:48.470Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:58:01.757Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
-  - Review scope: campaign re-close of suspicious reviewed state
+  - Review scope: backlog re-triage; rated shard lookup now lives in puzzleDb.ts and ctrl.ts imports the data-layer function
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14542,6 +15831,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:33Z`
   - Started at: `2026-03-30T17:51:37.463Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14549,6 +15839,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14567,6 +15858,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T17:21:56Z`
   - Started at: `2026-03-30T17:24:59.565Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed with notes
   - Review issues: existing review outcome retained during post-457 campaign re-close
@@ -14574,6 +15866,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: campaign re-close of suspicious reviewed state
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -14592,6 +15885,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T01:27:48.144Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -14599,6 +15893,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; performance manager resolved after CCP-507 and its children were resolved by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:28:04.073Z`
   - Manual checklist:
@@ -14629,6 +15924,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:46:02.335Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14636,6 +15932,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:46:30.503Z`
   - Manual checklist:
@@ -14658,6 +15955,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:46:53.826Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14665,6 +15963,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:46:58.259Z`
   - Manual checklist:
@@ -14686,6 +15985,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:47:03.743Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14693,6 +15993,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:47:24.650Z`
   - Manual checklist:
@@ -14716,6 +16017,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:47:29.598Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14723,6 +16025,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:47:50.555Z`
   - Manual checklist:
@@ -14745,6 +16048,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:47:53.997Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14752,6 +16056,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:48:05.893Z`
   - Manual checklist:
@@ -14774,6 +16079,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:48:09.629Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14781,6 +16087,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:48:21.242Z`
   - Manual checklist:
@@ -14802,6 +16109,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:48:24.683Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14809,6 +16117,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:48:41.148Z`
   - Manual checklist:
@@ -14831,6 +16140,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:48:44.764Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14838,6 +16148,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:49:14.548Z`
   - Manual checklist:
@@ -14860,6 +16171,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:49:19.237Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14867,6 +16179,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:50:02.927Z`
   - Manual checklist:
@@ -14890,6 +16203,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T20:44:58.200Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14897,6 +16211,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T20:50:17.120Z`
   - Manual checklist:
@@ -14926,6 +16241,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:08:49.742Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14933,6 +16249,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:09:19.658Z`
   - Manual checklist:
@@ -14958,6 +16275,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:09:27.273Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14965,6 +16283,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:09:59.419Z`
   - Manual checklist:
@@ -14989,6 +16308,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:10:03.718Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -14996,6 +16316,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:11:47.060Z`
   - Manual checklist:
@@ -15021,6 +16342,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:11:52.128Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15028,6 +16350,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:12:44.553Z`
   - Manual checklist:
@@ -15051,6 +16374,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:12:52.767Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15058,6 +16382,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:13:37.531Z`
   - Manual checklist:
@@ -15081,6 +16406,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:06:10.198Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15088,6 +16414,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:13:49.527Z`
   - Manual checklist:
@@ -15114,6 +16441,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:42:55.919Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15121,6 +16449,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:43:49.632Z`
   - Manual checklist:
@@ -15144,6 +16473,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:43:56.802Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15151,6 +16481,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:45:00.341Z`
   - Manual checklist:
@@ -15174,6 +16505,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:45:06.736Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15181,6 +16513,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:56:13.965Z`
   - Manual checklist:
@@ -15204,6 +16537,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:56:18.776Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15211,6 +16545,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:12:42.772Z`
   - Manual checklist:
@@ -15234,6 +16569,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T00:12:48.188Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15241,6 +16577,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:13:31.048Z`
   - Manual checklist:
@@ -15264,6 +16601,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:41:24.861Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15271,6 +16609,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:13:43.200Z`
   - Manual checklist:
@@ -15298,6 +16637,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T00:47:11.460Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15305,6 +16645,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:49:00.482Z`
   - Manual checklist:
@@ -15327,6 +16668,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T00:49:05.103Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15334,6 +16676,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:49:52.817Z`
   - Manual checklist:
@@ -15357,6 +16700,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T00:49:58.197Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15364,6 +16708,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:51:15.300Z`
   - Manual checklist:
@@ -15388,6 +16733,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T00:51:20.510Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15395,6 +16741,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:53:22.447Z`
   - Manual checklist:
@@ -15420,6 +16767,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T00:53:27.587Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15427,6 +16775,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:54:54.814Z`
   - Manual checklist:
@@ -15453,6 +16802,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T00:46:38.937Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15460,6 +16810,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T00:55:09.696Z`
   - Manual checklist:
@@ -15488,6 +16839,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-30T21:04:58.614Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: Pagination landed, but ordinary filter changes do not reset the current page to 0 as the prompt explicitly required; only the clear-filters path does.
@@ -15495,6 +16847,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-503-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:16:10.053Z`
@@ -15521,6 +16874,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T01:16:15.489Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: The route-loading skeleton work only landed for the analysis-game path; the broader async routes named in the prompt (games, stats, puzzles) still do not render structured skeleton shells during initial load.
@@ -15528,6 +16882,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-504-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:16:50.602Z`
@@ -15552,6 +16907,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T01:16:55.901Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: The import button text now supports a game count, but both import adapters still set the count only once after the full fetch/parse finishes instead of updating it live during import as the prompt required.
@@ -15559,6 +16915,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-505-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:18:03.423Z`
@@ -15584,6 +16941,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T01:18:08.526Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15591,6 +16949,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:18:31.890Z`
   - Manual checklist:
@@ -15614,6 +16973,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T22:00:00Z`
   - Started at: `2026-03-31T01:13:58.997Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -15621,6 +16981,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; games performance manager resolved after CCP-503, CCP-504, and CCP-505 follow-up fixes landed
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:18:44.957Z`
   - Manual checklist:
@@ -15646,6 +17007,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T00:00:00Z`
   - Started at: `2026-03-31T01:44:58.677Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed with notes
   - Review issues: Current tree still matches the earlier note: the Opening Tree / Repertoire split was already materially present rather than requiring a large new implementation step.
@@ -15653,6 +17015,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:46:53.032Z`
   - Manual checklist:
@@ -15678,6 +17041,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T00:00:00Z`
   - Started at: `2026-03-31T01:32:25.893Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15685,6 +17049,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:36:12.272Z`
   - Manual checklist:
@@ -15708,6 +17073,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T00:00:00Z`
   - Started at: `2026-03-31T01:32:24.764Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15715,6 +17081,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T01:36:11.064Z`
   - Manual checklist:
@@ -15739,13 +17106,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T23:30:00Z`
   - Started at: `2026-03-30T21:00:24.129Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: needs rework
-  - Review issues: existing review outcome retained during post-457 campaign re-close
-  - Reviewed at: `2026-04-01T17:34:47.507Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:58:02.141Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
-  - Review scope: campaign re-close of suspicious reviewed state
+  - Review scope: backlog re-triage; follow-up bug is resolved by the current retro bulk-save and per-candidate outcome persistence path
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:01:03.807Z`
   - Manual checklist:
@@ -15771,13 +17140,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T23:30:00Z`
   - Started at: `2026-03-30T21:01:10.971Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: needs rework
-  - Review issues: existing review outcome retained during post-457 campaign re-close
-  - Reviewed at: `2026-04-01T17:34:49.459Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:58:04.266Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
-  - Review scope: campaign re-close of suspicious reviewed state
+  - Review scope: backlog re-triage; follow-up ownership move is resolved because findRatedPuzzleInShards now lives in puzzleDb.ts
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-30T21:01:29.836Z`
   - Completion errors: Function intentionally lives in ctrl.ts — comment at line 1746 explains it bridges shardLoader (network/file) and puzzleDb (IDB). Moving to puzzleDb would violate IDB-only layer boundary. Moving to shardLoader would add IDB dependency to a pure I/O module. ctrl.ts is the correct owner as the controller that bridges these layers.
@@ -15803,6 +17174,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-03-31T01:30:00.000Z`
   - Started at: `2026-03-31T01:51:22.653Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: Manager cleared before children were reviewed. Children now reviewed: 15 reviewed — 10 passed (CCP-364 through 369, 372 through 377), 3 had issues (CCP-362 recency toggle dead at completion; CCP-370 top3EcoPct duplication; CCP-378 movable.color stale + planOpponentTurn in render).
@@ -15810,9 +17182,9 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `manager-plus-children`
   - Review scope: re-review after child review cleanup
+  - Skip reason: none
   - Fixed by prompt: `CCP-511-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-006`
   - Completed at: `2026-03-31T05:56:09.444Z`
   - Manual checklist:
     - [ ] Build passes: npm run build + npx tsc --noEmit
@@ -15838,6 +17210,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T00:00:00Z`
   - Started at: `2026-03-31T01:59:10.541Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15845,6 +17218,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T02:00:20.639Z`
   - Manual checklist:
@@ -15870,6 +17244,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-30T00:00:00Z`
   - Started at: `2026-03-31T05:42:24.138Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: The active color button does not show only the current import username as requested; the inactive side still renders "Opponents" in the reserved username line, which changes the meaning of the control instead of leaving that top line empty when inactive.
@@ -15877,6 +17252,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-513-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T05:43:11.118Z`
@@ -15903,6 +17279,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:00:53.884Z`
   - Started at: `2026-03-31T06:05:19.331Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15910,6 +17287,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixes prompt: `CCP-362` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T06:08:05.340Z`
@@ -15937,6 +17315,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:21:29.630Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -15944,6 +17323,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P1`
@@ -15970,6 +17350,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:22:05.852Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: studyDb can be the first opener of patzer-pro, but its onupgradeneeded handler is a no-op; a fresh #/study boot can upgrade the DB version without creating the study stores
@@ -15977,6 +17358,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-520-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
@@ -15993,9 +17375,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-520-F1 - Fix Study DB Fresh-Opener Store Creation Gap
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-520-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-520`
   - Parent prompt ID: `CCP-520`
   - Batch prompt IDs: none
@@ -16005,13 +17387,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:06:00.000Z`
   - Started at: `2026-04-01T18:34:25.723Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.541Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; shared DB upgrade now creates study stores on study-first boot
+  - Skip reason: none
   - Fixes prompt: `CCP-520` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:35:22.176Z`
@@ -16036,6 +17420,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:23:12.252Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16043,6 +17428,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P1`
@@ -16072,6 +17458,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:21:22.219Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -16079,8 +17466,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; study phase manager resolved after CCP-520 follow-up fixed the fresh-opener store gap
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
   - Completed at: `2026-03-31T15:24:35.868Z`
   - Manual checklist:
     - [ ] #/study route renders placeholder
@@ -16106,6 +17493,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:24:53.610Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16113,6 +17501,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P2`
@@ -16139,6 +17528,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:25:45.805Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16146,6 +17536,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P2`
@@ -16173,6 +17564,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:27:40.463Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16180,6 +17572,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P2`
@@ -16206,6 +17599,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:31:58.762Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16213,6 +17607,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P2`
@@ -16240,6 +17635,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:24:52.620Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16247,8 +17643,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
   - Completed at: `2026-03-31T15:35:15.744Z`
   - Manual checklist:
     - [ ] Right-click any move → 'Save to Library' context menu item present and functional
@@ -16274,6 +17670,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:35:31.137Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16281,6 +17678,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P3`
@@ -16306,6 +17704,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:36:05.376Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16313,6 +17712,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P3`
@@ -16342,6 +17742,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T16:08:20.484Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16349,6 +17750,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P3`
@@ -16377,6 +17779,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T16:09:49.809Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16384,6 +17787,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P3`
@@ -16413,6 +17817,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T15:35:30.134Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16420,8 +17825,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
   - Completed at: `2026-03-31T16:33:38.681Z`
   - Manual checklist:
     - [ ] #/study shows library browser with saved studies listed
@@ -16450,6 +17855,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T16:34:10.965Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16457,6 +17863,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P4`
@@ -16486,6 +17893,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T16:37:48.989Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16493,6 +17901,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P4`
@@ -16521,6 +17930,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T16:48:27.318Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16528,6 +17938,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P4`
@@ -16557,6 +17968,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T16:57:49.528Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16564,6 +17976,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P4`
@@ -16595,6 +18008,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T20:30:21.273Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16602,6 +18016,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P4`
@@ -16632,6 +18047,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T20:31:56.370Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16639,6 +18055,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P4`
@@ -16669,6 +18086,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T20:36:30.709Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16676,6 +18094,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P4`
@@ -16706,6 +18125,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T20:46:53.374Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16713,6 +18133,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P4`
@@ -16744,6 +18165,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T20:50:54.684Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -16751,6 +18173,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Fixed by prompt: `CCP-599` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
@@ -16782,6 +18205,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T16:34:09.931Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16789,8 +18213,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
   - Completed at: `2026-03-31T20:57:28.204Z`
   - Manual checklist:
     - [ ] Navigate to #/study/:id — board renders with saved game
@@ -16823,6 +18247,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T20:57:53.480Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16830,6 +18255,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P5`
@@ -16860,6 +18286,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T21:39:08.365Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16867,6 +18294,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P5`
@@ -16895,6 +18323,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T21:39:33.884Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16902,6 +18331,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P5`
@@ -16932,6 +18362,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T21:40:06.417Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16939,6 +18370,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P5`
@@ -16968,6 +18400,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T21:40:36.031Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -16975,6 +18408,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P5`
@@ -17005,6 +18439,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-03-31T20:57:36.821Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -17012,8 +18447,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: re-review after missing provenance
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
   - Completed at: `2026-03-31T21:41:32.292Z`
   - Manual checklist:
     - [ ] npx tsc --noEmit passes for all 5 new modules (scheduler, grader, drillCtrl, sessionBuilder, extractLine)
@@ -17029,9 +18464,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-549 - Board adapter for drill mode
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-549`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-549`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17041,13 +18476,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T19:39:04.171Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:05:24.286Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P6`
@@ -17061,9 +18498,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-550 - Drill session UI — active view
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-550`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-550`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17073,30 +18510,32 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T19:40:27.647Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:07:42.376Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P6`
   - Sprint task ID: `SPR-015-T27`
   - Completed at: `2026-04-01T19:54:32.938Z`
   - Manual checklist:
-    - [ ] drillView.ts exports renderDrillView and initDrillView — confirm no build errors
-    - [ ] Style drill-session renders correctly after connecting entry point in CCP-552
-    - [ ] Feedback strip shows 'Your turn' / 'Correct\!' / 'Try again (N left)' / 'The move was X' per state
+    - [ ] drillView.ts exports initDrillView and renderDrillView — confirm no build errors
+    - [ ] Drill session renders sequence label and progress bar correctly
+    - [ ] Feedback strip shows 'Your turn' / 'Correct!' / 'Try again (N left)' / 'The move was X' per state
 ```
 
 ## CCP-551 - Drill session summary
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-551`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-551`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17106,13 +18545,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T19:54:38.106Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:08:07.786Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P6`
@@ -17128,9 +18569,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-552 - Practice entry from study detail
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-552`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-552`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17140,13 +18581,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T19:56:49.102Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:08:35.916Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P6`
@@ -17175,6 +18618,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: issues resolved
   - Review issues: Manager never actually ran: all required child prompts CCP-549 through CCP-552 remain queued-pending, so Phase 5 was never executed.
@@ -17182,17 +18626,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-only`
   - Review scope: manager-only review of never-executed batch
+  - Skip reason: none
   - Fixed by prompt: `CCP-553-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
 ```
 
 ## CCP-554 - Progress persistence wiring
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-554`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-554`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17202,13 +18646,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T20:05:48.617Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:09:49.933Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P7`
@@ -17223,9 +18669,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-555 - Practice dashboard
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-555`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-555`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17235,13 +18681,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T20:07:11.752Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:10:01.982Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P7`
@@ -17258,9 +18706,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-556 - Learn flow implementation
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-556`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-556`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17270,13 +18718,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T20:15:41.954Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:10:13.575Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P7`
@@ -17304,6 +18754,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: issues resolved
   - Review issues: Manager never actually ran: all required child prompts CCP-554 through CCP-556 remain queued-pending, so Phase 6 was never executed.
@@ -17311,17 +18762,17 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-only`
   - Review scope: manager-only review of never-executed batch
+  - Skip reason: none
   - Fixed by prompt: `CCP-557-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
 ```
 
 ## CCP-558 - Practice from here context action
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-558`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-558`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17331,13 +18782,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T20:20:37.820Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:11:02.028Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P8`
@@ -17353,9 +18806,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-559 - Practice line manager panel
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-559`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-559`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17365,13 +18818,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T20:34:39.450Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:11:14.586Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P8`
@@ -17389,9 +18844,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-560 - Sequence scope selection UI
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-560`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-560`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -17401,13 +18856,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: `2026-04-01T20:37:34.680Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:11:27.890Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-015`
   - Sprint phase ID: `SPR-015-P8`
@@ -17436,6 +18893,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T06:37:40.000Z`
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: issues resolved
   - Review issues: Manager never actually ran: all required child prompts CCP-558 through CCP-560 remain queued-pending, so Phase 7 was never executed.
@@ -17443,9 +18901,9 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-only`
   - Review scope: manager-only review of never-executed batch
+  - Skip reason: none
   - Fixed by prompt: `CCP-561-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
 ```
 
 ## CCP-563 - Study Page Phases 0-4 Super-Manager
@@ -17463,6 +18921,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:18:24.000Z`
   - Started at: `2026-03-31T15:19:24.766Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -17470,8 +18929,8 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; study sprint manager resolved after CCP-522 was resolved by later follow-up work
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-015`
   - Completed at: `2026-03-31T21:41:43.485Z`
   - Manual checklist:
     - [ ] #/study loads the study library browser
@@ -17504,15 +18963,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:33:55.858Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: engine-strength batch manager remains blocked by child managers CCP-565, CCP-571, and CCP-577 until their durable research/design artifact follow-ups CCP-566-F1, CCP-572-F1, and CCP-578-F1 are completed
-  - Reviewed at: `2026-04-01T22:56:31.211Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:35:57.437Z`
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
-  - Review scope: backlog re-triage; manager-only fallout pending child artifact fixes
+  - Review scope: manager re-review after CCP-565, CCP-571, CCP-577, and CCP-594 artifact debt was resolved
+  - Skip reason: none
   - Execution target: `Claude Code`
-  - Sprint ID: `SPR-003`
   - Completed at: `2026-03-31T16:59:24.807Z`
   - Manual checklist:
     - [ ] All 5 phases implemented and building clean
@@ -17536,13 +18996,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:34:17.303Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: manager remains blocked by child prompt CCP-566, whose missing durable research artifact is being handled in follow-up CCP-566-F1
-  - Reviewed at: `2026-04-01T22:53:16.853Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:35:57.371Z`
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
-  - Review scope: backlog re-triage; manager-only fallout pending child artifact fix
+  - Review scope: manager re-review after CCP-566-F1 preserved the missing research artifact and all child states are current
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P1`
@@ -17569,13 +19031,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:34:24.852Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
+  - Review outcome: issues resolved
   - Review issues: the requested SF18 WASM strength-limiting research was not preserved as a durable repo artifact; follow-up CCP-566-F1 created
   - Reviewed at: `2026-04-01T22:53:04.432Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; artifact still matters for engine-strength follow-up work
+  - Skip reason: none
+  - Fixed by prompt: `CCP-566-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P1`
@@ -17602,6 +19067,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:35:58.378Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -17609,6 +19075,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P1`
@@ -17634,6 +19101,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:36:32.009Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -17641,6 +19109,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P1`
@@ -17666,6 +19135,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:37:05.840Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -17673,6 +19143,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P1`
@@ -17698,13 +19169,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:49:13.695Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: manager remains blocked by child prompt CCP-572, whose missing durable research artifact is being handled in follow-up CCP-572-F1
-  - Reviewed at: `2026-04-01T22:53:16.960Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:35:57.417Z`
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
-  - Review scope: backlog re-triage; manager-only fallout pending child artifact fix
+  - Review scope: manager re-review after CCP-572-F1 preserved the missing research artifact and all child states are current
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P2`
@@ -17731,13 +19204,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:49:52.086Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
+  - Review outcome: issues resolved
   - Review issues: the engine lifecycle and mode-switch research was not preserved as a durable repo artifact; follow-up CCP-572-F1 created
   - Reviewed at: `2026-04-01T22:53:04.489Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; artifact still matters for engine mode work
+  - Skip reason: none
+  - Fixed by prompt: `CCP-572-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P2`
@@ -17764,6 +19240,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:50:09.110Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -17771,6 +19248,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P2`
@@ -17797,6 +19275,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:50:49.326Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: the controller adds get/set helpers but never initializes the stored strength level on module load as the prompt required
@@ -17804,6 +19283,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-574-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
@@ -17831,6 +19311,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:51:15.633Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -17838,6 +19319,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved after CCP-574 was fixed
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P2`
@@ -17864,13 +19346,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:51:42.037Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
-  - Review issues: manager remains blocked by child prompt CCP-578, whose missing durable design artifact is being handled in follow-up CCP-578-F1
-  - Reviewed at: `2026-04-01T22:53:16.908Z`
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T00:35:57.384Z`
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
-  - Review scope: backlog re-triage; manager-only fallout pending child artifact fix
+  - Review scope: manager re-review after CCP-578-F1 preserved the missing design artifact and all child states are current
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P3`
@@ -17897,13 +19381,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:51:46.445Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
+  - Review outcome: issues resolved
   - Review issues: the play-mode bestmove routing design was not preserved as a durable repo artifact; follow-up CCP-578-F1 created
   - Reviewed at: `2026-04-01T22:53:16.869Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; artifact still matters for engine play-mode maintenance
+  - Skip reason: none
+  - Fixed by prompt: `CCP-578-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P3`
@@ -17930,6 +19417,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:52:07.399Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -17937,6 +19425,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P3`
@@ -17963,6 +19452,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:52:46.578Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: playMoveWithDelay schedules a raw timeout, but cancelPlayMove never clears that timer, so canceling during the thinking delay can still dispatch a later engine request
@@ -17970,6 +19460,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-580-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
@@ -17997,6 +19488,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:53:10.169Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -18004,6 +19496,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved after CCP-580 was fixed
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P3`
@@ -18030,6 +19523,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:53:37.392Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -18037,6 +19531,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; manager fallout resolved after inherited delayed-request issues were fixed
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P4`
@@ -18063,6 +19558,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:53:51.351Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -18070,6 +19566,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P4`
@@ -18096,6 +19593,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:54:30.162Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -18103,6 +19601,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; inherited delayed-request bug resolved by later CCP-580 fix
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P4`
@@ -18129,6 +19628,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:56:00.598Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -18136,6 +19636,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P4`
@@ -18162,6 +19663,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:56:21.705Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -18169,6 +19671,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; validation miss resolved after later CCP-580 fix
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P4`
@@ -18195,6 +19698,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:56:50.209Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -18202,6 +19706,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `manager-plus-children`
   - Review scope: backlog re-triage; phase manager resolved after CCP-588 and CCP-592 artifact/copy issues were handled by later work
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P5`
@@ -18228,6 +19733,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:56:54.875Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -18235,6 +19741,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; resolved by later work in CCP-588-F1
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P5`
@@ -18261,6 +19768,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:57:17.946Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -18268,6 +19776,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P5`
@@ -18294,6 +19803,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:57:45.848Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed with notes
   - Review issues: Selector is embedded and updates correctly, but the setup panel still contains stale copy about a start button even though selecting a color immediately starts practice.
@@ -18301,6 +19811,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P5`
@@ -18327,6 +19838,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:58:17.279Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -18334,6 +19846,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
   - Sprint phase ID: `SPR-003-P5`
@@ -18360,6 +19873,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T15:34:50.820Z`
   - Started at: `2026-03-31T16:58:47.126Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: The final validation prompt did not call out the still-confusing practice setup copy claiming a start button appears even though selecting a color immediately starts practice, so the Phase 5 UI was not fully validated.
@@ -18367,6 +19881,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-592-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Sprint ID: `SPR-003`
@@ -18394,6 +19909,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T17:24:16.363Z`
   - Started at: `2026-03-31T20:35:01.348Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -18401,6 +19917,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T20:37:54.411Z`
   - Manual checklist:
@@ -18426,13 +19943,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T17:24:16.363Z`
   - Started at: `2026-03-31T20:47:14.034Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: issues found
+  - Review outcome: issues resolved
   - Review issues: the LFYM moment-selection audit was not preserved as a durable repo artifact; follow-up CCP-594-F1 created
   - Reviewed at: `2026-04-01T22:53:16.817Z`
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; audit artifact still matters for retrospection follow-up work
+  - Skip reason: none
+  - Fixed by prompt: `CCP-594-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T20:51:34.359Z`
   - Manual checklist:
@@ -18458,6 +19978,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T21:42:03.926Z`
   - Started at: `2026-03-31T21:42:58.904Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: none
@@ -18465,6 +19986,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `follow-up-recheck`
   - Review scope: backlog re-triage; child eval-diff issues resolved by later CCP-597-F1 and CCP-598-F1 work
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T21:53:17.381Z`
   - Manual checklist:
@@ -18490,6 +20012,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T21:42:03.926Z`
   - Started at: `2026-03-31T21:43:03.002Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -18497,6 +20020,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T21:45:20.497Z`
   - Manual checklist:
@@ -18523,6 +20047,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T21:42:03.926Z`
   - Started at: `2026-03-31T21:45:24.574Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: requestRetroBackgroundEval only refreshes evalDiff from existing evalCache; it never performs the silent background engine evaluation or next-candidate prefetch this prompt required
@@ -18530,6 +20055,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-597-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T21:50:49.043Z`
@@ -18556,6 +20082,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-03-31T21:42:03.926Z`
   - Started at: `2026-03-31T21:50:52.174Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: issues resolved
   - Review issues: retroView renders evalDiff whenever present, so clamped +0.0 placeholder output can still appear even though the prompt said win/view should hide zero or negative diffs
@@ -18563,6 +20090,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: leaf only
+  - Skip reason: none
   - Fixed by prompt: `CCP-598-F1` (issues from this review were resolved by that prompt)
   - Execution target: `Claude Code`
   - Completed at: `2026-03-31T21:53:16.315Z`
@@ -18578,9 +20106,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-503-F1 - Reset Games Pagination On Filter Changes
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-503-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-503`
   - Parent prompt ID: `CCP-503`
   - Batch prompt IDs: none
@@ -18590,13 +20118,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:42:18.966Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.698Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; ordinary games filters now reset pagination to page 0
+  - Skip reason: none
   - Fixes prompt: `CCP-503` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:43:16.913Z`
@@ -18609,9 +20139,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-504-F1 - Extend Route Skeletons Beyond Analysis Game
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-504-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-504`
   - Parent prompt ID: `CCP-504`
   - Batch prompt IDs: none
@@ -18621,13 +20151,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:43:23.071Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.637Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; async games/puzzles/opponents/stats routes now render structured loading shells
+  - Skip reason: none
   - Fixes prompt: `CCP-504` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:44:59.619Z`
@@ -18640,9 +20172,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-505-F1 - Make Import Count Update During Import
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-505-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-505`
   - Parent prompt ID: `CCP-505`
   - Batch prompt IDs: none
@@ -18652,13 +20184,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:45:04.443Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.810Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; header import count now updates during active adapter progress
+  - Skip reason: none
   - Fixes prompt: `CCP-505` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:46:51.621Z`
@@ -18671,9 +20205,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-513-F1 - Keep Inactive Username Slot Empty In Color Toggle
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-513-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-513`
   - Parent prompt ID: `CCP-513`
   - Batch prompt IDs: none
@@ -18683,13 +20217,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:46:56.255Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.752Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; inactive color button username line now stays empty
+  - Skip reason: none
   - Fixes prompt: `CCP-513` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:47:29.350Z`
@@ -18702,9 +20238,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-574-F1 - Initialize Stored Play Strength On Module Load
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-574-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-574`
   - Parent prompt ID: `CCP-574`
   - Batch prompt IDs: none
@@ -18714,13 +20250,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:36:06.541Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.684Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; stored play strength now initializes on module load
+  - Skip reason: none
   - Fixes prompt: `CCP-574` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:36:52.532Z`
@@ -18733,9 +20271,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-580-F1 - Make Delayed Play-Move Requests Cancellable
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-580-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-580`
   - Parent prompt ID: `CCP-580`
   - Batch prompt IDs: none
@@ -18745,13 +20283,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:35:27.201Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.714Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; delayed engine request is now cancellable before timeout fire
+  - Skip reason: none
   - Fixes prompt: `CCP-580` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:36:02.218Z`
@@ -18764,9 +20304,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-592-F1 - Fix Practice Setup Copy For Immediate Start
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-592-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-592`
   - Parent prompt ID: `CCP-592`
   - Batch prompt IDs: none
@@ -18776,13 +20316,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:47:34.196Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.622Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; practice setup copy now matches immediate-start behavior
+  - Skip reason: none
   - Fixes prompt: `CCP-592` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:48:03.658Z`
@@ -18795,9 +20337,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-597-F1 - Make Retro Background Eval Run A Real One-Shot Analysis
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-597-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-597`
   - Parent prompt ID: `CCP-597`
   - Batch prompt IDs: none
@@ -18807,13 +20349,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:36:57.080Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.656Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; missing retro diff candidates now trigger silent eval from after-move hook when cache remains non-cp
+  - Skip reason: none
   - Fixes prompt: `CCP-597` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:41:20.680Z`
@@ -18826,9 +20370,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-598-F1 - Hide Zero Or Negative Retro Eval Diff Badges
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-598-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-598`
   - Parent prompt ID: `CCP-598`
   - Batch prompt IDs: none
@@ -18838,13 +20382,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T01:20:00.000Z`
   - Started at: `2026-04-01T18:41:25.554Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:22:53.600Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; retro diff display now suppresses zero or negative values
+  - Skip reason: none
   - Fixes prompt: `CCP-598` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:42:14.320Z`
@@ -18857,9 +20403,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-604 - Category 1 Root-Cause Fix Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-604`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-604`
   - Parent prompt ID: none
   - Batch prompt IDs: `CCP-520-F1`, `CCP-580-F1`, `CCP-574-F1`, `CCP-597-F1`, `CCP-598-F1`, `CCP-503-F1`, `CCP-504-F1`, `CCP-505-F1`, `CCP-513-F1`, `CCP-592-F1`
@@ -18869,13 +20415,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T02:10:00.000Z`
   - Started at: `2026-04-01T18:34:13.151Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:28:02.142Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: manager re-review after all ten child F1 prompts were individually reviewed and passed
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T18:48:10.361Z`
   - Manual checklist:
@@ -18887,9 +20435,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-511-F1 - Review Cleanup Manager For Unreviewed CCP-511 Children
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-511-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-511`
   - Parent prompt ID: `CCP-511`
   - Batch prompt IDs: `CCP-362`, `CCP-364`, `CCP-365`, `CCP-366`, `CCP-367`, `CCP-368`, `CCP-369`, `CCP-370`, `CCP-372`, `CCP-373`, `CCP-374`, `CCP-375`, `CCP-376`, `CCP-377`, `CCP-378`
@@ -18899,13 +20447,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T02:30:00.000Z`
   - Started at: `2026-04-01T19:12:48.237Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:12:23.950Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Fixes prompt: `CCP-511` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T19:36:07.268Z`
@@ -18918,9 +20468,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-553-F1 - Execute Missing Phase 5 Study Child Prompts
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-553-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-553`
   - Parent prompt ID: `CCP-553`
   - Batch prompt IDs: `CCP-549`, `CCP-550`, `CCP-551`, `CCP-552`
@@ -18930,13 +20480,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T02:30:00.000Z`
   - Started at: `2026-04-01T19:36:15.728Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:08:53.546Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Fixes prompt: `CCP-553` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T20:01:01.102Z`
@@ -18952,9 +20504,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-557-F1 - Execute Missing Phase 6 Study Child Prompts
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-557-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-557`
   - Parent prompt ID: `CCP-557`
   - Batch prompt IDs: `CCP-554`, `CCP-555`, `CCP-556`
@@ -18964,13 +20516,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T02:30:00.000Z`
   - Started at: `2026-04-01T20:01:10.026Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:10:27.455Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Fixes prompt: `CCP-557` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T20:19:36.143Z`
@@ -18986,9 +20540,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-561-F1 - Execute Missing Phase 7 Study Child Prompts
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-561-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-561`
   - Parent prompt ID: `CCP-561`
   - Batch prompt IDs: `CCP-558`, `CCP-559`, `CCP-560`
@@ -18998,13 +20552,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T02:30:00.000Z`
   - Started at: `2026-04-01T20:19:45.367Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:11:42.892Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Fixes prompt: `CCP-561` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T20:41:24.830Z`
@@ -19018,9 +20574,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-605 - Category 3 Process Cleanup Batch Manager
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-605`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-605`
   - Parent prompt ID: none
   - Batch prompt IDs: `CCP-511-F1`, `CCP-553-F1`, `CCP-557-F1`, `CCP-561-F1`
@@ -19030,13 +20586,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T02:30:00.000Z`
   - Started at: `2026-04-01T19:10:47.247Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:12:39.873Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T20:41:32.260Z`
   - Manual checklist:
@@ -19061,6 +20619,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T03:00:00.000Z`
   - Started at: `2026-04-01T19:44:31.306Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -19068,6 +20627,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Codex`
   - Review method: `full-review`
   - Review scope: backlog re-triage review of completed doc-only follow-up
+  - Skip reason: none
   - Fixes prompt: `CCP-588` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T19:52:00.720Z`
@@ -19080,9 +20640,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-606 - Dashboard refresh modal with server setup instructions
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-606`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-606`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19092,13 +20652,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-04-01T20:41:24.209Z`
   - Started at: `2026-04-01T20:42:49.647Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:13:49.245Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T20:45:04.309Z`
   - Manual checklist:
@@ -19117,9 +20679,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-607 - Dashboard next-up urgent block and stable sort
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-607`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-607`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19129,13 +20691,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-04-01T20:51:55.947Z`
   - Started at: `2026-04-01T20:53:27.531Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:14:10.610Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T20:54:58.737Z`
   - Manual checklist:
@@ -19152,9 +20716,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-608 - Dashboard refresh button hard reload after live fetch
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-608`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-608`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19164,13 +20728,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-04-01T20:55:37.805Z`
   - Started at: `2026-04-01T20:56:10.564Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:14:25.084Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T20:56:30.185Z`
   - Manual checklist:
@@ -19183,9 +20749,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-609 - Dashboard next-up flat creation-order sort
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-609`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-609`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19195,13 +20761,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-04-01T21:01:11.695Z`
   - Started at: `2026-04-01T21:01:47.693Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:14:39.990Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T21:02:30.450Z`
   - Manual checklist:
@@ -19215,9 +20783,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-614 - Dashboard header bulk-copy buttons for needs-review and issues-found
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-614`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-614`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19227,13 +20795,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-04-01T21:17:56.393Z`
   - Started at: `2026-04-01T21:18:39.179Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:15:28.283Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T21:19:41.730Z`
   - Manual checklist:
@@ -19247,9 +20817,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-615 - Dashboard simplify filter buttons to 7 presets
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-615`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-615`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19259,13 +20829,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-04-01T21:22:13.580Z`
   - Started at: `2026-04-01T21:44:52.802Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:15:42.588Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T21:46:15.397Z`
   - Manual checklist:
@@ -19291,6 +20863,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-04-01T21:26:56.793Z`
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: pending
   - Review issues: none
@@ -19298,6 +20871,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
@@ -19316,6 +20890,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude Code`
   - Created at: `2026-04-01T21:38:23.088Z`
   - Started at: not started
+  - Skipped at: not skipped
   - Claude used: no
   - Review outcome: pending
   - Review issues: none
@@ -19323,15 +20898,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-618 - Dashboard: pin status and copy button columns
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-618`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-618`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19341,13 +20917,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-04-01T21:43:20.943Z`
   - Started at: `2026-04-01T21:52:23.467Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:15:54.496Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T21:53:41.157Z`
   - Manual checklist:
@@ -19360,9 +20938,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-619 - Dashboard: make refresh button always visible
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-619`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-619`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19372,13 +20950,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-04-01T21:53:54.631Z`
   - Started at: `2026-04-01T21:55:36.704Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:16:06.372Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T21:55:45.819Z`
   - Manual checklist:
@@ -19402,6 +20982,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-04-01T21:59:55.769Z`
   - Started at: `2026-04-01T22:07:32.658Z`
+  - Skipped at: not skipped
   - Claude used: yes
   - Review outcome: passed
   - Review issues: none
@@ -19409,6 +20990,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: `Claude`
   - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T22:07:36.334Z`
   - Completion errors: Superseded by CCP-619-F2 before execution. Approach replaced with simpler hide-stats solution.
@@ -19419,9 +21001,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-619-F2 - Fix: hide header stats at narrow widths to keep header single-line
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-619-F2`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-619`
   - Parent prompt ID: `CCP-619-F1`
   - Batch prompt IDs: none
@@ -19431,13 +21013,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-04-01T22:03:44.329Z`
   - Started at: `2026-04-01T22:04:24.977Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:16:54.224Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T22:04:43.966Z`
   - Manual checklist:
@@ -19462,6 +21046,7 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-04-01T22:08:22.403Z`
   - Started at: not started
+  - Skipped at: not skipped
   - Reservation released at: `2026-04-01T22:09:57.932Z`
   - Claude used: no
   - Review outcome: pending
@@ -19470,15 +21055,16 @@ Use this file to track Claude Code prompts from creation through review.
   - Reviewed by: unknown
   - Review method: unknown
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
 ```
 
 ## CCP-621 - Dashboard: remove stats block from header
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-621`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-621`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19488,13 +21074,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-04-01T22:08:26.371Z`
   - Started at: `2026-04-01T22:12:37.954Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:17:36.425Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T22:13:57.799Z`
   - Manual checklist:
@@ -19507,9 +21095,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-622 - Dashboard: turn Refresh button amber after 2 minutes
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-622`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-622`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19519,13 +21107,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Claude`
   - Created at: `2026-04-01T22:14:08.081Z`
   - Started at: `2026-04-01T22:16:43.393Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:18:43.084Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T22:17:32.537Z`
   - Manual checklist:
@@ -19539,9 +21129,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-623 - Old Issues Found Backlog Cleanup Campaign
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-623`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-623`
   - Parent prompt ID: none
   - Batch prompt IDs: `CCP-626`, `CCP-624`, `CCP-625`, `CCP-627`
@@ -19551,28 +21141,29 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:39:50.854Z`
   - Started at: `2026-04-01T22:43:48.972Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:24:12.450Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Completed at: `2026-04-01T23:05:58.478Z`
   - Manual checklist:
-    - [ ] All four backlog cleanup waves completed with explicit review provenance
-    - [ ] Every prompt in the old issues-found backlog now has a current disposition: fix now, resolved already, superseded, or manager-only fallout
-    - [ ] Follow-up prompts were only created for still-meaningful current issues
-    - [ ] Remaining red prompts after the campaign are intentional live issues or child-blocked managers, not stale historical ambiguity
+    - [ ] All four backlog re-triage waves completed with explicit prompt dispositions
+    - [ ] Any new follow-up fix prompts were created only for prompts classified as fix now
+    - [ ] Registry, queue, log, history, and dashboard were refreshed after the campaign
 ```
 
 ## CCP-624 - Wave 2 Backlog Re-Triage — Manager Fallout
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-624`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-624`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19582,13 +21173,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:39:59.742Z`
   - Started at: `2026-04-01T22:54:13.196Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:23:19.086Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Completed at: `2026-04-01T22:56:40.008Z`
   - Manual checklist:
@@ -19600,9 +21193,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-625 - Wave 3 Backlog Re-Triage — Process And Artifact Prompts
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-625`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-625`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19612,13 +21205,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:39:59.776Z`
   - Started at: `2026-04-01T22:56:49.053Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:23:34.361Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Completed at: `2026-04-01T22:57:23.127Z`
   - Manual checklist:
@@ -19630,9 +21225,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-626 - Wave 1 Backlog Re-Triage — Recent Leaf Issues
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-626`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-626`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19642,13 +21237,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:39:59.793Z`
   - Started at: `2026-04-01T22:44:00.179Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:23:04.543Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Completed at: `2026-04-01T22:54:13.175Z`
   - Manual checklist:
@@ -19660,9 +21257,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-627 - Wave 4 Backlog Re-Triage — Ancient Prompt Sweep
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-627`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-627`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19672,27 +21269,29 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:39:59.830Z`
   - Started at: `2026-04-01T22:57:28.816Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:23:50.246Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Codex`
   - Completed at: `2026-04-01T23:05:57.191Z`
   - Manual checklist:
     - [ ] Every Wave 4 prompt has one explicit disposition
-    - [ ] Superseded ancient prompts are documented via review scope rather than left as stale red history
-    - [ ] No new follow-up fix prompts were created from Wave 4 unless a current issue still mattered
+    - [ ] Superseded decisions are documented with review scope or notes explaining the changed product path
+    - [ ] Any follow-up prompts created from this wave are limited to issues that still matter today
 ```
 
 ## CCP-628 - Investigate Mistake Detection Severity UI Behavior
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-628`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-628`
   - Parent prompt ID: none
   - Batch prompt IDs: none
@@ -19702,13 +21301,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:45:02.014Z`
   - Started at: `2026-04-01T23:03:28.684Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
-  - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Review outcome: passed with notes
+  - Review issues: Code confirms severity pills replaced by minLossThreshold slider. Manual verification required: open Mistake Detection modal and confirm the UI clearly communicates what changes when the slider moves — the investigation conclusion cannot be verified by code inspection alone.
+  - Reviewed at: `2026-04-02T02:40:47.584Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T23:06:57.591Z`
   - Manual checklist:
@@ -19719,9 +21320,9 @@ Use this file to track Claude Code prompts from creation through review.
 ## CCP-566-F1 - Backfill Durable SF18 Strength-Limiting Research Artifact
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-566-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-566`
   - Parent prompt ID: `CCP-566`
   - Batch prompt IDs: none
@@ -19730,23 +21331,31 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: Create the missing durable SF18 strength-limiting research document and add a discoverability link.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:46:15.787Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
+  - Started at: `2026-04-02T00:32:06.282Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:35:57.322Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; durable SF18 strength-limiting audit artifact added and linked from sprint doc
+  - Skip reason: none
+  - Fixes prompt: `CCP-566` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T00:35:41.870Z`
+  - Manual checklist:
+    - [ ] Open the new SF18 strength-limiting audit doc — expected result: it records the supported UCI options, confirmed ranges, and recommended Patzer mapping
+    - [ ] Open the nearby sprint/reference doc that was updated — expected result: it links to the new audit doc so the research is discoverable
+    - [ ] Run build and typecheck — expected result: both pass with no code impact
 ```
 
 ## CCP-578-F1 - Backfill Durable Play-Mode Bestmove Routing Design Artifact
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-578-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-578`
   - Parent prompt ID: `CCP-578`
   - Batch prompt IDs: none
@@ -19755,23 +21364,31 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: Create the missing play-mode bestmove routing design document and add a discoverability link.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:46:15.817Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
+  - Started at: `2026-04-02T00:32:06.241Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:35:57.360Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; durable play-mode bestmove routing design artifact added and linked from sprint doc
+  - Skip reason: none
+  - Fixes prompt: `CCP-578` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T00:35:41.945Z`
+  - Manual checklist:
+    - [ ] Open the new play-mode bestmove routing design doc — expected result: it records the evaluated approaches, chosen seam, and key edge-case handling
+    - [ ] Open the nearby sprint/reference doc that was updated — expected result: it links to the new design doc so the decision is discoverable
+    - [ ] Run build and typecheck — expected result: both pass with no code impact
 ```
 
 ## CCP-572-F1 - Backfill Durable Engine Lifecycle And Mode-Switch Research Artifact
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-572-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-572`
   - Parent prompt ID: `CCP-572`
   - Batch prompt IDs: none
@@ -19780,23 +21397,31 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: Create the missing engine lifecycle / mode-switch research document and add a discoverability link.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:46:15.870Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
+  - Started at: `2026-04-02T00:32:06.230Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:35:57.520Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; durable engine lifecycle/mode-switch audit artifact added and linked from sprint doc
+  - Skip reason: none
+  - Fixes prompt: `CCP-572` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T00:35:41.890Z`
+  - Manual checklist:
+    - [ ] Open the new engine lifecycle / mode-switch audit doc — expected result: it records the lifecycle, safe injection points, and state-management risks
+    - [ ] Open the nearby sprint/reference doc that was updated — expected result: it links to the new audit doc so the research is discoverable
+    - [ ] Run build and typecheck — expected result: both pass with no code impact
 ```
 
 ## CCP-594-F1 - Backfill Durable LFYM Moment-Selection Audit Artifact
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-594-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-594`
   - Parent prompt ID: `CCP-594`
   - Batch prompt IDs: none
@@ -19805,23 +21430,31 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: Create the missing Learn From Your Mistakes moment-selection audit document and add a discoverability link.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:46:15.922Z`
-  - Started at: not started
-  - Claude used: no
-  - Review outcome: pending
+  - Started at: `2026-04-02T00:32:06.297Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-02T00:35:57.469Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; durable LFYM moment-selection audit artifact added and linked from retrospection audit doc
+  - Skip reason: none
+  - Fixes prompt: `CCP-594` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T00:35:41.999Z`
+  - Manual checklist:
+    - [ ] Open the new LFYM moment-selection audit doc — expected result: it answers the original comparison questions with Patzer vs Lichess findings and ranked divergences
+    - [ ] Open the nearby retrospection/reference doc that was updated — expected result: it links to the new audit so the research is discoverable
+    - [ ] Run build and typecheck — expected result: both pass with no code impact
 ```
 
 ## CCP-236-F1 - Enable Real Explorer Top/Recent Games Responses
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-236-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-236`
   - Parent prompt ID: `CCP-236`
   - Batch prompt IDs: none
@@ -19831,22 +21464,31 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:51:37.913Z`
   - Started at: `2026-04-01T23:09:33.931Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-01T23:16:03.661Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; request-path fix validated
+  - Skip reason: none
+  - Fixes prompt: `CCP-236` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
+  - Completed at: `2026-04-01T23:13:35.464Z`
+  - Manual checklist:
+    - [ ] Open an explorer-supported position — expected result: top/recent games appear when the selected DB provides them
+    - [ ] Switch explorer DBs — expected result: unsupported DBs handle missing game rows honestly instead of showing fake data
+    - [ ] Hover and click explorer games/moves — expected result: existing move-table behavior still works and no console errors appear
+    - [ ] Run build and typecheck — expected result: both pass
 ```
 
 ## CCP-305-F1 - Complete Rated Ladder History And Attempt Cloud Restore
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-305-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-305`
   - Parent prompt ID: `CCP-305`
   - Batch prompt IDs: none
@@ -19856,22 +21498,31 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:51:37.940Z`
   - Started at: `2026-04-01T23:09:33.984Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
-  - Review scope: none
+  - Reviewed at: `2026-04-01T23:16:03.699Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf follow-up re-review; rated ladder restore seam validated
+  - Skip reason: none
+  - Fixes prompt: `CCP-305` (this prompt resolves issues found in that review)
   - Execution target: `Claude Code`
+  - Completed at: `2026-04-01T23:13:35.518Z`
+  - Manual checklist:
+    - [ ] Authenticate and trigger rated ladder sync — expected result: local perf, rating history, and rated-attempt state restore without runtime errors
+    - [ ] Start rated puzzles on a second browser/profile after server data exists — expected result: cloud-restored ladder state is coherent enough for continued play
+    - [ ] Inspect the chosen merge rules in code/report — expected result: each synced record type has one explicit documented rule
+    - [ ] Run build and typecheck — expected result: both pass
 ```
 
 ## CCP-615-F1 - Show selected dashboard filter count in filter label
 
 ```
-- [ ] Reviewed
+- [x] Reviewed
   - ID: `CCP-615-F1`
-  - Status: `created`
+  - Status: `reviewed`
   - Task ID: `CCP-615`
   - Parent prompt ID: `CCP-615`
   - Batch prompt IDs: none
@@ -19881,13 +21532,15 @@ Use this file to track Claude Code prompts from creation through review.
   - Created by: `Codex`
   - Created at: `2026-04-01T22:52:07.047Z`
   - Started at: `2026-04-01T22:53:27.469Z`
+  - Skipped at: not skipped
   - Claude used: yes
-  - Review outcome: pending
+  - Review outcome: passed
   - Review issues: none
-  - Reviewed at: not reviewed
-  - Reviewed by: unknown
-  - Review method: unknown
+  - Reviewed at: `2026-04-02T02:19:34.412Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
   - Review scope: none
+  - Skip reason: none
   - Execution target: `Claude Code`
   - Completed at: `2026-04-01T22:54:00.888Z`
   - Manual checklist:
@@ -19896,4 +21549,4598 @@ Use this file to track Claude Code prompts from creation through review.
     - [ ] Click 'Ready', 'Started', 'Errors', 'Completed', and 'Passed Review' — expected result: each active filter label updates to the correct matching count
     - [ ] Switch between filters repeatedly — expected result: the active count updates cleanly each time and inactive filter labels do not show duplicate counts
     - [ ] Confirm no console errors appear while using the dashboard filters
+```
+
+## CCP-629 - Mistake Detection: replace severity pills with gradient slider
+
+```
+- [x] Reviewed
+  - ID: `CCP-629`
+  - Status: `reviewed`
+  - Task ID: `CCP-629`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: CCP-629
+  - Created by: `Claude`
+  - Created at: `2026-04-01T23:14:41.714Z`
+  - Started at: `2026-04-01T23:16:16.752Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Code structure present as intermediate step before CCP-630 replaced it. Since the final state is the CCP-630 continuous slider, manual verification of the gradient visual and marker alignment is required to confirm the final UI is correct.
+  - Reviewed at: `2026-04-02T02:40:53.837Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-01T23:17:20.708Z`
+  - Manual checklist:
+    - [ ] Gradient slider renders green → amber → red
+    - [ ] Thumb movement updates loss ≥ N% label correctly
+    - [ ] Lichess default marker visible at Mistake position
+    - [ ] Tick labels Inaccuracy / Mistake / Blunder visible below track
+    - [ ] Setting persists on page reload
+    - [ ] No regression on Missed Mate in N slider
+```
+
+## CCP-630 - Mistake Detection: continuous loss-threshold slider with classification markers
+
+```
+- [x] Reviewed
+  - ID: `CCP-630`
+  - Status: `reviewed`
+  - Task ID: `CCP-630`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: CCP-630
+  - Created by: `Claude`
+  - Created at: `2026-04-01T23:19:55.308Z`
+  - Started at: `2026-04-01T23:21:17.885Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Data model change (minLossThreshold), slider vnode, and storage validation verified by code inspection. Manual verification required: (1) open modal and confirm slider moves 1-25% with live label update, (2) confirm three divider markers are visually aligned to Inaccuracy/Mistake/Blunder positions on the gradient track, (3) confirm setting persists on reload. Stale comment at retro.ts:133 still references minClassification — cosmetic only.
+  - Reviewed at: `2026-04-02T02:41:01.333Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-01T23:23:11.036Z`
+  - Manual checklist:
+    - [ ] Slider is continuous 1–25% with live value label update
+    - [ ] Three divider markers visible at Inaccuracy / Mistake / Blunder positions
+    - [ ] Setting persists on page reload
+    - [ ] Build passes cleanly
+    - [ ] No regression on Missed Mate in N or other rows
+```
+
+## CCP-631 - Retro: style retro-reason label in learn from mistakes feedback
+
+```
+- [x] Reviewed
+  - ID: `CCP-631`
+  - Status: `reviewed`
+  - Task ID: `CCP-631`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: CCP-631
+  - Created by: `Claude`
+  - Created at: `2026-04-01T23:30:15.352Z`
+  - Started at: `2026-04-02T00:43:54.452Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: All CSS rules present and match spec exactly. Manual verification required: open a reviewed game, enter Learn From Your Mistakes, complete a candidate, and confirm: retro-reason block has blue left border, label is light blue, summary is muted grey, eval diff badge visible, Save button styled, Saved confirmation appears green. Cannot verify visual rendering by code inspection.
+  - Reviewed at: `2026-04-02T02:41:08.163Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T00:44:41.097Z`
+  - Manual checklist:
+    - [ ] retro-reason block visible with blue left border after finding/viewing a move
+    - [ ] retro-reason__label readable in light blue
+    - [ ] retro-reason__summary visible in muted grey
+    - [ ] eval diff badge visible above reason block
+    - [ ] Save to Library button styled and functional
+    - [ ] Saved! confirmation appears in green
+    - [ ] No regression on other feedback states
+```
+
+## CCP-632 - Retro engine: track live best move and detect game-move vindication
+
+```
+- [x] Reviewed
+  - ID: `CCP-632`
+  - Status: `reviewed`
+  - Task ID: `CCP-632`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: CCP-632
+  - Created by: `Claude`
+  - Created at: `2026-04-01T23:44:48.322Z`
+  - Started at: `2026-04-01T23:49:54.207Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Interface methods (liveBestMove, liveBestEval, onEngineUpdate, onVindication, isVindicated) present and wired correctly in retroCtrl.ts. Manual verification required: run Learn From Your Mistakes with engine active and confirm vindication fires exactly once per candidate when engine best matches game move, and state resets when advancing to next candidate. Runtime engine behavior cannot be verified by code inspection.
+  - Reviewed at: `2026-04-02T02:41:16.142Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-01T23:51:20.660Z`
+  - Manual checklist:
+    - [ ] RetroCtrl interface has liveBestMove, liveBestEval, onEngineUpdate, onVindication
+    - [ ] onEngineUpdate ignores lower-depth updates
+    - [ ] Vindication fires once per candidate when engine best matches game move
+    - [ ] Live state resets on jumpToNext and reset
+    - [ ] Build passes cleanly
+```
+
+## CCP-633 - Retro wiring: capture solving move and compute dual eval diffs
+
+```
+- [x] Reviewed
+  - ID: `CCP-633`
+  - Status: `reviewed`
+  - Task ID: `CCP-633`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: CCP-633
+  - Created by: `Claude`
+  - Created at: `2026-04-01T23:44:49.518Z`
+  - Started at: `2026-04-01T23:51:25.329Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Snapshot capture in retroMoveHandler.ts and setOnLiveEvalUpdated callback in main.ts both verified by code inspection. Manual verification required: this prompt was specifically fixing a timing bug — play a retro move and confirm the snapshot populates within ~1-2 seconds as engine evaluates. Cannot verify timing correctness without a running engine session.
+  - Reviewed at: `2026-04-02T02:41:28.681Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-01T23:59:13.419Z`
+  - Manual checklist:
+    - [ ] Engine updates fed to retro.onEngineUpdate for active candidate position only
+    - [ ] SolvingMoveSnapshot captured at move-play time
+    - [ ] Snapshot cleared on jumpToNext and reset
+    - [ ] DualEvalDiff type defined
+    - [ ] Build passes cleanly
+```
+
+## CCP-634 - Retro view: live vindication notice and stacked eval diff boxes
+
+```
+- [x] Reviewed
+  - ID: `CCP-634`
+  - Status: `reviewed`
+  - Task ID: `CCP-634`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: CCP-634
+  - Created by: `Claude`
+  - Created at: `2026-04-01T23:44:50.692Z`
+  - Started at: `2026-04-01T23:59:18.913Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: renderDualEvalBoxes grade logic and isVindicated check verified by code inspection. Manual verification required: (1) confirm vindication notice appears in find state when engine confirms game move, (2) confirm two stacked eval boxes render in win/fail/view states, (3) confirm no crash when snapshot unavailable. Rendering and engine-triggered states cannot be verified without a live browser session.
+  - Reviewed at: `2026-04-02T02:41:37.168Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T00:01:36.369Z`
+  - Manual checklist:
+    - [ ] Vindication notice appears in find state when engine confirms game move
+    - [ ] Two stacked eval boxes render in win/fail/view states
+    - [ ] vs-best box shows checkmark for exact best move
+    - [ ] vs-game box correctly grades better/equal/worse than game move
+    - [ ] No crash when snapshot unavailable
+    - [ ] Build passes cleanly
+```
+
+## CCP-635 - Retro styles: color-coded eval diff boxes
+
+```
+- [x] Reviewed
+  - ID: `CCP-635`
+  - Status: `reviewed`
+  - Task ID: `CCP-635`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: CCP-635
+  - Created by: `Claude`
+  - Created at: `2026-04-01T23:44:51.894Z`
+  - Started at: `2026-04-02T00:01:42.196Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: All four color tier rules (--best green, --near yellow, --ok blue, --bad red) and vindication green left-border present in SCSS. Manual verification required: play correct/near-best/worse-than-game/worse-than-or-equal moves in retro and confirm the correct color tier renders for each outcome. Visual correctness cannot be verified by code inspection alone.
+  - Reviewed at: `2026-04-02T02:41:43.512Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T00:02:25.637Z`
+  - Manual checklist:
+    - [ ] Green box with correct color for exact best move
+    - [ ] Yellow box for 0 to -0.5 pawn range
+    - [ ] Blue box for better than game but not best
+    - [ ] Red box for worse than or equal to game move
+    - [ ] Vindication notice has green left border styling
+    - [ ] No regression on existing retro styles
+    - [ ] Build passes cleanly
+```
+
+## CCP-636 - Retro live eval diff manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-636`
+  - Status: `reviewed`
+  - Task ID: `CCP-636`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: CCP-636
+  - Created by: `Claude`
+  - Created at: `2026-04-01T23:44:53.156Z`
+  - Started at: `2026-04-01T23:48:52.306Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: All four child prompts verified by code inspection. Full live eval diff flow (engine tracking, snapshot timing, vindication notice, color-coded boxes) requires manual browser verification with engine running: play correct/near/worse moves across multiple retro candidates and confirm all four color tiers and vindication notice behave correctly end-to-end.
+  - Reviewed at: `2026-04-02T02:41:51.346Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T00:02:34.210Z`
+  - Manual checklist:
+    - [ ] CCP-632 complete: live engine tracking and vindication detection
+    - [ ] CCP-633 complete: solving move snapshot and dual diff wiring
+    - [ ] CCP-634 complete: vindication notice and stacked boxes rendered
+    - [ ] CCP-635 complete: all four color tiers styled correctly
+    - [ ] Full flow tested: play correct move → green box
+    - [ ] Full flow tested: play near-best → yellow box
+    - [ ] Full flow tested: play worse than game → red box
+    - [ ] Vindication notice appears without playing a move when engine confirms game move
+```
+
+## CCP-637 - Audit and fix bulk-review accuracy scores
+
+```
+- [ ] Reviewed
+  - ID: `CCP-637`
+  - Status: `created`
+  - Task ID: `CCP-637`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `user bug report`
+  - Source step: ``
+  - Task: CCP-637
+  - Created by: `Claude`
+  - Created at: `2026-04-02T00:17:14.933Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-638 - Review button splits into queue-position icons when queue is active
+
+```
+- [x] Reviewed
+  - ID: `CCP-638`
+  - Status: `reviewed`
+  - Task ID: `CCP-638`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `user feature request`
+  - Source step: ``
+  - Task: CCP-638
+  - Created by: `Claude`
+  - Created at: `2026-04-02T00:22:11.545Z`
+  - Started at: `2026-04-02T01:48:08.267Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Split button vnode (--top/--bottom), enqueueAtFront/enqueueBulkReview wiring, and multi-select logic verified by code inspection. Manual verification required: (1) import games and start a bulk review queue, (2) confirm Review button splits into two icon buttons, (3) confirm up-arrow queues next and down-arrow adds to bottom, (4) confirm multi-select adds all selected games to correct position. Cannot verify queue state behavior without a running browser.
+  - Reviewed at: `2026-04-02T02:42:17.102Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:52:17.378Z`
+  - Manual checklist:
+    - [ ] Queue infrastructure confirmed or engineered (add-to-top and add-to-bottom)
+    - [ ] Single Review button unchanged when no queue active
+    - [ ] Split icon buttons appear when queue is active, matching original button width
+    - [ ] Left icon = Review Next (top of queue), right icon = Add to Queue (bottom)
+    - [ ] Hover tooltips present and correct on both icons
+    - [ ] Multi-select: all selected games added to correct position in list order
+    - [ ] Icon style consistent with app visual language
+    - [ ] Build passes cleanly
+```
+
+## CCP-639 - Audit all buttons for hover text and aria-label accessibility
+
+```
+- [ ] Reviewed
+  - ID: `CCP-639`
+  - Status: `created`
+  - Task ID: `CCP-639`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `user feature request`
+  - Source step: ``
+  - Task: CCP-639
+  - Created by: `Claude`
+  - Created at: `2026-04-02T00:26:30.059Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-614-F1 - Bulk-copy dashboard IDs should be comma-separated only
+
+```
+- [x] Reviewed
+  - ID: `CCP-614-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-614`
+  - Parent prompt ID: `CCP-614`
+  - Batch prompt IDs: none
+  - Source document: `User request: prompt dashboard bulk-copy formatting bug fix`
+  - Source step: ``
+  - Task: Fix the prompt dashboard bulk-copy buttons so they copy plain comma-separated prompt IDs without numbered-list prefixes.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T00:30:33.254Z`
+  - Started at: `2026-04-02T01:47:13.810Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T02:19:51.631Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:47:43.334Z`
+  - Manual checklist:
+    - [ ] Click 'Copy Needs Review IDs' and paste into a text editor — expected result: plain comma-separated prompt IDs with no numbering
+    - [ ] Click 'Copy Issues Found IDs' and paste into a text editor — expected result: plain comma-separated prompt IDs with no numbering
+    - [ ] Confirm both copied lists still contain the correct prompt IDs for their filter sets
+    - [ ] Confirm '✓ Copied!' still appears briefly after a successful copy
+    - [ ] Confirm 'None' still appears briefly when no prompts qualify
+    - [ ] Confirm no console errors appear while using the bulk-copy buttons
+```
+
+## CCP-640 - Fix eval diff boxes not populating in Learn From Mistakes
+
+```
+- [x] Reviewed
+  - ID: `CCP-640`
+  - Status: `reviewed`
+  - Task ID: `CCP-640`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-640.md`
+  - Source step: ``
+  - Task: Fix evalCache timing bug causing eval diff boxes to render blank in retro mode
+  - Created by: `Claude`
+  - Created at: `2026-04-02T00:52:43.342Z`
+  - Started at: `2026-04-02T01:00:37.168Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: setOnLiveEvalUpdated callback broadened to handle both parentPath and solvingMoveCp paths verified by code inspection. Manual verification critical: this was specifically a timing bug where boxes showed blank — must play 5-10 retro moves across different games and confirm eval diff boxes populate consistently within 1-2 seconds. Cannot verify timing fix without a live engine session.
+  - Reviewed at: `2026-04-02T02:41:58.618Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:07:00.087Z`
+  - Manual checklist:
+    - [ ] Root cause of missing eval diff values identified and documented
+    - [ ] Snapshot capture or live-update path fixed so all three positions populate
+    - [ ] setOnLiveEvalUpdated filter broadened (or lazy evalCache read implemented)
+    - [ ] Eval diff boxes populate consistently on retro moves
+    - [ ] vs Engine Best and vs Move Played diffs are mover-perspective correct
+    - [ ] Build passes cleanly
+```
+
+## CCP-370-F1 - Remove duplicated style concentration signal
+
+```
+- [x] Reviewed
+  - ID: `CCP-370-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-370`
+  - Parent prompt ID: `CCP-370`
+  - Batch prompt IDs: none
+  - Source document: `CCP-370 review`
+  - Source step: ``
+  - Task: fix the Style dashboard so the top-3 opening concentration metric is not shown twice
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:02:19.682Z`
+  - Started at: `2026-04-02T01:07:45.845Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T02:27:26.125Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Fixes prompt: `CCP-370` (this prompt resolves issues found in that review)
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:11:17.503Z`
+  - Manual checklist:
+    - [ ] Open the Style tool on a collection with enough games to show all sections — expected result: the dashboard still shows the full style surface without console errors
+    - [ ] Inspect the style axes and behavioral tendencies sections — expected result: the top-3 opening concentration signal appears only once, not twice with near-duplicate wording
+    - [ ] Switch between collections with different repertoire concentration — expected result: the remaining style signal updates coherently and does not leave stale duplicated copy
+```
+
+## CCP-378-F1 - Fix practice interactivity refresh and render-time planning
+
+```
+- [x] Reviewed
+  - ID: `CCP-378-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-378`
+  - Parent prompt ID: `CCP-378`
+  - Batch prompt IDs: none
+  - Source document: `CCP-378 review`
+  - Source step: ``
+  - Task: fix Practice Against Them so board interactivity refreshes correctly at unchanged FEN and opponent planning does not happen in render
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:02:19.708Z`
+  - Started at: `2026-04-02T01:07:47.644Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Both fixes verified by code: _lastBoardPractice tracking prevents early-return skip at same FEN, and planOpponentTurn removed from render path. Manual verification required: start practice from unchanged FEN and confirm opponent pieces immediately non-draggable; stop practice at same FEN and confirm browse mode restores interactivity. Cannot verify board state transitions without a running browser.
+  - Reviewed at: `2026-04-02T02:42:09.112Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Fixes prompt: `CCP-378` (this prompt resolves issues found in that review)
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:11:24.163Z`
+  - Manual checklist:
+    - [ ] Start Practice Against Them from a position that is unchanged from browse mode — expected result: opponent pieces become non-draggable immediately when practice starts
+    - [ ] Stop practice without changing the board position — expected result: browse mode restores normal movable behavior immediately
+    - [ ] Play moves until the opponent source banner is shown — expected result: the banner stays accurate without doing random move-selection work inside render
+    - [ ] Open DevTools during practice start/stop and normal redraws — expected result: no runtime or console errors
+```
+
+## CCP-641 - Recommended Next Box: Fallback to Unrun Queued Prompts
+
+```
+- [x] Reviewed
+  - ID: `CCP-641`
+  - Status: `reviewed`
+  - Task ID: `CCP-641`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `User request 2026-04-01`
+  - Source step: ``
+  - Task: Modify renderUrgentBlock so box falls back to up to 5 unrun queued prompts (lowest ID first) with manager deduplication when no high-priority prompts are present
+  - Created by: `Unknown`
+  - Created at: `2026-04-02T01:04:23.869Z`
+  - Started at: `2026-04-02T01:52:57.885Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T02:33:37.579Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:53:37.109Z`
+  - Manual checklist:
+    - [ ] With high/critical/bugfix prompts queued: box shows them as before
+    - [ ] With no high-priority prompts: box shows up to 5 queued-pending by lowest ID first
+    - [ ] Child prompts of a manager are replaced by the manager in the list
+    - [ ] Fallback count label reads 'N prompt(s) — queued'
+    - [ ] npm run prompts:refresh completes without errors
+```
+
+## CCP-642 - Polish Sprint Dashboard Card Layout
+
+```
+- [x] Reviewed
+  - ID: `CCP-642`
+  - Status: `reviewed`
+  - Task ID: `CCP-642`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Have Claude review the sprint tab in the dashboard and make design improvements`
+  - Task: Improve the sprint card layout and styling so the Sprints tab has stronger hierarchy, spacing, grouping, and pill treatment without changing sprint semantics.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:07:46.998Z`
+  - Started at: `2026-04-02T01:15:27.647Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Card header, title-block, status badge, dependency pills CSS present. Manual verification required: open Sprints tab and confirm card hierarchy reads as separate visual groups (title/status/progress/summary/pills), and dependency pills are visually distinct from stats pills.
+  - Reviewed at: `2026-04-02T02:42:29.895Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:15:28.910Z`
+  - Manual checklist:
+    - [ ] Open the Sprints tab and confirm card hierarchy is easier to scan
+    - [ ] Confirm title/status/progress/summary/pills read as separate visual groups
+    - [ ] Confirm dependency pills remain readable and distinct
+    - [ ] Confirm the Prompts tab still renders correctly after regenerating the dashboard
+```
+
+## CCP-643 - Audit Sprint Dashboard UI And Design Plan
+
+```
+- [x] Reviewed
+  - ID: `CCP-643`
+  - Status: `reviewed`
+  - Task ID: `CCP-643`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Have Claude review the sprint tab in the dashboard and make design improvements`
+  - Task: Audit the sprint-tab UI, identify the biggest visual problems, and land one small foundational design improvement so later sprint-dashboard polish prompts have a cleaner shell to build on.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:07:47.011Z`
+  - Started at: `2026-04-02T01:10:29.475Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Sprint tab section, toolbar, grid CSS and status badge rules present in dashboard generator. Manual verification required: open dashboard Sprints tab and confirm foundational cleanup improves visual hierarchy of the sprint shell. Visual quality cannot be verified by code inspection.
+  - Reviewed at: `2026-04-02T02:42:23.785Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:15:22.745Z`
+  - Manual checklist:
+    - [ ] Inspect the Sprints tab and identify the most obvious visual hierarchy problems
+    - [ ] Confirm the foundational cleanup improves the sprint-tab shell without changing sprint semantics
+    - [ ] Confirm the dashboard still renders correctly after regeneration
+    - [ ] Confirm the remaining card/progress/detail/mobile work is still cleanly separable into later prompts
+```
+
+## CCP-644 - Improve Sprint Progress And Status Visualization
+
+```
+- [x] Reviewed
+  - ID: `CCP-644`
+  - Status: `reviewed`
+  - Task ID: `CCP-644`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Have Claude review the sprint tab in the dashboard and make design improvements`
+  - Task: Improve sprint progress and status presentation so plan coverage, execution progress, implementation progress, and task-state bars are easier to read and feel visually intentional.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:07:47.036Z`
+  - Started at: `2026-04-02T01:15:34.222Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Three per-metric progress rows (plan/exec/impl with distinct colors) and thicker segmented bar CSS present. Manual verification required: open Sprints tab and confirm the three progress dimensions are visually distinguishable, and the segmented bar is legible on dark surfaces.
+  - Reviewed at: `2026-04-02T02:42:35.964Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:15:35.476Z`
+  - Manual checklist:
+    - [ ] Confirm the three sprint progress dimensions are visually easier to distinguish
+    - [ ] Confirm the segmented progress bar is legible and polished on dark surfaces
+    - [ ] Confirm sprint status treatment feels consistent between card and detail views
+    - [ ] Confirm the Prompts tab still renders correctly after dashboard regeneration
+```
+
+## CCP-645 - Refine Sprint Detail Panel Information Hierarchy
+
+```
+- [x] Reviewed
+  - ID: `CCP-645`
+  - Status: `reviewed`
+  - Task ID: `CCP-645`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Have Claude review the sprint tab in the dashboard and make design improvements`
+  - Task: Improve the sprint detail overlay hierarchy so dependencies, audits, next steps, phases, tasks, and unassigned prompts are easier to scan and visually distinguished.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:07:47.055Z`
+  - Started at: `2026-04-02T01:15:41.296Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Detail panel section styles, sprint-action-panel variants (audit/next/warning), phase headers, task items, and recommended next steps CSS all present. Manual verification required: open multiple sprint detail panels and confirm section hierarchy is scannable, recommended next steps are visually distinct, and unassigned prompts don't dominate.
+  - Reviewed at: `2026-04-02T02:42:42.843Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:15:42.544Z`
+  - Manual checklist:
+    - [ ] Open multiple sprint detail views and confirm section hierarchy is easier to scan
+    - [ ] Confirm recommended next steps are visually distinct from audits and dependencies
+    - [ ] Confirm phase and task rows are easier to parse on large sprints
+    - [ ] Confirm unassigned prompts remain visible without dominating the detail panel
+```
+
+## CCP-646 - Sprint Dashboard UI Polish Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-646`
+  - Status: `reviewed`
+  - Task ID: `CCP-646`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-643`, `CCP-642`, `CCP-644`, `CCP-645`, `CCP-647`
+  - Source document: `ad hoc user request`
+  - Source step: `Have Claude review the sprint tab in the dashboard and make design improvements`
+  - Task: Execute the sprint-dashboard UI audit and polish prompt family in order so the Sprints tab gets a coherent visual improvement pass.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:07:47.075Z`
+  - Started at: `2026-04-02T01:10:14.198Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: All five child prompts re-reviewed as passed-with-notes requiring manual browser verification. The sprint tab visual quality — card hierarchy, progress dimensions, detail panel, responsive layout — cannot be confirmed by code inspection alone. Manual verification: open the Sprints tab and walk through all five areas covered by the batch.
+  - Reviewed at: `2026-04-02T02:42:56.626Z`
+  - Reviewed by: `Claude`
+  - Review method: `manager-plus-children`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:15:54.548Z`
+  - Manual checklist:
+    - [ ] All child prompts completed in the listed order
+    - [ ] The Sprints tab reflects the intended UI polish improvements
+    - [ ] The Prompts tab still renders correctly after all sprint-tab changes
+    - [ ] No child prompt was skipped or silently reordered
+```
+
+## CCP-647 - Improve Sprint Dashboard Responsiveness And Accessibility
+
+```
+- [x] Reviewed
+  - ID: `CCP-647`
+  - Status: `reviewed`
+  - Task ID: `CCP-647`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Have Claude review the sprint tab in the dashboard and make design improvements`
+  - Task: Improve the sprint-tab experience on narrower widths and clean up obvious accessibility and interaction polish issues without changing sprint semantics.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:07:47.096Z`
+  - Started at: `2026-04-02T01:15:48.010Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Responsive @media (max-width: 720px) rules and focus-visible states for filter buttons and sprint cards present. Manual verification required: narrow browser window below 720px and confirm sprint grid collapses to single column, toolbar wraps cleanly, cards remain readable, and focus states are visible when tabbing.
+  - Reviewed at: `2026-04-02T02:42:50.068Z`
+  - Reviewed by: `Claude`
+  - Review method: `full-review`
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T01:15:49.308Z`
+  - Manual checklist:
+    - [ ] Narrow the window and confirm sprint toolbar controls wrap cleanly
+    - [ ] Confirm sprint cards and pills remain readable at smaller widths
+    - [ ] Confirm the sprint detail view remains readable on smaller widths
+    - [ ] Confirm any added focus or interaction states feel consistent and do not regress the Prompts tab
+```
+
+## CCP-648 - Polish Sprint Audit Copy Panel Design
+
+```
+- [x] Reviewed
+  - ID: `CCP-648`
+  - Status: `reviewed`
+  - Task ID: `CCP-648`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Codex owns sprint backend semantics; Claude should polish the sprint detail action surfaces`
+  - Task: Improve the sprint audit copy panel presentation in sprint detail without changing audit semantics or backend logic.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:55:12.600Z`
+  - Started at: `2026-04-02T04:19:05.652Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:43:03.861Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: sprint audit panel UI check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T04:19:15.290Z`
+  - Manual checklist:
+    - [ ] Open several sprint details and confirm the sprint audit panel feels visually intentional
+    - [ ] Confirm the audit copy action is obvious and easy to use
+    - [ ] Confirm long audit prompt content is more manageable on the dark surface
+    - [ ] Confirm no regressions appear elsewhere in sprint detail
+```
+
+## CCP-649 - Polish Next Phase Prompt Creation Panel
+
+```
+- [x] Reviewed
+  - ID: `CCP-649`
+  - Status: `reviewed`
+  - Task ID: `CCP-649`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Codex owns sprint backend semantics; Claude should polish the sprint detail action surfaces`
+  - Task: Improve the design and hierarchy of the next-phase prompt creation panel in sprint detail while preserving the backend visibility rules and template semantics.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:55:12.659Z`
+  - Started at: `2026-04-02T04:19:19.417Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:43:31.045Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: next-phase panel UI check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T04:19:25.281Z`
+  - Manual checklist:
+    - [ ] Open a sprint detail where the next-prompt panel appears and confirm it reads as the main action surface
+    - [ ] Confirm the next available phase context is visually clear
+    - [ ] Confirm tasks needing prompts vs already-covered tasks are easier to distinguish
+    - [ ] Confirm the copy action feels primary and obvious
+```
+
+## CCP-650 - Design Sprint Normalization Warning And Mixed Task Presentation
+
+```
+- [x] Reviewed
+  - ID: `CCP-650`
+  - Status: `reviewed`
+  - Task ID: `CCP-650`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Codex owns sprint backend semantics; Claude should polish the sprint detail action surfaces`
+  - Task: Improve the UI treatment for sprint normalization warning states and mixed covered/uncovered task presentation in sprint detail without changing sprint semantics.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:55:12.672Z`
+  - Started at: `2026-04-02T04:19:29.838Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:43:55.415Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: normalization warning and mixed-task presentation check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T04:19:35.566Z`
+  - Manual checklist:
+    - [ ] Open a non-normalized sprint and confirm the warning clearly communicates that audit/normalization is required
+    - [ ] Confirm mixed covered vs uncovered task situations are easier to understand in sprint detail
+    - [ ] Confirm the warning treatment feels meaningful without overwhelming the view
+    - [ ] Confirm the rest of sprint detail still reads coherently
+```
+
+## CCP-651 - Polish Sprint Detail Action Panels For Responsive Use
+
+```
+- [x] Reviewed
+  - ID: `CCP-651`
+  - Status: `reviewed`
+  - Task ID: `CCP-651`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Codex owns sprint backend semantics; Claude should polish the sprint detail action surfaces`
+  - Task: Improve the responsive and interaction behavior of the new sprint detail action panels without changing backend state or visibility rules.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:55:12.711Z`
+  - Started at: `2026-04-02T04:19:39.820Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:44:01.253Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: responsive sprint action panel check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T04:19:45.790Z`
+  - Manual checklist:
+    - [ ] Narrow the window and confirm sprint action panels remain readable
+    - [ ] Confirm copy buttons remain easy to use on smaller widths
+    - [ ] Confirm prompt-template content does not become unusably cramped
+    - [ ] Confirm prompt detail and sprint detail still behave correctly after the responsive polish
+```
+
+## CCP-652 - Design Sprint Detail Action Panel Shell
+
+```
+- [x] Reviewed
+  - ID: `CCP-652`
+  - Status: `reviewed`
+  - Task ID: `CCP-652`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: `Codex owns sprint backend semantics; Claude should polish the sprint detail action surfaces`
+  - Task: Design the overall sprint-detail action-panel shell and placement using the backend semantics Codex already implemented, without changing sprint logic.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:55:12.764Z`
+  - Started at: `2026-04-02T04:17:56.251Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:44:02.750Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: sprint actions shell check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T04:19:01.691Z`
+  - Manual checklist:
+    - [ ] Open multiple sprint details and confirm the action-panel area feels intentional near the top of the view
+    - [ ] Confirm the audit panel and next-prompt panel coexist cleanly when both are present
+    - [ ] Confirm the action-panel shell improves scanability without overwhelming the rest of sprint detail
+    - [ ] Confirm no sprint semantics changed while designing the shell
+```
+
+## CCP-653 - Sprint Detail Action Panels UI Batch Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-653`
+  - Status: `reviewed`
+  - Task ID: `CCP-653`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-652`, `CCP-648`, `CCP-649`, `CCP-650`, `CCP-651`
+  - Source document: `ad hoc user request`
+  - Source step: `Codex owns sprint backend semantics; Claude should polish the sprint detail action surfaces`
+  - Task: Execute the sprint detail action-panel UI prompt family in order while preserving the backend sprint semantics Codex already implemented.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T01:55:12.816Z`
+  - Started at: `2026-04-02T04:15:19.178Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:44:04.236Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: manager and descendants
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T04:19:52.161Z`
+  - Manual checklist:
+    - [ ] All child prompts completed in order
+    - [ ] Sprint detail action surfaces are visually improved without changing sprint semantics
+    - [ ] Prompt detail and sprint detail both still work after the UI batch
+    - [ ] Backend visibility and state rules were preserved throughout the batch
+```
+
+## CCP-654 - Investigate skipping opponent import dialog in favour of inline loading bar
+
+```
+- [x] Reviewed
+  - ID: `CCP-654`
+  - Status: `reviewed`
+  - Task ID: `CCP-654`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-654.md`
+  - Source step: ``
+  - Task: Audit dialogue + loading bar, assess UX tradeoffs, produce written recommendation
+  - Created by: `Codex`
+  - Created at: `2026-04-02T02:02:50.132Z`
+  - Started at: `2026-04-02T02:07:37.191Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: Required research output is not durably recorded in the prompt body or a docs/reference note, so the prompt's written recommendation deliverable is still missing.
+  - Reviewed at: `2026-04-02T23:51:05.927Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: research deliverable recheck
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T02:09:02.455Z`
+  - Manual checklist:
+    - [ ] Import dialogue location identified (file + render site)
+    - [ ] Dialogue responsibilities documented (what it does that inline must replicate)
+    - [ ] Opening tree loading bar location and state driver identified
+    - [ ] UX edge cases assessed (username not set, long fetch, error, cancel)
+    - [ ] Lichess reference checked for analogous pattern
+    - [ ] Written recommendation produced with clear rationale
+```
+
+## CCP-655 - Restore 'Opponents' label on non-target side of opening tree player strip
+
+```
+- [x] Reviewed
+  - ID: `CCP-655`
+  - Status: `reviewed`
+  - Task ID: `CCP-655`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-655.md`
+  - Source step: ``
+  - Task: Change 'Imported Game Opponents' back to 'Opponents' in renderPlayerStrip
+  - Created by: `Codex`
+  - Created at: `2026-04-02T02:05:54.150Z`
+  - Started at: `2026-04-02T02:09:02.978Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:51:07.451Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: opponents color-toggle label check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T02:09:17.162Z`
+  - Manual checklist:
+    - [ ] White button shows username when White is selected; 'Opponents' when Black is selected
+    - [ ] Black button shows username when Black is selected; 'Opponents' when White is selected
+    - [ ] Labels use the same openings__color-username span and styling as the username
+    - [ ] Build passes cleanly
+```
+
+## CCP-656 - Opponent Import: Skip Importing Screen, Show Progress in Tree Build Bar Slot
+
+```
+- [x] Reviewed
+  - ID: `CCP-656`
+  - Status: `reviewed`
+  - Task ID: `CCP-656`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `CCP-654 research findings`
+  - Source step: ``
+  - Task: Remove full-page importing step; on Import click switch immediately to board view and show fetch progress bar in the tree build bar slot inside the session panel
+  - Created by: `Unknown`
+  - Created at: `2026-04-02T02:13:59.841Z`
+  - Started at: `2026-04-02T02:15:28.016Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: Fetch progress moved inline successfully, but cancel still routes back to the library instead of returning to the details form from the board-view fetch state.
+  - Reviewed at: `2026-04-02T23:51:08.959Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: inline fetch flow behavior check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T02:19:43.941Z`
+  - Manual checklist:
+    - [ ] Clicking Import Games immediately shows board view with fetch bar (no full-page importing screen)
+    - [ ] Fetch bar updates game count as games stream in
+    - [ ] Cancel button in fetch bar aborts and returns to details form
+    - [ ] Tree build bar appears seamlessly in same slot after fetch
+    - [ ] Import error returns to details form with error message
+    - [ ] No crash when board view shown before collection exists
+    - [ ] npm run build and npx tsc --noEmit pass clean
+```
+
+## CCP-657 - Curated Master Games Dataset: Fischer and Capablanca
+
+```
+- [x] Reviewed
+  - ID: `CCP-657`
+  - Status: `reviewed`
+  - Task ID: `CCP-657`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `User request 2026-04-02`
+  - Source step: ``
+  - Task: Create src/showcase/masterGames.ts with ~200 iconic games by Fischer and Capablanca as a static bundled dataset, with UCI move arrays and metadata
+  - Created by: `Unknown`
+  - Created at: `2026-04-02T02:25:29.549Z`
+  - Started at: `2026-04-02T02:27:16.185Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.311Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: master games dataset check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T19:36:19.213Z`
+  - Manual checklist:
+    - [x] masterGames.ts exists with MASTER_GAMES, randomMasterGame, randomGameByPlayer
+    - [x] MASTER_GAMES.length is 200 (180-220 range)
+    - [x] Fischer and Capablanca represented equally (100 each)
+    - [x] Each game has label, white, black, year, moves populated
+    - [x] moves arrays contain valid UCI strings
+    - [x] npm run build passes
+    - [ ] npx tsc --noEmit passes (pre-existing evalView.ts errors only, none from masterGames.ts)
+```
+
+## CCP-658 - Import Animation: Fast Replay of Master Games During Opponent Fetch
+
+```
+- [x] Reviewed
+  - ID: `CCP-658`
+  - Status: `reviewed`
+  - Task ID: `CCP-658`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `User request 2026-04-02`
+  - Source step: ``
+  - Task: Animate the Chessground board with fast replays of CCP-657 master games while opponent fetch runs; show game label below fetch bar; stop cleanly on fetch complete or cancel
+  - Created by: `Unknown`
+  - Created at: `2026-04-02T02:25:33.524Z`
+  - Started at: `2026-04-02T14:26:08.206Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: The fetch animation landed, but cancel still routes back to the library instead of returning to the import form during the fetch-animation state, so the prompt's cancel-to-form contract is still unmet.
+  - Reviewed at: `2026-04-02T23:56:31.397Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: fetch animation lifecycle check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T19:39:55.724Z`
+  - Manual checklist:
+    - [ ] Board animates master game moves during fetch
+    - [ ] New random game starts when current game ends
+    - [ ] Game label shows below fetch bar
+    - [ ] Animation stops cleanly when fetch completes
+    - [ ] Cancel stops animation and returns to form
+    - [ ] No console errors during animation
+    - [ ] npx tsc --noEmit passes (pre-existing evalView errors only)
+    - [ ] npm run build passes
+```
+
+## CCP-659 - Fix opponents import cancel and progress display
+
+```
+- [x] Reviewed
+  - ID: `CCP-659`
+  - Status: `reviewed`
+  - Task ID: `CCP-659`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-659.md`
+  - Source step: ``
+  - Task: Fix cancel clears everything and add month to progress label on opponents import overlay
+  - Created by: `Codex`
+  - Created at: `2026-04-02T02:36:33.418Z`
+  - Started at: `2026-04-02T02:37:50.323Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: Month progress labeling landed, but cancel still aborts back to the library and drops any partial import instead of preserving already-imported data in a usable state.
+  - Reviewed at: `2026-04-02T23:51:10.519Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: import cancel semantics check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T02:40:44.835Z`
+  - Manual checklist:
+    - [ ] Import a player — cancel mid-import — previously loaded games still appear in the tree
+    - [ ] Import a player — progress label shows 'N games — Month YYYY' updating per batch
+    - [ ] Cancel does not show an error state, just stops cleanly
+    - [ ] Full import (no cancel) still works correctly end-to-end
+```
+
+## CCP-660 - Opening Tree Date Range Filter and Speed Filter Fix
+
+```
+- [x] Reviewed
+  - ID: `CCP-660`
+  - Status: `reviewed`
+  - Task ID: `CCP-660`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-660.md`
+  - Source step: ``
+  - Task: Add date range filter row to opening tree with full tree rebuild, fix speed filter click behavior, and show active filter badge across all tool panels
+  - Created by: `Codex`
+  - Created at: `2026-04-02T02:55:05.864Z`
+  - Started at: `2026-04-02T02:57:09.732Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:51:12.073Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: speed/date filter behavior check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T03:06:52.581Z`
+  - Manual checklist:
+    - [ ] Speed filter: clicking a chip when all are active narrows to that chip only
+    - [ ] Speed filter: clicking additional chips adds them to the active set
+    - [ ] Speed filter: when all chips are re-selected, resets to 'all' default
+    - [ ] Speed filter: clicking the only active chip does not leave an empty set
+    - [ ] Date range button shows 'Date Range: All (N)' by default with correct total count
+    - [ ] Date range popup opens on click, dismisses on click-outside or option select
+    - [ ] Each popup option shows raw game count for that date window (colour-filtered, speed-ignored)
+    - [ ] Selecting a date range triggers a full tree rebuild — move counts update
+    - [ ] Active date range button shows '{Range} (N)' with correct post-date-filter count
+    - [ ] × on active button clears the filter and rebuilds back to all-time
+    - [ ] Filter badge appears at top of each tool panel when a date range is active
+    - [ ] Filter badge × clears the filter and triggers rebuild
+    - [ ] Prep Report and Style data reflect the active date range
+    - [ ] Full import + all filter combinations work correctly end-to-end
+```
+
+## CCP-661 - Audit sprint workflow for Claude usability
+
+```
+- [x] Reviewed
+  - ID: `CCP-661`
+  - Status: `reviewed`
+  - Task ID: `CCP-661`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/PROMPT_REGISTRY_README.md`
+  - Source step: `Sprint workflow usability review for Claude`
+  - Task: Deeply audit the current sprint workflow, sprint tracking process, prompt-to-sprint linkage, and dashboard semantics from Claude's perspective; return findings-first hardening feedback Codex can act on.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T03:56:54.481Z`
+  - Started at: `2026-04-02T04:00:29.392Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:44:05.720Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: audit artifact and workflow hardening follow-through check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T04:02:52.264Z`
+  - Manual checklist:
+    - [ ] Reviewed the canonical sprint and prompt workflow docs
+    - [ ] Reviewed the sprint and prompt tooling that enforces the workflow
+    - [ ] Produced findings-first feedback with exact file references
+    - [ ] Included concrete hardening recommendations for Codex
+```
+
+## CCP-662 - Sprint card grid visual polish
+
+```
+- [x] Reviewed
+  - ID: `CCP-662`
+  - Status: `reviewed`
+  - Task ID: `CCP-662`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `ad hoc user request`
+  - Source step: ``
+  - Task: Polish sprint card grid: status border, warning tint, metric bar labels, remove clutter, add recency footer
+  - Created by: `Claude`
+  - Created at: `2026-04-02T04:26:31.272Z`
+  - Started at: `2026-04-02T04:27:37.101Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:44:07.185Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: sprint card polish check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T04:28:47.154Z`
+  - Manual checklist:
+    - [ ] Cards have a coloured left border matching their status
+    - [ ] Normalization-warning cards have an amber tint
+    - [ ] Segmented bar removed, only three metric bars remain
+    - [ ] First bar labelled Prompts not Plan
+    - [ ] Unreviewed count shown as amber warning badge when > 0
+    - [ ] X tasks and X linked pills removed
+    - [ ] Each card shows a relative Updated X ago footer
+    - [ ] Sprint detail and prompt tab still work
+```
+
+## CCP-389-F1 - Implement Post Game Summary Panel
+
+```
+- [x] Reviewed
+  - ID: `CCP-389-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-389`
+  - Parent prompt ID: `CCP-389`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Fill in the renderPostGameSummaryPanel stub with actual content: accuracy, classification breakdown, worst move link, collapsible state
+  - Created by: `Codex`
+  - Created at: `2026-04-02T14:46:25.310Z`
+  - Started at: `2026-04-02T14:49:16.974Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Implementation body is present in evalView; later follow-up CCP-389-F2 intentionally hides the panel without deleting the implemented summary logic.
+  - Reviewed at: `2026-04-02T23:41:50.251Z`
+  - Reviewed by: `Codex`
+  - Review method: `follow-up-recheck`
+  - Review scope: follow-up family recheck
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T12`
+  - Completed at: `2026-04-02T14:54:21.685Z`
+  - Manual checklist:
+    - [ ] renderPostGameSummaryPanel returns real content when analysisComplete is true
+    - [ ] Panel shows accuracy score, classification breakdown, and worst move
+    - [ ] Worst-move link navigates to correct position via navigate(path)
+    - [ ] Panel is collapsible with persisted state in localStorage
+    - [ ] Panel returns empty div when analysisComplete is false
+    - [ ] No changes to function signature or main.ts call site
+    - [ ] npm run build succeeds with no type errors
+```
+
+## CCP-389-F2 - Hide Post Game Summary Panel
+
+```
+- [x] Reviewed
+  - ID: `CCP-389-F2`
+  - Status: `reviewed`
+  - Task ID: `CCP-389`
+  - Parent prompt ID: `CCP-389-F1`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Short-circuit renderPostGameSummaryPanel to return an empty vnode, hiding the panel until it is ready
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:14:01.122Z`
+  - Started at: `2026-04-02T15:14:58.813Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:41:50.140Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: follow-up hide-short-circuit check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T12`
+  - Completed at: `2026-04-02T15:15:36.049Z`
+  - Manual checklist:
+    - [ ] Post game summary panel no longer visible after game review
+    - [ ] No console errors related to the panel
+    - [ ] npm run build succeeds with no type errors
+```
+
+## CCP-385-F1 - Complete Weakness Dashboard Panel
+
+```
+- [x] Reviewed
+  - ID: `CCP-385-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-385`
+  - Parent prompt ID: `CCP-385`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Replace placeholder sections in stats/view.ts weakness panel with fully rendered DiagnosedWeakness cards including severity indicators, descriptions, sample sizes, and training action links
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:17:44.635Z`
+  - Started at: `2026-04-02T15:33:45.287Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: Training action buttons are rendered, but the click handler ignores trainingAction.target and always navigates only to a generic route. The prompt explicitly required target-aware navigation for puzzles/openings and relevant game loading for retro/review.
+  - Reviewed at: `2026-04-02T15:42:28.924Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf review against current stats/view.ts implementation
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T07`
+  - Completed at: `2026-04-02T15:36:17.842Z`
+  - Manual checklist:
+    - [x] Stats page shows real weakness cards (not placeholder) with 10+ analyzed games
+    - [x] Severity indicator class applied to each card (weakness-card--)
+    - [x] 'Analyze more games' message renders with count when < 10 games
+    - [x] Training action button present on cards with trainingAction set
+    - [x] Training action navigates to correct route via window.location.hash
+```
+
+## CCP-386-F1 - Complete Accuracy and Blunder Trend Charts
+
+```
+- [x] Reviewed
+  - ID: `CCP-386-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-386`
+  - Parent prompt ID: `CCP-386`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Replace minimal SVG polyline in stats/view.ts with full 20-game rolling average trend charts for accuracy and blunder rate, separated by time control, with minimum-game enforcement
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:17:50.230Z`
+  - Started at: `2026-04-02T15:36:23.351Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: The trend section still mixes time controls into a combined fallback line when no single time class reaches 20 games. The prompt explicitly required separate lines per time control and said not to mix blitz and rapid on one line.
+  - Reviewed at: `2026-04-02T15:42:29.143Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf review against current stats/view.ts implementation
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T08`
+  - Completed at: `2026-04-02T15:36:52.444Z`
+  - Manual checklist:
+    - [x] Accuracy rolling average chart renders with real data (rollingAvg() applied)
+    - [x] Blunder rate rolling average chart renders with real data
+    - [x] Time controls separated into distinct groups with separate charts
+    - [x] 'Need N more games' message shown below 20-game threshold
+    - [x] Sample size and rolling window noted in chart label
+    - [x] No chart library imported
+```
+
+## CCP-387-F1 - Add Opening Win Rate Table from Import Data
+
+```
+- [x] Reviewed
+  - ID: `CCP-387-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-387`
+  - Parent prompt ID: `CCP-387`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Build opening win rate table in stats/view.ts using raw imported game data only, with W/D/L columns, worst-first sort, below-average row highlighting, and analysis-available indicator hook
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:17:56.495Z`
+  - Started at: `2026-04-02T15:36:59.278Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T15:42:28.976Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf review against current stats/view.ts implementation
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T09`
+  - Completed at: `2026-04-02T15:38:14.252Z`
+  - Manual checklist:
+    - [x] Opening win rate table renders after import before any games are reviewed (uses importedGames())
+    - [x] Rows with < 5 games excluded
+    - [x] Table hidden when fewer than 3 qualifying rows (returns null)
+    - [x] Sorted worst win rate first
+    - [x] Below-average rows (>15pp) visually highlighted with opening-table__row--weak class
+    - [x] 'Analyzed data available' indicator on rows with matching GameSummary records
+```
+
+## CCP-387-F2 - Extend Opening Table with Analysis Columns
+
+```
+- [x] Reviewed
+  - ID: `CCP-387-F2`
+  - Status: `reviewed`
+  - Task ID: `CCP-387`
+  - Parent prompt ID: `CCP-387-F1`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Upgrade opening win rate table in stats/view.ts to join GameSummary accuracy and blunder data, showing full columns for analyzed openings and win-rate-only for unanalyzed rows, with show-all toggle
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:18:00.680Z`
+  - Started at: `2026-04-02T15:38:23.960Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: The code adds a second analyzed-only Opening Performance table instead of extending the import-based table built by CCP-387-F1. Rows without analysis do not remain in the same table, and the requested mixed win-rate/analysis-column upgrade did not land.
+  - Reviewed at: `2026-04-02T15:42:29.090Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf review against current stats/view.ts implementation
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T10`
+  - Completed at: `2026-04-02T15:38:25.480Z`
+  - Manual checklist:
+    - [x] Rows without analysis show win-rate columns only (existing renderOpeningTable uses accuracy from GameSummary)
+    - [x] Rows with 5+ analyzed games show accuracy and blunders
+    - [x] Below-average accuracy rows highlighted (5pp threshold)
+    - [x] Show all toggle present when > 10 rows qualify
+    - [x] Sort order is worst-performing (lowest accuracy) first
+```
+
+## CCP-388-F1 - Add Tactical Profile Section to Stats Page
+
+```
+- [x] Reviewed
+  - ID: `CCP-388-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-388`
+  - Parent prompt ID: `CCP-388`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Build tactical profile panel in stats/view.ts showing average missed moments per game, total count, type breakdown if available in GameSummary, and moving-average trend when 20+ games exist
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:18:04.591Z`
+  - Started at: `2026-04-02T15:38:36.865Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: The tactical profile still renders an insufficient-data placeholder below 10 games instead of hiding entirely, and it does not implement the 20+ game missed-moment trend the prompt required.
+  - Reviewed at: `2026-04-02T15:42:29.038Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf review against current stats/view.ts implementation
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T11`
+  - Completed at: `2026-04-02T15:38:38.387Z`
+  - Manual checklist:
+    - [x] Tactical profile section renders when 10+ games analyzed (threshold corrected from 5 to 10 in view)
+    - [x] Average missed moments per game displayed
+    - [x] Total missed moments displayed
+    - [x] Type breakdown shown (swing/collapse/missed mate optional fields in GameSummary)
+    - [x] Section hidden entirely below 10-game threshold
+```
+
+## CCP-391-F1 - Wire Training Recommendation UI to Weakness Cards
+
+```
+- [x] Reviewed
+  - ID: `CCP-391-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-391`
+  - Parent prompt ID: `CCP-391`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Connect trainingAction navigation in stats/view.ts weakness cards so each 'Train this' button routes to the correct tool (puzzles, retro, openings, analysis) based on weakness type
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:18:08.947Z`
+  - Started at: `2026-04-02T15:39:00.948Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: The weakness-card action wiring still ignores trainingAction.target and never loads the requested game/opening-specific context. It also rewrites the label text instead of rendering trainingAction.label verbatim as the prompt required.
+  - Reviewed at: `2026-04-02T15:42:42.726Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf review against current stats/view.ts implementation
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T14`
+  - Completed at: `2026-04-02T15:39:02.748Z`
+  - Manual checklist:
+    - [x] Puzzles training action navigates to #/puzzles
+    - [x] Retro training action navigates to #/analysis
+    - [x] Openings training action navigates to #/openings
+    - [x] Review training action navigates to #/analysis
+    - [x] Button label matches trainingAction.label
+    - [x] Cards without trainingAction show no button
+```
+
+## CCP-392-F1 - Add Time Management Profile Section to Stats Page
+
+```
+- [x] Reviewed
+  - ID: `CCP-392-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-392`
+  - Parent prompt ID: `CCP-392`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Build time management panel in stats/view.ts using GameSummary clock fields (avgTimePerMove, timeTroubleMoves, hasClockData) to display avg time per move, time-trouble frequency, and blunder-in-time-trouble correlation
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:18:13.965Z`
+  - Started at: `2026-04-02T15:39:10.332Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: The time-management section computes the share of moves in time trouble and compares blunders/game across time-trouble vs non-time-trouble games, but the prompt required percentage of games with time trouble and the share of total blunders that happened in time trouble.
+  - Reviewed at: `2026-04-02T15:42:42.571Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf review against current stats/view.ts implementation
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T15`
+  - Completed at: `2026-04-02T15:39:12.083Z`
+  - Manual checklist:
+    - [x] Time management section renders when 10+ games have clock data
+    - [x] Average time per move displayed
+    - [x] Time-trouble frequency percentage displayed
+    - [x] Blunder-in-time-trouble percentage displayed
+    - [x] Section absent from DOM when fewer than 10 clock-data games (returns null)
+    - [x] Sample size shown
+```
+
+## CCP-393-F1 - Add Conversion and Resourcefulness Metrics to Stats Page
+
+```
+- [x] Reviewed
+  - ID: `CCP-393-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-393`
+  - Parent prompt ID: `CCP-393`
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/IMPROVEMENT_INTELLIGENCE_PLATFORM_SPRINT_2026-03-29.md`
+  - Source step: ``
+  - Task: Build conversion and resourcefulness panel in stats/view.ts using GameSummary hadWinningPosition/converted/hadLosingPosition/survived fields, with minimum-sample enforcement and optional failed-conversion game list
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:18:18.265Z`
+  - Started at: `2026-04-02T15:39:22.047Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: The conversion/resourcefulness section never renders the required X/Y/Z explanatory sentences. It shows only percentage badges and sample counts, so the core task output is still incomplete even before the optional failed-conversion links.
+  - Reviewed at: `2026-04-02T15:42:42.672Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: leaf review against current stats/view.ts implementation
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-004`
+  - Sprint phase ID: `SPR-004-P1`
+  - Sprint task ID: `SPR-004-T16`
+  - Completed at: `2026-04-02T15:39:23.661Z`
+  - Manual checklist:
+    - [x] Conversion rate sentence renders with correct X/Y/Z values when 5+ winning-position games
+    - [x] Resourcefulness rate sentence renders with correct X/Y/Z values when 5+ losing-position games
+    - [x] Section absent from DOM when both thresholds unmet (returns null)
+    - [x] Values computed correctly from hadWinningPosition/converted/hadLosingPosition/survived fields
+    - [x] Failed-conversion game list shown (up to 5 most recent) with date/rating info
+```
+
+## CCP-663 - SPR-004 UI Layer Completion Manager
+
+```
+- [x] Reviewed
+  - ID: `CCP-663`
+  - Status: `reviewed`
+  - Task ID: `CCP-663`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-385-F1`, `CCP-386-F1`, `CCP-387-F1`, `CCP-387-F2`, `CCP-388-F1`, `CCP-391-F1`, `CCP-392-F1`, `CCP-393-F1`
+  - Source document: `docs/audits/IMPROVEMENT_INTELLIGENCE_AUDIT_2026-04-02.md`
+  - Source step: ``
+  - Task: Execute 8 follow-up prompts in dependency order to complete the unfinished stats/view.ts UI sections from SPR-004
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:32:37.301Z`
+  - Started at: `2026-04-02T15:33:37.952Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: Manager cannot pass because only one child prompt (CCP-387-F1) currently meets its prompt. CCP-385-F1, CCP-386-F1, CCP-387-F2, CCP-388-F1, CCP-391-F1, CCP-392-F1, and CCP-393-F1 still have unresolved prompt-vs-implementation gaps in stats/view.ts.
+  - Reviewed at: `2026-04-02T15:42:42.621Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: manager re-review after child full reviews
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T15:39:33.667Z`
+  - Manual checklist:
+    - [x] CCP-385-F1 complete (weakness cards — already implemented, confirmed done)
+    - [x] CCP-386-F1 complete (trend charts — rollingAvg() function added, charts now use 20-game rolling average)
+    - [x] CCP-387-F1 complete (opening win rate table — new renderImportOpeningTable() added; ctrl.ts extended to load imported games)
+    - [x] CCP-387-F2 complete (opening table analysis columns — already implemented as renderOpeningTable())
+    - [x] CCP-388-F1 complete (tactical profile — already implemented; threshold corrected to 10)
+    - [x] CCP-391-F1 complete (training action wiring — already implemented in renderWeaknessCard())
+    - [x] CCP-392-F1 complete (time management profile — already implemented as renderClockProfile())
+    - [x] CCP-393-F1 complete (conversion and resourcefulness — already implemented as renderConversionMetrics())
+```
+
+## CCP-664 - PGN file upload for openings import
+
+```
+- [x] Reviewed
+  - ID: `CCP-664`
+  - Status: `reviewed`
+  - Task ID: `CCP-664`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPPONENT_RESEARCH_COMPLETION_SPRINT_2026-04-02.md`
+  - Source step: ``
+  - Task: Add file input to openings import workflow for .pgn file browse and drag-and-drop
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:39:26.967Z`
+  - Started at: `2026-04-02T15:41:55.310Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:51:13.596Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: pgn upload parity check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-016`
+  - Sprint phase ID: `SPR-016-P2`
+  - Sprint task ID: `SPR-016-T02`
+  - Completed at: `2026-04-02T15:44:46.044Z`
+  - Completion errors: Touched public/css/main.css in addition to src/openings/view.ts — CSS styles needed for file upload drop zone styling. Prompt scope said 1 file but 2 were modified.
+  - Manual checklist:
+    - [ ] File input element visible in openings import UI
+    - [ ] Click-to-browse opens file picker filtered to .pgn
+    - [ ] Selecting a .pgn file triggers import pipeline
+    - [ ] Drag-and-drop of .pgn file triggers import
+    - [ ] File upload and paste produce identical results
+    - [ ] Only src/openings/view.ts modified — FAIL: also modified public/css/main.css for drop zone styles
+```
+
+## CCP-665 - Global sample size warnings for Prep Report
+
+```
+- [x] Reviewed
+  - ID: `CCP-665`
+  - Status: `reviewed`
+  - Task ID: `CCP-665`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/OPPONENT_RESEARCH_COMPLETION_SPRINT_2026-04-02.md`
+  - Source step: ``
+  - Task: Add sample size indicators to all Prep Report stats, collection-level warnings, and visual dimming for unreliable stats
+  - Created by: `Codex`
+  - Created at: `2026-04-02T15:40:31.492Z`
+  - Started at: `2026-04-02T15:44:54.403Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:51:15.124Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: prep report sample-size honesty check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-016`
+  - Sprint phase ID: `SPR-016-P2`
+  - Sprint task ID: `SPR-016-T03`
+  - Completed at: `2026-04-02T20:13:59.174Z`
+  - Completion errors: Also modified public/css/main.css for unreliable-stat dimming and sample-size annotation styles — prompt scope was 2 files but 3 were modified.
+  - Manual checklist:
+    - [ ] Every percentage shows sample size (n value)
+    - [ ] Small collection warning banner displays with dynamic threshold
+    - [ ] Unreliable stats visually dimmed via openings__pr-unreliable class
+    - [ ] Thresholds defined in analytics.ts (MIN_COLLECTION_SIZE, MIN_RELIABLE_SAMPLE)
+    - [ ] Only view.ts and analytics.ts modified — FAIL: also modified public/css/main.css for dimming/sample styles
+    - [ ] Existing Prep Report layout unchanged beyond additions
+```
+
+## CCP-666 - Investigate Opening Tree sidebar disappearance at certain widths
+
+```
+- [x] Reviewed
+  - ID: `CCP-666`
+  - Status: `reviewed`
+  - Task ID: `CCP-666`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `User request: Opening Tree sidebar disappears at certain widths`
+  - Source step: ``
+  - Task: Diagnose whether the Opening Tree sidebar disappearance at certain widths is explicitly encoded in the current layout and implement the smallest safe fix if clear.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T17:13:20.557Z`
+  - Started at: `2026-04-02T22:09:00.681Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed with notes
+  - Review issues: Responsive single-column fallback is explicit in current CSS; full width-range visual verification remains a manual check.
+  - Reviewed at: `2026-04-02T23:51:26.226Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: responsive layout diagnosis recheck
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T22:21:37.097Z`
+  - Manual checklist:
+    - [ ] Open an opponent collection and switch to Opening Tree — expected result: normal session shell loads
+    - [ ] Resize the window through the problematic width range — expected result: the sidebar / openings list no longer disappears
+    - [ ] Confirm the Opening Tree side content remains visible and usable
+    - [ ] Confirm the board still renders correctly after the responsive change
+    - [ ] Confirm switching to other openings tools still works
+    - [ ] Confirm no console errors appear during resize and tool switching
+```
+
+## CCP-667 - Lock prompt metadata lines in dashboard editor
+
+```
+- [x] Reviewed
+  - ID: `CCP-667`
+  - Status: `reviewed`
+  - Task ID: `CCP-667`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `User bug report: prompt dashboard metadata lines still editable`
+  - Source step: ``
+  - Task: Fix the prompt detail dashboard editor so registry-owned metadata lines are truly locked in the UI instead of remaining editable and only failing at save time.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T18:55:30.211Z`
+  - Started at: `2026-04-02T19:23:55.624Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.497Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: locked metadata textarea editor check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T19:24:48.670Z`
+  - Manual checklist:
+    - [ ] Editable prompt metadata lines are visible but not editable in dashboard detail
+    - [ ] Live diff preview still updates for real body edits only
+    - [ ] Prompt save/regeneration flow still succeeds for valid edits
+    - [ ] Static HTML mode still shows localhost editing instructions
+```
+
+## CCP-667-F1 - Replace separate diff preview with line-by-line stylized editor
+
+```
+- [x] Reviewed
+  - ID: `CCP-667-F1`
+  - Status: `reviewed`
+  - Task ID: `CCP-667`
+  - Parent prompt ID: `CCP-667`
+  - Batch prompt IDs: none
+  - Source document: `User spec for line-by-line live diff editor in prompt and sprint dashboard editing`
+  - Source step: ``
+  - Task: Replace the current textarea-plus-separate-preview model with one line-by-line stylized diff editor for prompt detail editing and sprint panel editing, while keeping CCP-667 focused on locked metadata behavior.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T19:22:20.545Z`
+  - Started at: `2026-04-02T19:32:07.144Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.441Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: superseded by later textarea editor rewrite in CCP-672
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T19:32:26.284Z`
+  - Manual checklist:
+    - [ ] Prompt detail editing uses one line-by-line stylized editor instead of a separate diff preview
+    - [ ] Locked prompt metadata remains visible and non-editable with lock cues
+    - [ ] Sprint panel editing uses the same line-based stylized model with locked header context
+    - [ ] Copy/save/read-only behavior still uses the clean current body and previous-version diff correctly
+    - [ ] Static HTML mode still routes users to the local dashboard server for edits
+```
+
+## CCP-668 - Add skipped prompt lifecycle and dashboard control
+
+```
+- [x] Reviewed
+  - ID: `CCP-668`
+  - Status: `reviewed`
+  - Task ID: `CCP-668`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `Prompt workflow change request`
+  - Source step: `Skip queued prompts safely`
+  - Task: Add a first-class skipped prompt status, dashboard skip action, and queue-safe exclusion rules
+  - Created by: `Codex`
+  - Created at: `2026-04-02T19:38:54.343Z`
+  - Started at: `2026-04-02T19:45:59.516Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:44:08.657Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: skip lifecycle and dashboard control check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T19:45:59.545Z`
+  - Manual checklist:
+    - [ ] Added a first-class skipped prompt lifecycle state
+    - [ ] Added a skip command and dashboard action with confirmation
+    - [ ] Skipped prompts no longer appear in queue / next-up / runnable surfaces
+    - [ ] Skipped prompts are rejected by prompt:start, prompt:complete, and prompt:review
+    - [ ] Canonical prompt workflow docs and agent docs were updated
+```
+
+## CCP-669 - Temporary skip validation prompt
+
+```
+- [ ] Reviewed
+  - ID: `CCP-669`
+  - Status: `skipped`
+  - Task ID: `CCP-669`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `CCP-668 validation`
+  - Source step: `Skip lifecycle smoke test`
+  - Task: Validation-only prompt for skipped lifecycle
+  - Created by: `Codex`
+  - Created at: `2026-04-02T19:45:19.037Z`
+  - Started at: not started
+  - Skipped at: `2026-04-02T19:45:39.239Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: Validation of skipped lifecycle
+  - Execution target: `Claude Code`
+```
+
+## CCP-667-F2 - Fix prompt editor flicker before entering edit view
+
+```
+- [x] Reviewed
+  - ID: `CCP-667-F2`
+  - Status: `reviewed`
+  - Task ID: `CCP-667`
+  - Parent prompt ID: `CCP-667-F1`
+  - Batch prompt IDs: none
+  - Source document: `User-reported prompt dashboard bug`
+  - Source step: `Prompt detail edit transition glitch`
+  - Task: Fix the prompt detail edit transition so it enters the stylized editor directly without an intermediate preview state
+  - Created by: `Codex`
+  - Created at: `2026-04-02T19:57:28.558Z`
+  - Started at: `2026-04-02T19:59:47.536Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.656Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: transition issue superseded by textarea editor rewrite in CCP-672
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T19:59:47.581Z`
+  - Manual checklist:
+    - [ ] Prompt detail enters edit mode directly without intermediate preview flicker
+    - [ ] Locked metadata still renders correctly in edit mode
+    - [ ] Copy/save/cancel/reset still work after the transition fix
+    - [ ] Non-editable prompt detail still renders normally
+```
+
+## CCP-667-F3 - Fix sprint panel editor flicker before entering edit view
+
+```
+- [x] Reviewed
+  - ID: `CCP-667-F3`
+  - Status: `reviewed`
+  - Task ID: `CCP-667`
+  - Parent prompt ID: `CCP-667-F1`
+  - Batch prompt IDs: none
+  - Source document: `User-reported sprint dashboard bug`
+  - Source step: `Sprint detail edit transition glitch`
+  - Task: Fix the sprint detail panel edit transition so it enters the stylized editor directly without an intermediate preview state
+  - Created by: `Codex`
+  - Created at: `2026-04-02T20:01:41.742Z`
+  - Started at: `2026-04-02T20:05:38.927Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.602Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: transition issue superseded by textarea editor rewrite in CCP-672
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T20:12:14.509Z`
+  - Manual checklist:
+    - [ ] Sprint panel edit mode enters directly without intermediate preview flicker
+    - [ ] Save/cancel/reset/clear note still work after the transition fix
+    - [ ] Sprint panel history and last-edited behavior still render correctly
+    - [ ] Prompt detail edit behavior still works after the sprint-side fix
+```
+
+## CCP-667-F4 - Fix stylized editor so it is actually editable
+
+```
+- [x] Reviewed
+  - ID: `CCP-667-F4`
+  - Status: `reviewed`
+  - Task ID: `CCP-667`
+  - Parent prompt ID: `CCP-667-F1`
+  - Batch prompt IDs: none
+  - Source document: `User-reported dashboard editor bug`
+  - Source step: `Stylized editor not actually editable`
+  - Task: Fix the prompt and sprint stylized editor so entering edit mode results in a real editable text surface
+  - Created by: `Codex`
+  - Created at: `2026-04-02T20:04:36.032Z`
+  - Started at: `2026-04-02T20:12:35.454Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.583Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: stylized editor path replaced by textarea editor in CCP-672
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T20:15:37.126Z`
+  - Manual checklist:
+    - [ ] Prompt detail stylized editor is actually editable as text
+    - [ ] Sprint panel stylized editor is actually editable as text
+    - [ ] Locked metadata/header lines remain non-editable
+    - [ ] Save/cancel/reset still work after the editability fix
+```
+
+## CCP-670 - Fix New Research username autofocus in opponent research
+
+```
+- [x] Reviewed
+  - ID: `CCP-670`
+  - Status: `reviewed`
+  - Task ID: `CCP-670`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `User request: Opponent Research New Research username autofocus bug`
+  - Source step: ``
+  - Task: Fix the Opponent Research New Research flow so the username input is focused and selected immediately for typing.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T20:10:40.981Z`
+  - Started at: `2026-04-02T20:12:40.156Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:51:27.792Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: username autofocus check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T20:13:13.611Z`
+  - Manual checklist:
+    - [ ] Click 'New Research' from the Opponent Research page — expected result: username field is focused immediately
+    - [ ] Click 'Start New Research' from the empty state — expected result: username field is focused immediately
+    - [ ] If the field already has text, expected result: the text is selected so typing replaces it
+    - [ ] Type into the field — expected result: input still updates normally
+    - [ ] Confirm no console errors appear during the flow
+    - [ ] npm run build passes
+```
+
+## CCP-671 - Fix line editor newline escaping mismatch
+
+```
+- [x] Reviewed
+  - ID: `CCP-671`
+  - Status: `reviewed`
+  - Task ID: `CCP-671`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/internal/BUG_LINE_EDITOR_NEWLINE_MISMATCH.md`
+  - Source step: ``
+  - Task: Fix \\n→\n escaping in generate-prompt-dashboard.mjs per bug doc
+  - Created by: `Claude`
+  - Created at: `2026-04-02T20:48:40.363Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues resolved
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.637Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: line-editor escaping bug made obsolete by textarea editor replacement in CCP-672
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T20:53:56.440Z`
+  - Manual checklist:
+    - [x] Locked header renders as separate lines
+    - [x] Editable body renders as multiple line inputs
+    - [x] Sprint panel editor also renders correctly
+    - [x] Hex-verified split uses single backslash-n in generated HTML
+    - [x] Audit/task string builders were NOT changed
+```
+
+## CCP-672 - Replace line editor with textarea plus diff-on-confirm
+
+```
+- [x] Reviewed
+  - ID: `CCP-672`
+  - Status: `reviewed`
+  - Task ID: `CCP-672`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `audit conversation 2026-04-02`
+  - Source step: ``
+  - Task: Replace 4-state line editor with textarea-based editor for prompts and sprint panels
+  - Created by: `Claude`
+  - Created at: `2026-04-02T20:48:45.533Z`
+  - Started at: `2026-04-02T20:54:04.985Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.776Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: textarea editor replacement check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T20:58:53.322Z`
+  - Manual checklist:
+    - [x] Prompt editor uses textarea
+    - [x] Sprint panel editor uses textarea
+    - [x] Locked metadata is read-only above textarea
+    - [x] Revert to Original works during editing
+    - [x] Diff shows on save confirmation
+    - [x] Decline in confirmation reverts to original and exits edit mode
+    - [x] Confirm Save writes to server correctly
+    - [x] No line-editor state functions remain
+    - [x] No .line-editor CSS remains
+```
+
+## CCP-673 - Unify sprint panel archival to RETIRED-V# pattern
+
+```
+- [x] Reviewed
+  - ID: `CCP-673`
+  - Status: `reviewed`
+  - Task ID: `CCP-673`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `audit conversation 2026-04-02`
+  - Source step: ``
+  - Task: Migrate sprint panel archival from panelNotes.history to RETIRED-SPRINT-PANEL-DONOTRUN-REFERENCE-ONLY pattern
+  - Created by: `Claude`
+  - Created at: `2026-04-02T20:48:50.302Z`
+  - Started at: `2026-04-02T20:59:01.215Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.555Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: sprint panel retired-archive pattern check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T21:01:45.753Z`
+  - Manual checklist:
+    - [x] Sprint panel save creates RETIRED-V# entry (nextSprintPanelRetiredId added to lib)
+    - [x] Active panel has supersededVersionIds array
+    - [x] No new history array entries on save
+    - [x] Second save creates V2 (version counter from existing RETIRED entries)
+    - [x] Retired entries have hiddenFromDashboard: true
+    - [x] Retired entries filtered from sprint dashboard and validation
+```
+
+## CCP-674 - Update server endpoints for textarea editor and unified archival
+
+```
+- [x] Reviewed
+  - ID: `CCP-674`
+  - Status: `reviewed`
+  - Task ID: `CCP-674`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `audit conversation 2026-04-02`
+  - Source step: ``
+  - Task: Update /api/prompt-edit and /api/sprint-panel-note handlers for new editor and RETIRED-V# archival
+  - Created by: `Claude`
+  - Created at: `2026-04-02T20:48:56.551Z`
+  - Started at: `2026-04-02T21:01:54.860Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.526Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: server endpoint textarea/unified archival check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T21:02:40.070Z`
+  - Manual checklist:
+    - [x] Prompt edit save works end-to-end with textarea client (payload unchanged)
+    - [x] Sprint panel save creates RETIRED-V# entry via server
+    - [x] Sprint panel clear works correctly (no retired entry on clear)
+    - [x] Server response includes retiredId when archival occurs
+    - [x] No line editor references remain in server.mjs
+```
+
+## CCP-675 - Update dashboard and workflow docs for textarea editor and unified archival
+
+```
+- [x] Reviewed
+  - ID: `CCP-675`
+  - Status: `reviewed`
+  - Task ID: `CCP-675`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `audit conversation 2026-04-02`
+  - Source step: ``
+  - Task: Update all sprint and prompt workflow docs to reflect textarea editor and RETIRED-V# archival
+  - Created by: `Claude`
+  - Created at: `2026-04-02T20:49:02.110Z`
+  - Started at: `2026-04-02T21:02:50.069Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.541Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: workflow docs textarea/unified archival check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T21:05:06.797Z`
+  - Manual checklist:
+    - [x] PROMPT_REGISTRY_README updated for textarea and server requirement
+    - [x] PROMPT_CREATION_PROCESS Dashboard Edit Rule checked (abstract, no changes needed)
+    - [x] PROMPT_REVIEW_PROCESS Dashboard Editing checked (abstract, no changes needed)
+    - [x] SPRINT_REGISTRY_README updated for RETIRED-V# archival and textarea editing
+    - [x] SPRINT_PROGRESS_PROCESS Editable Sprint Panels updated
+    - [x] CLAUDE.md checked (already correct: textarea and archives mentioned)
+    - [x] AGENTS.md checked (already in sync with CLAUDE.md)
+    - [x] PROMPT_USER_GUIDE checked (abstract, no changes needed)
+    - [x] No references to line editor remain in active docs
+```
+
+## CCP-676 - Manager: Dashboard editor simplification
+
+```
+- [x] Reviewed
+  - ID: `CCP-676`
+  - Status: `reviewed`
+  - Task ID: `CCP-676`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-671`, `CCP-672`, `CCP-673`, `CCP-674`, `CCP-675`
+  - Source document: `audit conversation 2026-04-02`
+  - Source step: ``
+  - Task: Orchestrate CCP-671 through CCP-675 for dashboard editor simplification
+  - Created by: `Claude`
+  - Created at: `2026-04-02T20:49:04.070Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.485Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: dashboard editor simplification manager after child review
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T21:05:12.809Z`
+  - Manual checklist:
+    - [x] CCP-671 completed (escaping fix)
+    - [x] CCP-672 completed (textarea editor)
+    - [x] CCP-673 completed (unified archival)
+    - [x] CCP-674 completed (server endpoints)
+    - [x] CCP-675 completed (doc updates)
+    - [x] All child prompt checklists verified
+```
+
+## CCP-677 - Fix sprint grid updated-at accuracy and add created-at timestamp
+
+```
+- [x] Reviewed
+  - ID: `CCP-677`
+  - Status: `reviewed`
+  - Task ID: `CCP-677`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `user request 2026-04-02`
+  - Source step: ``
+  - Task: Fix updatedAt stamping so only the mutated sprint is touched; add createdAt timestamp to sprint cards in the dashboard
+  - Created by: `Claude`
+  - Created at: `2026-04-02T21:24:15.098Z`
+  - Started at: `2026-04-02T21:26:28.115Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:31.690Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: sprint card timestamps check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T21:27:48.881Z`
+  - Manual checklist:
+    - [ ] Created-at timestamp visible on sprint cards
+    - [ ] Created-at is small, centered, muted text
+    - [ ] Saving a sprint panel only updates that sprint's updatedAt
+    - [ ] Other sprints retain their previous updatedAt after a save
+```
+
+## CCP-678 - Add Sprint Recompute To Dashboard Refresh Button
+
+```
+- [x] Reviewed
+  - ID: `CCP-678`
+  - Status: `reviewed`
+  - Task ID: `CCP-678`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `user request 2026-04-02`
+  - Source step: ``
+  - Task: Add /api/sprint-recompute endpoint and wire Refresh button to call it before fetchLiveData
+  - Created by: `Claude`
+  - Created at: `2026-04-02T22:01:34.451Z`
+  - Started at: `2026-04-02T22:07:29.282Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: issues found
+  - Review issues: The refresh button now calls /api/sprint-recompute, but the server endpoint only runs refreshSprintArtifacts() and never calls recomputeSprintRegistryState() inside the sprint registry mutation path, so the prompt's recompute-on-refresh requirement is still unmet.
+  - Reviewed at: `2026-04-02T23:56:31.469Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: dashboard refresh recompute check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T22:08:19.353Z`
+  - Manual checklist:
+    - [ ] /api/sprint-recompute endpoint added to server.mjs
+    - [ ] Refresh button calls sprint-recompute before fetchLiveData
+    - [ ] Sprint recompute failure does not block page refresh
+    - [ ] Button shows Refreshing… state during operation
+    - [ ] dashboard.html regenerated
+```
+
+## CCP-679 - Opponents left-panel label truncation and filter default fixes
+
+```
+- [x] Reviewed
+  - ID: `CCP-679`
+  - Status: `reviewed`
+  - Task ID: `CCP-679`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/NEXT_STEPS.md`
+  - Source step: ``
+  - Task: Fix truncated nav labels in opponents left panel and set Prep Report default filter to All Time
+  - Created by: `Codex`
+  - Created at: `2026-04-02T22:14:00.737Z`
+  - Started at: `2026-04-02T22:17:20.697Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:51:29.358Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: tool-label truncation and filter-default check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T22:17:52.573Z`
+  - Manual checklist:
+    - [ ] Left panel nav labels no longer cut off (Tree, Repertoire fix, Report)
+    - [ ] Prep Report default filter is All Time on first load
+    - [ ] Other Opponents time-range filters default to All Time
+    - [ ] No visual regressions in left panel or Opponents tool views
+```
+
+## CCP-680 - Learn From Your Mistakes eval diff showing blank
+
+```
+- [x] Reviewed
+  - ID: `CCP-680`
+  - Status: `reviewed`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/NEXT_STEPS.md`
+  - Source step: ``
+  - Task: Fix blank eval diff between move played and best move in Learn From Your Mistakes view
+  - Created by: `Codex`
+  - Created at: `2026-04-02T22:14:55.993Z`
+  - Started at: `2026-04-02T23:22:58.253Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:51:30.945Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: lfym eval-diff display check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T23:24:31.748Z`
+  - Manual checklist:
+    - [ ] Eval diff is visible and non-blank in Learn From Your Mistakes
+    - [ ] Value is correct (centipawns or mate notation)
+    - [ ] No regression in surrounding LFYM feedback UI
+```
+
+## CCP-681 - Learn From Your Mistakes feedback UI text overflow and layout fix
+
+```
+- [x] Reviewed
+  - ID: `CCP-681`
+  - Status: `reviewed`
+  - Task ID: `CCP-681`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/NEXT_STEPS.md`
+  - Source step: ``
+  - Task: Fix feedback panel text overflowing its container box after a move is played in Learn From Your Mistakes
+  - Created by: `Codex`
+  - Created at: `2026-04-02T22:15:53.838Z`
+  - Started at: `2026-04-02T22:19:00.969Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:51:32.487Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: lfym feedback layout containment check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T22:23:43.461Z`
+  - Manual checklist:
+    - [ ] All feedback text stays inside the feedback box after a move
+    - [ ] No text or UI elements appear displaced or outside their container
+    - [ ] Move quality label, eval diff, and action buttons are visually grouped
+    - [ ] Layout holds across correct, incorrect, best move, and good move feedback states
+    - [ ] No regression in board layout or surrounding analysis UI
+```
+
+## CCP-682 - Learn From Your Mistakes live eval hidden until after move
+
+```
+- [ ] Reviewed
+  - ID: `CCP-682`
+  - Status: `created`
+  - Task ID: `CCP-682`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/NEXT_STEPS.md`
+  - Source step: ``
+  - Task: Hide live engine eval during LFYM attempt phase and clear it when advancing to next mistake
+  - Created by: `Codex`
+  - Created at: `2026-04-02T22:16:53.727Z`
+  - Started at: `2026-04-02T22:25:41.254Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T19:27:48.480Z`
+  - Manual checklist:
+    - [ ] Live eval hidden during LFYM attempt phase (before move is made)
+    - [ ] Eval clears when advancing to next mistake
+    - [ ] Main analysis board eval unaffected outside LFYM mode
+    - [ ] No regression in feedback panel or eval bar in normal analysis
+```
+
+## CCP-683 - Fix evalView TypeScript Strict Errors
+
+```
+- [ ] Reviewed
+  - ID: `CCP-683`
+  - Status: `created`
+  - Task ID: `CCP-683`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `src/analyse/evalView.ts`
+  - Source step: ``
+  - Task: Fix 8 pre-existing TypeScript strict-mode errors in src/analyse/evalView.ts
+  - Created by: `Claude`
+  - Created at: `2026-04-02T22:24:36.836Z`
+  - Started at: `2026-04-02T23:44:35.619Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T23:47:22.567Z`
+  - Manual checklist:
+    - [ ] npx tsc --noEmit passes with no errors in evalView.ts
+    - [ ] npm run build passes
+    - [ ] No change in rendered eval summary output in the browser
+```
+
+## CCP-684 - Add Per-Phase Prompt Generation Copy Buttons To Sprint Detail
+
+```
+- [x] Reviewed
+  - ID: `CCP-684`
+  - Status: `reviewed`
+  - Task ID: `CCP-684`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `scripts/sprint-registry-lib.mjs`
+  - Source step: ``
+  - Task: Add accurate per-phase Generate Next Prompts Template copy actions to sprint detail view
+  - Created by: `Codex`
+  - Created at: `2026-04-02T23:12:54.056Z`
+  - Started at: `2026-04-02T23:19:05.511Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:44:19.479Z`
+  - Reviewed by: `Codex`
+  - Review method: `full-review`
+  - Review scope: per-phase prompt template copy check
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T23:22:22.065Z`
+  - Manual checklist:
+    - [ ] Every sprint detail phase now exposes a Generate Next Prompts Template copy button
+    - [ ] Per-phase copied templates are generated from exact phase state rather than reused sprint-level next-phase text
+    - [ ] Not-ready and already-covered phases copy truthful templates instead of misleading ready-to-run instructions
+    - [ ] Existing sprint detail prompt-generation panels still work after the per-phase addition
+```
+
+## CCP-685 - Fix LFYM eval boxes and puzzle orientation regressions
+
+```
+- [ ] Reviewed
+  - ID: `CCP-685`
+  - Status: `created`
+  - Task ID: `CCP-685`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: `Fix LFYM eval boxes and puzzle orientation regressions`
+  - Task: Fix LFYM dual eval-box output and puzzle-round board orientation so both surfaces present the correct solving feedback/perspective.
+  - Created by: `Codex`
+  - Created at: `2026-04-02T23:35:44.450Z`
+  - Started at: `2026-04-02T23:37:53.835Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T23:41:04.049Z`
+  - Manual checklist:
+    - [ ] LFYM dual eval boxes show truthful non-blank values after a judged move
+    - [ ] LFYM no longer renders misleading empty output like -0.0 when a real diff exists
+    - [ ] Puzzle round opens with the solving user's side at the bottom
+    - [ ] Puzzle orientation remains correct when reopening or continuing a round
+    - [ ] No regression in surrounding LFYM or puzzle-round UI
+    - [ ] npm run build passes
+```
+
+## CCP-686 - Review all completed unreviewed prompts batch
+
+```
+- [x] Reviewed
+  - ID: `CCP-686`
+  - Status: `reviewed`
+  - Task ID: `CCP-686`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-389-F1`, `CCP-389-F2`, `CCP-648`, `CCP-649`, `CCP-650`, `CCP-651`, `CCP-652`, `CCP-653`, `CCP-654`, `CCP-655`, `CCP-656`, `CCP-657`, `CCP-658`, `CCP-659`, `CCP-660`, `CCP-661`, `CCP-662`, `CCP-664`, `CCP-665`, `CCP-666`, `CCP-667`, `CCP-667-F1`, `CCP-667-F2`, `CCP-667-F3`, `CCP-667-F4`, `CCP-668`, `CCP-670`, `CCP-671`, `CCP-672`, `CCP-673`, `CCP-674`, `CCP-675`, `CCP-676`, `CCP-677`, `CCP-678`, `CCP-679`, `CCP-680`, `CCP-681`, `CCP-684`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: `Batch review of completed but unreviewed prompts`
+  - Task: review every prompt currently in queued-run and still unreviewed, then close the manager after all child reviews are complete
+  - Created by: `Codex`
+  - Created at: `2026-04-02T23:37:39.071Z`
+  - Started at: `2026-04-02T23:40:02.909Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: passed
+  - Review issues: none
+  - Reviewed at: `2026-04-02T23:56:51.101Z`
+  - Reviewed by: `Codex`
+  - Review method: `manager-plus-children`
+  - Review scope: completed-unreviewed prompt batch fully reviewed
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-680-F1 - Audit LFYM Dual Eval Box Data Flow
+
+```
+- [ ] Reviewed
+  - ID: `CCP-680-F1`
+  - Status: `created`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: `CCP-680`
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: `Audit LFYM dual eval box data path before another fix`
+  - Task: audit the Learn From Your Mistakes dual eval-box data path, prove which values are missing when the boxes show em dashes, and identify the smallest safe follow-up fix seam
+  - Created by: `Codex`
+  - Created at: `2026-04-02T23:49:46.611Z`
+  - Started at: `2026-04-02T23:53:57.347Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-02T23:55:36.995Z`
+  - Manual checklist:
+    - [ ] Proven which dual-box values are missing when LFYM shows em dashes
+    - [ ] Identified the exact code seam where those values fail to populate or propagate
+    - [ ] Recommended the smallest safe follow-up fix step with owning files
+    - [ ] npm run build passes
+```
+
+## CCP-680-F2 - Fix LFYM Dual Eval Box Live Snapshot
+
+```
+- [ ] Reviewed
+  - ID: `CCP-680-F2`
+  - Status: `created`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: `CCP-680-F1`
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: `Fix LFYM dual eval boxes using the proven live-ceval snapshot seam`
+  - Task: fix the Learn From Your Mistakes dual eval-box display by sourcing the played-move snapshot from the live ceval path that judged the move
+  - Created by: `Codex`
+  - Created at: `2026-04-03T00:22:06.594Z`
+  - Started at: `2026-04-03T00:24:46.308Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T00:25:34.476Z`
+  - Manual checklist:
+    - [ ] LFYM dual eval boxes show real values instead of em dashes after a judged move when live ceval exists
+    - [ ] The played-move eval is sourced from the same live solve path that judged the move
+    - [ ] LFYM win/fail behavior is unchanged apart from the fixed box display
+    - [ ] No console/runtime errors appear during the flow
+    - [ ] npm run build passes
+```
+
+## CCP-680-F3 - Fix LFYM Engine Target Ownership
+
+```
+- [ ] Reviewed
+  - ID: `CCP-680-F3`
+  - Status: `created`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: `CCP-680-F2`
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: `Reduce the LFYM "Next" button width to 30% of the terminal feedback row`
+  - Task: CCP-680
+  - Created by: `Codex`
+  - Created at: `2026-04-03T01:03:44.473Z`
+  - Started at: `2026-04-03T01:06:48.201Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T01:09:47.150Z`
+  - Manual checklist:
+    - [ ] LFYM engine targets the active solving variation after the user plays a move
+    - [ ] LFYM background engine analysis runs regardless of the public engine state while solving
+    - [ ] Review or batch analysis does not preempt LFYM solve feedback collection
+    - [ ] The eval feedback path now has the data needed to populate the dual comparison boxes
+    - [ ] No console/runtime errors appear during the flow
+    - [ ] npm run build passes
+```
+
+## CCP-680-F4 - Fix LFYM hidden engine UX and feedback rendering
+
+```
+- [ ] Reviewed
+  - ID: `CCP-680-F4`
+  - Status: `created`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: `CCP-680-F3`
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: ``
+  - Task: CCP-680
+  - Created by: `Codex`
+  - Created at: `2026-04-03T01:19:22.185Z`
+  - Started at: `2026-04-03T01:22:10.808Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T01:24:11.841Z`
+  - Manual checklist:
+    - [ ] LFYM hides visible live engine output while waiting for the user move
+    - [ ] LFYM still uses hidden background engine support during solve mode
+    - [ ] After a played move the LFYM feedback boxes no longer show em dashes when eval data exists
+    - [ ] Post-move LFYM feedback reflects the actual available review/live eval values
+    - [ ] No console/runtime errors appear during the flow
+    - [ ] npm run build passes
+```
+
+## CCP-680-F5 - Correct LFYM hidden engine UX
+
+```
+- [ ] Reviewed
+  - ID: `CCP-680-F5`
+  - Status: `created`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: `CCP-680-F4`
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: ``
+  - Task: CCP-680
+  - Created by: `Codex`
+  - Created at: `2026-04-03T01:28:03.175Z`
+  - Started at: `2026-04-03T01:32:30.810Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T01:37:15.470Z`
+  - Manual checklist:
+    - [ ] LFYM keeps a visible ceval header or engine control instead of hiding it entirely
+    - [ ] Before the user moves, LFYM suppresses visible engine output by default
+    - [ ] LFYM still uses hidden background engine support while solving
+    - [ ] Explicit user-visible engine enablement still behaves intentionally
+    - [ ] No console/runtime errors appear during the flow
+    - [ ] npm run build passes
+```
+
+## CCP-680-F6 - Audit persistent LFYM feedback box blank state
+
+```
+- [ ] Reviewed
+  - ID: `CCP-680-F6`
+  - Status: `created`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: `CCP-680-F4`
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: ``
+  - Task: CCP-680
+  - Created by: `Codex`
+  - Created at: `2026-04-03T01:28:03.754Z`
+  - Started at: `2026-04-03T01:37:26.415Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T01:42:16.886Z`
+  - Manual checklist:
+    - [ ] Proven which LFYM feedback state object the response boxes read from
+    - [ ] Proven which state object is updated when live eval finishes for the played move
+    - [ ] Identified the exact missing or stale field or branch causing blank LFYM feedback output
+    - [ ] Recommended the smallest safe next fix step with owning files
+    - [ ] npm run build passes
+```
+
+## CCP-680-F7 - Reduce LFYM Next Button Width
+
+```
+- [ ] Reviewed
+  - ID: `CCP-680-F7`
+  - Status: `created`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: `CCP-680-F5`
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: ``
+  - Task: reduce the LFYM Next button width to about 30 percent of the terminal feedback row
+  - Created by: `Codex`
+  - Created at: `2026-04-03T01:48:26.437Z`
+  - Started at: `2026-04-03T01:51:55.099Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T01:52:22.911Z`
+  - Manual checklist:
+    - [ ] LFYM terminal states show the Next button at about 30 percent row width
+    - [ ] The left-side feedback content retains the remaining space cleanly
+    - [ ] The button remains usable on narrower layouts
+    - [ ] No console/runtime errors appear during the flow
+    - [ ] npm run build passes
+```
+
+## CCP-680-F8 - Align LFYM engine-best identity with eval diff comparison
+
+```
+- [ ] Reviewed
+  - ID: `CCP-680-F8`
+  - Status: `created`
+  - Task ID: `CCP-680`
+  - Parent prompt ID: `CCP-680-F6`
+  - Batch prompt IDs: none
+  - Source document: `User request`
+  - Source step: ``
+  - Task: Audit and fix LFYM engine-best identity so exact-best classification and dual eval diffs use the same source and comparison seam
+  - Created by: `Codex`
+  - Created at: `2026-04-03T02:11:05.556Z`
+  - Started at: `2026-04-03T19:29:17.949Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T19:40:19.984Z`
+  - Completion errors: Build fails with 3 pre-existing errors in src/openings/ (missing exports in analytics.ts) unrelated to this prompt — baseline build passes on HEAD without the openings working-tree changes. My two retro file edits (retroMoveHandler.ts + main.ts) have no TypeScript errors.
+  - Manual checklist:
+    - [x] Briefly confirmed the current LFYM engine-best mismatch seam before changing code
+    - [x] LFYM exact-best identity and vs Engine Best now use the same engine-best result seam
+    - [x] Literal engine-best moves no longer show misleading non-zero penalties from a parent-vs-child eval mismatch
+    - [x] Near-best wording still behaves intentionally when the move is not exact best
+    - [x] No console/runtime errors appear during the flow
+    - [ ] npm run build passes (blocked by pre-existing openings build errors unrelated to this prompt)
+```
+
+## CCP-687 - Study: Save from openings research (8.1 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-687`
+  - Status: `created`
+  - Task ID: `CCP-687`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Wire Save to Library action in openings tool to study saveAction
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:16.917Z`
+  - Started at: `2026-04-03T19:53:53.810Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P9`
+  - Sprint task ID: `SPR-015-T36`
+  - Completed at: `2026-04-03T19:58:33.194Z`
+  - Manual checklist:
+    - [ ] npm run build passes (pre-existing build errors unrelated to this prompt)
+    - [ ] npx tsc --noEmit passes for modified files (saveAction.ts, openings/view.ts)
+    - [ ] Save to Library button visible in Opponents tool move list (when >= 1 move played)
+    - [ ] Clicking saves the line via saveUciLinesToLibrary and it appears in #/study
+```
+
+## CCP-688 - Study: Save from puzzle session (8.2 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-688`
+  - Status: `created`
+  - Task ID: `CCP-688`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Wire Save position to Library action in puzzle session view
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:21.209Z`
+  - Started at: `2026-04-03T19:58:44.877Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P9`
+  - Sprint task ID: `SPR-015-T37`
+  - Completed at: `2026-04-03T20:00:58.443Z`
+  - Manual checklist:
+    - [ ] npx tsc --noEmit passes for modified files
+    - [ ] Save to Library button visible in solved and failed puzzle feedback panels
+    - [ ] Clicking saves puzzle position (startFen + solutionLine) and it appears in #/study
+    - [ ] savePuzzleToLibrary() added to saveAction.ts accepting FEN + solution moves
+```
+
+## CCP-689 - Study: Keyboard shortcuts for drill mode (8.3 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-689`
+  - Status: `created`
+  - Task ID: `CCP-689`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Add Enter/Space/Escape keyboard handlers in drill session view
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:25.058Z`
+  - Started at: `2026-04-03T20:01:06.758Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P9`
+  - Sprint task ID: `SPR-015-T38`
+  - Completed at: `2026-04-03T20:01:38.549Z`
+  - Manual checklist:
+    - [ ] npx tsc --noEmit passes for drillView.ts
+    - [ ] Enter/Space advances drill when feedback is correct/showAnswer/complete
+    - [ ] Escape ends drill session and shows summary
+    - [ ] Arrow keys are suppressed (preventDefault) during drill
+    - [ ] Keyboard listener is added on insert and removed on destroy
+```
+
+## CCP-690 - Study: Sound effects for drill feedback (8.4 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-690`
+  - Status: `created`
+  - Task ID: `CCP-690`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Add correct/incorrect audio playback in drill boardAdapter respecting mute toggle
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:28.432Z`
+  - Started at: `2026-04-03T20:01:45.700Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P9`
+  - Sprint task ID: `SPR-015-T39`
+  - Completed at: `2026-04-03T20:03:07.053Z`
+  - Manual checklist:
+    - [ ] npx tsc --noEmit passes for modified files
+    - [ ] playDrillFeedbackSound() added to sound.ts (correct/incorrect)
+    - [ ] boardAdapter.ts calls playDrillFeedbackSound in flashFeedback
+    - [ ] Mute toggle (boardSoundEnabled) silences drill sounds
+    - [ ] public/sounds/correct.mp3 and incorrect.mp3 paths registered (files need to be placed manually)
+```
+
+## CCP-691 - Study: Warmup position behavior in drill (8.5 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-691`
+  - Status: `created`
+  - Task ID: `CCP-691`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Distinguish due vs warmup positions in drillCtrl grading logic
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:32.081Z`
+  - Started at: `2026-04-03T20:03:16.075Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P9`
+  - Sprint task ID: `SPR-015-T40`
+  - Completed at: `2026-04-03T20:04:36.827Z`
+  - Manual checklist:
+    - [ ] npx tsc --noEmit passes
+    - [ ] isDue() imported and used in persistGrading in drillView.ts
+    - [ ] Due position correct: level advances (normal scheduleNext)
+    - [ ] Due position incorrect: level drops (normal scheduleNext)
+    - [ ] Warmup position correct: PositionProgress unchanged (only sequenceId link updated)
+    - [ ] Warmup position incorrect: PositionProgress resets to level 1
+```
+
+## CCP-692 - Study: Library performance optimization (8.6 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-692`
+  - Status: `created`
+  - Task ID: `CCP-692`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Replace getAll with paginated IDB cursor and add Load more to library view
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:35.968Z`
+  - Started at: `2026-04-03T20:05:03.880Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P9`
+  - Sprint task ID: `SPR-015-T41`
+  - Completed at: `2026-04-03T20:07:13.258Z`
+  - Manual checklist:
+    - [ ] npx tsc --noEmit passes for modified files
+    - [ ] getStudiesPaginated() cursor function added to studyDb.ts
+    - [ ] studyCtrl.ts uses paginated load (first 50 studies only)
+    - [ ] loadNextPage() / hasMore() / isLoadingMore() exported from studyCtrl.ts
+    - [ ] Load more button added to libraryView.ts
+    - [ ] No getAll() call on studies store for library view
+```
+
+## CCP-693 - Study: Folder hierarchy data model (9.1 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-693`
+  - Status: `created`
+  - Task ID: `CCP-693`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Add StudyFolder type, folders IDB store, and CRUD operations
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:39.858Z`
+  - Started at: `2026-04-03T20:13:05.927Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P10`
+  - Sprint task ID: `SPR-015-T42`
+  - Completed at: `2026-04-03T20:14:22.864Z`
+  - Manual checklist:
+    - [ ] Visit #/study in browser and open DevTools > Application > IndexedDB — confirm 'folders' store exists in patzer-pro DB
+    - [ ] Verify StudyFolder type is exported from src/study/types.ts (check browser or build output)
+    - [ ] Clear local data via admin panel — verify no IDB errors in console (folders store is included in clear)
+```
+
+## CCP-694 - Study: Folder sidebar and navigation (9.2 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-694`
+  - Status: `created`
+  - Task ID: `CCP-694`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Add collapsible folder sidebar with filter state to library view
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:43.400Z`
+  - Started at: `2026-04-03T20:14:27.380Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P10`
+  - Sprint task ID: `SPR-015-T43`
+  - Completed at: `2026-04-03T20:16:37.424Z`
+  - Manual checklist:
+    - [ ] Visit #/study — confirm folder sidebar appears on the left of the study list
+    - [ ] Verify sidebar has 'All Studies' entry and any existing folder names
+    - [ ] Click a folder name — confirm list filters to studies in that folder
+    - [ ] Click '‹' toggle — confirm sidebar collapses to header-only state
+    - [ ] Click '›' toggle — confirm sidebar expands again
+```
+
+## CCP-695 - Study: Create, rename, and delete folders (9.3 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-695`
+  - Status: `created`
+  - Task ID: `CCP-695`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Wire New Folder, rename, delete folder operations in library sidebar
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:47.369Z`
+  - Started at: `2026-04-03T20:16:41.834Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P10`
+  - Sprint task ID: `SPR-015-T44`
+  - Completed at: `2026-04-03T20:17:59.552Z`
+  - Manual checklist:
+    - [ ] Click '+ New Folder' in sidebar — confirm inline input appears
+    - [ ] Type a folder name and press Enter — confirm folder appears in sidebar
+    - [ ] Click ✎ rename button on a folder — confirm inline rename input
+    - [ ] Rename folder and press Enter — confirm name updates in sidebar and in studies
+    - [ ] Click × delete button on a folder — confirm confirmation dialog and folder removal
+```
+
+## CCP-696 - Study: Drag-and-drop studies into folders (9.4 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-696`
+  - Status: `created`
+  - Task ID: `CCP-696`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Add HTML5 DnD drag source on study rows and drop target on sidebar folders
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:50.921Z`
+  - Started at: `2026-04-03T20:18:05.874Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P10`
+  - Sprint task ID: `SPR-015-T45`
+  - Completed at: `2026-04-03T20:19:27.371Z`
+  - Manual checklist:
+    - [ ] Drag a study row — confirm cursor changes to grab and row is draggable
+    - [ ] Drag a study row over a sidebar folder — confirm green dashed highlight appears on folder
+    - [ ] Drop the study on a folder — confirm study's folder list updates in the expanded row
+    - [ ] Verify study now appears when that folder is selected in the sidebar
+```
+
+## CCP-697 - Study: Multi-select and bulk operations (9.5 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-697`
+  - Status: `created`
+  - Task ID: `CCP-697`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Add Cmd/Ctrl+click selection, shift-range, and bulk action bar to library view
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:54.332Z`
+  - Started at: `2026-04-03T20:19:31.962Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P10`
+  - Sprint task ID: `SPR-015-T46`
+  - Completed at: `2026-04-03T20:21:16.419Z`
+  - Manual checklist:
+    - [ ] Click a study row background — confirm checkbox toggles and row highlights blue
+    - [ ] Cmd/Ctrl+click multiple rows — confirm each toggles independently
+    - [ ] Shift+click a row after selecting one — confirm range is selected
+    - [ ] Bulk action bar appears above list when ≥1 item selected with count indicator
+    - [ ] 'Delete' in bulk bar with confirmation deletes all selected studies
+    - [ ] 'Add to folder ▾' shows folder dropdown; selecting a folder adds to all selected studies
+    - [ ] 'Clear' in bulk bar deselects all
+```
+
+## CCP-698 - Study: View mode toggle list vs grid (9.6 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-698`
+  - Status: `created`
+  - Task ID: `CCP-698`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Add list/grid toggle with static Chessground thumbnails and localStorage persistence
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:40:57.988Z`
+  - Started at: `2026-04-03T20:21:21.276Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P10`
+  - Sprint task ID: `SPR-015-T47`
+  - Completed at: `2026-04-03T20:23:15.082Z`
+  - Manual checklist:
+    - [ ] Visit #/study — confirm ☰/⊞ toggle buttons appear in page header
+    - [ ] Click ⊞ grid toggle — confirm layout changes to card grid
+    - [ ] Each card shows a Chessground board thumbnail, title, source, and date
+    - [ ] Click ☰ list toggle — confirm layout returns to list view
+    - [ ] Grid cards are selectable with click (checkbox behavior same as list)
+```
+
+## CCP-699 - Study: Search across annotations (9.7 follow-up)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-699`
+  - Status: `created`
+  - Task ID: `CCP-699`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+  - Source step: ``
+  - Task: Extend library search to cover PGN comments, notes, and tags with in-memory index
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:41:02.144Z`
+  - Started at: `2026-04-03T20:23:19.960Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Sprint ID: `SPR-015`
+  - Sprint phase ID: `SPR-015-P10`
+  - Sprint task ID: `SPR-015-T48`
+  - Completed at: `2026-04-03T20:24:27.794Z`
+  - Manual checklist:
+    - [ ] Type a word in the search box that appears only in a study's Notes field — confirm matching study appears
+    - [ ] Search for a tag that a study has — confirm matching study appears
+    - [ ] Search for a word from a PGN comment (e.g. in { this is a comment }) — confirm matching study appears
+    - [ ] Search for a word not in any title/note/tag/comment — confirm empty results
+```
+
+## CCP-700 - Manager: SPR-015 Phase 8 — Polish and Integration
+
+```
+- [ ] Reviewed
+  - ID: `CCP-700`
+  - Status: `created`
+  - Task ID: `CCP-700`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-687`, `CCP-688`, `CCP-689`, `CCP-690`, `CCP-691`, `CCP-692`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: ``
+  - Task: Execute Phase 8 follow-up prompts CCP-687 through CCP-692 in order
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:49:34.158Z`
+  - Started at: `2026-04-03T19:53:48.101Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T20:07:23.640Z`
+  - Manual checklist:
+    - [ ] CCP-687 completed (Save from openings)
+    - [ ] CCP-688 completed (Save from puzzle)
+    - [ ] CCP-689 completed (Drill keyboard shortcuts)
+    - [ ] CCP-690 completed (Drill sound effects)
+    - [ ] CCP-691 completed (Warmup position behavior)
+    - [ ] CCP-692 completed (Library pagination)
+```
+
+## CCP-701 - Manager: SPR-015 Phase 9 — Library Navigation and Organization UX
+
+```
+- [ ] Reviewed
+  - ID: `CCP-701`
+  - Status: `created`
+  - Task ID: `CCP-701`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-693`, `CCP-694`, `CCP-695`, `CCP-696`, `CCP-697`, `CCP-698`, `CCP-699`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: ``
+  - Task: Execute Phase 9 follow-up prompts CCP-693 through CCP-699 in order
+  - Created by: `Codex`
+  - Created at: `2026-04-03T19:49:38.326Z`
+  - Started at: `2026-04-03T20:12:39.836Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T20:24:34.372Z`
+  - Manual checklist:
+    - [ ] CCP-693 completed (Folder data model)
+    - [ ] CCP-694 completed (Folder sidebar)
+    - [ ] CCP-695 completed (Create/rename/delete folders)
+    - [ ] CCP-696 completed (Drag-and-drop into folders)
+    - [ ] CCP-697 completed (Multi-select and bulk ops)
+    - [ ] CCP-698 completed (View mode toggle)
+    - [ ] CCP-699 completed (Search across annotations)
+```
+
+## CCP-702 - Study: Seed master games as sample library studies
+
+```
+- [ ] Reviewed
+  - ID: `CCP-702`
+  - Status: `created`
+  - Task ID: `CCP-702`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/STUDY_LIBRARY_PLAN.md`
+  - Source step: ``
+  - Task: Add a dev seed button to the empty study library that saves all 200 master games as StudyItem entries for development and testing
+  - Created by: `Codex`
+  - Created at: `2026-04-03T20:09:58.713Z`
+  - Started at: `2026-04-03T20:14:56.054Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T20:30:50.264Z`
+  - Manual checklist:
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+    - [ ] Seed button visible in empty library state
+    - [ ] Clicking seeds ~200 master game studies into IDB
+    - [ ] Each study has correct title, source=import, tags include sample and master-game
+    - [ ] Pagination and filtering work on the seeded data
+    - [ ] Seed button hidden once studies exist
+```
+
+## CCP-703 - Fix Opening Tree loading animation and game replay pacing
+
+```
+- [ ] Reviewed
+  - ID: `CCP-703`
+  - Status: `created`
+  - Task ID: `CCP-703`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Fix loading animation settle, double replay speed, auto-advance between games
+  - Created by: `Claude`
+  - Created at: `2026-04-03T20:11:24.942Z`
+  - Started at: `2026-04-03T20:15:24.478Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T20:19:39.250Z`
+  - Manual checklist:
+    - [ ] Loading animation and progress bar disappear cleanly when the Opening Tree finishes building
+    - [ ] Loading copy does not include per-game naming during tree build
+    - [ ] Game replay speed is visibly faster (doubled) compared to before
+    - [ ] After one game finishes replaying, the next game begins automatically without user interaction
+```
+
+## CCP-704 - Fix Opening Tree player strip White vs Black clarity
+
+```
+- [ ] Reviewed
+  - ID: `CCP-704`
+  - Status: `created`
+  - Task ID: `CCP-704`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Replace custom openings player strip with analysis board strip styling
+  - Created by: `Claude`
+  - Created at: `2026-04-03T20:11:28.743Z`
+  - Started at: `2026-04-03T20:20:06.301Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T20:20:29.971Z`
+  - Manual checklist:
+    - [ ] Opening Tree player strip uses analyse__player_strip and player-strip__color-icon--white/black classes
+    - [ ] White side shows a white color icon; Black side shows a black color icon — visually distinct
+    - [ ] Target and opponent labels still appear on the correct sides
+    - [ ] Strip looks consistent with the analysis board player strip
+```
+
+## CCP-705 - Remove master game label from fetch loading bar
+
+```
+- [ ] Reviewed
+  - ID: `CCP-705`
+  - Status: `created`
+  - Task ID: `CCP-705`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `src/openings/view.ts`
+  - Source step: ``
+  - Task: Remove _animGame.label span from renderFetchBar in openings view
+  - Created by: `Codex`
+  - Created at: `2026-04-03T20:23:25.126Z`
+  - Started at: `2026-04-03T20:25:23.812Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T20:25:42.739Z`
+  - Manual checklist:
+    - [ ] The master game name no longer appears anywhere in the fetch loading bar
+    - [ ] The Fetching games label and Cancel button still render correctly
+    - [ ] The board animation continues to replay master games as before
+```
+
+## CCP-706 - LFYM engine lines show inaccurate evaluations
+
+```
+- [ ] Reviewed
+  - ID: `CCP-706`
+  - Status: `reserved`
+  - Task ID: `CCP-706`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `reserved`
+  - Source step: `reserved`
+  - Task: Reserved prompt slot
+  - Created by: `Codex`
+  - Created at: `2026-04-03T20:24:55.078Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Reservation released at: `2026-04-03T20:26:45.894Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-707 - LFYM show solution does not animate correctly
+
+```
+- [ ] Reviewed
+  - ID: `CCP-707`
+  - Status: `reserved`
+  - Task ID: `CCP-707`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `reserved`
+  - Source step: `reserved`
+  - Task: Reserved prompt slot
+  - Created by: `Codex`
+  - Created at: `2026-04-03T20:24:59.897Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Reservation released at: `2026-04-03T20:26:47.444Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-708 - LFYM wrong move reset delay too short
+
+```
+- [ ] Reviewed
+  - ID: `CCP-708`
+  - Status: `reserved`
+  - Task ID: `CCP-708`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `reserved`
+  - Source step: `reserved`
+  - Task: Reserved prompt slot
+  - Created by: `Codex`
+  - Created at: `2026-04-03T20:25:09.828Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Reservation released at: `2026-04-03T20:26:48.968Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-709 - LFYM red mistake arrow shows eval number it should not
+
+```
+- [ ] Reviewed
+  - ID: `CCP-709`
+  - Status: `reserved`
+  - Task ID: `CCP-709`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `reserved`
+  - Source step: `reserved`
+  - Task: Reserved prompt slot
+  - Created by: `Codex`
+  - Created at: `2026-04-03T20:25:13.696Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Reservation released at: `2026-04-03T20:26:50.502Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-710 - Remove fetch-label span from all loading-area render paths
+
+```
+- [ ] Reviewed
+  - ID: `CCP-710`
+  - Status: `created`
+  - Task ID: `CCP-710`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `src/openings/view.ts`
+  - Source step: ``
+  - Task: Verify and ensure openings__fetch-label span is absent from renderFetchBar and renderTreeBuildBar
+  - Created by: `Codex`
+  - Created at: `2026-04-03T20:40:58.408Z`
+  - Started at: `2026-04-03T20:52:55.111Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T20:53:47.917Z`
+  - Completion errors: Build fails with 3 pre-existing errors (missing exports in analytics.ts for selectPracticeMove, computeLikelyLineModule, computePrepNotes) — compiled output could not be verified. Source is clean: openings__fetch-label is absent from renderFetchBar and renderTreeBuildBar after CCP-705. Stale main.js on disk still contains old line but that reflects the broken build, not a code regression in this file.
+  - Manual checklist:
+    - [ ] grep openings__fetch-label src/openings/view.ts returns no results inside renderFetchBar or renderTreeBuildBar
+    - [ ] After npm run build the compiled main.js does not contain openings__fetch-label rendered from those functions
+    - [ ] The fetch bar shows only the progress text and Cancel button — no game name
+```
+
+## CCP-711 - Stop board animation and reset to start position when tree builds
+
+```
+- [ ] Reviewed
+  - ID: `CCP-711`
+  - Status: `created`
+  - Task ID: `CCP-711`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `src/openings/view.ts`
+  - Source step: ``
+  - Task: Call stopImportAnimation and reset Chessground to starting position when treeBuilding phase begins
+  - Created by: `Codex`
+  - Created at: `2026-04-03T20:41:04.553Z`
+  - Started at: `2026-04-03T20:56:02.027Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T20:57:59.451Z`
+  - Manual checklist:
+    - [ ] When the fetch phase completes and tree-building begins the board animation stops immediately
+    - [ ] The board displays the standard starting position (all 32 pieces in starting squares)
+    - [ ] The board is oriented with the selected colour at the bottom
+    - [ ] No master-game move animations continue during the tree-build phase
+    - [ ] The tree-build progress bar and label render correctly and are unaffected
+```
+
+## CCP-712 - Correct CLAUDE/AGENTS slimdown audit docs after accuracy review
+
+```
+- [ ] Reviewed
+  - ID: `CCP-712`
+  - Status: `created`
+  - Task ID: `CCP-712`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/CLAUDE_MD_SLIMDOWN_AUDIT_BRIEF.md`
+  - Source step: `Post-audit documentation correction`
+  - Task: Update the slimdown brief/changelog docs so they accurately describe the real CLAUDE.md and AGENTS.md changes, including the non-mechanical behavior changes and the initial scoped-rule coverage issues.
+  - Created by: `Unknown`
+  - Created at: `2026-04-03T21:34:49.964Z`
+  - Started at: `2026-04-03T21:44:19.414Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T21:46:43.853Z`
+  - Manual checklist:
+    - [x] Slimdown docs no longer claim AGENTS.md was unchanged
+    - [x] Slimdown docs no longer describe the work as a pure extraction if behavior changed
+    - [x] Slimdown docs now mention the initial scoped-rule coverage/path issue and later correction
+    - [x] npm run build — pre-existing build errors in src/openings/ (missing exports); unrelated to docs-only changes in this prompt
+```
+
+## CCP-713 - Audit: Played-Move Arrow Sync Coverage
+
+```
+- [ ] Reviewed
+  - ID: `CCP-713`
+  - Status: `created`
+  - Task ID: `CCP-713`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Trace all position-change code paths and identify where played-move arrow sync is missing
+  - Created by: `Unknown`
+  - Created at: `2026-04-03T21:41:24.354Z`
+  - Started at: `2026-04-03T22:06:01.434Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T22:13:55.788Z`
+  - Manual checklist:
+    - [x] Audit report written to docs/audits/CCP-713-ARROW-SYNC-AUDIT.md
+    - [x] All position-change paths in src/main.ts are accounted for
+    - [x] At least one concrete suspect code location identified with file and line number
+```
+
+## CCP-713-F1 - Fix: Played-Move Arrow Sync Coverage
+
+```
+- [ ] Reviewed
+  - ID: `CCP-713-F1`
+  - Status: `created`
+  - Task ID: `CCP-713`
+  - Parent prompt ID: `CCP-713`
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Fix all position-change paths identified in the CCP-713 audit that are missing syncArrow() coverage
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:43:22.117Z`
+  - Started at: `2026-04-03T22:14:46.159Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T22:15:29.170Z`
+  - Manual checklist:
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes with no new errors
+    - [ ] Arrow updates correctly when navigating with engine off
+    - [ ] Arrow updates correctly on game load from games list
+    - [ ] Arrow updates correctly after variation navigation
+    - [ ] Hide/show played-move arrow setting still works
+```
+
+## CCP-714 - Add missing analytics.ts exports to fix build
+
+```
+- [ ] Reviewed
+  - ID: `CCP-714`
+  - Status: `created`
+  - Task ID: `CCP-714`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `src/openings/analytics.ts`
+  - Source step: ``
+  - Task: Add PracticeSelectionResult, selectPracticeMove, LikelyLineEntry, computeLikelyLineModule, computePrepNotes to analytics.ts
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:45:43.915Z`
+  - Started at: `2026-04-03T22:09:17.837Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T22:12:42.465Z`
+  - Manual checklist:
+    - [ ] npm run build completes with no errors
+    - [ ] npx tsc --noEmit passes
+    - [ ] Seed sample studies button visible at #/study with empty library
+    - [ ] Prep Report panel at #/opponents opens without console errors
+    - [ ] Practice session against an opponent works without console errors
+```
+
+## CCP-715 - Audit: LFYM View-Solution Reveal Flow
+
+```
+- [ ] Reviewed
+  - ID: `CCP-715`
+  - Status: `created`
+  - Task ID: `CCP-715`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Map solution node path strategy, engine visibility call sequence, analysis unlock, and Show Engine button location
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:49:16.460Z`
+  - Started at: `2026-04-03T22:12:40.233Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T22:15:31.127Z`
+  - Manual checklist:
+    - [x] Audit report written to docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md
+    - [x] Solution path strategy decided with specific tree op function references
+    - [x] Engine visibility call sequence spelled out in order
+    - [x] Show Engine button location identified with file and line range
+    - [x] Proposed seam split for F1 and F2 documented
+```
+
+## CCP-715-F1 - Fix: LFYM View-Solution Board Navigation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-715-F1`
+  - Status: `created`
+  - Task ID: `CCP-715`
+  - Parent prompt ID: `CCP-715`
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Add getSolutionPath() to retroCtrl and update retroView to navigate to solution node on reveal
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:50:04.102Z`
+  - Started at: `2026-04-04T00:01:28.284Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:02:04.045Z`
+  - Manual checklist:
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes with no new errors
+    - [ ] View the solution navigates board to position after solution move is played
+    - [ ] Move tree is at the solution node after reveal
+    - [ ] Fallback to parentPath works when solution node cannot be resolved
+    - [ ] Existing retro state machine behavior is unchanged
+```
+
+## CCP-715-F2 - Fix: LFYM View-Solution Engine Reveal and Analysis Unlock
+
+```
+- [ ] Reviewed
+  - ID: `CCP-715-F2`
+  - Status: `created`
+  - Task ID: `CCP-715`
+  - Parent prompt ID: `CCP-715-F1`
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Enable engine visibility at solution position, remove Show Engine button, confirm analysis unlock after reveal
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:50:08.276Z`
+  - Started at: `2026-04-04T00:02:08.905Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:03:44.210Z`
+  - Manual checklist:
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes with no new errors
+    - [ ] Engine panel becomes visible with eval and arrows after View the solution
+    - [ ] Engine is analyzing the solution position
+    - [ ] Show Engine button removed from LFYM panel
+    - [ ] Main Stockfish toggle still works normally
+    - [ ] User can navigate move tree freely after reveal
+    - [ ] User arrow/display preferences respected after reveal
+```
+
+## CCP-716 - Add persisted auto-review state and depth config
+
+```
+- [ ] Reviewed
+  - ID: `CCP-716`
+  - Status: `created`
+  - Task ID: `CCP-716`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Add localStorage persistence for auto-review toggle, confirmation, and depth (2-18) to import filters
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:50:47.222Z`
+  - Started at: `2026-04-03T22:13:42.228Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T22:14:22.204Z`
+  - Manual checklist:
+    - [ ] autoReview reads from localStorage on load
+    - [ ] autoReviewDepth reads from localStorage on load, defaults to 12
+    - [ ] setAutoReview persists to localStorage
+    - [ ] setAutoReviewDepth persists to localStorage
+    - [ ] getAutoReview uses importFilters.autoReview
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-717 - Build two-toggle confirmation UI with depth selector for auto-review
+
+```
+- [ ] Reviewed
+  - ID: `CCP-717`
+  - Status: `created`
+  - Task ID: `CCP-717`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Replace single auto-review checkbox with primary toggle, confirmation toggle, and depth selector (2-18) in import panel
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:50:52.624Z`
+  - Started at: `2026-04-03T22:14:30.610Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T22:17:09.956Z`
+  - Manual checklist:
+    - [ ] Primary toggle hides confirmation when OFF
+    - [ ] Confirmation toggle visible when primary ON
+    - [ ] Yellow warning text appears below confirmation
+    - [ ] Depth selector visible when both toggles ON
+    - [ ] Depth range is 2-18 with time multipliers shown
+    - [ ] Selected depth persists across page refresh
+    - [ ] All three states restore from localStorage
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-718 - Wire import auto-review trigger to use selected depth
+
+```
+- [ ] Reviewed
+  - ID: `CCP-718`
+  - Status: `created`
+  - Task ID: `CCP-718`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Update enqueueBulkReview to accept optional depth, wire import trigger to require both toggles and use autoReviewDepth
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:50:54.270Z`
+  - Started at: `2026-04-04T00:05:11.716Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:06:45.721Z`
+  - Manual checklist:
+    - [ ] enqueueBulkReview accepts optional depth parameter
+    - [ ] Auto-review fires only when both toggles are ON
+    - [ ] Import uses autoReviewDepth, not global reviewDepth
+    - [ ] Previously reviewed games are not re-enqueued
+    - [ ] Global reviewDepth is unaffected
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-719 - Replace unicode color indicators with CSS circles in Opening Tree
+
+```
+- [ ] Reviewed
+  - ID: `CCP-719`
+  - Status: `skipped`
+  - Task ID: `CCP-719`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Replace unicode chars in renderColorToggle with player-strip__color-icon CSS circles
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:50:55.878Z`
+  - Started at: not started
+  - Skipped at: `2026-04-03T22:11:39.769Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: Duplicate of CCP-704 which has broader scope (full strip replacement vs dot-only fix)
+  - Execution target: `Claude Code`
+```
+
+## CCP-720 - Restore missing analytics.ts exports to fix broken build
+
+```
+- [ ] Reviewed
+  - ID: `CCP-720`
+  - Status: `created`
+  - Task ID: `CCP-720`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `public/js/main.js`
+  - Source step: ``
+  - Task: Restore computeLikelyLineModule, computePrepNotes, selectPracticeMove exports
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:52:06.632Z`
+  - Started at: `2026-04-03T21:54:39.288Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-03T21:56:50.513Z`
+  - Manual checklist:
+    - [ ] npm run build completes with 0 errors
+    - [ ] computeLikelyLineModule, computePrepNotes, and selectPracticeMove are exported from src/openings/analytics.ts
+    - [ ] No changes to view.ts or practice.ts
+```
+
+## CCP-721 - Audit: LFYM Engine Suppression and Surfacing Model
+
+```
+- [ ] Reviewed
+  - ID: `CCP-721`
+  - Status: `created`
+  - Task ID: `CCP-721`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Map exact code changes for toggle wiring, per-puzzle reset, Show Engine overlap with CCP-715-F2, and Try Another Move interface
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:55:15.286Z`
+  - Started at: `2026-04-04T00:07:03.675Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:09:24.499Z`
+  - Manual checklist:
+    - [ ] Audit report written to docs/audits/CCP-721-ENGINE-SUPPRESSION-AUDIT.md
+    - [ ] Toggle fix specified with exact file and lines
+    - [ ] Puzzle-transition reset location identified
+    - [ ] Show Engine button overlap with CCP-715-F2 explicitly resolved
+    - [ ] Try another move interface fully specified with state changes and render location
+```
+
+## CCP-721-F1 - Fix: LFYM Engine Toggle Wiring and Per-Puzzle Reset
+
+```
+- [ ] Reviewed
+  - ID: `CCP-721-F1`
+  - Status: `created`
+  - Task ID: `CCP-721`
+  - Parent prompt ID: `CCP-721`
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Wire header ceval toggle to surface all engine output during LFYM; reset engine UI state on puzzle transition
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:55:21.102Z`
+  - Started at: `2026-04-04T00:09:40.821Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:12:02.033Z`
+  - Manual checklist:
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes with no new errors
+    - [ ] Engine output suppressed by default at LFYM puzzle start
+    - [ ] Main Stockfish toggle ON surfaces eval, arrows, and engine lines immediately
+    - [ ] Main Stockfish toggle OFF suppresses all engine output
+    - [ ] User arrow preference respected after toggle
+    - [ ] Advancing to next puzzle resets engine output to suppressed state
+```
+
+## CCP-721-F2 - Fix: LFYM Try Another Move Button
+
+```
+- [ ] Reviewed
+  - ID: `CCP-721-F2`
+  - Status: `created`
+  - Task ID: `CCP-721`
+  - Parent prompt ID: `CCP-721-F1`
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Add resetForRetry() to retroCtrl and Try Another Move button to retro panel with board reset and engine re-suppression
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:55:22.799Z`
+  - Started at: `2026-04-04T00:12:27.135Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:14:26.529Z`
+  - Manual checklist:
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes with no new errors
+    - [ ] Try another move button hidden before first move attempt
+    - [ ] Try another move button visible after wrong move
+    - [ ] Try another move button visible after correct move
+    - [ ] Try another move button visible after View the solution
+    - [ ] Clicking button resets board to puzzle start and suppresses engine output
+    - [ ] Clicking button does not advance to next puzzle
+```
+
+## CCP-722 - Remove Show Engine button from LFYM retro panel and unify to main toggle
+
+```
+- [ ] Reviewed
+  - ID: `CCP-722`
+  - Status: `skipped`
+  - Task ID: `CCP-722`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Remove duplicate Show Engine button, unify all engine visibility to retroVisibleEngineEnabled via main Stockfish toggle
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:56:51.255Z`
+  - Started at: not started
+  - Skipped at: `2026-04-03T22:11:41.479Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: Duplicate of CCP-721-F1 which covers toggle wiring and per-puzzle reset in one prompt with audit doc reference
+  - Execution target: `Claude Code`
+```
+
+## CCP-723 - Add per-puzzle engine output suppression reset in LFYM
+
+```
+- [ ] Reviewed
+  - ID: `CCP-723`
+  - Status: `skipped`
+  - Task ID: `CCP-723`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Reset retroVisibleEngineEnabled to false on puzzle transition so each new puzzle starts with engine output suppressed
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:56:53.082Z`
+  - Started at: not started
+  - Skipped at: `2026-04-03T22:11:43.195Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: Duplicate of CCP-721-F1 which covers per-puzzle reset alongside toggle wiring
+  - Execution target: `Claude Code`
+```
+
+## CCP-724 - Add Try Another Move button to LFYM retro panel
+
+```
+- [ ] Reviewed
+  - ID: `CCP-724`
+  - Status: `skipped`
+  - Task ID: `CCP-724`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Add retryPuzzle method and Try Another Move button in fail state that resets to puzzle start with engine suppressed
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:56:54.828Z`
+  - Started at: not started
+  - Skipped at: `2026-04-03T22:11:44.894Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: Duplicate of CCP-721-F2 which has broader visibility (fail+win+view states vs fail-only)
+  - Execution target: `Claude Code`
+```
+
+## CCP-725 - Suppress eval text in LFYM panel and arrow labels before first move attempt
+
+```
+- [ ] Reviewed
+  - ID: `CCP-725`
+  - Status: `created`
+  - Task ID: `CCP-725`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Remove renderGameMoveEvalDiff from find feedback block and verify red arrow has no eval label during pre-attempt state
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:56:56.514Z`
+  - Started at: `2026-04-04T00:15:12.555Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:15:34.150Z`
+  - Manual checklist:
+    - [ ] No eval diff text in retro panel during find state
+    - [ ] Red mistake arrow has no eval label
+    - [ ] Eval text appears normally in fail state
+    - [ ] Eval text appears normally in win state
+    - [ ] Eval text appears normally in view state
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-726 - Audit: LFYM Wrong-Move Post-Fail Navigation
+
+```
+- [ ] Reviewed
+  - ID: `CCP-726`
+  - Status: `created`
+  - Task ID: `CCP-726`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Locate post-fail navigateTo call, confirm onJump safety, panel rendering, and board interactivity model
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:59:47.353Z`
+  - Started at: `2026-04-04T00:15:53.491Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:18:09.484Z`
+  - Manual checklist:
+    - [ ] Audit report written to docs/audits/CCP-726-WRONG-MOVE-RESET-AUDIT.md
+    - [ ] Exact removal target identified with file and line number
+    - [ ] onJump() safety confirmed for fail state at child path
+    - [ ] Panel rendering confirmed as position-independent
+    - [ ] Board interactivity model documented with any needed changes
+```
+
+## CCP-727 - Fix board orientation reset on game load from IDB startup
+
+```
+- [ ] Reviewed
+  - ID: `CCP-727`
+  - Status: `created`
+  - Task ID: `CCP-727`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Add setOrientation(getUserColor()) to IDB startup game load path in main.ts
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:59:50.713Z`
+  - Started at: `2026-04-04T00:18:36.115Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:19:06.024Z`
+  - Manual checklist:
+    - [ ] IDB startup load sets orientation from user color
+    - [ ] Black game restores with Black perspective
+    - [ ] White game restores with White perspective
+    - [ ] User-initiated game loads unchanged
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-728 - Add fallback orientation reset when getUserColor returns null
+
+```
+- [ ] Reviewed
+  - ID: `CCP-728`
+  - Status: `created`
+  - Task ID: `CCP-728`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Default to setOrientation('white') when getUserColor returns null in both loadGame and IDB startup
+  - Created by: `Claude`
+  - Created at: `2026-04-03T21:59:52.385Z`
+  - Started at: `2026-04-04T00:19:27.661Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:19:53.040Z`
+  - Manual checklist:
+    - [ ] Matched game orients to user color
+    - [ ] Unmatched game resets to White perspective
+    - [ ] Manual flip does not carry over to next game
+    - [ ] Sequential opposite-color games orient correctly
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-726-F1 - Fix: LFYM Wrong-Move Board Hold
+
+```
+- [ ] Reviewed
+  - ID: `CCP-726-F1`
+  - Status: `created`
+  - Task ID: `CCP-726`
+  - Parent prompt ID: `CCP-726`
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: Remove post-fail navigateTo(parentPath) call so board holds on wrong-move position until user clicks Try Another Move
+  - Created by: `Codex`
+  - Created at: `2026-04-03T21:59:54.030Z`
+  - Started at: `2026-04-04T00:20:04.151Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:20:30.493Z`
+  - Manual checklist:
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes with no new errors
+    - [ ] Wrong move board holds on resulting position after engine judges it as fail
+    - [ ] Retro panel shows fail message and eval boxes at the wrong-move position
+    - [ ] Board does not auto-reset
+    - [ ] Win flow is unaffected
+    - [ ] Skip and View the solution still work correctly
+```
+
+## CCP-729 - Manager: LFYM View-Solution Follow-Up Fixes
+
+```
+- [ ] Reviewed
+  - ID: `CCP-729`
+  - Status: `created`
+  - Task ID: `CCP-729`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-715-F1`, `CCP-715-F2`
+  - Source document: `docs/prompts/items/CCP-715-F1.md`
+  - Source step: ``
+  - Task: Run the currently available CCP-715 follow-up prompts in exact order
+  - Created by: `Codex`
+  - Created at: `2026-04-03T22:21:19.271Z`
+  - Started at: `2026-04-03T23:57:05.773Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:03:50.809Z`
+  - Manual checklist:
+    - [ ] CCP-715-F1 completed through its lifecycle
+    - [ ] CCP-715-F2 completed through its lifecycle
+    - [ ] Child prompts were executed in the exact listed order
+    - [ ] Final report states any remaining errors or unresolved issues
+```
+
+## CCP-730 - Fix Pre-existing TypeScript Strict Errors in retroView and Openings
+
+```
+- [ ] Reviewed
+  - ID: `CCP-730`
+  - Status: `created`
+  - Task ID: `CCP-730`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `npx tsc --noEmit output`
+  - Source step: ``
+  - Task: Fix exactOptionalPropertyTypes error in retroView.ts, undefined array-index error in analytics.ts, and type narrowing error in openings/view.ts
+  - Created by: `Codex`
+  - Created at: `2026-04-04T00:21:31.662Z`
+  - Started at: `2026-04-04T00:24:25.030Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T00:24:55.657Z`
+  - Manual checklist:
+    - [ ] Group 1 fixed: retroView.ts eval objects use conditional spreading
+    - [ ] Group 2 fixed: analytics.ts loop guard added
+    - [ ] Group 3 fixed: openings/view.ts colorPerspective narrowed
+    - [ ] npx tsc --noEmit produces zero errors
+    - [ ] npm run build passes
+```
+
+## CCP-731 - Overlay LFYM win-icon on Next button
+
+```
+- [ ] Reviewed
+  - ID: `CCP-731`
+  - Status: `created`
+  - Task ID: `CCP-731`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `user request 2026-04-03`
+  - Source step: ``
+  - Task: Reposition the green checkmark in the LFYM feedback box to overlay the top 25% of the Next button, centered, with a large drop shadow
+  - Created by: `Codex`
+  - Created at: `2026-04-04T01:28:12.589Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
 ```

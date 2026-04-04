@@ -1449,8 +1449,97 @@ function renderAnalysisSummary(analysisComplete2, evalCache2, mainline, whiteNam
     playerCol(blackName, summary.black, "black")
   ]);
 }
-function renderPostGameSummaryPanel(_analysisComplete, _evalCache, _mainline, _whiteName, _blackName, _userColor, _navigate4, _redraw10) {
+var POST_GAME_PANEL_KEY = "patzer.postGameSummaryOpen";
+function getPostGamePanelOpen() {
+  return localStorage.getItem(POST_GAME_PANEL_KEY) !== "false";
+}
+function setPostGamePanelOpen(open) {
+  localStorage.setItem(POST_GAME_PANEL_KEY, open ? "true" : "false");
+}
+function findWorstMovePath(mainline, evalCache2, userColor) {
+  let worstPath = null;
+  let worstLoss = 0;
+  let worstPly = 0;
+  let path = "";
+  for (let i = 1; i < mainline.length; i++) {
+    const node = mainline[i];
+    path += node.id;
+    const isWhiteMove = node.ply % 2 === 1;
+    if (userColor === "white" && !isWhiteMove) continue;
+    if (userColor === "black" && isWhiteMove) continue;
+    const ev = evalCache2.get(path);
+    if (ev?.loss !== void 0 && ev.loss > worstLoss) {
+      worstLoss = ev.loss;
+      worstPath = path;
+      worstPly = node.ply;
+    }
+  }
+  return worstPath ? { path: worstPath, loss: worstLoss, ply: worstPly } : null;
+}
+function renderPostGameSummaryPanel(analysisComplete2, evalCache2, mainline, whiteName, blackName, userColor, navigate2, redraw2) {
   return h("div");
+  if (!analysisComplete2) return h("div");
+  const summary = computeAnalysisSummary(mainline, evalCache2);
+  if (!summary) return h("div");
+  const open = getPostGamePanelOpen();
+  const openingParts = [];
+  for (const node of mainline.slice(1, 9)) {
+    const san = node.san;
+    if (!san) break;
+    if (node.ply % 2 === 1) openingParts.push(`${Math.ceil(node.ply / 2)}. ${san}`);
+    else openingParts.push(san);
+  }
+  const openingText = openingParts.join(" ");
+  const worst = findWorstMovePath(mainline, evalCache2, userColor ?? void 0);
+  const summaryData = summary;
+  const uSummary = userColor === "black" ? summaryData.black : summaryData.white;
+  const missedCount = uSummary.blunders + uSummary.mistakes + uSummary.inaccuracies;
+  function playerCol(name, data, color) {
+    const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : "\u2014";
+    const parts = [];
+    if (data.blunders > 0) parts.push(`${data.blunders} blunder${data.blunders !== 1 ? "s" : ""}`);
+    if (data.mistakes > 0) parts.push(`${data.mistakes} mistake${data.mistakes !== 1 ? "s" : ""}`);
+    if (data.inaccuracies > 0) parts.push(`${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? "ies" : "y"}`);
+    return h("div.post-game-panel__player", [
+      h("div.post-game-panel__player-name", [
+        h("span.summary__color-icon", { class: { "summary__color-icon--white": color === "white", "summary__color-icon--black": color === "black" } }),
+        name
+      ]),
+      h("div.post-game-panel__player-acc", accText),
+      h("div.post-game-panel__player-breakdown", parts.length > 0 ? parts.join(", ") : "No mistakes")
+    ]);
+  }
+  const body = [
+    h("div.post-game-panel__players", [
+      playerCol(whiteName, summaryData.white, "white"),
+      playerCol(blackName, summaryData.black, "black")
+    ]),
+    openingText ? h("div.post-game-panel__opening", `Opening: ${openingText}`) : null,
+    worst ? h("div.post-game-panel__worst", [
+      "Worst: Move ",
+      h("a.post-game-panel__worst-link", {
+        attrs: { href: "#" },
+        on: { click: (e) => {
+          e.preventDefault();
+          navigate2(worst.path);
+        } }
+      }, String(Math.ceil(worst.ply / 2))),
+      ` lost ${Math.round(worst.loss * 100)}% win chance`
+    ]) : null,
+    missedCount > 0 ? h("div.post-game-panel__missed", `Learn from your mistakes (${missedCount} moment${missedCount !== 1 ? "s" : ""})`) : null
+  ];
+  return h("div.post-game-panel", [
+    h("div.post-game-panel__header", {
+      on: { click: () => {
+        setPostGamePanelOpen(!open);
+        redraw2();
+      } }
+    }, [
+      h("span.post-game-panel__title", "Game Summary"),
+      h("span.post-game-panel__toggle", open ? "\u25B2" : "\u25BC")
+    ]),
+    open ? h("div.post-game-panel__body", body) : null
+  ]);
 }
 function evalPct(currentEval2, fen) {
   if (currentEval2.mate !== void 0) {
@@ -1805,6 +1894,14 @@ function setOnBatchBestmove(fn) {
 var _onLiveEvalImproved = null;
 function setOnLiveEvalImproved(fn) {
   _onLiveEvalImproved = fn;
+}
+var _onLiveEvalUpdated = null;
+function setOnLiveEvalUpdated(fn) {
+  _onLiveEvalUpdated = fn;
+}
+var _onLiveEvalInfo = null;
+function setOnLiveEvalInfo(fn) {
+  _onLiveEvalInfo = fn;
 }
 var protocol = new StockfishProtocol();
 var engineEnabled = false;
@@ -2262,6 +2359,7 @@ function parseEngineLine(line) {
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if (depth !== void 0 && !evalIsThreat) ev.depth = depth;
       if ((score !== void 0 || best) && !_isBatchActive()) {
+        if (!evalIsThreat) _onLiveEvalInfo?.(evalNodePath, { ...currentEval });
         scheduleLiveEngineUiRefresh(!evalIsThreat);
       }
     } else if (!evalIsThreat && score !== void 0) {
@@ -2341,6 +2439,7 @@ function parseEngineLine(line) {
             if (cached?.label && !stored.label) stored.label = cached.label;
             evalCache.set(nodePath, stored);
             _onLiveEvalImproved?.();
+            _onLiveEvalUpdated?.(nodePath, stored);
           }
         }
         syncArrowDebounced();
@@ -8902,7 +9001,7 @@ function setSavedPuzzles(puzzles) {
   savedPuzzles = puzzles;
 }
 var DB_NAME = "patzer-pro";
-var DB_VERSION = 8;
+var DB_VERSION = 9;
 var _idb;
 function openGameDb() {
   if (_idb) return Promise.resolve(_idb);
@@ -8947,6 +9046,11 @@ function openGameDb() {
         const attemptsStore = db.createObjectStore("drill-attempts", { autoIncrement: true });
         attemptsStore.createIndex("positionKey", "positionKey", { unique: false });
         attemptsStore.createIndex("timestamp", "timestamp", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("folders")) {
+        const foldersStore = db.createObjectStore("folders", { keyPath: "id" });
+        foldersStore.createIndex("parentId", "parentId", { unique: false });
+        foldersStore.createIndex("createdAt", "createdAt", { unique: false });
       }
     };
     req.onsuccess = () => {
@@ -9203,7 +9307,7 @@ async function backfillOpenings() {
 async function clearAllIdbData() {
   try {
     const db = await openGameDb();
-    const tx = db.transaction(["game-library", "puzzle-library", "analysis-library", "retro-results", "game-summaries", "games", "studies", "practice-lines", "position-progress", "drill-attempts"], "readwrite");
+    const tx = db.transaction(["game-library", "puzzle-library", "analysis-library", "retro-results", "game-summaries", "games", "studies", "practice-lines", "position-progress", "drill-attempts", "folders"], "readwrite");
     tx.objectStore("game-library").clear();
     tx.objectStore("puzzle-library").clear();
     tx.objectStore("analysis-library").clear();
@@ -9214,6 +9318,7 @@ async function clearAllIdbData() {
     tx.objectStore("practice-lines").clear();
     tx.objectStore("position-progress").clear();
     tx.objectStore("drill-attempts").clear();
+    tx.objectStore("folders").clear();
     await new Promise((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -9525,6 +9630,7 @@ var _timeFilter = "all";
 var _summaries = [];
 var _summariesLoaded = false;
 var _summariesLoading = false;
+var _importedGames = [];
 var _redraw2 = () => {
 };
 var _filteredCache = null;
@@ -9543,8 +9649,9 @@ function invalidateSummariesCache() {
 function loadSummaries() {
   if (_summariesLoading) return;
   _summariesLoading = true;
-  void listGameSummaries().then((list) => {
-    _summaries = list;
+  void Promise.all([listGameSummaries(), loadGamesFromIdb()]).then(([summaries, stored]) => {
+    _summaries = summaries;
+    _importedGames = stored?.games ?? [];
     _summariesLoaded = true;
     _summariesLoading = false;
     _filteredCache = null;
@@ -9573,6 +9680,9 @@ function setTimeFilter(f) {
   _filteredCache = null;
   _redraw2();
 }
+function importedGames() {
+  return _importedGames;
+}
 function filteredGameCount() {
   return filteredSummaries().length;
 }
@@ -9590,6 +9700,13 @@ var _getUserColor;
 var _redraw3 = () => {
 };
 var _onBatchComplete = null;
+function isRetroSessionActive() {
+  try {
+    return !!_getCtrl2().retro;
+  } catch {
+    return false;
+  }
+}
 function initBatch(deps) {
   _getCtrl2 = deps.getCtrl;
   _getSelectedGameId = deps.getSelectedGameId;
@@ -9604,6 +9721,11 @@ function initBatch(deps) {
   setOnBatchBestmove(onBatchBestmove);
   setOnEngineReady(() => {
     if (pendingBatchOnReady) {
+      if (isRetroSessionActive()) {
+        pendingBatchOnReady = false;
+        evalCurrentPosition();
+        return;
+      }
       pendingBatchOnReady = false;
       startBatchAnalysis();
     } else {
@@ -9739,8 +9861,8 @@ function advanceBatch() {
   }
 }
 function startBatchAnalysis() {
-  console.log("[batch] startBatchAnalysis \u2014 engineEnabled:", engineEnabled, "engineReady:", engineReady, "batchAnalyzing:", batchAnalyzing);
-  if (!engineEnabled || !engineReady || batchAnalyzing) return;
+  console.log("[batch] startBatchAnalysis \u2014 engineEnabled:", engineEnabled, "engineReady:", engineReady, "batchAnalyzing:", batchAnalyzing, "retroActive:", isRetroSessionActive());
+  if (!engineEnabled || !engineReady || batchAnalyzing || isRetroSessionActive()) return;
   const ctrl2 = _getCtrl2();
   const queue2 = [];
   let path = "";
@@ -9763,8 +9885,33 @@ function startBatchAnalysis() {
   _redraw3();
   if (queue2.length > 0) evalBatchItem(queue2[0]);
 }
+function stopBatchAnalysis() {
+  if (!batchAnalyzing) return;
+  incrementPendingStopCount();
+  protocol.stop();
+  setEngineSearchActive(false);
+  batchAnalyzing = false;
+  batchState = "idle";
+  analysisRunning = false;
+  pendingBatchOnReady = false;
+  const gameId = _getSelectedGameId();
+  if (gameId) {
+    void saveAnalysisToIdb(
+      "partial",
+      gameId,
+      buildAnalysisNodes(_getCtrl2().mainline, (p) => evalCache.get(p)),
+      reviewDepth
+    );
+  }
+  syncArrow();
+  _redraw3();
+}
 function startBatchWhenReady() {
-  console.log("[batch] startBatchWhenReady \u2014 engineEnabled:", engineEnabled, "engineReady:", engineReady, "batchAnalyzing:", batchAnalyzing);
+  console.log("[batch] startBatchWhenReady \u2014 engineEnabled:", engineEnabled, "engineReady:", engineReady, "batchAnalyzing:", batchAnalyzing, "retroActive:", isRetroSessionActive());
+  if (isRetroSessionActive()) {
+    pendingBatchOnReady = false;
+    return;
+  }
   if (!engineEnabled) {
     pendingBatchOnReady = true;
     toggleEngine();
@@ -11846,6 +11993,15 @@ function applyMoveToTree(move3, pos) {
   });
   _navigate(ctrl2.path + newNode.id);
 }
+function playUciMove(uci) {
+  const ctrl2 = _getCtrl3();
+  const parsed = parseUci(uci);
+  if (!parsed) return;
+  const setup = parseFen(ctrl2.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const move3 = normalizeMove(pos, parsed);
+  applyMoveToTree(move3, pos);
+}
 function completePromotion(role) {
   if (!pendingPromotion) return;
   const { orig, dest } = pendingPromotion;
@@ -11965,8 +12121,8 @@ function getClocksAtPath() {
 function renderPlayerStrips() {
   const ctrl2 = _getCtrl3();
   const selectedGameId2 = _getSelectedGameId2();
-  const importedGames2 = _getImportedGames2();
-  const game = importedGames2.find((g) => g.id === selectedGameId2);
+  const importedGames3 = _getImportedGames2();
+  const game = importedGames3.find((g) => g.id === selectedGameId2);
   const whiteName = game?.white ?? "White";
   const blackName = game?.black ?? "Black";
   const whiteRating = game?.whiteRating;
@@ -12190,13 +12346,21 @@ var SOUND_FILES = {
   Capture: "/sounds/Capture.mp3",
   Castles: "/sounds/Castles.mp3",
   Check: "/sounds/Check.mp3",
-  Checkmate: "/sounds/Checkmate.mp3"
+  Checkmate: "/sounds/Checkmate.mp3",
+  // Drill feedback sounds — files added to public/sounds/
+  // Place correct.mp3 and incorrect.mp3 in public/sounds/ for playback.
+  DrillCorrect: "/sounds/correct.mp3",
+  DrillIncorrect: "/sounds/incorrect.mp3"
 };
 function preloadBoardSounds() {
   attachPrimer();
   for (const [name, path] of Object.entries(SOUND_FILES)) {
     void loadBuffer(name, path);
   }
+}
+function playDrillFeedbackSound(type) {
+  if (!boardSoundEnabled) return;
+  playBuffer(type === "correct" ? "DrillCorrect" : "DrillIncorrect");
 }
 function playMoveSound(san) {
   if (!boardSoundEnabled || !san) return;
@@ -12242,31 +12406,63 @@ function initCevalView(deps) {
   _redraw5 = deps.redraw;
 }
 var showEngineSettings = false;
+var retroVisibleEngineEnabled = false;
 var pvBoard = null;
 var pvBoardPos = { x: 0, y: 0 };
 var PV_BOARD_SIZE = 384;
 var PV_BOARD_OFFSET = 16;
-function renderCeval() {
-  const hasEval = currentEval.cp !== void 0 || currentEval.mate !== void 0;
-  const pearlStr = engineEnabled ? hasEval ? formatScore(currentEval) : engineReady ? "\u2026" : "" : "";
+function isRetroVisibleEngineEnabled() {
+  return retroVisibleEngineEnabled;
+}
+function resetRetroVisibleEngineUi() {
+  retroVisibleEngineEnabled = false;
+  showEngineSettings = false;
+}
+function setRetroVisibleEngineEnabled(v) {
+  retroVisibleEngineEnabled = v;
+}
+function renderCeval(opts) {
+  const retroHiddenByDefault = opts?.retroHiddenByDefault === true;
+  const retroSolving = opts?.retroSolving === true;
+  const visibleEngineEnabled = retroHiddenByDefault ? retroVisibleEngineEnabled : engineEnabled;
+  const hasEval = visibleEngineEnabled && !retroSolving && (currentEval.cp !== void 0 || currentEval.mate !== void 0);
+  const pearlStr = visibleEngineEnabled && !retroSolving && engineEnabled ? hasEval ? formatScore(currentEval) : engineReady ? "\u2026" : "" : "";
   const engineLabel = protocol.engineName ?? "Stockfish 18";
-  const statusText = !engineEnabled ? "Local analysis" : !engineReady ? "Loading\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "Engine on";
-  const evalDone = engineEnabled && engineReady && !isEngineSearching() && currentEval.depth !== void 0;
+  const statusText = !visibleEngineEnabled ? "Local analysis" : !engineEnabled || !engineReady ? "Loading\u2026" : batchAnalyzing ? `Reviewing ${batchDone}/${batchQueue.length}\u2026` : "Engine on";
+  const evalDone = visibleEngineEnabled && engineEnabled && engineReady && !isEngineSearching() && currentEval.depth !== void 0;
   const progressPct = evalDone ? 100 : Math.round(getSearchProgress() * 100);
-  const progressBar = engineEnabled && engineReady ? h("div.ceval__progress", [
+  const progressBar = visibleEngineEnabled && engineEnabled && engineReady ? h("div.ceval__progress", [
     h("div.ceval__progress-fill", {
       class: { "ceval__progress-fill--done": evalDone },
       attrs: { style: `width:${progressPct}%` }
     })
   ]) : null;
-  return h("div.ceval", { class: { enabled: engineEnabled } }, [
+  return h("div.ceval", { class: { enabled: visibleEngineEnabled } }, [
     progressBar,
     // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
     h("button.cmn-toggle", {
-      class: { active: engineEnabled },
+      class: { active: visibleEngineEnabled },
       attrs: { title: "Toggle analysis engine (L)" },
-      on: { click: toggleEngine }
-    }, engineEnabled ? "On" : "Off"),
+      on: {
+        click: () => {
+          if (retroHiddenByDefault) {
+            retroVisibleEngineEnabled = !retroVisibleEngineEnabled;
+            if (retroVisibleEngineEnabled) {
+              if (!engineEnabled) toggleEngine();
+              _getCtrl4().retro?.revealGuidance();
+              syncArrow();
+              evalCurrentPosition();
+            } else {
+              _getCtrl4().retro?.hideGuidance();
+              syncArrow();
+            }
+            _redraw5();
+            return;
+          }
+          toggleEngine();
+        }
+      }
+    }, visibleEngineEnabled ? "On" : "Off"),
     // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
     // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element
     h("pearl", { class: { "ceval__ko": currentEval.mate === 0 } }, pearlStr),
@@ -12671,9 +12867,9 @@ function initPgnExport(deps) {
 }
 function buildPgn(annotated) {
   const ctrl2 = _getCtrl5();
-  const importedGames2 = _getImportedGames3();
+  const importedGames3 = _getImportedGames3();
   const selectedGameId2 = _getSelectedGameId3();
-  const game = importedGames2.find((g) => g.id === selectedGameId2);
+  const game = importedGames3.find((g) => g.id === selectedGameId2);
   const headers = [
     ["Event", "?"],
     ["Site", "PatzerPro"],
@@ -12758,9 +12954,9 @@ function copyLinePgn(path) {
 }
 function downloadPgn(annotated) {
   const pgn = buildPgn(annotated);
-  const importedGames2 = _getImportedGames3();
+  const importedGames3 = _getImportedGames3();
   const selectedGameId2 = _getSelectedGameId3();
-  const game = importedGames2.find((g) => g.id === selectedGameId2);
+  const game = importedGames3.find((g) => g.id === selectedGameId2);
   const w = (game?.white ?? "White").replace(/\s+/g, "_");
   const b = (game?.black ?? "Black").replace(/\s+/g, "_");
   const suffix = annotated ? "_annotated" : "";
@@ -13535,6 +13731,44 @@ async function getRatingHistory() {
     return [];
   }
 }
+function normalizeServerHistoryEntry(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const entry = raw;
+  const timestamp = Number(entry.timestamp ?? entry.timestampMs ?? entry.timestamp_ms);
+  const rating = Number(entry.rating);
+  const deviation = Number(entry.deviation);
+  if (!Number.isFinite(timestamp) || !Number.isFinite(rating) || !Number.isFinite(deviation)) return null;
+  return { timestamp, rating, deviation };
+}
+function isRatedAttempt(attempt) {
+  return attempt.sessionMode === "rated" || !!(attempt.ratedOutcome && attempt.ratedOutcome !== "not-rated");
+}
+function ratedAttemptKey(attempt) {
+  return `${attempt.puzzleId}::${attempt.completedAt}`;
+}
+async function listRatedAttempts() {
+  try {
+    const db = await openPuzzleDb();
+    return new Promise((resolve, reject) => {
+      const results = [];
+      const req = db.transaction(STORE_ATTEMPTS, "readonly").objectStore(STORE_ATTEMPTS).openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) {
+          resolve(results);
+          return;
+        }
+        const attempt = cursor.value;
+        if (isRatedAttempt(attempt)) results.push(attempt);
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] listRatedAttempts failed", e);
+    return [];
+  }
+}
 async function pullAndMergePuzzlePerf() {
   try {
     const res = await fetch("/api/sync/puzzle-perf");
@@ -13546,13 +13780,61 @@ async function pullAndMergePuzzlePerf() {
       const merged = {
         glicko: { rating: serverPerf.rating, deviation: serverPerf.deviation, volatility: serverPerf.volatility },
         nb: serverPerf.nb,
-        recent: serverPerf.recent_json ? JSON.parse(serverPerf.recent_json) : [],
-        latest: serverPerf.latest_at ?? null
+        recent: serverPerf.recent_json ? JSON.parse(serverPerf.recent_json) : serverPerf.recentJson ? JSON.parse(serverPerf.recentJson) : [],
+        latest: serverPerf.latest_at ?? serverPerf.latestAt ?? null
       };
       await saveUserPuzzlePerf(merged);
     }
   } catch (e) {
     console.warn("[puzzleDb] pullAndMergePuzzlePerf failed", e);
+  }
+}
+async function pullAndMergePuzzleRatingHistory() {
+  try {
+    const res = await fetch("/api/sync/puzzle-rating-history");
+    if (!res.ok) return;
+    const { history: serverHistory } = await res.json();
+    if (!Array.isArray(serverHistory) || serverHistory.length === 0) return;
+    const localHistory = await getRatingHistory();
+    const localKeys = new Set(localHistory.map((entry) => `${entry.timestamp}`));
+    const missing = serverHistory.map(normalizeServerHistoryEntry).filter((entry) => !!entry).filter((entry) => !localKeys.has(`${entry.timestamp}`));
+    if (missing.length === 0) return;
+    const db = await openPuzzleDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_RATING_HISTORY, "readwrite");
+      const store = tx.objectStore(STORE_RATING_HISTORY);
+      for (const entry of missing) store.add(entry);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] pullAndMergePuzzleRatingHistory failed", e);
+  }
+}
+async function pullAndMergeRatedAttempts() {
+  try {
+    const res = await fetch("/api/sync/puzzle-rated-attempts");
+    if (!res.ok) return;
+    const { attempts: serverAttempts } = await res.json();
+    if (!Array.isArray(serverAttempts) || serverAttempts.length === 0) return;
+    const localAttempts = await listRatedAttempts();
+    const localKeys = new Set(localAttempts.map(ratedAttemptKey));
+    const missing = serverAttempts.filter((attempt) => {
+      if (!attempt || typeof attempt !== "object") return false;
+      const candidate = attempt;
+      return !!candidate.puzzleId && !!candidate.completedAt && !localKeys.has(ratedAttemptKey(candidate));
+    });
+    if (missing.length === 0) return;
+    const db = await openPuzzleDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_ATTEMPTS, "readwrite");
+      const store = tx.objectStore(STORE_ATTEMPTS);
+      for (const attempt of missing) store.add(attempt);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] pullAndMergeRatedAttempts failed", e);
   }
 }
 async function pushPuzzlePerf() {
@@ -13582,7 +13864,7 @@ async function pushNewRatingHistory() {
     const res = await fetch("/api/sync/puzzle-rating-history");
     if (!res.ok) return;
     const { history: serverHistory } = await res.json();
-    const serverLatest = Array.isArray(serverHistory) && serverHistory.length > 0 ? Math.max(...serverHistory.map((h2) => h2.timestamp_ms)) : 0;
+    const serverLatest = Array.isArray(serverHistory) && serverHistory.length > 0 ? Math.max(...serverHistory.map((h2) => Number(h2.timestamp ?? h2.timestampMs ?? h2.timestamp_ms ?? 0))) : 0;
     const localHistory = await getRatingHistory();
     const newEntries = localHistory.filter((e) => e.timestamp > serverLatest);
     if (newEntries.length === 0) return;
@@ -13601,10 +13883,33 @@ async function pushNewRatingHistory() {
     console.warn("[puzzleDb] pushNewRatingHistory failed", e);
   }
 }
+async function pushNewRatedAttempts() {
+  try {
+    const res = await fetch("/api/sync/puzzle-rated-attempts");
+    if (!res.ok) return;
+    const { attempts: serverAttempts } = await res.json();
+    const serverKeys = new Set(
+      (Array.isArray(serverAttempts) ? serverAttempts : []).filter((attempt) => !!attempt && typeof attempt === "object").map(ratedAttemptKey)
+    );
+    const localAttempts = await listRatedAttempts();
+    const newAttempts = localAttempts.filter((attempt) => !serverKeys.has(ratedAttemptKey(attempt)));
+    if (newAttempts.length === 0) return;
+    await fetch("/api/sync/puzzle-rated-attempts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attempts: newAttempts })
+    });
+  } catch (e) {
+    console.warn("[puzzleDb] pushNewRatedAttempts failed", e);
+  }
+}
 async function syncRatedLadder() {
   await pullAndMergePuzzlePerf();
+  await pullAndMergePuzzleRatingHistory();
+  await pullAndMergeRatedAttempts();
   await pushPuzzlePerf();
   await pushNewRatingHistory();
+  await pushNewRatedAttempts();
 }
 var RATED_FAILURE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1e3;
 async function getPuzzleRatedEligibility(puzzleId) {
@@ -13790,7 +14095,7 @@ var PuzzleRoundCtrl = class _PuzzleRoundCtrl {
     this.gameTreePuzzlePath = null;
     this.analysisMode = false;
     const setup = parseFen(definition.startFen);
-    this.pov = setup.isOk ? setup.value.turn === "white" ? "black" : "white" : "white";
+    this.pov = setup.isOk ? definition.triggerMove ? setup.value.turn === "white" ? "black" : "white" : setup.value.turn : "white";
     const { root, path, node } = buildInitialPuzzleTree(definition);
     this.treeRoot = root;
     this.treePath = path;
@@ -14812,6 +15117,7 @@ function initPuzzlePage(view2, puzzleId) {
   if (puzzleId !== void 0) s.puzzleId = puzzleId;
   state = s;
   loadUserPerfFromStorage().catch((e) => console.warn("[puzzle] loadUserPerfFromStorage failed", e));
+  syncRatedLadder().then(() => loadUserPerfFromStorage()).catch((e) => console.warn("[puzzle] syncRatedLadder failed", e));
 }
 function getLibraryCounts() {
   return libraryCounts;
@@ -15996,6 +16302,10 @@ function timeClassFromTimeControl(tc) {
 }
 
 // src/import/filters.ts
+function storedInt3(key, def, min, max) {
+  const v = parseInt(localStorage.getItem(key) ?? "", 10);
+  return !isNaN(v) && v >= min && v <= max ? v : def;
+}
 var importFilters = {
   rated: true,
   speeds: /* @__PURE__ */ new Set(),
@@ -16003,8 +16313,22 @@ var importFilters = {
   dateRange: "1month",
   customFrom: "",
   customTo: "",
-  autoReview: false
+  autoReview: localStorage.getItem("patzer.autoReview") === "true",
+  autoReviewConfirmed: localStorage.getItem("patzer.autoReviewConfirmed") === "true",
+  autoReviewDepth: storedInt3("patzer.autoReviewDepth", 12, 2, 18)
 };
+function setAutoReview(v) {
+  importFilters.autoReview = v;
+  localStorage.setItem("patzer.autoReview", String(v));
+}
+function setAutoReviewConfirmed(v) {
+  importFilters.autoReviewConfirmed = v;
+  localStorage.setItem("patzer.autoReviewConfirmed", String(v));
+}
+function setAutoReviewDepth(v) {
+  importFilters.autoReviewDepth = v;
+  localStorage.setItem("patzer.autoReviewDepth", String(v));
+}
 var SPEED_OPTIONS = [
   { value: "bullet", label: "Bullet", icon: "\uE032" },
   // licon.Bullet
@@ -16318,6 +16642,7 @@ var reviewSearchActive = false;
 var reviewPendingStopCount = 0;
 var reviewItemQueue = [];
 var reviewItemIndex = 0;
+var reviewActiveDepth = reviewDepth;
 var _analyzedGameIds2 = /* @__PURE__ */ new Set();
 var _missedTacticGameIds2 = /* @__PURE__ */ new Set();
 var _analyzedGameAccuracy2 = /* @__PURE__ */ new Map();
@@ -16449,7 +16774,7 @@ function onReviewBestmove() {
     "partial",
     entry.game.id,
     buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
-    reviewDepth
+    reviewActiveDepth
   );
   _redraw8();
   if (reviewItemIndex < reviewItemQueue.length) {
@@ -16479,7 +16804,7 @@ function sendNextItem() {
     item.nodePly
   );
   reviewProtocol.setPosition(item.fen);
-  reviewProtocol.go(reviewDepth);
+  reviewProtocol.go(reviewActiveDepth);
 }
 function finishEntry(entry) {
   entry.status = "complete";
@@ -16499,7 +16824,7 @@ function finishEntry(entry) {
     "complete",
     entry.game.id,
     buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
-    reviewDepth
+    reviewActiveDepth
   );
   console.log("[review-engine] game complete:", entry.game.id);
   _redraw8();
@@ -16531,6 +16856,7 @@ async function startEntryBatch(entry) {
   reviewItemQueue = items;
   reviewItemIndex = 0;
   reviewCurrentEval = {};
+  reviewActiveDepth = entry.depth;
   if (!reviewEngineReady) {
     return;
   }
@@ -16549,8 +16875,9 @@ function advanceQueue() {
   entry.status = "analyzing";
   void startEntryBatch(entry);
 }
-function enqueueBulkReview(games) {
-  console.log("[reviewQueue] enqueueBulkReview called \u2014 games:", games.map((g) => g.id), "queue len:", queue.length, "activeIndex:", activeIndex, "engineInitStarted:", reviewEngineInitStarted);
+function enqueueBulkReview(games, depth) {
+  const entryDepth = depth ?? reviewDepth;
+  console.log("[reviewQueue] enqueueBulkReview called \u2014 games:", games.map((g) => g.id), "queue len:", queue.length, "activeIndex:", activeIndex, "engineInitStarted:", reviewEngineInitStarted, "depth:", entryDepth);
   for (const game of games) {
     console.log("[reviewQueue]  game", game.id, "\u2014 alreadyAnalyzed:", _analyzedGameIds2.has(game.id), "alreadyQueued:", queue.some((e) => e.game.id === game.id));
     if (_analyzedGameIds2.has(game.id)) continue;
@@ -16563,9 +16890,37 @@ function enqueueBulkReview(games) {
       cache: /* @__PURE__ */ new Map(),
       done: 0,
       total,
-      status: "pending"
+      status: "pending",
+      depth: entryDepth
     });
   }
+  if (!reviewEngineInitStarted) {
+    void initReviewEngine("/stockfish-web");
+  }
+  if (activeIndex < 0) {
+    advanceQueue();
+  }
+}
+function enqueueAtFront(games) {
+  const newEntries = [];
+  for (const game of games) {
+    if (_analyzedGameIds2.has(game.id)) continue;
+    if (queue.some((e) => e.game.id === game.id)) continue;
+    const ctrl2 = new AnalyseCtrl(pgnToTree(game.pgn));
+    const total = ctrl2.mainline.length > 1 ? ctrl2.mainline.length - 1 : 0;
+    newEntries.push({
+      game,
+      ctrl: ctrl2,
+      cache: /* @__PURE__ */ new Map(),
+      done: 0,
+      total,
+      status: "pending",
+      depth: reviewDepth
+    });
+  }
+  if (newEntries.length === 0) return;
+  const insertAt = activeIndex >= 0 ? activeIndex + 1 : 0;
+  queue.splice(insertAt, 0, ...newEntries);
   if (!reviewEngineInitStarted) {
     void initReviewEngine("/stockfish-web");
   }
@@ -16626,7 +16981,7 @@ function getQueueSummary() {
   return { total, done, running };
 }
 function getAutoReview() {
-  return localStorage.getItem("patzer.autoReview") === "true";
+  return importFilters.autoReview;
 }
 
 // src/games/view.ts
@@ -16963,7 +17318,26 @@ function renderGameList(deps) {
       const userAcc = rawAcc && userColor ? userColor === "white" ? rawAcc.white : rawAcc.black : null;
       const oppAcc = rawAcc && userColor ? userColor === "white" ? rawAcc.black : rawAcc.white : null;
       const accuracy = rawAcc ? { user: userAcc, opp: oppAcc } : void 0;
-      const reviewControl = isAnalyzing ? h("span.game-list__row-progress", `${progress}%`) : isPending ? h("span.game-list__row-progress.--queued", "Queued") : isAnalyzed ? userAcc !== null && userAcc !== void 0 ? h("span.game-list__row-progress.--accuracy", `${Math.round(userAcc)}%`) : null : h("button.game-list__row-review", {
+      const reviewControl = isAnalyzing ? h("span.game-list__row-progress", `${progress}%`) : isPending ? h("span.game-list__row-progress.--queued", "Queued") : isAnalyzed ? userAcc !== null && userAcc !== void 0 ? h("span.game-list__row-progress.--accuracy", `${Math.round(userAcc)}%`) : null : isBulkRunning() ? h("div.game-list__row-queue-split", [
+        h("button.game-list__row-queue-btn.--top", {
+          attrs: { title: "Review next" },
+          on: { click: (e) => {
+            e.stopPropagation();
+            const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id) ? deps.importedGames.filter((g) => selectedGameIds.has(g.id)) : [game];
+            enqueueAtFront(bulk);
+            deps.redraw();
+          } }
+        }, "\u2B06"),
+        h("button.game-list__row-queue-btn.--bottom", {
+          attrs: { title: "Add to queue" },
+          on: { click: (e) => {
+            e.stopPropagation();
+            const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id) ? deps.importedGames.filter((g) => selectedGameIds.has(g.id)) : [game];
+            enqueueBulkReview(bulk);
+            deps.redraw();
+          } }
+        }, "\u2B07")
+      ]) : h("button.game-list__row-review", {
         attrs: { title: "Queue for background review" },
         on: { click: (e) => {
           e.stopPropagation();
@@ -17191,7 +17565,26 @@ function renderGamesView(deps) {
           ]) : isAnalyzing ? h("td.games-view__review-cell", [
             h("span.games-view__analyzing-progress", { attrs: { title: "Reviewing\u2026" } }, `${reviewProgress}%`)
           ]) : h("td.games-view__review-cell", [
-            h("button.games-view__review-btn", {
+            isBulkRunning() ? h("div.games-view__review-split", [
+              h("button.games-view__review-queue-btn.--top", {
+                attrs: { title: "Review next" },
+                on: { click: (e) => {
+                  e.stopPropagation();
+                  const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id) ? games.filter((g) => selectedGameIds.has(g.id)) : [game];
+                  enqueueAtFront(bulk);
+                  deps.redraw();
+                } }
+              }, "\u2B06"),
+              h("button.games-view__review-queue-btn.--bottom", {
+                attrs: { title: "Add to queue" },
+                on: { click: (e) => {
+                  e.stopPropagation();
+                  const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id) ? games.filter((g) => selectedGameIds.has(g.id)) : [game];
+                  enqueueBulkReview(bulk);
+                  deps.redraw();
+                } }
+              }, "\u2B07")
+            ]) : h("button.games-view__review-btn", {
               on: { click: (e) => {
                 e.stopPropagation();
                 deps.reviewGame(game);
@@ -17685,6 +18078,7 @@ var ExplorerCtrl = class {
     const { db, speeds, ratings, modes, playerName, color } = this.config;
     const since = this.config.since() || void 0;
     const until = this.config.until() || void 0;
+    const withGames = true;
     if (db === "masters") {
       return {
         db: "masters",
@@ -17692,8 +18086,8 @@ var ExplorerCtrl = class {
         variant: "standard",
         ...since && { since },
         ...until && { until },
-        topGames: false,
-        recentGames: false
+        topGames: withGames,
+        recentGames: withGames
       };
     }
     if (db === "lichess") {
@@ -17705,8 +18099,8 @@ var ExplorerCtrl = class {
         ratings,
         ...since && { since },
         ...until && { until },
-        topGames: false,
-        recentGames: false
+        topGames: withGames,
+        recentGames: withGames
       };
     }
     if (!playerName) throw new Error("No player name set for explorer player DB");
@@ -17719,8 +18113,8 @@ var ExplorerCtrl = class {
       modes,
       ...since && { since },
       ...until && { until },
-      topGames: false,
-      recentGames: false
+      topGames: withGames,
+      recentGames: withGames
     };
   }
   /** True when player DB is selected but no username has been entered yet. */
@@ -17791,6 +18185,3056 @@ var ExplorerCtrl = class {
   }
 };
 var explorerCtrl = new ExplorerCtrl();
+
+// src/study/studyDb.ts
+var _db2;
+function openDb() {
+  if (_db2) return Promise.resolve(_db2);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("studies")) {
+        const studiesStore = db.createObjectStore("studies", { keyPath: "id" });
+        studiesStore.createIndex("createdAt", "createdAt", { unique: false });
+        studiesStore.createIndex("updatedAt", "updatedAt", { unique: false });
+        studiesStore.createIndex("source", "source", { unique: false });
+        studiesStore.createIndex("favorite", "favorite", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("practice-lines")) {
+        const practiceStore = db.createObjectStore("practice-lines", { keyPath: "id" });
+        practiceStore.createIndex("studyItemId", "studyItemId", { unique: false });
+        practiceStore.createIndex("status", "status", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("position-progress")) {
+        const progressStore = db.createObjectStore("position-progress", { keyPath: "key" });
+        progressStore.createIndex("nextDueAt", "nextDueAt", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("drill-attempts")) {
+        const attemptsStore = db.createObjectStore("drill-attempts", { autoIncrement: true });
+        attemptsStore.createIndex("positionKey", "positionKey", { unique: false });
+        attemptsStore.createIndex("timestamp", "timestamp", { unique: false });
+      }
+      if (!db.objectStoreNames.contains("folders")) {
+        const foldersStore = db.createObjectStore("folders", { keyPath: "id" });
+        foldersStore.createIndex("parentId", "parentId", { unique: false });
+        foldersStore.createIndex("createdAt", "createdAt", { unique: false });
+      }
+    };
+    req.onsuccess = () => {
+      _db2 = req.result;
+      resolve(_db2);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function saveStudy(item) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("studies", "readwrite");
+    tx.objectStore("studies").put(item);
+  } catch (e) {
+    console.warn("[studyDb] saveStudy failed", e);
+  }
+}
+async function getStudy(id) {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("studies", "readonly").objectStore("studies").get(id);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[studyDb] getStudy failed", e);
+    return void 0;
+  }
+}
+async function getStudiesPaginated(sortIndex, direction, offset, limit) {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const index = db.transaction("studies", "readonly").objectStore("studies").index(sortIndex);
+      const req = index.openCursor(null, direction);
+      const results = [];
+      let skipped = 0;
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) {
+          resolve(results);
+          return;
+        }
+        if (skipped < offset) {
+          skipped++;
+          cursor.continue();
+          return;
+        }
+        results.push(cursor.value);
+        if (results.length >= limit) {
+          resolve(results);
+          return;
+        }
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[studyDb] getStudiesPaginated failed", e);
+    return [];
+  }
+}
+async function deleteStudy(id) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("studies", "readwrite");
+    tx.objectStore("studies").delete(id);
+  } catch (e) {
+    console.warn("[studyDb] deleteStudy failed", e);
+  }
+}
+async function savePracticeLine(seq) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("practice-lines", "readwrite");
+    tx.objectStore("practice-lines").put(seq);
+  } catch (e) {
+    console.warn("[studyDb] savePracticeLine failed", e);
+  }
+}
+async function listPracticeLines(studyItemId) {
+  try {
+    const db = await openDb();
+    if (studyItemId) {
+      return new Promise((resolve, reject) => {
+        const index = db.transaction("practice-lines", "readonly").objectStore("practice-lines").index("studyItemId");
+        const req = index.getAll(studyItemId);
+        req.onsuccess = () => resolve(req.result ?? []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("practice-lines", "readonly").objectStore("practice-lines").getAll();
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[studyDb] listPracticeLines failed", e);
+    return [];
+  }
+}
+async function deletePracticeLine(id) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("practice-lines", "readwrite");
+    tx.objectStore("practice-lines").delete(id);
+  } catch (e) {
+    console.warn("[studyDb] deletePracticeLine failed", e);
+  }
+}
+async function savePositionProgress(progress) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("position-progress", "readwrite");
+    tx.objectStore("position-progress").put(progress);
+  } catch (e) {
+    console.warn("[studyDb] savePositionProgress failed", e);
+  }
+}
+async function getPositionProgress(key) {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("position-progress", "readonly").objectStore("position-progress").get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[studyDb] getPositionProgress failed", e);
+    return void 0;
+  }
+}
+async function listAllPositionProgress() {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("position-progress", "readonly").objectStore("position-progress").getAll();
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[studyDb] listAllPositionProgress failed", e);
+    return [];
+  }
+}
+async function saveDrillAttempt(attempt) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("drill-attempts", "readwrite");
+    tx.objectStore("drill-attempts").add(attempt);
+  } catch (e) {
+    console.warn("[studyDb] saveDrillAttempt failed", e);
+  }
+}
+async function saveFolder(folder) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("folders", "readwrite");
+    tx.objectStore("folders").put(folder);
+  } catch (e) {
+    console.warn("[studyDb] saveFolder failed", e);
+  }
+}
+async function listFolders() {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("folders", "readonly").objectStore("folders").getAll();
+      req.onsuccess = () => resolve(req.result ?? []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn("[studyDb] listFolders failed", e);
+    return [];
+  }
+}
+async function deleteFolder(id) {
+  try {
+    const db = await openDb();
+    const tx = db.transaction("folders", "readwrite");
+    tx.objectStore("folders").delete(id);
+  } catch (e) {
+    console.warn("[studyDb] deleteFolder failed", e);
+  }
+}
+
+// src/showcase/masterGames.ts
+var MASTER_GAMES = [
+  // ─── FISCHER ─────────────────────────────────────────────────────
+  {
+    id: "fischer-001",
+    white: "Thomason, J.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1955,
+    event: "USA-chJ",
+    site: "?",
+    eco: "E91",
+    opening: "",
+    label: "Thomason, J. vs Fischer, Robert James, USA-chJ 1955",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "g1f3", "e8h8", "f1d3", "c8g4", "e1h1", "b8c6", "c1e3", "f6d7", "d3e2", "g4f3", "e2f3", "e7e5", "d4d5", "c6e7", "f3e2", "f7f5", "f2f4", "h7h6", "e2d3", "g8h7", "d1e2", "f5e4", "c3e4", "e7f5", "e3d2", "e5f4", "d2f4", "d7e5", "d3c2", "f5d4", "e2d2", "e5c4", "d2f2", "f8f4", "f2f4", "d4e2", "g1h1", "e2f4"]
+  },
+  {
+    id: "fischer-002",
+    white: "Fischer, Robert James",
+    black: "Warner, K.",
+    result: "0-1",
+    year: 1955,
+    event: "USA-chJ",
+    site: "?",
+    eco: "B72",
+    opening: "",
+    label: "Fischer, Robert James vs Warner, K., USA-chJ 1955",
+    moves: ["e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "d7d6", "f1e2", "g7g6", "c1e3", "f8g7", "f2f3", "e8h8", "d1d2", "a7a6", "e1a1", "d8a5", "c1b1", "f8d8", "g2g4", "c6d4", "e3d4", "c8e6", "d2e3", "f6d7", "f3f4", "g7d4", "e3d4", "d7f6", "f4f5", "e6d7", "h2h4", "d7b5", "e2f3", "a8c8", "c3b5", "a6b5", "h4h5", "c8c4", "d4e3", "d8a8", "a2a3", "a5a4", "c2c3", "f6e4", "f3e4", "c4e4", "e3h6", "e4e2", "d1d2", "e2d2", "h6d2", "a4e4"]
+  },
+  {
+    id: "fischer-003",
+    white: "Fischer, Robert James",
+    black: "Pupols, Viktors",
+    result: "0-1",
+    year: 1955,
+    event: "USA-chJ",
+    site: "?",
+    eco: "C40",
+    opening: "",
+    label: "Fischer, Robert James vs Pupols, Viktors, USA-chJ 1955",
+    moves: ["e2e4", "e7e5", "g1f3", "f7f5", "f3e5", "d8f6", "d2d4", "d7d6", "e5c4", "f5e4", "b1c3", "f6g6", "c4e3", "g8f6", "f1c4", "c7c6", "d4d5", "f8e7", "a2a4", "b8d7", "a4a5", "d7e5", "c4e2", "e8h8", "e1h1", "c8d7", "g1h1", "g8h8", "e3c4", "f6g4", "d1e1", "f8f7", "h2h3", "g4f6", "c4e5", "d6e5", "e2c4", "f7f8", "c1e3", "f6h5", "h1h2", "e7d6", "c4b3", "h5f4", "e3f4", "e5f4", "e1e4", "f4f3", "g2g3", "d7f5", "e4h4", "a8e8", "a1e1", "d6e5", "h4b4", "g6h6", "h3h4", "g7g5", "f1h1", "g5h4", "h2g1", "h4h3", "d5c6", "b7c6", "b4c5", "h6g7", "g1h2", "g7f6", "c5a7", "e5d4", "a7c7", "d4f2", "e1e8", "f8e8", "h1f1", "f2d4", "f1f3", "d4c3", "b2c3", "e8e2", "h2h1", "f5e4", "c7c8", "h8g7", "c8g4", "f6g6", "g4d7", "g7h6"]
+  },
+  {
+    id: "fischer-004",
+    white: "Fischer, Robert James",
+    black: "Ames, D.",
+    result: "1/2-1/2",
+    year: 1955,
+    event: "USA-chJ",
+    site: "?",
+    eco: "C55",
+    opening: "",
+    label: "Fischer, Robert James vs Ames, D., USA-chJ 1955",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1c4", "f6e4", "c4f7", "e8f7", "c3e4", "d7d5", "e4g5", "f7g8", "d2d4", "h7h6", "g5h3", "c8g4", "d4e5", "c6e5", "h3f4", "c7c6", "h2h3", "e5f3", "g2f3", "g4f5", "c1e3", "f8b4", "c2c3", "b4a5", "h1g1", "d8e8", "f4d5", "e8f7", "d5f4", "a8e8", "d1b3", "a5c7", "b3f7", "g8f7", "f4h5", "g7g6", "h5g3", "f5h3", "e1a1", "e8d8", "d1d8", "c7d8", "g1h1", "h3g2", "h1h6", "h8h6", "e3h6", "g2f3", "h6e3"]
+  },
+  {
+    id: "fischer-005",
+    white: "Whisler, W.",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1955,
+    event: "USA-chJ",
+    site: "?",
+    eco: "E81",
+    opening: "",
+    label: "Whisler, W. vs Fischer, Robert James, USA-chJ 1955",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "f2f3", "e8h8", "c1g5", "b8d7", "d1d2", "e7e5", "d4d5", "a7a5", "h2h4", "d7c5", "g1e2", "c8d7", "e2g3", "h7h5", "f1e2", "d8c8", "g5h6", "g8h7", "h6g7", "h7g7", "h1f1", "c8d8", "e1a1", "f6e8", "f1h1", "f7f5", "e4f5", "d7f5", "g3f5", "f8f5", "g2g4", "f5f4", "g4h5", "g6h5", "d1g1", "g7h8", "d2c2", "e8g7", "c2g6", "d8f6", "g6f6", "f4f6"]
+  },
+  {
+    id: "fischer-006",
+    white: "Fischer, Robert James",
+    black: "Casado, J.",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "Havana sim",
+    site: "Havana",
+    eco: "B32",
+    opening: "",
+    label: "Fischer, Robert James vs Casado, J., Havana sim 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4", "c6d4", "d1d4", "d7d6", "c2c4", "e7e5", "d4d3", "g8f6", "b1c3", "c8e6", "c1g5", "f8e7", "f1e2", "a7a6", "b2b3", "e8h8", "e1h1", "f8e8", "a1d1", "d8a5", "d1d2", "a8c8", "g5f6", "e7f6", "f1d1", "e8d8", "c3d5", "e6d5", "d3d5", "a5d5", "d2d5", "f6e7", "f2f3", "g7g6", "c4c5", "g8g7", "g1f2", "c8c6", "g2g3", "f7f6", "f3f4", "g7f7", "f2e1", "b7b5", "b3b4", "f7e8", "f4e5", "d6c5", "e5f6", "e7f6", "b4c5", "f6e7", "d5d8", "e7d8", "d1d6", "c6d6", "c5d6", "d8a5", "e1d1", "a5b4", "e4e5", "b4c3", "e5e6", "c3e5", "d6d7", "e8e7", "e2g4", "e5c7", "d1c2", "b5b4", "c2d3", "e7f6", "d3c4", "a6a5", "c4c5", "h7h5", "g4h3", "g6g5", "c5c6", "c7d8", "h3g2", "a5a4", "g2d5", "d8a5", "c6b7", "a4a3", "b7c8", "f6e7", "d5c4", "a5d8"]
+  },
+  {
+    id: "fischer-007",
+    white: "Fischer, Robert James",
+    black: "Fox, Maurice",
+    result: "0-1",
+    year: 1956,
+    event: "CAN-op",
+    site: "Montreal",
+    eco: "A05",
+    opening: "",
+    label: "Fischer, Robert James vs Fox, Maurice, CAN-op 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "d7d6", "f1g2", "g7g6", "e1h1", "f8g7", "d2d3", "e8h8", "e2e4", "e7e5", "b1d2", "c7c6", "c2c3", "d8c7", "f3h4", "a7a5", "f2f4", "b8d7", "f4f5", "d7c5", "d2b3", "c5b3", "a2b3", "f6d7", "g3g4", "f8e8", "d1f3", "d7c5", "f5f6", "g7f8", "h4f5", "d6d5", "f3g3", "d5e4", "d3e4", "g8h8", "g3h4", "c7d8", "f5g7", "f8g7", "f6g7", "h8g8", "h4f2", "d8e7", "c1g5", "c5d3", "f2d2", "e7d7", "a1d1", "d7g4", "g5h6", "d3f4", "h6f4", "e5f4", "f1f4", "g4h5", "d1f1", "c8e6", "d2f2", "e8e7", "c3c4", "h5e5", "f4f6", "g8g7", "h2h4", "e6f5", "f6f5", "g6f5", "e4f5", "f7f6", "g1h1", "e5e3", "f2c2", "a8d8", "f1f3", "e3e1", "h1h2", "d8d2", "c2c3", "e1h4", "f3h3", "d2g2", "h2g2", "e7e2", "g2g1", "h4e1", "c3e1", "e2e1", "g1f2", "e1b1", "f2e3", "b1b2", "e3d4", "b7b6", "d4c3", "b2f2", "h3h5", "f2f3", "c3b2", "f3g3", "h5h2", "g3g5", "h2f2", "g7f7", "b2c3", "f7e7", "f2e2", "e7d7", "e2d2", "d7c7", "d2f2", "c7d6", "c3d4", "g5g4", "d4d3", "d6e5", "f2h2", "g4g3", "d3c2", "g3g7", "h2h6", "e5f5"]
+  },
+  {
+    id: "fischer-008",
+    white: "Fischer, Robert James",
+    black: "Matthai, H.",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "CAN-op",
+    site: "Montreal",
+    eco: "B77",
+    opening: "",
+    label: "Fischer, Robert James vs Matthai, H., CAN-op 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g7g6", "b1c3", "f8g7", "c1e3", "g8f6", "f2f3", "b8c6", "d1d2", "e8h8", "f1c4", "c8d7", "h2h4", "a8c8", "c4b3", "d8a5", "e1a1", "f6h5", "g2g4", "c6d4", "e3d4", "g7d4", "d2d4", "h5f4", "c1b1", "f4e6", "d4d2", "f8e8", "f3f4", "e6c5", "h4h5", "c5b3", "a2b3", "d7g4", "d1g1", "f7f5", "h5g6", "h7g6", "b3b4", "a5b4", "g1g4", "f5g4", "f4f5", "c8c3", "f5g6", "c3h3", "d2b4", "h3h1", "b1a2", "g8g7", "e4e5", "d6e5", "b4b7", "h1h8", "b7e4", "g7f6", "e4g4", "e8g8", "b2b4", "g8g6", "g4f3", "f6g7", "f3e3", "g6e6", "e3a7", "h8d8", "a7g1", "g7f7", "b4b5", "d8d6", "c2c4", "e5e4", "c4c5", "d6d2", "a2b3", "e4e3", "b3c3", "d2f2", "c5c6", "f2f5", "g1b1", "f7f6", "c3d3", "e3e2", "c6c7", "f5c5", "b5b6", "e2e1q", "b1e1", "e6e1", "b6b7", "c5c7", "b7b8q", "c7d7", "d3c2", "e1e2", "c2c3", "e2e3", "c3c2", "d7d6", "b8h8", "f6g5", "h8g8", "g5f4", "g8g2", "e3e5", "g2h2", "f4f5", "h2h5", "f5e6", "h5g4", "e5f5", "g4e4", "f5e5", "e4g4", "e6d5", "g4f3", "e5e4", "c2d3", "d5e5", "d3c3", "d6d4", "f3h5", "e5d6", "h5g6", "d6c7", "g6g7", "d4d6", "g7h7", "e4e5", "h7g7", "e5e3", "c3c4", "e3e4", "c4c3", "c7d7", "g7f7", "e4e5", "c3c4", "e5a5", "c4b4", "d6d5", "b4c4", "a5c5", "c4b3", "d5e5", "f7g6", "e5f5", "g6g7", "c5e5", "b3c4", "f5g5", "g7h7", "e5f5", "c4d4", "f5a5", "d4e3", "a5a3", "e3f4", "g5a5", "h7f7", "a5c5", "f4e4", "c5g5", "e4f4", "g5a5", "f4e4", "a5a4", "e4d5", "a4a5", "d5e4", "a3h3", "e4f4", "d7d6", "f7g6", "e7e6", "g6e8", "a5a4", "f4g5", "h3g3", "g5h5", "a4a5", "h5h4", "g3a3", "e8d8", "d6e5", "d8c7", "e5e4", "c7c4", "e4e5", "c4c7", "e5f6", "c7f4", "a5f5", "f4d4", "f6g6", "d4e4", "a3a6", "e4c4", "a6d6", "c4c8", "e6e5", "c8g8", "g6f6", "g8f8", "f6e6", "f8e8", "e6d5", "e8b5"]
+  },
+  {
+    id: "fischer-009",
+    white: "Fischer, Robert James",
+    black: "Sharp, C.",
+    result: "1-0",
+    year: 1956,
+    event: "CAN-op",
+    site: "Montreal",
+    eco: "C84",
+    opening: "",
+    label: "Fischer, Robert James vs Sharp, C., CAN-op 1956",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "b7b5", "a4b3", "f8e7", "d2d4", "d7d6", "c2c3", "e8h8", "h2h3", "a8b8", "b1d2", "c8d7", "f1e1", "d8e8", "d2f1", "e7d8", "f1g3", "c6a5", "b3c2", "c7c5", "d4e5", "d6e5", "d1d6", "a5c6", "d6c5", "d8b6", "c5a3", "e8c8", "c1e3", "f8e8", "e3b6", "b8b6", "a3c5", "b6b7", "a1d1", "b7c7", "c5d6", "e8d8", "d6a3", "a6a5", "d1d2", "b5b4", "c3b4", "c6b4", "c2b3", "c7c5", "e1d1", "c8c7", "f3g5", "b4c2", "d2c2", "c5c2", "a3e7", "d7e8", "b3f7", "e8f7", "d1d8"]
+  },
+  {
+    id: "fischer-010",
+    white: "Anderson, Frank Ross",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "CAN-op",
+    site: "Montreal",
+    eco: "B93",
+    opening: "",
+    label: "Anderson, Frank Ross vs Fischer, Robert James, CAN-op 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f2f4", "e7e5", "d4f3", "d8c7", "f1d3", "b7b5", "a2a3", "b8d7", "e1h1", "c8b7", "g1h1", "g7g6", "d1e1", "f8g7", "e1h4", "e8h8", "f4e5", "d6e5", "c1h6", "f6h5", "h6g7", "g8g7", "f3g5", "d7f6", "g5h3", "a8e8", "a1e1", "c7e7"]
+  },
+  {
+    id: "fischer-011",
+    white: "Sobel, Robert",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1956,
+    event: "CAN-op",
+    site: "Montreal",
+    eco: "B70",
+    opening: "",
+    label: "Sobel, Robert vs Fischer, Robert James, CAN-op 1956",
+    moves: ["d2d4", "g8f6", "g1f3", "g7g6", "g2g3", "f8g7", "f1g2", "e8h8", "e1h1", "d7d6", "b1c3", "c7c5", "e2e4", "c5d4", "f3d4", "b8c6", "d4e2", "c8d7", "b2b3", "d8c8", "c1b2", "d7h3", "f2f3", "h3g2", "g1g2", "d6d5", "e4d5", "f8d8", "d1c1", "c6b4", "a2a3", "b4d5", "c3d5", "f6d5", "b2g7", "g8g7", "c2c4", "c8e6", "c1b2", "d5f6", "e2f4", "e6f5", "f4d5", "e7e6", "g3g4", "f5g5", "h2h4", "g5h4", "f1h1", "h4g5", "h1h7", "g7f8", "b2f6"]
+  },
+  {
+    id: "fischer-012",
+    white: "Walz, W.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "CAN-op",
+    site: "Montreal",
+    eco: "B25",
+    opening: "",
+    label: "Walz, W. vs Fischer, Robert James, CAN-op 1956",
+    moves: ["e2e4", "c7c5", "b1c3", "b8c6", "g2g3", "g7g6", "f1g2", "f8g7", "d2d3", "d7d6", "f2f4", "e7e6", "g1f3", "g8e7", "c1e3", "e8h8", "e1h1", "a8b8", "e4e5", "e7f5", "e3f2", "b7b6", "e5d6", "d8d6", "c3e4", "d6c7", "c2c3", "c8a6", "d1c2", "f8d8", "a1d1", "d8d7", "f1e1", "b8d8", "g3g4", "f5e7", "f2g3", "a6d3", "d1d3", "d7d3", "f4f5", "c6e5", "f5f6", "e5f3", "g2f3", "c7d7", "f6e7", "d7e7", "f3g2", "e7d7", "g4g5", "d3d1", "g1f1", "g8f8", "f1e2", "d1e1", "e2e1", "d7d5", "b2b3", "g7e5", "g3e5", "d5e5", "g2f3", "h7h6", "h2h4", "e5f4", "c2f2", "f4c1", "e1e2", "d8d1", "g5h6", "f7f5", "h4h5", "e6e5", "f3g2", "c1c2", "e2f3", "d1d3", "f2e3", "f5e4"]
+  },
+  {
+    id: "fischer-013",
+    white: "Bernstein, Sidney Norman",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "CAN-op",
+    site: "Montreal",
+    eco: "D00",
+    opening: "",
+    label: "Bernstein, Sidney Norman vs Fischer, Robert James, CAN-op 1956",
+    moves: ["d2d4", "g8f6", "g1f3", "g7g6", "b1c3", "d7d5", "c1f4", "f8g7", "e2e3", "e8h8", "f1e2", "f6h5", "f4g5", "h7h6", "g5h4", "g6g5", "h4g3", "h5g3", "h2g3", "c7c5", "d1d3", "e7e6", "f3e5", "f7f5", "g3g4", "f5f4", "e1a1", "b8c6", "h1h6", "g7h6", "d3g6", "h6g7", "e2d3", "c6e5", "d4e5", "f8f7", "c3b5", "g8f8", "b5d6", "f7d7", "d3b5", "d7d6", "e5d6", "c8d7", "b5d7", "d8d7", "g6g5", "f4e3", "g5f4", "f8g8", "f2e3", "a8f8", "f4g5", "d7d6", "d1h1", "d6e5", "g5h4", "e5b2", "c1d1", "b2b1", "d1d2", "b1b4", "d2d1", "b4e4", "h4h5", "f8f2"]
+  },
+  {
+    id: "fischer-014",
+    white: "Shainswit, George",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "E68",
+    opening: "",
+    label: "Shainswit, George vs Fischer, Robert James, New York Rosenwald 1956",
+    moves: ["g1f3", "g8f6", "c2c4", "g7g6", "g2g3", "f8g7", "f1g2", "e8h8", "e1h1", "d7d6", "b1c3", "e7e5", "d2d4", "b8d7", "e2e4", "e5d4", "f3d4", "d7c5", "d4b3", "c8e6", "b3c5", "d6c5", "d1e2", "c7c6", "f1d1", "d8a5", "c1d2", "a8d8", "e4e5", "f6g4", "c3e4", "a5a6", "e4c5", "a6c4", "e2c4", "e6c4", "d2c3", "d8d1", "a1d1", "b7b6", "c5d7", "f8d8", "g2c6", "c4a2", "d1a1", "a2e6", "a1a7", "e6d7", "a7d7", "d8d7", "c6d7", "g4e5", "c3e5", "g7e5"]
+  },
+  {
+    id: "fischer-015",
+    white: "Fischer, Robert James",
+    black: "Pavey, Max",
+    result: "0-1",
+    year: 1956,
+    event: "New York",
+    site: "New York",
+    eco: "A05",
+    opening: "",
+    label: "Fischer, Robert James vs Pavey, Max, New York 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d3", "d7d6", "e2e4", "b8d7", "b1d2", "e7e5", "f3e1", "d7c5", "f2f4", "e5f4", "g3f4", "f6g4", "d2f3", "f7f5", "h2h3", "f5e4", "d3e4", "g4f6", "e4e5", "d6e5", "d1d8", "f8d8", "f4e5", "f6h5", "c1e3", "c5e6", "e1d3", "h5g3", "f1d1", "g3f5", "e3f2", "c8d7", "f3h4", "f5h4", "f2h4", "g6g5", "h4f2", "c7c6", "d1d2", "d7e8", "f2e3", "e8g6", "a1d1", "d8e8", "g2f1", "e8e7", "d3c5", "e6c5", "e3c5", "e7e5", "f1c4", "g8h8", "d2d8", "a8d8", "d1d8", "e5e8", "d8e8", "g6e8", "c2c3", "b7b6", "c5e3", "g7f6", "a2a4", "h8g7", "a4a5", "f6d8", "g1g2", "h7h6", "e3d4", "d8f6", "d4f2", "c6c5", "c4d5", "f6e5", "f2e3", "e8f7", "d5c6", "f7e6", "b2b4", "e5d6", "a5b6", "a7b6", "b4c5", "b6c5", "c6f3", "g7f6", "f3g4", "e6g4", "h3g4", "f6e5", "g2f3", "e5d5", "f3e2", "d5c4", "e2d2", "d6f4"]
+  },
+  {
+    id: "fischer-016",
+    white: "Fischer, Robert James",
+    black: "Vine, K.",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "New York",
+    site: "New York",
+    eco: "B32",
+    opening: "",
+    label: "Fischer, Robert James vs Vine, K., New York 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4", "d7d5", "f1b5", "d5e4", "d4c6", "d8d1", "e1d1", "a7a6", "b5a4", "c8d7", "b1c3", "d7c6", "a4c6", "b7c6", "c3e4", "e7e6", "d1e2", "a8d8", "c1e3", "g8f6", "e4f6", "g7f6", "h1d1", "f8e7", "c2c4", "e6e5", "g2g4", "h7h5", "h2h3", "h5g4", "h3g4", "h8h4", "e2f3", "e7d6", "b2b3", "e8e7", "d1d2", "d6c7", "d2d8", "c7d8", "b3b4", "e7e6", "a2a4", "f6f5", "g4f5", "e6f5", "b4b5", "a6b5", "c4b5", "c6b5", "a4a5", "d8g5", "e3b6", "g5f4", "a5a6", "e5e4", "f3e2", "h4h8", "a6a7", "h8a8", "a1a5", "f5e6", "a5b5", "f4d6", "e2e3", "d6e5"]
+  },
+  {
+    id: "fischer-017",
+    white: "Tomargo, J.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "New York",
+    site: "New York",
+    eco: "B22",
+    opening: "",
+    label: "Tomargo, J. vs Fischer, Robert James, New York 1956",
+    moves: ["e2e4", "c7c5", "d2d4", "c5d4", "c2c3", "g8f6", "e4e5", "f6d5", "c3d4", "b8c6", "b1c3", "d5c3", "b2c3", "d7d5", "f1d3", "e7e6", "g1e2", "f8e7", "e1h1", "c8d7", "f2f4", "g7g6", "g2g4", "d8c7", "f4f5", "g6f5", "g4f5", "e6f5", "e2g3", "e8a8", "g3f5", "d7e6", "g1h1", "h7h5", "d1f3", "d8g8", "f5h6", "g8f8", "d3f5", "c7d7", "c1d2", "f7f6", "f5e6", "d7e6", "f3f5", "e6f5", "h6f5", "f6e5", "f5e7", "c6e7", "d4e5", "c8d7", "d2g5", "d7e6", "g5f6", "h8g8", "a1b1", "b7b6", "f1d1", "f8c8", "f6e7", "e6e7", "d1d5", "c8c3", "a2a4", "e7e6", "d5b5", "c3a3", "a4a5", "b6a5", "b1b3", "a3b3", "b5b3", "g8g5", "b3b7", "e6e5", "b7a7", "e5d4", "h2h4", "g5g4"]
+  },
+  {
+    id: "fischer-018",
+    white: "Turner, Abe",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1956,
+    event: "New York",
+    site: "New York",
+    eco: "E69",
+    opening: "",
+    label: "Turner, Abe vs Fischer, Robert James, New York 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d4", "d7d6", "c2c4", "b8d7", "b1c3", "e7e5", "e2e4", "e5d4", "f3d4", "d7c5", "h2h3", "f8e8", "f1e1", "a7a5", "d1c2", "c7c6", "c1e3", "f6d7", "a1d1", "a5a4", "f2f4", "d8a5", "e3f2", "d7b6", "g2f1", "c8d7", "g1h2", "e8e7", "g3g4", "a8e8", "f2h4", "f7f6", "f4f5", "e8f8", "h4g3", "b6c8", "c2d2", "a5c7", "h2h1", "d7e8", "b2b4", "a4b3", "a2b3", "e8f7", "b3b4", "c5d7", "d4f3", "d7e5", "f3e5", "d6e5", "g3f2", "e7e8", "d2d7", "e8e7", "d7d2", "e7e8", "d2d7", "e8e7", "d7c7", "e7c7", "c3a4", "f8e8", "a4c5", "g7f8", "c5d7", "f8e7", "f2c5", "g6f5", "e4f5", "f7d5", "c4d5", "c7d7", "d5c6", "d7d1", "e1d1", "b7c6", "f1c4", "g8g7", "d1d7", "g7h6", "d7c7", "h6g5", "c7c8", "e8c8", "c5e7", "e5e4", "h1g2", "h7h5", "g2g3", "h5g4", "c4e6", "c8b8", "e7d6", "b8g8", "d6f4", "g5h5", "e6f7"]
+  },
+  {
+    id: "fischer-019",
+    white: "Byrne, Donald",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "D97",
+    opening: "",
+    label: "Byrne, Donald vs Fischer, Robert James, New York Rosenwald 1956",
+    moves: ["g1f3", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "d2d4", "e8h8", "c1f4", "d7d5", "d1b3", "d5c4", "b3c4", "c7c6", "e2e4", "b8d7", "a1d1", "d7b6", "c4c5", "c8g4", "f4g5", "b6a4", "c5a3", "a4c3", "b2c3", "f6e4", "g5e7", "d8b6", "f1c4", "e4c3", "e7c5", "f8e8", "e1f1", "g4e6", "c5b6", "e6c4", "f1g1", "c3e2", "g1f1", "e2d4", "f1g1", "d4e2", "g1f1", "e2c3", "f1g1", "a7b6", "a3b4", "a8a4", "b4b6", "c3d1", "h2h3", "a4a2", "g1h2", "d1f2", "h1e1", "e8e1", "b6d8", "g7f8", "f3e1", "c4d5", "e1f3", "f2e4", "d8b8", "b7b5", "h3h4", "h7h5", "f3e5", "g8g7", "h2g1", "f8c5", "g1f1", "e4g3", "f1e1", "c5b4", "e1d1", "d5b3", "d1c1", "g3e2", "c1b1", "e2c3", "b1c1", "a2c2"]
+  },
+  {
+    id: "fischer-020",
+    white: "Fischer, Robert James",
+    black: "Baron, S.",
+    result: "1-0",
+    year: 1956,
+    event: "New York",
+    site: "New York",
+    eco: "C98",
+    opening: "",
+    label: "Fischer, Robert James vs Baron, S., New York 1956",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "f8e7", "f1e1", "b7b5", "a4b3", "d7d6", "c2c3", "e8h8", "h2h3", "c6a5", "b3c2", "c7c5", "d2d4", "d8c7", "b1d2", "a5c6", "d4c5", "d6c5", "d2f1", "c8e6", "f1e3", "a8d8", "d1e2", "d8d7", "f3g5", "f8d8", "g5e6", "f7e6", "a2a4", "c5c4", "a4b5", "a6b5", "b2b3", "c6d4", "c3d4", "e5d4", "b3c4", "d4e3", "c1e3", "b5c4", "a1a6", "e6e5", "e3b6", "c7c8", "a6a4", "d7d2", "e2c4", "c8c4", "a4c4", "d8b8", "b6e3", "d2d7", "e1a1", "b8b7", "a1a5", "e7d6", "c4c6", "d6b8", "c6b6", "h7h6", "g2g3", "g8f7", "b6b7", "d7b7", "g1g2", "b7b2", "c2d3", "b2b4", "g2f3", "b4b2", "d3c4", "f7g6", "a5a6", "b2b4", "a6c6", "b4a4", "c4e6", "a4e4", "e6c4", "e4e3", "f3e3", "b8a7", "e3f3", "e5e4", "f3e2", "a7d4", "c6c7", "h6h5", "c4b3", "d4b6", "c7b7", "b6c5", "b3c2", "g6h6", "b7c7", "c5f8", "c7c4"]
+  },
+  {
+    id: "fischer-021",
+    white: "Reshevsky, Samuel Herman",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "E63",
+    opening: "",
+    label: "Reshevsky, Samuel Herman vs Fischer, Robert James, New York Rosenwald 1956",
+    moves: ["c2c4", "g8f6", "d2d4", "g7g6", "g2g3", "f8g7", "f1g2", "e8h8", "b1c3", "d7d6", "g1f3", "b8c6", "e1h1", "a7a6", "b2b3", "a8b8", "c1b2", "b7b5", "c4b5", "a6b5", "a1c1", "c6a5", "e2e4", "b5b4", "e4e5", "b4c3", "b2c3", "a5b7", "e5f6", "g7f6", "b3b4", "c8f5", "d4d5", "f6c3", "c1c3", "d8d7", "d1c1", "f8c8", "c1h6", "f7f6", "f3d4", "b7d8", "a2a3", "d8f7", "h6e3", "f7e5", "f2f4", "e5g4", "e3d2", "h7h5", "f1e1", "b8a8", "h2h3", "g4h6", "g1h2", "g8f7", "d2e2", "h6g8", "e1c1", "a8a7", "e2e3"]
+  },
+  {
+    id: "fischer-022",
+    white: "Turner, Abe",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "E63",
+    opening: "",
+    label: "Turner, Abe vs Fischer, Robert James, New York Rosenwald 1956",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "g2g3", "f8g7", "f1g2", "e8h8", "b1c3", "d7d6", "g1f3", "b8c6", "e1h1", "a7a6", "e2e3", "a8b8", "f3d2", "e7e5", "d2b3", "c8g4", "f2f3", "g4d7", "d4d5", "c6e7", "c4c5", "f6e8", "e3e4", "f7f5", "c1e3", "f5f4", "e3f2", "f4g3", "h2g3", "g6g5", "b3d2", "e7g6", "d2c4", "h7h5", "d1b3", "h5h4", "g3g4", "h4h3", "g2h1", "g6h4", "f2g3", "b7b5", "c5b6", "c7b6", "c4e3", "b6b5", "e3f5", "b5b4", "c3d1", "h4f5", "g4f5", "e8f6", "d1e3", "f6h5", "g1h2", "b8c8", "b3b4", "h5g3", "h2g3", "g5g4", "f3g4", "g7h6", "f1f3", "d7b5", "b4d2", "h6f4", "f3f4", "e5f4", "g3f4", "d8f6", "g4g5", "f6e5", "f4g4", "f8f7", "g5g6", "f7c7", "h1f3", "g8g7", "a1h1", "c8h8", "h1h3", "c7c8", "h3h8", "c8h8", "d2c3", "e5c3", "b2c3", "g7f6", "g4f4", "h8h3", "f3g2", "h3h4", "e3g4", "f6g7", "f4g5"]
+  },
+  {
+    id: "fischer-023",
+    white: "Bisguier, Arthur Bernard",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "E78",
+    opening: "",
+    label: "Bisguier, Arthur Bernard vs Fischer, Robert James, New York Rosenwald 1956",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "f2f4", "e8h8", "g1f3", "c7c5", "f1e2", "c5d4", "f3d4", "b8c6", "d4c2", "c8d7", "e1h1", "a8c8", "c1e3", "c6a5", "b2b3", "a7a6", "e4e5", "d6e5", "f4e5", "f6e8", "c3d5", "c8c6", "c2d4", "c6c8", "d4c2", "c8c6", "c2b4", "c6e6", "e2g4", "e6e5", "e3b6", "d8c8", "g4d7", "c8d7", "b6a5", "e7e6", "b4d3", "e5h5", "d3f4", "h5f5", "a5b4", "e6d5", "b4f8", "g7a1", "d1a1", "g8f8", "a1h8", "f8e7", "f1e1", "e7d8", "f4d5", "d7c6", "h8f8", "c6d7", "e1d1", "f5f6", "f8e8"]
+  },
+  {
+    id: "fischer-024",
+    white: "Fischer, Robert James",
+    black: "Hearst, Eliot Sanford",
+    result: "0-1",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "C64",
+    opening: "",
+    label: "Fischer, Robert James vs Hearst, Eliot Sanford, New York Rosenwald 1956",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "f8c5", "e1h1", "c6d4", "f3d4", "c5d4", "c2c3", "d4b6", "d2d4", "c7c6", "b5a4", "d7d6", "b1a3", "g8f6", "f1e1", "d8e7", "c1g5", "h7h6", "g5h4", "g7g5", "h4g3", "h6h5", "f2f3", "h5h4", "g3f2", "g5g4", "a3c4", "g4g3", "h2g3", "h4g3", "f2g3", "f6h5", "g3h2", "b6c7", "c4e3", "e7h4", "d1d2", "c8d7", "a4b3", "h8h7", "d2f2", "h4g5", "a1d1", "h5f4", "h2f4", "e5f4", "e3f5", "e8a8", "g1f1", "h7h2", "b3f7", "d6d5", "d1d2", "d8f8", "f2g1", "h2h7", "e4d5", "h7f7", "d5c6", "d7c6", "d4d5", "c6b5", "e1e2", "f7f5", "g1a7", "f5d5", "c3c4", "b5c4", "a7a8", "c7b8", "d2c2", "d5c5", "f1e1", "c4e2", "a8a5", "g5g3"]
+  },
+  {
+    id: "fischer-025",
+    white: "Feuerstein, Arthur William",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "E63",
+    opening: "",
+    label: "Feuerstein, Arthur William vs Fischer, Robert James, New York Rosenwald 1956",
+    moves: ["c2c4", "g8f6", "b1c3", "g7g6", "g2g3", "f8g7", "f1g2", "e8h8", "d2d4", "d7d6", "g1f3", "b8c6", "e1h1", "a7a6", "b2b3", "a8b8", "c1b2", "b7b5", "c4b5", "a6b5", "d4d5", "c6a5", "a1c1", "b5b4", "c3a4", "e7e6", "d5e6", "f7e6", "d1c2", "c7c5", "f1d1", "a5b7", "f3e5", "b7a5", "c2d3", "f6e8", "c1c5", "c8b7", "c5c2", "b7g2", "g1g2", "d8e7", "d3a6", "d6e5", "a6a5", "e7b7", "f2f3", "e5e4", "d1f1", "g7b2", "a4b2", "f8f5", "a5a4", "b8a8", "a4c6", "b7c6", "c2c6", "a8a2", "f1b1", "e4f3", "e2f3"]
+  },
+  {
+    id: "fischer-026",
+    white: "Fischer, Robert James",
+    black: "Bernstein, Sidney Norman",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "C72",
+    opening: "",
+    label: "Fischer, Robert James vs Bernstein, Sidney Norman, New York Rosenwald 1956",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "b7b5", "a4b3", "d7d6", "e1h1", "c8g4", "c2c3", "d8f6", "a2a4", "b5b4", "a4a5", "g8e7", "b3a4", "e8d8", "d2d3", "g4f3", "g2f3", "g7g5", "c1e3", "h8g8", "b1d2", "g8g6", "d2c4", "f6e6", "g1h1", "f8g7", "f1g1", "g7f6", "a1c1", "a8b8", "c3b4", "c6d4", "e3d4", "e5d4", "d1c2", "b8b4", "e4e5", "b4c4", "d3c4", "e6e5", "g1e1", "e5f4", "c2e4", "f6e5", "e4f4", "e5f4", "c1d1", "c7c5", "b2b4", "c5b4", "d1d4", "g6e6", "e1b1", "e7f5", "d4d3", "e6e2", "h1g1", "e2d2", "d3d2", "f4d2", "b1d1", "f5d4", "c4c5", "b4b3", "d1b1", "d4e2", "g1f1", "e2c3", "b1b3", "c3a4", "c5d6", "d8d7", "b3b7", "d7d6", "b7f7", "a4c5", "f7h7", "d2a5", "f3f4", "g5f4", "h2h4", "a5c3", "h4h5", "c5e6", "h5h6", "e6f8", "h7a7", "d6e6", "a7a6", "e6f5", "f1e2", "f8g6", "h6h7", "c3h8", "a6a8", "h8f6", "e2f3", "g6e5", "f3e2", "e5f7", "a8f8", "f5g6", "f8f7", "g6f7", "e2f3"]
+  },
+  {
+    id: "fischer-027",
+    white: "Fischer, Robert James",
+    black: "Mednis, Edmar John",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "B76",
+    opening: "",
+    label: "Fischer, Robert James vs Mednis, Edmar John, New York Rosenwald 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "g7g6", "c1e3", "f8g7", "f2f3", "e8h8", "d1d2", "c8e6", "d4e6", "f7e6", "f1c4", "d8c8", "c4b3", "b8c6", "c3e2", "g8h8", "e2f4", "d6d5", "f4e6", "c8e6", "e4d5", "f6d5", "b3d5", "e6e5", "d5c6", "e5b2", "a1d1", "b7c6", "e3d4", "g7d4", "d2d4", "b2d4", "d1d4", "a8d8", "d4d1", "d8d1", "e1d1", "f8f5", "h1e1", "f5d5", "d1c1", "e7e5", "e1e4", "h8g7", "e4a4", "d5d7", "a4a6", "d7c7", "c1d2", "g7f6", "d2e3", "f6e6", "e3e4", "e6d6", "a6a3", "c7b7", "a3b3", "b7b3", "a2b3", "c6c5", "c2c4", "d6e6", "h2h4", "h7h6", "f3f4", "e5f4", "e4f4", "e6f6", "f4e4", "f6e6", "e4f4", "e6f6"]
+  },
+  {
+    id: "fischer-028",
+    white: "Fischer, Robert James",
+    black: "Pavey, Max",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "B45",
+    opening: "",
+    label: "Fischer, Robert James vs Pavey, Max, New York Rosenwald 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "e7e6", "d4b5", "f8b4", "b5d6", "e8e7", "d6c8", "a8c8", "f1d3", "d7d5", "e4d5", "d8d5", "e1h1", "d5h5", "d1h5", "f6h5", "c3e4", "c6e5", "d3e2", "h5f6", "e4f6", "g7f6", "c2c3", "b4c5", "c1f4", "h8d8", "f1d1", "c5b6", "f4e5", "d8d1", "a1d1", "f6e5", "e2f3", "c8c7", "d1e1", "c7d7", "e1d1", "d7d1", "f3d1", "e5e4", "g1f1", "b6c7", "g2g3", "e7d6", "f1e2", "d6e5", "d1a4", "f7f5", "a4d7", "c7d8", "d7c8", "b7b6", "c8d7", "d8g5", "b2b3", "g5f6", "d7c8", "e5d5", "e2d2", "f6g5", "d2e2"]
+  },
+  {
+    id: "fischer-029",
+    white: "Fischer, Robert James",
+    black: "Seidman, Herbert",
+    result: "1-0",
+    year: 1956,
+    event: "New York Rosenwald",
+    site: "New York",
+    eco: "A08",
+    opening: "",
+    label: "Fischer, Robert James vs Seidman, Herbert, New York Rosenwald 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "c7c5", "f1g2", "b8c6", "e1h1", "e7e5", "d2d3", "d7d5", "e2e4", "f8e7", "b1d2", "e8h8", "f1e1", "d5e4", "d3e4", "d8c7", "c2c3", "b7b6", "d1e2", "a7a5", "a2a4", "c8a6", "d2c4", "b6b5", "a4b5", "a6b5", "g2f1", "a8d8", "e2c2", "f6g4", "h2h3", "g4f6", "f3d2", "f8e8", "d2b3", "c7c8", "g1h2", "c8e6", "b3a5", "c6a5", "c4a5", "b5f1", "e1f1", "c5c4", "c2e2", "d8d3", "a1a4", "e8d8", "a5c4", "h7h6", "f1e1", "e7c5", "h2g2", "g7g5", "c4d2", "e6d7", "a4a5", "c5b6", "a5a6", "d7b7", "a6a1", "b7d7", "d2c4", "b6f2", "e2f2", "f6h5", "c4e5", "d7e6", "e5d3", "d8d3", "e1e3", "d3d1", "f2f3", "e6b3", "f3h5"]
+  },
+  {
+    id: "fischer-030",
+    white: "Fischer, Robert James",
+    black: "Nash, Edmund",
+    result: "0-1",
+    year: 1956,
+    event: "USA-ch amateurs",
+    site: "?",
+    eco: "A07",
+    opening: "",
+    label: "Fischer, Robert James vs Nash, Edmund, USA-ch amateurs 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d3", "d7d5", "b1d2", "c8g4", "h2h3", "g4d7", "e2e4", "d8c8", "g1h2", "d5e4", "d3e4", "f8d8", "d1e2", "b8a6", "f1e1", "a6b4", "d2b3", "a7a5", "c2c3", "b4c6", "b3c5", "d7e8", "e4e5", "f6d7", "c5d3", "d7f8", "h3h4", "e8d7", "h4h5", "d7g4", "h5h6", "g7h8", "c1f4", "c8f5", "d3c5", "g6g5", "f4g5", "g4f3", "g2f3", "f5g5", "e5e6", "g5h6", "h2g2", "f8e6", "e1h1", "h6g6", "h1h4", "c6e5", "f3e4", "f7f5", "a1h1", "e6c5", "h4h6", "g6g4", "f2f3", "c5e4", "f3g4", "d8d2", "e2d2", "e4d2", "h6h7", "h8g7", "g4f5", "a8f8", "h7h5", "d2c4", "b2b3", "c4e3", "g2f2", "e3f5", "g3g4", "e5g4", "f2f3", "f5e3", "f3e2", "g7c3", "h5c5", "c3b4", "c5c7", "f8f2", "e2d3", "f2a2", "h1g1", "b7b6", "d3e4", "a2g2", "g1g2", "e3g2", "e4f5", "g4e3", "f5g6", "g2f4", "g6h6", "e3f5"]
+  },
+  {
+    id: "fischer-031",
+    white: "Grossguth, C.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "USA-ch Juniors",
+    site: "?",
+    eco: "B92",
+    opening: "",
+    label: "Grossguth, C. vs Fischer, Robert James, USA-ch Juniors 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f1e2", "e7e5", "d4b3", "f8e7", "c1e3", "e8h8", "d1d2", "b7b5", "f2f3", "c8e6", "g2g4", "d6d5", "g4g5", "d5d4", "g5f6", "e7f6", "e1a1", "d4e3", "d2d8", "f8d8", "b3c5", "b8c6", "c5e6", "f7e6", "h1f1", "b5b4", "c3a4", "c6d4", "d1d4", "d8d4", "e2d3", "a8d8", "c1d1", "f6g5", "d1e2", "g5f4", "h2h3", "d8c8", "f1d1", "c8c6", "b2b3", "g8f7", "h3h4", "f7f6", "h4h5", "a6a5", "a4b2", "d4d3"]
+  },
+  {
+    id: "fischer-032",
+    white: "Fischer, Robert James",
+    black: "Santasiere, Anthony Edward",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "D02",
+    opening: "",
+    label: "Fischer, Robert James vs Santasiere, Anthony Edward, USA-op 1956",
+    moves: ["g1f3", "d7d5", "g2g3", "b8c6", "d2d4", "c8g4", "f1g2", "d8d7", "e1h1", "g7g6", "c2c4", "f8g7", "c4d5", "g4f3", "g2f3", "c6d4", "f3g2", "e7e5", "d5e6", "d4e6", "g2b7", "a8b8", "b7g2", "d7d1", "f1d1", "g7b2", "c1b2", "b8b2", "b1c3", "g8e7", "a1b1", "b2b6", "c3b5", "e8h8", "b5a7", "f8b8", "b1b6", "b8b6"]
+  },
+  {
+    id: "fischer-033",
+    white: "Ruth, D.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "B92",
+    opening: "",
+    label: "Ruth, D. vs Fischer, Robert James, USA-op 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f1e2", "e7e5", "d4f3", "f8e7", "e1h1", "e8h8", "h2h3", "b8d7", "f1e1", "b7b5", "a2a4", "b5b4", "c3d5", "f6d5", "d1d5", "d8c7", "d5b3", "d7c5", "b3b4", "d6d5", "e4d5", "e5e4", "f3d2", "c5d3", "b4e4", "d3e1", "d5d6", "e7d6", "e4a8", "c8b7", "a8f8", "g8f8", "g1f1", "e1c2", "a1b1", "c2d4", "e2d3", "d6b4"]
+  },
+  {
+    id: "fischer-034",
+    white: "Fischer, Robert James",
+    black: "Stevens, W.",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "C82",
+    opening: "",
+    label: "Fischer, Robert James vs Stevens, W., USA-op 1956",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "f6e4", "d2d4", "b7b5", "a4b3", "d7d5", "d4e5", "c8e6", "c2c3", "f8c5", "b1d2", "e8h8", "b3c2", "e4f2", "f1f2", "c5f2", "g1f2", "f7f6", "e5f6", "d8f6", "f2g1", "a8e8", "d2f1", "c6e5", "f1e3", "e5f3", "d1f3", "f6f3", "g2f3", "f8f3", "c2d1", "f3f7"]
+  },
+  {
+    id: "fischer-035",
+    white: "Smith, Kenneth R",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "B95",
+    opening: "",
+    label: "Smith, Kenneth R vs Fischer, Robert James, USA-op 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1g5", "e7e6", "d1d2", "h7h6", "g5e3", "f6g4", "f1e2", "g4e3", "d2e3", "f8e7", "f2f4", "d8c7", "f4f5", "e8h8", "e2g4", "b8c6", "d4c6", "b7c6", "e1h1", "e7g5", "e3f2", "a8b8", "a1b1", "d6d5", "f5e6", "c8e6", "g4f3", "c7e5", "f2c5", "g5f4", "g2g3", "d5d4", "c5e5", "f4e5", "c3a4", "e6a2", "b1e1", "b8b4", "a4c5", "b4b2", "c5d3", "b2b5", "e1a1", "a2e6", "a1a6", "f8c8", "f3e2", "g7g6", "f1e1", "e6h3", "e1d1", "h3e6", "d3f4", "b5c5", "f4e6", "f7e6", "e2d3", "g8f7", "a6a7", "c8c7", "a7c7", "e5c7", "d1a1", "f7e7", "a1a4", "e6e5", "g1g2", "e7d6", "g2f3", "c5a5", "a4a5", "c7a5", "f3e2", "d6c5", "d3a6", "c5b4", "e2d3", "b4a3", "g3g4", "g6g5", "a6b7", "c6c5", "b7c6", "a3b2", "c6a4", "b2c1", "d3c4", "c1d2", "c4c5", "d2e3", "c5d5", "a5c7"]
+  },
+  {
+    id: "fischer-036",
+    white: "Fischer, Robert James",
+    black: "Lapiken, Peter P",
+    result: "1-0",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "A07",
+    opening: "",
+    label: "Fischer, Robert James vs Lapiken, Peter P, USA-op 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "d7d5", "f1g2", "c8f5", "e1h1", "e7e6", "d2d3", "c7c6", "b1d2", "b8a6", "a2a3", "a6c5", "c2c4", "b7b5", "f3d4", "d8d7", "d4f5", "e6f5", "d2b3", "h7h6", "c1e3", "c5e6", "b3d4", "g7g6", "d1b3", "a8b8", "d4c6", "d7c6", "c4d5", "e6c5", "b3c3", "c6d6", "e3c5", "d6c5", "c3f6"]
+  },
+  {
+    id: "fischer-037",
+    white: "Fischer, Robert James",
+    black: "Gross, H.",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "A07",
+    opening: "",
+    label: "Fischer, Robert James vs Gross, H., USA-op 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "d7d5", "f1g2", "c8f5", "e1h1", "e7e6", "d2d3", "f8c5", "b1d2", "b8c6", "a2a3", "a7a5", "d1e1", "f5g6", "e2e4", "d5e4", "d2e4", "f6e4", "d3e4", "e8h8", "c1e3", "d8e7", "e1c3", "c5e3", "c3e3", "a8d8", "a1d1", "d8d1", "f1d1", "f8d8", "d1d8"]
+  },
+  {
+    id: "fischer-038",
+    white: "Swank, A.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "B20",
+    opening: "",
+    label: "Swank, A. vs Fischer, Robert James, USA-op 1956",
+    moves: ["e2e4", "c7c5", "g1e2", "b8c6", "b2b3", "g8f6", "b1c3", "e7e6", "c1b2", "d7d5", "e2g3", "f8d6", "f1b5", "e8h8", "b5d3", "c6e5", "d3e2", "e5g6", "c3b5", "f6e4", "g3e4", "d5e4", "b5d6", "d8d6", "g2g3", "e6e5", "c2c4", "c8h3", "e2f1", "h3f1", "h1f1", "f7f5", "d1c2", "g6e7", "e1a1", "e7c6", "b2c3", "c6d4", "c3d4", "e5d4", "c1b1", "a8e8", "f1e1", "e8e5", "d2d3", "f8e8", "c2d2", "e4d3", "e1e5", "d6e5", "d2d3", "e5e2", "d1d2", "e2d3", "d2d3", "e8e1", "b1c2", "e1e2", "d3d2", "e2d2", "c2d2", "f5f4", "d2d3", "g8f7", "a2a3", "f7f6", "b3b4", "b7b6", "d3e4", "f6g5", "g3f4", "g5g4", "f2f3", "g4h3", "f4f5", "h3h2", "f3f4", "h2g3", "b4c5", "b6c5", "a3a4", "a7a5", "e4d5", "d4d3", "d5c5", "d3d2"]
+  },
+  {
+    id: "fischer-039",
+    white: "Owens, B.",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "E68",
+    opening: "",
+    label: "Owens, B. vs Fischer, Robert James, USA-op 1956",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "g2g3", "e8h8", "f1g2", "d7d6", "g1f3", "b8d7", "e1h1", "e7e5", "e2e4", "e5d4", "f3d4", "d7c5", "f1e1", "a7a5", "h2h3", "f8e8", "c1g5", "h7h6", "g5f4", "f6d7", "f4e3", "c7c6", "d1d2", "d7e5", "d2e2", "a5a4", "a1d1", "d8a5", "f2f4", "e5d7", "g1h2", "a4a3", "e2c2", "a3b2", "c2b2", "d7b6", "g2f1", "b6a4", "c3a4", "a5a4", "b2g2", "e8e4", "d4b3", "e4e8", "b3c5", "d6c5", "e3c5", "c8e6", "d1b1", "e6c4", "e1e8", "a8e8", "b1b4", "c4f1", "b4a4", "f1g2", "h2g2", "e8e2", "g2f3", "e2c2", "a4a8", "g8h7", "c5e3", "b7b5", "a8a7", "h7g8", "a7a8", "g7f8", "f4f5", "g6g5", "f5f6", "c2c3", "f3e4", "c3c4", "e4f5", "c4c3", "f5e4", "c3c4", "e4d3"]
+  },
+  {
+    id: "fischer-040",
+    white: "Fischer, Robert James",
+    black: "Popovych, Orest",
+    result: "1-0",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "A05",
+    opening: "",
+    label: "Fischer, Robert James vs Popovych, Orest, USA-op 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d3", "d7d6", "b1d2", "e7e5", "e2e4", "f6e8", "c2c3", "f7f5", "d3d4", "f5f4", "d4e5", "d6e5", "d2c4", "d8d1", "f1d1", "b8c6", "g3f4", "e5f4", "f3d4", "c6d4", "c3d4", "f4f3", "g2f1", "e8f6", "c4e5", "c8e6", "d4d5", "f6g4", "e5d3", "e6c8", "c1f4", "f8f4", "d3f4", "g7e5", "f4d3", "e5h2", "g1h1", "h2d6", "f1h3", "g4e5", "d3e5", "d6e5", "h3e6", "g8g7", "d1d3", "c8e6", "d5e6", "g7f6", "a1d1", "a8e8", "d3f3", "f6e6", "h1g2", "a7a5", "a2a4", "b7b6", "d1d2", "h7h5", "f3d3", "e8f8", "d3f3", "e5f4", "d2c2", "c7c5", "f3b3", "f4c7", "c2d2", "f8f4", "b3g3", "f4f6", "g3f3", "c7f4", "d2d8", "g6g5", "f3d3", "f6f7", "d8h8", "e6e5", "f2f3", "h5h4", "h8h6", "f7f6", "h6f6", "e5f6", "d3d7", "f6e5", "d7b7", "e5d4", "b7b6", "c5c4", "b6b5", "f4c7", "b5d5", "d4e3", "d5g5"]
+  },
+  {
+    id: "fischer-041",
+    white: "Fischer, Robert James",
+    black: "Popel, Stephan A",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "A04",
+    opening: "",
+    label: "Fischer, Robert James vs Popel, Stephan A, USA-op 1956",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d3", "d7d6", "e2e4", "c7c5", "b1d2", "b8c6", "a2a4", "a7a6", "d2c4", "a8b8", "a4a5", "c8e6", "f3d2", "d6d5", "e4d5", "e6d5", "d2b3", "d5g2", "g1g2", "c6d4", "b3d4", "c5d4", "c1f4", "b8c8", "f4e5", "d8d5", "d1f3", "d5f3", "g2f3", "f6d5", "e5g7", "g8g7", "f1e1", "e7e6", "a1a3", "f8d8", "a3b3", "c8c7", "f3e2", "d5e7", "e2d2", "e7c6", "b3b6", "d8d5", "e1a1", "g7f8", "a1a3", "f8e7", "a3b3", "c6d8", "f2f4", "g6g5", "f4g5", "d5g5", "c4d6", "g5c5", "c2c4", "d4c3", "b2c3", "c5a5", "d6b7", "a5a2", "d2e3", "a2h2", "b7d8", "e7d8", "b6a6", "d8e7"]
+  },
+  {
+    id: "fischer-042",
+    white: "Tears, C.",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "B25",
+    opening: "",
+    label: "Tears, C. vs Fischer, Robert James, USA-op 1956",
+    moves: ["e2e4", "c7c5", "b1c3", "b8c6", "d2d3", "g7g6", "g2g3", "f8g7", "f1g2", "d7d6", "f2f4", "e7e6", "g1f3", "g8e7", "e1h1", "e8h8", "a1b1", "a8b8", "c3e2", "f7f5", "c1e3", "b7b5", "e4e5", "e7d5", "e3f2", "d6e5", "f2c5", "f8e8", "f4e5", "c6e5", "f3e5", "g7e5", "c2c4", "d8c7", "c4d5", "c7c5", "g1h1", "c5d6", "d3d4", "e5g7", "d5e6", "c8e6", "d4d5", "e6f7", "b2b3", "b8d8", "e2f4", "g7e5", "f4e6", "f7e6", "d5e6", "d6e6", "d1e2", "a7a6", "f1e1", "e6f7", "b1d1", "e5c3", "d1d8", "e8d8", "e1d1", "d8d1", "e2d1", "g8g7", "d1f3", "f7f6", "f3b7", "g7h6", "b7b8", "f6d4", "b8f8", "d4g7", "f8g7", "h6g7", "a2a4", "g7f6", "g2b7", "b5a4", "b3a4", "a6a5", "h1g2", "f6e5", "h2h4", "f5f4", "b7c6", "c3e1", "g3f4", "e5f4", "g2h3"]
+  },
+  {
+    id: "fischer-043",
+    white: "Donovan, Jeremiah",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "USA-op",
+    site: "?",
+    eco: "E94",
+    opening: "",
+    label: "Donovan, Jeremiah vs Fischer, Robert James, USA-op 1956",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "g1f3", "e8h8", "f1e2", "b8d7", "e1h1", "e7e5", "h2h3", "c7c6", "c1e3", "d8e7", "d1c2", "a7a6", "a2a4", "f8e8", "d4e5", "d6e5", "a4a5", "f6h5", "f1d1", "h5f4", "e2f1", "d7f8", "c4c5", "f8e6", "c3a4", "e6g5", "f3g5", "e7g5", "g1h2", "c8e6", "g2g3", "g7h6", "g3f4", "e5f4", "e3c1", "g5h4", "a1a3", "a8d8", "a3d3", "d8d3", "d1d3", "h6g7", "b2b3", "f7f5", "d3f3", "f5e4", "c2e4", "e6f7", "e4c2", "e8e1", "f1c4", "h4g5", "c4f7", "g8f8", "f3g3", "f4g3", "f2g3", "g5c1", "c2c1", "e1c1", "f7e6", "c1e1", "e6c8", "e1e2", "h2h1", "e2e7", "h1g2", "f8e8", "h3h4", "e8d8", "c8g4", "e7e3"]
+  },
+  {
+    id: "fischer-044",
+    white: "Nash, Edmund",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "Washington",
+    site: "Washington",
+    eco: "B95",
+    opening: "",
+    label: "Nash, Edmund vs Fischer, Robert James, Washington 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1g5", "e7e6", "d1d2", "h7h6", "g5e3", "f6g4", "d4b3", "g4e3", "d2e3", "b8c6", "f1e2", "f8e7", "e1h1", "e8h8", "a1d1", "b7b5", "f2f4", "c8d7", "e2f3", "c6a5", "f3e2", "a5c4", "e2c4", "b5c4", "b3d2", "d8c7", "g1h1", "f8c8", "d2f3", "a8b8", "d1b1", "a6a5", "f4f5", "a5a4", "f5e6", "f7e6", "a2a3", "c7c5", "e3c5", "c8c5", "c3a2", "c5b5", "a2b4", "c4c3", "f3d4", "b5c5", "b4a6", "b8b2", "a6c5", "d6c5", "d4f3", "c5c4", "f3e5", "d7b5", "b1b2", "c3b2", "c2c3", "e7f6", "f1b1", "f6e5", "b1b2", "b5e8", "b2b4", "e5c3", "b4c4", "c3b2", "c4b4", "b2a3", "b4b6", "g8f7", "b6b7", "a3e7", "e4e5", "a4a3", "h1g1", "e8c6", "b7a7", "c6d5", "g1f1", "a3a2", "f1e2", "f7g6", "g2g4", "e7c5", "a7a5", "c5d4"]
+  },
+  {
+    id: "fischer-045",
+    white: "Marchand, Erich Watkinson",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "Washington",
+    site: "Washington",
+    eco: "A15",
+    opening: "",
+    label: "Marchand, Erich Watkinson vs Fischer, Robert James, Washington 1956",
+    moves: ["c2c4", "g8f6", "g1f3", "g7g6", "b2b3", "f8g7", "c1b2", "e8h8", "g2g3", "d7d6", "f1g2", "e7e5", "d2d3", "b8d7", "e1h1", "f6e8", "d1c2", "f7f5", "d3d4", "e5e4", "f3e1", "c7c6", "e2e3", "d8e7", "b1c3", "h7h5", "a1d1", "h5h4", "c2e2", "h4g3", "f2g3", "d7f6", "e1c2", "c8d7", "d1b1", "g8h7", "c3d1", "f8h8", "d1f2", "h7g8", "f1e1", "f6h7", "f2h3", "e8f6", "h3f4", "e7f7", "e1f1", "g6g5", "f4h3", "g5g4", "h3f4", "h7g5", "g1f2", "h8h2", "f1h1", "h2h1", "b1h1", "g5e6", "f4e6", "d7e6", "b2a3", "d6d5", "c4c5", "f7c7", "e2d2", "e6f7", "g2f1", "f6h5", "h1g1", "g7f6", "d2e1", "g8g7", "f2e2", "a8h8", "e1f2", "g7g6", "a3b4", "h5g7", "e2d1", "g7e6", "c2e1", "b7b6", "f1e2", "f6g5", "g1f1", "e6g7", "e1g2", "f7e6", "c5b6", "a7b6", "g2f4", "g5f4", "g3f4", "c6c5", "d4c5", "b6c5", "b4c3", "d5d4", "c3b2", "d4d3", "e2g4", "f5g4", "f4f5", "e6f5", "b2g7", "h8h5", "g7a1", "c7h7", "a1c3", "g4g3"]
+  },
+  {
+    id: "fischer-046",
+    white: "Goldhamer",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1956,
+    event: "Washington",
+    site: "Washington",
+    eco: "B92",
+    opening: "",
+    label: "Goldhamer vs Fischer, Robert James, Washington 1956",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f1e2", "e7e5", "d4b3", "f8e7", "c1e3", "e8h8", "f2f3", "c8e6", "d1d2", "b7b5", "a1d1", "b8d7", "g2g4", "a8c8", "h2h4", "d7b6", "g4g5", "f6h5", "e1f2", "f7f5", "f2g2", "f5e4", "e3b6", "d8b6", "c3d5", "e4f3", "e2f3", "e6d5", "f3d5", "g8h8", "d5e4", "d6d5", "e4f3", "h5f4", "g2g3", "e7d6", "h1f1", "e5e4", "f3g4", "e4e3"]
+  },
+  {
+    id: "fischer-047",
+    white: "Fischer, Robert James",
+    black: "Hurttlen, N.",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "Washington",
+    site: "Washington",
+    eco: "C84",
+    opening: "",
+    label: "Fischer, Robert James vs Hurttlen, N., Washington 1956",
+    moves: ["g1f3", "b8c6", "e2e4", "e7e5", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "f8e7", "f1e1", "e8h8", "a4c6", "d7c6", "f3e5", "e7c5", "c2c3", "f8e8", "d2d4", "c5d6", "c1g5", "d6e5", "d4e5", "d8d1", "e1d1", "f6e4", "g5e3", "c8f5"]
+  },
+  {
+    id: "fischer-048",
+    white: "Fischer, Robert James",
+    black: "Di Camillo, Attilio",
+    result: "1-0",
+    year: 1956,
+    event: "Washington",
+    site: "Washington",
+    eco: "C78",
+    opening: "",
+    label: "Fischer, Robert James vs Di Camillo, Attilio, Washington 1956",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "b7b5", "a4b3", "d7d6", "c2c3", "c8g4", "h2h3", "g4h5", "d2d3", "f8e7", "b1d2", "e8h8", "f1e1", "d8d7", "d2f1", "c6a5", "b3c2", "h7h6", "g2g4", "h5g6", "f1g3", "f6h7", "g3f5", "a5b7", "d3d4", "e5d4", "c3d4", "b7d8", "f5e7", "d7e7", "d4d5", "c7c5", "c1f4", "d8b7", "f4g3", "f8e8", "a2a4", "e7f6", "a4b5", "a6b5", "g1g2", "h7g5", "f3g5", "h6g5", "a1a8", "e8a8", "e4e5", "g6c2", "d1c2", "d6e5", "g3e5", "f6d8", "d5d6", "c5c4", "c2e4", "b7c5", "e4c6", "c5d3", "e1e3", "a8c8", "c6b7", "c8b8", "b7d5", "d3b4", "d5c5", "b4d3", "c5d4", "b8b6", "d6d7", "b6b7", "e5c7", "d3f4", "g2f1"]
+  },
+  {
+    id: "fischer-049",
+    white: "Feuerstein, Arthur William",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1956,
+    event: "Washington",
+    site: "Washington",
+    eco: "E68",
+    opening: "",
+    label: "Feuerstein, Arthur William vs Fischer, Robert James, Washington 1956",
+    moves: ["g1f3", "g8f6", "c2c4", "g7g6", "g2g3", "f8g7", "f1g2", "e8h8", "e1h1", "d7d6", "d2d4", "b8d7", "b1c3", "e7e5", "e2e4", "e5d4", "f3d4", "d7c5", "f2f3", "f6d7", "c1e3", "a7a5", "d1c2", "a5a4", "f1f2", "c7c6", "g2f1", "d8e7", "c2d2", "f8e8", "d4c2", "d7e5", "a1d1", "g7f8", "e3h6", "f8h6", "d2h6", "f7f5", "e4f5", "c8f5", "c2d4", "f5d3", "f1d3", "e5d3"]
+  },
+  {
+    id: "fischer-050",
+    white: "Fischer, Robert James",
+    black: "Green, Matthew",
+    result: "1-0",
+    year: 1957,
+    event: "East Orange",
+    site: "East Orange",
+    eco: "A04",
+    opening: "",
+    label: "Fischer, Robert James vs Green, Matthew, East Orange 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d3", "c7c5", "b1d2", "b8c6", "e2e4", "d7d6", "a2a4", "a8b8", "d2c4", "b7b6", "e4e5", "d6e5", "f3e5", "c6e5", "c4e5", "c8b7", "e5c6", "b7c6", "g2c6", "f6d5", "f1e1", "e7e6", "c2c3", "d8d6", "c6b5", "b8d8", "d1f3", "h7h6", "c1d2", "g8h7", "b5c4", "a7a5", "f3e4", "e6e5", "e1e2", "f7f5", "e4h4", "f5f4", "h4h3", "f8f5", "g3g4", "f5f7", "h3f3", "f7d7", "g1h1", "d6f6", "a1g1", "f6g5", "d2c1", "d7d6", "h2h3", "d6d7", "h1g2", "g5h4", "g1e1", "h4g5", "f3e4", "h6h5", "e4f3", "g7f6", "g2h2", "h5g4", "f3g4", "g5g4", "h3g4", "h7h6", "h2g2", "g6g5", "g2f3", "h6g6", "e1h1", "f6g7", "e2e1", "d8h8", "h1h8", "g7h8", "e1h1", "h8g7", "f3e2", "d7d6", "c1d2", "d5f6", "f2f3", "d6d8", "b2b4", "d8h8", "h1h8", "g7h8", "b4a5", "b6a5", "c4e6", "f6e8", "c3c4", "g6f6", "e6d7", "f6e7", "d7e8", "e7e8", "d2a5", "e8d7", "a5b6", "d7c6", "b6d8", "h8g7", "d8g5", "c6b6", "g5d8"]
+  },
+  {
+    id: "fischer-051",
+    white: "Fischer, Robert James",
+    black: "Saidy, Anthony Fred",
+    result: "1-0",
+    year: 1957,
+    event: "East Orange",
+    site: "East Orange",
+    eco: "B88",
+    opening: "",
+    label: "Fischer, Robert James vs Saidy, Anthony Fred, East Orange 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "b8c6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "d7d6", "f1c4", "c8d7", "c4b3", "e7e6", "e1h1", "f8e7", "c1e3", "e8h8", "f2f4", "c6d4", "e3d4", "d7c6", "d1e2", "b7b5", "c3b5", "c6e4", "b5a7", "e6e5", "f4e5", "d6e5", "d4e3", "d8b8", "a7b5", "e4c6", "b5c3", "b8b4", "a1d1", "a8a5", "d1d2", "b4h4", "e3b6", "a5c5", "d2d3", "f8b8", "b6c5", "e7c5", "g1h1", "h7h5", "e2e5", "c5a7", "e5g3"]
+  },
+  {
+    id: "fischer-052",
+    white: "Fischer, Robert James",
+    black: "Di Camillo, Attilio",
+    result: "1-0",
+    year: 1957,
+    event: "East Orange",
+    site: "East Orange",
+    eco: "A08",
+    opening: "",
+    label: "Fischer, Robert James vs Di Camillo, Attilio, East Orange 1957",
+    moves: ["e2e4", "e7e6", "d2d3", "d7d5", "b1d2", "f8d6", "g1f3", "c7c5", "g2g3", "b8c6", "f1g2", "g8e7", "e1h1", "e8h8", "f1e1", "d8c7", "c2c3", "c8d7", "d1e2", "f7f6", "a2a3", "a8e8", "b2b4", "b7b6", "d3d4", "c5d4", "c3d4", "d5e4", "d2e4", "e7d5", "c1b2", "c7b8", "f3d2", "c6d8", "e4d6", "b8d6", "b4b5", "d7c8", "a3a4", "d6d7", "b2a3", "f8f7", "d2c4", "d8b7", "e2d3", "e8d8", "g2e4", "g7g5", "a1c1", "d5e7", "e4b7", "c8b7", "c4d6", "e7f5", "d6f7", "d7d5", "d3e4", "d5d7", "e4e6", "d7e6", "e1e6", "g8f7", "e6e1", "f7g6", "c1c7", "b7f3", "a3b2", "h7h5", "c7a7", "d8c8", "e1c1", "c8e8", "a7a6", "h5h4", "g3g4", "f3g4", "a6b6", "e8e2", "b2c3", "h4h3", "d4d5", "f5h4", "b6f6", "g6h5", "b5b6", "h4f3", "f6f3", "g4f3", "b6b7", "e2e8", "c3e5", "e8e5", "b7b8q", "e5e4", "b8g3", "e4g4", "d5d6"]
+  },
+  {
+    id: "fischer-053",
+    white: "Sobel, Robert",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "East Orange",
+    site: "East Orange",
+    eco: "A49",
+    opening: "",
+    label: "Sobel, Robert vs Fischer, Robert James, East Orange 1957",
+    moves: ["g1f3", "g8f6", "b2b3", "g7g6", "c1b2", "f8g7", "g2g3", "e8h8", "f1g2", "d7d6", "d2d4", "e7e5", "d4e5", "f6g4", "d1c1", "g4e5", "e1h1", "b8c6", "f3e5", "c6e5", "f2f4", "e5c6", "b2g7", "g8g7", "c1b2", "d8f6", "b2f6", "g7f6", "b1c3", "c8e6", "e2e4", "f6g7", "a1d1", "a7a6", "f1e1", "f8e8", "d1d2", "a8d8", "h2h3", "f7f6", "g1f2", "e6f7", "e1d1", "e8e7", "d1e1", "d8e8", "e1d1", "c6b8", "e4e5", "f6e5", "f4e5", "d6e5", "g2b7", "c7c6", "c3e4", "e7b7", "e4d6", "b7d7", "d6e8", "f7e8", "f2e3", "g7f6", "e3e4", "f6e6", "c2c4", "g6g5", "e4e3", "e8g6", "b3b4", "e5e4", "d2d7", "b8d7", "c4c5", "d7f6", "d1d6", "e6e5", "d6c6", "f6d5", "e3e2", "d5b4", "c6d6", "g6h5", "g3g4", "h5e8", "d6h6", "e8g6", "a2a3", "b4d3", "c5c6", "e5d6", "e2e3", "d6c6", "e3d4", "d3e1", "h6g6", "h7g6", "d4e4", "c6d6"]
+  },
+  {
+    id: "fischer-054",
+    white: "Fischer, Robert James",
+    black: "Sherwin, James T",
+    result: "1-0",
+    year: 1957,
+    event: "East Orange",
+    site: "East Orange",
+    eco: "B30",
+    opening: "",
+    label: "Fischer, Robert James vs Sherwin, James T, East Orange 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "e7e6", "d2d3", "b8c6", "g2g3", "g8f6", "f1g2", "f8e7", "e1h1", "e8h8", "b1d2", "a8b8", "f1e1", "d7d6", "c2c3", "b7b6", "d3d4", "d8c7", "e4e5", "f6d5", "e5d6", "e7d6", "d2e4", "c5c4", "e4d6", "c7d6", "f3g5", "c6e7", "d1c2", "e7g6", "h2h4", "d5f6", "g5h7", "f6h7", "h4h5", "g6h4", "c1f4", "d6d8", "g3h4", "b8b7", "h5h6", "d8h4", "h6g7", "g8g7", "e1e4", "h4h5", "e4e3", "f7f5", "e3h3", "h5e8", "f4e5", "h7f6", "c2d2", "g7f7", "d2g5", "e8e7", "e5f6", "e7f6", "h3h7", "f7e8", "g5f6", "b7h7", "g2c6"]
+  },
+  {
+    id: "fischer-055",
+    white: "Mengarini, Ariel",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "East Orange",
+    site: "East Orange",
+    eco: "E60",
+    opening: "",
+    label: "Mengarini, Ariel vs Fischer, Robert James, East Orange 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "d1c2", "f8g7", "b1c3", "e8h8", "c1g5", "c7c5", "d4d5", "d7d6", "e2e4", "b8a6", "c2d2", "d8a5", "f1d3", "a6c7", "g1e2", "a7a6", "e1h1", "b7b5", "g5h6", "b5c4", "d3c4", "g7h6", "d2h6", "c7b5", "h6d2", "f6d7", "f2f4", "d7b6", "c4b3", "a5b4", "f4f5", "b6d7", "f1f4", "b5d4", "e2d4", "c5d4", "c3b1", "a6a5", "f5g6", "h7g6", "d2b4", "a5b4", "b1d2", "d7c5", "b3c4", "c8a6", "a2a3", "a6c4", "d2c4", "b4a3", "b2a3", "f8b8", "e4e5", "a8a4", "f4d4", "d6e5", "d4g4", "e5e4", "c4e5"]
+  },
+  {
+    id: "fischer-056",
+    white: "Saltzberg, Mitchell",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "East Orange",
+    site: "East Orange",
+    eco: "E67",
+    opening: "",
+    label: "Saltzberg, Mitchell vs Fischer, Robert James, East Orange 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "g2g3", "e8h8", "f1g2", "d7d6", "g1f3", "b8d7", "e1h1", "e7e5", "h2h3", "f8e8", "c1e3", "c7c6", "d1b3", "d8a5", "a1d1", "a7a6", "f1e1", "a8b8", "a2a3", "h7h6", "f3d2", "e5d4", "e3d4", "d7c5", "b3c2", "a5c7", "e2e4", "c5e6", "d4e3", "f6d7", "f2f4", "e6d4", "c2b1", "b7b5", "d2f1", "c6c5", "c4b5", "a6b5", "c3d5", "c7a7", "b1c1", "c8b7", "e4e5", "d6e5", "f4f5", "d4f5", "d5c3", "e8d8", "c3b5", "a7b6", "a3a4", "b7g2", "g1g2", "f5d4", "e3d4", "c5d4", "f1d2", "d7c5", "d2c4", "b6c6", "g2g1", "c5a4", "b5a3", "c6f3", "d1d2", "f3g3", "d2g2", "g3h3", "c4e5", "g7e5", "e1e5", "d8e8", "c1c6", "e8e5", "g2g6", "g8h7"]
+  },
+  {
+    id: "fischer-057",
+    white: "Gardner, C.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "A49",
+    opening: "",
+    label: "Gardner, C. vs Fischer, Robert James, Milwaukee 1957",
+    moves: ["d2d4", "g8f6", "g1f3", "g7g6", "g2g3", "f8g7", "f1g2", "e8h8", "e1h1", "d7d6", "c2c3", "b8d7", "b1d2", "e7e5", "d4e5", "d6e5", "e2e4", "b7b6", "d1c2", "d8e7", "b2b3", "c8b7", "a2a4", "f8d8", "c1a3", "e7e6", "f1e1", "g7f8", "a3f8", "g8f8", "d2c4", "f6e8", "a1d1", "f7f6", "h2h4", "d7c5", "f3d2", "e6e7", "c4b2", "b7c8", "g1h2", "c8g4", "f2f3", "g4e6", "g2f1", "e8d6", "b2c4", "e7f7", "c4d6", "c7d6", "f1c4", "d6d5", "e4d5", "e6d5", "c4d5", "d8d5", "d2c4", "a8d8", "d1d5", "f7d5", "h2g2", "d5d3", "c2b2", "d8d7", "e1e2", "c5b3", "c4e5", "f6e5", "e2e5", "d3d2", "e5e2", "d2b2", "e2b2", "d7d2", "b2d2", "b3d2", "g2f2", "d2b1"]
+  },
+  {
+    id: "fischer-058",
+    white: "Elo, Arpad",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "B93",
+    opening: "",
+    label: "Elo, Arpad vs Fischer, Robert James, Milwaukee 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f2f4", "e7e5", "d4f3", "d8c7", "f1d3", "b8d7", "e1h1", "b7b5", "d1e1", "c8b7", "a2a3", "g7g6", "e1h4", "f8g7", "g2g4", "e5f4", "c1f4", "e8h8", "h4g3", "d7e5", "f3e5", "d6e5", "f4e5", "c7c5", "f1f2", "f6h5", "e5d6", "c5c3", "b2c3", "h5g3", "d6f8", "a8f8", "h2g3", "g7c3", "a1b1", "c3d4", "a3a4", "b7c8", "a4b5", "a6b5", "b1b5", "c8g4", "g1g2", "d4f2", "g2f2", "g4e6", "b5c5", "g8g7", "f2f3", "g7f6", "f3f4", "f8a8", "g3g4", "h7h6", "g4g5", "h6g5", "c5g5", "a8h8", "g5g2", "g6g5", "f4f3", "h8h3", "g2g3", "h3g3", "f3g3", "f6e5", "c2c3", "e6d7", "d3c4", "f7f6", "c4d5", "d7e8", "c3c4", "e5d4", "g3g4", "e8g6", "g4f3", "g6h5", "f3f2", "h5d1", "f2g3", "d1e2", "c4c5", "d4c5", "d5e6", "c5d4", "e6f5", "d4e3"]
+  },
+  {
+    id: "fischer-059",
+    white: "Fischer, Robert James",
+    black: "Donnelly, W.",
+    result: "1-0",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "C90",
+    opening: "",
+    label: "Fischer, Robert James vs Donnelly, W., Milwaukee 1957",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "f8e7", "f1e1", "d7d6", "c2c3", "b7b5", "a4b3", "c6a5", "b3c2", "c7c5", "d2d4", "d8c7", "b1d2", "e8h8", "d2f1", "a5c6", "f1e3", "f8e8", "e3d5", "f6d5", "e4d5", "c6a5", "d4e5", "d6e5", "f3e5", "e7d6", "c1f4", "c8b7", "d1d3", "g7g6", "d3g3", "a8d8", "e5d3", "a5c4", "b2b3", "d6f4", "g3f4", "c7f4", "e1e8", "d8e8", "d3f4", "c4a3", "c2d3", "c5c4", "b3c4", "b5c4", "d3f1", "g6g5", "f4h5", "e8e5", "d5d6", "g8f8", "h5f6", "e5e6", "a1d1"]
+  },
+  {
+    id: "fischer-060",
+    white: "Kalme, Charles I",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "E66",
+    opening: "",
+    label: "Kalme, Charles I vs Fischer, Robert James, Milwaukee 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d4", "d7d6", "c2c4", "b8c6", "d4d5", "c6a5", "f3d2", "c7c5", "d1c2", "a7a6", "b1c3", "a8b8", "b2b3", "b7b5", "c1b2", "e7e5", "d5e6", "c8e6", "c4b5", "a6b5", "c3e4", "e6f5", "f1d1", "a5c6", "e4f6", "g7f6", "d2e4", "f5e4", "g2e4", "c6d4", "b2d4", "f6d4", "a1c1", "b8b6", "c2d3", "d8e7", "e2e3", "d4e5", "h2h4", "e7a7", "c1c2", "b5b4", "e4d5", "b6a6", "h4h5", "g8g7", "f2f4", "e5f6", "d1d2", "f8e8", "d5c4", "a6b6", "g3g4", "a7e7", "g4g5", "f6c3", "d2e2", "e7e4", "h5h6", "g7f8", "d3e4", "e8e4", "a2a4", "e4c4", "b3c4", "c3h8", "g1f2", "b4b3", "c2c1", "d6d5", "c4d5", "c5c4", "c1c4", "b3b2", "e2e1", "b2b1q", "e1b1", "b6b1", "c4c8", "f8e7", "c8h8"]
+  },
+  {
+    id: "fischer-061",
+    white: "Otteson, M.",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "A05",
+    opening: "",
+    label: "Otteson, M. vs Fischer, Robert James, Milwaukee 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "b2b4", "f8g7", "c1b2", "e8h8", "f1g2", "d7d6", "d2d4", "e7e5", "d4e5", "f6g4", "b1d2", "b8c6", "b4b5", "c6e5", "f3e5", "g4e5", "e1h1", "e5f3", "g2f3", "g7b2", "a1b1", "b2g7", "d2c4", "c8h3", "f1e1", "g7c3", "f3b7", "c3e1", "d1e1", "a8b8", "b7f3", "d8g5", "a2a4", "g5c5", "c4e3", "h3e6", "c2c4", "a7a6", "b1d1", "a6b5", "c4b5", "e6b3", "d1c1", "c5d4", "c1c7", "d4a4", "e1c3", "b3e6", "f3c6", "f8c8", "c7e7", "d6d5", "c3f6", "c8c6", "b5c6", "a4c6", "e3g4", "c6c1", "g1g2", "b8f8", "e7e6", "f7e6", "f6e6", "g8g7", "e6e5", "g7f7", "f2f4", "f8c8", "g4h6", "f7f8", "e5h8", "f8e7", "h8h7", "e7d6", "h7g6", "d6c5", "g6d3", "c1c4", "h6g4", "c8g8", "g4e5", "c4f4", "d3c3", "c5b5", "c3c6", "b5a5", "c6d5", "a5a4", "d5g8", "f4e5", "g8c4", "a4a3", "h2h4"]
+  },
+  {
+    id: "fischer-062",
+    white: "Fischer, Robert James",
+    black: "Fauber, R.",
+    result: "1-0",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "A05",
+    opening: "",
+    label: "Fischer, Robert James vs Fauber, R., Milwaukee 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d3", "d7d6", "e2e4", "e7e5", "b1d2", "b8d7", "a2a4", "f8e8", "d2c4", "h7h6", "f3e1", "d7f8", "f2f4", "d6d5", "f4e5", "d5c4", "e5f6", "g7f6", "c1h6", "f6b2", "a1b1", "b2g7", "h6g7", "g8g7", "d1f3", "d8e7", "d3d4", "f8e6", "f3c3", "e6g5", "c3c4", "c8h3", "b1b7", "h3g2", "e1g2", "e7e4", "b7c7", "e4e2", "c4e2", "e8e2", "h2h4", "g5h3", "g1h2", "h3f2", "g2f4", "e2d2", "h2g1", "f2g4", "f4e6", "g7h8", "f1f7"]
+  },
+  {
+    id: "fischer-063",
+    white: "Buerger, E.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "E86",
+    opening: "",
+    label: "Buerger, E. vs Fischer, Robert James, Milwaukee 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "f2f3", "e7e5", "g1e2", "e8h8", "c1e3", "c7c6", "d1d2", "e5d4", "e2d4", "d6d5", "c4d5", "c6d5", "e4e5", "f6e8", "f3f4", "f7f6", "d4b5", "f6e5", "d2d5", "d8d5", "c3d5", "b8c6", "e3c5", "f8f7", "f1c4", "c8e6", "e1h1", "c6a5", "b2b3", "a5c4", "b3c4", "b7b6", "c5b4", "e6d5", "c4d5", "e5f4", "a1e1", "a8d8", "e1e4", "a7a6", "b5d4", "e8f6", "e4f4", "f6d5", "d4e6", "d5f4", "f1f4", "f7f4"]
+  },
+  {
+    id: "fischer-064",
+    white: "Fischer, Robert James",
+    black: "Kampars, N.",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "B11",
+    opening: "",
+    label: "Fischer, Robert James vs Kampars, N., Milwaukee 1957",
+    moves: ["e2e4", "c7c6", "g1f3", "d7d5", "b1c3", "c8g4", "h2h3", "g4f3", "d1f3", "e7e6", "d2d4", "b8d7", "f1d3", "d5e4", "c3e4", "g8f6", "e1h1", "f6e4", "f3e4", "d7f6", "e4e3", "f6d5", "e3f3", "d8f6", "f3f6", "d5f6", "f1d1", "e8a8", "c1e3", "f6d5", "e3g5", "f8e7", "g5e7", "d5e7", "d3e4", "e7d5", "g2g3", "d5f6", "e4f3", "c8c7", "g1f1", "h8e8", "f3e2", "e6e5", "d4e5", "e8e5", "e2c4", "d8d1", "a1d1", "e5e7", "c4b3", "f6e4", "d1d4", "e4d6", "c2c3", "f7f6", "b3c2", "h7h6", "c2d3", "d6f7", "f2f4", "e7d7", "d4d7", "c7d7", "f1f2", "f7d6", "f2f3", "f6f5", "f3e3", "c6c5", "d3e2", "d7e6", "e2d3"]
+  },
+  {
+    id: "fischer-065",
+    white: "Surgies, M.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "E72",
+    opening: "",
+    label: "Surgies, M. vs Fischer, Robert James, Milwaukee 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "g2g3", "f8g7", "f1g2", "e8h8", "e2e4", "d7d6", "g1e2", "e7e5", "e1h1", "b8d7", "b1c3", "c7c6", "d1c2", "f8e8", "f1e1", "a7a6", "a2a4", "a6a5", "f2f3", "e5d4", "e2d4", "d8b6", "c3e2", "f6e4", "f3e4", "g7d4", "e2d4", "b6d4", "c1e3", "d4f6", "a1d1", "d7e5", "e1f1", "f6e7", "b2b3", "c8g4", "d1d2", "e7e6", "e3g5", "g4h3", "f1f6", "e6g4", "g5f4", "e5f3", "g2f3", "g4f3", "c2d1", "f3e4", "f6d6", "e4e1", "d1e1", "e8e1", "g1f2", "a8e8", "f4h6", "e1f1"]
+  },
+  {
+    id: "fischer-066",
+    white: "Fischer, Robert James",
+    black: "Sandrin, Angelo",
+    result: "1-0",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "A04",
+    opening: "",
+    label: "Fischer, Robert James vs Sandrin, Angelo, Milwaukee 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "b7b6", "f1g2", "c8b7", "e1h1", "c7c5", "d2d3", "d7d5", "b1d2", "b8c6", "e2e4", "e7e5", "e4d5", "f6d5", "c2c4", "d5b4", "f3e5", "c6e5", "g2b7", "a8b8", "b7g2", "f8e7", "d2f3", "e5f3", "d1f3", "d8d3", "f3d3", "b4d3", "f1d1", "b8d8", "g2c6", "e8f8", "c6e4", "d3c1", "a1c1", "d8d4", "d1d4", "c5d4", "c4c5", "b6c5", "b2b4", "f8e8", "b4c5", "e8d7", "c1c4", "d7c7", "c5c6", "h8d8", "g1f1", "g7g6", "f1e2", "a7a5", "e2d3", "f7f5", "e4g2", "e7b4", "c4d4", "b4c5", "d4d8", "c7d8", "d3e2", "d8c7", "g2d5", "h7h6", "f2f4", "g6g5", "f4g5", "h6g5", "h2h4", "g5h4", "g3h4", "c5d4", "a2a4", "d4f6", "h4h5", "f6g5", "e2d3", "c7b6", "d3c4", "g5e3", "d5f3", "b6c7", "c4d5"]
+  },
+  {
+    id: "fischer-067",
+    white: "Fischer, Robert James",
+    black: "Weinberger, Tibor",
+    result: "1-0",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "B77",
+    opening: "",
+    label: "Fischer, Robert James vs Weinberger, Tibor, Milwaukee 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g7g6", "b1c3", "f8g7", "c1e3", "g8f6", "f2f3", "e8h8", "d1d2", "b8c6", "f1c4", "c8d7", "h2h4", "a7a6", "c4b3", "c6a5", "e3h6", "e7e5", "d4e2", "a5b3", "a2b3", "g7h6", "d2h6", "d6d5", "e4d5", "b7b5", "e2g3", "e5e4", "c3e4", "a8c8", "e1a1", "f6e4", "g3e4", "f7f6", "h6d2", "a6a5", "c1b1", "b5b4", "d2d4", "a5a4", "b3a4", "f6f5", "e4g5", "d7a4", "b2b3", "d8a5", "b3a4", "c8c3", "d5d6", "a5a4", "d4d5", "g8g7", "g5e6", "g7f6", "d5d4", "f6e6", "h1e1", "e6d7", "d4g7", "d7c6", "g7c7", "c6b5", "c7b7"]
+  },
+  {
+    id: "fischer-068",
+    white: "Fischer, Robert James",
+    black: "Harrow, M.",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "A08",
+    opening: "",
+    label: "Fischer, Robert James vs Harrow, M., Milwaukee 1957",
+    moves: ["g1f3", "d7d5", "g2g3", "c7c5", "f1g2", "b8c6", "e1h1", "g8f6", "d2d3", "e7e5", "b1d2", "f8e7", "e2e4", "d5d4", "d2c4", "f6d7", "a2a4", "e8h8", "f3e1", "d7b6", "b2b3", "c8e6", "f2f4", "e5f4", "g3f4", "f7f5", "c1d2", "d8d7", "d1e2", "g8h8", "e1f3", "b6c4", "b3c4", "a8d8", "f3g5", "e7g5", "f4g5", "c6b4", "d2b4", "c5b4", "a4a5", "g7g6", "e2d2", "d7e7", "a1b1", "f5e4", "f1f8", "d8f8", "d3e4", "e7c5", "d2b4", "f8c8", "b4d2", "e6c4", "b1b7", "c4a6", "b7b1", "d4d3", "g1h1", "c5c2", "d2b4", "c2c3", "b4d6", "d3d2", "b1g1", "a6b7", "g1f1", "c3c1", "d6d4", "h8g8", "g2h3", "b7e4", "h1g1", "e4f5", "d4d5", "g8g7", "d5d4", "g7g8", "d4d5", "g8g7"]
+  },
+  {
+    id: "fischer-069",
+    white: "Marchand, Erich Watkinson",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "Milwaukee",
+    site: "Milwaukee",
+    eco: "A15",
+    opening: "",
+    label: "Marchand, Erich Watkinson vs Fischer, Robert James, Milwaukee 1957",
+    moves: ["c2c4", "g8f6", "g1f3", "g7g6", "b2b3", "f8g7", "c1b2", "e8h8", "g2g3", "d7d6", "f1g2", "e7e5", "d2d4", "e5e4", "f3d2", "f8e8", "e2e3", "c7c6", "b1c3", "c8f5", "h2h3", "h7h5", "d1c2", "d6d5", "c4c5", "b8a6", "a2a3", "a6c7", "c3e2", "c7e6", "a1d1", "b7b6", "b3b4", "a7a5", "b2c3", "b6c5", "b4c5", "e6c7", "d1b1", "c7b5", "c2c1", "d8d7", "d2b3", "d7c7", "c3d2", "a5a4", "b3a1", "h5h4", "g3g4", "f5d7", "d2b4", "f6h7", "a1c2", "h7g5", "c1d1", "d7c8", "e1d2", "c8a6", "d2c1", "g5e6", "g2f1", "e8f8", "d1e1", "f7f5", "g4f5", "f8f5", "e2c3", "b5c3", "b4c3", "a6f1", "h1f1", "a8f8", "b1b6", "e6g5", "e1e2", "g5h3", "c3e1", "c7h2", "b6c6", "h3f2", "c1b1", "h2g2", "c2b4", "h4h3", "b4d5", "f5d5", "e2c4", "g8h7", "e1f2", "f8f2", "f1c1", "h3h2", "c6g6", "h7g6", "c5c6", "h2h1q", "c6c7", "f2b2"]
+  },
+  {
+    id: "fischer-070",
+    white: "Hearst, Eliot Sanford",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "Team championchip",
+    site: "New York",
+    eco: "B93",
+    opening: "",
+    label: "Hearst, Eliot Sanford vs Fischer, Robert James, Team championchip 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f2f4", "e7e5", "d4f3", "d8c7", "f1d3", "b8d7", "e1h1", "b7b5", "a2a3", "c8b7", "g1h1", "g7g6", "c1e3", "f6g4", "e3d2", "f8g7", "f4f5", "g4f6", "f3g5", "h7h6", "g5h3", "g6g5", "h3f2", "d7c5", "b2b4", "c5d3", "c2d3", "c7d7", "d1e2", "a8c8", "a3a4", "e8h8", "a4b5", "a6b5", "a1a5", "d6d5", "e4d5", "f6d5", "c3d5", "d7d5", "f2e4", "f8d8", "d2e1", "d5d3", "e2d3", "d8d3", "e4c5", "d3d1", "c5b7", "c8c1", "h1g1", "d1e1", "f1e1", "c1e1", "g1f2", "e1e4", "a5b5", "g7f8", "b7c5", "e4b4", "b5a5", "f8c5", "a5c5", "b4f4", "f2e3", "f4f5", "g2g4", "f5f4", "h2h3", "e5e4", "c5c4", "f4f3", "e3e4", "f3h3", "e4e5", "h3e3", "e5f6", "e3f3", "f6e5", "g8g7", "e5d5", "g7g6", "c4c1", "f3f4", "c1g1", "f7f5", "g4f5", "g6f5", "g1h1", "f5g6", "d5e5", "h6h5", "h1d1", "h5h4", "d1g1", "g6h5", "g1h1", "f4f8", "h1d1", "h4h3", "e5e4", "h5h4", "d1d7", "f8f1", "d7d2", "g5g4", "d2d8", "h3h2"]
+  },
+  {
+    id: "fischer-071",
+    white: "Cardoso, Radolfo Tan",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "New York m4",
+    site: "New York",
+    eco: "B98",
+    opening: "",
+    label: "Cardoso, Radolfo Tan vs Fischer, Robert James, New York m4 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1g5", "e7e6", "f2f4", "f8e7", "d1f3", "h7h6", "g5h4", "g7g5", "f4g5", "f6d7", "e1a1", "d7e5", "f3e2", "h6g5", "h4g3", "b8d7", "e2e1", "b7b5", "a2a3", "c8b7", "d4f3", "d8c7", "e1d2", "e5f3", "g2f3", "d7e5", "g3e5", "d6e5", "c3a2", "a8d8", "f1d3", "c7b6", "c1b1", "f7f6", "d2g2", "e8f7", "g2e2", "b7c6", "c2c3", "a6a5", "d3c2", "b5b4", "a3b4", "a5b4", "c2b3", "c6b5", "c3c4", "b5c6", "d1d8", "h8d8", "h2h4", "g5g4", "f3g4", "d8d2", "e2d2", "c6e4", "b3c2", "e4h1", "d2h6", "b6g1", "a2c1", "g1g4", "h6h7", "g4g7", "h7h5", "f7f8", "c2a4", "h1e4", "b1a1", "e4g6", "h5d1", "g7h6", "d1e1", "h6f4", "a4b3", "f4e4", "e1e4", "g6e4", "b3d1", "f6f5", "a1a2", "f5f4", "c1e2", "e4d3", "a2b3", "f4f3", "e2g3", "f3f2", "d1c2", "f2f1q", "g3f1", "d3f1", "c2e4", "f8g7"]
+  },
+  {
+    id: "fischer-072",
+    white: "Fischer, Robert James",
+    black: "Feuerstein, Arthur William",
+    result: "1-0",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "A08",
+    opening: "",
+    label: "Fischer, Robert James vs Feuerstein, Arthur William, USA-ch 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "e7e6", "g2g3", "g8f6", "d2d3", "d7d5", "b1d2", "f8e7", "f1g2", "e8h8", "e1h1", "b8c6", "f1e1", "d8c7", "d1e2", "f8d8", "e4e5", "f6e8", "c2c3", "b7b5", "d2f1", "b5b4", "c1f4", "c7a5", "c3c4", "e8c7", "h2h4", "a5b6", "h4h5", "b4b3", "a2a3", "d5c4", "d3c4", "c8a6", "f1h2", "a8c8", "h5h6", "g7g6", "f4g5", "c6d4", "e2e3", "e7g5", "e3g5", "c7e8", "h2g4", "d4f5", "a1c1", "b6c7", "f3d2", "d8d4", "d2b3", "d4c4", "c1d1", "c4a4", "e1e4", "a6b5", "d1c1", "c7b6", "b3d2", "a4e4", "d2e4", "b5d3", "g4f6", "g8h8", "g3g4", "d3e4", "g2e4", "f5d4", "f6e8", "b6d8", "g5d8", "c8d8", "e8d6", "d4e2", "g1f1", "e2c1", "d6f7", "h8g8", "f7d8", "c1b3", "f1e2", "b3d4", "e2d3", "g8f8", "d8c6"]
+  },
+  {
+    id: "fischer-073",
+    white: "Euwe, Max",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1957,
+    event: "New York m3",
+    site: "New York",
+    eco: "E30",
+    opening: "",
+    label: "Euwe, Max vs Fischer, Robert James, New York m3 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "e7e6", "b1c3", "d7d5", "c4d5", "e6d5", "c1g5", "f8b4", "e2e3", "h7h6", "g5h4", "c7c5", "f1d3", "b8c6", "g1e2", "c5d4", "e3d4", "e8h8", "e1h1", "c8e6", "d3c2", "b4e7", "e2f4", "d8b6", "h4f6", "e7f6", "d1d3", "f8d8", "f1e1", "c6b4", "d3h7", "g8f8", "a2a3", "b4c2", "c3d5", "d8d5", "f4d5"]
+  },
+  {
+    id: "fischer-074",
+    white: "Fischer, Robert James",
+    black: "Euwe, Max",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "New York m3",
+    site: "New York",
+    eco: "C83",
+    opening: "",
+    label: "Fischer, Robert James vs Euwe, Max, New York m3 1957",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "f6e4", "d2d4", "b7b5", "a4b3", "d7d5", "d4e5", "c8e6", "c2c3", "f8e7", "b1d2", "e8h8", "d1e2", "e4c5", "f3d4", "c5b3", "d2b3", "d8d7", "d4c6", "d7c6", "c1e3", "c6c4"]
+  },
+  {
+    id: "fischer-075",
+    white: "Fischer, Robert James",
+    black: "Cardoso, Radolfo Tan",
+    result: "1-0",
+    year: 1957,
+    event: "New York m4",
+    site: "New York",
+    eco: "B88",
+    opening: "",
+    label: "Fischer, Robert James vs Cardoso, Radolfo Tan, New York m4 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f1c4", "e7e6", "e1h1", "f8e7", "c1e3", "e8h8", "c4b3", "b8c6", "f2f4", "c6a5", "d1f3", "d8c7", "g2g4", "a5b3", "a2b3", "a8b8", "g4g5", "f6d7", "f4f5", "d7e5", "f3g3", "g8h8", "d4f3", "e5f3", "f1f3", "b7b5", "g3h4", "e6f5", "e4f5", "c7c6", "a1f1", "c8b7", "e3d4", "b5b4", "d4g7", "h8g7", "h4h6", "g7h8", "g5g6", "c6c5", "f1f2", "f7g6", "f5g6", "c5g5", "h6g5", "e7g5", "f3f8", "b8f8", "f2f8", "h8g7", "g6h7"]
+  },
+  {
+    id: "fischer-076",
+    white: "Seidman, Herbert",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "B98",
+    opening: "",
+    label: "Seidman, Herbert vs Fischer, Robert James, USA-ch 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1g5", "e7e6", "f2f4", "f8e7", "d1f3", "d8c7", "e1a1", "h7h6", "g5h4", "b8c6", "d4c6", "c7c6", "f1d3", "c8d7", "f3e2", "a8c8", "c1b1", "b7b5", "h1f1", "b5b4", "h4f6", "g7f6", "c3d5", "e6d5", "e4d5", "c6c7", "d3a6", "c8b8", "f1e1", "d7c8", "a6c8", "b8c8", "d1d4", "e8h8", "d4e4", "f8e8", "f4f5", "g8h7", "c2c3", "b4c3", "e4e7", "c7b6", "e7f7", "h7g8", "e2g4", "g8f7"]
+  },
+  {
+    id: "fischer-077",
+    white: "Fischer, Robert James",
+    black: "Reshevsky, Samuel Herman",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "B41",
+    opening: "",
+    label: "Fischer, Robert James vs Reshevsky, Samuel Herman, USA-ch 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "e7e6", "d2d4", "c5d4", "f3d4", "a7a6", "c2c4", "g8f6", "b1c3", "f8b4", "f1d3", "d8b6", "c1e3", "b4c3", "b2c3", "b6a5", "e1h1", "d7d6", "c4c5", "a5c7", "c5d6", "c7d6", "f2f4", "d6e7", "c3c4", "e6e5", "d4b3", "b8d7", "f4e5", "d7e5", "e3c5", "e7d8", "c5d4", "d8c7", "d1d2", "c8e6", "d2f4", "f6d7", "d3e2", "f7f6", "e2h5", "g7g6", "h5e2", "e8h8", "a1c1", "a8c8", "c4c5", "e5c6", "f4e3", "d7e5", "d4b2", "c8d8", "h2h3", "d8d7", "g1h1", "c7d8", "f1d1", "f8f7", "a2a3", "d7d1", "c1d1", "f7d7", "d1d7", "d8d7", "b3d4", "c6d4", "e3d4", "d7d4", "b2d4", "g8f7", "h1g1", "e6c4", "d4e5", "c4e2", "e5d6", "e2d3", "e4e5", "f6f5", "g1f2", "g6g5", "g2g3", "d3e4", "f2e3", "e4d5", "d6c7", "f7e7", "h3h4", "f5f4", "g3f4", "g5h4", "f4f5", "h4h3", "c7d6", "e7f7", "e3f2", "d5e4", "f2g3", "e4f5", "d6c7", "f5d7", "c7a5", "f7e6", "a5b4", "e6e5", "g3h2", "h7h5", "h2g3", "e5d5", "g3h2", "h5h4", "h2g1"]
+  },
+  {
+    id: "fischer-078",
+    white: "Cardoso, Radolfo Tan",
+    black: "Fischer, Robert James",
+    result: "1-0",
+    year: 1957,
+    event: "New York m4",
+    site: "New York",
+    eco: "B91",
+    opening: "",
+    label: "Cardoso, Radolfo Tan vs Fischer, Robert James, New York m4 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "g2g3", "e7e5", "d4e2", "f8e7", "f1g2", "e8h8", "e1h1", "b8d7", "h2h3", "b7b5", "a2a4", "b5b4", "c3d5", "f6d5", "d1d5", "d8c7", "c2c3", "c8b7", "d5d1", "d7c5", "f2f3", "a6a5", "c1e3", "b7a6", "a1c1", "a8b8", "f3f4", "b4c3", "c1c3", "b8b2", "f1f2", "c7b6", "c3c1", "b6b3", "e2c3", "e5f4", "f2b2", "b3b2", "e3c5", "d6c5", "g3f4", "c5c4", "c3d5", "e7c5", "g1h2", "c5b4", "c1c2", "b2b3", "e4e5", "b3a4", "g2e4", "g7g6", "d1g4", "a6b7", "d5f6", "g8g7", "g4h4", "f8c8", "h4h7", "g7f8", "e5e6", "c8c7", "h7g8", "f8e7", "g8f7", "e7d8", "c2d2", "b7d5", "d2d5"]
+  },
+  {
+    id: "fischer-079",
+    white: "Fischer, Robert James",
+    black: "Cardoso, Radolfo Tan",
+    result: "1-0",
+    year: 1957,
+    event: "New York m4",
+    site: "New York",
+    eco: "B88",
+    opening: "",
+    label: "Fischer, Robert James vs Cardoso, Radolfo Tan, New York m4 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f1c4", "e7e6", "e1h1", "c8d7", "c4b3", "b8c6", "c1e3", "f8e7", "f2f4", "d8c7", "f4f5", "c6d4", "e3d4", "b7b5", "a2a3", "e6e5", "d4e3", "d7c6", "c3d5", "f6d5", "b3d5", "c6d5", "d1d5", "a8c8", "c2c3", "c7c4", "d5b7", "c4c6", "b7c6", "c8c6", "a3a4", "e8d7", "a4b5", "a6b5", "a1a7", "c6c7", "f1a1", "h8b8", "g1f2", "b8b7", "a7b7", "c7b7", "f2e2", "e7d8", "e2d3", "h7h6", "a1a8", "h6h5", "b2b4", "d8e7", "a8g8", "e7f6", "g8f8", "d7c6", "c3c4", "b7d7", "f8a8", "b5c4", "d3c4", "d7c7", "a8a7", "c7a7", "e3a7", "f6d8", "a7e3", "f7f6", "b4b5", "c6d7", "c4d5", "d8a5", "e3a7", "a5b4", "a7b8", "b4c5", "g2g3", "d7e7", "d5c6", "g7g6", "f5g6", "f6f5", "b8d6"]
+  },
+  {
+    id: "fischer-080",
+    white: "Bernstein, Sidney Norman",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "B99",
+    opening: "",
+    label: "Bernstein, Sidney Norman vs Fischer, Robert James, USA-ch 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1g5", "e7e6", "f2f4", "f8e7", "d1f3", "b8d7", "e1a1", "d8c7", "g2g4", "b7b5", "f1g2", "c8b7", "h1e1", "b5b4", "c3d5", "e6d5", "e4d5", "e8f8", "d4f5", "a8e8", "f3e3", "e7d8", "e3d4", "b7c8", "g5h4", "d7c5", "f5g7", "f8g7", "g4g5", "c8f5", "g5f6", "g7h6", "d4c4", "c5d7", "c4c7", "d8c7", "g2f3", "c7d8", "h4g5", "h6g6", "e1g1", "d8f6", "g5h4", "g6h6", "h4f6", "d7f6", "g1g5", "f5e4", "d1f1", "e4g6", "f1g1", "e8e3", "f3d1", "f6e4", "g5g2", "f7f5", "d1e2", "a6a5", "h2h4", "e3h3", "h4h5", "g6h5", "e2d3", "h5g6", "g1f1", "h8f8", "c1d1", "e4f6", "f1e1", "f6d5", "g2f2", "h3e3", "e1g1", "e3e7", "d1d2", "h6g7", "f2f3"]
+  },
+  {
+    id: "fischer-081",
+    white: "Fischer, Robert James",
+    black: "Bisguier, Arthur Bernard",
+    result: "1-0",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "C16",
+    opening: "",
+    label: "Fischer, Robert James vs Bisguier, Arthur Bernard, USA-ch 1957",
+    moves: ["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "f8b4", "e4e5", "b7b6", "a2a3", "b4c3", "b2c3", "d8d7", "d1g4", "f7f5", "g4g3", "c8a6", "f1a6", "b8a6", "g1e2", "e8a8", "a3a4", "c8b7", "e1h1", "d7f7", "c3c4", "g8e7", "c1g5", "d5c4", "g3c3", "e7d5", "c3c4", "d8a8", "g5d2", "f5f4", "a1a3", "g7g5", "a4a5", "c7c6", "a5b6", "a7b6", "c4b3", "a6c7", "c2c4", "a8a3", "b3a3", "h8a8", "a3b3", "d5e7", "e2c3", "f7f5", "b3b4", "e7c8", "c3a4", "f4f3", "a4c5", "b7b8", "c5d7", "b8b7", "b4b3", "f5g4", "d7c5", "b7b8", "g2g3", "g4d4", "d2e3", "d4a1", "f1b1", "a8a3", "c5d7", "b8b7", "b3d1", "a1a2", "d7b6", "c8b6", "b1b6", "b7c8", "d1f3", "a2c4", "f3f8", "c8d7", "f8a3"]
+  },
+  {
+    id: "fischer-082",
+    white: "Cardoso, Radolfo Tan",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "New York m4",
+    site: "New York",
+    eco: "B55",
+    opening: "",
+    label: "Cardoso, Radolfo Tan vs Fischer, Robert James, New York m4 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "f2f3", "e7e5", "f1b5", "b8d7", "d4f5", "d6d5", "e4d5", "a7a6", "b5d7", "d8d7", "f5e3", "f8c5", "c2c4", "b7b5", "b1c3", "e8h8", "e1h1", "b5c4", "g1h1", "c5e3", "c1e3", "c8b7", "d5d6", "a8c8", "e3g5", "d7e6", "d1d2", "f8d8", "a1d1", "c8c6", "g5f6", "d8d6", "d2g5", "e6f6", "g5f6", "g7f6", "d1d6", "c6d6", "f1d1", "d6d1", "c3d1", "b7d5", "h1g1", "f6f5", "g1f2", "f5f4", "d1c3", "d5c6", "g2g3", "f4g3", "h2g3", "g8g7", "f2e3", "h7h5", "a2a3", "g7g6", "c3e4", "c6e4", "e3e4", "f7f5", "e4e5", "g6g5", "a3a4", "a6a5"]
+  },
+  {
+    id: "fischer-083",
+    white: "Berliner, Hans Jack",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "E89",
+    opening: "",
+    label: "Berliner, Hans Jack vs Fischer, Robert James, USA-ch 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "f2f3", "e7e5", "g1e2", "e8h8", "c1e3", "c7c6", "d4d5", "c6d5", "c4d5", "f6e8", "d1d2", "f7f5", "e1a1", "b8d7", "c1b1", "e8f6", "e2c1", "f5e4", "f3e4", "f6g4", "e3g1", "g7h6", "d2e1", "d7c5", "c1d3", "c5d3", "f1d3", "c8d7", "d3b5", "d7b5", "c3b5", "a7a6", "b5a3", "a8c8", "h2h3", "g4f6", "g1e3", "h6e3", "e1e3", "d8a5", "h1e1", "b7b5", "d1c1", "a5a4", "a3c2", "f8f7", "a2a3", "f7c7", "c2b4", "c7c1", "e1c1", "c8c1", "e3c1", "a6a5", "c1c8", "g8g7", "c8c7", "g7h6", "c7c1", "g6g5", "h3h4", "f6e4", "b4c6", "b5b4", "c1e1", "b4a3", "h4g5", "h6g7", "c6a5", "a3a2", "b1a1", "e4c5", "b2b4", "c5b3", "a5b3", "a4b3", "e1e4", "g7g8", "g5g6", "h7h6", "e4f5", "b3d5", "f5d7", "g8f8", "b4b5", "d5d1", "a1a2", "d1a4", "a2b2", "a4b4", "b2c2", "b4c5", "c2b3", "c5d5", "b3a3", "e5e4", "d7h7", "d5d3", "a3a4", "d3d4", "a4a5", "d4a1", "a5b6", "a1f6", "b6c7", "f6g7"]
+  },
+  {
+    id: "fischer-084",
+    white: "Fischer, Robert James",
+    black: "Cardoso, Radolfo Tan",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "New York m4",
+    site: "New York",
+    eco: "B87",
+    opening: "",
+    label: "Fischer, Robert James vs Cardoso, Radolfo Tan, New York m4 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f1c4", "e7e6", "e1h1", "b7b5", "c4b3", "c8b7", "c1g5", "b8d7", "b3e6", "f7e6", "d4e6", "d8c8", "e6f8", "h8f8", "d1d6", "c8c6", "a1d1", "c6d6", "d1d6", "e8a8", "f1d1", "h7h6", "g5e3", "d7e5", "d6d8", "f8d8", "d1d8", "c8d8", "f2f3", "d8d7", "g1f2", "b7c6", "b2b3", "d7e6", "h2h3", "c6b7", "c3e2", "e5c6", "h3h4", "b7c8", "e2d4", "c6d4", "e3d4", "g7g5", "h4g5", "h6g5", "d4f6", "e6f6", "c2c3", "c8e6", "f2e3", "f6e5", "g2g3", "a6a5", "f3f4", "g5f4", "g3f4", "e5d6", "f4f5", "e6g8", "e3d4", "g8h7", "c3c4", "b5c4", "b3c4", "d6c6", "a2a3", "a5a4", "d4e5", "h7g8", "e5f6", "g8c4", "f6e7", "c6c5", "e4e5", "c5d4", "e7d6", "d4e4", "f5f6", "e4f5", "d6c5"]
+  },
+  {
+    id: "fischer-085",
+    white: "Fischer, Robert James",
+    black: "Sherwin, James T",
+    result: "1-0",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "B87",
+    opening: "",
+    label: "Fischer, Robert James vs Sherwin, James T, USA-ch 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f1c4", "e7e6", "e1h1", "b7b5", "c4b3", "b5b4", "c3b1", "c8d7", "c1e3", "b8c6", "f2f3", "f8e7", "c2c3", "b4c3", "d4c6", "d7c6", "b1c3", "e8h8", "a1c1", "d8b8", "c3d5", "e6d5", "c1c6", "d5e4", "f3e4", "b8b5", "c6b6", "b5e5", "e3d4", "e5g5", "d1f3", "f6d7", "b6b7", "d7e5", "f3e2", "e7f6", "g1h1", "a6a5", "b3d5", "a8c8", "d4c3", "a5a4", "b7a7", "e5g4", "a7a4", "f6c3", "b2c3", "c8c3", "f1f7", "c3c1", "e2f1", "h7h5", "f1c1", "g5h4", "f7f8", "g8h7", "h2h3", "h4g3", "h3g4", "h5h4", "d5e6"]
+  },
+  {
+    id: "fischer-086",
+    white: "Cardoso, Radolfo Tan",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "New York m4",
+    site: "New York",
+    eco: "B91",
+    opening: "",
+    label: "Cardoso, Radolfo Tan vs Fischer, Robert James, New York m4 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "g2g3", "e7e5", "d4e2", "f8e7", "f1g2", "e8h8", "e1h1", "b8d7", "h2h3", "b7b5", "f2f4", "c8b7", "g3g4", "b5b4", "c3d5", "f6d5", "e4d5", "d8b6", "g1h2", "e5f4", "c1f4", "e7f6", "c2c3", "a8c8", "a1c1", "f8e8", "d1c2", "d7f8", "c3c4", "f8g6", "f4g3", "b6e3", "c1e1", "f6e5", "e2f4", "e3d4", "e1e4", "d4c5", "f4g6", "e5g3", "h2g3", "h7g6", "b2b3", "c5c7", "f1e1", "c7d7", "c2e2", "g8f8", "e4e8", "c8e8", "e2e8", "d7e8", "e1e8", "f8e8", "g3f4", "b7c8", "g2e4", "e8e7", "h3h4", "a6a5", "e4f3", "e7d8", "f4e3", "d8c7", "f3e2", "c7b6", "e3d4", "c8d7", "e2f3", "d7c8", "f3e2", "c8d7", "c4c5", "d6c5", "d4e5", "d7b5", "e2b5", "b6b5", "e5d6", "c5c4", "b3c4", "b5c4", "d6c6", "a5a4", "d5d6", "b4b3", "a2b3", "a4b3", "d6d7", "b3b2", "d7d8q", "b2b1q", "d8d5", "c4c3", "d5f7", "b1e4", "c6d6", "e4g4", "f7g7", "c3d3", "g7f6", "d3e3"]
+  },
+  {
+    id: "fischer-087",
+    white: "Kramer, George Mortimer",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "A04",
+    opening: "",
+    label: "Kramer, George Mortimer vs Fischer, Robert James, USA-ch 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "d2d3", "d7d6", "e2e4", "c7c5", "c2c3", "b8c6", "f3e1", "a8b8", "f2f4", "f6e8", "c1e3", "c8d7", "b1d2", "b7b5", "e4e5", "d6e5", "e3c5", "e5f4", "f1f4", "e8c7", "f4f1", "b5b4", "d1c2", "b4c3", "b2c3", "c7b5", "d3d4", "b8c8", "c2b2", "b5c3", "b2c3", "c6d4", "c3b4", "d4e2", "g1h1", "c8c5", "b4c5", "g7a1", "e1f3", "a1g7", "f1e1", "e2c3", "c5a7", "d7e6", "a2a3", "d8d6", "a7a5", "e6d5", "d2b1", "f8a8", "a5b4", "d6b4", "a3b4", "d5f3", "b1c3", "f3g2"]
+  },
+  {
+    id: "fischer-088",
+    white: "Fischer, Robert James",
+    black: "Cardoso, Radolfo Tan",
+    result: "1-0",
+    year: 1957,
+    event: "New York m4",
+    site: "New York",
+    eco: "A07",
+    opening: "",
+    label: "Fischer, Robert James vs Cardoso, Radolfo Tan, New York m4 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "d7d5", "f1g2", "c8f5", "e1h1", "e7e6", "d2d3", "f8d6", "b1d2", "h7h6", "e2e4", "f5g4", "h2h3", "g4f3", "d2f3", "b8d7", "d1e2", "d5e4", "d3e4", "d6c5", "e4e5", "f6d5", "c2c4", "d5e7", "c1d2", "e7f5", "g1h2", "c7c6", "b2b4", "c5e7", "d2c3", "g7g5", "f3d2", "d8c7", "d2e4", "h8g8", "c4c5", "e8f8", "e4d6", "b7b6", "d6f5", "e6f5", "e5e6", "e7f6", "a1d1", "d7e5", "f1e1", "e5g4", "h3g4", "f6c3", "d1d7", "c7c8", "d7f7", "f8e8", "e1d1", "g8g7", "f7g7", "c3g7", "g4f5", "e8f8", "e6e7"]
+  },
+  {
+    id: "fischer-089",
+    white: "Fischer, Robert James",
+    black: "Mednis, Edmar John",
+    result: "1-0",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "B07",
+    opening: "",
+    label: "Fischer, Robert James vs Mednis, Edmar John, USA-ch 1957",
+    moves: ["e2e4", "d7d6", "d2d4", "g8f6", "b1c3", "g7g6", "c1g5", "f8g7", "d1d2", "h7h6", "g5f4", "c7c6", "e1a1", "d8a5", "c1b1", "g6g5", "f4g3", "f6h5", "f1c4", "b7b5", "c4b3", "b8d7", "f2f4", "h5g3", "h2g3", "g5g4", "e4e5", "d6d5", "f4f5", "d7b6", "d2f4", "e7e6", "f4g4", "g7f8", "f5e6", "c8e6", "g4f3", "e8a8", "g1h3", "h8g8", "f3f2", "b6c4", "b3c4", "b5c4", "b1a1", "d8d7", "c3b1", "d7b7", "c2c3", "b7b6", "d1d2", "c8d7", "h3f4", "f8e7", "h1h6", "g8f8", "f2f3", "b6a6", "a2a3", "f8b8", "f4e6", "f7e6", "h6e6", "e7a3", "b1a3", "d7e6", "f3g4", "e6e7", "d2f2", "b8e8", "g4g5", "e7d7", "f2f7", "d7c8", "g5f5", "c8b8", "f5d7"]
+  },
+  {
+    id: "fischer-090",
+    white: "Lombardy, William James",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "E60",
+    opening: "",
+    label: "Lombardy, William James vs Fischer, Robert James, USA-ch 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "g1f3", "f8g7", "g2g3", "e8h8", "f1g2", "d7d6", "e1h1", "b8c6", "d4d5", "c6a5", "f3d2", "c7c5", "a2a3", "b7b6", "b2b4", "a5b7", "c1b2", "a7a5", "b4b5", "e7e5", "d5e6", "f7e6", "e2e4", "e6e5", "b1c3", "a8b8", "c3d5", "c8e6", "a3a4", "f6d7", "a1a3", "g7h6", "f2f4", "e5f4", "d5f4", "e6f7", "f4d5", "f7d5", "c4d5", "f8f1", "g2f1", "h6g7", "b2g7", "g8g7", "d2c4", "d7e5", "c4e5", "d6e5", "d1g4", "d8e7", "a3d3", "b7d6", "g4e6", "b8e8", "f1h3", "e7c7", "e6d7", "c7d7", "h3d7", "e8d8", "d7c6", "d6e4", "d3e3", "e4d2", "e3e2", "d2c4", "e2e4", "c4b2", "g1f2", "b2d1", "f2e1", "d1c3", "e4e5", "c3a4", "e5e7", "g7h6", "e1d2", "c5c4", "e7e4", "a4c5", "e4e7", "c5a4", "h2h4", "d8f8", "d5d6", "c4c3", "d2c2", "f8f2", "c2b3", "f2b2", "b3a4", "c3c2", "e7e1", "b2b4", "a4a3", "b4b1", "c6e4", "b1e1", "e4c2", "e1e6", "d6d7", "e6d6"]
+  },
+  {
+    id: "fischer-091",
+    white: "Fischer, Robert James",
+    black: "Di Camillo, Attilio",
+    result: "1-0",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "E02",
+    opening: "",
+    label: "Fischer, Robert James vs Di Camillo, Attilio, USA-ch 1957",
+    moves: ["g1f3", "b8c6", "d2d4", "d7d5", "g2g3", "g8f6", "f1g2", "e7e6", "e1h1", "f8e7", "c2c4", "d5c4", "d1a4", "c8d7", "a4c4", "c6a5", "c4c2", "a8c8", "b1c3", "c7c5", "d4c5", "e7c5", "e2e4", "a5c6", "e4e5", "c6b4", "c2d2", "f6d5", "a2a3", "d5c3", "a3b4", "c5b4", "b2c3", "b4c3", "d2a2", "c3a1", "a2a1", "e8h8", "a1a7", "d7c6", "c1a3", "f8e8", "a3d6", "c8a8", "a7e3", "a8a4", "f3d2", "c6g2", "g1g2", "d8a5", "f1b1", "a5d5", "d2f3", "e8c8", "e3b6", "h7h6", "b6b7", "d5b7", "b1b7", "c8c2", "b7b5", "a4a2", "d6c5", "a2b2", "b5a5", "b2a2", "a5b5", "a2b2", "b5a5", "b2a2", "a5a2", "c2a2", "c5d6", "a2b2", "f3d4", "b2a2", "d4b3", "a2a4", "b3c5", "a4a2", "c5d7", "a2a4", "d7c5", "a4c4", "g2f3", "c4c3", "f3e4", "c3c2", "c5d3", "c2e2", "e4f3", "e2c2", "h2h4", "c2c3", "f3e4", "c3c6", "d6c5", "c6a6", "h4h5", "a6a4", "c5d4", "a4a2", "g3g4", "a2e2", "d4e3", "e2a2", "f2f4", "g7g6", "h5g6", "f7g6", "d3c5", "g8f7", "f4f5", "g6f5", "g4f5", "e6f5", "e4f5", "h6h5", "c5e4", "a2a5", "e3g5", "a5d5", "e4f6", "d5d1", "f6h5", "d1d5", "h5f6", "d5a5", "f6e4", "a5d5", "e4d6", "f7f8", "f5e6", "d5d1", "g5e7", "f8g7", "e6d7", "d1a1"]
+  },
+  {
+    id: "fischer-092",
+    white: "Denker, Arnold S",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "E60",
+    opening: "",
+    label: "Denker, Arnold S vs Fischer, Robert James, USA-ch 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "g1f3", "f8g7", "g2g3", "e8h8", "f1g2", "d7d6", "e1h1", "b8c6", "d4d5", "c6a5", "f3d2", "c7c5", "a2a3", "f6d7", "a1a2", "d8c7", "d1c2", "d7e5", "b2b4", "c5b4", "a3b4", "a5c4", "b1a3", "b7b5", "a3b5", "c7b6", "d2c4", "b6b5", "c4e5", "g7e5", "c1h6", "f8e8", "c2c6", "c8d7", "c6b5", "d7b5", "f1c1", "a7a6", "g2f1", "f7f5", "h2h4", "g8f7", "c1c7", "e8c8", "a2c2", "c8c7", "c2c7", "a8b8", "h6g5", "e5f6", "g5f6", "f7f6", "f2f4", "b5a4", "c7c4", "a4b3", "c4d4", "b8c8", "g1f2", "c8c2", "f1g2", "b3c4", "g2f3", "c4b5", "f2e1", "c2b2", "e1f2", "f6f7", "h4h5", "f7f6", "h5g6", "h7g6", "g3g4", "f5g4", "f3g4", "b2c2", "f2e3", "g6g5", "f4g5", "f6g5", "g4f3", "c2c3", "e3d2", "c3c4", "d4c4", "b5c4", "d2c3", "c4b5", "c3d4", "g5f4", "f3h5", "f4g3", "e2e4"]
+  },
+  {
+    id: "fischer-093",
+    white: "Fischer, Robert James",
+    black: "Turner, Abe",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "USA-ch",
+    site: "New York",
+    eco: "A07",
+    opening: "",
+    label: "Fischer, Robert James vs Turner, Abe, USA-ch 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "d7d5", "f1g2", "e7e6", "e1h1", "f8e7", "d2d3", "e8h8", "b1d2", "b7b6", "e2e4", "d5e4", "d3e4", "c8b7", "d1e2", "d8c8", "e4e5", "f6d7", "d2e4", "b8c6", "c1f4", "d7c5", "e4c5", "e7c5", "f1d1", "c6e7", "f4e3", "c5e3", "e2e3", "e7f5", "e3e2", "c7c5", "c2c3", "c8c7"]
+  },
+  {
+    id: "fischer-094",
+    white: "Fischer, Robert James",
+    black: "Sholomson, S.",
+    result: "1-0",
+    year: 1957,
+    event: "USA-chJ",
+    site: "?",
+    eco: "B08",
+    opening: "",
+    label: "Fischer, Robert James vs Sholomson, S., USA-chJ 1957",
+    moves: ["g1f3", "g7g6", "e2e4", "f8g7", "d2d4", "d7d6", "b1c3", "g8f6", "f1c4", "e8h8", "e1h1", "c7c6", "d1e2", "b8d7", "e4e5", "f6d5", "c4d5", "c6d5", "e5d6", "e7d6", "c3d5", "d8a5", "c2c4", "d7f6", "c1d2", "a5d8", "d5e7", "g8h8", "e7c8", "a8c8", "b2b3", "d8d7", "e2d3", "h7h6", "f1e1", "g6g5", "d4d5", "f6h5", "a1d1", "f8g8", "f3d4", "d7g4", "d4f5", "h5f4", "d2f4", "g5f4", "f5d6", "g7f6", "d6f7", "h8g7", "f7e5", "f6e5", "e1e5", "g7h8", "g2g3", "f4g3", "h2g3", "c8f8", "e5e7"]
+  },
+  {
+    id: "fischer-095",
+    white: "Schoene, A.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "USA-chJ",
+    site: "?",
+    eco: "E70",
+    opening: "",
+    label: "Schoene, A. vs Fischer, Robert James, USA-chJ 1957",
+    moves: ["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "e8h8", "e4e5", "f6e8", "f2f4", "d7d6", "g1f3", "d6e5", "f4e5", "c8g4", "f1e2", "c7c5", "c1f4", "c5d4", "d1d4", "b8c6", "d4d8", "a8d8", "a1d1", "d8d1", "c3d1", "g4f3", "e2f3", "c6e5", "f4e5", "g7e5", "f3b7", "e8d6", "b7a6", "f8b8", "c4c5", "d6e4", "c5c6", "b8b6", "a6b7", "e4d6", "b2b3", "d6b7", "c6b7", "b6b7", "g2g3", "e5d4", "e1e2", "b7c7", "e2d3", "e7e5", "h1e1", "c7c1", "a2a4", "f7f5", "d3d2", "c1b1", "d2c2", "b1a1", "e1e2", "a1a2", "c2d3", "e5e4"]
+  },
+  {
+    id: "fischer-096",
+    white: "Thacker, R.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "USA-chJ",
+    site: "?",
+    eco: "B50",
+    opening: "",
+    label: "Thacker, R. vs Fischer, Robert James, USA-chJ 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "c2c3", "g8f6", "f1d3", "g7g6", "d3c2", "f8g7", "d2d4", "e8h8", "h2h3", "c5d4", "c3d4", "b8c6", "b1c3", "e7e5", "d4d5", "c6d4", "f3d4", "e5d4", "c3e2", "f8e8", "f2f3", "d8b6", "c2d3", "f6d7", "d1a4", "e8f8", "e1h1", "d7c5", "a4d1", "c8d7", "g1h1", "f7f5", "e2g3", "c5d3", "d1d3", "d7b5", "d3d1", "b5f1", "d1f1", "f5f4", "g3e2", "g6g5", "f1d1", "a8c8", "a1b1", "b6a6", "d1b3", "a6e2", "c1f4", "g5f4", "b3b7", "d4d3", "b7a7", "d3d2", "a7g7", "g8g7", "b1e1", "d2e1q", "h1h2"]
+  },
+  {
+    id: "fischer-097",
+    white: "Fischer, Robert James",
+    black: "Walker, RG.",
+    result: "1-0",
+    year: 1957,
+    event: "USA-chJ",
+    site: "?",
+    eco: "C70",
+    opening: "",
+    label: "Fischer, Robert James vs Walker, RG., USA-chJ 1957",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "b7b5", "a4b3", "c6a5", "e1h1", "a5b3", "a2b3", "d7d6", "d2d4", "f7f6", "f3h4", "g8e7", "b1c3", "c8e6", "c1e3", "g7g5", "d1f3", "f8g7", "d4e5", "d6e5", "h4f5", "e6f5", "e4f5", "e8h8", "a1d1", "d8c8", "e3c5", "e7f5", "c5f8", "g7f8", "c3d5", "g8g7", "g2g4"]
+  },
+  {
+    id: "fischer-098",
+    white: "Ramirez, Gilbert",
+    black: "Fischer, Robert James",
+    result: "1/2-1/2",
+    year: 1957,
+    event: "USA-chJ",
+    site: "?",
+    eco: "E67",
+    opening: "",
+    label: "Ramirez, Gilbert vs Fischer, Robert James, USA-chJ 1957",
+    moves: ["g1f3", "g8f6", "g2g3", "g7g6", "f1g2", "f8g7", "e1h1", "e8h8", "c2c4", "d7d6", "b1c3", "e7e5", "d2d4", "b8d7", "h2h3", "f8e8", "d1c2", "e5d4", "f3d4", "d7b6", "b2b3", "c7c5", "d4b5", "a7a6", "b5a3", "c8f5", "c2d2", "d6d5", "g3g4", "f5g4", "h3g4", "f6g4", "g2h3", "d8h4", "g1g2", "d5d4", "d2g5", "h4g5", "c1g5", "f7f5", "h3g4", "f5g4", "c3d5", "b6d5", "c4d5", "d4d3", "e2d3", "g7a1", "f1a1", "e8e5"]
+  },
+  {
+    id: "fischer-099",
+    white: "Fischer, Robert James",
+    black: "Haines, W.",
+    result: "1-0",
+    year: 1957,
+    event: "USA-chJ",
+    site: "?",
+    eco: "C97",
+    opening: "",
+    label: "Fischer, Robert James vs Haines, W., USA-chJ 1957",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "f8e7", "f1e1", "b7b5", "a4b3", "d7d6", "c2c3", "e8h8", "h2h3", "c6a5", "b3c2", "c7c5", "d2d4", "d8c7", "b1d2", "c8d7", "d2f1", "f8e8", "f1e3", "c5d4", "c3d4", "a5c4", "e3c4", "b5c4", "c1d2", "a8d8", "d2c3", "e7f8", "d1d2", "g7g6", "c3a5", "c7b8", "a5d8", "b8d8", "b2b3", "c4b3", "c2b3", "d8b6", "a1b1", "b6d8", "b3c4", "f6e4", "e1e4", "d7f5", "e4e1", "f5b1", "e1b1", "e5e4", "f3h2", "d8h4", "b1b7", "f8h6", "d2e2", "e8f8", "h2g4", "h4g5", "e2e3", "g5g4", "h3g4", "h6e3", "f2e3", "h7h6", "b7d7", "g8h7", "d7d6", "f8c8", "c4b3"]
+  },
+  {
+    id: "fischer-100",
+    white: "Hill, L.",
+    black: "Fischer, Robert James",
+    result: "0-1",
+    year: 1957,
+    event: "USA-chJ",
+    site: "?",
+    eco: "B92",
+    opening: "",
+    label: "Hill, L. vs Fischer, Robert James, USA-chJ 1957",
+    moves: ["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "f1e2", "e7e5", "d4b3", "f8e7", "e1h1", "e8h8", "c1e3", "c8e6", "f2f3", "b8d7", "d1d2", "d7b6", "f1d1", "d8c7", "d2e1", "d6d5", "e4d5", "f6d5", "c3d5", "b6d5", "e3f2", "c7c2", "e1d2", "a8c8", "a1c1", "c2d2", "d1d2", "e7g5", "c1c8", "f8c8", "d2d1", "c8c2"]
+  },
+  // ─── CAPABLANCA ──────────────────────────────────────────────────
+  {
+    id: "capablanca-001",
+    white: "Capablanca, Jose Raul",
+    black: "Corzo y Prinzipe, Juan",
+    result: "0-1",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "C47",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Corzo y Prinzipe, Juan, Havana m 1901",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4", "g8f6", "b1c3", "f8b4", "d4c6", "b7c6", "d1d3", "e8h8", "c1d2", "b4c3", "d2c3", "f6e4", "d3e4", "f8e8", "c3e5", "f7f6", "e1a1", "f6e5", "f1d3", "d8g5", "c1b1", "g5h6", "c2c4", "c8b7", "e4f5", "d7d5", "g2g4", "b7c8", "f5h5", "h6h5", "g4h5", "c8g4", "d1c1", "e5e4", "d3f1", "d5d4", "h5h6", "g7g6", "h1g1", "g4h5", "b1c2", "e8f8", "g1g2", "f8f5", "c1e1", "a8f8", "e1e4", "h5f3", "c2d3", "f3e4", "d3e4", "f5f4"]
+  },
+  {
+    id: "capablanca-002",
+    white: "Corzo y Prinzipe, Juan",
+    black: "Capablanca, Jose Raul",
+    result: "1-0",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "C52",
+    opening: "",
+    label: "Corzo y Prinzipe, Juan vs Capablanca, Jose Raul, Havana m 1901",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4", "c5b4", "c2c3", "b4a5", "d2d4", "e5d4", "e1h1", "d7d6", "d1b3", "d8e7", "e4e5", "d6e5", "c1a3", "e7f6", "b1d2", "a5b6", "a1e1", "g8e7", "d2e4", "f6g6", "a3e7", "e8e7", "e4g5", "f7f6", "b3a3", "c6b4", "a3b4", "c7c5", "b4b3", "h7h6", "g5f7", "c8h3", "g2g3", "h3f1", "f7h8", "a8h8", "c4f1", "g6f7", "f3e5", "f6e5", "e1e5", "e7f8", "f1c4", "f7c7", "c3d4", "c5d4", "b3f3"]
+  },
+  {
+    id: "capablanca-003",
+    white: "Capablanca, Jose Raul",
+    black: "Corzo y Prinzipe, Juan",
+    result: "1/2-1/2",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "A80",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Corzo y Prinzipe, Juan, Havana m 1901",
+    moves: ["d2d4", "f7f5", "e2e3", "g8f6", "g1f3", "e7e6", "f1d3", "b7b6", "b2b3", "c8b7", "b1d2", "f8b4", "c1b2", "f6e4", "d3e4", "f5e4", "f3e5", "e8h8", "c2c3", "b4e7", "d1g4", "f8f5", "f2f3", "e4f3", "g2f3", "e7h4", "e1e2", "d8f6", "g4h3", "d7d6", "e5g4", "f6e7", "h1g1", "g8h8", "d4d5", "e6e5", "g4h6", "f5h5", "h6f5", "b7c8", "h3h4", "e7h4", "f5h4", "h5h4", "g1g2", "c8h3", "g2f2", "b8d7", "c3c4", "a7a5", "d2e4", "h7h6", "e4c3", "d7c5", "c3b5", "a8c8", "b2a3", "e5e4", "a3c5", "e4f3", "f2f3", "h3g4", "e2f2", "g4f3", "f2f3", "b6c5", "f3g3", "h4e4", "a1e1", "e4e7", "e3e4", "c8f8", "b5a7", "g7g5", "a7c6", "e7e8", "e4e5", "d6e5", "e1e5", "e8e5", "c6e5", "f8e8", "e5d7", "e8e7", "a2a4", "e7e3", "g3g4", "e3b3", "g4f5", "b3b4", "d7e5", "b4a4", "f5e6", "a4b4", "e6d7", "b4b7", "e5d3", "a5a4", "d7c8", "b7b1", "c8c7", "b1d1", "d3c5", "a4a3", "d5d6", "a3a2", "c5b3", "g5g4", "d6d7", "h6h5", "d7d8q", "d1d8", "c7d8", "h5h4", "c4c5", "g4g3", "h2g3", "h4g3", "c5c6", "g3g2", "c6c7"]
+  },
+  {
+    id: "capablanca-004",
+    white: "Corzo y Prinzipe, Juan",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "C49",
+    opening: "",
+    label: "Corzo y Prinzipe, Juan vs Capablanca, Jose Raul, Havana m 1901",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1b5", "f8b4", "e1h1", "e8h8", "d2d3", "d7d6", "c1g5", "c6e7", "c3e2", "e7g6", "c2c3", "b4a5", "e2g3", "h7h6", "g5f6", "d8f6", "g3h5", "f6e7", "h2h3", "c7c6", "b5c4", "c8e6", "f3d2", "e7g5", "c4e6", "f7e6", "d1g4", "g5g4", "h3g4", "a5c7", "d2f3", "a8e8", "g4g5", "h6g5", "f3g5", "g6f4", "h5f4", "e5f4", "f2f3", "e6e5", "a1d1", "c6c5", "g1f2", "c7d8", "g5h3", "b7b5", "f2e2", "d8b6", "f1h1", "f8f6", "h1h2", "f6h6", "d1h1", "e8e6", "h3f2", "h6h2", "h1h2", "e6h6", "h2h6", "g7h6", "f2h3", "g8g7", "c3c4", "b5c4", "d3c4", "g7g6", "e2f2", "b6a5", "f2e2", "g6h5", "h3f2", "h5g5", "a2a3", "h6h5", "f2d3", "g5h4", "b2b4", "a5b6", "d3b2", "h4g3", "e2f1", "h5h4", "b2a4", "c5b4", "a3b4", "h4h3", "g2h3", "g3f3", "c4c5", "d6c5", "a4c5", "f3g3", "c5d3", "b6d4", "b4b5", "g3h3", "f1e2", "h3g3", "d3e1", "g3g4", "e1f3", "d4c3", "e2f2", "c3d4", "f2e2", "g4g3", "f3e1", "d4a1", "e1f3", "a1c3", "f3g5", "f4f3", "g5f3", "g3f4", "e2f2", "f4e4", "f3g5", "e4d3", "f2f3", "d3c4", "g5e4", "c3d4", "e4d6", "c4c5", "d6c8", "c5b5", "f3e4", "a7a5", "c8d6", "b5b4"]
+  },
+  {
+    id: "capablanca-005",
+    white: "Capablanca, Jose Raul",
+    black: "Corzo y Prinzipe, Juan",
+    result: "1/2-1/2",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "D00",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Corzo y Prinzipe, Juan, Havana m 1901",
+    moves: ["d2d4", "d7d5", "e2e3", "g8f6", "f1d3", "c7c5", "b2b3", "b8c6", "c1b2", "e7e6", "g1f3", "d8b6", "b1d2", "c5c4", "d3e2", "c4b3", "a2b3", "f8d6", "e1h1", "e8h8", "c2c4", "d6b4", "e2d3", "c8d7", "d1c2", "a8c8", "f3e5", "b4d2", "c2d2", "b6b3", "c4c5", "f8d8", "d3c2", "f6e4", "d2c1", "b3b4", "f2f3", "c6e5", "b2a3", "b4d2", "f3e4", "d2c1", "a3c1", "e5c6", "e4d5", "e6d5", "c2a4", "a7a6", "c1d2", "c6b8", "f1b1", "d7a4", "a1a4", "d8d7", "a4b4", "c8c7", "b4b6", "b8c6", "g1f2", "f7f5", "h2h4", "d7f7", "f2f3", "f5f4", "d2c3", "f4e3", "f3e3", "c6e7", "c3a5", "e7f5", "e3d3", "f5h4", "b6a6", "c7c8", "a6a7", "h4g2", "b1b7", "g2f4", "d3e3", "c8e8", "e3f3", "f7b7", "a7b7", "f4e6", "a5c3", "e8c8", "b7d7", "c8d8", "d7e7", "e6g5", "f3g4", "g8f8", "e7b7", "g5e4", "c3b4", "d8c8", "c5c6"]
+  },
+  {
+    id: "capablanca-006",
+    white: "Corzo y Prinzipe, Juan",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "C25",
+    opening: "",
+    label: "Corzo y Prinzipe, Juan vs Capablanca, Jose Raul, Havana m 1901",
+    moves: ["e2e4", "e7e5", "b1c3", "b8c6", "f2f4", "e5f4", "g1f3", "g7g5", "h2h4", "g5g4", "f3g5", "h7h6", "g5f7", "e8f7", "d2d4", "d7d5", "e4d5", "d8e7", "f1e2", "f4f3", "g2f3", "g4f3", "e1h1", "e7h4", "e2f3", "g8f6", "f3h5", "f7e7", "d1e2", "e7d8", "f1f6", "h8g8", "f6g6", "g8g6", "h5g6", "h4g3", "e2g2", "g3e1", "g2f1"]
+  },
+  {
+    id: "capablanca-007",
+    white: "Capablanca, Jose Raul",
+    black: "Corzo y Prinzipe, Juan",
+    result: "1/2-1/2",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "A83",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Corzo y Prinzipe, Juan, Havana m 1901",
+    moves: ["d2d4", "f7f5", "e2e4", "f5e4", "b1c3", "g8f6", "c1g5", "c7c6", "g5f6", "e7f6", "c3e4", "d7d5", "e4g3", "f8d6", "f1d3", "c8e6", "d1e2", "e8d7", "e1a1", "g7g6", "h2h4", "f6f5", "h4h5", "f5f4", "d1e1", "f4g3", "e2e6", "d7c7", "f2g3", "b8d7", "h5g6", "h7g6", "h1h8", "d8g5", "e6e3", "g5e3", "e1e3", "a8h8", "g1h3", "d7f8", "c1d2", "h8g8", "h3g5", "c7d7", "d2e2", "g8g7", "e3f3", "f8e6", "g5e6", "d7e6", "g3g4", "d6e7", "f3e3", "e6d6", "g2g3"]
+  },
+  {
+    id: "capablanca-008",
+    white: "Corzo y Prinzipe, Juan",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "C25",
+    opening: "",
+    label: "Corzo y Prinzipe, Juan vs Capablanca, Jose Raul, Havana m 1901",
+    moves: ["e2e4", "e7e5", "b1c3", "b8c6", "f2f4", "e5f4", "g1f3", "g7g5", "h2h4", "g5g4", "f3g5", "h7h6", "g5f7", "e8f7", "d2d4", "d7d5", "e4d5", "d8e7", "e1f2", "g4g3", "f2g1", "c6d4", "d1d4", "e7c5", "c3e2", "c5b6", "d4b6", "a7b6", "e2d4", "f8c5", "c2c3", "a8a4", "f1e2", "c5d4", "c3d4", "a4d4", "b2b3", "g8f6", "c1b2", "d4d2", "e2h5", "f6h5", "b2h8", "f4f3", "g2f3", "h5f4", "h8e5", "d2g2", "g1f1", "g2f2", "f1e1", "f4d3"]
+  },
+  {
+    id: "capablanca-009",
+    white: "Capablanca, Jose Raul",
+    black: "Corzo y Prinzipe, Juan",
+    result: "1-0",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "A83",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Corzo y Prinzipe, Juan, Havana m 1901",
+    moves: ["d2d4", "f7f5", "e2e4", "f5e4", "b1c3", "g8f6", "c1g5", "c7c6", "g5f6", "e7f6", "c3e4", "d7d5", "e4g3", "d8e7", "d1e2", "e7e2", "f1e2", "f8d6", "g1f3", "e8h8", "e1h1", "c8g4", "h2h3", "g4f3", "e2f3", "d6g3", "f2g3", "b8d7", "f1e1", "a8e8", "g1f1", "f6f5", "e1e8", "f8e8", "a1e1", "e8e1", "f1e1", "d7f6", "e1d2", "f6e4", "d2e3", "e4d6", "f3e2", "g8f7", "e3f4", "f7f6", "h3h4", "g7g6", "g3g4", "h7h6", "g4g5", "h6g5", "h4g5", "f6e7", "g2g4", "f5g4", "e2d3", "d6f5", "f4g4", "f5d4", "d3g6", "c6c5", "g4h5", "d4e6", "h5h6", "e7f8", "g6f5", "e6g7", "f5c8", "b7b6", "g5g6", "d5d4", "b2b3", "f8g8", "a2a4", "g8f8", "c8g4", "g7e8", "h6h7", "e8g7", "h7h6", "g7e8", "g4e2", "e8g7", "e2c4", "g7e8", "h6g5", "f8e7", "g5f5", "e8g7", "f5e5", "g7h5", "c4e2", "h5g7", "e5d5", "g7e8", "d5c6", "e8g7", "c6b7", "e7d6", "b7a7", "d6c7", "a7a6", "g7e8", "e2f3", "e8g7", "f3d5", "g7e8", "d5f7", "e8g7", "a6b5", "g7f5", "a4a5", "f5d6", "b5a6", "b6a5", "g6g7"]
+  },
+  {
+    id: "capablanca-010",
+    white: "Corzo y Prinzipe, Juan",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "C42",
+    opening: "",
+    label: "Corzo y Prinzipe, Juan vs Capablanca, Jose Raul, Havana m 1901",
+    moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f3", "f6e4", "d2d4", "d6d5", "f1d3", "f8d6", "e1h1", "e8h8", "c2c4", "c7c6", "d3e4", "d5e4", "f3g5", "c8f5", "b1c3", "b8d7", "f1e1", "f8e8", "c4c5", "d6c7", "d1b3", "e8e7", "g5e4", "e7e6", "c1g5", "d8b8", "e4g3", "c7g3", "h2g3", "b7b5", "e1e6", "f5e6", "b3c2", "b5b4", "c3e4", "b4b3", "a2b3", "b8b3", "c2b3", "e6b3", "a1a6", "d7b8", "a6a3", "b3c2", "e4d6", "h7h6", "g5d8", "b8d7", "d8b6", "a7a6", "b2b4", "g7g6", "f2f3", "d7f6", "d6c4", "f6d5", "b6a5", "a8e8", "c4e5", "e8e6", "a3a2", "c2b3", "a2a1", "b3c2", "g1f2", "f7f6", "e5d7", "c2d3", "a1e1", "e6e1", "f2e1", "d3b5", "e1d2", "g8f7", "d7b6", "f7e6"]
+  },
+  {
+    id: "capablanca-011",
+    white: "Capablanca, Jose Raul",
+    black: "Corzo y Prinzipe, Juan",
+    result: "1-0",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "A06",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Corzo y Prinzipe, Juan, Havana m 1901",
+    moves: ["d2d4", "d7d5", "g1f3", "c7c5", "e2e3", "b8c6", "b2b3", "e7e6", "c1b2", "g8f6", "b1d2", "c5d4", "e3d4", "f8d6", "f1d3", "e8h8", "e1h1", "f6h5", "g2g3", "f7f5", "f3e5", "h5f6", "f2f4", "d6e5", "f4e5", "f6g4", "d1e2", "d8b6", "d2f3", "c8d7", "a2a3", "g8h8", "h2h3", "g4h6", "e2f2", "h6f7", "g1g2", "g7g5", "g3g4", "c6e7", "f2e3", "f8g8", "a1e1", "e7g6", "g4f5", "g6f4", "g2h2", "f4d3", "e3d3", "e6f5", "c2c4", "b6e6", "c4d5", "e6d5", "e5e6", "d7b5", "d3b5", "d5b5", "d4d5", "g8g7", "e6f7", "h7h6", "f3d4", "b5f1", "e1f1", "g7f7", "f1f5", "f7f5", "d4f5", "h8h7", "f5e7", "a8f8", "h2g2", "h6h5", "d5d6", "g5g4", "h3g4", "h5g4", "b2e5", "h7h6", "d6d7", "f8d8", "e7g8", "d8g8", "e5f6", "h6g6", "d7d8q", "g8d8", "f6d8", "b7b5", "g2f2", "g6f5", "f2e3", "f5e5", "e3d3", "e5d5", "d3c3", "g4g3", "d8h4", "g3g2", "h4f2", "a7a5", "b3b4", "d5e4", "f2b6", "e4d5", "c3d3", "d5c6", "b6g1", "c6d5", "g1h2", "d5c6", "d3d4", "a5a4", "d4e5", "c6b6", "e5d5", "b6a6", "d5c5"]
+  },
+  {
+    id: "capablanca-012",
+    white: "Corzo y Prinzipe, Juan",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "C67",
+    opening: "",
+    label: "Corzo y Prinzipe, Juan vs Capablanca, Jose Raul, Havana m 1901",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "g8f6", "e1h1", "f6e4", "d2d4", "e4d6", "b5c6", "b7c6", "c1g5", "f8e7", "g5e7", "d8e7", "f3e5", "e8h8", "f1e1", "f8e8", "e1e3", "e7f6", "b1c3", "d6f5", "c3e4", "f6e7", "e3e1", "d7d5", "e4c5", "e7d6", "c2c3", "f7f6", "d1h5", "g7g6", "e5g6", "e8e1", "a1e1", "f5g7", "g6e7", "d6e7", "h5h7", "g8h7", "e1e7", "c8f5", "e7c7", "h7g6", "f2f3", "g7e6", "c5e6", "f5e6", "c7c6", "a8e8", "c6c7", "a7a6", "c7c6", "e6d7", "c6a6", "d7b5", "a6b6", "e8e1", "g1f2", "e1e2", "f2g3", "b5c4", "b2b3", "c4d3", "a2a4", "e2c2", "a4a5", "c2c3", "a5a6", "c3c2", "a6a7", "c2a2", "b6b7", "d3f1", "g3f4", "f1g2", "b7b8", "a2a7"]
+  },
+  {
+    id: "capablanca-013",
+    white: "Capablanca, Jose Raul",
+    black: "Corzo y Prinzipe, Juan",
+    result: "0-1",
+    year: 1901,
+    event: "Havana m",
+    site: "Havana",
+    eco: "A80",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Corzo y Prinzipe, Juan, Havana m 1901",
+    moves: ["d2d4", "f7f5", "e2e3", "g8f6", "g1f3", "b7b6", "b2b3", "c8b7", "b1d2", "e7e6", "c1b2", "a7a5", "a2a3", "f8e7", "f1d3", "e8h8", "e1h1", "d7d5", "f3e5", "b8d7", "d2f3", "e7d6", "d1e2", "f6e4", "e5d7", "d8d7", "f3e5", "d6e5", "d4e5", "e4c5", "f2f4", "c5d3", "c2d3", "c7c5", "f1c1", "f8c8", "d3d4", "b7a6", "e2e1", "c5c4", "b3c4", "a6c4", "b2c3", "d7a4", "e1d2", "c8c6", "h2h3", "a8c8", "g1h2", "c4a6", "d2b2", "a6d3", "c3d2", "d3c2", "h2g3", "a4c4", "g3f2", "c4d3", "f2e1", "h7h5", "a3a4", "c2a4", "c1c6", "c8c6", "a1a3", "c6c2", "a3d3", "c2b2", "d3a3", "a4b3", "g2g3", "a5a4", "a3a1", "b6b5", "h3h4", "b3c2", "d2c1", "b2b3", "e1d2", "c2e4", "a1a3", "b3b1", "a3a2", "g8f7", "a2a3", "f7e8", "a3a2", "e8d7", "a2a3", "d7c6", "a3a2", "c6b6"]
+  },
+  {
+    id: "capablanca-014",
+    white: "Capablanca, Jose Raul",
+    black: "Raubitschek, Rudolf",
+    result: "1-0",
+    year: 1906,
+    event: "New York",
+    site: "New York",
+    eco: "C67",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Raubitschek, Rudolf, New York 1906",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "g8f6", "e1h1", "f6e4", "d2d4", "d7d5", "f3e5", "c8d7", "e5d7", "d8d7", "b1c3", "f7f5", "c3e4", "f5e4", "c2c4", "e8a8", "c1g5", "f8e7", "g5e7", "d7e7", "b5c6", "b7c6", "c4c5", "e7f6", "d1a4", "c8b8", "a1c1", "b8a8", "b2b4", "d8b8", "a2a3", "h8e8", "a4a6", "e8e6", "a3a4", "f6d4", "b4b5", "d4f6", "c1c2", "c6b5", "c5c6", "b5b4", "c2c5", "f6d4", "c5b5", "e6e8", "b5b7", "d4c5", "h2h3", "d5d4", "g1h2", "d4d3", "f1c1", "c5f2", "c1f1", "f2d4", "f1f5", "e4e3", "f5a5", "d4f4", "h2g1", "f4d4", "b7a7", "d4a7", "a6a7"]
+  },
+  {
+    id: "capablanca-015",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D33",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "c7c5", "c4d5", "e6d5", "g1f3", "b8c6", "g2g3", "c8e6", "f1g2", "g8f6", "c1g5", "h7h6", "g5f6", "d8f6", "e1h1", "c5d4", "c3b5", "a8c8", "f3d4", "c6d4", "b5d4", "f8c5", "d4e6", "f7e6", "d1a4", "e8f7", "a1c1", "h8f8", "e2e3", "f6e7", "c1c3", "c8c7", "f1c1", "f8c8", "a4g4", "e7f6", "a2a3", "c5d6", "c3c7", "c8c7", "c1c7", "d6c7", "g4b4", "c7b6", "a3a4", "f6e7", "b4f4", "e7f6", "f4b4", "f6e7", "b4f4", "e7f6", "f4b4", "f6e7", "b4f4", "e7f6"]
+  },
+  {
+    id: "capablanca-016",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1-0",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C63",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "f7f5", "b1c3", "g8f6", "d1e2", "c6d4", "f3d4", "e5d4", "e4f5", "f8e7", "c3e4", "e8h8", "e4f6", "e7f6", "e1h1", "d7d5", "b5d3", "c7c5", "e2h5", "d8c7", "c2c4", "d5c4", "d3c4", "g8h8", "d2d3", "c7e5", "g2g4", "c8d7", "a2a4", "f6e7", "c1d2", "e5e2", "a1e1", "e2d2", "e1e7", "d7e8", "f5f6", "d2h6", "h5h6", "g7h6", "f1e1", "e8a4", "e7b7", "a8e8", "e1e8", "f8e8", "b7a7", "a4d1", "h2h3", "h6h5", "g4g5", "h5h4", "f2f4", "d1h5", "f4f5", "e8f8", "a7c7", "f8b8", "c7c5"]
+  },
+  {
+    id: "capablanca-017",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D53",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5", "f8e7", "g1f3", "b8d7", "e2e3", "f6e4", "g5e7", "d8e7", "c4d5", "e4c3", "b2c3", "e6d5", "d1b3", "c7c6", "f1d3", "e8h8", "e1h1", "d7f6", "a1b1", "b7b6", "f3e5", "c6c5", "b3a3", "f8e8", "d3b5", "c5c4", "a3a4", "e8f8", "b5c6", "c8b7", "a4c2", "b7c6", "e5c6", "e7d6", "c6e5", "a7a6", "a2a4", "f8b8", "b1b4", "b6b5", "a4b5", "b8b5", "b4b5", "a6b5", "f1b1", "a8a5", "f2f3", "d6a6", "c2b2", "a6d6", "b2c2", "g7g6", "h2h3", "g8g7", "e3e4", "d6a6", "e5g4", "a5a2", "c2c1", "f6g4", "h3g4", "d5e4", "f3e4", "a2e2", "c1f4", "e2g2"]
+  },
+  {
+    id: "capablanca-018",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C66",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "d7d6", "d2d4", "c8d7", "b1c3", "g8f6", "e1h1", "f8e7", "f1e1", "c6d4", "f3d4", "e5d4", "d1d4", "d7b5", "c3b5", "e8h8", "c1g5", "h7h6", "g5h4", "f8e8", "c2c4", "f6d7", "h4e7", "e8e7", "a1d1", "e7e6", "f2f4", "a7a6", "b5c3", "d7f6", "c3d5", "f6d5", "e4d5", "e6e7"]
+  },
+  {
+    id: "capablanca-019",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D53",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5", "f8e7", "e2e3", "f6e4", "g5e7", "d8e7", "f1d3", "e4c3", "b2c3", "b8d7", "g1f3", "e8h8", "d1c2", "h7h6", "e1h1", "c7c5", "f1e1", "d5c4", "d3c4", "b7b6", "c2e4", "a8b8", "c4d3", "d7f6", "e4f4", "c8b7", "e3e4", "f8d8", "a1d1", "b8c8", "e1e3", "c5d4", "c3d4", "c8c3", "d3b1", "g7g5", "f3g5", "c3e3", "f4e3", "f6g4", "e3g3", "e7g5", "h2h4", "g5g7", "g3c7", "d8d4", "c7b8", "g8h7", "e4e5", "b7e4", "d1d4", "e4b1", "b8a7", "g4e5", "d4f4", "b1e4", "g2g3", "e5f3", "g1g2", "f7f5", "a7b6", "f3h4", "g2h2", "h4f3", "f4f3", "e4f3", "b6e6", "f3e4", "f2f3", "e4d3", "e6d5", "g7b2", "h2g1", "d3b1", "a2a4", "b2a1", "d5b7", "h7g6", "b7b6", "g6h5", "g1h2", "b1a2", "b6b5", "h5g6", "a4a5", "a1d4", "b5c6", "d4f6", "c6e8", "f6f7", "e8a4", "f7e6", "a5a6", "e6e2", "h2h3", "a2d5", "a6a7", "d5f3"]
+  },
+  {
+    id: "capablanca-020",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1-0",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C62",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "d7d6", "c2c3", "c8g4", "d2d3", "f8e7", "b1d2", "g8f6", "e1h1", "e8h8", "f1e1", "h7h6", "d2f1", "f6h7", "f1e3", "g4h5", "g2g4", "h5g6", "e3f5", "h6h5", "h2h3", "h5g4", "h3g4", "e7g5", "f3g5", "h7g5", "g1g2", "d6d5", "d1e2", "f8e8", "e1h1", "e8e6", "e2e3", "f7f6", "b5a4", "c6e7", "a4b3", "c7c6", "e3g3", "a7a5", "a2a4", "g5f7", "c1e3", "b7b6", "h1h4", "g8f8", "a1h1", "e7g8", "g3f3", "g6f5", "g4f5", "e6d6", "f3h5", "a8a7", "h5g6", "f7h6", "h4h6", "g7h6", "e3h6", "f8e7", "g6h7", "e7e8", "h7g8", "e8d7", "g8h7", "d8e7", "h6f8", "e7h7", "h1h7", "d7c8", "h7a7"]
+  },
+  {
+    id: "capablanca-021",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1-0",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D53",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5", "f8e7", "e2e3", "f6e4", "g5e7", "d8e7", "f1d3", "e4c3", "b2c3", "b8d7", "g1f3", "e8h8", "c4d5", "e6d5", "d1b3", "d7f6", "a2a4", "c7c5", "b3a3", "b7b6", "a4a5", "c8b7", "e1h1", "e7c7", "f1b1", "f6d7", "d3f5", "f8c8", "f5d7", "c7d7", "a5a6", "b7c6", "d4c5", "b6c5", "a3c5", "a8b8", "b1b8", "c8b8", "f3e5", "d7f5", "f2f4", "b8b6", "c5b6"]
+  },
+  {
+    id: "capablanca-022",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1-0",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C62",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "d7d6", "e1h1", "a7a6", "b5c6", "b7c6", "d2d4", "e5d4", "f3d4", "c8d7", "f1e1", "c6c5", "d4f3", "f8e7", "b1c3", "c7c6", "c1f4", "d7e6", "d1d3", "g8f6", "a1d1", "d6d5", "f3g5", "d5d4", "g5e6", "f7e6", "c3a4", "d8a5", "b2b3", "a8d8", "a4b2", "f6h5", "f4e5", "e8h8", "b2c4", "a5b4", "d3h3", "g7g6", "h3e6", "f8f7", "g2g4", "e7h4", "g4h5", "h4f2", "g1h1", "b4c3", "e1e3", "c3c2", "e3d3", "c2e2", "c4d6", "d8d6", "e5d6", "f2e1", "e6e8", "g8g7", "h5h6"]
+  },
+  {
+    id: "capablanca-023",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D53",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5", "f8e7", "e2e3", "f6e4", "g5e7", "d8e7", "c4d5", "e4c3", "b2c3", "e6d5", "d1b3", "c7c6", "g1f3", "e8h8", "f1d3", "f8d8", "a2a4", "e7c7", "e1h1", "c6c5", "c3c4", "d5c4", "b3c4", "c8e6", "c4c2", "h7h6", "f3e5", "b8d7", "e5d7", "d8d7", "d4c5", "d7d5", "f1c1", "a8c8", "d3e4", "d5c5", "c2c5", "c7c5", "c1c5", "c8c5", "e4b7", "a7a5", "h2h3", "e6d7", "b7a6", "g7g5", "g1h2", "g8g7", "g2g4", "d7c6", "a6d3", "h6h5", "g4h5", "g7h6", "h2g3", "h6h5", "d3e2", "h5g6", "a1a2", "g6f6", "e2d1", "c5d5", "d1f3", "d5c5", "f3c6", "c5c6", "a2d2", "f6e6", "g3g4", "c6c5", "d2d4", "c5c2", "g4g5", "c2f2", "d4e4", "e6d5", "e4f4", "f2g2", "g5f6", "g2g3", "e3e4", "d5d4", "e4e5", "d4d5", "f4f5", "d5e4", "f5h5", "g3f3", "f6e7", "f3f4", "h5g5", "e4d4", "g5h5", "d4c3", "h5h7", "f4f5", "e7d6", "c3b3", "h7h4", "f5f3", "d6e7", "f3e3", "e7f7", "e3e5", "h4g4", "e5c5", "g4f4", "c5c7", "f7g6", "c7b7", "h3h4", "b7b4", "g6g5", "b3a4", "h4h5", "a4a3", "h5h6", "b4b8", "h6h7", "a5a4", "f4h4", "b8h8", "g5g6", "a3b3", "g6g7", "h8h7", "g7h7", "a4a3"]
+  },
+  {
+    id: "capablanca-024",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C63",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "f7f5", "b1c3", "g8f6", "d1e2", "c6d4", "f3d4", "e5d4", "e4f5", "f8e7", "c3e4", "e8h8", "e4f6", "e7f6", "e1h1", "d7d5", "e2h5", "c7c5", "b5e2", "f8e8", "e2g4", "d4d3", "c2d3", "b7b6", "a1b1", "c8a6", "h5h3", "f6d4", "b2b3", "d8f6", "c1a3", "e8e7", "b3b4", "a8e8", "h3f3", "f6e5", "b4c5", "b6c5", "g2g3", "e7f7", "b1c1", "c5c4", "f3d1", "g7g6", "d3c4", "d5c4", "f1e1", "e5e1", "d1e1", "e8e1", "c1e1", "h7h5", "e1e6", "h5g4", "e6a6", "d4b6", "f5f6", "f7d7", "a3b4", "d7d5", "b4c3", "d5f5", "h2h3", "b6f2", "g1g2", "f2b6", "h3g4", "f5f2", "g2h3", "g6g5", "c3a5", "g8f7", "a5b6", "a7b6", "a6a7", "f7f6", "a7d7", "b6b5", "d7d6", "f6e7", "d6d5", "b5b4", "d5g5", "f2d2", "g5b5", "d2b2", "b5c5", "c4c3", "a2a3", "b4a3", "c5c3", "a3a2", "c3a3", "e7f6"]
+  },
+  {
+    id: "capablanca-025",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D53",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5", "f8e7", "e2e3", "f6e4", "g5e7", "d8e7", "f1d3", "e4c3", "b2c3", "d5c4", "d3c4", "b7b6", "d1f3", "c7c6", "g1e2", "c8b7", "e1h1", "e8h8", "a2a4", "c6c5", "f3g3", "b8c6", "e2f4", "a8c8", "c4a2", "f8d8", "f1e1", "c6a5", "a1d1", "b7c6", "g3g4", "c5c4", "d4d5", "c6a4", "d1d2", "e6e5", "f4h5", "g7g6", "d5d6", "e7e6", "g4g5", "g8h8", "h5f6", "d8d6", "d2d6", "e6d6", "a2b1", "a5c6", "b1f5", "c8d8", "h2h4", "c6e7", "f6e4", "d6c7", "g5f6", "h8g8", "f5e6", "f7e6", "f6e6", "g8f8", "e4g5", "e7g8", "f2f4", "d8e8", "f4e5", "e8e7", "e1f1", "f8g7", "h4h5", "a4e8", "h5h6", "g7h8", "e6d6", "c7c5", "d6d4", "e7e5", "d4d7", "e5e7", "f1f7", "e8d7"]
+  },
+  {
+    id: "capablanca-026",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1-0",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C63",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "f7f5", "b1c3", "g8f6", "e4f5", "e5e4", "f3h4", "d7d5", "d2d3", "f8e7", "d3e4", "d5e4", "d1d8", "e7d8", "c1g5", "e8h8", "e1a1", "c6e5", "h2h3", "a7a6", "b5a4", "c7c5", "g5f4", "f6d7", "a4d7", "e5d7", "f4g3", "d8h4", "g3h4", "f8f5", "h1e1", "d7f8", "c3e4", "c8e6", "h4e7", "f5d5", "e4c5", "d5d1", "e1d1", "e6f5", "e7f8", "a8f8", "d1d2", "f5c8", "f2f3", "h7h6", "b2b3", "g8h7", "c1b2", "f8f7", "a2a4", "f7c7", "c5e4", "c8f5", "e4d6", "f5g6", "a4a5", "h6h5", "c2c4", "c7e7", "b2c3", "h7h6", "h3h4", "g6h7", "d2d5", "e7e3", "c3b4", "e3e2", "d6f7", "h6g6", "f7g5", "h7g8", "d5d6", "g6f5", "d6d8", "g8c4", "b4c4", "e2g2", "d8f8", "f5e5", "f3f4", "e5d6", "f8d8", "d6c6", "g5f3", "g2c2", "c4b4", "c2f2", "f3e5", "c6c7", "d8d7", "c7c8", "d7f7", "f2h2", "e5g6", "h2e2", "f7g7", "b7b6", "a5b6", "a6a5", "b4b5", "a5a4", "g6e5", "a4b3", "b6b7"]
+  },
+  {
+    id: "capablanca-027",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D53",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5", "f8e7", "e2e3", "f6e4", "g5e7", "d8e7", "c4d5", "e4c3", "b2c3", "e6d5", "d1b3", "c7c6", "f1d3", "e8h8", "g1f3", "b8d7", "a2a4", "f8d8", "e1h1", "d7f8", "f1b1", "a8b8", "a4a5", "c8e6", "a1a4", "c6c5", "b3a3", "e6d7", "d3b5", "d7f5", "b1b2", "a7a6", "b5e2", "f5d7", "f3e5", "d7a4", "a3a4", "c5c4", "h2h3", "f8d7", "e5d7", "e7d7", "a4a2", "d7c7", "e2f3", "d8d6", "e3e4", "d5e4", "f3e4", "b7b5", "a5b6", "d6b6", "b2b6", "b8b6", "e4d5", "b6b3", "g2g3", "g7g6", "a2a6", "b3c3", "g1g2", "g8g7", "a6b5", "c7e7", "b5b2", "c3d3", "b2c2", "d3d4", "d5c4", "e7b7", "g2g1", "b7c6", "c4b3", "c6c2", "b3c2", "f7f5", "g1g2", "g7f6", "h3h4", "f6e5", "f2f4", "e5d5", "g2h3", "d4d2", "c2b3", "d5e4", "h4h5", "g6h5", "h3h4", "h7h6", "h4h3", "h5h4"]
+  },
+  {
+    id: "capablanca-028",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C74",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "d7d6", "c2c3", "f7f5", "e4f5", "c8f5", "d2d4", "e5e4", "d1e2", "f8e7", "f3d2", "g8f6", "h2h3", "d6d5", "d2f1", "b7b5", "a4c2", "c6a5", "f1e3", "f5g6", "b1d2", "e8h8", "b2b4", "a5c4", "d2c4", "d5c4", "a2a4", "f6d5", "e3d5", "d8d5", "a4b5", "e4e3", "e1h1", "f8f2", "f1f2", "e3f2", "e2f2", "a8f8", "f2e2", "g6c2", "e2c2", "a6b5", "c1e3", "e7d6", "e3f2", "d5g5", "c2e4", "h7h6", "a1e1", "f8f2", "g1f2", "d6g3", "f2g1", "g3e1", "e4e1"]
+  },
+  {
+    id: "capablanca-029",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D53",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5", "f8e7", "e2e3", "f6e4", "g5e7", "d8e7", "d1b3", "e4c3", "b2c3", "d5c4", "f1c4", "e8h8", "g1f3", "b8d7", "e1h1", "b7b6", "a1e1", "c8b7", "e3e4", "f8d8", "e1e3", "a8c8", "h2h3", "g8f8", "a2a4", "d7f6", "f1e1", "c7c5", "d4d5", "e6d5", "c4d5", "b7d5", "e4d5", "c5c4", "b3b1", "e7c5", "f3g5", "f8g8", "e3e7", "c8c7", "d5d6", "c7e7", "d6e7", "d8e8", "g5e4", "f6e4", "b1e4", "c5c7", "e1d1", "g7g6", "d1d8", "e8d8", "e7d8q", "c7d8", "e4c4"]
+  },
+  {
+    id: "capablanca-030",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C49",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1b5", "f8b4", "e1h1", "e8h8", "d2d3", "b4c3", "b2c3", "d7d6", "f1e1", "c6e7", "d3d4", "c7c6", "d4e5", "d6e5", "c1a3", "c6b5", "d1d8", "f8d8", "a3e7", "d8e8", "e7d6", "f6d7", "e1d1", "f7f6", "a1b1", "a7a6", "f3d2", "d7b6", "c3c4", "b6a4", "d1e1", "e8d8", "c4c5", "a4c5", "d6c5", "d8d2", "b1b2", "c8e6", "c5e3", "d2d7", "f2f3", "a8c8", "e1c1", "c8c3", "g1f2", "d7c7", "e3d2", "c3a3", "c1a1", "c7c4", "d2b4", "a3a4", "b4d2", "f6f5", "e4f5", "e6f5", "c2c3", "e5e4", "f3e4", "f5e4", "a2a3", "e4c6", "b2b4", "c4c5", "b4a4", "b5a4", "a1b1", "c5f5", "f2g1", "f5d5", "b1b2", "d5d3", "g1f2", "c6d5", "d2e1", "g8f7", "b2d2", "d3d2", "e1d2", "f7e6", "g2g3", "d5a2", "d2f4", "e6d5", "f2e3", "d5c4", "e3d2", "c4b3", "f4d6", "a2b1", "h2h4", "b1f5", "d6f8", "b7b5", "f8d6", "a6a5", "d6f8", "g7g6", "f8e7", "b5b4", "c3b4", "b3a3", "b4a5", "a3b3", "a5a6", "b3c4"]
+  },
+  {
+    id: "capablanca-031",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C49",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["e2e4", "e7e5", "b1c3", "b8c6", "g1f3", "g8f6", "f1b5", "f8b4", "e1h1", "e8h8", "d2d3", "d7d6", "c1g5", "b4c3", "b2c3", "c6e7", "f3h4", "c7c6", "b5a4", "f6e8", "a4b3", "c8e6", "b3e6", "f7e6", "d1g4", "d8d7", "f2f4", "e5f4", "f1f4", "f8f4", "g4f4", "e8f6", "g5f6", "a8f8", "f4e3", "f8f6", "e3a7", "g7g5", "h4f3", "g5g4", "a7d4", "f6f7", "f3e5", "c6c5", "e5d7", "c5d4", "a1f1", "f7f1", "g1f1", "d4c3", "d7f6", "g8f7", "f6g4", "e7c6", "g4e3", "b7b5", "a2a3", "b5b4", "a3b4", "c6b4", "f1e2", "d6d5", "e4d5", "e6d5", "d3d4", "f7f6", "g2g3", "h7h5", "h2h3", "f6g5", "h3h4", "g5f6", "e2f3", "f6e6", "g3g4", "h5g4", "f3g4", "b4c6", "e3f5", "c6b4", "h4h5", "e6f7", "f5e3", "b4c6", "h5h6", "f7g6", "e3d5", "c6d4", "d5e3", "d4c2"]
+  },
+  {
+    id: "capablanca-032",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C49",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1b5", "f8b4", "e1h1", "e8h8", "d2d3", "b4c3", "b2c3", "d7d6", "c1g5", "c8g4", "h2h3", "g4h5", "g1h2", "h7h6", "g5e3", "d6d5", "g2g4", "d5e4", "b5c6", "b7c6", "d3e4", "h5g6", "d1d8", "f8d8", "f3e5", "g6e4", "f2f3", "e4c2", "e5c6", "d8d3", "e3d4", "d3d2", "f1f2", "d2f2", "d4f2", "a7a6", "f2g3", "a8e8", "a1e1", "e8e1", "g3e1"]
+  },
+  {
+    id: "capablanca-033",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D00",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "e2e3", "g8f6", "f1d3", "e7e6", "b1d2", "c7c5", "c2c3", "b8c6", "f2f4", "d8c7", "d2f3", "f6e4", "f3e5", "c5d4", "d3e4", "c6e5", "f4e5", "d5e4", "e3d4", "f7f5", "e5f6", "g7f6", "d1h5", "c7f7", "h5b5", "f7d7", "b5h5", "d7f7"]
+  },
+  {
+    id: "capablanca-034",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C42",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f3", "f6e4", "d2d4", "d6d5", "f1d3", "f8d6", "e1h1", "e8h8", "c2c4", "c7c6", "b1c3", "e4c3", "b2c3", "c8g4", "h2h3", "g4h5", "c4d5", "c6d5", "d1b3", "h5f3", "b3b7", "b8d7", "g2f3", "d7b6", "a1b1", "d8f6", "g1g2", "a8c8", "b7a7", "c8c3", "b1b6", "c3d3", "c1e3", "f6g6", "g2h1", "g6e6", "h1g2", "e6g6", "g2h1", "g6e6", "h1g2", "e6g6", "g2h1", "g6e6"]
+  },
+  {
+    id: "capablanca-035",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D53",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5", "f8e7", "e2e3", "f6e4", "g5e7", "d8e7", "c4d5", "e4c3", "b2c3", "e6d5", "d1b3", "c7c6", "g1f3", "e8h8", "f1d3", "b8d7", "e1h1", "f8d8", "a1b1", "d7f8", "f1e1", "e7c7", "e3e4", "d5e4", "d3e4", "a8b8", "b3a3", "a7a6", "e1e3", "c8e6", "h2h3", "e6d5", "e4d5", "d8d5", "e3e7", "d5d7", "e7d7", "c7d7", "f3e5", "d7c7", "a3c5", "f8g6", "e5g6", "h7g6", "b1e1", "b7b6", "c5e7", "c7e7", "e1e7", "c6c5", "d4c5", "b6c5", "e7a7", "b8b1", "g1h2", "b1c1", "a7a6", "c1c3", "a2a4", "c3a3", "a6a8", "g8h7", "a8a7", "f7f6", "a4a5", "c5c4", "a5a6", "c4c3", "a7c7", "a3a6", "c7c3"]
+  },
+  {
+    id: "capablanca-036",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1/2-1/2",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "C42",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, USA m 1909",
+    moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f3", "f6e4", "d2d4", "d6d5", "f1d3", "f8d6", "e1h1", "e8h8", "f1e1", "e4f6", "c1g5", "c8g4", "b1d2", "b8d7", "c2c3", "h7h6", "g5h4", "c7c5", "d1c2", "d8b6", "h2h3", "g4f3", "d2f3", "f8e8", "d3f5", "b6c7", "d4c5", "d6c5", "c2d3", "g7g5", "f5d7", "f6d7", "h4g5", "h6g5", "d3d5", "c7c6", "d5g5", "c6g6", "g5d5", "g6c6", "d5g5", "c6g6", "g5d5"]
+  },
+  {
+    id: "capablanca-037",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1909,
+    event: "USA m",
+    site: "New York",
+    eco: "D34",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, USA m 1909",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "c7c5", "c4d5", "e6d5", "g1f3", "b8c6", "g2g3", "c8e6", "f1g2", "f8e7", "e1h1", "g8f6", "c1g5", "f6e4", "g5e7", "d8e7", "f3e5", "c6d4", "c3e4", "d5e4", "e2e3", "d4f3", "e5f3", "e4f3", "d1f3", "e8h8", "f1c1", "a8b8", "f3e4", "e7c7", "c1c3", "b7b5", "a2a3", "c5c4", "g2f3", "f8d8", "a1d1", "d8d1", "f3d1", "b8d8", "d1f3", "g7g6", "e4c6", "c7e5", "c6e4", "e5e4", "f3e4", "d8d1", "g1g2", "a7a5", "c3c2", "b5b4", "a3b4", "a5b4", "e4f3", "d1b1", "f3e2", "b4b3", "c2d2", "b1c1", "e2d1", "c4c3", "b2c3", "b3b2", "d2b2", "c1d1", "b2c2", "e6f5", "c2b2", "d1c1", "b2b3", "f5e4", "g2h3", "c1c2", "f2f4", "h7h5", "g3g4", "h5g4", "h3g4", "c2h2", "b3b4", "f7f5", "g4g3", "h2e2", "b4c4", "e2e3", "g3h4", "g8g7", "c4c7", "g7f6", "c7d7", "e4g2", "d7d6", "f6g7"]
+  },
+  {
+    id: "capablanca-038",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "1-0",
+    year: 1910,
+    event: "New York",
+    site: "New York",
+    eco: "C42",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, New York 1910",
+    moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f3", "f6e4", "d2d4", "d6d5", "f1d3", "c8g4", "e1h1", "b8c6", "f1e1", "f7f5", "c2c4", "f8d6", "c4d5", "g4f3", "d1f3", "c6d4", "f3e3", "d8f6", "d3e4", "f5e4", "e3e4", "e8f7", "c1g5", "f6g5", "e4d4", "h8e8", "b1c3", "f7g8", "c3e4", "g5h6", "g2g3", "a8d8", "d4a7", "d6b4", "e1e3", "b7b6", "a7c7", "d8c8", "c7d7", "h6g6", "d5d6", "c8d8", "d7c7", "d8c8", "d6d7", "c8c7", "d7e8q", "g6e8", "e4f6", "g7f6", "e3e8", "g8f7", "e8e2", "c7c4", "a1d1", "b4c5", "g1g2", "f7g6", "f2f4", "h7h5", "g2f3", "f6f5", "e2e6", "g6f7", "e6e5", "c4c2", "e5f5", "f7g6", "f5g5", "g6h6", "d1d7", "c2b2", "d7g7", "b2f2", "f3e4", "h5h4", "g5g6", "h6h5", "g3g4"]
+  },
+  {
+    id: "capablanca-039",
+    white: "Capablanca, Jose Raul",
+    black: "Jaffe, Charles",
+    result: "1-0",
+    year: 1910,
+    event: "New York",
+    site: "New York",
+    eco: "D46",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Jaffe, Charles, New York 1910",
+    moves: ["d2d4", "d7d5", "g1f3", "g8f6", "e2e3", "c7c6", "c2c4", "e7e6", "b1c3", "b8d7", "f1d3", "f8d6", "e1h1", "e8h8", "e3e4", "d5e4", "c3e4", "f6e4", "d3e4", "d7f6", "e4c2", "h7h6", "b2b3", "b7b6", "c1b2", "c8b7", "d1d3", "g7g6", "a1e1", "f6h5", "b2c1", "g8g7", "e1e6", "h5f6", "f3e5", "c6c5", "c1h6", "g7h6", "e5f7"]
+  },
+  {
+    id: "capablanca-040",
+    white: "Capablanca, Jose Raul",
+    black: "Munoz Ximenez, R.",
+    result: "1-0",
+    year: 1911,
+    event: "Montevideo sim",
+    site: "Montevideo",
+    eco: "C28",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Munoz Ximenez, R., Montevideo sim 1911",
+    moves: ["e2e4", "e7e5", "b1c3", "b8c6", "f1c4", "g8f6", "d2d3", "f8b4", "c1g5", "c6d4", "a2a3", "b4c3", "b2c3", "d4e6", "c4e6", "f7e6", "f2f4", "h7h6", "g5f6", "d8f6", "d1h5", "g7g6", "h5e5", "f6e5", "f4e5", "b7b6", "g1e2", "h8f8", "h1f1", "f8f1", "e1f1", "e8f7", "f1f2", "d7d5", "f2e3", "d5e4", "a1f1", "f7g7", "d3d4", "c8a6", "f1f6", "a6e2", "e3e2", "a8e8", "e2e3", "b6b5", "e3e4", "c7c6", "g2g4", "g6g5", "e4f3", "e8f8", "f6f8", "g7f8", "f3e2", "f8e7", "e2d3", "e7d7", "c3c4", "a7a6", "c4b5", "a6b5", "c2c4", "d7c7", "d3c3", "c7b6", "c3b4", "b5c4", "b4c4"]
+  },
+  {
+    id: "capablanca-041",
+    white: "Capablanca, Jose Raul",
+    black: "Rivas Costa, Santiago",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "Montevideo sim",
+    site: "Montevideo",
+    eco: "A83",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Rivas Costa, Santiago, Montevideo sim 1911",
+    moves: ["d2d4", "f7f5", "e2e4", "f5e4", "b1c3", "g8f6", "c1g5", "e7e6", "f2f3", "e4e3", "d1d3", "f8b4", "d3e3", "d7d5", "f1d3", "c7c5", "g1e2", "c5c4", "d3f5", "d8e7", "f5h3", "b8c6", "e2f4", "e6e5", "g5f6", "e5f4", "e3e7", "c6e7", "h3c8", "a8c8", "f6e7", "b4c3", "b2c3", "e8e7", "e1d2", "e7d6", "a1b1", "d6c6", "h1e1", "h8e8", "g2g3", "g7g5", "h2h4", "h7h6", "g3f4", "g5f4", "e1g1", "e8g8", "b1e1", "c6d6", "g1g4", "c8f8", "e1g1", "g8g4", "g1g4", "f8f6", "g4g7", "d6c6", "h4h5", "a7a6", "g7g6", "f6d6", "d2e2", "b7b5", "e2f2", "c6d7", "g6g7", "d7e6", "f2g2", "e6f5", "g2h3", "d6f6", "h3h4", "f5e6", "g7a7", "e6f5", "a7e7", "f6e6", "e7e6", "f5e6", "h4g4", "e6f6", "g4f4", "a6a5", "a2a3", "f6e6", "f4g4", "e6f6", "f3f4", "f6e6", "f4f5", "e6f7", "g4f3", "f7e7"]
+  },
+  {
+    id: "capablanca-042",
+    white: "Berasain, Jose",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "Montevideo sim",
+    site: "Montevideo",
+    eco: "C84",
+    opening: "",
+    label: "Berasain, Jose vs Capablanca, Jose Raul, Montevideo sim 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "d2d4", "e5d4", "e1h1", "b7b5", "a4b3", "f8e7", "e4e5", "f6e4", "b3d5", "e4c5", "f3d4", "c8b7", "d4f5", "e8h8", "d1g4", "g7g6", "d5c6", "d7c6", "c1h6", "f8e8", "f5g7", "e8f8", "g7f5", "f8e8", "f5g7", "e8f8"]
+  },
+  {
+    id: "capablanca-043",
+    white: "Capablanca, Jose Raul",
+    black: "Morris, WR.",
+    result: "1-0",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "B40",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Morris, WR., New York 1911",
+    moves: ["e2e4", "c7c5", "g1f3", "e7e6", "b1c3", "d7d5", "e4d5", "e6d5", "d2d4", "g8f6", "c1g5", "c8e6", "g5f6", "g7f6", "d4c5", "f8c5", "f1b5", "b8c6", "e1h1", "e8h8", "d1d3", "d8d6", "b5c6", "b7c6", "c3a4", "c5b6", "a4b6", "a7b6", "f1e1", "c6c5", "e1e3", "d6f4", "c2c3", "f8d8", "a2a3", "e6f5", "d3b5", "f4d6", "a1d1", "a8c8", "b5a4", "c5c4", "d1d4", "b6b5", "a4d1", "g8h8", "d4h4", "d8g8", "f3d4", "d6d7", "e3e7", "d7e7", "d4f5"]
+  },
+  {
+    id: "capablanca-044",
+    white: "Jaffe, Charles",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "D13",
+    opening: "",
+    label: "Jaffe, Charles vs Capablanca, Jose Raul, New York 1911",
+    moves: ["d2d4", "d7d5", "g1f3", "c7c5", "c2c3", "c5d4", "c3d4", "b8c6", "b1c3", "g8f6", "f3e5", "e7e6", "c1g5", "d8b6", "e5c6", "b7c6", "a1b1", "f8b4", "g5f6", "g7f6", "e2e3", "b6a5", "d1d2", "a8b8", "f1d3", "b4c3", "b2c3", "b8b1", "d3b1", "c8a6", "d2b2", "e8d7", "e1d2", "a5b6", "b2b6", "a7b6", "e3e4", "h8a8", "e4d5", "c6d5", "b1c2", "a6c4", "a2a4", "h7h5", "h1b1", "d7c6", "b1b4", "a8g8", "g2g3", "h5h4", "c2e4", "c6c7", "e4f3", "g8h8", "b4b2", "h4g3", "h2g3", "h8a8", "b2b4", "a8h8", "d2e3", "e6e5", "b4b1", "h8a8", "f3d1", "a8e8", "d1f3", "e8a8", "b1b4", "a8h8", "f3e4", "h8h2", "e4f3", "h2h8", "b4b1", "h8a8", "b1b4", "a8e8", "b4b1", "e8a8", "b1b4", "b6b5", "f3d1", "b5a4", "b4a4", "a8a4", "d1a4", "c7d6", "a4c2", "c4b5", "c2d3", "b5d7", "c3c4", "d5c4", "d3c4", "d7e6", "c4d3", "d6d5", "d3e4", "d5c4"]
+  },
+  {
+    id: "capablanca-045",
+    white: "Capablanca, Jose Raul",
+    black: "Black, Roy Turnbull",
+    result: "0-1",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "B20",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Black, Roy Turnbull, New York 1911",
+    moves: ["e2e4", "c7c5", "b2b4", "c5b4", "a2a3", "b4a3", "c1a3", "d7d6", "g1f3", "b8c6", "d2d4", "g7g6", "h2h4", "c8g4", "c2c3", "f8g7", "b1d2", "g8f6", "d1b3", "d8b6", "b3a2", "g4f3", "g2f3", "f6h5", "d2c4", "b6c7", "a3c1", "e8h8", "a1b1", "g8h8", "f1h3", "b7b6", "h3g4", "h5f6", "c4e3", "h7h5", "g4h3", "c6a5", "c1d2", "g7h6", "b1c1", "h8h7", "c3c4", "a5b7", "e3f5", "f6g8", "f5h6", "g8h6", "d2h6", "h7h6", "a2d2", "h6h7", "f3f4", "e7e5", "f4e5", "d6e5", "d4d5", "b7c5", "d2e2", "c7e7", "h3f5", "h7g7", "c1c3", "f8h8", "c3g3", "h8h6", "e2e3", "e7f6", "h1g1", "g7h7", "g3g5", "g6f5", "g5f5", "f6e7", "e3f3", "f7f6", "f5h5", "c5d3", "e1d1", "d3f4", "h5h6", "h7h6", "f3g3", "a8c8", "g3c3", "e7c5"]
+  },
+  {
+    id: "capablanca-046",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "D00",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, New York 1911",
+    moves: ["d2d4", "d7d5", "e2e3", "g8f6", "f1d3", "c7c5", "c2c3", "b8c6", "f2f4", "e7e6", "g1f3", "f6e4", "e1h1", "f7f5", "f3e5", "c6e5", "f4e5", "c8d7", "b1d2", "f8e7", "d2e4", "d5e4", "d3c4", "b7b5", "c4b3", "c5c4", "b3c2", "e8h8", "c1d2", "d7c6", "d1h5", "d8e8", "h5e8", "f8e8", "a2a4", "a7a6", "b2b4", "e8b8", "a1a2", "g7g5", "f1a1", "g8f7", "a4b5", "a6b5", "a2a8", "c6a8", "a1a7", "a8b7", "c2d1", "f7g6", "g2g3", "e7d8", "d1e2", "d8b6", "a7a1", "h7h5", "h2h4", "b8a8", "a1a8", "b7a8", "g1f2", "b6d8", "h4g5", "d8g5", "e2f1", "h5h4", "d2c1", "a8c6", "f2g2", "c6e8", "g2h3", "h4g3", "h3g3", "g6h5", "f1e2", "h5h6"]
+  },
+  {
+    id: "capablanca-047",
+    white: "Capablanca, Jose Raul",
+    black: "Hodges, Albert Beauregard",
+    result: "1-0",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "C66",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Hodges, Albert Beauregard, New York 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "g8f6", "e1h1", "d7d6", "d2d4", "c8d7", "b1c3", "e5d4", "f3d4", "f8e7", "d4e2", "a7a6", "b5d3", "e8h8", "e2g3", "f8e8", "h2h3", "b7b5", "f2f4", "d8b8", "g1h2", "b8b7", "d1f3", "b5b4", "c3e2", "c6d8", "b2b3", "c7c5", "c1b2", "d7c6", "a1e1", "d8e6", "c2c4", "b4c3", "e2c3", "a6a5", "g3f5", "e6d4", "f5d4", "c5d4", "c3d1", "a5a4", "b2d4", "a4b3", "a2b3", "b7b3", "d1c3", "b3b4", "f3e3", "a8a3", "e4e5", "e7d8", "e1b1", "b4a5", "c3b5", "a3a2", "f1f2", "c6b5", "b1b5", "a5a8", "f2a2", "a8a2", "e3f3", "d6e5", "f4e5", "d8c7", "f3c6", "a2d2", "c6c7", "d2f4", "h2h1", "f4d4", "b5b7", "d4a1", "d3b1", "e8f8", "e5f6", "a1f6", "h1h2", "g7g6", "b1a2", "f6f2", "a2b3", "f2f6", "c7g3", "g8g7", "h3h4", "f6f5", "g3g5", "f5c8", "h4h5", "c8c3", "h5h6", "g7g8", "b7f7"]
+  },
+  {
+    id: "capablanca-048",
+    white: "Chajes, Oscar",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "D00",
+    opening: "",
+    label: "Chajes, Oscar vs Capablanca, Jose Raul, New York 1911",
+    moves: ["d2d4", "d7d5", "e2e3", "g8f6", "f1d3", "c7c5", "c2c3", "d8c7", "f2f4", "c8g4", "g1f3", "e7e6", "d1a4", "b8d7", "f3e5", "c5c4", "e5g4", "f6g4", "d3e2", "g4h6", "b2b3", "c4b3", "a2b3", "a7a6", "e1h1", "f8d6", "c3c4", "e8h8", "c4c5", "d6e7", "b3b4", "b7b5", "a4b3", "f7f5", "e2d3", "d7f6", "f1f2", "f6e4", "f2a2", "c7b7", "b1d2", "e4d2", "c1d2", "a8a7", "a2a5", "f8a8", "h2h3", "e7d8", "a5a3", "g7g5", "g2g3", "g8h8", "g1h2", "b7g7", "a1g1", "d8f6", "b3d1", "a8g8", "d3e2", "g7e7", "d1a1", "e7b7", "g1c1", "g5f4", "g3f4", "a7a8", "c1g1", "g8g1", "a1g1", "h6g8", "e2h5", "g8e7", "a3a2", "a8g8", "g1f1", "e7c6", "d2e1", "g8a8", "h5d1", "b7e7", "a2g2", "f6h4", "e1d2", "e7f7", "f1f3", "a8g8", "d1e2", "g8g2", "f3g2", "f7g6", "e2f3", "h8g7", "f3h5", "g6g2", "h2g2", "g7f8", "g2f1", "c6e7", "f1e2", "e7g8", "h5f3", "f8e8", "e2f1", "e8d7", "f1e2", "d7c6", "f3h5", "g8f6", "h5f7", "c6d7", "c5c6", "d7c6", "f7e6", "f6e4", "d2e1", "h4e1", "e2e1", "e4c3", "e6f5", "h7h6", "f5e6", "c3a2", "e3e4", "a2b4", "e6d5", "b4d5", "e4d5", "c6d5", "f4f5", "b5b4", "e1d2", "a6a5", "d2c2", "a5a4", "h3h4", "h6h5"]
+  },
+  {
+    id: "capablanca-049",
+    white: "Capablanca, Jose Raul",
+    black: "Tennenwurzel, Edward",
+    result: "1-0",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "C01",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Tennenwurzel, Edward, New York 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f3", "f6e4", "d2d4", "d6d5", "f1d3", "e4f6", "e1h1", "f8e7", "f3e5", "e8h8", "c2c3", "b7b6", "c1g5", "c8b7", "f2f4", "b8d7", "b1d2", "c7c5", "d1f3", "a7a6", "a1e1", "f8e8", "f3h3", "d7f8", "d2f3", "f6e4", "e5f7", "g8f7", "e1e4", "b7c8", "e4e7", "d8e7", "g5e7", "c8h3", "e7f8", "h3g2", "g1g2", "f7f8", "d3h7", "e8e2", "f1f2", "e2f2", "g2f2", "f8e7", "h2h4", "e7f6", "h4h5", "a8c8", "h7g6", "c8c7", "f2e3", "c5c4", "f3e5", "b6b5", "e5g4", "f6e7", "f4f5", "b5b4", "c3b4", "c4c3", "b2c3", "c7c3", "e3f4", "c3a3", "f4e5"]
+  },
+  {
+    id: "capablanca-050",
+    white: "Kreymbourg, Alfred",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "D00",
+    opening: "",
+    label: "Kreymbourg, Alfred vs Capablanca, Jose Raul, New York 1911",
+    moves: ["d2d4", "d7d5", "e2e3", "c7c5", "f1d3", "c5c4", "d3e2", "b8c6", "f2f4", "c8f5", "g1f3", "e7e6", "e1h1", "f8d6", "c2c3", "h7h6", "f3e5", "g8e7", "b1d2", "f7f6", "e5c6", "b7c6", "b2b3", "c4b3", "a2b3", "e8h8", "e2g4", "e6e5", "g4f5", "e7f5", "d2f3", "d8c7", "d1c2", "e5e4", "c3c4", "c7b7", "c4c5", "d6c7", "c1d2", "f8b8", "f1b1", "b7b5", "g1f2", "e4f3", "g2f3", "f5e7", "e3e4", "b8e8", "b1g1", "f6f5", "a1e1", "f5e4", "f3e4", "d5e4", "c2e4", "b5b3", "e4g2", "b3f7", "g2g4", "e7d5", "f4f5", "e8e1", "f2e1", "a8e8", "e1f2", "d5f6", "g4g6", "f6e4", "f2e2", "e4d2", "e2d2", "f7a2", "d2d1", "a2b1"]
+  },
+  {
+    id: "capablanca-051",
+    white: "Capablanca, Jose Raul",
+    black: "Walcott, G.",
+    result: "1-0",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "C77",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Walcott, G., New York 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "d2d3", "d7d6", "c2c3", "c8d7", "b1d2", "f8e7", "d2f1", "e8h8", "h2h3", "f8e8", "g2g4", "e7f8", "f1g3", "c6e7", "a4b3", "d7e6", "b3e6", "f7e6", "d1b3", "d8d7", "g4g5", "f6d5", "e4d5", "e7d5", "b3c4", "d7f7", "c4g4", "f8e7", "e1h1", "e8f8", "g1g2", "f7g6", "f3h4", "g6d3", "f1d1", "d3c2", "d1d2", "d5f4", "g4f4", "f8f4", "d2c2", "f4h4", "c2e2", "h4c4", "c1d2", "c4c5", "a1e1", "c5d5", "h3h4", "a8f8", "d2c1", "f8f7", "g3f1", "e7f8", "e2e4", "d5d3", "f1e3", "f7f4", "e4f4", "e5f4", "e3c2", "d6d5", "e1e6", "g8f7", "e6e5"]
+  },
+  {
+    id: "capablanca-052",
+    white: "Smith, Murray",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "B18",
+    opening: "",
+    label: "Smith, Murray vs Capablanca, Jose Raul, New York 1911",
+    moves: ["e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "d5e4", "c3e4", "c8f5", "e4g3", "f5g6", "g1f3", "g8f6", "f1e2", "b8d7", "c2c3", "d8c7", "d1b3", "e7e6", "f3e5", "d7e5", "d4e5", "f6d7", "c1f4", "d7c5", "b3d1", "a8d8", "d1c1", "c5d7", "b2b4", "a7a5", "a2a3", "d7e5", "c1e3", "f8d6", "e1h1", "e5f3", "e3f3", "d6f4", "b4a5", "f4g3", "h2g3", "c7a5", "f1d1", "d8d1", "e2d1", "e8h8", "a1a2", "f8d8", "d1e2", "a5b6"]
+  },
+  {
+    id: "capablanca-053",
+    white: "Capablanca, Jose Raul",
+    black: "Baird, David Graham",
+    result: "1-0",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "C77",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Baird, David Graham, New York 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "d2d3", "b7b5", "a4b3", "d7d6", "c2c3", "f8e7", "b1d2", "e8h8", "d2f1", "c8e6", "h2h3", "e6b3", "a2b3", "d6d5", "d1e2", "d5e4", "d3e4", "d8d7", "g2g4", "f8d8", "f1g3", "g7g6", "c1g5", "g8g7", "e2e3", "f6g8", "g5e7", "g8e7", "e3g5", "e7g8", "f3e5", "c6e5", "g5e5", "f7f6", "e5f4", "d7d6", "f4d6", "d8d6", "a1d1", "a8d8", "d1d6", "d8d6", "e1e2", "g7f7", "h3h4", "g8e7", "f2f4", "b5b4", "g4g5", "b4c3", "b2c3", "d6b6", "b3b4", "c7c5", "b4c5", "b6c6", "g5f6", "f7f6", "h1a1", "c6c5", "a1a6", "f6f7", "e2d3", "c5c7", "g3e2", "e7g8", "c3c4", "g8f6", "e2c3", "f6d7", "c3a4", "d7b8", "a6b6", "b8c6", "a4c3", "c6a5", "b6b4", "a5b7", "c3d5", "b7c5", "d3d4", "c5e6", "d4e5", "c7a7", "b4b5", "e6d8", "c4c5", "d8c6", "e5d6", "c6d4", "b5b6"]
+  },
+  {
+    id: "capablanca-054",
+    white: "Johner, Paul F",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1911,
+    event: "New York",
+    site: "New York",
+    eco: "D46",
+    opening: "",
+    label: "Johner, Paul F vs Capablanca, Jose Raul, New York 1911",
+    moves: ["d2d4", "d7d5", "g1f3", "g8f6", "c2c4", "c7c6", "e2e3", "e7e6", "f1d3", "b8d7", "e1h1", "f8d6", "b1c3", "d5c4", "d3c4", "e8h8", "e3e4", "e6e5", "c1g5", "h7h6", "g5h4", "e5d4", "d1d4", "d6c5", "d4d3", "d7b6", "d3d8", "f8d8", "c4b3", "g7g5", "h4g3", "c5b4", "f3e5", "c8e6", "b3e6", "f7e6", "f2f4", "b4c3", "b2c3", "f6e4", "f4g5", "h6g5", "f1f3", "b6a4", "a1e1", "a4c3", "f3e3", "d8d4", "e5f3", "d4c4", "g3e5", "g5g4", "f3d4", "a8f8", "d4e6", "f8e8", "e5c3", "e8e6", "c3b2", "a7a5", "h2h3", "g8f7", "h3g4", "b7b5", "e1f1", "f7g6", "f1f8", "g6g5", "e3e1", "g5g4", "f8g8", "g4f4", "g8f8", "f4g5", "f8g8", "e6g6", "b2c1", "g5h5", "g8e8", "e4f6", "e8e5", "h5g4", "e1f1", "f6d5", "c1d2", "d5f4", "f1f3", "g6d6", "d2e1", "d6d3", "f3f2", "d3d1", "f2f3", "f4d3", "f3d3", "d1d3", "e1a5", "d3a3"]
+  },
+  {
+    id: "capablanca-055",
+    white: "Podhajsky, J.",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1911,
+    event: "Prague sim",
+    site: "Prague",
+    eco: "A85",
+    opening: "",
+    label: "Podhajsky, J. vs Capablanca, Jose Raul, Prague sim 1911",
+    moves: ["d2d4", "f7f5", "c2c4", "e7e6", "b1c3", "g8f6", "c1f4", "f8b4", "e2e3", "e8h8", "f1e2", "b8c6", "g1f3", "b7b6", "h2h3", "c8b7", "e1h1", "f6e4", "c3e4", "f5e4", "f3g5", "c6e7", "a2a3", "b4d6", "f4d6", "c7d6", "h3h4", "e7f5", "g2g3", "h7h6", "g5h3", "f5h4", "g3h4", "d8h4", "h3f4", "f8f5", "f4h5", "f5g5", "h5g3", "a8f8", "d1e1", "f8f3", "g1g2", "h4g4", "f1h1", "h6h5", "h1h3", "h5h4", "e2f3", "e4f3", "g2h2", "h4g3", "f2g3", "f3f2", "e1f2", "g5f5", "f2d2", "f5h5", "h3h4", "h5h4", "g3h4", "g4h4"]
+  },
+  {
+    id: "capablanca-056",
+    white: "Tuka, O.",
+    black: "Capablanca, Jose Raul",
+    result: "1-0",
+    year: 1911,
+    event: "Prague sim",
+    site: "Prague",
+    eco: "C12",
+    opening: "",
+    label: "Tuka, O. vs Capablanca, Jose Raul, Prague sim 1911",
+    moves: ["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "g8f6", "c1g5", "f8b4", "e4e5", "h7h6", "e5f6", "h6g5", "f6g7", "h8g8", "d1h5", "d8f6", "g1f3", "f6g7", "h2h4", "g5h4", "h1h4", "b8c6", "e1a1", "c8d7", "h4f4", "b4d6", "f4h4", "e8a8", "h5h7", "g7f6", "h7d3", "g8h8", "h4h8", "d8h8", "a2a3", "a7a6", "f1e2", "c6e7", "c1b1", "c7c5", "d4c5", "d6c5", "c3e4", "d5e4", "d3d7", "c8b8", "f3d2", "f6f4", "d2e4", "f4f5", "e4d6", "c5d6", "d7d6", "b8a7", "d6d4"]
+  },
+  {
+    id: "capablanca-057",
+    white: "Capablanca, Jose Raul",
+    black: "Koksal, J.",
+    result: "0-1",
+    year: 1911,
+    event: "Prague sim",
+    site: "Prague",
+    eco: "C41",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Koksal, J., Prague sim 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "d7d6", "d2d4", "e5d4", "f3d4", "f8e7", "b1c3", "g8f6", "f1d3", "c8d7", "h2h3", "b8c6", "d4c6", "d7c6", "e1h1", "e8h8", "f2f4", "f8e8", "f4f5", "d6d5", "e4e5", "e7c5", "g1h1", "e8e5", "c1f4", "e5e8", "d1d2", "f6e4", "c3e4", "d5e4", "d3e2", "e4e3", "d2c3", "d8d2", "c3d2", "e3d2", "e2d3", "a8d8", "f1d1", "d8d4", "f4d2", "d4d3", "c2d3", "e8e2", "d3d4", "c6g2", "h1h2", "g2c6", "h2g1", "c5d4", "g1f1", "c6b5", "d2c3", "e2b2"]
+  },
+  {
+    id: "capablanca-058",
+    white: "Capablanca, Jose Raul",
+    black: "Bernstein, Ossip",
+    result: "1-0",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "C66",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Bernstein, Ossip, San Sebastian 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "g8f6", "e1h1", "f8e7", "b1c3", "d7d6", "b5c6", "b7c6", "d2d4", "e5d4", "f3d4", "c8d7", "c1g5", "e8h8", "f1e1", "h7h6", "g5h4", "f6h7", "h4e7", "d8e7", "d1d3", "a8b8", "b2b3", "h7g5", "a1d1", "e7e5", "d3e3", "g5e6", "c3e2", "e5a5", "d4f5", "e6c5", "e2d4", "g8h7", "g2g4", "b8e8", "f2f3", "c5e6", "d4e2", "a5a2", "e2g3", "a2c2", "d1c1", "c2b2", "g3h5", "f8h8", "e1e2", "b2e5", "f3f4", "e5b5", "f5g7", "e6c5", "g7e8", "d7e8", "e3c3", "f7f6", "h5f6", "h7g6", "f6h5", "h8g8", "f4f5", "g6g5", "c3e3"]
+  },
+  {
+    id: "capablanca-059",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "D13",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, San Sebastian 1911",
+    moves: ["d2d4", "d7d5", "c2c4", "c7c6", "c4d5", "c6d5", "b1c3", "b8c6", "g1f3", "g8f6", "d1b3", "e7e6", "c1g5", "h7h6", "g5h4", "d8b6", "b3b6", "a7b6", "e2e3", "c8d7", "f1b5", "f8b4", "e1h1", "b4c3", "b2c3", "f6e4", "c3c4", "e4c3", "a2a4", "d5c4", "b5c4", "a8a4", "a1a4", "c3a4", "f1a1", "c6a5", "f3e5", "a5c4", "e5c4", "f7f6", "a1b1", "d7c6", "f2f3", "e8d7", "c4b6", "a4b6", "b1b6", "h8a8", "b6b2", "a8a1", "g1f2", "f6f5", "h4g3", "c6d5", "g3e5", "g7g6", "e5g7", "h6h5", "h2h4", "a1a2", "b2a2", "d5a2", "e3e4"]
+  },
+  {
+    id: "capablanca-060",
+    white: "Capablanca, Jose Raul",
+    black: "Burn, Amos",
+    result: "1-0",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "C77",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Burn, Amos, San Sebastian 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "d2d3", "d7d6", "c2c3", "f8e7", "b1d2", "e8h8", "d2f1", "b7b5", "a4c2", "d6d5", "d1e2", "d5e4", "d3e4", "e7c5", "c1g5", "c8e6", "f1e3", "f8e8", "e1h1", "d8e7", "e3d5", "e6d5", "e4d5", "c6b8", "a2a4", "b5b4", "c3b4", "c5b4", "g5f6", "e7f6", "e2e4", "b4d6", "e4h7", "g8f8", "f3h4", "f6h6", "h7h6", "g7h6", "h4f5", "h6h5", "c2d1", "b8d7", "d1h5", "d7f6", "h5e2", "f6d5", "f1d1", "d5f4", "e2c4", "e8d8", "h2h4", "a6a5", "g2g3", "f4e6", "c4e6", "f7e6", "f5e3", "d8b8", "e3c4", "f8e7", "a1c1", "a8a7", "d1e1", "e7f6", "e1e4", "b8b4", "g3g4", "a7a6", "c1c3", "d6c5", "c3f3", "f6g7", "b2b3", "c5d4", "g1g2", "a6a8", "g4g5", "a8a6", "h4h5", "b4c4", "b3c4", "a6c6", "g5g6"]
+  },
+  {
+    id: "capablanca-061",
+    white: "Tarrasch, Siegbert",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "C54",
+    opening: "",
+    label: "Tarrasch, Siegbert vs Capablanca, Jose Raul, San Sebastian 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "c2c3", "g8f6", "d2d4", "e5d4", "c3d4", "c5b4", "c1d2", "b4d2", "b1d2", "d7d5", "e4d5", "f6d5", "d1b3", "c6e7", "e1h1", "e8h8", "f1e1", "c7c6", "a2a4", "d8b6", "b3a3", "c8e6", "a4a5", "b6c7", "d2e4", "a8d8", "e4c5", "e6c8", "g2g3", "e7f5", "a1d1", "f5d6", "c4d5", "d6b5", "a3b4", "d8d5", "c5d3", "c8g4", "d3e5", "h7h5", "e5g4", "h5g4", "f3h4", "f8d8", "e1e7", "c7d6", "b4d6", "b5d6", "a5a6", "b7a6", "e7a7", "d6b5", "a7a6", "b5d4", "g1f1", "g7g5", "h4g2", "d4f3", "d1d5", "c6d5", "g2e1", "d8e8", "e1f3", "g4f3", "a6d6", "e8c8", "f1e1", "c8e8", "e1f1", "e8c8"]
+  },
+  {
+    id: "capablanca-062",
+    white: "Capablanca, Jose Raul",
+    black: "Janowsky, Dawid Markelowicz",
+    result: "1-0",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "D40",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Janowsky, Dawid Markelowicz, San Sebastian 1911",
+    moves: ["d2d4", "d7d5", "e2e3", "g8f6", "g1f3", "c7c5", "c2c4", "e7e6", "b1c3", "f8e7", "d4c5", "e8h8", "a2a3", "e7c5", "b2b4", "c5e7", "c1b2", "a7a5", "b4b5", "b7b6", "c4d5", "e6d5", "f3d4", "e7d6", "f1e2", "c8e6", "e2f3", "a8a7", "e1h1", "a7c7", "d1b3", "b8d7", "f1d1", "d7e5", "f3e2", "d8e7", "a1c1", "f8c8", "c3a4", "c7c1", "d1c1", "c8c1", "b2c1", "f6e4", "c1b2", "e5c4", "e2c4", "d6h2", "g1h2", "e7h4", "h2g1", "h4f2", "g1h2", "f2g3", "h2g1", "d5c4", "b3c2", "g3e3", "g1h2", "e3h6", "h2g1", "h6e3", "g1h2", "e3g3", "h2g1", "g3e1", "g1h2", "e4f6", "d4e6", "e1h4", "h2g1", "h4e1", "g1h2", "e1h4", "h2g1", "f6g4", "c2d2", "h4h2", "g1f1", "h2h1", "f1e2", "h1g2", "e2d1", "g4f2", "d1c2", "g2g6", "c2c1", "g6g1", "c1c2", "g1g6", "c2c1", "f2d3", "c1b1", "f7e6", "d2c2", "h7h5", "b2d4", "h5h4", "d4b6", "h4h3", "b6c7", "e6e5", "b5b6", "g6e4", "c7e5", "e4e1", "b1a2", "d3e5", "b6b7", "e5d7", "a4c5", "d7b8", "c2c4", "g8h8", "c5e4", "h8h7", "c4d3", "g7g6", "d3h3", "h7g7", "h3f3", "e1c1", "f3f6", "g7h7", "f6f7", "h7h6", "f7f8", "h6h5", "f8h8", "h5g4", "h8c8"]
+  },
+  {
+    id: "capablanca-063",
+    white: "Leonhardt, Paul Saladin",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "D40",
+    opening: "",
+    label: "Leonhardt, Paul Saladin vs Capablanca, Jose Raul, San Sebastian 1911",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "c7c5", "e2e3", "g8f6", "g1f3", "b8c6", "f1d3", "d5c4", "d3c4", "f8e7", "e1h1", "e8h8", "d1e2", "c5d4", "e3d4", "c6d4", "f3d4", "d8d4", "f1d1", "d4g4", "f2f3", "g4h5", "c3e4", "h5e5", "e4f6", "e7f6", "e2e5", "f6e5", "a2a4", "b7b6", "a4a5", "c8b7", "a5b6", "a7b6", "a1a8", "f8a8", "b2b3", "b7c6", "c1e3", "b6b5", "c4e2", "f7f6", "d1c1", "a8a1", "c1a1", "e5a1", "g1f2", "g8f7", "f2e1", "e6e5", "e1d2", "f7e6", "e2d3", "g7g6", "h2h4", "f6f5", "b3b4", "e5e4", "f3e4", "c6e4", "d3b5", "e4g2", "b5a6", "a1f6", "e3f2", "f6e5", "b4b5", "h7h6", "b5b6", "g6g5", "h4g5", "h6g5", "a6c8", "e6f6", "d2e2", "g2c6", "e2f1", "c6d5", "f1e2", "d5c4", "e2d2", "f5f4", "c8g4", "c4e6", "g4f3", "g5g4", "f3e4", "g4g3", "f2c5", "e6g4", "d2e1", "f4f3", "c5e3", "e5d6", "b6b7", "f6e5", "e4c6", "d6b8", "e1f1", "g4h5", "f1g1", "e5f5", "c6d5", "f5g4", "d5e6", "g4h4", "e3c5", "h5g4", "e6g4", "h4g4", "g1f1", "g4h3", "c5g1", "b8c7", "g1a7", "h3h2", "b7b8q", "g3g2"]
+  },
+  {
+    id: "capablanca-064",
+    white: "Capablanca, Jose Raul",
+    black: "Duras, Oldrich",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "D37",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Duras, Oldrich, San Sebastian 1911",
+    moves: ["d2d4", "d7d5", "g1f3", "g8f6", "e2e3", "e7e6", "c2c4", "f8e7", "b1c3", "a7a6", "b2b3", "c7c5", "d4c5", "e7c5", "c1b2", "b8c6", "f1e2", "d5c4", "e2c4", "b7b5", "c4e2", "d8d1", "a1d1", "c8b7", "e1h1", "e8e7", "f3g5", "c6a7", "d1c1", "a8c8", "f1d1", "h7h6", "e2f3", "b7f3", "g5f3", "h8d8", "d1d8", "c8d8", "g1f1", "c5d6", "f1e2", "d8c8", "a2a4", "b5a4", "c3a4", "c8c1", "b2c1", "f6e4", "f3d2", "e4d2", "c1d2", "e7d7", "h2h3", "d7c6", "e2d3", "a7b5", "f2f4", "e6e5"]
+  },
+  {
+    id: "capablanca-065",
+    white: "Nimzowitsch, Aaron ",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "C00",
+    opening: "",
+    label: "Nimzowitsch, Aaron  vs Capablanca, Jose Raul, San Sebastian 1911",
+    moves: ["e2e4", "e7e6", "d2d3", "d7d5", "b1d2", "c7c5", "g1f3", "b8c6", "f1e2", "f8d6", "e1h1", "d8c7", "f1e1", "g8e7", "c2c3", "e8h8", "a2a3", "f7f5", "e2f1", "c8d7", "e4d5", "e6d5", "b2b4", "a8e8", "c1b2", "b7b6", "d3d4", "c5c4", "d2c4", "d5c4", "f1c4", "g8h8", "f3g5", "d6h2", "g1h1", "h2f4", "g5f7", "f8f7", "c4f7", "e8f8", "f7h5", "e7g8", "c3c4", "c7d8", "d1f3", "d8h4", "f3h3", "h4f2", "e1e2", "f2g3", "h3g3", "f4g3", "c4c5", "c6e7", "h5f3", "d7b5", "e2c2", "g8f6", "a3a4", "b5d3", "c2c1", "f6e4", "b4b5", "f8f6", "f3e4", "g3f2"]
+  },
+  {
+    id: "capablanca-066",
+    white: "Capablanca, Jose Raul",
+    black: "Schlechter, Carl",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "D12",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Schlechter, Carl, San Sebastian 1911",
+    moves: ["d2d4", "d7d5", "g1f3", "g8f6", "e2e3", "c8f5", "c2c4", "c7c6", "d1b3", "d8c7", "b1c3", "e7e6", "c1d2", "b8d7", "a1c1", "c7b6", "f1e2", "h7h6", "e1h1", "f8e7", "b3b6", "a7b6", "a2a3", "e8h8", "f1d1", "f8e8", "f3e1", "e7d6", "f2f4", "f6e4", "c3e4", "f5e4", "e2d3", "d7f6", "d3e4", "f6e4", "c1c2", "a8a4", "c4d5", "e6d5", "d2c1", "b6b5", "e1d3", "f7f6", "d3f2", "a4a8", "f2e4", "e8e4", "g1f2", "g7g5", "g2g3", "g8f7", "f2f3", "h6h5", "h2h4", "g5h4", "d1h1", "f6f5", "h1h4", "f7g6", "c2h2", "a8h8", "b2b4"]
+  },
+  {
+    id: "capablanca-067",
+    white: "Maroczy, Geza",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "C12",
+    opening: "",
+    label: "Maroczy, Geza vs Capablanca, Jose Raul, San Sebastian 1911",
+    moves: ["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "g8f6", "c1g5", "f8b4", "e4d5", "d8d5", "g5f6", "b4c3", "b2c3", "g7f6", "g1f3", "c8d7", "g2g3", "d5e4", "d1e2", "d7c6", "f1g2", "b8d7", "f3h4", "e4e2", "e1e2", "c6g2", "h4g2", "e8e7", "a1b1", "b7b6", "c3c4", "h8d8", "h1d1", "f6f5", "b1b3", "d7f6", "g2e3", "d8d7", "b3d3"]
+  },
+  {
+    id: "capablanca-068",
+    white: "Capablanca, Jose Raul",
+    black: "Spielmann, Rudolf",
+    result: "1-0",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "D04",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Spielmann, Rudolf, San Sebastian 1911",
+    moves: ["d2d4", "d7d5", "g1f3", "c7c5", "c2c3", "g8f6", "e2e3", "b8c6", "d4c5", "e7e5", "b2b4", "d8c7", "c1b2", "c8e6", "b1d2", "f8e7", "f1e2", "e8h8", "e1h1", "a8d8", "d1c2", "e6g4", "e3e4", "d5e4", "d2e4", "f6e4", "c2e4", "f7f5", "e4c4", "g8h8", "a1d1", "e5e4", "f3d4", "c6e5", "c4b3", "g4e2", "d4e2", "e5g4", "e2g3", "f5f4", "d1d8", "f8d8", "b3e6", "f4g3", "e6g4", "g3h2", "g1h1", "c7e5", "f1e1", "d8d2", "e1e4", "e5c7", "b2c1", "d2f2", "c1f4", "c7d8", "e4e7", "d8f8", "g4g7"]
+  },
+  {
+    id: "capablanca-069",
+    white: "Rubinstein, Akiba",
+    black: "Capablanca, Jose Raul",
+    result: "1-0",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "D33",
+    opening: "",
+    label: "Rubinstein, Akiba vs Capablanca, Jose Raul, San Sebastian 1911",
+    moves: ["d2d4", "d7d5", "g1f3", "c7c5", "c2c4", "e7e6", "c4d5", "e6d5", "b1c3", "b8c6", "g2g3", "c8e6", "f1g2", "f8e7", "e1h1", "a8c8", "d4c5", "e7c5", "f3g5", "g8f6", "g5e6", "f7e6", "g2h3", "d8e7", "c1g5", "e8h8", "g5f6", "e7f6", "c3d5", "f6h6", "g1g2", "c8d8", "d1c1", "e6d5", "c1c5", "h6d2", "c5b5", "c6d4", "b5d3", "d2d3", "e2d3", "f8e8", "h3g4", "d8d6", "f1e1", "e8e1", "a1e1", "d6b6", "e1e5", "b6b2", "e5d5", "d4c6", "g4e6", "g8f8", "d5f5", "f8e8", "e6f7", "e8d7", "f7c4", "a7a6", "f5f7", "d7d6", "f7g7", "b7b5", "c4g8", "a6a5", "g7h7", "a5a4", "h2h4", "b5b4", "h7h6", "d6c5", "h6h5", "c5b6", "g8d5", "b4b3", "a2b3", "a4a3", "d5c6", "b2b3", "c6d5", "a3a2", "h5h6"]
+  },
+  {
+    id: "capablanca-070",
+    white: "Capablanca, Jose Raul",
+    black: "Teichmann, Richard",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "C49",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Teichmann, Richard, San Sebastian 1911",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1b5", "f8b4", "e1h1", "e8h8", "d2d3", "d7d6", "c1g5", "b4c3", "b2c3", "c6e7"]
+  },
+  {
+    id: "capablanca-071",
+    white: "Vidmar, Milan Sr",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1911,
+    event: "San Sebastian",
+    site: "San Sebastian",
+    eco: "D40",
+    opening: "",
+    label: "Vidmar, Milan Sr vs Capablanca, Jose Raul, San Sebastian 1911",
+    moves: ["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "c7c5", "e2e3", "g8f6", "g1f3", "b8c6", "f1d3", "d5c4", "d3c4", "f8e7", "e1h1", "e8h8", "d4c5", "d8d1", "f1d1", "e7c5", "a2a3", "b7b6", "b2b4", "c5e7", "e3e4", "f8d8", "c1f4", "c8b7", "e4e5", "f6e8", "c4d3", "a8c8", "c3b5", "d8d5", "b5d6", "e8d6", "e5d6", "e7d6", "f4d6", "c8d8"]
+  },
+  {
+    id: "capablanca-072",
+    white: "Capablanca, Jose Raul",
+    black: "Chajes, Oscar",
+    result: "1-0",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C66",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Chajes, Oscar, Havana 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "g8f6", "e1h1", "d7d6", "b5c6", "b7c6", "d2d4", "f8e7", "b1c3", "e5d4", "f3d4", "c8d7", "d1d3", "c6c5", "d4f3", "e8h8", "e4e5", "d6e5", "f3e5", "d7e8", "c1e3", "e7d6", "a1d1", "d8c8", "e5c4", "d6e7", "f1e1", "e8c6", "c4e5", "c6b7", "e3g5", "e7d6", "g5f6", "g7f6", "e5c4", "c8g4", "f2f3", "g4g7", "c4d6", "c7d6", "e1e7", "b7c6", "e7c7", "c5c4", "d3f5", "c6e8", "c7c4", "g7h6", "c3d5", "g8h8", "f5f6", "h6f6", "d5f6", "h8g7", "d1d6", "f8h8", "a2a4", "a7a5", "b2b3", "h7h5", "h2h4", "g7f8", "c4e4", "f8g7", "e4e5", "a8c8", "f6h5", "g7f8", "h5f6", "h8h4", "e5e8", "c8e8", "f6e8"]
+  },
+  {
+    id: "capablanca-073",
+    white: "Capablanca, Jose Raul",
+    black: "Corzo y Prinzipe, Juan",
+    result: "1-0",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C80",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Corzo y Prinzipe, Juan, Havana 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "f6e4", "d2d4", "b7b5", "a4b3", "d7d5", "d4e5", "c8e6", "a2a4", "a8b8", "a4b5", "a6b5", "c2c3", "f8e7", "f3d4", "c6e5", "c1f4", "d8d6", "d4e6", "d6e6", "b3d5", "e6f5", "f4e5", "f5e5", "f1e1", "f7f5", "d5c6", "e8f8", "d1f3", "e7f6", "c6e4", "f5e4", "e1e4", "e5d5", "c3c4", "b5c4", "b1c3", "d5b7", "a1e1", "b7a8", "g2g4", "h7h6", "h2h4", "f8g8", "c3d5", "b8f8", "d5f6", "g7f6", "f3f5", "h8h7", "e4e7", "h7g7", "f5d7", "g7e7", "e1e7", "a8a1", "g1g2", "a1b1", "d7d5", "g8h8", "d5h5"]
+  },
+  {
+    id: "capablanca-074",
+    white: "Capablanca, Jose Raul",
+    black: "Blanco Estera, Rafael",
+    result: "1-0",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C10",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Blanco Estera, Rafael, Havana 1913",
+    moves: ["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "d5e4", "c3e4", "b8d7", "g1f3", "g8f6", "e4f6", "d7f6", "f3e5", "f8d6", "d1f3", "c7c6", "c2c3", "e8h8", "c1g5", "d6e7", "f1d3", "f6e8", "f3h3", "f7f5", "g5e7", "d8e7", "e1h1", "f8f6", "f1e1", "e8d6", "e1e2", "c8d7", "a1e1", "a8e8", "c3c4", "d6f7", "d4d5", "f7e5", "e2e5", "g7g6", "h3h4", "g8g7", "h4d4", "c6c5", "d4c3", "b7b6", "d5e6", "d7c8", "d3e2", "c8e6", "e2f3", "g7f7", "f3d5", "e7d6", "c3e3", "e8e7", "e3h6", "f7g8", "h2h4", "a7a6", "h4h5", "f5f4", "h5g6", "h7g6", "e5e6"]
+  },
+  {
+    id: "capablanca-075",
+    white: "Capablanca, Jose Raul",
+    black: "Jaffe, Charles",
+    result: "1-0",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C49",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Jaffe, Charles, Havana 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1b5", "f8b4", "e1h1", "e8h8", "b5c6", "b7c6", "f3e5", "d8e8", "d2d4", "d7d6", "e5d3", "b4c3", "b2c3", "e8e4", "f1e1", "e4f5", "d3b4", "c8d7", "d1d3", "f5d3", "c2d3", "a7a5", "b4c2", "f8e8", "g1f1", "d7f5", "e1e8", "a8e8", "c2e1", "e8b8", "f1e2", "g8f8", "a2a4", "b8b3", "c3c4", "f8e8", "c1d2", "b3b2", "h2h3", "e8d8", "e2d1", "d8c8", "d1c1", "b2b8", "d2a5", "f6d7", "a5c3", "c8b7", "c1d2", "f7f6", "e1c2", "f5g6", "a1e1", "b8e8", "e1b1", "b7a8", "c3a5", "e8b8", "b1e1", "b8b3", "a5c3", "d7b6", "e1a1", "c6c5", "d4c5", "d6c5", "c2a3", "c7c6", "d2c2", "b3b4", "c3b4", "c5b4", "a3b1", "b6c4", "b1d2", "c4e5", "d2e4", "g6e4", "d3e4", "a8a7", "f2f4", "e5d7", "a1e1", "d7c5", "e4e5", "f6e5", "f4e5", "c5e6", "c2b3", "c6c5", "e1d1"]
+  },
+  {
+    id: "capablanca-076",
+    white: "Capablanca, Jose Raul",
+    black: "Janowsky, Dawid Markelowicz",
+    result: "1-0",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C66",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Janowsky, Dawid Markelowicz, Havana 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "g8f6", "e1h1", "d7d6", "b5c6", "b7c6", "d2d4", "f8e7", "b1c3", "f6d7", "d4e5", "d6e5", "d1e2", "e8h8", "f1d1", "e7d6", "c1g5", "d8e8", "f3h4", "g7g6", "g5h6", "d7c5", "d1d2", "a8b8", "c3d1", "b8b4", "c2c4", "c5e6", "h6f8", "e8f8", "d1e3", "e6d4", "e2d1", "c6c5", "b2b3", "b4b8", "h4f3", "f7f5", "e4f5", "g6f5", "e3f1", "f5f4", "f3d4", "c5d4", "d1h5", "c8b7", "a1e1", "c7c5", "f2f3", "b8e8", "d2e2", "e8e6", "e2e5", "d6e5", "e1e5", "e6h6", "h5e8", "f8e8", "e5e8", "g8f7", "e8e5", "h6c6", "f1d2", "f7f6", "e5d5", "c6e6", "d2e4", "f6e7", "d5c5", "d4d3", "g1f2", "b7e4", "f3e4", "e6e4", "c5d5", "e4e3", "b3b4", "e3e4", "d5d3", "e4c4", "d3h3", "c4b4", "h3h7", "e7f6", "h7a7", "f6f5", "f2f3", "b4b2", "a7a5", "f5f6", "a5a4", "f6g5", "a4f4", "b2a2", "h2h4", "g5h5", "f4f5", "h5h6", "g2g4"]
+  },
+  {
+    id: "capablanca-077",
+    white: "Capablanca, Jose Raul",
+    black: "Kupchik, Abraham",
+    result: "1-0",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C49",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Kupchik, Abraham, Havana 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1b5", "f8b4", "e1h1", "e8h8", "b5c6", "b7c6", "f3e5", "d8e8", "e5d3", "b4c3", "d2c3", "e8e4", "f1e1", "e4h4", "d1f3", "c8a6", "c1f4", "a8c8", "f4e5", "a6d3", "c2d3", "h4g4", "e5f6", "g4f3", "g2f3", "g7f6", "e1e4", "f8e8", "a1e1", "e8e6", "e1e3", "c8e8", "g1f1", "g8f8", "f1e2", "f8e7", "e4a4", "e8a8", "a4a5", "d7d5", "c3c4", "e7d6", "c4c5", "d6d7", "d3d4", "f6f5", "e3e6", "f7e6", "f3f4", "d7c8", "e2d2", "c8b7", "a5a3", "a8g8", "a3h3", "g8g7", "d2e2", "b7a6", "h3h6", "g7e7", "e2d3", "a6b7", "h2h4", "b7c8", "h6h5", "c8d7", "h5g5", "e7f7", "d3c3", "d7c8", "c3b4", "f7f6", "b4a5", "c8b7", "a2a4", "a7a6", "h4h5", "f6h6", "b2b4", "h6f6", "b4b5", "a6b5", "a4b5", "f6f8", "g5g7", "f8a8", "a5b4", "c6b5", "b4b5", "a8a2", "c5c6", "b7b8", "g7h7", "a2b2", "b5a5", "b2a2", "a5b4", "a2f2", "h7e7", "f2f4", "h5h6", "f4d4", "b4b5", "d4d1", "h6h7", "d1b1", "b5c5", "b1c1", "c5d4", "c1d1", "d4e5", "d1e1", "e5f6", "e1h1", "e7e8", "b8a7", "h7h8q", "h1h8", "e8h8", "a7b6", "f6e6", "b6c6", "e6f5", "c6c5", "f5e5", "c7c6", "h8h6", "c5b5", "e5d4"]
+  },
+  {
+    id: "capablanca-078",
+    white: "Capablanca, Jose Raul",
+    black: "Marshall, Frank James",
+    result: "0-1",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C42",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Marshall, Frank James, Havana 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f3", "f6e4", "d2d4", "d6d5", "f1d3", "c8g4", "e1h1", "b8c6", "c2c3", "f8e7", "b1d2", "e4d2", "c1d2", "e8h8", "h2h3", "g4h5", "f1e1", "d8d7", "d3b5", "e7d6", "f3e5", "d6e5", "d1h5", "e5f6", "d2f4", "a8e8", "e1e3", "e8e3", "f2e3", "a7a6", "b5a4", "b7b5", "a4c2", "g7g6", "h5f3", "f6g7", "c2b3", "c6e7", "e3e4", "d5e4", "f3e4", "c7c6", "a1e1", "e7d5", "b3d5", "c6d5", "e4e7", "d7c8", "f4d6", "h7h6", "e1f1", "f7f6", "f1e1", "f8d8", "d6c5", "g8h7", "e7f7", "c8f5", "c5e7", "f5d7", "g1f1", "d8f8", "f7e6", "d7e6", "e1e6", "f8e8", "e6e2", "h7g8", "b2b3", "g8f7", "e7c5", "e8e2", "f1e2", "f6f5", "e2d3", "f7e6", "c3c4", "b5c4", "b3c4", "g6g5", "g2g4", "f5f4", "c5b4", "g7f6", "b4f8", "d5c4", "d3c4", "f4f3", "d4d5", "e6e5", "c4d3", "e5f4", "f8d6", "f6e5", "d6c5", "f4g3", "d3e4", "e5f4", "d5d6", "f3f2"]
+  },
+  {
+    id: "capablanca-079",
+    white: "Chajes, Oscar",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "A46",
+    opening: "",
+    label: "Chajes, Oscar vs Capablanca, Jose Raul, Havana 1913",
+    moves: ["d2d4", "g8f6", "g1f3", "d7d6", "b1c3", "b8d7", "c1f4", "c7c5", "e2e3", "d8a5", "d1d2", "a7a6", "a2a3", "b7b5", "b2b4", "c5b4", "c3d1", "c8b7", "f1d3", "e7e5", "d4e5", "d6e5", "f3e5", "a8d8", "e1h1", "f6d5", "e3e4", "d5f4", "d2f4", "d7f6", "d1e3", "a5c7", "e3d5", "b7d5", "e4d5", "f8d6", "f1e1", "e8h8", "f4f5", "d6e5", "f5e5", "c7e5", "e1e5", "d8d5", "e5d5", "f6d5", "a3a4", "d5c3", "a4b5", "a6b5", "a1a5", "f8b8", "g1f1", "g8f8", "f1e1", "f8e7", "a5a7", "e7f6", "e1d2", "g7g6", "a7d7", "f6e6", "d7d4", "c3d5", "f2f4", "f7f5", "d3e2", "b8b6", "g2g3", "h7h6", "h2h3", "g6g5", "e2d3", "g5f4", "g3f4", "b6d6", "d2c1", "d6b6", "d3f5", "e6f5", "d4d5", "f5f4", "d5h5"]
+  },
+  {
+    id: "capablanca-080",
+    white: "Corzo y Prinzipe, Juan",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "A53",
+    opening: "",
+    label: "Corzo y Prinzipe, Juan vs Capablanca, Jose Raul, Havana 1913",
+    moves: ["d2d4", "g8f6", "c2c4", "d7d6", "b1c3", "b8d7", "e2e4", "e7e5", "f2f4", "e5d4", "d1d4", "d7c5", "c1e3", "d8e7", "c3d5", "f6d5", "e4d5", "c8f5", "g1f3", "g7g6", "e1f2", "h8g8", "a1e1", "f8g7", "d4d1", "c5e4", "f2g1", "e8f8", "e3d4", "g6g5", "d4g7", "g8g7", "f3d4", "f5d7", "f4f5", "e7e5", "d1d3", "a8e8", "d4e6", "f7e6", "f5e6", "e8e6", "d5e6", "d7c6", "d3f3", "e5f4", "f3e3", "f8e7", "b2b4", "b7b6", "b4b5", "c6b7", "g2g3", "e4d2", "e3c3", "d2f3", "g1f2", "f4f8", "c4c5", "f3e5", "f2g1", "e5f3", "g1f2", "b6c5", "c3a5", "f3e5", "f2g1", "f8f3", "a5c7", "e7f6", "c7d6", "f3h1", "g1f2", "h1h2"]
+  },
+  {
+    id: "capablanca-081",
+    white: "Blanco Estera, Rafael",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C52",
+    opening: "",
+    label: "Blanco Estera, Rafael vs Capablanca, Jose Raul, Havana 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "b2b4", "c5b4", "c2c3", "b4a5", "d2d4", "a5b6", "d4e5", "g8e7", "e1h1", "e8h8", "c1a3", "h7h6", "b1d2", "f8e8", "d2b3", "e7g6", "c4f7", "g8f7", "d1d5", "e8e6", "f3d4", "g6f4", "d4e6", "d7e6", "d5d8", "c6d8", "b3d4", "d8c6", "g2g3", "c6d4", "c3d4", "f4e2", "g1g2", "e2d4", "a1d1", "f7e8", "f2f4", "c8d7", "a3b2", "d4c2", "d1d7", "e8d7", "f1d1", "d7e8", "d1d2", "c2e3", "g2f3", "e3c4", "d2c2", "c4b2", "c2b2", "a8d8", "f4f5", "e8e7", "a2a4", "d8d4", "a4a5", "b6a5", "b2b7", "a5b6", "b7b8", "a7a5", "b8g8", "e7f7", "g8a8", "h6h5", "a8h8", "a5a4", "h8h5", "a4a3"]
+  },
+  {
+    id: "capablanca-082",
+    white: "Janowsky, Dawid Markelowicz",
+    black: "Capablanca, Jose Raul",
+    result: "1-0",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "A46",
+    opening: "",
+    label: "Janowsky, Dawid Markelowicz vs Capablanca, Jose Raul, Havana 1913",
+    moves: ["d2d4", "g8f6", "g1f3", "d7d6", "c1g5", "b8d7", "e2e3", "e7e5", "b1c3", "c7c6", "f1d3", "f8e7", "d1e2", "d8a5", "e1h1", "d7f8", "f1d1", "c8g4", "h2h3", "g4h5", "d4e5", "d6e5", "c3e4", "f6e4", "g5e7", "e8e7", "d3e4", "h5g6", "e2c4", "f8e6", "b2b4", "a5c7", "e4g6", "h7g6", "c4e4", "e7f6", "d1d3", "a8d8", "a1d1", "g6g5", "c2c4", "d8d3", "d1d3", "h8d8", "d3d8", "e6d8", "h3h4", "g5h4", "e4h4", "f6e6", "h4g4", "e6f6", "g4g5", "f6e6", "g5g7", "c7d6", "c4c5", "d6d5", "e3e4", "d5d1", "g1h2", "f7f6", "g7g4", "e6e7", "f3e5", "d1g4", "e5g4", "d8e6", "e4e5", "f6e5", "g4e5", "e6d4", "g2g4", "e7e6", "f2f4", "a7a5", "b4a5", "e6d5", "g4g5", "d5c5", "g5g6", "d4f5", "h2h3", "c5d5", "h3g4", "f5g7", "g4g5", "c6c5", "e5d7", "c5c4", "d7b6", "d5d4", "b6c4", "d4c4", "f4f5", "c4d5", "f5f6", "g7e6", "g5h6"]
+  },
+  {
+    id: "capablanca-083",
+    white: "Kupchik, Abraham",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "C46",
+    opening: "",
+    label: "Kupchik, Abraham vs Capablanca, Jose Raul, Havana 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g7g6", "d2d4", "e5d4", "f3d4", "f8g7", "c1e3", "g8e7", "g2g3", "e8h8", "f1g2", "d7d6", "e1h1", "c6e5", "a1b1", "c7c6", "d1c1", "e5g4", "c1d2", "g4e3", "d2e3", "f7f5", "b1d1", "f5e4", "c3e4", "d6d5", "e4c5", "d8d6", "c5e6", "g7d4", "e6d4", "c8g4", "d1e1", "a8e8", "h2h3", "g4d7", "g1h2", "c6c5", "d4b3", "d7b5", "f1g1", "b7b6", "c2c3", "f8f7", "e3d2", "b5c4", "b3c1", "e8f8", "f2f4", "h7h5", "b2b3", "c4a6", "e1e5", "d5d4", "g1e1", "h5h4", "g3h4", "f7f4", "e5e6", "d6b8", "h2g1", "e7f5", "c1d3", "a6d3", "d2d3", "f4h4", "e6g6", "g8h8", "c3d4", "f5d4", "e1e4", "f8f4", "e4e7", "f4f8", "d3e3", "d4f5", "e3g5", "b8d8", "e7f7", "d8d4", "g1h1", "d4a1", "h1h2", "a1e5", "h2g1", "e5d4", "g1h1", "h4h3", "g2h3", "d4d5", "h1h2", "d5e5", "h2h1", "e5e1", "h1h2", "e1e5", "h2h1", "e5d5", "h1h2"]
+  },
+  {
+    id: "capablanca-084",
+    white: "Marshall, Frank James",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "A46",
+    opening: "",
+    label: "Marshall, Frank James vs Capablanca, Jose Raul, Havana 1913",
+    moves: ["d2d4", "g8f6", "g1f3", "d7d6", "b1c3", "b8d7", "c1f4", "c7c6", "e2e4", "d8a5", "f4d2", "e7e5", "d4e5", "d6e5", "f1c4", "h7h6", "d1e2", "a5c7", "e1h1", "d7c5", "b2b4", "c5e6", "a1d1", "f8e7", "c3b1", "b7b5", "c4b3", "e8h8", "c2c4", "c6c5", "c4b5", "c5b4", "d1c1", "c7b7", "f3e5", "e6d4", "e2e3", "d4b3", "a2b3", "b7b5", "e5c6", "f8e8", "c6e7", "e8e7", "c1c5", "b5b6", "f1c1", "c8b7", "f2f3", "a8d8", "c5c4", "b6e3", "d2e3", "d8d3", "e3c5", "e7d7", "c5b4", "d3b3", "b1d2", "b3b2", "c1c2", "b2c2", "c4c2", "f6h5", "g2g3", "g7g5", "c2c5", "h5g7", "c5a5", "a7a6", "g1f2", "g7e6"]
+  },
+  {
+    id: "capablanca-085",
+    white: "Jaffe, Charles",
+    black: "Capablanca, Jose Raul",
+    result: "1/2-1/2",
+    year: 1913,
+    event: "Havana",
+    site: "Havana",
+    eco: "D37",
+    opening: "",
+    label: "Jaffe, Charles vs Capablanca, Jose Raul, Havana 1913",
+    moves: ["d2d4", "g8f6", "g1f3", "d7d5", "c2c4", "e7e6", "b1c3", "b8d7", "e2e3", "c7c5", "f1d3", "b7b6", "c4d5", "e6d5", "d4c5", "d7c5", "d3b5", "c8d7", "b5d7", "d8d7", "e1h1", "a8c8", "c1d2", "f8d6", "d1e2", "e8h8", "f1d1", "f8d8", "c3b5", "d6b8", "d2c3", "c5e4", "c3f6", "e4f6", "b5c3", "c8c5", "d1d4", "d8c8", "a1d1", "d7e6", "e2d3", "h7h6", "g1f1", "b8e5", "f3e5", "e6e5", "g2g3", "g7g6", "f1g2", "g8g7", "d1d2", "c8d8", "h2h3", "h6h5", "b2b4", "c5c3", "d3c3", "f6e4", "c3b2", "e4d2", "b2d2", "f7f5", "d2c3", "g7f7", "d4c4", "e5c3", "c4c3", "f7e6", "g2f3", "g6g5", "h3h4", "g5h4", "g3h4", "e6e5", "c3c7", "d5d4", "f3e2", "d4e3", "f2e3", "d8g8", "c7e7", "e5d5", "e7d7", "d5e5"]
+  },
+  {
+    id: "capablanca-086",
+    white: "Beihoff, G.",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "C24",
+    opening: "",
+    label: "Beihoff, G. vs Capablanca, Jose Raul, New York Rice 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "d2d3", "d7d5", "e4d5", "f6d5", "c4d5", "d8d5", "h2h3", "f8b4", "c1d2", "e8h8", "e1h1", "b4d6", "b1c3", "d5e6", "f1e1", "f7f6", "c3e2", "f6f5", "e2f4", "e6f7", "f3g5", "f7f6", "f4d5", "f6g6", "h3h4", "f5f4", "d3d4", "e5d4", "d1f3", "h7h6", "g5h3", "c8h3", "f3h3", "g6c2", "a1d1", "a8e8", "d2c1", "e8e1", "d1e1", "d4d3", "h3e6", "g8h8"]
+  },
+  {
+    id: "capablanca-087",
+    white: "Marder, A.",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "C90",
+    opening: "",
+    label: "Marder, A. vs Capablanca, Jose Raul, New York Rice 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "f8e7", "f1e1", "b7b5", "a4b3", "d7d6", "c2c3", "c6a5", "b3c2", "c7c5", "d2d3", "a5c6", "b1d2", "e8h8", "d2f1", "c8e6", "c1g5", "f6h5", "g5e7", "d8e7", "d3d4", "c5d4", "c3d4", "e6g4", "f1e3", "g4f3", "d1f3", "h5f4", "e3f5", "e7f6", "e1d1", "f8d8", "c2b3", "a8c8", "g1h1", "f4e6", "d4e5", "d6e5", "b3e6", "f7e6", "f5e3", "f6f3", "g2f3", "d8d1", "a1d1", "c6d4", "h1g2", "a6a5", "d1d3", "b5b4", "h2h4", "g8f7", "d3d2", "f7f6", "g2g3", "g7g5", "h4g5", "f6g5", "e3g2", "c8c1", "d2d3", "d4e2", "g3h2", "c1f1", "d3d2", "f1f2", "a2a3", "b4b3", "a3a4", "h7h5"]
+  },
+  {
+    id: "capablanca-088",
+    white: "Capablanca, Jose Raul",
+    black: "Adair, G.",
+    result: "1-0",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "D00",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Adair, G., New York Rice 1913",
+    moves: ["d2d4", "d7d5", "e2e3", "g8f6", "f1d3", "c7c5", "b2b3", "b8c6", "c1b2", "c8g4", "f2f3", "g4h5", "g1e2", "c5d4", "e3d4", "e7e6", "e1h1", "f8d6", "c2c4", "h5g6", "c4c5", "d6c7", "b1c3", "a8c8", "a2a3", "f6h5", "g2g3", "h5f6", "b3b4", "h7h5", "d3g6", "f7g6", "d1d3", "h5h4", "d3g6", "e8f8", "g3g4", "h8h6", "g6d3", "f8f7", "c3b5", "c7b8", "b2c1", "h6h8", "c1f4", "a7a6", "f4b8", "a6b5", "b8e5"]
+  },
+  {
+    id: "capablanca-089",
+    white: "Capablanca, Jose Raul",
+    black: "Grommer, Jacques",
+    result: "1-0",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "C00",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Grommer, Jacques, New York Rice 1913",
+    moves: ["e2e4", "e7e6", "d2d3", "d7d5", "b1d2", "g8f6", "g1f3", "f8e7", "c2c3", "c7c5", "d1c2", "b8c6", "f1e2", "e6e5", "e1h1", "e8h8", "f1e1", "d5e4", "d3e4", "c8g4", "d2c4", "d8c7", "c4e3", "a8d8", "h2h3", "g4h5", "e3f5", "h5g6", "f3h4", "f6d7", "h4g6", "f7g6", "f5e3", "d7f6", "e3d5", "f6d5", "e4d5", "c6b8", "e2g4", "b8d7", "g4d7", "d8d7", "c3c4", "e7d6", "c1e3", "d7f7", "e1e2", "c7c8", "b2b4", "b7b6", "b4c5", "b6c5", "a1b1", "f7f4", "b1b5", "g6g5", "c2a4", "g5g4", "h3g4", "f4f7", "a4c2", "c8g4", "e3c5", "d6c5", "b5c5", "f7f4", "d5d6", "e5e4", "c5e5", "e4e3", "e5e3", "f4c4", "c2b3", "g8h8", "b3b2", "c4b4", "e3e8", "b4f4", "b2b8", "h8g8", "b8b3", "g8h8", "e8f8", "f4f8", "b3f7", "g4c8", "f7f8"]
+  },
+  {
+    id: "capablanca-090",
+    white: "Kupchik, Abraham",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "D25",
+    opening: "",
+    label: "Kupchik, Abraham vs Capablanca, Jose Raul, New York Rice 1913",
+    moves: ["d2d4", "d7d5", "g1f3", "g8f6", "c2c4", "d5c4", "e2e3", "a7a6", "f1c4", "b7b5", "c4d3", "c8b7", "e1h1", "b8d7", "d1e2", "c7c5", "a2a4", "c5c4", "d3c2", "e7e6", "a4b5", "a6b5", "a1a8", "d8a8", "b1d2", "f8e7", "e3e4", "e8h8", "f1e1", "f8d8", "e4e5", "f6d5", "d2e4", "d5b4", "c2b1", "d7f8", "h2h4", "h7h6", "h4h5", "f8d7", "g2g4", "b4d3", "b1d3", "c4d3", "e2e3", "e7b4", "c1d2", "b7e4", "e3e4", "a8e4", "e1e4", "b4d2", "f3d2", "d7b6", "d2f3", "b6c4", "e4e1", "c4b2", "e1b1", "b2a4", "b1d1", "a4c3", "d1d3", "b5b4", "g1g2", "g7g6", "d3d2", "g6h5", "g4h5", "g8h7", "d2b2", "d8g8", "g2f1", "c3d5", "f3e1", "g8c8", "f1e2", "c8c3", "e2d2", "b4b3", "b2b1", "c3h3", "e1d3", "h3h5", "b1b3", "h5h4", "b3b7", "h7g6", "d2e2", "h4d4", "d3c5", "d4c4", "c5d7", "g6f5", "e2f3", "c4c3", "f3g2", "d5f4", "g2h2", "f4d3", "h2g2", "c3c2", "g2g3", "d3f2", "b7b8", "f2e4", "g3f3", "c2c3", "f3g2", "c3g3", "g2h2", "g3d3", "b8b7", "e4g5", "h2g2", "h6h5", "d7f6", "h5h4", "b7b5", "d3d2"]
+  },
+  {
+    id: "capablanca-091",
+    white: "Capablanca, Jose Raul",
+    black: "Chajes, Oscar",
+    result: "1-0",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "C84",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Chajes, Oscar, New York Rice 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1h1", "b7b5", "a4b3", "f8e7", "d2d4", "d7d6", "c2c3", "c8g4", "c1e3", "e8h8", "b1d2", "c6a5", "b3c2", "f8e8", "b2b4", "e5d4", "c3d4", "a5c6", "a2a3", "e7f8", "a1c1", "c6e7", "e4e5", "d6e5", "d4e5", "g4f3", "d1f3", "f6d7", "f3h3", "e7g6", "f2f4", "d7b6", "d2f3", "b6c4", "f3g5", "h7h6", "g5f7", "g8f7", "h3f5", "f7g8", "f5g6", "c4e3", "g6h7", "g8f7", "c2b3", "e3c4", "f1d1", "d8b8", "c1c4", "b5c4", "b3c4", "f7e7", "h7f5", "b8b6", "g1f1"]
+  },
+  {
+    id: "capablanca-092",
+    white: "Capablanca, Jose Raul",
+    black: "Bernstein, Jacob",
+    result: "1-0",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "D05",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Bernstein, Jacob, New York Rice 1913",
+    moves: ["d2d4", "d7d5", "g1f3", "g8f6", "e2e3", "b8d7", "f1d3", "e7e6", "b2b3", "f8d6", "c1b2", "c7c5", "f3e5", "d8c7", "f2f4", "b7b6", "e1h1", "c8b7", "b1d2", "f6e4", "d2e4", "d5e4", "d3b5", "d6e5", "f4e5", "e8h8", "b5d7", "c7d7", "d4c5", "d7d1", "a1d1", "f8d8", "c5b6", "a7b6", "a2a4", "d8d5", "d1d4", "g8f8", "c2c4", "d5d8", "d4d8", "a8d8", "b2d4", "b7c6", "d4b6", "d8d3", "f1b1", "f8e8", "a4a5", "d3c3", "b6d4", "c3c2", "a5a6", "e8d8", "b3b4", "c2c4", "b4b5"]
+  },
+  {
+    id: "capablanca-093",
+    white: "Duras, Oldrich",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "D26",
+    opening: "",
+    label: "Duras, Oldrich vs Capablanca, Jose Raul, New York Rice 1913",
+    moves: ["d2d4", "d7d5", "g1f3", "g8f6", "c2c4", "e7e6", "b1c3", "d5c4", "e2e3", "a7a6", "f1c4", "b7b5", "c4d3", "c8b7", "a2a4", "b5b4", "c3b1", "c7c5", "e1h1", "b8c6", "d4c5", "f8c5", "d1e2", "d8d5", "f1d1", "d5h5", "b1d2", "c6a5", "d2f1", "e8h8", "f1g3", "h5g4", "e3e4", "a5b3", "a1b1", "f8d8", "c1e3", "f6e4", "d3c2", "c5e3", "e2e3", "b3c5", "h2h3", "g4g6", "g3e4", "d8d1", "b1d1", "b7e4", "c2e4", "c5e4", "e3d4", "h7h6", "d4b4", "e4f6", "b4b7", "g6e4", "b7e4", "f6e4", "b2b4", "e4c3", "d1d3", "c3a4", "d3a3", "a4b6", "f3e5", "g8f8", "e5d3", "b6d5", "a3a4", "a8b8", "a4a6", "d5b4", "d3b4", "b8b4", "a6a7", "h6h5", "g2g3", "h5h4", "g3h4", "b4h4", "g1g2", "e6e5", "g2g3", "h4d4", "a7a5", "f7f6", "a5a7", "f8g8", "a7b7", "g8h7", "b7a7", "h7g6", "a7e7", "d4d3", "g3g2", "d3d5", "g2g3", "f6f5", "e7a7", "d5d3", "g3g2", "e5e4", "a7a4", "g6g5", "a4a5", "g7g6", "a5b5", "g5f4", "b5a5", "d3d2", "a5a4", "f4g5", "g2g1", "g5f4", "g1g2", "g6g5", "a4b4", "f4e5", "b4b5", "d2d5", "b5b8", "f5f4", "b8g8", "e5d4", "g2f1", "d4d3", "g8a8", "e4e3", "a8a3", "d3e4", "f2e3", "f4f3", "f1g1", "d5d3", "a3a8", "e4e3", "a8e8", "e3f4", "e8g8", "d3d1", "g1f2", "d1d2", "f2f1", "d2h2", "f1g1", "h2h3", "g8g7", "g5g4", "g7g8", "f4g3"]
+  },
+  {
+    id: "capablanca-094",
+    white: "Capablanca, Jose Raul",
+    black: "Black, Roy Turnbull",
+    result: "1-0",
+    year: 1913,
+    event: "New York Rice",
+    site: "New York",
+    eco: "C42",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Black, Roy Turnbull, New York Rice 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "g8f6", "f3e5", "d7d6", "e5f3", "f6e4", "d2d4", "d6d5", "f1d3", "f8d6", "c2c4", "d6b4", "b1d2", "e8h8", "e1h1", "f8e8", "c4d5", "e4f6", "f3e5", "b8d7", "d2f3", "f6d5", "e5f7", "g8f7", "f3g5", "f7f8", "d1h5"]
+  },
+  {
+    id: "capablanca-095",
+    white: "Capablanca, Jose Raul",
+    black: "Liebenstein, H.",
+    result: "1-0",
+    year: 1913,
+    event: "New York National",
+    site: "New York",
+    eco: "C46",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Liebenstein, H., New York National 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "f8c5", "f3e5", "c5f2", "e1f2", "c6e5", "d2d4", "e5c6", "c1e3", "d7d6", "f1e2", "g8f6", "h1f1", "e8h8", "f2g1", "h7h6", "d1e1", "f8e8", "e1g3", "g8h8", "f1f2", "d8e7", "e2d3", "f6g4", "c3d5", "e7d7", "f2f4", "c6d8", "f4g4", "d7g4", "d5c7", "g4d7", "c7a8", "b7b6", "d4d5", "c8b7", "e3d4", "f7f6", "g3g6", "b7a8", "e4e5", "h8g8", "g6h7", "g8f8", "e5f6", "d8e6", "d5e6"]
+  },
+  {
+    id: "capablanca-096",
+    white: "Whitaker, Norman",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "New York National",
+    site: "New York",
+    eco: "D00",
+    opening: "",
+    label: "Whitaker, Norman vs Capablanca, Jose Raul, New York National 1913",
+    moves: ["d2d4", "g8f6", "g1f3", "d7d6", "b1c3", "d6d5", "c1f4", "e7e6", "e2e3", "f8b4", "f1d3", "c7c5", "e1h1", "c5c4", "d3e2", "b4c3", "b2c3", "f6e4", "d1e1", "d8a5", "f3d2", "e4c3", "e2c4", "b8c6", "d2b3", "a5b4", "c4d3", "c3a4", "e1e2", "e8h8", "e2h5", "f7f5", "g2g4", "b4e7", "g4f5", "e6f5", "g1h1", "a4b2", "d3e2", "b2c4", "b3c5", "b7b6", "h5f3", "b6c5", "f3d5", "c8e6", "d5c6", "a8c8", "c6g2", "c5d4", "e3d4", "e7d7", "c2c3", "f8f6", "f1g1", "f6g6", "g2h3", "e6d5", "f2f3", "g6g4", "g1g4", "f5g4", "h3g3", "d7f5", "a1g1", "h7h5", "h2h3", "c8f8", "e2c4", "d5c4", "f4d6", "f8f6", "d6e5", "f6g6", "h1h2", "c4d5", "g3f4", "f5c2", "g1g2", "c2d3", "h3g4", "d5f3", "g2d2", "d3f1", "g4g5", "f1h1", "h2g3", "f3d5", "d2f2", "h5h4", "g3g4", "h4h3", "f2b2", "d5e6", "g4h5", "g8h7", "b2e2", "h1d1", "f4d2", "d1g1", "d2f4", "e6d5", "e2d2", "d5g2", "h5h4", "h7g8", "d2b2", "g8h7", "c3c4", "g1e1", "h4g4", "e1g1", "d4d5", "g2d5", "f4g3", "d5e6", "g4f3", "g1f1", "f3e3", "f1c4", "e5d4", "c4c1", "b2d2", "e6f5", "g3h4", "h7g8", "d4e5", "g6e6", "h4d4", "h3h2", "d4d8", "g8h7"]
+  },
+  {
+    id: "capablanca-097",
+    white: "Capablanca, Jose Raul",
+    black: "Janowsky, Dawid Markelowicz",
+    result: "1-0",
+    year: 1913,
+    event: "New York National",
+    site: "New York",
+    eco: "C48",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Janowsky, Dawid Markelowicz, New York National 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1b5", "a7a6", "b5c6", "d7c6", "e1h1", "c8g4", "h2h3", "g4h5", "d1e2", "f8d6", "d2d3", "d8e7", "c3d1", "e8a8", "d1e3", "h5g6", "f3h4", "h8g8", "e3f5", "e7e6", "f2f4", "g6f5", "h4f5", "e5f4", "c1f4", "d6c5", "f4e3", "c5f8", "e2f2", "d8d7", "e3c5", "f8c5", "f2c5", "c8b8", "f1f2", "f6e8", "a1f1", "f7f6", "b2b3", "e8d6", "f2f4", "d6f5", "c5f5", "e6f5", "f4f5", "g8e8", "g2g4", "b7b6", "b3b4", "b8b7", "g1f2", "b6b5", "a2a4", "d7d4", "f1b1", "e8e5", "f2e3", "d4d7", "a4a5", "e5e6", "b1f1", "d7e7", "g4g5", "f6g5", "f5g5", "e6h6", "g5g3", "h6e6", "h3h4", "g7g6", "g3g5", "h7h6", "g5g4", "e7g7", "d3d4", "b7c8", "f1f8", "c8b7", "e4e5", "g6g5", "e3e4", "e6e7", "h4g5", "h6g5", "f8f5", "b7c8", "g4g5", "g7h7", "g5h5", "c8d7", "h5h7", "e7h7", "f5f8", "h7h4", "e4d3", "h4h3", "d3d2", "c6c5", "b4c5", "h3a3", "d4d5"]
+  },
+  {
+    id: "capablanca-098",
+    white: "Morrison, John Stuart",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "New York National",
+    site: "New York",
+    eco: "A41",
+    opening: "",
+    label: "Morrison, John Stuart vs Capablanca, Jose Raul, New York National 1913",
+    moves: ["d2d4", "g8f6", "g1f3", "d7d6", "e2e3", "c8g4", "f1e2", "b8d7", "e1h1", "e7e5", "d4e5", "d6e5", "b1c3", "c7c6", "h2h3", "g4h5", "f3h2", "h5e2", "d1e2", "f8b4", "e3e4", "b4c3", "b2c3", "d8a5", "c1g5", "a5c3", "a1b1", "b7b5", "f1d1", "h7h6", "g5c1", "e8a8", "h2f3", "c3c4", "e2e3", "d7b6", "c1a3", "d8d1", "b1d1", "f6d7", "a3d6", "h8e8", "a2a3", "e8e6", "e3e1", "c6c5", "f3d2", "c4c3"]
+  },
+  {
+    id: "capablanca-099",
+    white: "Capablanca, Jose Raul",
+    black: "Tennenwurzel, Edward",
+    result: "1-0",
+    year: 1913,
+    event: "New York National",
+    site: "New York",
+    eco: "C49",
+    opening: "",
+    label: "Capablanca, Jose Raul vs Tennenwurzel, Edward, New York National 1913",
+    moves: ["e2e4", "e7e5", "g1f3", "b8c6", "b1c3", "g8f6", "f1b5", "f8b4", "e1h1", "e8h8", "b5c6", "d7c6", "d2d3", "f8e8", "h2h3", "h7h6", "c3e2", "f6h5", "g2g4", "h5f6", "e2g3", "f6h7", "g3f5", "c8f5", "g4f5", "d8f6", "f3h2", "f6h4", "g1g2", "a8d8", "f2f4", "b4d6", "d1g4", "h4f6", "d3d4", "e5f4", "e4e5", "d6e5", "d4e5", "f6e5", "c1f4", "e5e4", "g2g1", "h7f6", "g4g2", "f6h5", "g2e4", "e8e4", "f4c7", "d8d7", "c7a5", "e4e3", "f1f3", "e3e2", "a1c1", "c6c5", "a5c3", "b7b5", "a2a3", "h5f6", "c3f6", "g7f6", "h2g4", "d7d2", "f3f2", "e2f2", "g4f2", "d2d5", "f2g4"]
+  },
+  {
+    id: "capablanca-100",
+    white: "Rubinstein, Solomon",
+    black: "Capablanca, Jose Raul",
+    result: "0-1",
+    year: 1913,
+    event: "New York National",
+    site: "New York",
+    eco: "A55",
+    opening: "",
+    label: "Rubinstein, Solomon vs Capablanca, Jose Raul, New York National 1913",
+    moves: ["d2d4", "g8f6", "c2c4", "d7d6", "b1c3", "b8d7", "e2e4", "e7e5", "g1f3", "c7c6", "f1e2", "f8e7", "e1h1", "e8h8", "b2b3", "f8e8", "f1e1", "d8c7", "c1b2", "d7f8", "e2d3", "f8g6", "c3e2", "f6h5", "a1c1", "c8g4", "e2g3", "h5f4", "g3f5", "e7f6", "h2h3", "g4f3", "d1f3", "e5d4", "b2d4", "f6d4", "f5d4", "g6e5", "f3f4", "e5d3", "f4g4", "d3c1", "d4f5", "g7g6", "e1c1", "h7h5", "g4g5", "e8e4", "f2f4", "c7d8", "g5h6", "g6f5", "c1c3", "h5h4", "c3d3", "e4e6", "h6h5", "d8f6", "g1h2", "g8g7", "h5d1", "a8h8"]
+  }
+];
+function randomMasterGame() {
+  return MASTER_GAMES[Math.floor(Math.random() * MASTER_GAMES.length)];
+}
+
+// src/study/saveAction.ts
+var _nextId = 0;
+function generateStudyId() {
+  return `study_${Date.now()}_${_nextId++}`;
+}
+function extractTitle(pgn) {
+  try {
+    const game = parsePgn(pgn)[0];
+    if (!game) return "Untitled Study";
+    const white = game.headers.get("White");
+    const black = game.headers.get("Black");
+    const opening = game.headers.get("Opening");
+    if (white && black && white !== "?" && black !== "?") {
+      return opening ? `${white} vs ${black} \u2014 ${opening}` : `${white} vs ${black}`;
+    }
+    if (opening) return opening;
+  } catch {
+  }
+  return "Untitled Study";
+}
+function extractMetadata(pgn) {
+  try {
+    const game = parsePgn(pgn)[0];
+    if (!game) return {};
+    const meta = {};
+    const white = game.headers.get("White");
+    const black = game.headers.get("Black");
+    const result = game.headers.get("Result");
+    const eco = game.headers.get("ECO");
+    const opening = game.headers.get("Opening");
+    if (white && white !== "?") meta.white = white;
+    if (black && black !== "?") meta.black = black;
+    if (result && result !== "*") meta.result = result;
+    if (eco) meta.eco = eco;
+    if (opening) meta.opening = opening;
+    return meta;
+  } catch {
+    return {};
+  }
+}
+async function saveCurrentToLibrary(pgn, metadata = {}) {
+  const now = Date.now();
+  const auto = extractMetadata(pgn);
+  const item = {
+    // Auto-extracted fields first (lowest priority).
+    ...auto,
+    // Caller-provided overrides (medium priority).
+    ...metadata,
+    // Fixed fields that cannot be overridden (highest priority).
+    id: generateStudyId(),
+    pgn,
+    title: metadata.title ?? extractTitle(pgn),
+    source: metadata.source ?? "manual",
+    tags: metadata.tags ?? [],
+    folders: metadata.folders ?? [],
+    favorite: metadata.favorite ?? false,
+    createdAt: now,
+    updatedAt: now
+  };
+  await saveStudy(item);
+  return item;
+}
+function uciMovesToPgn(uciMoves, title) {
+  const setup = parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const sans = [];
+  for (const uci of uciMoves) {
+    const move3 = parseUci(uci);
+    if (!move3) break;
+    const san = makeSan(pos, move3);
+    pos.play(move3);
+    sans.push(san);
+  }
+  const headers = [
+    '[Event "?"]',
+    '[Site "?"]',
+    '[Date "????.??.??"]',
+    '[Round "?"]',
+    `[White "${title ?? "?"}"]`,
+    '[Black "?"]',
+    '[Result "*"]'
+  ];
+  const moves = [];
+  for (let i = 0; i < sans.length; i++) {
+    if (i % 2 === 0) moves.push(`${Math.floor(i / 2) + 1}. ${sans[i]}`);
+    else moves.push(sans[i]);
+  }
+  return `${headers.join("\n")}
+
+${moves.join(" ")} *`;
+}
+async function saveUciLinesToLibrary(uciMoves, color, title) {
+  const lineTitle = title ?? "Opening line";
+  const pgn = uciMovesToPgn(uciMoves, lineTitle);
+  return saveCurrentToLibrary(pgn, {
+    source: "openings",
+    title: lineTitle,
+    tags: [color === "white" ? "as-white" : "as-black"]
+  });
+}
+function puzzleToPgn(fen, uciMoves, title) {
+  const setup = parseFen(fen);
+  if (!setup.isOk) return `[FEN "${fen}"]
+[SetUp "1"]
+[Result "*"]
+
+*`;
+  const pos = Chess.fromSetup(setup.value);
+  if (!pos.isOk) return `[FEN "${fen}"]
+[SetUp "1"]
+[Result "*"]
+
+*`;
+  const chess = pos.value;
+  const startPly = chess.turn === "white" ? (chess.fullmoves - 1) * 2 : (chess.fullmoves - 1) * 2 + 1;
+  const sans = [];
+  for (const uci of uciMoves) {
+    const move3 = parseUci(uci);
+    if (!move3) break;
+    const san = makeSan(chess, move3);
+    chess.play(move3);
+    sans.push(san);
+  }
+  const headers = [
+    `[Event "Puzzle"]`,
+    `[White "${title}"]`,
+    `[Black "?"]`,
+    `[Result "*"]`,
+    `[FEN "${fen}"]`,
+    `[SetUp "1"]`
+  ];
+  const moves = [];
+  for (let i = 0; i < sans.length; i++) {
+    const ply = startPly + i;
+    if (ply % 2 === 0) moves.push(`${Math.floor(ply / 2) + 1}. ${sans[i]}`);
+    else moves.push(sans[i]);
+  }
+  if (sans.length > 0 && startPly % 2 === 1) {
+    moves[0] = `${Math.floor(startPly / 2) + 1}... ${sans[0]}`;
+  }
+  return `${headers.join("\n")}
+
+${moves.join(" ")} *`;
+}
+function masterGameToPgn(game) {
+  const setup = parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const sans = [];
+  for (const uci of game.moves) {
+    const move3 = parseUci(uci);
+    if (!move3) break;
+    const san = makeSan(pos, move3);
+    pos.play(move3);
+    sans.push(san);
+  }
+  const headers = [
+    `[Event "${game.event || "?"}"]`,
+    `[Site "${game.site || "?"}"]`,
+    `[Date "${game.year}.??.??"]`,
+    `[Round "?"]`,
+    `[White "${game.white}"]`,
+    `[Black "${game.black}"]`,
+    `[Result "${game.result}"]`,
+    ...game.eco ? [`[ECO "${game.eco}"]`] : [],
+    ...game.opening ? [`[Opening "${game.opening}"]`] : []
+  ];
+  const moves = [];
+  for (let i = 0; i < sans.length; i++) {
+    if (i % 2 === 0) moves.push(`${Math.floor(i / 2) + 1}. ${sans[i]}`);
+    else moves.push(sans[i]);
+  }
+  return `${headers.join("\n")}
+
+${moves.join(" ")} ${game.result}`;
+}
+var SEED_CHUNK = 20;
+async function seedMasterGamesToLibrary() {
+  const now = Date.now();
+  let saved = 0;
+  for (let i = 0; i < MASTER_GAMES.length; i += SEED_CHUNK) {
+    const chunk = MASTER_GAMES.slice(i, i + SEED_CHUNK);
+    const items = chunk.map((game, j) => {
+      const pgn = masterGameToPgn(game);
+      const title = `${game.white} vs ${game.black} \u2014 ${game.event} ${game.year}`;
+      const item = {
+        id: generateStudyId(),
+        pgn,
+        title,
+        source: "import",
+        tags: ["sample", "master-game"],
+        folders: [],
+        favorite: false,
+        white: game.white,
+        black: game.black,
+        result: game.result,
+        createdAt: now + i + j,
+        updatedAt: now + i + j
+      };
+      if (game.eco) item.eco = game.eco;
+      if (game.opening) item.opening = game.opening;
+      return item;
+    });
+    await Promise.all(items.map((item) => saveStudy(item)));
+    saved += items.length;
+    if (i + SEED_CHUNK < MASTER_GAMES.length) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  return saved;
+}
+async function savePuzzleToLibrary(fen, solutionMoves, title) {
+  const puzzleTitle = title ?? "Puzzle";
+  const pgn = puzzleToPgn(fen, solutionMoves, puzzleTitle);
+  return saveCurrentToLibrary(pgn, {
+    source: "puzzles",
+    title: puzzleTitle,
+    tags: ["puzzle"]
+  });
+}
 
 // src/puzzles/view.ts
 var ROLE_ORDER2 = ["queen", "rook", "bishop", "knight", "pawn"];
@@ -18148,7 +21592,7 @@ function renderInlineBrowsePane(ls, redraw2) {
   if (ls.source === "imported-lichess") {
     return renderImportedSessionBuilder(ls, redraw2);
   }
-  const hasMore = ls.visible.length < ls.filtered.length;
+  const hasMore2 = ls.visible.length < ls.filtered.length;
   return h("aside.puzzle__side.puzzle-library__sidebar.puzzle-list", [
     h("div.puzzle-list__header", [
       h("a.puzzle-list__back", {
@@ -18165,7 +21609,7 @@ function renderInlineBrowsePane(ls, redraw2) {
         h("span.puzzle-list__row-moves", "Moves")
       ]),
       ...ls.visible.map((def) => renderPuzzleListRow(def, redraw2)),
-      hasMore ? h("button.button.puzzle-list__load-more", {
+      hasMore2 ? h("button.button.puzzle-list__load-more", {
         on: { click: () => loadMorePuzzles(redraw2) }
       }, `Load More (${ls.visible.length} of ${ls.filtered.length})`) : null
     ])
@@ -18528,6 +21972,29 @@ function formatThemeName(theme) {
   return theme.replace(/([A-Z])/g, " $1").replace(/(\d+)/g, " $1").replace(/^ /, "").replace(/\b\w/g, (c) => c.toUpperCase()).trim();
 }
 var _puzzleInfoExpanded = false;
+var _puzzleSaveLibFeedback = null;
+var _puzzleSaveLibTimer = null;
+function handlePuzzleSaveToLibrary(rc, redraw2) {
+  const fen = rc.definition.startFen;
+  const moves = rc.definition.solutionLine;
+  void savePuzzleToLibrary(fen, moves).then(() => {
+    _puzzleSaveLibFeedback = "Saved to Library!";
+    if (_puzzleSaveLibTimer) clearTimeout(_puzzleSaveLibTimer);
+    _puzzleSaveLibTimer = setTimeout(() => {
+      _puzzleSaveLibFeedback = null;
+      redraw2();
+    }, 1800);
+    redraw2();
+  }).catch(() => {
+    _puzzleSaveLibFeedback = "Save failed";
+    if (_puzzleSaveLibTimer) clearTimeout(_puzzleSaveLibTimer);
+    _puzzleSaveLibTimer = setTimeout(() => {
+      _puzzleSaveLibFeedback = null;
+      redraw2();
+    }, 1800);
+    redraw2();
+  });
+}
 function renderPuzzleInfo(def, redraw2) {
   const rating = def.sourceKind === "imported-lichess" ? `${def.rating}` : null;
   if (!_puzzleInfoExpanded) {
@@ -18936,7 +22403,13 @@ function renderSolvedFeedback(rc, redraw2) {
           rc.showEngineArrows(redraw2);
         } }
       }, "Engine Arrows"),
-      renderAnalysisToggle(rc, redraw2)
+      renderAnalysisToggle(rc, redraw2),
+      _puzzleSaveLibFeedback ? h("span.puzzle__save-lib-feedback", _puzzleSaveLibFeedback) : h("button.button.button-empty.puzzle__save-lib", {
+        attrs: { title: "Save this puzzle to the Study Library" },
+        on: { click: () => {
+          handlePuzzleSaveToLibrary(rc, redraw2);
+        } }
+      }, "\u{1F4DA} Save to Library")
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     renderNextNav(redraw2)
@@ -18991,7 +22464,13 @@ function renderFailedFeedback(rc, redraw2) {
           rc.showEngineArrows(redraw2);
         } }
       }, "Engine Arrows"),
-      renderAnalysisToggle(rc, redraw2)
+      renderAnalysisToggle(rc, redraw2),
+      _puzzleSaveLibFeedback ? h("span.puzzle__save-lib-feedback", _puzzleSaveLibFeedback) : h("button.button.button-empty.puzzle__save-lib", {
+        attrs: { title: "Save this puzzle to the Study Library" },
+        on: { click: () => {
+          handlePuzzleSaveToLibrary(rc, redraw2);
+        } }
+      }, "\u{1F4DA} Save to Library")
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     h("div.puzzle__feedback__nav", [
@@ -19981,7 +23460,7 @@ function importPgn(callbacks) {
 
 // src/analyse/retroConfig.ts
 var RETRO_CONFIG_DEFAULTS = {
-  minClassification: "mistake",
+  minLossThreshold: 0.1,
   missedMateDistance: 3,
   collapseEnabled: false,
   collapseWcFloor: 0.65,
@@ -19994,14 +23473,13 @@ var RETRO_CONFIG_DEFAULTS = {
   punishExploitDropMin: 0.1
 };
 var RETRO_CONFIG_LS_KEY = "retroConfig";
-var VALID_CLASSIFICATIONS = /* @__PURE__ */ new Set(["inaccuracy", "mistake", "blunder"]);
 function loadFromStorage() {
   try {
     const stored = localStorage.getItem(RETRO_CONFIG_LS_KEY);
     if (stored === null) return { ...RETRO_CONFIG_DEFAULTS };
     const p = JSON.parse(stored);
     return {
-      minClassification: VALID_CLASSIFICATIONS.has(p.minClassification) ? p.minClassification : RETRO_CONFIG_DEFAULTS.minClassification,
+      minLossThreshold: typeof p.minLossThreshold === "number" && p.minLossThreshold >= 0.01 && p.minLossThreshold <= 0.25 ? p.minLossThreshold : RETRO_CONFIG_DEFAULTS.minLossThreshold,
       missedMateDistance: typeof p.missedMateDistance === "number" && p.missedMateDistance >= 0 ? Math.floor(p.missedMateDistance) : RETRO_CONFIG_DEFAULTS.missedMateDistance,
       collapseEnabled: typeof p.collapseEnabled === "boolean" ? p.collapseEnabled : RETRO_CONFIG_DEFAULTS.collapseEnabled,
       collapseWcFloor: typeof p.collapseWcFloor === "number" && p.collapseWcFloor >= 0 && p.collapseWcFloor <= 1 ? p.collapseWcFloor : RETRO_CONFIG_DEFAULTS.collapseWcFloor,
@@ -20091,6 +23569,26 @@ function renderNav(route) {
   ));
 }
 var REVIEW_DEPTHS = [12, 14, 16, 18, 20];
+var AUTO_REVIEW_DEPTHS = [
+  { depth: 2, label: "1\xD7" },
+  { depth: 4, label: "4\xD7" },
+  { depth: 6, label: "9\xD7" },
+  { depth: 8, label: "25\xD7" },
+  { depth: 10, label: "60\xD7" },
+  { depth: 12, label: "150\xD7" },
+  { depth: 14, label: "400\xD7" },
+  { depth: 16, label: "1000\xD7" },
+  { depth: 18, label: "2500\xD7" }
+];
+function renderAutoReviewDepthPills(currentDepth, onSelect) {
+  return AUTO_REVIEW_DEPTHS.map(
+    ({ depth, label }) => h("button.review-menu__pill", {
+      class: { active: currentDepth === depth },
+      attrs: { title: `Depth ${depth} \u2014 ~${label} relative cost` },
+      on: { click: () => onSelect(depth) }
+    }, String(depth))
+  );
+}
 function renderReviewMenu(redraw2) {
   const running = isBulkRunning();
   const paused = isBulkPaused();
@@ -20264,14 +23762,9 @@ function renderDetectionModal(redraw2) {
     ])
   ]);
 }
-var CLASSIFICATION_OPTIONS = [
-  { value: "inaccuracy", label: "Inaccuracy" },
-  { value: "mistake", label: "Mistake" },
-  { value: "blunder", label: "Blunder" }
-];
 function renderRetroModal(redraw2) {
   const cfg = retroConfig;
-  const isDefault = cfg.minClassification === RETRO_CONFIG_DEFAULTS.minClassification && cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance && cfg.collapseEnabled === RETRO_CONFIG_DEFAULTS.collapseEnabled && cfg.collapseWcFloor === RETRO_CONFIG_DEFAULTS.collapseWcFloor && cfg.collapseDropMin === RETRO_CONFIG_DEFAULTS.collapseDropMin && cfg.defensiveEnabled === RETRO_CONFIG_DEFAULTS.defensiveEnabled && cfg.defensiveWcCeiling === RETRO_CONFIG_DEFAULTS.defensiveWcCeiling && cfg.defensiveSalvageMin === RETRO_CONFIG_DEFAULTS.defensiveSalvageMin && cfg.punishEnabled === RETRO_CONFIG_DEFAULTS.punishEnabled && cfg.punishOpponentSwingMin === RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin && cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin;
+  const isDefault = cfg.minLossThreshold === RETRO_CONFIG_DEFAULTS.minLossThreshold && cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance && cfg.collapseEnabled === RETRO_CONFIG_DEFAULTS.collapseEnabled && cfg.collapseWcFloor === RETRO_CONFIG_DEFAULTS.collapseWcFloor && cfg.collapseDropMin === RETRO_CONFIG_DEFAULTS.collapseDropMin && cfg.defensiveEnabled === RETRO_CONFIG_DEFAULTS.defensiveEnabled && cfg.defensiveWcCeiling === RETRO_CONFIG_DEFAULTS.defensiveWcCeiling && cfg.defensiveSalvageMin === RETRO_CONFIG_DEFAULTS.defensiveSalvageMin && cfg.punishEnabled === RETRO_CONFIG_DEFAULTS.punishEnabled && cfg.punishOpponentSwingMin === RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin && cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin;
   return h("div.detection-modal", [
     h("div.detection-modal__backdrop", {
       on: { click: () => {
@@ -20291,31 +23784,44 @@ function renderRetroModal(redraw2) {
         }, "\u2715")
       ]),
       h("div.detection-modal__body", [
-        // minClassification — pill picker
+        // minLossThreshold — continuous 1–25% slider
         h("div.detection-modal__row", [
           h("div.detection-modal__row-header", [
             h("span.detection-modal__label", "Minimum Severity"),
-            h(
-              "span.detection-modal__value",
-              cfg.minClassification === "inaccuracy" ? "loss \u2265 5%" : cfg.minClassification === "mistake" ? "loss \u2265 10%" : "loss \u2265 15%"
-            )
+            h("span.detection-modal__value", `loss \u2265 ${Math.round(cfg.minLossThreshold * 100)}%`)
           ]),
           h(
             "p.detection-modal__desc",
-            "Minimum move classification to include as a Learn From Your Mistakes candidate. Inaccuracy catches all real errors (Lichess parity). Mistake is the default. Blunder shows only large drops."
+            "Minimum win-chance loss to include a move as a candidate. Drag left for more candidates, right for fewer. Lichess parity: 5%. Patzer default: 10%."
           ),
-          h(
-            "div.detection-modal__pills",
-            CLASSIFICATION_OPTIONS.map(
-              (opt) => h("button", {
-                class: { active: cfg.minClassification === opt.value },
-                on: { click: () => {
-                  setRetroConfig({ minClassification: opt.value });
+          h("div.detection-modal__severity-slider", [
+            h("input.severity-range", {
+              attrs: {
+                type: "range",
+                min: 1,
+                max: 25,
+                step: 1,
+                value: Math.round(cfg.minLossThreshold * 100)
+              },
+              on: {
+                input: (e) => {
+                  const pct = parseInt(e.target.value, 10);
+                  setRetroConfig({ minLossThreshold: pct / 100 });
                   redraw2();
-                } }
-              }, opt.label)
-            )
-          )
+                }
+              }
+            }),
+            h("span.severity-divider--inaccuracy", { attrs: { title: "Inaccuracy: loss \u2265 5%" } }),
+            h("span.severity-divider--mistake", { attrs: { title: "Lichess default / Mistake: loss \u2265 10%" } }),
+            h("span.severity-divider--blunder", { attrs: { title: "Blunder: loss \u2265 15%" } }),
+            h("div.detection-modal__severity-ticks", [
+              h("span", "1%"),
+              h("span", "Inaccuracy"),
+              h("span", "Mistake"),
+              h("span", "Blunder"),
+              h("span", "25%")
+            ])
+          ])
         ]),
         // missedMateDistance — slider
         h("div.detection-modal__row", [
@@ -20630,7 +24136,7 @@ function renderMobileNav(route, redraw2) {
 function renderHeader(deps) {
   const {
     route,
-    importedGames: importedGames2,
+    importedGames: importedGames3,
     selectedGameId: selectedGameId2,
     analyzedGameIds: analyzedGameIds2,
     missedTacticGameIds: missedTacticGameIds2,
@@ -20736,14 +24242,30 @@ function renderHeader(deps) {
       h(
         "div.header__panel-row.--mt",
         renderToggleRow("import-auto-review", "Auto-review after import", importFilters.autoReview, (v) => {
-          importFilters.autoReview = v;
+          setAutoReview(v);
           redraw2();
         })
       ),
-      importFilters.autoReview ? h(
-        "p.header__panel-hint.header__panel-warn",
-        "Large imports may take a long time to review. Each game runs through the engine at the configured review depth."
-      ) : null
+      importFilters.autoReview ? h("div.header__panel-section.--nested", [
+        h(
+          "div.header__panel-row",
+          renderToggleRow("import-auto-review-confirm", "Are you sure?", importFilters.autoReviewConfirmed, (v) => {
+            setAutoReviewConfirmed(v);
+            redraw2();
+          })
+        ),
+        h(
+          "p.header__panel-hint.header__panel-warn",
+          "Large imports may take a long time to review. Each game runs through the engine at the configured review depth."
+        ),
+        importFilters.autoReviewConfirmed ? h("div.review-menu__section", [
+          h("div.review-menu__label", `Auto-review depth: ${importFilters.autoReviewDepth}`),
+          h("div.review-menu__row", renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => {
+            setAutoReviewDepth(d);
+            redraw2();
+          }))
+        ]) : null
+      ]) : null
     ]),
     h("div.header__panel-divider"),
     h("div.header__panel-section", [
@@ -20768,9 +24290,9 @@ function renderHeader(deps) {
         pgnState.error ? h("span.header__panel-error", pgnState.error) : null
       ])
     ]),
-    importedGames2.length > 0 ? h("div.header__panel-section", [
-      h("div.header__panel-label", `${importedGames2.length} game${importedGames2.length === 1 ? "" : "s"} imported`),
-      h("div.header__games-list", importedGames2.map((game) => {
+    importedGames3.length > 0 ? h("div.header__panel-section", [
+      h("div.header__panel-label", `${importedGames3.length} game${importedGames3.length === 1 ? "" : "s"} imported`),
+      h("div.header__games-list", importedGames3.map((game) => {
         const isAnalyzed = analyzedGameIds2.has(game.id);
         const hasMissedTactic = missedTacticGameIds2.has(game.id);
         const srcUrl = gameSourceUrl2(game);
@@ -20834,13 +24356,13 @@ function renderHeader(deps) {
           attrs: { disabled: loading || !username.trim() },
           on: { click: doImport }
         }, loading ? `Importing\u2026${(importPlatform === "chesscom" ? chesscom.gameCount : lichess.gameCount) > 0 ? ` (${importPlatform === "chesscom" ? chesscom.gameCount : lichess.gameCount})` : ""}` : "Import"),
-        importedGames2.length > 0 && !error ? h(
+        importedGames3.length > 0 && !error ? h(
           "span.header__count",
           { on: { click: () => {
             showImportPanel = !showImportPanel;
             redraw2();
           } } },
-          `${importedGames2.length} games`
+          `${importedGames3.length} games`
         ) : null,
         error ? h("span.header__error", { attrs: { title: error } }, "\u26A0") : null,
         h("button.header__toggle", {
@@ -21154,8 +24676,16 @@ var TIME_CONTROL_LABELS = {
   classical: "Classical",
   ultrabullet: "UltraBullet"
 };
+function rollingAvg(values, window2) {
+  return values.map((_, i) => {
+    const start4 = Math.max(0, i - window2 + 1);
+    const slice = values.slice(start4, i + 1);
+    return slice.reduce((a, v) => a + v, 0) / slice.length;
+  });
+}
 function renderTrendSection(summaries) {
   const MIN_GAMES = 20;
+  const ROLL_WINDOW = 20;
   const byTc = /* @__PURE__ */ new Map();
   for (const s of summaries) {
     const tc = s.timeClass || "classical";
@@ -21185,11 +24715,12 @@ function renderTrendSection(summaries) {
   }
   const charts = [];
   for (const { label, summaries: gs } of groups) {
-    const accs = gs.map((s) => s.accuracy);
-    const blunders = gs.map((s) => s.blunderCount);
+    const accs = rollingAvg(gs.map((s) => s.accuracy), ROLL_WINDOW);
+    const blunders = rollingAvg(gs.map((s) => s.blunderCount), ROLL_WINDOW);
+    const chartLabel = `${label} (${gs.length} games, ${ROLL_WINDOW}-game rolling avg)`;
     charts.push(
       h("div.stats-trend-group", [
-        h("div.stats-trend-group__title", label),
+        h("div.stats-trend-group__title", chartLabel),
         renderTrendChart("Accuracy", accs, 0, 100, "%", "stats-chart__line--accuracy"),
         renderTrendChart("Blunders/game", blunders, 0, Math.max(5, ...blunders), "", "stats-chart__line--blunders")
       ])
@@ -21253,6 +24784,87 @@ function renderWeaknessPanel(summaries) {
   return h("section.stats-section", [
     h("h3.stats-section-title", "Your Weaknesses"),
     h("div.weakness-list", weaknesses.slice(0, 5).map(renderWeaknessCard))
+  ]);
+}
+function buildImportOpeningRows(summaries) {
+  const games = importedGames();
+  if (games.length === 0) return [];
+  const analyzedIds = new Set(summaries.map((s) => s.gameId));
+  const byColorOpening = /* @__PURE__ */ new Map();
+  const colorWins = { White: 0, Black: 0 };
+  const colorGames = { White: 0, Black: 0 };
+  for (const g of games) {
+    if (!g.result || !g.opening && !g.eco) continue;
+    const name = g.opening || g.eco || "Unknown";
+    const username = (g.importedUsername ?? "").toLowerCase();
+    let color = null;
+    if (username && g.white && g.white.toLowerCase() === username) color = "White";
+    else if (username && g.black && g.black.toLowerCase() === username) color = "Black";
+    if (!color) continue;
+    const key = `${name}||${color}`;
+    const entry = byColorOpening.get(key) ?? { wins: 0, draws: 0, losses: 0, hasAnalysis: false };
+    const won = color === "White" && g.result === "1-0" || color === "Black" && g.result === "0-1";
+    const drew = g.result === "1/2-1/2";
+    if (won) entry.wins++;
+    else if (drew) entry.draws++;
+    else entry.losses++;
+    if (analyzedIds.has(g.id)) entry.hasAnalysis = true;
+    byColorOpening.set(key, entry);
+    if (won) colorWins[color]++;
+    colorGames[color]++;
+  }
+  const overallWinRate = {
+    White: colorGames.White > 0 ? colorWins.White / colorGames.White * 100 : 50,
+    Black: colorGames.Black > 0 ? colorWins.Black / colorGames.Black * 100 : 50
+  };
+  const rows = [];
+  for (const [key, entry] of byColorOpening) {
+    const [name, colorStr] = key.split("||");
+    const total = entry.wins + entry.draws + entry.losses;
+    if (total < 5) continue;
+    const winRate = entry.wins / total * 100;
+    rows.push({
+      name,
+      color: colorStr,
+      games: total,
+      wins: entry.wins,
+      draws: entry.draws,
+      losses: entry.losses,
+      winRate: Math.round(winRate),
+      belowAvg: winRate < overallWinRate[colorStr] - 15,
+      hasAnalysis: entry.hasAnalysis
+    });
+  }
+  rows.sort((a, b) => a.winRate - b.winRate);
+  return rows;
+}
+function renderImportOpeningTable(summaries) {
+  const rows = buildImportOpeningRows(summaries);
+  if (rows.length < 3) return null;
+  return h("section.stats-section", [
+    h("h3.stats-section-title", "Opening Win Rates"),
+    h("p.stats-section-note", "Sorted worst-first. Requires 5+ games per opening as each colour."),
+    h("table.opening-table.opening-table--import", [
+      h("thead", h("tr", [
+        h("th", "Opening"),
+        h("th", "Colour"),
+        h("th", "Games"),
+        h("th", "W / D / L"),
+        h("th", "Win %")
+      ])),
+      h("tbody", rows.map(
+        (row) => h(`tr.opening-table__row${row.belowAvg ? ".opening-table__row--weak" : ""}`, [
+          h("td.opening-table__name", [
+            row.name,
+            row.hasAnalysis ? h("span.opening-table__analyzed-badge", { attrs: { title: "Analysis data available" } }, " \u25CF") : null
+          ].filter(Boolean)),
+          h("td.opening-table__color", row.color),
+          h("td.opening-table__games", String(row.games)),
+          h("td.opening-table__wdl", `${row.wins} / ${row.draws} / ${row.losses}`),
+          h("td.opening-table__winrate", `${row.winRate}%`)
+        ])
+      ))
+    ])
   ]);
 }
 function buildOpeningRows(summaries, globalAvgAccuracy) {
@@ -21331,10 +24943,10 @@ function renderOpeningTable(summaries, redraw2) {
   ].filter(Boolean));
 }
 function renderTacticalProfile(summaries) {
-  if (summaries.length < 5) {
+  if (summaries.length < 10) {
     return h("section.stats-section", [
       h("h3.stats-section-title", "Tactical Profile"),
-      h("p.stats-insufficient", "Need at least 5 analyzed games.")
+      h("p.stats-insufficient", `Need at least 10 analyzed games. ${summaries.length} so far.`)
     ]);
   }
   const totalMoments = summaries.reduce((a, s) => a + s.missedMomentCount, 0);
@@ -21456,7 +25068,9 @@ function renderStatsPage(redraw2) {
     renderWeaknessPanel(summaries),
     // Accuracy & blunder trends
     renderTrendSection(summaries),
-    // Opening performance table
+    // Opening win rate table (import data only — renders before any games are reviewed)
+    renderImportOpeningTable(summaries),
+    // Opening performance table (analysis data — accuracy and blunder columns)
     renderOpeningTable(summaries, redraw2),
     // Tactical profile
     renderTacticalProfile(summaries),
@@ -21468,9 +25082,9 @@ function renderStatsPage(redraw2) {
 }
 
 // src/openings/db.ts
-var _db2;
-function openDb() {
-  if (_db2) return Promise.resolve(_db2);
+var _db3;
+function openDb2() {
+  if (_db3) return Promise.resolve(_db3);
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("patzer-openings", 3);
     req.onupgradeneeded = (e) => {
@@ -21486,15 +25100,15 @@ function openDb() {
       }
     };
     req.onsuccess = () => {
-      _db2 = req.result;
-      resolve(_db2);
+      _db3 = req.result;
+      resolve(_db3);
     };
     req.onerror = () => reject(req.error);
   });
 }
 async function saveCollection(collection) {
   try {
-    const db = await openDb();
+    const db = await openDb2();
     const tx = db.transaction("collections", "readwrite");
     tx.objectStore("collections").put(collection);
   } catch (e) {
@@ -21503,7 +25117,7 @@ async function saveCollection(collection) {
 }
 async function loadCollections() {
   try {
-    const db = await openDb();
+    const db = await openDb2();
     return new Promise((resolve, reject) => {
       const tx = db.transaction("collections", "readonly");
       const req = tx.objectStore("collections").getAll();
@@ -21517,7 +25131,7 @@ async function loadCollections() {
 }
 async function deleteCollection(id) {
   try {
-    const db = await openDb();
+    const db = await openDb2();
     const tx = db.transaction("collections", "readwrite");
     tx.objectStore("collections").delete(id);
   } catch (e) {
@@ -21526,7 +25140,7 @@ async function deleteCollection(id) {
 }
 async function saveSessionState(state2) {
   try {
-    const db = await openDb();
+    const db = await openDb2();
     const tx = db.transaction("session", "readwrite");
     tx.objectStore("session").put(state2, "current");
   } catch (e) {
@@ -21535,7 +25149,7 @@ async function saveSessionState(state2) {
 }
 async function loadSessionState() {
   try {
-    const db = await openDb();
+    const db = await openDb2();
     return new Promise((resolve, reject) => {
       const tx = db.transaction("session", "readonly");
       const req = tx.objectStore("session").get("current");
@@ -21549,7 +25163,7 @@ async function loadSessionState() {
 }
 async function clearSessionState() {
   try {
-    const db = await openDb();
+    const db = await openDb2();
     const tx = db.transaction("session", "readwrite");
     tx.objectStore("session").delete("current");
   } catch (e) {
@@ -21558,7 +25172,7 @@ async function clearSessionState() {
 }
 async function saveVariation(variation) {
   try {
-    const db = await openDb();
+    const db = await openDb2();
     const tx = db.transaction("training-variations", "readwrite");
     tx.objectStore("training-variations").put(variation);
   } catch (e) {
@@ -21792,6 +25406,14 @@ function gameMatchesPath(game, path) {
 }
 
 // src/openings/analytics.ts
+var MIN_COLLECTION_SIZE = 20;
+var MIN_RELIABLE_SAMPLE = 5;
+function isCollectionSmall(total) {
+  return total < MIN_COLLECTION_SIZE;
+}
+function isStatReliable(n) {
+  return n >= MIN_RELIABLE_SAMPLE;
+}
 function emptyWDL() {
   return { wins: 0, draws: 0, losses: 0, total: 0 };
 }
@@ -21816,7 +25438,7 @@ function computeCollectionSummary(games, target) {
   let earliest = "";
   let latest = "";
   const now = Date.now();
-  const MS_PER_DAY2 = 864e5;
+  const MS_PER_DAY = 864e5;
   for (const g of games) {
     const isWhite = (g.white?.toLowerCase() ?? "") === lowerTarget;
     const isBlack = (g.black?.toLowerCase() ?? "") === lowerTarget;
@@ -21828,9 +25450,9 @@ function computeCollectionSummary(games, target) {
       if (!earliest || d < earliest) earliest = d;
       if (!latest || d > latest) latest = d;
       const ageMs = now - new Date(d).getTime();
-      if (ageMs <= 30 * MS_PER_DAY2) recency.last30++;
-      if (ageMs <= 90 * MS_PER_DAY2) recency.last90++;
-      if (ageMs <= 365 * MS_PER_DAY2) recency.last365++;
+      if (ageMs <= 30 * MS_PER_DAY) recency.last30++;
+      if (ageMs <= 90 * MS_PER_DAY) recency.last90++;
+      if (ageMs <= 365 * MS_PER_DAY) recency.last365++;
     }
     const tc = g.timeClass ?? "unknown";
     if (!speedMap.has(tc)) speedMap.set(tc, { wdl: emptyWDL(), oppRatingSum: 0, oppRatingCount: 0 });
@@ -21898,24 +25520,14 @@ function computeStyle(games, treeRoot, target) {
   if (treeRoot) {
     const total = treeRoot.total || 1;
     for (const child of treeRoot.children) {
-      whiteFirst.push({
-        san: child.san,
-        uci: child.uci,
-        count: child.total,
-        pct: child.total / total
-      });
+      whiteFirst.push({ san: child.san, uci: child.uci, count: child.total, pct: child.total / total });
       for (const reply of child.children) {
         const existing = blackFirst.find((m) => m.uci === reply.uci);
         if (existing) {
           existing.count += reply.total;
           existing.pct = existing.count / total;
         } else {
-          blackFirst.push({
-            san: reply.san,
-            uci: reply.uci,
-            count: reply.total,
-            pct: reply.total / total
-          });
+          blackFirst.push({ san: reply.san, uci: reply.uci, count: reply.total, pct: reply.total / total });
         }
       }
     }
@@ -21927,10 +25539,75 @@ function computeStyle(games, treeRoot, target) {
     asBlack: { firstMoves: blackFirst.slice(0, 8), uniqueEcos: blackEcos.size }
   };
 }
+function computePsychology(games, target) {
+  const tgt = target.toLowerCase();
+  let losses = 0;
+  let gamesAfterLoss = 0;
+  let winsAfterLoss = 0;
+  let totalResignations = 0;
+  const sorted = [...games].sort((a, b) => (a.date ?? "") < (b.date ?? "") ? -1 : 1);
+  for (let i = 0; i < sorted.length; i++) {
+    const g = sorted[i];
+    if (!g) continue;
+    const isWhite = g.white?.toLowerCase() === tgt;
+    const isBlack = g.black?.toLowerCase() === tgt;
+    if (!isWhite && !isBlack) continue;
+    const won = isWhite && g.result === "1-0" || isBlack && g.result === "0-1";
+    const lost = isWhite && g.result === "0-1" || isBlack && g.result === "1-0";
+    if (lost) {
+      losses++;
+      if (g.pgn.toLowerCase().includes("resign")) totalResignations++;
+      const next2 = sorted.slice(i + 1).find((ng) => ng.white?.toLowerCase() === tgt || ng.black?.toLowerCase() === tgt);
+      if (next2) {
+        gamesAfterLoss++;
+        const nextWhite = next2.white?.toLowerCase() === tgt;
+        const nextWon = nextWhite && next2.result === "1-0" || !nextWhite && next2.result === "0-1";
+        if (nextWon) winsAfterLoss++;
+      }
+    }
+  }
+  const postLossWinrate = gamesAfterLoss > 0 ? winsAfterLoss / gamesAfterLoss * 100 : 50;
+  const resignationRate = losses > 0 ? totalResignations / losses * 100 : 0;
+  const tiltScore = Math.max(0, 50 - postLossWinrate) * 2;
+  const mentalStability = Math.max(0, 100 - (tiltScore * 0.7 + (resignationRate > 50 ? resignationRate - 50 : 0)));
+  return {
+    mentalStability: Math.round(mentalStability),
+    tiltScore: Math.round(tiltScore),
+    postLossWinrate: Math.round(postLossWinrate),
+    resignationRate: Math.round(resignationRate)
+  };
+}
+function computeClockProfile(games, target) {
+  const tgt = target.toLowerCase();
+  let totalGames = 0;
+  let flagLosses = 0;
+  for (const g of games) {
+    const isWhite = g.white?.toLowerCase() === tgt;
+    const isBlack = g.black?.toLowerCase() === tgt;
+    if (!isWhite && !isBlack) continue;
+    totalGames++;
+    if (g.pgn.toLowerCase().includes("time forfeit")) {
+      const lost = isWhite && g.result === "0-1" || isBlack && g.result === "1-0";
+      if (lost) flagLosses++;
+    }
+  }
+  return {
+    flagRate: totalGames > 0 ? Math.round(flagLosses / totalGames * 100) : 0,
+    timePressureBlunders: 0
+  };
+}
+function determineArchetype(style, psych, clock, profile) {
+  if (clock.flagRate > 15) return "The Time Scrambler";
+  if (psych.tiltScore > 40) return "The Unpredictable";
+  if (profile.normalizedEntropy < 0.3) return "The Solid Rock";
+  if (style.asWhite.uniqueEcos + style.asBlack.uniqueEcos > 15) return "The Gambit Wizard";
+  if (clock.flagRate < 5 && psych.mentalStability > 70) return "The Clock Master";
+  return "The Strategist";
+}
 function computeFormData(games, target) {
   const lowerTarget = target.toLowerCase();
   const now = Date.now();
-  const MS_PER_DAY2 = 864e5;
+  const MS_PER_DAY = 864e5;
   const last30 = { wdl: emptyWDL(), ecoMap: /* @__PURE__ */ new Map(), datedGameCount: 0 };
   const last90 = { wdl: emptyWDL(), ecoMap: /* @__PURE__ */ new Map(), datedGameCount: 0 };
   const baseline = { wdl: emptyWDL(), ecoMap: /* @__PURE__ */ new Map(), datedGameCount: 0 };
@@ -21943,12 +25620,12 @@ function computeFormData(games, target) {
     if (!g.date) continue;
     const ageMs = now - new Date(g.date.slice(0, 10)).getTime();
     baseline.datedGameCount++;
-    if (ageMs <= 90 * MS_PER_DAY2) {
+    if (ageMs <= 90 * MS_PER_DAY) {
       accumulateResult(last90.wdl, g.result, isWhite);
       last90.datedGameCount++;
       if (g.eco) last90.ecoMap.set(g.eco, (last90.ecoMap.get(g.eco) ?? 0) + 1);
     }
-    if (ageMs <= 30 * MS_PER_DAY2) {
+    if (ageMs <= 30 * MS_PER_DAY) {
       accumulateResult(last30.wdl, g.result, isWhite);
       last30.datedGameCount++;
       if (g.eco) last30.ecoMap.set(g.eco, (last30.ecoMap.get(g.eco) ?? 0) + 1);
@@ -21956,20 +25633,14 @@ function computeFormData(games, target) {
   }
   const topEco = (m) => {
     let best = null;
-    for (const [eco, n] of m) {
-      if (!best || n > best[1]) best = [eco, n];
-    }
+    for (const [eco, n] of m) if (!best || n > best[1]) best = [eco, n];
     return best?.[0] ?? null;
   };
-  const MIN_RECENT = 5;
-  const TREND_THRESHOLD = 0.1;
+  const delta = last30.wdl.wins / (last30.wdl.total || 1) - baseline.wdl.wins / (baseline.wdl.total || 1);
   let recentTrend = "insufficient-data";
-  if (last30.datedGameCount >= MIN_RECENT && baseline.wdl.total > 0) {
-    const recentWR = last30.wdl.total > 0 ? last30.wdl.wins / last30.wdl.total : 0;
-    const baselineWR = baseline.wdl.total > 0 ? baseline.wdl.wins / baseline.wdl.total : 0;
-    const delta = recentWR - baselineWR;
-    if (delta > TREND_THRESHOLD) recentTrend = "improving";
-    else if (delta < -TREND_THRESHOLD) recentTrend = "declining";
+  if (last30.datedGameCount >= 5) {
+    if (delta > 0.1) recentTrend = "improving";
+    else if (delta < -0.1) recentTrend = "declining";
     else recentTrend = "stable";
   }
   return {
@@ -21980,87 +25651,101 @@ function computeFormData(games, target) {
   };
 }
 function computePrepReportLines(treeRoot, colorPerspective, maxDepth = 8) {
-  if (!treeRoot || treeRoot.children.length === 0) {
-    return { likelyLines: [], strongLines: [], weakLines: [], freshLines: [], driftLines: [] };
-  }
+  if (!treeRoot || treeRoot.children.length === 0) return { likelyLines: [], strongLines: [], weakLines: [], freshLines: [], driftLines: [] };
   const rootTotal = treeRoot.total || 1;
   const now = Date.now();
-  const MS_90D = 90 * 864e5;
   const allLines = [];
   function walk(node, moves, sans, depth) {
     if (node.total < 1) return;
-    const isLeaf = node.children.length === 0 || depth >= maxDepth;
-    if (isLeaf) {
-      const opponentWinPct = colorPerspective === "white" ? node.white / node.total : colorPerspective === "black" ? node.black / node.total : (node.white + node.black) / (node.total * 2);
-      const isRecent = node.lastPlayed ? now - new Date(node.lastPlayed).getTime() <= MS_90D : false;
-      allLines.push({
-        moves: [...moves],
-        sans: [...sans],
-        frequency: node.total,
-        opponentWinPct: Math.round(opponentWinPct * 1e3) / 1e3,
-        lastPlayed: node.lastPlayed ?? "",
-        isRecent,
-        isReliable: node.total >= 5
-      });
-    }
-    if (!isLeaf) {
-      for (const child of node.children) {
-        walk(child, [...moves, child.uci], [...sans, child.san], depth + 1);
-      }
+    if (node.children.length === 0 || depth >= maxDepth) {
+      const winPct = colorPerspective === "white" ? node.white / node.total : colorPerspective === "black" ? node.black / node.total : (node.white + node.black) / (node.total * 2);
+      allLines.push({ moves: [...moves], sans: [...sans], frequency: node.total, opponentWinPct: winPct, lastPlayed: node.lastPlayed ?? "", isRecent: node.lastPlayed ? now - new Date(node.lastPlayed).getTime() <= 90 * 864e5 : false, isReliable: node.total >= 5 });
+    } else {
+      for (const child of node.children) walk(child, [...moves, child.uci], [...sans, child.san], depth + 1);
     }
   }
-  for (const child of treeRoot.children) {
-    walk(child, [child.uci], [child.san], 1);
-  }
-  const byFreqDesc = (a, b) => b.frequency - a.frequency;
-  const likelyLines = [...allLines].sort(byFreqDesc).slice(0, 10);
-  const strongLines = allLines.filter((l) => l.isReliable && l.opponentWinPct > 0.6).sort(byFreqDesc).slice(0, 8);
-  const weakLines = allLines.filter((l) => l.isReliable && l.opponentWinPct < 0.3).sort(byFreqDesc).slice(0, 8);
-  const freshLines = allLines.filter((l) => l.isRecent).sort(byFreqDesc).slice(0, 8);
-  const driftLines = allLines.filter((l) => l.isReliable && l.frequency / rootTotal >= 0.05 && !l.isRecent).sort(byFreqDesc).slice(0, 8);
-  return { likelyLines, strongLines, weakLines, freshLines, driftLines };
-}
-function computeRepertoireProfile(games, treeRoot, target) {
-  const lowerTarget = target.toLowerCase();
-  const ecoSet = /* @__PURE__ */ new Set();
-  const ecoCount = /* @__PURE__ */ new Map();
-  for (const g of games) {
-    const isWhite = (g.white?.toLowerCase() ?? "") === lowerTarget;
-    const isBlack = (g.black?.toLowerCase() ?? "") === lowerTarget;
-    if (!isWhite && !isBlack) continue;
-    if (g.eco) {
-      ecoSet.add(g.eco);
-      ecoCount.set(g.eco, (ecoCount.get(g.eco) ?? 0) + 1);
-    }
-  }
-  const sampleSize = games.length;
-  const children = treeRoot?.children ?? [];
-  const treeTotal = children.reduce((s, c) => s + c.total, 0);
-  let firstMoveEntropy = 0;
-  let topFirstMovePct = 0;
-  if (treeTotal > 0 && children.length > 0) {
-    const probs = children.map((c) => c.total / treeTotal);
-    firstMoveEntropy = probs.reduce((h2, p) => p > 0 ? h2 - p * Math.log2(p) : h2, 0);
-    topFirstMovePct = probs[0] ?? 0;
-  }
-  const maxEntropy = children.length > 1 ? Math.log2(children.length) : 0;
-  const normalizedEntropy = maxEntropy > 0 ? firstMoveEntropy / maxEntropy : 0;
-  const top3Count = Array.from(ecoCount.values()).sort((a, b) => b - a).slice(0, 3).reduce((s, n) => s + n, 0);
-  const top3EcoPct = sampleSize > 0 ? top3Count / sampleSize : 0;
+  for (const child of treeRoot.children) walk(child, [child.uci], [child.san], 1);
+  const byFreq = (a, b) => b.frequency - a.frequency;
   return {
-    distinctFirstMoves: children.length,
-    distinctEcos: ecoSet.size,
-    firstMoveEntropy: Math.round(firstMoveEntropy * 1e3) / 1e3,
-    normalizedEntropy: Math.round(normalizedEntropy * 1e3) / 1e3,
-    topFirstMovePct: Math.round(topFirstMovePct * 1e3) / 1e3,
-    top3EcoPct: Math.round(top3EcoPct * 1e3) / 1e3,
-    sampleSize,
-    isSampleSmall: sampleSize < 30
+    likelyLines: [...allLines].sort(byFreq).slice(0, 10),
+    strongLines: allLines.filter((l) => l.isReliable && l.opponentWinPct > 0.6).sort(byFreq).slice(0, 8),
+    weakLines: allLines.filter((l) => l.isReliable && l.opponentWinPct < 0.3).sort(byFreq).slice(0, 8),
+    freshLines: allLines.filter((l) => l.isRecent).sort(byFreq).slice(0, 8),
+    driftLines: allLines.filter((l) => l.isReliable && l.frequency / rootTotal >= 0.05 && !l.isRecent).sort(byFreq).slice(0, 8)
   };
 }
-var MS_PER_DAY = 864e5;
+function computeRepertoireProfile(games, treeRoot, target) {
+  const total = treeRoot?.total || 0;
+  const firstMoves = treeRoot?.children || [];
+  let entropy = 0, topFirstMovePct = 0;
+  for (const child of firstMoves) {
+    const p = child.total / (total || 1);
+    entropy -= p * Math.log2(p || 1);
+    if (p > topFirstMovePct) topFirstMovePct = p;
+  }
+  const ecoMap = /* @__PURE__ */ new Map(), tgt = target.toLowerCase();
+  for (const g of games) {
+    if ((g.white?.toLowerCase() === tgt || g.black?.toLowerCase() === tgt) && g.eco) ecoMap.set(g.eco, (ecoMap.get(g.eco) ?? 0) + 1);
+  }
+  const top3Sum = Array.from(ecoMap.values()).sort((a, b) => b - a).slice(0, 3).reduce((a, b) => a + b, 0);
+  return {
+    distinctFirstMoves: firstMoves.length,
+    distinctEcos: ecoMap.size,
+    firstMoveEntropy: entropy,
+    normalizedEntropy: firstMoves.length > 1 ? entropy / Math.log2(firstMoves.length) : 0,
+    topFirstMovePct,
+    top3EcoPct: total > 0 ? top3Sum / total : 0,
+    sampleSize: total,
+    isSampleSmall: total < 30
+  };
+}
+function computeStyleViewModel(games, treeRoot, target, summary) {
+  const style = computeStyle(games, treeRoot, target), form = computeFormData(games, target), profile = computeRepertoireProfile(games, treeRoot, target);
+  const psychology = computePsychology(games, target), clock = computeClockProfile(games, target), archetype = determineArchetype(style, psychology, clock, profile);
+  let stalkerScore = 50;
+  if (summary.totalGames >= 5) {
+    stalkerScore = (100 - psychology.mentalStability) / 5 + (clock.flagRate > 15 ? 15 : 5) + (psychology.tiltScore > 40 ? 15 : 5) + (psychology.resignationRate > 60 ? 10 : 0) + (1 - profile.normalizedEntropy) * 20;
+  }
+  const signals = [
+    { label: `Archetype: ${archetype}`, type: "descriptive", confidence: "high" },
+    { label: psychology.mentalStability < 50 ? "Shows signs of tilt" : "Mentally stable", type: "interpretive", confidence: "medium" }
+  ];
+  return { style, form, profile, psychology, clock, archetype, stalkerScore: Math.round(Math.min(100, Math.max(0, stalkerScore))), signals, overallConfidence: "high" };
+}
+function computeOpeningRecommendations(weakness, lines, totalGames) {
+  const recs = [];
+  for (const entry of weakness.entries) {
+    if (!entry.line.isReliable) continue;
+    if (entry.category === "low-score") recs.push({ line: entry.line, reason: `They score ${Math.round(entry.line.opponentWinPct * 100)}% here`, category: "exploit-low-score", confidence: "medium", actionLabel: `Prepare ${entry.line.sans.slice(0, 4).join(" ")}` });
+  }
+  return recs;
+}
+function computeWeaknessModule(lines, totalGames) {
+  const entries = [];
+  for (const l of lines.weakLines.slice(0, 3)) {
+    entries.push({ line: l, category: "low-score", label: "Low scoring" });
+  }
+  for (const l of lines.driftLines.slice(0, 3)) {
+    if (entries.some((e) => e.line.moves.join() === l.moves.join())) continue;
+    entries.push({ line: l, category: "drift", label: "Stale line" });
+  }
+  const freshRisk = lines.freshLines.filter((l) => !l.isReliable);
+  for (const l of freshRisk.slice(0, 2)) {
+    if (entries.some((e) => e.line.moves.join() === l.moves.join())) continue;
+    entries.push({ line: l, category: "fresh-risk", label: "Newly tried" });
+  }
+  const categoryOrder = { "low-score": 0, "drift": 1, "fresh-risk": 2, "narrow": 3 };
+  entries.sort((a, b) => categoryOrder[a.category] - categoryOrder[b.category] || b.line.frequency - a.line.frequency);
+  const reliable = entries.filter((e) => e.line.isReliable);
+  const caveats = [];
+  if (totalGames < 30) caveats.push("Small sample \u2014 treat all signals as rough indicators.");
+  if (entries.some((e) => e.category === "low-score")) caveats.push("Low-scoring lines reflect results only \u2014 no engine evaluation available.");
+  if (entries.some((e) => e.category === "drift")) caveats.push("Stale lines may have been replaced by other prep, not forgotten.");
+  return { entries: entries.slice(0, 6), hasActionableWeaknesses: reliable.length >= 2, caveats };
+}
 function recencyBoostFor(lastPlayed, now) {
   if (!lastPlayed) return 1;
+  const MS_PER_DAY = 864e5;
   const ageMs = now - new Date(lastPlayed).getTime();
   if (ageMs <= 30 * MS_PER_DAY) return 2;
   if (ageMs <= 90 * MS_PER_DAY) return 1.5;
@@ -22068,11 +25753,7 @@ function recencyBoostFor(lastPlayed, now) {
   return 1;
 }
 function computeLikelyLineModule(treeRoot, colorPerspective, maxLines = 8, maxDepth = 8, recencyMode2 = "recent") {
-  const empty = () => ({
-    lines: [],
-    hasSufficientData: false,
-    colorPerspective
-  });
+  const empty = () => ({ lines: [], hasSufficientData: false, colorPerspective });
   if (!treeRoot || treeRoot.children.length === 0) return empty();
   const now = Date.now();
   const rawLines = computePrepReportLines(treeRoot, colorPerspective, maxDepth).likelyLines;
@@ -22087,63 +25768,7 @@ function computeLikelyLineModule(treeRoot, colorPerspective, maxLines = 8, maxDe
   }
   const top = entries.slice(0, maxLines);
   const reliableCount = top.filter((l) => l.isReliable).length;
-  return {
-    lines: top,
-    hasSufficientData: reliableCount >= 3,
-    colorPerspective
-  };
-}
-function computeWeaknessModule(lines, totalGames) {
-  const entries = [];
-  for (const l of lines.weakLines.slice(0, 3)) {
-    entries.push({
-      line: l,
-      category: "low-score",
-      label: "Low scoring"
-    });
-  }
-  for (const l of lines.driftLines.slice(0, 3)) {
-    if (entries.some((e) => e.line.moves.join() === l.moves.join())) continue;
-    entries.push({
-      line: l,
-      category: "drift",
-      label: "Stale line"
-    });
-  }
-  const freshRisk = lines.freshLines.filter((l) => !l.isReliable);
-  for (const l of freshRisk.slice(0, 2)) {
-    if (entries.some((e) => e.line.moves.join() === l.moves.join())) continue;
-    entries.push({
-      line: l,
-      category: "fresh-risk",
-      label: "Newly tried"
-    });
-  }
-  const categoryOrder = {
-    "low-score": 0,
-    "drift": 1,
-    "fresh-risk": 2,
-    "narrow": 3
-  };
-  entries.sort(
-    (a, b) => categoryOrder[a.category] - categoryOrder[b.category] || b.line.frequency - a.line.frequency
-  );
-  const reliable = entries.filter((e) => e.line.isReliable);
-  const caveats = [];
-  if (totalGames < 30) {
-    caveats.push("Small sample \u2014 treat all signals as rough indicators.");
-  }
-  if (entries.some((e) => e.category === "low-score")) {
-    caveats.push("Low-scoring lines reflect results only \u2014 no engine evaluation available.");
-  }
-  if (entries.some((e) => e.category === "drift")) {
-    caveats.push("Stale lines may have been replaced by other prep, not forgotten.");
-  }
-  return {
-    entries: entries.slice(0, 6),
-    hasActionableWeaknesses: reliable.length >= 2,
-    caveats
-  };
+  return { lines: top, hasSufficientData: reliableCount >= 3, colorPerspective };
 }
 function computePrepNotes(summary, profile, lines) {
   const notes = [];
@@ -22205,14 +25830,8 @@ function computePrepNotes(summary, profile, lines) {
 }
 function buildPracticeCandidates(node) {
   if (!node || node.children.length === 0) return [];
-  const total = node.children.reduce((sum, c) => sum + c.total, 0);
-  if (total === 0) return [];
-  return node.children.map((c) => ({
-    uci: c.uci,
-    san: c.san,
-    frequency: c.total,
-    weight: c.total / total
-  }));
+  const total = node.children.reduce((s, c) => s + c.total, 0);
+  return node.children.map((c) => ({ uci: c.uci, san: c.san, frequency: c.total, weight: c.total / (total || 1) }));
 }
 function pickWeightedMove(candidates) {
   if (candidates.length === 0) return null;
@@ -22222,7 +25841,13 @@ function pickWeightedMove(candidates) {
     acc += c.weight;
     if (r <= acc) return c;
   }
-  return candidates[candidates.length - 1];
+  return candidates[candidates.length - 1] ?? null;
+}
+function deriveConfidence(n) {
+  if (n >= 20) return "high";
+  if (n >= 10) return "medium";
+  if (n >= 5) return "low";
+  return "insufficient";
 }
 function selectPracticeMove(node, minFreq = 2) {
   const allCandidates = buildPracticeCandidates(node);
@@ -22236,270 +25861,37 @@ function selectPracticeMove(node, minFreq = 2) {
     return { move: null, outcome: "sparse-handoff", confidence, totalFrequency };
   }
   const eligibleTotal = eligible.reduce((sum, c) => sum + c.frequency, 0);
-  const normalized = eligible.map((c) => ({
-    ...c,
-    weight: c.frequency / eligibleTotal
-  }));
+  const normalized = eligible.map((c) => ({ ...c, weight: c.frequency / eligibleTotal }));
   const move3 = pickWeightedMove(normalized);
   return { move: move3, outcome: "selected", confidence, totalFrequency };
 }
-var TERMINATION_RE = /\[Termination\s+"([^"]+)"\]/i;
-function classifyTermination(raw) {
-  const t = raw.toLowerCase();
-  if (t.includes("time forfeit") || t.includes("time") || t.includes("timeout") || t.includes("abandoned")) return "timeout";
-  if (t.includes("checkmate") || t === "normal" || t === "won by checkmate") {
-    if (t === "normal") return "resignation";
-    return "checkmate";
-  }
-  if (t.includes("resign")) return "resignation";
-  if (t.includes("stalemate")) return "stalemate";
-  if (t.includes("draw") || t.includes("agreement") || t.includes("repetition") || t.includes("insufficient") || t.includes("50")) return "drawAgreement";
-  return "other";
-}
 function computeTerminationProfile(games, target) {
-  const tgt = target.toLowerCase();
-  const result = { resignation: 0, timeout: 0, checkmate: 0, drawAgreement: 0, stalemate: 0, other: 0, total: 0 };
+  const tgt = target.toLowerCase(), res = { resignation: 0, timeout: 0, checkmate: 0, drawAgreement: 0, stalemate: 0, other: 0, total: 0 };
   for (const g of games) {
-    const isPlayer = g.white?.toLowerCase() === tgt || g.black?.toLowerCase() === tgt;
-    if (!isPlayer || !g.pgn) continue;
-    const m = TERMINATION_RE.exec(g.pgn);
-    if (!m) {
-      result.other++;
-      result.total++;
-      continue;
-    }
-    const cat = classifyTermination(m[1] ?? "");
-    result[cat]++;
-    result.total++;
+    if (g.white?.toLowerCase() !== tgt && g.black?.toLowerCase() !== tgt) continue;
+    res.total++;
+    const pgn = g.pgn.toLowerCase();
+    if (pgn.includes("time forfeit")) res.timeout++;
+    else if (pgn.includes("resign")) res.resignation++;
+    else if (pgn.includes("checkmate")) res.checkmate++;
+    else if (pgn.includes("draw")) res.drawAgreement++;
+    else res.other++;
   }
-  return result;
-}
-var MOVE_NUMBER_RE = /\d+\./g;
-function countMoves(pgn) {
-  const body = pgn.replace(/\[[^\]]*\]\s*/g, "").trim();
-  const matches = body.match(MOVE_NUMBER_RE);
-  return matches ? matches.length : 0;
+  return res;
 }
 function computeGameLengthProfile(games, target) {
-  const tgt = target.toLowerCase();
-  const winLengths = [];
-  const lossLengths = [];
-  const allLengths = [];
+  const tgt = target.toLowerCase(), winL = [], lossL = [], allL = [];
   for (const g of games) {
-    const isWhite = g.white?.toLowerCase() === tgt;
-    const isBlack = g.black?.toLowerCase() === tgt;
-    if (!isWhite && !isBlack) continue;
-    if (!g.pgn) continue;
-    const moves = countMoves(g.pgn);
+    const isW = g.white?.toLowerCase() === tgt, isB = g.black?.toLowerCase() === tgt;
+    if (!isW && !isB) continue;
+    const moves = (g.pgn.match(/\d+\./g) || []).length;
     if (moves === 0) continue;
-    allLengths.push(moves);
-    const won = isWhite && g.result === "1-0" || isBlack && g.result === "0-1";
-    const lost = isWhite && g.result === "0-1" || isBlack && g.result === "1-0";
-    if (won) winLengths.push(moves);
-    if (lost) lossLengths.push(moves);
+    allL.push(moves);
+    if (isW && g.result === "1-0" || isB && g.result === "0-1") winL.push(moves);
+    else if (isW && g.result === "0-1" || isB && g.result === "1-0") lossL.push(moves);
   }
-  const avg = (arr) => arr.length > 0 ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : 0;
-  const shortCount = allLengths.filter((l) => l < 20).length;
-  return {
-    avgLength: avg(allLengths),
-    avgWinLength: avg(winLengths),
-    avgLossLength: avg(lossLengths),
-    shortGamePct: allLengths.length > 0 ? Math.round(shortCount / allLengths.length * 100) : 0,
-    totalCounted: allLengths.length
-  };
-}
-function computeOpeningRecommendations(weakness, lines, totalGames) {
-  const recs = [];
-  if (!weakness.hasActionableWeaknesses) return recs;
-  for (const entry of weakness.entries) {
-    const { line, category } = entry;
-    if (!line.isReliable) continue;
-    const pct = Math.round(line.opponentWinPct * 100);
-    const n = line.frequency;
-    const moveSan = line.sans.slice(0, 4).join(" ");
-    let reason;
-    let recCategory;
-    let confidence;
-    if (category === "low-score") {
-      reason = `They score ${pct}% in this line (n=${n})`;
-      recCategory = "exploit-low-score";
-      confidence = n >= 10 ? "high" : "medium";
-    } else if (category === "drift") {
-      reason = `Historically popular but no longer played recently (n=${n})`;
-      recCategory = "exploit-drift";
-      confidence = "medium";
-    } else if (category === "fresh-risk") {
-      reason = `New addition to their repertoire, untested (n=${n})`;
-      recCategory = "exploit-fresh";
-      confidence = "low";
-    } else {
-      continue;
-    }
-    recs.push({
-      line,
-      reason,
-      category: recCategory,
-      confidence,
-      actionLabel: `Prepare ${moveSan}`
-    });
-  }
-  return recs.slice(0, 8);
-}
-function deriveConfidence(n) {
-  if (n >= 20) return "high";
-  if (n >= 10) return "medium";
-  if (n >= 5) return "low";
-  return "insufficient";
-}
-function computeStyleViewModel(games, treeRoot, target, summary) {
-  const style = computeStyle(games, treeRoot, target);
-  const form = computeFormData(games, target);
-  const profile = computeRepertoireProfile(games, treeRoot, target);
-  const n = summary.overall.total;
-  const overallConfidence = deriveConfidence(n);
-  const signals = [];
-  const whiteTop = style.asWhite.firstMoves[0];
-  if (whiteTop && whiteTop.count >= 3) {
-    const pct = Math.round(whiteTop.pct * 100);
-    signals.push({
-      label: `Plays ${whiteTop.san} as White in ${pct}% of games`,
-      type: "descriptive",
-      confidence: deriveConfidence(whiteTop.count)
-    });
-  }
-  const blackTop = style.asBlack.firstMoves[0];
-  if (blackTop && blackTop.count >= 3) {
-    const pct = Math.round(blackTop.pct * 100);
-    signals.push({
-      label: `Replies with ${blackTop.san} as Black in ${pct}% of games`,
-      type: "descriptive",
-      confidence: deriveConfidence(blackTop.count)
-    });
-  }
-  if (n >= 5) {
-    const ecoW = style.asWhite.uniqueEcos;
-    const ecoB = style.asBlack.uniqueEcos;
-    if (ecoW > 0) {
-      signals.push({
-        label: `${ecoW} distinct opening ${ecoW === 1 ? "variation" : "variations"} as White`,
-        type: "descriptive",
-        confidence: overallConfidence
-      });
-    }
-    if (ecoB > 0) {
-      signals.push({
-        label: `${ecoB} distinct opening ${ecoB === 1 ? "variation" : "variations"} as Black`,
-        type: "descriptive",
-        confidence: overallConfidence
-      });
-    }
-  }
-  if (n >= 5 && profile.distinctFirstMoves > 0) {
-    let predictLabel;
-    if (profile.normalizedEntropy < 0.35) {
-      predictLabel = "Narrow opening repertoire \u2014 likely to play familiar lines";
-    } else if (profile.normalizedEntropy > 0.65) {
-      predictLabel = "Broad opening repertoire \u2014 harder to predict";
-    } else {
-      predictLabel = "Moderate opening variety";
-    }
-    signals.push({
-      label: predictLabel,
-      type: "interpretive",
-      confidence: deriveConfidence(n),
-      caveat: "Based on observed move distribution only."
-    });
-  }
-  if (form.recentTrend !== "insufficient-data") {
-    const trendLabels = {
-      improving: "Recent results trending upward",
-      declining: "Recent results trending downward",
-      stable: "Results stable in recent games"
-    };
-    signals.push({
-      label: trendLabels[form.recentTrend],
-      type: "interpretive",
-      confidence: deriveConfidence(form.last30.datedGameCount),
-      caveat: "Based on win-rate change only \u2014 not engine-backed."
-    });
-  }
-  if (n >= 5) {
-    const lowerTarget = target.toLowerCase();
-    let gambitsWhite = 0;
-    let gambitsBlack = 0;
-    let gamesAsWhite = 0;
-    let gamesAsBlack = 0;
-    for (const g of games) {
-      const isWhite = (g.white?.toLowerCase() ?? "") === lowerTarget;
-      const isBlack = (g.black?.toLowerCase() ?? "") === lowerTarget;
-      if (!isWhite && !isBlack) continue;
-      const hasGambit = (g.opening ?? "").toLowerCase().includes("gambit");
-      if (isWhite) {
-        gamesAsWhite++;
-        if (hasGambit) gambitsWhite++;
-      }
-      if (isBlack) {
-        gamesAsBlack++;
-        if (hasGambit) gambitsBlack++;
-      }
-    }
-    const gambitsTotal = gambitsWhite + gambitsBlack;
-    const totalSided = gamesAsWhite + gamesAsBlack;
-    if (totalSided >= 5 && gambitsTotal > 0) {
-      const pct = Math.round(gambitsTotal / totalSided * 100);
-      const gambConf = deriveConfidence(totalSided);
-      signals.push({
-        label: `${pct}% of games involve named gambits`,
-        type: "descriptive",
-        confidence: gambConf,
-        caveat: "Based on opening name only \u2014 does not measure tactical sharpness."
-      });
-    } else if (totalSided >= 10 && gambitsTotal === 0) {
-      signals.push({
-        label: "No named gambits in imported games",
-        type: "descriptive",
-        confidence: deriveConfidence(totalSided),
-        caveat: "Based on opening name only."
-      });
-    }
-  }
-  if (n >= 10 && profile.top3EcoPct > 0) {
-    const pct = Math.round(profile.top3EcoPct * 100);
-    let concentrationLabel;
-    if (profile.top3EcoPct >= 0.75) {
-      concentrationLabel = `Top 3 openings cover ${pct}% of games \u2014 concentrated comfort zone`;
-    } else if (profile.top3EcoPct >= 0.5) {
-      concentrationLabel = `Top 3 openings cover ${pct}% of games \u2014 moderate comfort zone`;
-    } else {
-      concentrationLabel = `Top 3 openings cover ${pct}% of games \u2014 varied repertoire`;
-    }
-    signals.push({
-      label: concentrationLabel,
-      type: "interpretive",
-      confidence: deriveConfidence(n),
-      caveat: "Based on ECO code frequency only."
-    });
-  }
-  if (n >= 15) {
-    const drawRate = summary.overall.draws / (n || 1);
-    const drawPct = Math.round(drawRate * 100);
-    if (drawRate >= 0.35) {
-      signals.push({
-        label: `High draw rate: ${drawPct}% of games drawn`,
-        type: "interpretive",
-        confidence: deriveConfidence(n),
-        caveat: "Draw rates vary by rating, time control, and opponent pool."
-      });
-    } else if (drawRate < 0.07) {
-      signals.push({
-        label: `Low draw rate: ${drawPct}% of games drawn`,
-        type: "interpretive",
-        confidence: deriveConfidence(n),
-        caveat: "Low draw rates are common at faster time controls."
-      });
-    }
-  }
-  return { style, form, profile, signals, overallConfidence };
+  const avg = (a) => a.length ? Math.round(a.reduce((s, v) => s + v, 0) / a.length) : 0;
+  return { avgLength: avg(allL), avgWinLength: avg(winL), avgLossLength: avg(lossL), shortGamePct: allL.length ? Math.round(allL.filter((l) => l < 20).length / allL.length * 100) : 0, totalCounted: allL.length };
 }
 
 // src/openings/deviation.ts
@@ -22601,16 +25993,24 @@ async function scanDeviations(tree, collectionId, colorFilter2, onProgress, sign
 }
 
 // src/openings/ctrl.ts
+var SESSION_DATE_RANGE_OPTIONS = [
+  { value: "last-week", label: "Last Week", days: 7 },
+  { value: "last-month", label: "Last Month", days: 30 },
+  { value: "last-3months", label: "Last 3 Months", days: 90 },
+  { value: "last-6months", label: "Last 6 Months", days: 180 }
+];
 var _currentPage = "library";
 var _collections = [];
 var _collectionsLoaded = false;
 var _importStep = "idle";
+var _isFetching = false;
 var _importSource = "chesscom";
 var _importUsername = "";
 var _importColor = "both";
 var _importError = null;
 var _importProgress = 0;
 var _importAbort = null;
+var _importMonth = null;
 var _lastCreatedCollection = null;
 var _importSpeeds = /* @__PURE__ */ new Set();
 var _importDateRange = "1month";
@@ -22626,6 +26026,9 @@ function invalidateCollections() {
 }
 function openingsPage() {
   return _currentPage;
+}
+function setOpeningsPage(page) {
+  _currentPage = page;
 }
 function collectionsLoaded() {
   return _collectionsLoaded;
@@ -22721,11 +26124,20 @@ function importProgress() {
 function setImportProgress(n) {
   _importProgress = n;
 }
+function importMonth() {
+  return _importMonth;
+}
+function setImportMonth(m) {
+  _importMonth = m;
+}
+function isFetching() {
+  return _isFetching;
+}
+function setIsFetching(v) {
+  _isFetching = v;
+}
 function setImportAbort(ctrl2) {
   _importAbort = ctrl2;
-}
-function lastCreatedCollection() {
-  return _lastCreatedCollection;
 }
 function setLastCreatedCollection(c) {
   _lastCreatedCollection = c;
@@ -22735,20 +26147,25 @@ function cancelImport() {
     _importAbort.abort();
     _importAbort = null;
   }
-  _importStep = "details";
+  _isFetching = false;
+  _currentPage = "library";
+  _importStep = "idle";
   _importProgress = 0;
-  _importError = "Import cancelled.";
+  _importMonth = null;
+  _importError = null;
 }
 function resetImport() {
   if (_importAbort) {
     _importAbort.abort();
     _importAbort = null;
   }
+  _isFetching = false;
   _importStep = "idle";
   _importUsername = "";
   _importColor = "both";
   _importError = null;
   _importProgress = 0;
+  _importMonth = null;
   _lastCreatedCollection = null;
   _importSpeeds = /* @__PURE__ */ new Set();
   _importDateRange = "1month";
@@ -22771,13 +26188,35 @@ var _sessionNode = null;
 var _boardOrientation = "white";
 var _colorFilter = "white";
 var _speedFilter = /* @__PURE__ */ new Set();
-var _recencyMode = "recent";
+var _recencyMode = "all-time";
+var _sessionDateRange = null;
+var _activeGames = [];
 function recencyMode() {
   return _recencyMode;
 }
 function setRecencyMode(mode) {
   _recencyMode = mode;
   _prepReportCache = null;
+}
+function sessionDateRange() {
+  return _sessionDateRange;
+}
+function setSessionDateRange(range, redraw2) {
+  _sessionDateRange = range;
+  setColorFilter(_colorFilter, redraw2);
+}
+function dateRangeCutoffMs(range) {
+  const entry = SESSION_DATE_RANGE_OPTIONS.find((o) => o.value === range);
+  return entry ? Date.now() - entry.days * 864e5 : 0;
+}
+function filterByDateRange(games, range) {
+  if (!range) return games;
+  const cutoff = dateRangeCutoffMs(range);
+  return games.filter((g) => {
+    if (!g.date) return false;
+    const ts = Date.parse(g.date.replace(/\./g, "-"));
+    return !isNaN(ts) && ts >= cutoff;
+  });
 }
 var _deviationResults = [];
 var _deviationLoading = false;
@@ -22869,6 +26308,8 @@ function setColorFilter(color, redraw2) {
   if (_speedFilter.size > 0) {
     games = games.filter((g) => _speedFilter.has(g.timeClass ?? ""));
   }
+  games = filterByDateRange(games, _sessionDateRange);
+  _activeGames = games;
   const emptyBuilder = new OpeningTreeBuilder();
   _openingTree = emptyBuilder.freeze();
   _sessionPath = [];
@@ -22946,6 +26387,8 @@ function openCollection(collection, redraw2) {
   if (_speedFilter.size > 0) {
     games = games.filter((g) => _speedFilter.has(g.timeClass ?? ""));
   }
+  games = filterByDateRange(games, _sessionDateRange);
+  _activeGames = games;
   _treeBuildProgress = 0;
   _treeBuildTotal = games.length;
   _treeBuilding = true;
@@ -23059,7 +26502,7 @@ var _summaryCache = null;
 function getCollectionSummary() {
   if (!_activeCollection || _treeBuilding) return null;
   if (!_summaryCache) {
-    _summaryCache = computeCollectionSummary(_activeCollection.games, _activeCollection.target);
+    _summaryCache = computeCollectionSummary(_activeGames, _activeCollection.target);
   }
   return _summaryCache;
 }
@@ -23068,7 +26511,7 @@ function getPrepReportViewModel() {
   if (!_activeCollection || _treeBuilding) return null;
   if (!_prepReportCache) {
     const summary = getCollectionSummary();
-    const report = computePrepReport(_activeCollection.games, _activeCollection.target, summary);
+    const report = computePrepReport(_activeGames, _activeCollection.target, summary);
     const colorPerspective = _colorFilter === "both" ? "white" : _colorFilter;
     const lines = computePrepReportLines(_openingTree, colorPerspective, 8);
     _prepReportCache = { summary, report, lines };
@@ -23081,7 +26524,7 @@ function getStyleViewModel() {
   if (!_styleCache) {
     const summary = getCollectionSummary();
     _styleCache = computeStyleViewModel(
-      _activeCollection.games,
+      _activeGames,
       _openingTree,
       _activeCollection.target,
       summary
@@ -23135,6 +26578,8 @@ function closeSession() {
   _sessionPath = [];
   _sessionNode = null;
   _currentPage = "library";
+  _sessionDateRange = null;
+  _activeGames = [];
   void clearSessionState();
 }
 async function loadSavedCollections(redraw2) {
@@ -23298,6 +26743,27 @@ function filterResearchGamesByDate(games, dateRange, customFrom, customTo) {
   const cutoffStr = cutoff.toISOString().slice(0, 10);
   return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
 }
+var MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December"
+];
+function formatArchiveMonth(archiveUrl) {
+  const parts = archiveUrl.split("/");
+  const year = parts[parts.length - 2];
+  const month = parseInt(parts[parts.length - 1] ?? "", 10);
+  if (!year || isNaN(month) || month < 1 || month > 12) return void 0;
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
 function splitPgnText(text) {
   return text.trim().split(/\n\n(?=\[Event )/).filter((s) => s.trim());
 }
@@ -23383,7 +26849,10 @@ async function fetchChesscomResearch(username, signal, onProgress) {
   for (let i = 0; i < relevantArchives.length; i++) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     if (games.length >= max) break;
-    const res = await fetch(relevantArchives[i], { signal });
+    const archiveUrl = relevantArchives[i];
+    const month = formatArchiveMonth(archiveUrl);
+    onProgress(games.length, month);
+    const res = await fetch(archiveUrl, { signal });
     if (!res.ok) continue;
     const data = await res.json();
     for (const raw of (data.games ?? []).reverse()) {
@@ -23396,7 +26865,7 @@ async function fetchChesscomResearch(username, signal, onProgress) {
       const g = pgnToResearchGame(pgn, "chesscom");
       if (g) games.push(g);
     }
-    onProgress(games.length);
+    onProgress(games.length, month);
   }
   return games;
 }
@@ -23419,14 +26888,18 @@ async function executeResearchImport(redraw2) {
   }
   const abort = new AbortController();
   setImportAbort(abort);
-  setImportStep("importing");
+  setIsFetching(true);
+  setOpeningsPage("session");
+  setImportStep("idle");
   setImportError(null);
   setImportProgress(0);
+  setImportMonth(null);
   redraw2();
   try {
     let games;
-    const progressCb = (n) => {
+    const progressCb = (n, month) => {
       setImportProgress(n);
+      if (month !== void 0) setImportMonth(month);
       redraw2();
     };
     switch (source) {
@@ -23449,6 +26922,8 @@ async function executeResearchImport(redraw2) {
     }
     setImportProgress(games.length);
     if (games.length === 0) {
+      setIsFetching(false);
+      setOpeningsPage("library");
       setImportStep("details");
       setImportError("No games found.");
       setImportAbort(null);
@@ -23463,6 +26938,8 @@ async function executeResearchImport(redraw2) {
         return color === "white" ? isWhite : isBlack;
       });
       if (games.length === 0) {
+        setIsFetching(false);
+        setOpeningsPage("library");
         setImportStep("details");
         setImportError(`No games found where ${username} plays as ${color}.`);
         setImportAbort(null);
@@ -23502,9 +26979,12 @@ async function executeResearchImport(redraw2) {
     addCollection(collection);
     setLastCreatedCollection(collection);
     setImportAbort(null);
+    setIsFetching(false);
     openCollection(collection, redraw2);
   } catch (err) {
     if (err?.name === "AbortError") return;
+    setIsFetching(false);
+    setOpeningsPage("library");
     setImportStep("details");
     setImportError(err instanceof Error ? err.message : "Import failed.");
     setImportAbort(null);
@@ -23603,7 +27083,14 @@ function detectTrapPatterns(tree, perspective, games, target) {
 // src/openings/view.ts
 var _openingsCg;
 var _lastBoardFen = "";
+var _lastBoardPractice = false;
+var _animGame = null;
+var _animMoveIdx = 0;
+var _animTimer = null;
+var _animPos = null;
+var ANIM_MOVE_MS = 300;
 var _openingsMenuOpen = false;
+var _dateRangePopupOpen = false;
 var ICON_HAMBURGER2 = "\uE039";
 var ICON_FLIP2 = "\uE020";
 function renderOpeningsPage(redraw2) {
@@ -23865,9 +27352,7 @@ function renderImportWorkflow(redraw2) {
         } }
       }, "Cancel")
     ]),
-    step2 === "details" ? renderDetailsStep(redraw2) : null,
-    step2 === "importing" ? renderImportingStep(redraw2) : null,
-    step2 === "done" ? renderDoneStep(redraw2) : null
+    step2 === "details" ? renderDetailsStep(redraw2) : null
   ]);
 }
 function renderDetailsStep(redraw2) {
@@ -23877,6 +27362,14 @@ function renderDetailsStep(redraw2) {
   const speeds = importSpeeds();
   const dateRange = importDateRange();
   const sections = [];
+  const focusUsernameInput = (elm) => {
+    const input = elm;
+    if (!input) return;
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  };
   const sources = [
     { value: "lichess", label: "Lichess" },
     { value: "chesscom", label: "Chess.com" },
@@ -23912,17 +27405,56 @@ function renderDetailsStep(redraw2) {
         on: { input: (e) => {
           setImportUsername(e.target.value);
           redraw2();
-        } }
+        } },
+        hook: { insert: (vnode3) => focusUsernameInput(vnode3.elm) }
       })
     ]) : h("div.header__panel-section", [
-      h("div.header__panel-label", "Paste PGN"),
+      h("div.header__panel-label", "Paste PGN or upload file"),
       h("textarea.header__pgn-input", {
         attrs: { placeholder: "Paste PGN text here\u2026", rows: "6" },
         on: { input: (e) => {
           setImportUsername(e.target.value);
           redraw2();
         } }
-      })
+      }),
+      h("div.header__pgn-file-upload", {
+        on: {
+          dragover: (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.add("dragover");
+          },
+          dragleave: (e) => {
+            e.currentTarget.classList.remove("dragover");
+          },
+          drop: (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.remove("dragover");
+            const file = e.dataTransfer?.files[0];
+            if (file && file.name.endsWith(".pgn")) {
+              file.text().then((text) => {
+                setImportUsername(text);
+                redraw2();
+              });
+            }
+          }
+        }
+      }, [
+        h("input", {
+          attrs: { type: "file", accept: ".pgn" },
+          on: {
+            change: (e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                file.text().then((text) => {
+                  setImportUsername(text);
+                  redraw2();
+                });
+              }
+            }
+          }
+        }),
+        h("span", "or drag & drop a .pgn file")
+      ])
     ])
   );
   sections.push(h("div.header__panel-divider"));
@@ -24038,44 +27570,6 @@ function renderDetailsStep(redraw2) {
   ]));
   return h("div.openings__step", sections);
 }
-function renderImportingStep(redraw2) {
-  const progress = importProgress();
-  return h("div.openings__step", [
-    h("h3", "Importing Games"),
-    // Transfer animation
-    h("div.openings__transfer", [
-      h("div.openings__transfer-track", [
-        h("div.openings__transfer-pulse"),
-        h("div.openings__transfer-pulse.openings__transfer-pulse--delayed")
-      ]),
-      h(
-        "div.openings__transfer-count",
-        progress > 0 ? `${progress.toLocaleString()} game${progress !== 1 ? "s" : ""} found` : "Connecting\u2026"
-      )
-    ]),
-    h("button.openings__cancel-import-btn", {
-      on: { click: () => {
-        cancelImport();
-        redraw2();
-      } }
-    }, "Cancel")
-  ]);
-}
-function renderDoneStep(redraw2) {
-  const collection = lastCreatedCollection();
-  return h("div.openings__step", [
-    h("h3", "Import Complete"),
-    collection ? h("p.openings__done-summary", [
-      `Created collection "${collection.name}" with ${collection.games.length} game${collection.games.length !== 1 ? "s" : ""}.`
-    ]) : null,
-    h("button.openings__done-btn", {
-      on: { click: () => {
-        resetImport();
-        redraw2();
-      } }
-    }, "Back to Library")
-  ]);
-}
 function renderOpeningsActionMenu(redraw2) {
   if (!_openingsMenuOpen) return null;
   const close = () => {
@@ -24120,9 +27614,9 @@ var ICON_BAR_GRAPH = "\uE03C";
 var ICON_EYE = "\uE054";
 var ICON_SWORDS = "\uE033";
 var TOOL_DEFS = [
-  { id: "opening-tree", label: "Opening Tree", icon: ICON_BRANCH },
+  { id: "opening-tree", label: "Tree", icon: ICON_BRANCH },
   { id: "repertoire", label: "Repertoire", icon: ICON_BOOK2 },
-  { id: "prep-report", label: "Prep Report", icon: ICON_BAR_GRAPH },
+  { id: "prep-report", label: "Report", icon: ICON_BAR_GRAPH },
   { id: "style", label: "Style", icon: ICON_EYE },
   { id: "practice", label: "Practice", icon: ICON_SWORDS }
 ];
@@ -24337,6 +27831,7 @@ function renderPrepReportTool(redraw2) {
   const vm = getPrepReportViewModel();
   if (!vm || !collection) {
     return h("div.openings__tool-content", [
+      renderFilterBadge(redraw2),
       h("div.openings__prep-report", [
         h("div.openings__pr-header", [
           h("span.openings__pr-label", "Prep Report"),
@@ -24348,11 +27843,12 @@ function renderPrepReportTool(redraw2) {
   }
   const { summary, report, lines } = vm;
   const total = summary.overall.total || 1;
-  const isSparse = summary.overall.total < 20;
+  const isSparse = isCollectionSmall(summary.overall.total);
   const wPct = (summary.overall.wins / total * 100).toFixed(0);
   const dPct = (summary.overall.draws / total * 100).toFixed(0);
   const lPct = (summary.overall.losses / total * 100).toFixed(0);
-  const colorPerspective = colorFilter() === "both" ? "white" : colorFilter();
+  const cf = colorFilter();
+  const colorPerspective = cf === "both" ? "white" : cf;
   const likelyModule = computeLikelyLineModule(openingTree(), colorPerspective, 8, 8, recencyMode());
   const tree = openingTree();
   const profile = computeRepertoireProfile(collection.games, tree, collection.target ?? "");
@@ -24368,6 +27864,7 @@ function renderPrepReportTool(redraw2) {
     const boostRecent = line.recencyBoost >= 2;
     const boostFresh = line.recencyBoost >= 1.5 && line.recencyBoost < 2;
     return h("button.openings__pr-line-row", {
+      class: { "openings__pr-unreliable": !isStatReliable(line.frequency) },
       attrs: { title: "Open in Repertoire" },
       on: { click: onClick }
     }, [
@@ -24375,7 +27872,7 @@ function renderPrepReportTool(redraw2) {
       h("span.openings__pr-line-meta", [
         h("span.openings__pr-line-freq", `${line.frequency}g`),
         boostRecent ? h("span.openings__pr-boost-badge.openings__pr-boost--hot", "\u2191 now") : boostFresh ? h("span.openings__pr-boost-badge.openings__pr-boost--fresh", "\u2191 recent") : null,
-        !line.isReliable ? h("span.openings__pr-line-caveat", "small") : null
+        !line.isReliable ? h("span.openings__pr-line-caveat", `n=${line.frequency}`) : null
       ]),
       h("span.openings__pr-line-nav", "\u2192")
     ]);
@@ -24384,19 +27881,21 @@ function renderPrepReportTool(redraw2) {
     const moveSan = line.sans.slice(0, 5).join(" ") + (line.sans.length > 5 ? "\u2026" : "");
     const oppWinPct = (line.opponentWinPct * 100).toFixed(0);
     return h("button.openings__pr-target-row", {
+      class: { "openings__pr-unreliable": !isStatReliable(line.frequency) },
       attrs: { title: "Open in Repertoire" },
       on: { click: onClick }
     }, [
       h("span.openings__pr-line-moves", moveSan),
       h("span.openings__pr-line-meta", [
         h("span.openings__pr-line-freq", `${line.frequency}g`),
-        h("span.openings__pr-target-score", `opp ${oppWinPct}%W`),
+        h("span.openings__pr-target-score", `opp ${oppWinPct}%W (n=${line.frequency})`),
         line.isRecent ? h("span.openings__pr-line-recent", "recent") : null
       ]),
       h("span.openings__pr-line-nav", "\u2192")
     ]);
   }
   return h("div.openings__tool-content", [
+    renderFilterBadge(redraw2),
     h("div.openings__prep-report", [
       // Header with recency toggle
       h("div.openings__pr-header", [
@@ -24422,7 +27921,7 @@ function renderPrepReportTool(redraw2) {
       // Auto-fallback notice when recent data is too sparse
       recencyMode() === "recent" && summary.recency.last90 < 10 ? h("div.openings__pr-sparse-banner", "\u26A0 Fewer than 10 games in the last 90 days \u2014 showing all-time data.") : null,
       // Small-sample warning banner
-      isSparse ? h("div.openings__pr-sparse-banner", "\u26A0 Small sample size \u2014 statistics may not be reliable with fewer than 20 games.") : null,
+      isSparse ? h("div.openings__pr-sparse-banner", `\u26A0 Small sample (n=${summary.overall.total}) \u2014 statistics may not be reliable with fewer than ${MIN_COLLECTION_SIZE} games.`) : null,
       // Prep notes strip
       notes.length > 0 ? h("div.openings__pr-notes", notes.map(
         (note) => h("div.openings__pr-note", {
@@ -24435,7 +27934,9 @@ function renderPrepReportTool(redraw2) {
       // Overview: W/D/L bar + quick stats
       h("div.openings__pr-overview", [
         h("div.openings__pr-wdl", [
-          h("div.openings__pr-wdl-bar", [
+          h("div.openings__pr-wdl-bar", {
+            class: { "openings__pr-unreliable": !isStatReliable(summary.overall.total) }
+          }, [
             h("span.wdl-w", { attrs: { style: `width:${wPct}%` } }, summary.overall.wins > 0 ? `${wPct}%` : ""),
             h("span.wdl-d", { attrs: { style: `width:${dPct}%` } }, summary.overall.draws > 0 ? `${dPct}%` : ""),
             h("span.wdl-l", { attrs: { style: `width:${lPct}%` } }, summary.overall.losses > 0 ? `${lPct}%` : "")
@@ -24443,17 +27944,22 @@ function renderPrepReportTool(redraw2) {
           h("div.openings__pr-wdl-counts", [
             h("span.wdl-w", `${summary.overall.wins}W`),
             h("span.wdl-d", `${summary.overall.draws}D`),
-            h("span.wdl-l", `${summary.overall.losses}L`)
+            h("span.wdl-l", `${summary.overall.losses}L`),
+            h("span.openings__pr-sample", `n=${summary.overall.total}`)
           ])
         ]),
         // Top ECOs
         report.topEcos.length > 0 ? h("div.openings__pr-ecos", [
           h("div.openings__pr-section-title", "Top Openings"),
           ...report.topEcos.slice(0, 5).map(
-            (eco) => h("div.openings__pr-eco-row", [
+            (eco) => h("div.openings__pr-eco-row", {
+              class: { "openings__pr-unreliable": !isStatReliable(eco.count) }
+            }, [
               h("span.openings__pr-eco-code", eco.eco),
               h("span.openings__pr-eco-name", eco.opening),
-              h("span.openings__pr-eco-count", `${eco.count}g`)
+              h("span.openings__pr-eco-count", `${eco.count}g`),
+              h("span.openings__pr-eco-pct", `${Math.round(eco.count / total * 100)}%`),
+              h("span.openings__pr-sample", `n=${eco.count}`)
             ])
           )
         ]) : null
@@ -24587,6 +28093,7 @@ function renderVulnerablePositions(collection, redraw2) {
     h("div.openings__pr-section-title", "Vulnerable Positions"),
     h("div.openings__pr-traps-list", significant.slice(0, 6).map(
       (trap) => h("button.openings__pr-trap-card", {
+        class: { "openings__pr-unreliable": !isStatReliable(trap.totalAtNode) },
         on: { click: () => {
           navigateToPath(trap.path.slice(0, -1));
           setActiveTool("opening-tree");
@@ -24621,11 +28128,12 @@ function renderRecommendations(weakness, lines, totalGames, navToLine) {
     ))
   ]);
 }
-function renderStyleTool() {
+function renderStyleTool(redraw2) {
   const collection = activeCollection();
   const vm = getStyleViewModel();
   if (!vm || !collection) {
     return h("div.openings__tool-content", [
+      renderFilterBadge(redraw2),
       h("div.openings__style", [
         h("div.openings__style-header", [
           h("span.openings__style-label", "Style")
@@ -24635,6 +28143,7 @@ function renderStyleTool() {
     ]);
   }
   return h("div.openings__tool-content", [
+    renderFilterBadge(redraw2),
     h("div.openings__style", [
       renderStyleHeader(collection, vm),
       renderStylePlayerCard(vm),
@@ -24862,25 +28371,6 @@ function renderStyleBehavioral(vm) {
   const n = form.baseline.wdl.total;
   if (n < 10) return null;
   const items = [];
-  const top3Pct = Math.round(profile.top3EcoPct * 100);
-  if (profile.top3EcoPct > 0) {
-    let commitLabel;
-    let commitDetail;
-    if (profile.top3EcoPct >= 0.75) {
-      commitLabel = "High opening commitment";
-      commitDetail = `${top3Pct}% of games in top 3 openings \u2014 stays in familiar territory`;
-    } else if (profile.top3EcoPct >= 0.5) {
-      commitLabel = "Moderate opening commitment";
-      commitDetail = `${top3Pct}% of games in top 3 openings \u2014 some variety`;
-    } else {
-      commitLabel = "Low opening commitment";
-      commitDetail = `Only ${top3Pct}% of games in top 3 openings \u2014 experiments frequently`;
-    }
-    items.push(h("div.openings__style-behavioral-row", [
-      h("span.openings__style-behavioral-label", commitLabel),
-      h("span.openings__style-behavioral-detail", commitDetail)
-    ]));
-  }
   const recentEco = form.last90.topEco;
   const baselineEco = form.baseline.topEco;
   if (recentEco && baselineEco && recentEco !== baselineEco && form.last90.datedGameCount >= 5) {
@@ -24978,10 +28468,11 @@ function renderPracticeSetupPanel(collection, node, redraw2) {
 }
 function renderPracticeActivePanel(node, session, redraw2) {
   if (!session) return h("div");
-  const plan = planOpponentTurn(node, session);
-  const engineStrength = plan.source === "engine" ? STRENGTH_LEVELS[(session.strengthLevel ?? 4) - 1] ?? STRENGTH_LEVELS[3] : null;
-  const sourceBannerText = plan.source === "repertoire" ? "Playing from imported repertoire" : plan.source === "engine" && engineStrength ? `Engine playing at Level ${engineStrength.level} (${engineStrength.label} ~${engineStrength.uciElo} Elo)` : plan.source === "engine" ? "Engine has taken over \u2014 repertoire data exhausted" : "No moves available \u2014 practice has ended at this branch";
-  const sourceBannerClass = plan.source === "repertoire" ? "openings__practice-source--repertoire" : plan.source === "engine" ? "openings__practice-source--engine" : "openings__practice-source--exhausted";
+  const source = session.opponentSource;
+  const engineStrength = source === "engine" ? STRENGTH_LEVELS[(session.strengthLevel ?? 4) - 1] ?? STRENGTH_LEVELS[3] : null;
+  const sourceBannerText = source === "repertoire" ? "Playing from imported repertoire" : source === "engine" && engineStrength ? `Engine playing at Level ${engineStrength.level} (${engineStrength.label} ~${engineStrength.uciElo} Elo)` : source === "engine" ? "Engine has taken over \u2014 repertoire data exhausted" : "No moves available \u2014 practice has ended at this branch";
+  const sourceBannerClass = source === "repertoire" ? "openings__practice-source--repertoire" : source === "engine" ? "openings__practice-source--engine" : "openings__practice-source--exhausted";
+  const totalFreq = buildPracticeCandidates(node).reduce((s, c) => s + c.frequency, 0);
   const moveCount = session.moveHistory.length;
   return h("div.openings__practice-active", [
     h("div.openings__practice-source-banner", {
@@ -24989,13 +28480,13 @@ function renderPracticeActivePanel(node, session, redraw2) {
     }, [
       h(
         "span.openings__practice-source-icon",
-        plan.source === "repertoire" ? "\u25CF" : plan.source === "engine" ? "\u26A1" : "\u2715"
+        source === "repertoire" ? "\u25CF" : source === "engine" ? "\u26A1" : "\u2715"
       ),
       h("span.openings__practice-source-text", sourceBannerText)
     ]),
-    plan.selectionResult.totalFrequency > 0 ? h(
+    totalFreq > 0 ? h(
       "div.openings__practice-freq-note",
-      `Opponent played this position ${plan.selectionResult.totalFrequency} time${plan.selectionResult.totalFrequency !== 1 ? "s" : ""} in imported games`
+      `Opponent played this position ${totalFreq} time${totalFreq !== 1 ? "s" : ""} in imported games`
     ) : null,
     h("div.openings__practice-controls", [
       h("div.openings__practice-stat", `Moves played: ${moveCount}`),
@@ -25020,6 +28511,7 @@ function renderOpeningTreeTool(collection, node, path, redraw2) {
     ]),
     h("div.openings__session-panel", [
       renderOpeningsActionMenu(redraw2),
+      renderFilterBadge(redraw2),
       // Keep FEN override in sync with the current openings position on every render.
       // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
       (() => {
@@ -25027,7 +28519,7 @@ function renderOpeningTreeTool(collection, node, path, redraw2) {
         return null;
       })(),
       renderColorToggle(collection?.target ?? "", redraw2),
-      treeBuilding() ? renderTreeBuildBar() : null,
+      isFetching() ? renderFetchBar(redraw2) : treeBuilding() ? renderTreeBuildBar() : null,
       // Engine section at the top of the panel, before position-context content.
       renderCeval(),
       renderEngineSettings(),
@@ -25110,7 +28602,7 @@ function renderSessionPage(redraw2) {
     h("div.openings__session-body", [
       renderToolRail(redraw2),
       // Active tool owns the main content area.
-      ...activeTool() === "opening-tree" ? renderOpeningTreeTool(collection, node, path, redraw2) : activeTool() === "repertoire" ? [renderRepertoireDashboard(collection, redraw2)] : activeTool() === "prep-report" ? [renderPrepReportTool(redraw2)] : activeTool() === "style" ? [renderStyleTool()] : activeTool() === "practice" ? renderPracticeTool(collection, node, redraw2) : [renderToolPlaceholder(activeTool())]
+      ...activeTool() === "opening-tree" ? renderOpeningTreeTool(collection, node, path, redraw2) : activeTool() === "repertoire" ? [renderRepertoireDashboard(collection, redraw2)] : activeTool() === "prep-report" ? [renderPrepReportTool(redraw2)] : activeTool() === "style" ? [renderStyleTool(redraw2)] : activeTool() === "practice" ? renderPracticeTool(collection, node, redraw2) : [renderToolPlaceholder(activeTool())]
     ])
   ]);
 }
@@ -25122,27 +28614,24 @@ function renderPlayerStrip(collection, position) {
   const topColor = orientation2 === "white" ? "black" : "white";
   const stripColor = position === "bottom" ? bottomColor : topColor;
   let label;
-  let isTarget = false;
   if (filter === "white") {
-    isTarget = stripColor === "white";
-    label = isTarget ? target : "Imported Game Opponents";
+    label = stripColor === "white" ? target : "Imported Game Opponents";
   } else if (filter === "black") {
-    isTarget = stripColor === "black";
-    label = isTarget ? target : "Imported Game Opponents";
+    label = stripColor === "black" ? target : "Imported Game Opponents";
   } else {
-    isTarget = position === "bottom";
-    label = isTarget ? target : "Imported Game Opponents";
+    label = position === "bottom" ? target : "Imported Game Opponents";
   }
-  const colorDot = stripColor === "white" ? "\u25CB" : "\u25CF";
-  return h("div.openings__player-strip", {
-    class: {
-      "openings__player-strip--target": isTarget,
-      "openings__player-strip--top": position === "top",
-      "openings__player-strip--bottom": position === "bottom"
-    }
-  }, [
-    h("span.openings__player-dot", colorDot),
-    h("span.openings__player-name", label)
+  const animLabel = isFetching() && position === "bottom" && _animGame ? _animGame.label : null;
+  return h("div.analyse__player_strip", [
+    h("div.player-strip__identity", [
+      h("span.player-strip__color-icon", {
+        class: {
+          "player-strip__color-icon--white": stripColor === "white",
+          "player-strip__color-icon--black": stripColor === "black"
+        }
+      }),
+      h("span.player-strip__name", animLabel ?? label)
+    ])
   ]);
 }
 function buildOpeningsMoveTree(tree, path) {
@@ -25194,7 +28683,7 @@ function renderColorToggle(playerName, redraw2) {
         redraw2();
       } }
     }, [
-      h("span.openings__color-username", filter === "white" ? playerName : ""),
+      h("span.openings__color-username", filter === "white" ? playerName : "Opponents"),
       h("span.openings__color-label", [h("span.openings__color-dot", "\u25CB"), "\xA0White"])
     ]),
     h("button", {
@@ -25208,7 +28697,7 @@ function renderColorToggle(playerName, redraw2) {
         redraw2();
       } }
     }, [
-      h("span.openings__color-username", filter === "black" ? playerName : ""),
+      h("span.openings__color-username", filter === "black" ? playerName : "Opponents"),
       h("span.openings__color-label", [h("span.openings__color-dot", "\u25CF"), "\xA0Black"])
     ]),
     // Flip button — inline, icon-only, sized like the book button in the nav bar.
@@ -25226,6 +28715,8 @@ function renderColorToggle(playerName, redraw2) {
 }
 var _saveFeedback = null;
 var _saveFeedbackTimer = null;
+var _saveLibFeedback = null;
+var _saveLibFeedbackTimer = null;
 function handleSaveLine(path, redraw2) {
   const collection = activeCollection();
   if (!collection || path.length < 3) return;
@@ -25256,6 +28747,27 @@ function handleSaveLine(path, redraw2) {
   }, 1500);
   redraw2();
 }
+function handleSaveToLibrary(path, redraw2) {
+  if (path.length < 1) return;
+  const color = boardOrientation();
+  void saveUciLinesToLibrary([...path], color).then(() => {
+    _saveLibFeedback = "Saved to Library!";
+    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+    _saveLibFeedbackTimer = setTimeout(() => {
+      _saveLibFeedback = null;
+      redraw2();
+    }, 1800);
+    redraw2();
+  }).catch(() => {
+    _saveLibFeedback = "Save failed";
+    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+    _saveLibFeedbackTimer = setTimeout(() => {
+      _saveLibFeedback = null;
+      redraw2();
+    }, 1800);
+    redraw2();
+  });
+}
 function renderOpeningsMoveList(tree, path, node, redraw2) {
   const { root, currentPath } = buildOpeningsMoveTree(tree, path);
   const navigate2 = (treePath) => {
@@ -25270,11 +28782,15 @@ function renderOpeningsMoveList(tree, path, node, redraw2) {
     h("div.analyse__moves.areplay", [
       renderMoveList(root, currentPath, () => void 0, navigate2, null, false)
     ]),
-    // Save to training button (visible when line is >= 3 moves)
-    path.length >= 3 ? h("div.openings__save-line-row", [
-      _saveFeedback ? h("span.openings__save-feedback", _saveFeedback) : h("button.openings__save-line-btn", {
+    // Save-line row: training shortcut + Study Library (visible when at least 1 move played)
+    path.length >= 1 ? h("div.openings__save-line-row", [
+      path.length >= 3 ? _saveFeedback ? h("span.openings__save-feedback", _saveFeedback) : h("button.openings__save-line-btn", {
         on: { click: () => handleSaveLine(path, redraw2) }
-      }, "\u2B50 Save line to training")
+      }, "\u2B50 Save line to training") : null,
+      _saveLibFeedback ? h("span.openings__save-feedback", _saveLibFeedback) : h("button.openings__save-lib-btn", {
+        attrs: { title: "Save this line to the Study Library" },
+        on: { click: () => handleSaveToLibrary(path, redraw2) }
+      }, "\u{1F4DA} Save to Library")
     ]) : null,
     renderMoveNavBar([], {
       canPrev,
@@ -25394,6 +28910,9 @@ function renderOpeningsBoard(node, redraw2) {
         if (node && _openingsCg) {
           _openingsCg.setAutoShapes(buildFrequencyArrows(node));
         }
+        if (isFetching() && _animTimer === null && _animGame === null) {
+          startImportAnimation(redraw2);
+        }
       },
       postpatch: () => {
         if (node && _openingsCg) {
@@ -25420,13 +28939,67 @@ function destsForFen(fen) {
   _cachedDestsFen = fen;
   return _cachedDests;
 }
+function stopImportAnimation() {
+  if (_animTimer !== null) {
+    clearTimeout(_animTimer);
+    _animTimer = null;
+  }
+  _animGame = null;
+  _animMoveIdx = 0;
+  _animPos = null;
+}
+function startImportAnimation(redraw2) {
+  stopImportAnimation();
+  _animGame = randomMasterGame();
+  _animMoveIdx = 0;
+  const setup = parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  try {
+    _animPos = setup.isOk ? Chess.fromSetup(setup.value).unwrap() : null;
+  } catch {
+    _animPos = null;
+  }
+  if (!_animPos || !_openingsCg) return;
+  _openingsCg.set({
+    fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    lastMove: [],
+    movable: { color: "both", free: false, dests: /* @__PURE__ */ new Map() },
+    animation: { enabled: true }
+  });
+  scheduleNextAnimMove(redraw2, 0);
+}
+function scheduleNextAnimMove(redraw2, delay = ANIM_MOVE_MS) {
+  _animTimer = setTimeout(() => {
+    _animTimer = null;
+    if (!isFetching() || !_animGame || !_animPos || !_openingsCg) return;
+    const uciStr = _animGame.moves[_animMoveIdx];
+    if (!uciStr) {
+      startImportAnimation(redraw2);
+      return;
+    }
+    const move3 = parseUci(uciStr);
+    if (!move3 || !_animPos.isLegal(move3)) {
+      startImportAnimation(redraw2);
+      return;
+    }
+    _animPos.play(move3);
+    const newFen = makeFen(_animPos.toSetup());
+    const from = uciStr.slice(0, 2);
+    const to = uciStr.slice(2, 4);
+    _openingsCg.set({ fen: newFen, lastMove: [from, to] });
+    _animMoveIdx++;
+    scheduleNextAnimMove(redraw2);
+  }, delay);
+}
 function syncOpeningsBoard(_redraw10) {
+  if (!isFetching() && _animGame !== null) stopImportAnimation();
   const node = sessionNode();
   if (!_openingsCg || !node) return;
   const fen = node.fen;
-  if (fen === _lastBoardFen) return;
-  _lastBoardFen = fen;
   const session = practiceSession();
+  const isPractice = !!session;
+  if (fen === _lastBoardFen && isPractice === _lastBoardPractice) return;
+  _lastBoardFen = fen;
+  _lastBoardPractice = isPractice;
   const movableColor = session ? session.userColor : "both";
   _openingsCg.set({
     fen,
@@ -25505,6 +29078,17 @@ function buildFrequencyArrows(node) {
   return shapes;
 }
 function renderTreeBuildBar() {
+  if ((_animGame !== null || _animTimer !== null) && _openingsCg) {
+    stopImportAnimation();
+    const orient2 = colorFilter() === "black" ? "black" : "white";
+    _openingsCg.set({
+      fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      lastMove: [],
+      movable: { color: "both", free: false, dests: /* @__PURE__ */ new Map() },
+      animation: { enabled: false },
+      orientation: orient2
+    });
+  }
   const progress = treeBuildProgress();
   const total = treeBuildTotal();
   const pct = total > 0 ? Math.min(100, Math.round(progress / total * 100)) : 0;
@@ -25514,10 +29098,38 @@ function renderTreeBuildBar() {
         attrs: { style: `width:${pct}%` }
       })
     ]),
-    h(
-      "span.openings__tree-build-label",
-      `Building tree\u2026 ${progress.toLocaleString()} / ${total.toLocaleString()} games (${pct}%)`
-    )
+    h("span.openings__tree-build-label", "Building opening tree\u2026")
+  ]);
+}
+function renderFetchBar(redraw2) {
+  if (_animTimer === null && _animGame === null && _openingsCg) {
+    startImportAnimation(redraw2);
+  }
+  const progress = importProgress();
+  const month = importMonth();
+  let label;
+  if (progress > 0) {
+    const base = `${progress.toLocaleString()} games`;
+    label = month ? `Fetching games\u2026 ${base} \u2014 ${month}` : `Fetching games\u2026 ${base}`;
+  } else {
+    label = "Connecting\u2026";
+  }
+  return h("div.openings__tree-build", [
+    h("div.openings__tree-build-bar", [
+      h("div.openings__tree-build-fill", {
+        attrs: { style: "width:100%;opacity:0.6" }
+      })
+    ]),
+    h("div.openings__tree-build-footer", [
+      h("span.openings__tree-build-label", label),
+      h("button.openings__cancel-import-btn", {
+        on: { click: () => {
+          cancelImport();
+          stopImportAnimation();
+          redraw2();
+        } }
+      }, "Cancel")
+    ])
   ]);
 }
 function dateRangeDescription(settings) {
@@ -25564,11 +29176,22 @@ function renderSpeedFilter(redraw2) {
     }
   }
   const toggle = (value) => {
-    const current2 = filter.size === 0 ? new Set(SPEED_OPTIONS.map((s) => s.value)) : new Set(filter);
-    if (current2.has(value)) current2.delete(value);
-    else current2.add(value);
-    const allSelected = SPEED_OPTIONS.every((s) => current2.has(s.value));
-    setSpeedFilter(allSelected || current2.size === 0 ? /* @__PURE__ */ new Set() : current2, redraw2);
+    let next2;
+    if (filter.size === 0) {
+      next2 = /* @__PURE__ */ new Set([value]);
+    } else if (filter.has(value)) {
+      if (filter.size === 1) {
+        next2 = /* @__PURE__ */ new Set();
+      } else {
+        next2 = new Set(filter);
+        next2.delete(value);
+      }
+    } else {
+      next2 = new Set(filter);
+      next2.add(value);
+      if (SPEED_OPTIONS.every((s) => next2.has(s.value))) next2 = /* @__PURE__ */ new Set();
+    }
+    setSpeedFilter(next2, redraw2);
     redraw2();
   };
   return h("div.openings__speed-filter", [
@@ -25587,6 +29210,129 @@ function renderSpeedFilter(redraw2) {
       ]);
     }))
   ]);
+}
+function renderDateRangeFilter(redraw2) {
+  const collection = activeCollection();
+  const color = colorFilter();
+  const target = collection?.target?.toLowerCase() ?? "";
+  const activeRange = sessionDateRange();
+  let colourGames = collection?.games ?? [];
+  if (color !== "both" && target && collection) {
+    colourGames = colourGames.filter((g) => {
+      const isWhite = g.white?.toLowerCase() === target;
+      const isBlack = g.black?.toLowerCase() === target;
+      return color === "white" ? isWhite : isBlack;
+    });
+  }
+  const totalCount = colourGames.length;
+  function formatMonthYear(dateStr) {
+    const ts = Date.parse(dateStr.replace(/\./g, "-"));
+    if (isNaN(ts)) return "";
+    return new Date(ts).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  }
+  let spanLabel = "";
+  if (colourGames.length > 0) {
+    let earliest = "", latest = "";
+    for (const g of colourGames) {
+      if (!g.date) continue;
+      if (!earliest || g.date < earliest) earliest = g.date;
+      if (!latest || g.date > latest) latest = g.date;
+    }
+    if (earliest && latest) {
+      const from = formatMonthYear(earliest);
+      const to = formatMonthYear(latest);
+      spanLabel = from === to ? from : `${from} \u2013 ${to}`;
+    }
+  }
+  function countInRange(days) {
+    const cutoff = Date.now() - days * 864e5;
+    return colourGames.filter((g) => {
+      if (!g.date) return false;
+      const ts = Date.parse(g.date.replace(/\./g, "-"));
+      return !isNaN(ts) && ts >= cutoff;
+    }).length;
+  }
+  const activeLabel = activeRange ? SESSION_DATE_RANGE_OPTIONS.find((o) => o.value === activeRange)?.label ?? activeRange : null;
+  const closePopup = () => {
+    _dateRangePopupOpen = false;
+    redraw2();
+  };
+  return h("div.openings__date-range-row", [
+    // Backdrop to dismiss popup on click-outside.
+    _dateRangePopupOpen ? h("div.openings__date-popup-backdrop", {
+      on: { click: closePopup }
+    }) : null,
+    h("div.openings__date-range-btn-wrap", [
+      // Main trigger button.
+      h(
+        "button.openings__date-range-btn",
+        {
+          class: { active: !!activeRange },
+          on: { click: () => {
+            _dateRangePopupOpen = !_dateRangePopupOpen;
+            redraw2();
+          } }
+        },
+        activeRange ? [activeLabel, ` (${countInRange(SESSION_DATE_RANGE_OPTIONS.find((o) => o.value === activeRange)?.days ?? 0)})`] : [spanLabel ? `All (${totalCount}) \xB7 ${spanLabel}` : `All (${totalCount})`]
+      ),
+      // Inline × to clear active range.
+      activeRange ? h("button.openings__date-range-clear", {
+        attrs: { title: "Clear date filter" },
+        on: { click: () => {
+          setSessionDateRange(null, redraw2);
+          _dateRangePopupOpen = false;
+          redraw2();
+        } }
+      }, "\xD7") : null,
+      // Dropdown popup.
+      _dateRangePopupOpen ? h("div.openings__date-range-popup", SESSION_DATE_RANGE_OPTIONS.map(
+        (opt) => h("button.openings__date-range-option", {
+          class: { active: activeRange === opt.value },
+          on: { click: () => {
+            setSessionDateRange(opt.value, redraw2);
+            _dateRangePopupOpen = false;
+            redraw2();
+          } }
+        }, [
+          h("span", opt.label),
+          h("span.openings__date-range-count", `${countInRange(opt.days)}`)
+        ])
+      )) : null
+    ])
+  ]);
+}
+function renderFilterBadge(redraw2) {
+  const range = sessionDateRange();
+  const speeds = speedFilter();
+  if (!range && speeds.size === 0) return null;
+  const badges = [];
+  if (speeds.size > 0) {
+    const speedLabels = SPEED_OPTIONS.filter((o) => speeds.has(o.value)).map((o) => o.label).join(", ");
+    badges.push(h("span.openings__filter-badge", [
+      speedLabels,
+      h("button.openings__filter-badge-clear", {
+        attrs: { title: "Clear speed filter" },
+        on: { click: () => {
+          setSpeedFilter(/* @__PURE__ */ new Set(), redraw2);
+          redraw2();
+        } }
+      }, "\xD7")
+    ]));
+  }
+  if (range) {
+    const rangeLabel = SESSION_DATE_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? range;
+    badges.push(h("span.openings__filter-badge", [
+      rangeLabel,
+      h("button.openings__filter-badge-clear", {
+        attrs: { title: "Clear date filter" },
+        on: { click: () => {
+          setSessionDateRange(null, redraw2);
+          redraw2();
+        } }
+      }, "\xD7")
+    ]));
+  }
+  return h("div.openings__filter-badge-row", badges);
 }
 function renderDeviationPanel(redraw2) {
   const results = deviationResults();
@@ -25638,7 +29384,8 @@ function renderPlayedLinesPanel(node, redraw2) {
       node.children.map((child) => renderMoveRow(child, node.total, redraw2))
     ),
     // Speed filter chips — below the moves, above the move-nav bar
-    renderSpeedFilter(redraw2)
+    renderSpeedFilter(redraw2),
+    renderDateRangeFilter(redraw2)
   ]);
 }
 function renderMoveRow(child, parentTotal, redraw2) {
@@ -26286,11 +30033,6 @@ function computeEvalDiff(input) {
 }
 
 // src/analyse/retro.ts
-var CLASSIFICATION_RANK = {
-  inaccuracy: 1,
-  mistake: 2,
-  blunder: 3
-};
 var STANDARD_START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 var RETRO_OPENING_CANCEL_MAX_PLY = 20;
 function buildMainlineOpeningProvider(mainline, hasOpeningMetadata) {
@@ -26327,8 +30069,7 @@ function buildRetroCandidates(mainline, getEval, gameId, userColor = null, getOp
     const isMissedMate = retroConfig.missedMateDistance > 0 && parentMatePov !== void 0 && parentMatePov > 0 && parentMatePov <= retroConfig.missedMateDistance && !nodeEval.mate;
     const loss = nodeEval.loss;
     const classification = loss !== void 0 ? classifyLoss(loss) : null;
-    const minRank = CLASSIFICATION_RANK[retroConfig.minClassification];
-    const qualifiesByLoss = classification !== null && CLASSIFICATION_RANK[classification] >= minRank;
+    const qualifiesByLoss = loss !== void 0 && loss >= retroConfig.minLossThreshold;
     const parentWc = evalWinChances(parentEval);
     const moverParentWc = parentWc !== void 0 ? isWhiteMove ? parentWc : -parentWc : void 0;
     const isCollapse = retroConfig.collapseEnabled && moverParentWc !== void 0 && moverParentWc >= retroConfig.collapseWcFloor && loss !== void 0 && loss >= retroConfig.collapseDropMin;
@@ -26491,6 +30232,29 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
   let _guidanceRevealed = false;
   let _winKind = null;
   let _failKind = null;
+  let _liveBestMove = void 0;
+  let _liveBestDepth = 0;
+  let _liveBestEval = void 0;
+  let _vindicationCb = void 0;
+  let _vindicated = false;
+  let _solvingMoveSnapshot = void 0;
+  function mergeLiveEvalIntoSolvingSnapshot(candidate, liveEval) {
+    const parentEval = getEval(candidate.parentPath);
+    const gameEval = getEval(candidate.path);
+    const prev2 = _solvingMoveSnapshot;
+    _solvingMoveSnapshot = {
+      solvingMoveUci: prev2?.solvingMoveUci ?? "",
+      solvingMoveCp: liveEval.cp,
+      solvingMoveMate: liveEval.mate,
+      engineBestUci: prev2?.engineBestUci ?? _liveBestMove ?? candidate.bestMove,
+      engineBestCp: prev2?.engineBestCp ?? parentEval?.cp,
+      engineBestMate: prev2?.engineBestMate ?? parentEval?.mate,
+      gameMoveUci: prev2?.gameMoveUci ?? candidate.playedMove,
+      gameMoveCp: prev2?.gameMoveCp ?? gameEval?.cp,
+      gameMoveMate: prev2?.gameMoveMate ?? gameEval?.mate,
+      playerColor: prev2?.playerColor ?? candidate.playerColor
+    };
+  }
   const isPlySolved = (ply) => solvedPlies.includes(ply);
   const notifyPersist = () => {
     if (onPersist) onPersist(outcomes, candidates.length);
@@ -26507,7 +30271,14 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
     _guidanceRevealed = false;
     _winKind = null;
     _failKind = null;
+    _vindicated = false;
+    _vindicationCb = void 0;
+    _solvingMoveSnapshot = void 0;
     currentIdx = findNextIdx();
+    const c = currentIdx >= 0 ? candidates[currentIdx] : void 0;
+    _liveBestMove = c?.bestMove;
+    _liveBestDepth = 0;
+    _liveBestEval = void 0;
   }
   function skip() {
     const c = candidates[currentIdx];
@@ -26551,6 +30322,15 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
     revealGuidance() {
       _guidanceRevealed = true;
     },
+    hideGuidance() {
+      _guidanceRevealed = false;
+    },
+    resetForRetry() {
+      _feedback = "find";
+      _winKind = null;
+      _failKind = null;
+      _solvingMoveSnapshot = void 0;
+    },
     isPlySolved,
     jumpToNext,
     skip,
@@ -26577,6 +30357,7 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
       if (!c) return;
       const ev = getNodeEval();
       if (!ev) return;
+      mergeLiveEvalIntoSolvingSnapshot(c, ev);
       if (!ev.depth || ev.depth < 14) return;
       const parentEv = getEval(c.parentPath);
       if (parentEv) {
@@ -26600,14 +30381,12 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
           }
           if (c) outcomes.set(c.ply, "fail");
           _feedback = "fail";
-          navigateTo2(c.parentPath);
           notifyPersist();
         }
       } else {
         if (c) outcomes.set(c.ply, "fail");
         _failKind = null;
         _feedback = "fail";
-        navigateTo2(c.parentPath);
         notifyPersist();
       }
     },
@@ -26644,6 +30423,38 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
     },
     getOutcome(ply) {
       return outcomes.get(ply);
+    },
+    // --- Live engine tracking ---
+    liveBestMove() {
+      return _liveBestMove;
+    },
+    liveBestEval() {
+      return _liveBestEval;
+    },
+    onEngineUpdate(best, eval_) {
+      if (eval_.depth <= _liveBestDepth) return;
+      _liveBestMove = best;
+      _liveBestDepth = eval_.depth;
+      _liveBestEval = eval_;
+      const c = currentIdx >= 0 ? candidates[currentIdx] ?? null : null;
+      if (c && !_vindicated && best === c.playedMove) {
+        _vindicated = true;
+        _vindicationCb?.();
+      }
+    },
+    onVindication(cb) {
+      _vindicationCb = cb;
+      if (_vindicated) cb();
+    },
+    isVindicated() {
+      return _vindicated;
+    },
+    // --- Solving move snapshot ---
+    setSolvingMoveSnapshot(snapshot) {
+      _solvingMoveSnapshot = snapshot;
+    },
+    getSolvingMoveSnapshot() {
+      return _solvingMoveSnapshot;
     }
   };
 }
@@ -26657,7 +30468,8 @@ function initRetroMoveHandler(getCtrl) {
     const cand = retro.current();
     if (!cand) return;
     if (info.path !== cand.parentPath) return;
-    if (info.uci === cand.bestMove) {
+    const liveOrBatchBest = retro.liveBestMove() ?? cand.bestMove;
+    if (info.uci === liveOrBatchBest) {
       retro.onWin();
     }
   });
@@ -26667,10 +30479,28 @@ function initRetroMoveHandler(getCtrl) {
     if (!retro) return;
     const cand = retro.current();
     if (!cand) return;
-    if (retro.feedback() === "win") return;
     const atRetroExercise = ctrl2.path.length === cand.parentPath.length + 2 && ctrl2.path.startsWith(cand.parentPath);
     if (!atRetroExercise) return;
-    if (info.uci !== cand.bestMove) {
+    const solvingEval = evalCache.get(ctrl2.path);
+    const engineBestUci = retro.liveBestMove() ?? cand.bestMove;
+    const isExactBest = info.uci === engineBestUci;
+    const engineBestForSnapshot = isExactBest ? solvingEval : evalCache.get(cand.parentPath);
+    const gameMoveEval = evalCache.get(cand.path);
+    retro.setSolvingMoveSnapshot({
+      solvingMoveUci: info.uci,
+      solvingMoveCp: solvingEval?.cp,
+      solvingMoveMate: solvingEval?.mate,
+      engineBestUci,
+      engineBestCp: engineBestForSnapshot?.cp,
+      engineBestMate: engineBestForSnapshot?.mate,
+      gameMoveUci: cand.playedMove,
+      gameMoveCp: gameMoveEval?.cp,
+      gameMoveMate: gameMoveEval?.mate,
+      playerColor: cand.playerColor
+    });
+    if (retro.feedback() === "win") return;
+    const liveOrBatchBest = retro.liveBestMove() ?? cand.bestMove;
+    if (info.uci !== liveOrBatchBest) {
       const updatedDiff = requestRetroBackgroundEval(cand, (path) => evalCache.get(path));
       if (!updatedDiff || updatedDiff.confidence !== "cp") {
         evalFenSilent(
@@ -26681,6 +30511,9 @@ function initRetroMoveHandler(getCtrl) {
         );
       }
       retro.setFeedback("eval");
+      if (batchAnalyzing) stopBatchAnalysis();
+      if (!engineEnabled) toggleEngine();
+      else evalCurrentPosition();
       retro.onCeval();
     }
   });
@@ -26715,19 +30548,127 @@ function renderEvalDiff(diff2) {
   if (diff2.cpDiff !== null ? diff2.cpDiff <= 0 : diff2.wcDiff <= 0) return null;
   return h("span.retro-feedback__eval-diff", diff2.formatted);
 }
+function renderGameMoveEvalDiff(cand) {
+  if (!cand) return null;
+  return renderEvalDiff(cand.evalDiff);
+}
+function computeDualEvalComparison(a, b, color) {
+  if (a.cp !== void 0 && b.cp !== void 0) {
+    const moverA2 = color === "white" ? a.cp : -a.cp;
+    const moverB2 = color === "white" ? b.cp : -b.cp;
+    return { kind: "cp", diff: (moverA2 - moverB2) / 100 };
+  }
+  const wcA = evalWinChances(a);
+  const wcB = evalWinChances(b);
+  if (wcA === void 0 || wcB === void 0) return null;
+  const moverA = color === "white" ? wcA : -wcA;
+  const moverB = color === "white" ? wcB : -wcB;
+  return { kind: "wc", diff: (moverA - moverB) / 2 * 100 };
+}
+function formatDualEvalDiff(diff2) {
+  if (diff2.kind === "wc") {
+    const rounded2 = Math.round(diff2.diff);
+    const normalized2 = Object.is(rounded2, -0) ? 0 : rounded2;
+    return `${normalized2}%`;
+  }
+  const rounded = Math.round(diff2.diff * 10) / 10;
+  const normalized = Object.is(rounded, -0) ? 0 : rounded;
+  return normalized.toFixed(1);
+}
+function renderEvalBox(grade, label, display) {
+  return h("div.retro-eval-box", { class: { [`retro-eval-box--${grade}`]: true } }, [
+    h("span.retro-eval-box__label", label),
+    h("span.retro-eval-box__value", display)
+  ]);
+}
+function renderDualEvalBoxes(retro) {
+  const snapshot = retro.getSolvingMoveSnapshot();
+  if (!snapshot) return null;
+  const solvingEval = {
+    ...snapshot.solvingMoveCp !== void 0 && { cp: snapshot.solvingMoveCp },
+    ...snapshot.solvingMoveMate !== void 0 && { mate: snapshot.solvingMoveMate }
+  };
+  const engineBestEval = {
+    ...snapshot.engineBestCp !== void 0 && { cp: snapshot.engineBestCp },
+    ...snapshot.engineBestMate !== void 0 && { mate: snapshot.engineBestMate }
+  };
+  const gameMoveEval = {
+    ...snapshot.gameMoveCp !== void 0 && { cp: snapshot.gameMoveCp },
+    ...snapshot.gameMoveMate !== void 0 && { mate: snapshot.gameMoveMate }
+  };
+  const vsBestDiff = computeDualEvalComparison(solvingEval, engineBestEval, snapshot.playerColor);
+  const vsGameDiff = computeDualEvalComparison(solvingEval, gameMoveEval, snapshot.playerColor);
+  let vsBestGrade;
+  let vsBestDisplay;
+  if (vsBestDiff === null) {
+    vsBestGrade = "bad";
+    vsBestDisplay = "\u2014";
+  } else if (Math.abs(vsBestDiff.diff) < 5e-3) {
+    vsBestGrade = "best";
+    vsBestDisplay = "\u2713";
+  } else if (vsBestDiff.kind === "cp" && vsBestDiff.diff > -0.5 && vsBestDiff.diff < 0) {
+    vsBestGrade = "near";
+    vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+  } else if (vsGameDiff !== null && vsGameDiff.diff > 0) {
+    vsBestGrade = "ok";
+    vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+  } else {
+    vsBestGrade = "bad";
+    vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+  }
+  let vsGameGrade;
+  let vsGameDisplay;
+  if (vsGameDiff === null) {
+    vsGameGrade = "bad";
+    vsGameDisplay = "\u2014";
+  } else if (vsGameDiff.diff > 5e-3) {
+    const formatted = formatDualEvalDiff(vsGameDiff);
+    if (formatted === "0.0" || formatted === "0%") {
+      vsGameGrade = "near";
+      vsGameDisplay = formatted;
+    } else {
+      vsGameGrade = "ok";
+      vsGameDisplay = `+${formatted}`;
+    }
+  } else if (vsGameDiff.diff > -5e-3) {
+    const formatted = formatDualEvalDiff(vsGameDiff);
+    vsGameGrade = "near";
+    vsGameDisplay = formatted;
+  } else {
+    const formatted = formatDualEvalDiff(vsGameDiff);
+    if (formatted === "0.0" || formatted === "0%") {
+      vsGameGrade = "near";
+      vsGameDisplay = formatted;
+    } else {
+      vsGameGrade = "bad";
+      vsGameDisplay = formatted;
+    }
+  }
+  return h("div.retro-eval-boxes", [
+    renderEvalBox(vsBestGrade, "vs Engine Best", vsBestDisplay),
+    renderEvalBox(vsGameGrade, "vs Move Played", vsGameDisplay)
+  ]);
+}
 function renderSkipOrView(retro, navigate2, redraw2) {
   const cand = retro.current();
   return h("div.retro-choices", [
     h("a", {
       on: { click: () => {
         retro.viewSolution();
-        if (cand) navigate2(cand.path);
-        else redraw2();
+        retro.revealGuidance();
+        setRetroVisibleEngineEnabled(true);
+        if (cand) {
+          navigate2(cand.parentPath);
+          playUciMove(cand.bestMove);
+        } else {
+          redraw2();
+        }
       } }
     }, "View the solution"),
     h("a", {
       on: { click: () => {
         retro.skip();
+        resetRetroVisibleEngineUi();
         const next2 = retro.current();
         if (next2) navigate2(next2.parentPath);
         else redraw2();
@@ -26739,6 +30680,7 @@ function renderContinue(retro, navigate2, redraw2) {
   return h("a.retro-continue", {
     on: { click: () => {
       retro.jumpToNext();
+      resetRetroVisibleEngineUi();
       const next2 = retro.current();
       if (next2) navigate2(next2.parentPath);
       else redraw2();
@@ -26873,12 +30815,11 @@ function renderBulkSaveToLibrary(retro, redraw2) {
   }, `Save ${count} failed position${count === 1 ? "" : "s"} to Library`));
 }
 function renderRetroStrip(deps) {
-  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2, onRevealGuidance, onClose, getEvalDepth } = deps;
+  const { retro, navigate: navigate2, redraw: redraw2, uciToSan: uciToSan2, onClose, getEvalDepth } = deps;
   if (!retro) return null;
   const feedback = retro.feedback();
   const cand = retro.current();
   const [solved, total] = retro.completion();
-  const revealed = retro.guidanceRevealed();
   const progressText = `${Math.min(solved + 1, total)} / ${total}`;
   let feedbackContent;
   if (!cand) {
@@ -26911,8 +30852,16 @@ function renderRetroStrip(deps) {
           h("em", `Find a better move for ${color}`),
           renderSkipOrView(retro, navigate2, redraw2)
         ])
-      ])
-    ];
+      ]),
+      retro.isVindicated() ? h("div.retro-vindication", [
+        h("div.retro-vindication__icon", "\u2713"),
+        h(
+          "p.retro-vindication__msg",
+          "Actually upon deeper review, you did play the best move during the game."
+        ),
+        renderContinue(retro, navigate2, redraw2)
+      ]) : null
+    ].filter(Boolean);
   } else if (feedback === "offTrack") {
     feedbackContent = [
       h("div.retro-player", [
@@ -26947,10 +30896,17 @@ function renderRetroStrip(deps) {
         h("div.retro-icon.retro-icon--fail", "\u2717"),
         h("div.retro-instruction", [
           h("strong", strongText),
-          renderEvalDiff(cand?.evalDiff),
-          h("em", `Try another move for ${color}`),
+          renderGameMoveEvalDiff(cand),
+          renderDualEvalBoxes(retro),
           renderSkipOrView(retro, navigate2, redraw2),
-          renderSaveToLibrary(cand, retro, redraw2)
+          renderSaveToLibrary(cand, retro, redraw2),
+          h("a", { on: { click: () => {
+            retro.resetForRetry();
+            resetRetroVisibleEngineUi();
+            if (cand) navigate2(cand.parentPath);
+            syncArrow();
+            redraw2();
+          } } }, "Try another move")
         ])
       ])
     ];
@@ -26977,9 +30933,17 @@ function renderRetroStrip(deps) {
           h("div.retro-icon.retro-icon--win", "\u2713"),
           h("div.retro-instruction", [
             h("strong", msg),
-            renderEvalDiff(cand?.evalDiff),
+            renderGameMoveEvalDiff(cand),
+            renderDualEvalBoxes(retro),
             renderReasonNote(cand),
-            renderSaveToLibrary(cand, retro, redraw2)
+            renderSaveToLibrary(cand, retro, redraw2),
+            h("a", { on: { click: () => {
+              retro.resetForRetry();
+              resetRetroVisibleEngineUi();
+              if (cand) navigate2(cand.parentPath);
+              syncArrow();
+              redraw2();
+            } } }, "Try another move")
           ])
         ])
       ),
@@ -26995,20 +30959,23 @@ function renderRetroStrip(deps) {
           h("div.retro-instruction", [
             h("strong", "Solution"),
             h("em", ["Best was ", h("strong", bestSan)]),
-            renderEvalDiff(cand?.evalDiff),
+            renderGameMoveEvalDiff(cand),
+            renderDualEvalBoxes(retro),
             renderReasonNote(cand),
-            renderSaveToLibrary(cand, retro, redraw2)
+            renderSaveToLibrary(cand, retro, redraw2),
+            h("a", { on: { click: () => {
+              retro.resetForRetry();
+              resetRetroVisibleEngineUi();
+              if (cand) navigate2(cand.parentPath);
+              syncArrow();
+              redraw2();
+            } } }, "Try another move")
           ])
         ])
       ),
       renderContinue(retro, navigate2, redraw2)
     ];
   }
-  const showEngineBtn = !revealed && cand && feedback !== "eval" ? [
-    h("div.retro-engine-reveal", [
-      h("a", { on: { click: onRevealGuidance } }, "Show engine")
-    ])
-  ] : [];
   return h("div.retro-box.training-box", [
     // Title bar — mirrors lichess-org/lila: retroView.ts div.title
     h("div.retro-box__title", [
@@ -27017,176 +30984,8 @@ function renderRetroStrip(deps) {
       h("button.retro-box__close", { on: { click: onClose }, attrs: { title: "Close" } }, "\u2715")
     ]),
     // Feedback area — mirrors lichess-org/lila: retroView.ts div.feedback.{state}
-    h("div.retro-feedback." + feedback, [
-      ...feedbackContent,
-      ...showEngineBtn
-    ])
+    h("div.retro-feedback." + feedback, feedbackContent)
   ]);
-}
-
-// src/study/studyDb.ts
-var _db3;
-function openDb2() {
-  if (_db3) return Promise.resolve(_db3);
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains("studies")) {
-        const studiesStore = db.createObjectStore("studies", { keyPath: "id" });
-        studiesStore.createIndex("createdAt", "createdAt", { unique: false });
-        studiesStore.createIndex("updatedAt", "updatedAt", { unique: false });
-        studiesStore.createIndex("source", "source", { unique: false });
-        studiesStore.createIndex("favorite", "favorite", { unique: false });
-      }
-      if (!db.objectStoreNames.contains("practice-lines")) {
-        const practiceStore = db.createObjectStore("practice-lines", { keyPath: "id" });
-        practiceStore.createIndex("studyItemId", "studyItemId", { unique: false });
-        practiceStore.createIndex("status", "status", { unique: false });
-      }
-      if (!db.objectStoreNames.contains("position-progress")) {
-        const progressStore = db.createObjectStore("position-progress", { keyPath: "key" });
-        progressStore.createIndex("nextDueAt", "nextDueAt", { unique: false });
-      }
-      if (!db.objectStoreNames.contains("drill-attempts")) {
-        const attemptsStore = db.createObjectStore("drill-attempts", { autoIncrement: true });
-        attemptsStore.createIndex("positionKey", "positionKey", { unique: false });
-        attemptsStore.createIndex("timestamp", "timestamp", { unique: false });
-      }
-    };
-    req.onsuccess = () => {
-      _db3 = req.result;
-      resolve(_db3);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-async function saveStudy(item) {
-  try {
-    const db = await openDb2();
-    const tx = db.transaction("studies", "readwrite");
-    tx.objectStore("studies").put(item);
-  } catch (e) {
-    console.warn("[studyDb] saveStudy failed", e);
-  }
-}
-async function getStudy(id) {
-  try {
-    const db = await openDb2();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("studies", "readonly").objectStore("studies").get(id);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[studyDb] getStudy failed", e);
-    return void 0;
-  }
-}
-async function listStudies() {
-  try {
-    const db = await openDb2();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("studies", "readonly").objectStore("studies").getAll();
-      req.onsuccess = () => resolve(req.result ?? []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[studyDb] listStudies failed", e);
-    return [];
-  }
-}
-async function deleteStudy(id) {
-  try {
-    const db = await openDb2();
-    const tx = db.transaction("studies", "readwrite");
-    tx.objectStore("studies").delete(id);
-  } catch (e) {
-    console.warn("[studyDb] deleteStudy failed", e);
-  }
-}
-async function savePracticeLine(seq) {
-  try {
-    const db = await openDb2();
-    const tx = db.transaction("practice-lines", "readwrite");
-    tx.objectStore("practice-lines").put(seq);
-  } catch (e) {
-    console.warn("[studyDb] savePracticeLine failed", e);
-  }
-}
-async function listPracticeLines(studyItemId) {
-  try {
-    const db = await openDb2();
-    if (studyItemId) {
-      return new Promise((resolve, reject) => {
-        const index = db.transaction("practice-lines", "readonly").objectStore("practice-lines").index("studyItemId");
-        const req = index.getAll(studyItemId);
-        req.onsuccess = () => resolve(req.result ?? []);
-        req.onerror = () => reject(req.error);
-      });
-    }
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("practice-lines", "readonly").objectStore("practice-lines").getAll();
-      req.onsuccess = () => resolve(req.result ?? []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[studyDb] listPracticeLines failed", e);
-    return [];
-  }
-}
-async function deletePracticeLine(id) {
-  try {
-    const db = await openDb2();
-    const tx = db.transaction("practice-lines", "readwrite");
-    tx.objectStore("practice-lines").delete(id);
-  } catch (e) {
-    console.warn("[studyDb] deletePracticeLine failed", e);
-  }
-}
-async function savePositionProgress(progress) {
-  try {
-    const db = await openDb2();
-    const tx = db.transaction("position-progress", "readwrite");
-    tx.objectStore("position-progress").put(progress);
-  } catch (e) {
-    console.warn("[studyDb] savePositionProgress failed", e);
-  }
-}
-async function getPositionProgress(key) {
-  try {
-    const db = await openDb2();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("position-progress", "readonly").objectStore("position-progress").get(key);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[studyDb] getPositionProgress failed", e);
-    return void 0;
-  }
-}
-async function listAllPositionProgress() {
-  try {
-    const db = await openDb2();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction("position-progress", "readonly").objectStore("position-progress").getAll();
-      req.onsuccess = () => resolve(req.result ?? []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[studyDb] listAllPositionProgress failed", e);
-    return [];
-  }
-}
-async function saveDrillAttempt(attempt) {
-  try {
-    const db = await openDb2();
-    const tx = db.transaction("drill-attempts", "readwrite");
-    tx.objectStore("drill-attempts").add(attempt);
-  } catch (e) {
-    console.warn("[studyDb] saveDrillAttempt failed", e);
-  }
 }
 
 // src/study/practice/sessionBuilder.ts
@@ -27249,6 +31048,7 @@ var _importIdSeq = 0;
 function nextImportId() {
   return `study_import_${Date.now()}_${_importIdSeq++}`;
 }
+var PAGE_SIZE = 50;
 var _studies = [];
 var _loaded = false;
 var _sortKey = "createdAt";
@@ -27257,8 +31057,51 @@ var _filterFav = false;
 var _filterTag = null;
 var _filterSrc = null;
 var _search = "";
+var _page = 0;
+var _hasMore = false;
+var _loadingMore = false;
+var _folders = [];
+var _foldersLoaded = false;
+var _activeFolderName = null;
+var _sidebarCollapsed = false;
+var _annotationIndex = /* @__PURE__ */ new Map();
+var _indexDirty = true;
+function extractPgnComments(pgn) {
+  const comments = [];
+  const re = /\{([^}]*)\}/g;
+  let m;
+  while ((m = re.exec(pgn)) !== null) {
+    comments.push(m[1]);
+  }
+  return comments.join(" ");
+}
+function rebuildAnnotationIndex() {
+  if (!_indexDirty) return;
+  _annotationIndex = /* @__PURE__ */ new Map();
+  for (const s of _studies) {
+    const text = [
+      s.notes ?? "",
+      s.tags.join(" "),
+      extractPgnComments(s.pgn)
+    ].join(" ").toLowerCase();
+    _annotationIndex.set(s.id, text);
+  }
+  _indexDirty = false;
+}
+var _viewMode = "list";
+function viewMode() {
+  return _viewMode;
+}
+function setViewMode(m) {
+  _viewMode = m;
+}
+var _selectedIds = /* @__PURE__ */ new Set();
+var _lastSelectedIdx = -1;
 function studies() {
   return applySort(applyFilters(_studies));
+}
+function allStudies() {
+  return _studies;
 }
 function isLoaded() {
   return _loaded;
@@ -27280,6 +31123,89 @@ function filterSrc() {
 }
 function searchQuery() {
   return _search;
+}
+function hasMore() {
+  return _hasMore;
+}
+function isLoadingMore() {
+  return _loadingMore;
+}
+function folders() {
+  return _folders;
+}
+function foldersLoaded() {
+  return _foldersLoaded;
+}
+function activeFolderName() {
+  return _activeFolderName;
+}
+function sidebarCollapsed() {
+  return _sidebarCollapsed;
+}
+function setActiveFolderName(name) {
+  _activeFolderName = name;
+}
+function toggleSidebar() {
+  _sidebarCollapsed = !_sidebarCollapsed;
+}
+function isSelected(id) {
+  return _selectedIds.has(id);
+}
+function selectionCount() {
+  return _selectedIds.size;
+}
+function clearSelection() {
+  _selectedIds.clear();
+  _lastSelectedIdx = -1;
+}
+function handleStudyClick(id, idx, e) {
+  const displayedItems = studies();
+  if (e.shiftKey && _lastSelectedIdx >= 0) {
+    const lo = Math.min(_lastSelectedIdx, idx);
+    const hi = Math.max(_lastSelectedIdx, idx);
+    for (let i = lo; i <= hi; i++) {
+      const item = displayedItems[i];
+      if (item) _selectedIds.add(item.id);
+    }
+  } else if (e.metaKey || e.ctrlKey) {
+    if (_selectedIds.has(id)) _selectedIds.delete(id);
+    else _selectedIds.add(id);
+    _lastSelectedIdx = idx;
+  } else {
+    if (_selectedIds.has(id)) _selectedIds.delete(id);
+    else _selectedIds.add(id);
+    _lastSelectedIdx = idx;
+  }
+}
+async function bulkDeleteStudies() {
+  const ids = Array.from(_selectedIds);
+  for (const id of ids) {
+    await deleteStudy2(id);
+  }
+  _selectedIds.clear();
+  _lastSelectedIdx = -1;
+}
+async function bulkAddToFolder(folderName) {
+  const ids = Array.from(_selectedIds);
+  for (const id of ids) {
+    const study = _studies.find((s) => s.id === id);
+    if (study && !study.folders.includes(folderName)) {
+      await updateStudy({ id, folders: [...study.folders, folderName] });
+    }
+  }
+}
+async function bulkSetFavorite(fav) {
+  const ids = Array.from(_selectedIds);
+  for (const id of ids) {
+    await updateStudy({ id, favorite: fav });
+  }
+}
+function studyFolders() {
+  const folders2 = /* @__PURE__ */ new Set();
+  for (const s of _studies) {
+    for (const f of s.folders) folders2.add(f);
+  }
+  return Array.from(folders2).sort();
 }
 function studyTags() {
   const tags = /* @__PURE__ */ new Set();
@@ -27307,31 +31233,122 @@ function setSearch(q) {
   _search = q;
 }
 function initStudyLibrary(redraw2) {
-  listStudies().then((items) => {
-    _studies = items;
+  _page = 0;
+  const dir = _sortDir === "desc" ? "prev" : "next";
+  const sortIdx = _sortKey === "title" ? "createdAt" : _sortKey;
+  getStudiesPaginated(sortIdx, dir, 0, PAGE_SIZE + 1).then((items) => {
+    _hasMore = items.length > PAGE_SIZE;
+    _studies = _hasMore ? items.slice(0, PAGE_SIZE) : items;
     _loaded = true;
+    _indexDirty = true;
     redraw2();
   });
+}
+function loadNextPage(redraw2) {
+  if (!_hasMore || _loadingMore) return;
+  _loadingMore = true;
+  _page++;
+  redraw2();
+  const dir = _sortDir === "desc" ? "prev" : "next";
+  const sortIdx = _sortKey === "title" ? "createdAt" : _sortKey;
+  getStudiesPaginated(sortIdx, dir, _page * PAGE_SIZE, PAGE_SIZE + 1).then((items) => {
+    _hasMore = items.length > PAGE_SIZE;
+    _loadingMore = false;
+    _studies = [..._studies, ..._hasMore ? items.slice(0, PAGE_SIZE) : items];
+    _indexDirty = true;
+    redraw2();
+  });
+}
+function resetPagination(redraw2) {
+  _studies = [];
+  _loaded = false;
+  initStudyLibrary(redraw2);
+}
+function loadFolders(redraw2) {
+  if (_foldersLoaded) return;
+  listFolders().then((items) => {
+    _folders = items;
+    _foldersLoaded = true;
+    redraw2();
+  }).catch(() => {
+    _foldersLoaded = true;
+  });
+}
+var _folderIdSeq = 0;
+function nextFolderId() {
+  return `folder_${Date.now()}_${_folderIdSeq++}`;
+}
+async function createFolder(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const now = Date.now();
+  const folder = {
+    id: nextFolderId(),
+    name: trimmed,
+    createdAt: now,
+    updatedAt: now
+  };
+  await saveFolder(folder);
+  _folders = [..._folders, folder];
+}
+async function renameFolder(id, newName) {
+  const trimmed = newName.trim();
+  if (!trimmed) return;
+  const idx = _folders.findIndex((f) => f.id === id);
+  if (idx === -1) return;
+  const old = _folders[idx];
+  const updated = { ...old, name: trimmed, updatedAt: Date.now() };
+  _folders = [..._folders.slice(0, idx), updated, ..._folders.slice(idx + 1)];
+  await saveFolder(updated);
+  const affected = _studies.filter((s) => s.folders.includes(old.name));
+  for (const study of affected) {
+    const newFolders = study.folders.map((f) => f === old.name ? trimmed : f);
+    await updateStudy({ id: study.id, folders: newFolders });
+  }
+}
+async function moveStudyToFolder(studyId, folderName) {
+  const study = _studies.find((s) => s.id === studyId);
+  if (!study) return;
+  if (study.folders.includes(folderName)) return;
+  await updateStudy({ id: studyId, folders: [...study.folders, folderName] });
+}
+async function removeFolderEntity(id) {
+  const folder = _folders.find((f) => f.id === id);
+  if (!folder) return;
+  _folders = _folders.filter((f) => f.id !== id);
+  await deleteFolder(id);
+  const affected = _studies.filter((s) => s.folders.includes(folder.name));
+  for (const study of affected) {
+    await updateStudy({ id: study.id, folders: study.folders.filter((f) => f !== folder.name) });
+  }
+  if (_activeFolderName === folder.name) _activeFolderName = null;
 }
 async function updateStudy(partial) {
   const idx = _studies.findIndex((s) => s.id === partial.id);
   if (idx === -1) return;
   const updated = { ..._studies[idx], ...partial, updatedAt: Date.now() };
   _studies = [..._studies.slice(0, idx), updated, ..._studies.slice(idx + 1)];
+  _indexDirty = true;
   await saveStudy(updated);
 }
 async function deleteStudy2(id) {
   _studies = _studies.filter((s) => s.id !== id);
+  _indexDirty = true;
   await deleteStudy(id);
 }
 function applyFilters(items) {
+  if (_search) rebuildAnnotationIndex();
   return items.filter((s) => {
     if (_filterFav && !s.favorite) return false;
     if (_filterTag && !s.tags.includes(_filterTag)) return false;
     if (_filterSrc && s.source !== _filterSrc) return false;
+    if (_activeFolderName && !s.folders.includes(_activeFolderName)) return false;
     if (_search) {
       const q = _search.toLowerCase();
-      if (!s.title.toLowerCase().includes(q) && !(s.white ?? "").toLowerCase().includes(q) && !(s.black ?? "").toLowerCase().includes(q)) return false;
+      const titleMatch = s.title.toLowerCase().includes(q) || (s.white ?? "").toLowerCase().includes(q) || (s.black ?? "").toLowerCase().includes(q);
+      if (titleMatch) return true;
+      const annotText = _annotationIndex.get(s.id) ?? "";
+      if (!annotText.includes(q)) return false;
     }
     return true;
   });
@@ -27387,6 +31404,7 @@ async function importPgnToLibrary(pgnText) {
   });
   await Promise.all(items.map((item) => saveStudy(item)));
   _studies = [...items, ..._studies];
+  _indexDirty = true;
   return items.length;
 }
 function reconstructPgn(game, _rawPgn, _idx) {
@@ -27456,6 +31474,21 @@ function loadPracticeData(redraw2) {
     }
   })();
 }
+var _seeding = false;
+function isSeeding() {
+  return _seeding;
+}
+async function seedSampleStudies(redraw2) {
+  if (_seeding) return;
+  _seeding = true;
+  redraw2();
+  try {
+    await seedMasterGamesToLibrary();
+  } finally {
+    _seeding = false;
+  }
+  resetPagination(redraw2);
+}
 
 // src/study/practice/boardAdapter.ts
 function createDrillBoardAdapter(cg, wrapEl) {
@@ -27503,6 +31536,7 @@ function createDrillBoardAdapter(cg, wrapEl) {
       const cls = type === "correct" ? "drill-flash--correct" : "drill-flash--incorrect";
       wrapEl.classList.add(cls);
       setTimeout(() => wrapEl.classList.remove(cls), 350);
+      playDrillFeedbackSound(type);
     }
   };
 }
@@ -27753,7 +31787,25 @@ async function persistGrading(fenBefore, seqId, expectedSan, userSan, correct, a
     lastAttemptAt: 0,
     sequenceIds: []
   };
-  const { newLevel, nextDueAt } = scheduleNext(prev2.level, correct, now);
+  const due = isDue(prev2, now);
+  if (!due && correct) {
+    if (existing && !existing.sequenceIds.includes(seqId)) {
+      await savePositionProgress({
+        ...existing,
+        sequenceIds: [...existing.sequenceIds, seqId]
+      }).catch(() => {
+      });
+    }
+    return;
+  }
+  let newLevel;
+  let nextDueAt;
+  if (!due && !correct) {
+    newLevel = 1;
+    nextDueAt = now + (await Promise.resolve().then(() => (init_scheduler(), scheduler_exports))).INTERVALS_MS[1];
+  } else {
+    ({ newLevel, nextDueAt } = scheduleNext(prev2.level, correct, now));
+  }
   const updated = {
     ...prev2,
     level: newLevel,
@@ -27829,12 +31881,46 @@ function onUserMove2(orig, dest) {
     _redraw9();
   }
 }
+var _drillKeyHandler = null;
 function renderDrillView(redraw2) {
   if (_showSummary || !_session || _session.isDone || _session.feedback === "complete") {
     if (_session?.isDone || _session?.feedback === "complete") captureSummary();
     return renderDrillSummary(redraw2);
   }
-  return h("div.drill-session", [
+  return h("div.drill-session", {
+    hook: {
+      insert: () => {
+        _drillKeyHandler = (e) => {
+          const tag = e.target?.tagName;
+          if (tag === "INPUT" || tag === "TEXTAREA") return;
+          if (e.key === "Enter" || e.key === " ") {
+            const fb = _session?.feedback;
+            if (fb === "correct" || fb === "showAnswer" || fb === "complete") {
+              e.preventDefault();
+              if (!_session) return;
+              _session = _session.advance();
+              redraw2();
+              syncDrillBoard();
+            }
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            captureSummary();
+            endDrill();
+            redraw2();
+          } else if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+          }
+        };
+        document.addEventListener("keydown", _drillKeyHandler);
+      },
+      destroy: () => {
+        if (_drillKeyHandler) {
+          document.removeEventListener("keydown", _drillKeyHandler);
+          _drillKeyHandler = null;
+        }
+      }
+    }
+  }, [
     renderDrillBoard(),
     renderDrillSidebar(redraw2)
   ]);
@@ -28008,10 +32094,44 @@ var _expandedRows = /* @__PURE__ */ new Set();
 var _showImportModal = false;
 var _importPgnText = "";
 var _importStatus = null;
-function renderStudyRow(item, redraw2) {
+function renderStudyRow(item, idx, redraw2) {
   const isEditingTitle = _editingTitleId === item.id;
   const isEditingTag = _editingTagId === item.id;
-  return h("div.study-row", { key: item.id }, [
+  const selected = isSelected(item.id);
+  return h("div.study-row", {
+    key: item.id,
+    class: { "study-row--selected": selected },
+    attrs: { draggable: "true" },
+    on: {
+      click: (e) => {
+        const target = e.target;
+        if (target.closest("button, a, input, textarea")) return;
+        handleStudyClick(item.id, idx, e);
+        redraw2();
+      },
+      dragstart: (e) => {
+        _draggingStudyId = item.id;
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", item.id);
+        }
+      },
+      dragend: () => {
+        _draggingStudyId = null;
+        _dragOverFolderName = null;
+        redraw2();
+      }
+    }
+  }, [
+    // Selection checkbox
+    h("input.study-row__checkbox", {
+      attrs: { type: "checkbox", checked: selected },
+      on: { click: (e) => {
+        e.stopPropagation();
+        handleStudyClick(item.id, idx, e);
+        redraw2();
+      } }
+    }),
     // Favorite star
     h("button.study-row__fav", {
       class: { active: item.favorite },
@@ -28195,6 +32315,171 @@ function renderStudyRow(item, redraw2) {
     }, "\xD7")
   ]);
 }
+var _newFolderMode = false;
+var _newFolderValue = "";
+var _renamingFolderId = null;
+var _renamingFolderValue = "";
+var _draggingStudyId = null;
+var _dragOverFolderName = null;
+function folderDropHandlers(folderName, redraw2) {
+  return {
+    dragover: (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      if (_dragOverFolderName !== folderName) {
+        _dragOverFolderName = folderName;
+        redraw2();
+      }
+    },
+    dragleave: () => {
+      if (_dragOverFolderName === folderName) {
+        _dragOverFolderName = null;
+        redraw2();
+      }
+    },
+    drop: (e) => {
+      e.preventDefault();
+      const studyId = e.dataTransfer?.getData("text/plain") ?? _draggingStudyId;
+      _dragOverFolderName = null;
+      if (studyId) void moveStudyToFolder(studyId, folderName).then(redraw2);
+    }
+  };
+}
+function renderFolderSidebar(redraw2) {
+  const persistedNames = new Set(folders().map((f) => f.name));
+  const inlineNames = studyFolders().filter((n) => !persistedNames.has(n));
+  const allNames = [
+    ...folders().map((f) => f.name).sort(),
+    ...inlineNames.sort()
+  ];
+  return h("div.study-sidebar", [
+    h("div.study-sidebar__header", [
+      h("span.study-sidebar__title", "Folders"),
+      h("button.study-sidebar__toggle", {
+        attrs: { title: sidebarCollapsed() ? "Expand sidebar" : "Collapse sidebar" },
+        on: { click: () => {
+          toggleSidebar();
+          redraw2();
+        } }
+      }, sidebarCollapsed() ? "\u203A" : "\u2039")
+    ]),
+    sidebarCollapsed() ? null : h("div.study-sidebar__folders", [
+      h("button.study-sidebar__folder", {
+        class: { active: activeFolderName() === null },
+        on: { click: () => {
+          setActiveFolderName(null);
+          redraw2();
+        } }
+      }, "All Studies"),
+      // Persisted folder entries (with rename + delete controls)
+      ...folders().map((folder) => {
+        const isRenaming = _renamingFolderId === folder.id;
+        return h("div.study-sidebar__folder-row", { key: folder.id }, [
+          isRenaming ? h("input.study-sidebar__folder-rename", {
+            attrs: { value: _renamingFolderValue },
+            hook: { insert: (vn) => vn.elm.focus() },
+            on: {
+              input: (e) => {
+                _renamingFolderValue = e.target.value;
+              },
+              blur: () => {
+                if (_renamingFolderValue.trim()) {
+                  void renameFolder(folder.id, _renamingFolderValue).then(redraw2);
+                }
+                _renamingFolderId = null;
+                redraw2();
+              },
+              keydown: (e) => {
+                if (e.key === "Enter") e.target.blur();
+                if (e.key === "Escape") {
+                  _renamingFolderId = null;
+                  redraw2();
+                }
+              }
+            }
+          }) : h("button.study-sidebar__folder", {
+            class: {
+              active: activeFolderName() === folder.name,
+              "drag-over": _dragOverFolderName === folder.name
+            },
+            on: {
+              click: () => {
+                setActiveFolderName(activeFolderName() === folder.name ? null : folder.name);
+                redraw2();
+              },
+              ...folderDropHandlers(folder.name, redraw2)
+            }
+          }, folder.name),
+          h("div.study-sidebar__folder-actions", [
+            h("button.study-sidebar__folder-action", {
+              attrs: { title: "Rename folder" },
+              on: { click: (e) => {
+                e.stopPropagation();
+                _renamingFolderId = folder.id;
+                _renamingFolderValue = folder.name;
+                redraw2();
+              } }
+            }, "\u270E"),
+            h("button.study-sidebar__folder-action.study-sidebar__folder-action--danger", {
+              attrs: { title: "Delete folder" },
+              on: { click: (e) => {
+                e.stopPropagation();
+                if (confirm(`Delete folder "${folder.name}"? Studies will not be deleted.`)) {
+                  void removeFolderEntity(folder.id).then(redraw2);
+                }
+              } }
+            }, "\xD7")
+          ])
+        ]);
+      }),
+      // Orphaned inline folder names (in studies but no entity)
+      ...inlineNames.map(
+        (name) => h("button.study-sidebar__folder", {
+          key: `inline-${name}`,
+          class: { active: activeFolderName() === name, "drag-over": _dragOverFolderName === name },
+          on: {
+            click: () => {
+              setActiveFolderName(activeFolderName() === name ? null : name);
+              redraw2();
+            },
+            ...folderDropHandlers(name, redraw2)
+          }
+        }, name)
+      ),
+      // New folder input or button
+      _newFolderMode ? h("input.study-sidebar__new-folder", {
+        attrs: { placeholder: "Folder name\u2026", value: _newFolderValue },
+        hook: { insert: (vn) => vn.elm.focus() },
+        on: {
+          input: (e) => {
+            _newFolderValue = e.target.value;
+          },
+          blur: () => {
+            if (_newFolderValue.trim()) {
+              void createFolder(_newFolderValue).then(redraw2);
+            }
+            _newFolderMode = false;
+            _newFolderValue = "";
+            redraw2();
+          },
+          keydown: (e) => {
+            if (e.key === "Enter") e.target.blur();
+            if (e.key === "Escape") {
+              _newFolderMode = false;
+              redraw2();
+            }
+          }
+        }
+      }) : h("button.study-sidebar__new-folder-btn", {
+        on: { click: () => {
+          _newFolderMode = true;
+          _newFolderValue = "";
+          redraw2();
+        } }
+      }, "+ New Folder")
+    ])
+  ]);
+}
 function renderFilterBar(redraw2) {
   const tags = studyTags();
   const sources = ["analysis", "openings", "puzzles", "manual", "import"];
@@ -28235,6 +32520,109 @@ function renderFilterBar(redraw2) {
         } }
       }, tag)
     )
+  ]);
+}
+var STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+function extractFenFromPgn(pgn) {
+  const m = pgn.match(/\[FEN\s+"([^"]+)"\]/i);
+  return m ? m[1] : STARTING_FEN;
+}
+function renderStudyCard(item, idx, redraw2) {
+  const selected = isSelected(item.id);
+  const fen = extractFenFromPgn(item.pgn);
+  return h("div.study-card", {
+    key: item.id,
+    class: { "study-card--selected": selected },
+    on: {
+      click: (e) => {
+        const target = e.target;
+        if (target.closest("button, a")) return;
+        handleStudyClick(item.id, idx, e);
+        redraw2();
+      }
+    }
+  }, [
+    // Mini board thumbnail via Chessground static mount
+    h("div.study-card__board", {
+      hook: {
+        insert: (vn) => {
+          const el = vn.elm;
+          Chessground(el, {
+            fen,
+            viewOnly: true,
+            coordinates: false,
+            animation: { enabled: false },
+            highlight: { lastMove: false, check: false },
+            movable: { free: false },
+            draggable: { enabled: false },
+            selectable: { enabled: false }
+          });
+        }
+      }
+    }),
+    h("div.study-card__body", [
+      h("a.study-card__title", {
+        attrs: { href: `#/study/${item.id}` },
+        on: { click: (e) => e.stopPropagation() }
+      }, item.title),
+      h("div.study-card__meta", [
+        h("span", sourceLabel2(item.source)),
+        h("span.study-card__sep", "\xB7"),
+        h("span", formatDate(item.createdAt))
+      ]),
+      item.favorite ? h("span.study-card__fav", "\u2605") : null
+    ])
+  ]);
+}
+var _bulkFolderMenuOpen = false;
+function renderBulkActionBar(redraw2) {
+  const count = selectionCount();
+  if (count === 0) return null;
+  const allFolderNames = [
+    ...folders().map((f) => f.name),
+    ...studyFolders().filter((n) => !folders().some((f) => f.name === n))
+  ].sort();
+  return h("div.study-bulk-bar", [
+    h("span.study-bulk-bar__count", `${count} selected`),
+    h("button.study-bulk-bar__btn", {
+      on: { click: () => {
+        void bulkSetFavorite(true).then(redraw2);
+      } }
+    }, "\u2605 Favorite"),
+    h("button.study-bulk-bar__btn", {
+      on: { click: () => {
+        void bulkSetFavorite(false).then(redraw2);
+      } }
+    }, "\u2606 Unfavorite"),
+    allFolderNames.length > 0 ? h("div.study-bulk-bar__folder-wrap", [
+      h("button.study-bulk-bar__btn", {
+        on: { click: () => {
+          _bulkFolderMenuOpen = !_bulkFolderMenuOpen;
+          redraw2();
+        } }
+      }, "Add to folder \u25BE"),
+      _bulkFolderMenuOpen ? h("div.study-bulk-bar__folder-menu", allFolderNames.map(
+        (name) => h("button.study-bulk-bar__folder-item", {
+          on: { click: () => {
+            _bulkFolderMenuOpen = false;
+            void bulkAddToFolder(name).then(redraw2);
+          } }
+        }, name)
+      )) : null
+    ]) : null,
+    h("button.study-bulk-bar__btn.study-bulk-bar__btn--danger", {
+      on: { click: () => {
+        if (confirm(`Delete ${count} selected stud${count === 1 ? "y" : "ies"}?`)) {
+          void bulkDeleteStudies().then(redraw2);
+        }
+      } }
+    }, "Delete"),
+    h("button.study-bulk-bar__btn", {
+      on: { click: () => {
+        clearSelection();
+        redraw2();
+      } }
+    }, "Clear")
   ]);
 }
 function renderSortControls(redraw2) {
@@ -28341,11 +32729,31 @@ function renderStudyLibrary(redraw2) {
       renderDrillView(redraw2)
     ]);
   }
+  if (!foldersLoaded()) loadFolders(redraw2);
   const items = studies();
   return h("div.study-page", [
     h("div.study-page__header", [
       h("h1", "Study Library"),
       h("div.study-page__header-actions", [
+        // View mode toggle
+        h("div.study-view-toggle", [
+          h("button.study-view-toggle__btn", {
+            class: { active: viewMode() === "list" },
+            attrs: { title: "List view" },
+            on: { click: () => {
+              setViewMode("list");
+              redraw2();
+            } }
+          }, "\u2630"),
+          h("button.study-view-toggle__btn", {
+            class: { active: viewMode() === "grid" },
+            attrs: { title: "Grid view" },
+            on: { click: () => {
+              setViewMode("grid");
+              redraw2();
+            } }
+          }, "\u229E")
+        ]),
         h("button.study-btn.study-btn--import", {
           on: { click: () => {
             _showImportModal = true;
@@ -28358,12 +32766,32 @@ function renderStudyLibrary(redraw2) {
     ]),
     // Practice dashboard banner (CCP-555).
     practiceLoaded() ? renderPracticeDashboard(redraw2) : null,
-    renderFilterBar(redraw2),
-    renderSortControls(redraw2),
-    items.length === 0 ? h("div.study-page__empty", [
-      h("p", "No studies yet."),
-      h("p", "Right-click any move on the analysis board to save it here.")
-    ]) : h("div.study-list", items.map((item) => renderStudyRow(item, redraw2))),
+    // Two-column layout: folder sidebar + main content area
+    h("div.study-library-layout", [
+      renderFolderSidebar(redraw2),
+      h("div.study-library-main", [
+        renderFilterBar(redraw2),
+        renderSortControls(redraw2),
+        renderBulkActionBar(redraw2),
+        items.length === 0 ? h("div.study-page__empty", [
+          h("p", "No studies yet."),
+          h("p", "Right-click any move on the analysis board to save it here."),
+          allStudies().length === 0 ? isSeeding() ? h("p.study-page__seeding", "Seeding sample studies\u2026") : h("button.study-btn.study-btn--seed", {
+            on: { click: () => {
+              void seedSampleStudies(redraw2);
+            } }
+          }, "Seed sample studies") : null
+        ]) : viewMode() === "grid" ? h("div.study-grid", items.map((item, idx) => renderStudyCard(item, idx, redraw2))) : h("div.study-list", items.map((item, idx) => renderStudyRow(item, idx, redraw2))),
+        // Pagination: Load more button (hidden when no more pages available)
+        hasMore() ? h("div.study-list__load-more", [
+          isLoadingMore() ? h("span.study-list__loading", "Loading\u2026") : h("button.study-btn.study-btn--load-more", {
+            on: { click: () => {
+              loadNextPage(redraw2);
+            } }
+          }, "Load more")
+        ]) : null
+      ])
+    ]),
     _showImportModal ? renderImportModal(redraw2) : null
   ]);
 }
@@ -29516,69 +33944,6 @@ function renderStudyDetail(id, redraw2) {
   ]);
 }
 
-// src/study/saveAction.ts
-var _nextId = 0;
-function generateStudyId() {
-  return `study_${Date.now()}_${_nextId++}`;
-}
-function extractTitle(pgn) {
-  try {
-    const game = parsePgn(pgn)[0];
-    if (!game) return "Untitled Study";
-    const white = game.headers.get("White");
-    const black = game.headers.get("Black");
-    const opening = game.headers.get("Opening");
-    if (white && black && white !== "?" && black !== "?") {
-      return opening ? `${white} vs ${black} \u2014 ${opening}` : `${white} vs ${black}`;
-    }
-    if (opening) return opening;
-  } catch {
-  }
-  return "Untitled Study";
-}
-function extractMetadata(pgn) {
-  try {
-    const game = parsePgn(pgn)[0];
-    if (!game) return {};
-    const meta = {};
-    const white = game.headers.get("White");
-    const black = game.headers.get("Black");
-    const result = game.headers.get("Result");
-    const eco = game.headers.get("ECO");
-    const opening = game.headers.get("Opening");
-    if (white && white !== "?") meta.white = white;
-    if (black && black !== "?") meta.black = black;
-    if (result && result !== "*") meta.result = result;
-    if (eco) meta.eco = eco;
-    if (opening) meta.opening = opening;
-    return meta;
-  } catch {
-    return {};
-  }
-}
-async function saveCurrentToLibrary(pgn, metadata = {}) {
-  const now = Date.now();
-  const auto = extractMetadata(pgn);
-  const item = {
-    // Auto-extracted fields first (lowest priority).
-    ...auto,
-    // Caller-provided overrides (medium priority).
-    ...metadata,
-    // Fixed fields that cannot be overridden (highest priority).
-    id: generateStudyId(),
-    pgn,
-    title: metadata.title ?? extractTitle(pgn),
-    source: metadata.source ?? "manual",
-    tags: metadata.tags ?? [],
-    folders: metadata.folders ?? [],
-    favorite: metadata.favorite ?? false,
-    createdAt: now,
-    updatedAt: now
-  };
-  await saveStudy(item);
-  return item;
-}
-
 // src/ui/toast.ts
 var TOAST_ID = "pp-toast";
 var _dismissTimer;
@@ -29625,18 +33990,18 @@ function dedupeImportedGames(existing, incoming) {
 }
 var importCallbacks = {
   addGames(games, _first2) {
-    const dedupedGames = dedupeImportedGames(importedGames, games);
+    const dedupedGames = dedupeImportedGames(importedGames2, games);
     const first2 = dedupedGames[0];
     if (!first2) {
       redraw();
       return;
     }
-    importedGames = [...importedGames, ...dedupedGames];
+    importedGames2 = [...importedGames2, ...dedupedGames];
     selectedGameId = first2.id;
-    void saveGamesToIdb(importedGames);
+    void saveGamesToIdb(importedGames2);
     loadGame(first2.pgn);
-    if (importFilters.autoReview && dedupedGames.length > 0) {
-      enqueueBulkReview(dedupedGames);
+    if (importFilters.autoReview && importFilters.autoReviewConfirmed && dedupedGames.length > 0) {
+      enqueueBulkReview(dedupedGames, importFilters.autoReviewDepth);
     }
   },
   redraw() {
@@ -29644,7 +34009,7 @@ var importCallbacks = {
   }
 };
 var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
-var importedGames = [];
+var importedGames2 = [];
 var selectedGameId = null;
 var selectedGamePgn = null;
 var gamesLibraryLoaded = false;
@@ -29716,6 +34081,7 @@ function renderContextMenu() {
         contextMenuPath = null;
         contextMenuPos = null;
         promoteAt(ctrl.root, path, false);
+        syncArrow();
         redraw();
       } }
     }, "Promote variation") : null,
@@ -29725,6 +34091,7 @@ function renderContextMenu() {
         contextMenuPath = null;
         contextMenuPos = null;
         promoteAt(ctrl.root, path, true);
+        syncArrow();
         redraw();
       } }
     }, "Make main line") : null,
@@ -29863,11 +34230,15 @@ function loadGame(pgn, opts) {
   clearPuzzleCandidates();
   resetBatchState();
   if (selectedGameId) {
-    const loadedGame = importedGames.find((g) => g.id === selectedGameId);
+    const loadedGame = importedGames2.find((g) => g.id === selectedGameId);
     if (loadedGame) {
       const userColor = getUserColor(loadedGame);
-      if (userColor) setOrientation(userColor);
+      setOrientation(userColor ?? "white");
+    } else {
+      setOrientation("white");
     }
+  } else {
+    setOrientation("white");
   }
   syncBoardAndArrow();
   scheduleNavStateSave("");
@@ -29898,7 +34269,7 @@ async function loadAndRestoreAnalysis(gameId, generation) {
     analyzedGameIds.add(gameId);
     setAnalysisComplete(true);
     setBatchState("complete");
-    const game = importedGames.find((g) => g.id === gameId);
+    const game = importedGames2.find((g) => g.id === gameId);
     const userColor = game ? getUserColor(game) : null;
     const moments = detectMissedMoments(ctrl.mainline, evalCache, userColor);
     setMissedMoments(gameId, moments);
@@ -30013,6 +34384,7 @@ function deleteVariation(path) {
   if (ctrl.path.startsWith(path)) {
     navigate(pathInit(path));
   } else {
+    syncArrow();
     scheduleNavStateSave(ctrl.path);
     redraw();
   }
@@ -30029,12 +34401,16 @@ function toggleRetro() {
       ctrl.retro.candidates.map((c) => [c.ply, ctrl.retro.getOutcome(c.ply)]).filter((entry) => entry[1] !== void 0)
     );
     delete ctrl.retro;
+    resetRetroVisibleEngineUi();
     syncArrow();
     redraw();
     return;
   }
+  if (batchAnalyzing) stopBatchAnalysis();
+  if (!engineEnabled) toggleEngine();
+  resetRetroVisibleEngineUi();
   lastRetroOutcomes = null;
-  const game = importedGames.find((g) => g.id === selectedGameId);
+  const game = importedGames2.find((g) => g.id === selectedGameId);
   const userColor = game ? getUserColor(game) : null;
   const openingProvider = buildMainlineOpeningProvider(
     ctrl.mainline,
@@ -30072,7 +34448,10 @@ function toggleRetro() {
 }
 function rebuildRetroSession() {
   if (!ctrl.retro) return;
-  const game = importedGames.find((g) => g.id === selectedGameId);
+  if (batchAnalyzing) stopBatchAnalysis();
+  if (!engineEnabled) toggleEngine();
+  resetRetroVisibleEngineUi();
+  const game = importedGames2.find((g) => g.id === selectedGameId);
   const userColor = game ? getUserColor(game) : null;
   const openingProvider = buildMainlineOpeningProvider(
     ctrl.mainline,
@@ -30115,7 +34494,7 @@ function reviewAllGames(games) {
 }
 function routeContent(route) {
   const deps = {
-    importedGames,
+    importedGames: importedGames2,
     selectedGameId,
     analyzedGameIds,
     missedTacticGameIds,
@@ -30151,7 +34530,7 @@ function routeContent(route) {
           ])
         ]);
       }
-      if (!importedGames.find((g) => g.id === gameId)) {
+      if (!importedGames2.find((g) => g.id === gameId)) {
         return h("div", [
           h("p", `Game "${gameId}" was not found in the imported library.`),
           h("a", { attrs: { href: "#/games" } }, "View all games")
@@ -30160,8 +34539,11 @@ function routeContent(route) {
     }
     // falls through
     case "analysis":
-      const currentGame = importedGames.find((g) => g.id === selectedGameId);
+      const currentGame = importedGames2.find((g) => g.id === selectedGameId);
       const currentUserColor = currentGame ? getUserColor(currentGame) : null;
+      const retroVisibleEngineEnabled2 = ctrl.retro ? isRetroVisibleEngineEnabled() : engineEnabled;
+      const retroSolving = ctrl.retro?.isSolving() ?? false;
+      const showRetroPv = !ctrl.retro || ctrl.retro.guidanceRevealed() || retroVisibleEngineEnabled2 && !retroSolving;
       return h("div.analyse", [
         // Board — left column (grid-area: board)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__board.main-board
@@ -30175,23 +34557,25 @@ function routeContent(route) {
         })(),
         // Eval gauge — between board and tools (grid-area: gauge)
         // Mirrors lichess-org/lila: ui/analyse/css/_layout.scss .eval-gauge grid-area
-        renderEvalBar(engineEnabled, currentEval, ctrl.node.fen),
+        // Pass empty eval during LFYM attempt so the bar shows neutral 50% with no score.
+        // The bar element stays in the layout (no jarring disappearance) but reveals nothing.
+        renderEvalBar(retroVisibleEngineEnabled2, retroSolving ? {} : currentEval, ctrl.node.fen),
         // Tools — right column (grid-area: tools)
         // Mirrors lichess-org/lila: ui/analyse/src/view/main.ts div.analyse__tools
         h("div.analyse__tools", [
           // Engine header: toggle + pearl + engine-name/status + settings gear
           // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts renderCeval()
-          renderCeval(),
-          // Engine settings panel — hidden during active retrospection.
-          // Settings are irrelevant while solving; retro is a focused board mode.
-          // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts mode-gate pattern.
-          ctrl.retro ? null : renderEngineSettings(),
+          renderCeval({ retroHiddenByDefault: !!ctrl.retro, retroSolving }),
+          // The visible engine UI is independent from LFYM's background engine usage.
+          // Keep the header/settings mounted during retro so the user can opt into
+          // visible analysis without tearing down the hidden engine session.
+          renderEngineSettings(),
           // PV lines — hidden whenever retrospection is active and guidance has not
           // been manually revealed for the current candidate.
           // Covers all retro states so the answer is never accidentally visible.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts
           //   showCeval && !ctrl.retro?.isSolving() && cevalView.renderPvs(ctrl)
-          !ctrl.retro || ctrl.retro.guidanceRevealed() ? renderPvBox() : null,
+          showRetroPv ? renderPvBox() : null,
           // Move list with internal scroll — mirrors div.analyse__moves.areplay
           h("div.analyse__moves.areplay", [
             renderMoveList(ctrl.root, ctrl.path, (p) => evalCache.get(p), navigate, currentUserColor, reviewDotsUserOnly, deleteVariation, contextMenuPath, openContextMenu, (() => {
@@ -30207,11 +34591,6 @@ function routeContent(route) {
             navigate,
             redraw,
             uciToSan,
-            onRevealGuidance: () => {
-              ctrl.retro?.revealGuidance();
-              syncArrow();
-              redraw();
-            },
             onClose: toggleRetro,
             getEvalDepth: () => currentEval.depth
           }),
@@ -30225,7 +34604,7 @@ function routeContent(route) {
           // throws "Cannot create property 'elm' on boolean 'false'" and corrupts the VDOM.
           // Mirrors lichess-org/lila: ui/analyse/src/view/tools.ts LooseVNode intent.
           ctrl.retro ? null : (() => {
-            const game = importedGames.find((g) => g.id === selectedGameId);
+            const game = importedGames2.find((g) => g.id === selectedGameId);
             return renderAnalysisSummary(analysisComplete, evalCache, ctrl.mainline, game?.white ?? "White", game?.black ?? "Black");
           })(),
           ctrl.retro ? null : (() => {
@@ -30298,8 +34677,8 @@ function routeContent(route) {
             analysisComplete,
             evalCache,
             ctrl.mainline,
-            importedGames.find((g) => g.id === selectedGameId)?.white ?? "White",
-            importedGames.find((g) => g.id === selectedGameId)?.black ?? "Black",
+            importedGames2.find((g) => g.id === selectedGameId)?.white ?? "White",
+            importedGames2.find((g) => g.id === selectedGameId)?.black ?? "Black",
             currentUserColor,
             navigate,
             redraw
@@ -30369,7 +34748,7 @@ function view(route) {
   return h("div#shell", [
     renderHeader({
       route,
-      importedGames,
+      importedGames: importedGames2,
       selectedGameId,
       analyzedGameIds,
       missedTacticGameIds,
@@ -30453,7 +34832,7 @@ function clearGameAnalysis(gameId) {
 initGround({
   getCtrl: () => ctrl,
   navigate,
-  getImportedGames: () => importedGames,
+  getImportedGames: () => importedGames2,
   getSelectedGameId: () => selectedGameId,
   redraw
 });
@@ -30465,7 +34844,7 @@ initCevalView({
 });
 initPgnExport({
   getCtrl: () => ctrl,
-  getImportedGames: () => importedGames,
+  getImportedGames: () => importedGames2,
   getSelectedGameId: () => selectedGameId,
   clearGameAnalysis,
   redraw
@@ -30504,7 +34883,7 @@ initEngine({
 initBatch({
   getCtrl: () => ctrl,
   getSelectedGameId: () => selectedGameId,
-  getImportedGames: () => importedGames,
+  getImportedGames: () => importedGames2,
   analyzedGameIds,
   missedTacticGameIds,
   analyzedGameAccuracy,
@@ -30522,6 +34901,42 @@ setOnLiveEvalImproved(() => {
     const nodes = buildAnalysisNodes(ctrl.mainline, (p) => evalCache.get(p));
     void saveAnalysisToIdb("complete", gameId, nodes, analysisDepth);
   }, LIVE_EVAL_SAVE_DELAY_MS);
+});
+setOnLiveEvalInfo((path, ev) => {
+  const cand = ctrl.retro?.current();
+  if (!cand) return;
+  const snap = ctrl.retro.getSolvingMoveSnapshot();
+  if (!snap) return;
+  if (path.length === cand.parentPath.length + 2 && path.startsWith(cand.parentPath) && (ev.cp !== void 0 || ev.mate !== void 0)) {
+    ctrl.retro.setSolvingMoveSnapshot({ ...snap, solvingMoveCp: ev.cp, solvingMoveMate: ev.mate });
+  }
+});
+setOnLiveEvalUpdated((path, ev) => {
+  const cand = ctrl.retro?.current();
+  if (!cand) return;
+  if (path === cand.parentPath) {
+    if (ev.best && ev.depth !== void 0) {
+      ctrl.retro.onEngineUpdate(ev.best, {
+        ...ev.cp !== void 0 ? { cp: ev.cp } : {},
+        ...ev.mate !== void 0 ? { mate: ev.mate } : {},
+        depth: ev.depth
+      });
+      if (ctrl.retro.isVindicated()) redraw();
+    }
+    const snap = ctrl.retro.getSolvingMoveSnapshot();
+    if (snap && snap.solvingMoveUci !== snap.engineBestUci) {
+      ctrl.retro.setSolvingMoveSnapshot({ ...snap, engineBestCp: ev.cp, engineBestMate: ev.mate });
+      redraw();
+    }
+    return;
+  }
+  if (path.length === cand.parentPath.length + 2 && path.startsWith(cand.parentPath)) {
+    const snap = ctrl.retro.getSolvingMoveSnapshot();
+    if (snap) {
+      ctrl.retro.setSolvingMoveSnapshot({ ...snap, solvingMoveCp: ev.cp, solvingMoveMate: ev.mate });
+      redraw();
+    }
+  }
 });
 initReviewQueue({
   analyzedGameIds,
@@ -30566,7 +34981,7 @@ onChange2((route) => {
   }
   if (route.name === "analysis-game") {
     const id = route.params["id"] ?? "";
-    const game = importedGames.find((g) => g.id === id);
+    const game = importedGames2.find((g) => g.id === id);
     if (game && game.id !== selectedGameId) {
       selectedGameId = game.id;
       loadGame(game.pgn);
@@ -30602,7 +35017,7 @@ void loadGamesFromIdb().then((stored) => {
     redraw();
     return;
   }
-  importedGames = stored.games;
+  importedGames2 = stored.games;
   const maxId = Math.max(...stored.games.map((g) => parseInt(g.id.replace("game-", "")) || 0));
   restoreGameIdCounter(maxId);
   const routeGameId = currentRoute.name === "analysis-game" ? currentRoute.params["id"] ?? null : null;
@@ -30612,6 +35027,7 @@ void loadGamesFromIdb().then((stored) => {
   ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));
   clearEvalCache();
   resetCurrentEval();
+  setOrientation(getUserColor(toLoad) ?? "white");
   if (stored.path) ctrl.setPath(stored.path);
   syncBoardAndArrow();
   redraw();

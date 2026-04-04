@@ -6,224 +6,8 @@ Use this file to store Claude Code prompts that are available for future use and
 
 ## Queue Index
 
-- [x] CCP-323: Openings Opponent Tool Suite Full Sprint Batch Manager [COMPLETED]
-  - execute the full openings opponent tool suite sprint by running the section manager prompts in order
-
-- [x] CCP-324: Grounding And Implementation Map Batch Manager [COMPLETED]
-  - execute the grounding and implementation-map prompts in order
-
-- [x] CCP-331: Tool Shell And Mode Architecture Batch Manager [COMPLETED]
-  - execute the openings session tool shell and mode architecture prompts in order
-
-- [x] CCP-339: Opponent Analytics Foundation Batch Manager [COMPLETED]
-  - execute the opponent analytics foundation prompts in order
-
-- [x] CCP-347: Repertoire Tool Full Page Upgrade Batch Manager [COMPLETED]
-  - execute the Repertoire tool full-page upgrade prompts in order
-
-- [x] CCP-355: Prep Report Dashboard Batch Manager [COMPLETED]
-  - execute the Prep Report dashboard prompts in order
-
-- [x] CCP-363: Style Dashboard Batch Manager [COMPLETED]
-  - execute the Style dashboard prompts in order
-
-- [x] CCP-371: Practice Against Them Tool Batch Manager [COMPLETED]
-  - execute the Practice Against Them prompts in order
-
-- [x] CCP-325: Audit Current Openings Session Shell And Ownership Seams [COMPLETED]
-  - audit the current openings session shell and identify the exact ownership seams for the new tool suite
-
-- [x] CCP-326: Audit Puzzle Sidebar And Library Patterns Relevant To The Openings Tool Rail [COMPLETED]
-  - audit the puzzle sidebar patterns that are most relevant to the openings tool rail
-
-- [x] CCP-327: Recheck Lichess References For Board Tool Layout And Practice Flow [COMPLETED]
-  - recheck the closest Lichess references for board/tool layout and board-led practice flow
-
-- [x] CCP-328: Audit Current Opponent Analytics Seams From Imported Research Data [COMPLETED]
-  - audit what opponent analytics are already derivable from the current openings research data model
-
-- [x] CCP-329: Audit Current Board Engine And Practice Seams For Practice Against Them [COMPLETED]
-  - audit the current board, engine, and practice seams for the Practice Against Them tool
-
-- [x] CCP-330: Grounding And Implementation Map Review [COMPLETED]
-  - review the grounding outputs for the openings opponent tool suite
-
-- [x] CCP-332: Add Canonical Openings Tool Types And Session Tool State [COMPLETED]
-  - add canonical openings tool ids and active-tool state ownership
-
-- [x] CCP-333: Add Active Tool Selection Accessors And Reset Rules [COMPLETED]
-  - add active-tool selection actions and reset rules to the openings controller
-
-- [x] CCP-334: Render Persistent Left Tool Rail In The Openings Session [COMPLETED]
-  - render the persistent openings-session tool rail
-
-- [x] CCP-335: Refactor The Session Main Content To Active Tool Takeover Layout [COMPLETED]
-  - refactor the openings session into an active-tool takeover layout
-
-- [x] CCP-336: Extract The Current Session Experience Into A Dedicated Repertoire Tool Owner [COMPLETED]
-  - extract the current session experience into a dedicated Repertoire tool owner
-
-- [x] CCP-337: Persist Active Tool Selection In Openings Session Resume State [COMPLETED]
-  - persist active openings-tool selection in session resume state
-
-- [x] CCP-338: Tool Shell And Mode Architecture Review [COMPLETED]
-  - review the openings session tool-shell and mode-architecture work
-
-- [x] CCP-340: Add Canonical Opponent Analytics Types And Dashboard Section Models [COMPLETED]
-  - add canonical opponent analytics types and dashboard section models
-
-- [x] CCP-341: Add Base Collection Analytics Loader From Imported Research Games [COMPLETED]
-  - add a base collection analytics loader from imported research games
-
-- [x] CCP-342: Add Repertoire Breadth Predictability And Opening Concentration Metrics [COMPLETED]
-  - add repertoire breadth, predictability, and concentration metrics
-
-- [x] CCP-343: Add Recency And Form Analytics From Imported Opponent Game History [COMPLETED]
-  - add recency and form analytics from imported opponent history
-
-- [x] CCP-344: Add Prep Report Analytics Summaries From Current Collection History [COMPLETED]
-  - add prep-report analytics summaries grounded in current collection history
-
-- [x] CCP-345: Add Opponent Analytics Cache And Controller Owner Seam [COMPLETED]
-  - add the controller seam for cached opponent analytics
-
-- [x] CCP-346: Opponent Analytics Foundation Review [COMPLETED]
-  - review the shared opponent analytics foundation work
-
-- [x] CCP-348: Render Repertoire As A First Class Full Page Tool [COMPLETED]
-  - render Repertoire as a first-class full-page openings tool
-
-- [x] CCP-349: Add Repertoire Overview Dashboard Section Above The Tree Experience [COMPLETED]
-  - add a high-value Repertoire overview dashboard section
-
-- [x] CCP-350: Add Repertoire Summary Modules For Perspective Speed And Recency [COMPLETED]
-  - add Repertoire summary modules for perspective, speed, and recency
-
-- [x] CCP-351: Add Line Insight Cards Tied To Practical Opponent Prep Signals [COMPLETED]
-  - add practical line-insight cards to Repertoire
-
-- [x] CCP-352: Strengthen Sample Game And Current Position Interplay Inside Repertoire [COMPLETED]
-  - strengthen sample-game and current-position interplay in Repertoire
-
-- [x] CCP-353: Polish Repertoire Full Page Interaction Coherence [COMPLETED]
-  - polish the Repertoire tool into one coherent full-page prep workspace
-
-- [x] CCP-354: Repertoire Tool Review [COMPLETED]
-  - review the Repertoire full-page tool work
-
-- [x] CCP-356: Add Canonical Prep Report Section Model And View Owner [COMPLETED]
-  - add the canonical Prep Report section model and owner seam
-
-- [x] CCP-357: Derive Likely Lines And Expected Repertoire Modules [COMPLETED]
-  - derive likely-line and expected-repertoire modules for Prep Report
-
-- [x] CCP-358: Derive Targetable Weaknesses And Practical Prep Notes [COMPLETED]
-  - derive targetable weaknesses and practical prep notes for Prep Report
-
-- [x] CCP-359: Render Prep Report As A Full Page Openings Tool Dashboard [COMPLETED]
-  - render Prep Report as a full-page openings dashboard
-
-- [x] CCP-360: Add Interactive Likely Line And Target Line Modules To Prep Report [COMPLETED]
-  - add interactive likely-line and target-line modules to Prep Report
-
 - [x] CCP-361: Add Actionable Prep Cards And Opponent Plan Summary Modules
   - add actionable prep cards and opponent-plan summary modules
-
-- [x] CCP-520-F1: Fix Study DB Fresh-Opener Store Creation Gap [COMPLETED]
-  - Follow-up fix for study-first IndexedDB upgrade missing study stores
-
-- [x] CCP-549: Board adapter for drill mode [COMPLETED]
-  - Board adapter for drill mode
-
-- [x] CCP-550: Drill session UI — active view [COMPLETED]
-  - Drill session UI — active view
-
-- [x] CCP-551: Drill session summary [COMPLETED]
-  - Drill session summary
-
-- [x] CCP-552: Practice entry from study detail [COMPLETED]
-  - Practice entry from study detail
-
-- [x] CCP-554: Progress persistence wiring [COMPLETED]
-  - Progress persistence wiring
-
-- [x] CCP-555: Practice dashboard [COMPLETED]
-  - Practice dashboard
-
-- [x] CCP-556: Learn flow implementation [COMPLETED]
-  - Learn flow implementation
-
-- [x] CCP-558: Practice from here context action [COMPLETED]
-  - Practice from here context action
-
-- [x] CCP-559: Practice line manager panel [COMPLETED]
-  - Practice line manager panel
-
-- [x] CCP-560: Sequence scope selection UI [COMPLETED]
-  - Sequence scope selection UI
-
-- [x] CCP-503-F1: Reset Games Pagination On Filter Changes [COMPLETED]
-  - Follow-up fix for filter changes leaving Games pagination on later pages
-
-- [x] CCP-504-F1: Extend Route Skeletons Beyond Analysis Game [COMPLETED]
-  - Follow-up fix for partial route-skeleton rollout
-
-- [x] CCP-505-F1: Make Import Count Update During Import [COMPLETED]
-  - Follow-up fix for final-only import game counts
-
-- [x] CCP-513-F1: Keep Inactive Username Slot Empty In Color Toggle [COMPLETED]
-  - Follow-up fix for inactive color button username line
-
-- [x] CCP-574-F1: Initialize Stored Play Strength On Module Load [COMPLETED]
-  - Follow-up fix for partial strength-level persistence initialization
-
-- [x] CCP-580-F1: Make Delayed Play-Move Requests Cancellable [COMPLETED]
-  - Follow-up fix for uncancellable delayed engine requests
-
-- [x] CCP-592-F1: Fix Practice Setup Copy For Immediate Start [COMPLETED]
-  - Follow-up fix for misleading practice setup copy
-
-- [x] CCP-597-F1: Make Retro Background Eval Run A Real One-Shot Analysis [COMPLETED]
-  - Follow-up fix for retro background eval dead path
-
-- [x] CCP-598-F1: Hide Zero Or Negative Retro Eval Diff Badges [COMPLETED]
-  - Follow-up fix for zero/negative retro diff placeholder display
-
-- [x] CCP-604: Category 1 Root-Cause Fix Batch Manager [COMPLETED]
-  - Manager prompt for the category-1 root-cause follow-up fix batch
-
-- [x] CCP-511-F1: Review Cleanup Manager For Unreviewed CCP-511 Children [COMPLETED]
-  - Follow-up cleanup manager to review all completed CCP-511 child prompts and re-close the manager
-
-- [x] CCP-553-F1: Execute Missing Phase 5 Study Child Prompts [COMPLETED]
-  - Follow-up execution manager for the unrun Phase 5 study prompts
-
-- [x] CCP-557-F1: Execute Missing Phase 6 Study Child Prompts [COMPLETED]
-  - Follow-up execution manager for the unrun Phase 6 study prompts
-
-- [x] CCP-561-F1: Execute Missing Phase 7 Study Child Prompts [COMPLETED]
-  - Follow-up execution manager for the unrun Phase 7 study prompts
-
-- [x] CCP-605: Category 3 Process Cleanup Batch Manager [COMPLETED]
-  - Manager prompt for the category-3 process and execution cleanup batch
-
-- [x] CCP-606: Dashboard refresh modal with server setup instructions [COMPLETED]
-  - Reserved prompt slot
-
-- [x] CCP-607: Dashboard next-up urgent block and stable sort [COMPLETED]
-  - Reserved prompt slot
-
-- [x] CCP-608: Dashboard refresh button hard reload after live fetch [COMPLETED]
-  - Reserved prompt slot
-
-- [x] CCP-609: Dashboard next-up flat creation-order sort [COMPLETED]
-  - Reserved prompt slot
-
-- [x] CCP-614: Dashboard header bulk-copy buttons for needs-review and issues-found [COMPLETED]
-  - Reserved prompt slot
-
-- [x] CCP-615: Dashboard simplify filter buttons to 7 presets [COMPLETED]
-  - Reserved prompt slot
 
 - [ ] CCP-616: AI Guided Questions mode for prompt and sprint creation
   - Reserved prompt slot
@@ -231,2497 +15,175 @@ Use this file to store Claude Code prompts that are available for future use and
 - [ ] CCP-617: AI Guided Questions mode for sprint creation
   - Reserved prompt slot
 
-- [x] CCP-618: Dashboard: pin status and copy button columns [COMPLETED]
+- [ ] CCP-637: Audit and fix bulk-review accuracy scores
   - Reserved prompt slot
 
-- [x] CCP-619: Dashboard: make refresh button always visible [COMPLETED]
+- [ ] CCP-639: Audit all buttons for hover text and aria-label accessibility
   - Reserved prompt slot
 
-- [x] CCP-619-F2: Fix: hide header stats at narrow widths to keep header single-line [COMPLETED]
+- [x] CCP-682: Learn From Your Mistakes live eval hidden until after move [COMPLETED]
   - Reserved prompt slot
 
-- [x] CCP-621: Dashboard: remove stats block from header [COMPLETED]
+- [x] CCP-683: Fix evalView TypeScript Strict Errors [COMPLETED]
   - Reserved prompt slot
 
-- [x] CCP-622: Dashboard: turn Refresh button amber after 2 minutes [COMPLETED]
+- [x] CCP-685: Fix LFYM eval boxes and puzzle orientation regressions [COMPLETED]
+  - Fix LFYM eval boxes and puzzle orientation regressions
+
+- [x] CCP-680-F1: Audit LFYM Dual Eval Box Data Flow [COMPLETED]
+  - audit the LFYM dual eval-box data path before another fix
+
+- [x] CCP-680-F2: Fix LFYM Dual Eval Box Live Snapshot [COMPLETED]
+  - fix the LFYM dual eval-box live snapshot seam
+
+- [x] CCP-680-F3: Fix LFYM Engine Target Ownership [COMPLETED]
   - Reserved prompt slot
 
-- [x] CCP-623: Old Issues Found Backlog Cleanup Campaign [COMPLETED]
+- [x] CCP-680-F4: Fix LFYM hidden engine UX and feedback rendering [COMPLETED]
+  - Ready to run
+
+- [x] CCP-680-F5: Correct LFYM hidden engine UX [COMPLETED]
+  - Ready to run
+
+- [x] CCP-680-F6: Audit persistent LFYM feedback box blank state [COMPLETED]
+  - Ready to run
+
+- [x] CCP-680-F7: Reduce LFYM Next Button Width [COMPLETED]
   - Reserved prompt slot
 
-- [x] CCP-624: Wave 2 Backlog Re-Triage — Manager Fallout [COMPLETED]
-  - Wave 2: manager fallout backlog re-triage
+- [x] CCP-680-F8: Align LFYM engine-best identity with eval diff comparison [COMPLETED WITH ERRORS]
+  - Audit and fix LFYM engine-best identity so exact-best classification and dual eval diffs use the same source and comparison seam
 
-- [x] CCP-625: Wave 3 Backlog Re-Triage — Process And Artifact Prompts [COMPLETED]
-  - Wave 3: process and artifact backlog re-triage
-
-- [x] CCP-626: Wave 1 Backlog Re-Triage — Recent Leaf Issues [COMPLETED]
-  - Wave 1: recent leaf prompts for backlog re-triage
-
-- [x] CCP-627: Wave 4 Backlog Re-Triage — Ancient Prompt Sweep [COMPLETED]
-  - Wave 4: ancient prompt backlog sweep
-
-- [x] CCP-628: Investigate Mistake Detection Severity UI Behavior [COMPLETED]
+- [x] CCP-687: Study: Save from openings research (8.1 follow-up) [COMPLETED]
   - Reserved prompt slot
 
-- [ ] CCP-566-F1: Backfill Durable SF18 Strength-Limiting Research Artifact
-  - Doc-only follow-up for the missing SF18 strength-limiting research artifact
-
-- [ ] CCP-578-F1: Backfill Durable Play-Mode Bestmove Routing Design Artifact
-  - Doc-only follow-up for the missing play-mode bestmove routing design artifact
-
-- [ ] CCP-572-F1: Backfill Durable Engine Lifecycle And Mode-Switch Research Artifact
-  - Doc-only follow-up for the missing engine lifecycle / mode-switch research artifact
-
-- [ ] CCP-594-F1: Backfill Durable LFYM Moment-Selection Audit Artifact
-  - Doc-only follow-up for the missing LFYM moment-selection audit artifact
-
-- [x] CCP-236-F1: Enable Real Explorer Top/Recent Games Responses
+- [x] CCP-688: Study: Save from puzzle session (8.2 follow-up) [COMPLETED]
   - Reserved prompt slot
 
-- [x] CCP-305-F1: Complete Rated Ladder History And Attempt Cloud Restore
+- [x] CCP-689: Study: Keyboard shortcuts for drill mode (8.3 follow-up) [COMPLETED]
   - Reserved prompt slot
 
-- [x] CCP-615-F1: Show selected dashboard filter count in filter label [COMPLETED]
+- [x] CCP-690: Study: Sound effects for drill feedback (8.4 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-691: Study: Warmup position behavior in drill (8.5 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-692: Study: Library performance optimization (8.6 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-693: Study: Folder hierarchy data model (9.1 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-694: Study: Folder sidebar and navigation (9.2 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-695: Study: Create, rename, and delete folders (9.3 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-696: Study: Drag-and-drop studies into folders (9.4 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-697: Study: Multi-select and bulk operations (9.5 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-698: Study: View mode toggle list vs grid (9.6 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-699: Study: Search across annotations (9.7 follow-up) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-700: Manager: SPR-015 Phase 8 — Polish and Integration [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-701: Manager: SPR-015 Phase 9 — Library Navigation and Organization UX [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-702: Study: Seed master games as sample library studies [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-703: Fix Opening Tree loading animation and game replay pacing [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-704: Fix Opening Tree player strip White vs Black clarity [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-705: Remove master game label from fetch loading bar [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-710: Remove fetch-label span from all loading-area render paths [COMPLETED WITH ERRORS]
+  - Reserved prompt slot
+
+- [x] CCP-711: Stop board animation and reset to start position when tree builds [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-712: Correct CLAUDE/AGENTS slimdown audit docs after accuracy review [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-713: Audit: Played-Move Arrow Sync Coverage [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-713-F1: Fix: Played-Move Arrow Sync Coverage [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-714: Add missing analytics.ts exports to fix build [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-715: Audit: LFYM View-Solution Reveal Flow [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-715-F1: Fix: LFYM View-Solution Board Navigation [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-715-F2: Fix: LFYM View-Solution Engine Reveal and Analysis Unlock [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-716: Add persisted auto-review state and depth config [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-717: Build two-toggle confirmation UI with depth selector for auto-review [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-718: Wire import auto-review trigger to use selected depth [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-720: Restore missing analytics.ts exports to fix broken build [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-721: Audit: LFYM Engine Suppression and Surfacing Model [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-721-F1: Fix: LFYM Engine Toggle Wiring and Per-Puzzle Reset [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-721-F2: Fix: LFYM Try Another Move Button [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-725: Suppress eval text in LFYM panel and arrow labels before first move attempt [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-726: Audit: LFYM Wrong-Move Post-Fail Navigation [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-727: Fix board orientation reset on game load from IDB startup [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-728: Add fallback orientation reset when getUserColor returns null [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-726-F1: Fix: LFYM Wrong-Move Board Hold [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-729: Manager: LFYM View-Solution Follow-Up Fixes [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-730: Fix Pre-existing TypeScript Strict Errors in retroView and Openings [COMPLETED]
+  - Reserved prompt slot
+
+- [ ] CCP-731: Overlay LFYM win-icon on Next button
   - Reserved prompt slot
 
 ## Queue
-
-## CCP-323 - Openings Opponent Tool Suite Full Sprint Batch Manager
-
-```
-Prompt ID: CCP-323
-Task ID: CCP-323
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Full openings opponent tool suite batch / manager of managers
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-323`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Batch prompt IDs to execute in order:
-- `CCP-324`
-- `CCP-331`
-- `CCP-339`
-- `CCP-347`
-- `CCP-355`
-- `CCP-363`
-- `CCP-371`
-
-Manager-prompt rule:
-- `CCP-323` is the manager prompt id only.
-- Do not execute or recurse into `CCP-323` as if it were one of the child prompts.
-- Read each child prompt exactly as written from its prompt item file and execute them sequentially in the listed order.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings tool-suite implementation files, prompt-tracking files, or repo areas targeted by these phases.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- Execute the child prompts sequentially in the exact order listed above.
-- For each child prompt, run its required startup step exactly as written before doing any real work.
-- Perform internal validation and self-check after each child prompt completes.
-- Do not perform review closeout on the queue/log/history files as part of this manager run.
-- Stop immediately if build fails, required validation fails, a real issue is found, the repo state becomes uncertain, or the next prompt cannot be completed safely.
-- Do not reorder prompts, do not create new prompts during this batch, and do not continue past a known issue just to finish the batch.
-
-Final report requirements:
-- Echo `Prompt ID: CCP-323` and `Task ID: CCP-323`.
-- Report which child prompt was the last one completed.
-- Report any blocker or reason the batch stopped, if it did not finish cleanly.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-323
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-323 --checklist "- [ ] All 7 child managers/prompts completed: CCP-324, CCP-331, CCP-339, CCP-347, CCP-355, CCP-363, CCP-371|- [ ] Build passes: npm run build + npx tsc --noEmit|- [ ] Openings page: all five tool-rail tabs work (Opening Tree, Repertoire, Prep Report, Style, Practice)|- [ ] Style dashboard renders with player card, axes, signals, form, behavioral sections|- [ ] Practice tool: color picker, session start, opponent auto-response, source banner, stop|- [ ] No console errors across all tool navigations"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-323 --errors "brief description of what went wrong" --checklist "- [ ] All 7 child managers/prompts completed: CCP-324, CCP-331, CCP-339, CCP-347, CCP-355, CCP-363, CCP-371|- [ ] Build passes: npm run build + npx tsc --noEmit|- [ ] Openings page: all five tool-rail tabs work (Opening Tree, Repertoire, Prep Report, Style, Practice)|- [ ] Style dashboard renders with player card, axes, signals, form, behavioral sections|- [ ] Practice tool: color picker, session start, opponent auto-response, source banner, stop|- [ ] No console errors across all tool navigations"
-```
-```
-
-## CCP-324 - Grounding And Implementation Map Batch Manager
-
-```
-Prompt ID: CCP-324
-Task ID: CCP-324
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 1 — Grounding, repo audit, and implementation map / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-324`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-
-Batch prompt IDs to execute in order:
-- `CCP-325`
-- `CCP-326`
-- `CCP-327`
-- `CCP-328`
-- `CCP-329`
-- `CCP-330`
-
-Manager-prompt rule:
-- `CCP-324` is the manager prompt id only.
-- Do not execute or recurse into `CCP-324` as if it were one of the child prompts.
-- Read each child prompt exactly as written from its prompt item file and execute them sequentially in the listed order.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings research, analytics, or prompt-tracking files targeted by the grounding phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- Execute the child prompts sequentially in the exact order listed above.
-- For each child prompt, run its required startup step exactly as written before doing any real work.
-- Perform internal validation and self-check after each child prompt completes.
-- Do not perform review closeout on the queue/log/history files as part of this manager run.
-- Stop immediately if build fails, required validation fails, a real issue is found, the repo state becomes uncertain, or the next prompt cannot be completed safely.
-- Do not reorder prompts, do not create new prompts during this batch, and do not continue past a known issue just to finish the batch.
-
-Final report requirements:
-- Echo `Prompt ID: CCP-324` and `Task ID: CCP-324`.
-- Report which child prompt was the last one completed.
-- Report any blocker or reason the batch stopped, if it did not finish cleanly.
-```
-
-## CCP-331 - Tool Shell And Mode Architecture Batch Manager
-
-```
-Prompt ID: CCP-331
-Task ID: CCP-331
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 2 — Session tool shell and mode architecture / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-331`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-
-Batch prompt IDs to execute in order:
-- `CCP-332`
-- `CCP-333`
-- `CCP-334`
-- `CCP-335`
-- `CCP-336`
-- `CCP-337`
-- `CCP-338`
-
-Manager-prompt rule:
-- `CCP-331` is the manager prompt id only.
-- Do not execute or recurse into `CCP-331` as if it were one of the child prompts.
-- Read each child prompt exactly as written from its prompt item file and execute them sequentially in the listed order.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings session shell, controller, styling, or prompt-tracking files targeted by the tool-shell phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- Execute the child prompts sequentially in the exact order listed above.
-- For each child prompt, run its required startup step exactly as written before doing any real work.
-- Perform internal validation and self-check after each child prompt completes.
-- Do not perform review closeout on the queue/log/history files as part of this manager run.
-- Stop immediately if build fails, required validation fails, a real issue is found, the repo state becomes uncertain, or the next prompt cannot be completed safely.
-- Do not reorder prompts, do not create new prompts during this batch, and do not continue past a known issue just to finish the batch.
-
-Final report requirements:
-- Echo `Prompt ID: CCP-331` and `Task ID: CCP-331`.
-- Report which child prompt was the last one completed.
-- Report any blocker or reason the batch stopped, if it did not finish cleanly.
-```
-
-## CCP-339 - Opponent Analytics Foundation Batch Manager
-
-```
-Prompt ID: CCP-339
-Task ID: CCP-339
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 3 — Shared opponent analytics foundation / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-339`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-
-Batch prompt IDs to execute in order:
-- `CCP-340`
-- `CCP-341`
-- `CCP-342`
-- `CCP-343`
-- `CCP-344`
-- `CCP-345`
-- `CCP-346`
-
-Manager-prompt rule:
-- `CCP-339` is the manager prompt id only.
-- Do not execute or recurse into `CCP-339` as if it were one of the child prompts.
-- Read each child prompt exactly as written from its prompt item file and execute them sequentially in the listed order.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings analytics, controller, or prompt-tracking files targeted by the analytics phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- Execute the child prompts sequentially in the exact order listed above.
-- For each child prompt, run its required startup step exactly as written before doing any real work.
-- Perform internal validation and self-check after each child prompt completes.
-- Do not perform review closeout on the queue/log/history files as part of this manager run.
-- Stop immediately if build fails, required validation fails, a real issue is found, the repo state becomes uncertain, or the next prompt cannot be completed safely.
-- Do not reorder prompts, do not create new prompts during this batch, and do not continue past a known issue just to finish the batch.
-
-Final report requirements:
-- Echo `Prompt ID: CCP-339` and `Task ID: CCP-339`.
-- Report which child prompt was the last one completed.
-- Report any blocker or reason the batch stopped, if it did not finish cleanly.
-```
-
-## CCP-347 - Repertoire Tool Full Page Upgrade Batch Manager
-
-```
-Prompt ID: CCP-347
-Task ID: CCP-347
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 4 — Repertoire tool full-page upgrade / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-347`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/README.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CODEX_PROMPT_INSTRUCTIONS.md`
-
-Batch prompt IDs to execute in order:
-- `CCP-348`
-- `CCP-349`
-- `CCP-350`
-- `CCP-351`
-- `CCP-352`
-- `CCP-353`
-- `CCP-354`
-
-Manager-prompt rule:
-- `CCP-347` is the manager prompt id only.
-- Do not execute or recurse into `CCP-347` as if it were one of the child prompts.
-- Read each child prompt exactly as written from its prompt item file and execute them sequentially in the listed order.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings repertoire tool, session layout, styling, or prompt-tracking files targeted by the repertoire phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- Execute the child prompts sequentially in the exact order listed above.
-- For each child prompt, run its required startup step exactly as written before doing any real work.
-- Perform internal validation and self-check after each child prompt completes.
-- Do not perform review closeout on the queue/log/history files as part of this manager run.
-- Stop immediately if build fails, required validation fails, a real issue is found, the repo state becomes uncertain, or the next prompt cannot be completed safely.
-- Do not reorder prompts, do not create new prompts during this batch, and do not continue past a known issue just to finish the batch.
-
-Final report requirements:
-- Echo `Prompt ID: CCP-347` and `Task ID: CCP-347`.
-- Report which child prompt was the last one completed.
-- Report any blocker or reason the batch stopped, if it did not finish cleanly.
-```
-
-## CCP-355 - Prep Report Dashboard Batch Manager
-
-```
-Prompt ID: CCP-355
-Task ID: CCP-355
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 5 — Prep Report dashboard / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-355`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Batch prompt IDs to execute in order:
-- `CCP-356`
-- `CCP-357`
-- `CCP-358`
-- `CCP-359`
-- `CCP-360`
-- `CCP-361`
-- `CCP-362`
-
-Manager-prompt rule:
-- `CCP-355` is the manager prompt id only.
-- Do not execute or recurse into `CCP-355` as if it were one of the child prompts.
-- Read each child prompt exactly as written from its prompt item file and execute them sequentially in the listed order.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings prep-report, analytics, styling, or prompt-tracking files targeted by the Prep Report phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- Execute the child prompts sequentially in the exact order listed above.
-- For each child prompt, run its required startup step exactly as written before doing any real work.
-- Perform internal validation and self-check after each child prompt completes.
-- Do not perform review closeout on the queue/log/history files as part of this manager run.
-- Stop immediately if build fails, required validation fails, a real issue is found, the repo state becomes uncertain, or the next prompt cannot be completed safely.
-- Do not reorder prompts, do not create new prompts during this batch, and do not continue past a known issue just to finish the batch.
-
-Final report requirements:
-- Echo `Prompt ID: CCP-355` and `Task ID: CCP-355`.
-- Report which child prompt was the last one completed.
-- Report any blocker or reason the batch stopped, if it did not finish cleanly.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-355
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-355 --checklist "- [ ] Review the validation steps described in CCP-355 and confirm the expected results"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-355 --errors "brief description of what went wrong" --checklist "- [ ] Review the validation steps described in CCP-355 and confirm the expected results"
-```
-```
-
-## CCP-363 - Style Dashboard Batch Manager
-
-```
-Prompt ID: CCP-363
-Task ID: CCP-363
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 6 — Style dashboard / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-363`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Batch prompt IDs to execute in order:
-- `CCP-364`
-- `CCP-365`
-- `CCP-366`
-- `CCP-367`
-- `CCP-368`
-- `CCP-369`
-- `CCP-370`
-
-Manager-prompt rule:
-- `CCP-363` is the manager prompt id only.
-- Do not execute or recurse into `CCP-363` as if it were one of the child prompts.
-- Read each child prompt exactly as written from its prompt item file and execute them sequentially in the listed order.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings style-profile, analytics, styling, or prompt-tracking files targeted by the Style phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- Execute the child prompts sequentially in the exact order listed above.
-- For each child prompt, run its required startup step exactly as written before doing any real work.
-- Perform internal validation and self-check after each child prompt completes.
-- Do not perform review closeout on the queue/log/history files as part of this manager run.
-- Stop immediately if build fails, required validation fails, a real issue is found, the repo state becomes uncertain, or the next prompt cannot be completed safely.
-- Do not reorder prompts, do not create new prompts during this batch, and do not continue past a known issue just to finish the batch.
-
-Final report requirements:
-- Echo `Prompt ID: CCP-363` and `Task ID: CCP-363`.
-- Report which child prompt was the last one completed.
-- Report any blocker or reason the batch stopped, if it did not finish cleanly.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-363
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-363 --checklist "- [ ] Style tool renders all sections: player card, axes, signals, first-move breakdown, form, behavioral|- [ ] Style archetype label displays correctly|- [ ] Signals show confidence levels|- [ ] No console errors on Style tab"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-363 --errors "brief description of what went wrong" --checklist "- [ ] Style tool renders all sections: player card, axes, signals, first-move breakdown, form, behavioral|- [ ] Style archetype label displays correctly|- [ ] Signals show confidence levels|- [ ] No console errors on Style tab"
-```
-```
-
-## CCP-371 - Practice Against Them Tool Batch Manager
-
-```
-Prompt ID: CCP-371
-Task ID: CCP-371
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 7 — Practice Against Them tool / manager prompt
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-371`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Batch prompt IDs to execute in order:
-- `CCP-372`
-- `CCP-373`
-- `CCP-374`
-- `CCP-375`
-- `CCP-376`
-- `CCP-377`
-- `CCP-378`
-
-Manager-prompt rule:
-- `CCP-371` is the manager prompt id only.
-- Do not execute or recurse into `CCP-371` as if it were one of the child prompts.
-- Read each child prompt exactly as written from its prompt item file and execute them sequentially in the listed order.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings practice, board, engine, styling, or prompt-tracking files targeted by the Practice Against Them phase.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- Execute the child prompts sequentially in the exact order listed above.
-- For each child prompt, run its required startup step exactly as written before doing any real work.
-- Perform internal validation and self-check after each child prompt completes.
-- Do not perform review closeout on the queue/log/history files as part of this manager run.
-- Stop immediately if build fails, required validation fails, a real issue is found, the repo state becomes uncertain, or the next prompt cannot be completed safely.
-- Do not reorder prompts, do not create new prompts during this batch, and do not continue past a known issue just to finish the batch.
-
-Final report requirements:
-- Echo `Prompt ID: CCP-371` and `Task ID: CCP-371`.
-- Report which child prompt was the last one completed.
-- Report any blocker or reason the batch stopped, if it did not finish cleanly.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-371
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-371 --checklist "- [ ] Practice tool: color picker renders before session start|- [ ] Practice session starts on color click, board restricts movement to user color|- [ ] Opponent auto-responds from repertoire after user moves|- [ ] Source banner shows repertoire/engine/exhausted state|- [ ] Stop button ends session and returns to Opening Tree|- [ ] No console errors during practice session"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-371 --errors "brief description of what went wrong" --checklist "- [ ] Practice tool: color picker renders before session start|- [ ] Practice session starts on color click, board restricts movement to user color|- [ ] Opponent auto-responds from repertoire after user moves|- [ ] Source banner shows repertoire/engine/exhausted state|- [ ] Stop button ends session and returns to Opening Tree|- [ ] No console errors during practice session"
-```
-```
-
-## CCP-325 - Audit Current Openings Session Shell And Ownership Seams
-
-```
-Prompt ID: CCP-325
-Task ID: CCP-325
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 1 — Grounding, repo audit, and implementation map / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-325`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before doing research or editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings session shell, controller, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: audit the live openings session shell and identify the exact current ownership seams that will have to change to support a left tool rail and full-page tool takeover without rewriting the whole openings subsystem
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `src/openings/types.ts`
-  - `src/openings/db.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Locked product decisions for this sprint:
-- The openings session gets a persistent left-side tool rail.
-- The active tool owns the main content area; this is not a small widget swap inside the current report column.
-- The top-level tools are locked to `Repertoire`, `Prep Report`, `Style`, and `Practice Against Them`.
-- `Repertoire` is the current opening-tree experience, upgraded into a first-class full-page tool.
-- `Prep Report` and `Style` should be dashboard-first surfaces built from imported opponent history.
-- `Practice Against Them` is board-led and must stay honest about where repertoire certainty ends and engine takeover begins.
-
-Execution rules:
-- This is a grounding/audit step first, not a bundled implementation prompt.
-- Do not make code changes unless a tiny source-of-truth doc correction is clearly required to keep the sprint grounded in the current repo reality.
-- Be explicit about what is source-confirmed, what is inference, and what remains unknown.
-
-Deliverable:
-- identify the exact current session composition in `src/openings/view.ts`
-- identify what currently belongs to the default Repertoire experience versus generic session shell behavior
-- call out which pieces can stay in place, which need extraction, and which should not be forced into `src/main.ts`
-- produce a concrete file-level implementation map for the next phase
-
-If you do not edit files, say explicitly that no build was required for this audit step.
-```
-
-## CCP-326 - Audit Puzzle Sidebar And Library Patterns Relevant To The Openings Tool Rail
-
-```
-Prompt ID: CCP-326
-Task ID: CCP-326
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 1 — Grounding, repo audit, and implementation map / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-326`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before doing research or editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same puzzle sidebar, openings shell, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: audit the current puzzle library and session sidebars so the new openings left rail can borrow the right compositional lessons without turning openings into a puzzle clone
-
-Inspect first:
-- Patzer:
-  - `src/puzzles/view.ts`
-  - `src/styles/main.scss`
-  - `src/openings/view.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-- Relevant references:
-  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
-
-Locked product decisions for this sprint:
-- The openings session gets a persistent left-side tool rail.
-- The active tool owns the main content area; this is not a small widget swap inside the current report column.
-- The top-level tools are locked to `Repertoire`, `Prep Report`, `Style`, and `Practice Against Them`.
-- `Repertoire` is the current opening-tree experience, upgraded into a first-class full-page tool.
-- `Prep Report` and `Style` should be dashboard-first surfaces built from imported opponent history.
-- `Practice Against Them` is board-led and must stay honest about where repertoire certainty ends and engine takeover begins.
-
-Execution rules:
-- This is a grounding/audit step first, not a bundled implementation prompt.
-- Do not make code changes unless a tiny source-of-truth doc correction is clearly required to keep the sprint grounded in the current repo reality.
-- Be explicit about what is source-confirmed, what is inference, and what remains unknown.
-
-Deliverable:
-- identify the parts of the puzzle sidebar pattern that are structurally reusable for openings
-- identify what should not be copied because openings needs a different full-page tool takeover model
-- call out the best current Patzer seams for a persistent tool rail, active state styling, and content switching
-- report the smallest safe shell pattern to reuse in Phase 2
-
-If you do not edit files, say explicitly that no build was required for this audit step.
-```
-
-## CCP-327 - Recheck Lichess References For Board Tool Layout And Practice Flow
-
-```
-Prompt ID: CCP-327
-Task ID: CCP-327
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 1 — Grounding, repo audit, and implementation map / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-327`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before doing research or editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings board, puzzle, analysis-layout, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: recheck the closest Lichess references for tool rails, board-led training surfaces, and analysis/puzzle layout ownership so the new openings tools stay grounded even where there is no one exact Lichess equivalent
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-- Relevant references:
-  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
-  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
-  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
-  - `~/Development/lichess-source/lila/ui/puzzle/css/_layout.scss`
-  - `~/Development/lichess-source/lila/ui/puzzle/css/_side.scss`
-
-Locked product decisions for this sprint:
-- The openings session gets a persistent left-side tool rail.
-- The active tool owns the main content area; this is not a small widget swap inside the current report column.
-- The top-level tools are locked to `Repertoire`, `Prep Report`, `Style`, and `Practice Against Them`.
-- `Repertoire` is the current opening-tree experience, upgraded into a first-class full-page tool.
-- `Prep Report` and `Style` should be dashboard-first surfaces built from imported opponent history.
-- `Practice Against Them` is board-led and must stay honest about where repertoire certainty ends and engine takeover begins.
-
-Execution rules:
-- This is a grounding/audit step first, not a bundled implementation prompt.
-- Do not make code changes unless a tiny source-of-truth doc correction is clearly required to keep the sprint grounded in the current repo reality.
-- Be explicit about what is source-confirmed, what is inference, and what remains unknown.
-
-Deliverable:
-- identify the strongest Lichess references for persistent board/tool composition and for board-led training flow
-- say explicitly where Lichess has no direct equivalent for opponent-prep dashboards or practice-against-opponent behavior
-- separate what should be mirrored from what must be Patzer-specific
-- produce a short reference map the later prompts can rely on
-
-If you do not edit files, say explicitly that no build was required for this audit step.
-```
-
-## CCP-328 - Audit Current Opponent Analytics Seams From Imported Research Data
-
-```
-Prompt ID: CCP-328
-Task ID: CCP-328
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 1 — Grounding, repo audit, and implementation map / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-328`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before doing research or editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings analytics, import, tree, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: audit the current openings data model and imported research game history to identify exactly what opponent analytics can already be derived now, what needs richer parsing later, and where those analytics should live
-
-Inspect first:
-- Patzer:
-  - `src/openings/types.ts`
-  - `src/openings/import.ts`
-  - `src/openings/tree.ts`
-  - `src/openings/ctrl.ts`
-  - `src/openings/view.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Locked product decisions for this sprint:
-- The openings session gets a persistent left-side tool rail.
-- The active tool owns the main content area; this is not a small widget swap inside the current report column.
-- The top-level tools are locked to `Repertoire`, `Prep Report`, `Style`, and `Practice Against Them`.
-- `Repertoire` is the current opening-tree experience, upgraded into a first-class full-page tool.
-- `Prep Report` and `Style` should be dashboard-first surfaces built from imported opponent history.
-- `Practice Against Them` is board-led and must stay honest about where repertoire certainty ends and engine takeover begins.
-
-Execution rules:
-- This is a grounding/audit step first, not a bundled implementation prompt.
-- Do not make code changes unless a tiny source-of-truth doc correction is clearly required to keep the sprint grounded in the current repo reality.
-- Be explicit about what is source-confirmed, what is inference, and what remains unknown.
-
-Deliverable:
-- identify which high-value opponent analytics are already supported by the current imported `ResearchGame` model
-- identify which ideas from the sprint source document would require clocks, engine analysis, or broader data collection that Patzer does not yet have in openings research
-- propose the smallest honest analytics foundation for Phase 3
-- call out any dangerous fake-precision areas the product should avoid for now
-
-If you do not edit files, say explicitly that no build was required for this audit step.
-```
-
-## CCP-329 - Audit Current Board Engine And Practice Seams For Practice Against Them
-
-```
-Prompt ID: CCP-329
-Task ID: CCP-329
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 1 — Grounding, repo audit, and implementation map / Task 5
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-329`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before doing research or editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings board, engine, ceval, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: audit the current openings board, shared engine controls, and board-interaction seams to identify the smallest honest path toward a `Practice Against Them` tool that begins with opponent repertoire moves and then hands off to engine play
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `src/openings/tree.ts`
-  - `src/engine/ctrl.ts`
-  - `src/ceval/view.ts`
-  - `src/board/index.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-- Relevant references:
-  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
-  - `~/Development/lichess-source/lila/ui/analyse/src/view/main.ts`
-
-Locked product decisions for this sprint:
-- The openings session gets a persistent left-side tool rail.
-- The active tool owns the main content area; this is not a small widget swap inside the current report column.
-- The top-level tools are locked to `Repertoire`, `Prep Report`, `Style`, and `Practice Against Them`.
-- `Repertoire` is the current opening-tree experience, upgraded into a first-class full-page tool.
-- `Prep Report` and `Style` should be dashboard-first surfaces built from imported opponent history.
-- `Practice Against Them` is board-led and must stay honest about where repertoire certainty ends and engine takeover begins.
-
-Execution rules:
-- This is a grounding/audit step first, not a bundled implementation prompt.
-- Do not make code changes unless a tiny source-of-truth doc correction is clearly required to keep the sprint grounded in the current repo reality.
-- Be explicit about what is source-confirmed, what is inference, and what remains unknown.
-
-Deliverable:
-- identify the current board owner and the cleanest controller seam for a practice session state machine
-- identify the smallest route to a repertoire-following opponent move selector using existing opening-tree data
-- identify the cleanest engine handoff seam once repertoire certainty is exhausted
-- call out the biggest architectural risk if Practice Against Them is bolted directly into the current openings session without a dedicated owner
-
-If you do not edit files, say explicitly that no build was required for this audit step.
-```
-
-## CCP-330 - Grounding And Implementation Map Review
-
-```
-Prompt ID: CCP-330
-Task ID: CCP-330
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 1 — Grounding, repo audit, and implementation map / Task 6
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-330`
-- Only continue review work after that command succeeds.
-- Leave this prompt queued after marking it started, even if the review finds issues or stops early.
-
-Startup coordination step:
-- Before reviewing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings grounding, puzzle-sidebar, Lichess-reference, analytics, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: review the grounding outputs from CCP-325 through CCP-329 and check that the upcoming implementation prompts are actually grounded in the current repo, the locked product decisions, and the closest valid references
-
-Inspect first:
-- Prompt/source artifacts:
-  - `docs/prompts/items/CCP-325.md`
-  - `docs/prompts/items/CCP-326.md`
-  - `docs/prompts/items/CCP-327.md`
-  - `docs/prompts/items/CCP-328.md`
-  - `docs/prompts/items/CCP-329.md`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Review rules:
-- Review with a findings-first mindset.
-- Prioritize bugs, regressions, architectural drift, misleading UX, unsafe coupling, and missing validation.
-- Do not silently fix issues during the review prompt.
-- If no findings are present, say so explicitly and note any residual risk.
-
-Output format:
-- findings first, ordered by severity, with exact file references where possible
-- then open questions or assumptions
-- then a brief change summary
-- then `Suggested manual tests` scoped to the actual work reviewed
-```
-
-## CCP-332 - Add Canonical Openings Tool Types And Session Tool State
-
-```
-Prompt ID: CCP-332
-Task ID: CCP-332
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 2 — Session tool shell and mode architecture / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-332`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings controller, types, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the canonical openings tool taxonomy and session-level tool state so the openings session can switch between `Repertoire`, `Prep Report`, `Style`, and `Practice Against Them` without ad hoc booleans scattered across the current controller
-
-Inspect first:
-- Patzer:
-  - `src/openings/types.ts`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Do not redesign the openings import/library pages in this phase.
-- Keep the current openings session route and collection open/close flow intact.
-- The active tool must own the main session content area, not just a nested panel.
-- The left rail should feel like a real product-navigation owner, not an afterthought button strip.
-
-Constraints:
-- keep this scoped to canonical tool ids, state, and accessors only
-- do not redesign rendering in this prompt
-- do not add new medium-sized logic to `src/main.ts`
-- preserve current library/session mode behavior while adding a distinct active-tool concept inside the session state
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the new tool state defaults cleanly when a collection is opened
-- report where the new active-tool state now lives and how later prompts should read/write it
-- explicitly report whether any existing behavior changed intentionally
-- explicitly report whether there are console/runtime errors
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-333 - Add Active Tool Selection Accessors And Reset Rules
-
-```
-Prompt ID: CCP-333
-Task ID: CCP-333
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 2 — Session tool shell and mode architecture / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-333`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings controller, session-state, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the explicit controller actions and reset rules for selecting an openings tool, defaulting back to `Repertoire` when appropriate, and keeping tool state honest across session open/close boundaries
-
-Inspect first:
-- Patzer:
-  - `src/openings/ctrl.ts`
-  - `src/openings/types.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Do not redesign the openings import/library pages in this phase.
-- Keep the current openings session route and collection open/close flow intact.
-- The active tool must own the main session content area, not just a nested panel.
-- The left rail should feel like a real product-navigation owner, not an afterthought button strip.
-
-Constraints:
-- keep this scoped to controller ownership and reset semantics
-- do not render UI in this prompt
-- be explicit about when active-tool state should survive normal navigation and when it should reset
-- keep the behavior honest for session close, collection switch, and return-to-library cases
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the default tool is `Repertoire` when opening a fresh collection
-- report the exact reset rules now encoded in the controller
-- explicitly report whether any existing session behavior changed intentionally
-- explicitly report whether there are console/runtime errors
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-334 - Render Persistent Left Tool Rail In The Openings Session
-
-```
-Prompt ID: CCP-334
-Task ID: CCP-334
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 2 — Session tool shell and mode architecture / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-334`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings session view, session styling, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: render a persistent left-side tool rail for the openings session so the user can switch between the locked tools without leaving the current researched opponent context
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/styles/main.scss`
-  - `src/openings/ctrl.ts`
-  - `src/puzzles/view.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-- Relevant references:
-  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
-  - `~/Development/lichess-source/lila/ui/analyse/src/view/actionMenu.ts`
-
-Product rules for this phase:
-- Do not redesign the openings import/library pages in this phase.
-- Keep the current openings session route and collection open/close flow intact.
-- The active tool must own the main session content area, not just a nested panel.
-- The left rail should feel like a real product-navigation owner, not an afterthought button strip.
-
-Constraints:
-- use strong product and design judgment, but do not redesign the entire openings session in this prompt
-- keep the change scoped to the persistent tool rail and its active/hover/selection states
-- do not yet replace the existing main content area with different tool views
-- keep the current Repertoire experience visible and selected by default once the rail exists
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the rail is visible only in the openings session, not the openings library/import page
-- verify the active tool state is reflected visually and is clickable
-- report what changed visually and how the current session now exposes the locked tools
-- explicitly report whether there are console/runtime errors
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-335 - Refactor The Session Main Content To Active Tool Takeover Layout
-
-```
-Prompt ID: CCP-335
-Task ID: CCP-335
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 2 — Session tool shell and mode architecture / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-335`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings session layout, session styling, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: refactor the openings session layout so the active tool owns the main content area instead of the current fixed session composition, while keeping the existing Repertoire experience as the default content for now
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/styles/main.scss`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-- Relevant references:
-  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
-
-Product rules for this phase:
-- Do not redesign the openings import/library pages in this phase.
-- Keep the current openings session route and collection open/close flow intact.
-- The active tool must own the main session content area, not just a nested panel.
-- The left rail should feel like a real product-navigation owner, not an afterthought button strip.
-
-Constraints:
-- this is a shell/layout change, not a dashboard-feature bundle
-- introduce placeholder content for non-Repertoire tools only if that is the smallest honest way to complete the layout switch
-- do not rebuild the underlying opening-tree, explorer, or sample-game logic in this prompt
-- keep the new shell resilient on both desktop and narrower widths used by the current app
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify that changing the active tool swaps the main content area rather than opening a small nested panel
-- verify Repertoire remains the default tool and still renders after the shell refactor
-- report the new session layout structure at a high level
-- explicitly report whether there are console/runtime errors
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-336 - Extract The Current Session Experience Into A Dedicated Repertoire Tool Owner
-
-```
-Prompt ID: CCP-336
-Task ID: CCP-336
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 2 — Session tool shell and mode architecture / Task 5
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-336`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings session view, controller, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: extract the current openings session board/tree/report experience into a dedicated Repertoire tool owner so later tool dashboards stop competing with one monolithic session render function
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Do not redesign the openings import/library pages in this phase.
-- Keep the current openings session route and collection open/close flow intact.
-- The active tool must own the main session content area, not just a nested panel.
-- The left rail should feel like a real product-navigation owner, not an afterthought button strip.
-
-Constraints:
-- keep this extraction focused on ownership and composition, not new behavior
-- preserve the current Repertoire experience as closely as possible while giving it an explicit tool owner seam
-- do not redesign the explorer or move-table behavior in this prompt
-- do not create speculative abstractions outside the openings subsystem
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify Repertoire still renders the existing board/tree/explorer flow after extraction
-- report what now belongs to the Repertoire tool owner versus the outer session shell
-- explicitly report whether behavior changed intentionally
-- explicitly report whether there are console/runtime errors
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-337 - Persist Active Tool Selection In Openings Session Resume State
-
-```
-Prompt ID: CCP-337
-Task ID: CCP-337
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 2 — Session tool shell and mode architecture / Task 6
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-337`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings db, controller, session-resume, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: extend openings session persistence so resuming an in-progress research session can restore the active tool selection along with the collection, path, and orientation when that is still safe to do
-
-Inspect first:
-- Patzer:
-  - `src/openings/db.ts`
-  - `src/openings/ctrl.ts`
-  - `src/openings/types.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Do not redesign the openings import/library pages in this phase.
-- Keep the current openings session route and collection open/close flow intact.
-- The active tool must own the main session content area, not just a nested panel.
-- The left rail should feel like a real product-navigation owner, not an afterthought button strip.
-
-Constraints:
-- keep this scoped to honest persistence of the active tool selection
-- do not persist half-built dashboard-local UI state beyond what is needed to restore the active tool
-- preserve backward compatibility with older saved openings session records where this field is missing
-- if restoring a tool would be unsafe, fall back cleanly to `Repertoire` and say so explicitly
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify older session records still open cleanly
-- verify a resumed session can restore the active tool when the saved state is valid
-- report the fallback behavior when the saved tool state is missing or invalid
-- explicitly report whether there are console/runtime errors
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-338 - Tool Shell And Mode Architecture Review
-
-```
-Prompt ID: CCP-338
-Task ID: CCP-338
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 2 — Session tool shell and mode architecture / Task 7
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-338`
-- Only continue review work after that command succeeds.
-- Leave this prompt queued after marking it started, even if the review finds issues or stops early.
-
-Startup coordination step:
-- Before reviewing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings session shell, controller, styling, persistence, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: review the tool-shell and mode-architecture work from CCP-332 through CCP-337 with special attention to active-tool ownership, session reset semantics, and whether the new shell actually enables later full-page tools cleanly
-
-Inspect first:
-- Prompt/source artifacts:
-  - `docs/prompts/items/CCP-332.md`
-  - `docs/prompts/items/CCP-333.md`
-  - `docs/prompts/items/CCP-334.md`
-  - `docs/prompts/items/CCP-335.md`
-  - `docs/prompts/items/CCP-336.md`
-  - `docs/prompts/items/CCP-337.md`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Review rules:
-- Review with a findings-first mindset.
-- Prioritize bugs, regressions, architectural drift, misleading UX, unsafe coupling, and missing validation.
-- Do not silently fix issues during the review prompt.
-- If no findings are present, say so explicitly and note any residual risk.
-
-Output format:
-- findings first, ordered by severity, with exact file references where possible
-- then open questions or assumptions
-- then a brief change summary
-- then `Suggested manual tests` scoped to the actual work reviewed
-```
-
-## CCP-340 - Add Canonical Opponent Analytics Types And Dashboard Section Models
-
-```
-Prompt ID: CCP-340
-Task ID: CCP-340
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 3 — Shared opponent analytics foundation / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-340`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings analytics, types, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the canonical opponent analytics and dashboard-section types needed for `Repertoire`, `Prep Report`, `Style`, and `Practice Against Them` so later prompts can build dashboards on explicit owned data instead of view-local ad hoc objects
-
-Inspect first:
-- Patzer:
-  - `src/openings/types.ts`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Build analytics only from what the current openings research data can honestly support.
-- Do not invent fake psychological certainty, engine-backed weakness scores, or time-trouble metrics that the current openings import path cannot prove yet.
-- The output of this phase should make later dashboards possible without hard-coding summary logic into the view layer.
-
-Constraints:
-- keep this scoped to canonical data shapes and type ownership only
-- do not render dashboards in this prompt
-- do not invent metrics the current imported data cannot support honestly
-- if a new `src/openings/analytics.ts` owner is the smallest safe move, prefer that over bloating `view.ts` or `ctrl.ts`
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report the exact new analytics types and which future tool they serve
-- report any intentionally deferred metrics that should wait for clocks or engine-backed data
-- explicitly report whether behavior changed intentionally
-- explicitly report whether there are console/runtime errors
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-341 - Add Base Collection Analytics Loader From Imported Research Games
-
-```
-Prompt ID: CCP-341
-Task ID: CCP-341
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 3 — Shared opponent analytics foundation / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-341`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings analytics, import, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the smallest honest analytics loader that derives base collection-level opponent scouting facts from imported research games so later tools have one owned source for record counts, WDL, color splits, speed splits, and recency buckets
-
-Inspect first:
-- Patzer:
-  - `src/openings/types.ts`
-  - `src/openings/import.ts`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Build analytics only from what the current openings research data can honestly support.
-- Do not invent fake psychological certainty, engine-backed weakness scores, or time-trouble metrics that the current openings import path cannot prove yet.
-- The output of this phase should make later dashboards possible without hard-coding summary logic into the view layer.
-
-Constraints:
-- keep this prompt focused on the base analytics layer, not dashboard rendering
-- prefer a pure analytics derivation helper over burying this logic inside `view.ts`
-- do not change the import pipeline contract unless it is required for the analytics owner seam
-- be explicit about any assumptions around missing ratings, dates, or colors
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report exactly which base analytics are now derived from imported research games
-- report where the loader lives and how later prompts should consume it
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-342 - Add Repertoire Breadth Predictability And Opening Concentration Metrics
-
-```
-Prompt ID: CCP-342
-Task ID: CCP-342
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 3 — Shared opponent analytics foundation / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-342`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings analytics, tree, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the repertoire breadth, predictability, and opening concentration metrics that the later Repertoire and Style tools need in order to show whether this opponent is narrow, broad, repetitive, or hard to prepare for
-
-Inspect first:
-- Patzer:
-  - `src/openings/tree.ts`
-  - `src/openings/ctrl.ts`
-  - `src/openings/types.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Build analytics only from what the current openings research data can honestly support.
-- Do not invent fake psychological certainty, engine-backed weakness scores, or time-trouble metrics that the current openings import path cannot prove yet.
-- The output of this phase should make later dashboards possible without hard-coding summary logic into the view layer.
-
-Constraints:
-- keep this scoped to analytics derivation only
-- use language like predictability or concentration only when it is actually grounded in move and branch distribution, not vibes
-- do not surface these metrics in the UI yet unless a tiny developer-facing seam is required to validate them
-- be clear about sample-size limits and edge cases
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report the exact predictability/breadth/concentration metrics now available
-- report how they are computed at a high level without hand-waving
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-343 - Add Recency And Form Analytics From Imported Opponent Game History
-
-```
-Prompt ID: CCP-343
-Task ID: CCP-343
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 3 — Shared opponent analytics foundation / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-343`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings analytics, import, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the recency and form analytics the new dashboards need so Patzer can compare current opponent behavior against their longer-term baseline without pretending to know more than the imported games actually show
-
-Inspect first:
-- Patzer:
-  - `src/openings/types.ts`
-  - `src/openings/import.ts`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Build analytics only from what the current openings research data can honestly support.
-- Do not invent fake psychological certainty, engine-backed weakness scores, or time-trouble metrics that the current openings import path cannot prove yet.
-- The output of this phase should make later dashboards possible without hard-coding summary logic into the view layer.
-
-Constraints:
-- keep this prompt focused on form and recency signals only
-- derive from actual imported dates/results/openings rather than invented psychology
-- prefer simple honest trend metrics over a fake all-knowing score
-- do not build UI in this prompt
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report the exact form/recency signals now available to later dashboards
-- call out any areas where sparse dates or small samples force weaker confidence
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-344 - Add Prep Report Analytics Summaries From Current Collection History
-
-```
-Prompt ID: CCP-344
-Task ID: CCP-344
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 3 — Shared opponent analytics foundation / Task 5
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-344`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings analytics, tree, controller, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the core Prep Report analytics summaries Patzer can already support now, such as likely lines, pet lines, weak-scoring lines, line freshness, and repertoire drift candidates, without relying on engine or clock data that the openings subsystem does not yet have
-
-Inspect first:
-- Patzer:
-  - `src/openings/tree.ts`
-  - `src/openings/ctrl.ts`
-  - `src/openings/types.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Build analytics only from what the current openings research data can honestly support.
-- Do not invent fake psychological certainty, engine-backed weakness scores, or time-trouble metrics that the current openings import path cannot prove yet.
-- The output of this phase should make later dashboards possible without hard-coding summary logic into the view layer.
-
-Constraints:
-- keep this prompt focused on data summaries for later Prep Report modules
-- do not invent engine-backed weaknesses or time-management insights in this phase
-- use sample-size guards where needed so the later dashboard can avoid overclaiming on tiny branches
-- do not render the Prep Report UI yet
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report the exact Prep Report analytics summaries now available
-- report which desirable prep ideas are still deferred because the openings subsystem lacks the necessary evidence
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-345 - Add Opponent Analytics Cache And Controller Owner Seam
-
-```
-Prompt ID: CCP-345
-Task ID: CCP-345
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 3 — Shared opponent analytics foundation / Task 6
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-345`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings controller, analytics, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the smallest honest controller owner seam for caching and invalidating opponent analytics so the later dashboards do not recompute everything ad hoc inside `view.ts` every time the session redraws
-
-Inspect first:
-- Patzer:
-  - `src/openings/ctrl.ts`
-  - `src/openings/types.ts`
-  - `src/openings/view.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- Build analytics only from what the current openings research data can honestly support.
-- Do not invent fake psychological certainty, engine-backed weakness scores, or time-trouble metrics that the current openings import path cannot prove yet.
-- The output of this phase should make later dashboards possible without hard-coding summary logic into the view layer.
-
-Constraints:
-- keep analytics ownership inside the openings subsystem
-- do not add a new medium-sized analytics manager outside the openings owner unless that is clearly necessary
-- be explicit about when analytics should invalidate, such as collection switch, color filter changes, or speed filter changes
-- do not mix dashboard rendering work into this prompt
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report where analytics caching now lives and what invalidates it
-- verify the controller can expose analytics without view-local recomputation glue
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-346 - Opponent Analytics Foundation Review
-
-```
-Prompt ID: CCP-346
-Task ID: CCP-346
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 3 — Shared opponent analytics foundation / Task 7
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-346`
-- Only continue review work after that command succeeds.
-- Leave this prompt queued after marking it started, even if the review finds issues or stops early.
-
-Startup coordination step:
-- Before reviewing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings analytics, controller, import, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: review the analytics-foundation work from CCP-340 through CCP-345 with special attention to fake precision, unclear ownership, invalidation bugs, and whether the resulting analytics are actually honest enough to power the later dashboards
-
-Inspect first:
-- Prompt/source artifacts:
-  - `docs/prompts/items/CCP-340.md`
-  - `docs/prompts/items/CCP-341.md`
-  - `docs/prompts/items/CCP-342.md`
-  - `docs/prompts/items/CCP-343.md`
-  - `docs/prompts/items/CCP-344.md`
-  - `docs/prompts/items/CCP-345.md`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Review rules:
-- Review with a findings-first mindset.
-- Prioritize bugs, regressions, architectural drift, misleading UX, unsafe coupling, and missing validation.
-- Do not silently fix issues during the review prompt.
-- If no findings are present, say so explicitly and note any residual risk.
-
-Output format:
-- findings first, ordered by severity, with exact file references where possible
-- then open questions or assumptions
-- then a brief change summary
-- then `Suggested manual tests` scoped to the actual work reviewed
-```
-
-## CCP-348 - Render Repertoire As A First Class Full Page Tool
-
-```
-Prompt ID: CCP-348
-Task ID: CCP-348
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 4 — Repertoire tool full-page upgrade / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-348`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings repertoire view, session styling, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: render `Repertoire` as a first-class full-page openings tool so the upgraded shell no longer feels like a generic container around the old session layout
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/styles/main.scss`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-- Relevant references:
-  - `~/Development/lichess-source/lila/ui/analyse/src/view/controls.ts`
-  - `~/Development/lichess-source/lila/ui/puzzle/src/view/main.ts`
-
-Product rules for this phase:
-- `Repertoire` is the upgraded home of the current opening-tree experience.
-- The active Repertoire tool should feel like a first-class prep workspace, not just the legacy session layout dropped into a new shell.
-- Use strong design judgment, but keep the result grounded in the current openings subsystem and existing Patzer visual language.
-
-Constraints:
-- use strong product and design judgment, but do not redesign unrelated openings tools in this prompt
-- keep the current board/tree/session behaviors intact while giving Repertoire a stronger full-page identity
-- do not build Prep Report or Style modules here
-- keep the change scoped to the Repertoire tool shell and composition
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify Repertoire feels like a dedicated tool once selected from the left rail
-- report what changed in the Repertoire composition and hierarchy
-- explicitly report whether behavior changed intentionally
-- explicitly report whether there are console/runtime errors
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-349 - Add Repertoire Overview Dashboard Section Above The Tree Experience
-
-```
-Prompt ID: CCP-349
-Task ID: CCP-349
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 4 — Repertoire tool full-page upgrade / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-349`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings repertoire view, analytics, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add a high-value Repertoire overview section above the existing board/tree experience so the user gets opponent-prep context before digging into raw move branches
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `src/styles/main.scss`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Repertoire` is the upgraded home of the current opening-tree experience.
-- The active Repertoire tool should feel like a first-class prep workspace, not just the legacy session layout dropped into a new shell.
-- Use strong design judgment, but keep the result grounded in the current openings subsystem and existing Patzer visual language.
-
-Constraints:
-- use the analytics foundation from Phase 3 instead of recomputing summary logic in the view
-- keep the overview scoped to high-signal repertoire facts, not a giant stat wall
-- do not remove the underlying board/tree experience
-- make the overview feel interactive and useful, not decorative
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the Repertoire overview appears before the detailed board/tree area
-- report which analytics the overview now surfaces
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current repertoire behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-350 - Add Repertoire Summary Modules For Perspective Speed And Recency
-
-```
-Prompt ID: CCP-350
-Task ID: CCP-350
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 4 — Repertoire tool full-page upgrade / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-350`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings repertoire view, analytics, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the Repertoire summary modules that show how this opponent’s repertoire changes by perspective, time control, and recency so the user can answer prep questions without manually bouncing through filters first
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `src/styles/main.scss`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Repertoire` is the upgraded home of the current opening-tree experience.
-- The active Repertoire tool should feel like a first-class prep workspace, not just the legacy session layout dropped into a new shell.
-- Use strong design judgment, but keep the result grounded in the current openings subsystem and existing Patzer visual language.
-
-Constraints:
-- use strong information-hierarchy judgment rather than cramming every metric into one panel
-- keep these modules tied to the active collection and current session filters honestly
-- do not replace the existing filters; make the summary modules complementary and interactive where helpful
-- do not build unrelated Style or Prep Report modules in this prompt
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the new modules reflect the active collection and current filter state correctly
-- report what the user can now learn at a glance about perspective, speed, and recency
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current repertoire behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-351 - Add Line Insight Cards Tied To Practical Opponent Prep Signals
-
-```
-Prompt ID: CCP-351
-Task ID: CCP-351
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 4 — Repertoire tool full-page upgrade / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-351`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings repertoire view, analytics, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add interactive line-insight cards to Repertoire so the user can immediately see pet lines, likely lines, narrow branches, and fresh or fragile branches without reading the full tree manually
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `src/styles/main.scss`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Repertoire` is the upgraded home of the current opening-tree experience.
-- The active Repertoire tool should feel like a first-class prep workspace, not just the legacy session layout dropped into a new shell.
-- Use strong design judgment, but keep the result grounded in the current openings subsystem and existing Patzer visual language.
-
-Constraints:
-- ground every insight card in analytics Patzer actually owns today
-- make the cards actionable: clicking them should help the user navigate into the right branch or filter context when practical
-- keep the card set curated and high-signal instead of turning the page into a dashboard junk drawer
-- do not invent engine-backed tactical insights here
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the line-insight cards deep-link or otherwise connect the user back into the Repertoire browsing flow
-- report the exact line signals now surfaced in Repertoire
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current repertoire behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-352 - Strengthen Sample Game And Current Position Interplay Inside Repertoire
-
-```
-Prompt ID: CCP-352
-Task ID: CCP-352
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 4 — Repertoire tool full-page upgrade / Task 5
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-352`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings repertoire view, sample-game rendering, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: strengthen the interplay between current-position context, sample games, and Repertoire insights so the full-page tool feels like one integrated prep surface rather than isolated boxes
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `src/openings/tree.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Repertoire` is the upgraded home of the current opening-tree experience.
-- The active Repertoire tool should feel like a first-class prep workspace, not just the legacy session layout dropped into a new shell.
-- Use strong design judgment, but keep the result grounded in the current openings subsystem and existing Patzer visual language.
-
-Constraints:
-- keep the current sample-game capability, but make it feel more integrated and prep-oriented
-- do not redesign the whole page in this prompt
-- favor interaction improvements and hierarchy improvements over adding lots of new data points
-- keep all changes grounded in the existing openings session data
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the current-position context, sample games, and move exploration feel more connected after the change
-- report what integration behavior was improved
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current repertoire behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-353 - Polish Repertoire Full Page Interaction Coherence
-
-```
-Prompt ID: CCP-353
-Task ID: CCP-353
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 4 — Repertoire tool full-page upgrade / Task 6
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-353`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings repertoire view, styling, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: do a final focused coherence pass on the upgraded Repertoire tool so the overview, line insights, tree, board, and sample-game surfaces read as one intentional product instead of a stack of adjacent sections
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/styles/main.scss`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Repertoire` is the upgraded home of the current opening-tree experience.
-- The active Repertoire tool should feel like a first-class prep workspace, not just the legacy session layout dropped into a new shell.
-- Use strong design judgment, but keep the result grounded in the current openings subsystem and existing Patzer visual language.
-
-Constraints:
-- this is a polish-and-coherence pass, not a multi-feature expansion prompt
-- use strong design judgment to improve spacing, section rhythm, state transitions, and interaction clarity
-- do not re-open broader shell architecture questions already handled in earlier phases
-- keep the change scoped to Repertoire only
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the Repertoire tool feels visually and interactively coherent end to end
-- report the main coherence improvements you made
-- explicitly report whether there are console/runtime errors
-- explicitly report whether any current repertoire behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-354 - Repertoire Tool Review
-
-```
-Prompt ID: CCP-354
-Task ID: CCP-354
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 4 — Repertoire tool full-page upgrade / Task 7
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-354`
-- Only continue review work after that command succeeds.
-- Leave this prompt queued after marking it started, even if the review finds issues or stops early.
-
-Startup coordination step:
-- Before reviewing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings repertoire, analytics, styling, or prompt-tracking files.
-- If overlapping work exists, stop and report it before continuing.
-
-Task: review the Repertoire-tool work from CCP-348 through CCP-353 with special attention to whether the old opening-tree experience was successfully upgraded into a first-class full-page tool without regressions in navigation, tree browsing, or session-state honesty
-
-Inspect first:
-- Prompt/source artifacts:
-  - `docs/prompts/items/CCP-348.md`
-  - `docs/prompts/items/CCP-349.md`
-  - `docs/prompts/items/CCP-350.md`
-  - `docs/prompts/items/CCP-351.md`
-  - `docs/prompts/items/CCP-352.md`
-  - `docs/prompts/items/CCP-353.md`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Review rules:
-- Review with a findings-first mindset.
-- Prioritize bugs, regressions, architectural drift, misleading UX, unsafe coupling, and missing validation.
-- Do not silently fix issues during the review prompt.
-- If no findings are present, say so explicitly and note any residual risk.
-
-Output format:
-- findings first, ordered by severity, with exact file references where possible
-- then open questions or assumptions
-- then a brief change summary
-- then `Suggested manual tests` scoped to the actual work reviewed
-```
-
-## CCP-356 - Add Canonical Prep Report Section Model And View Owner
-
-```
-Prompt ID: CCP-356
-Task ID: CCP-356
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 5 — Prep Report dashboard / Task 1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-356`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings prep-report, analytics, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the canonical section model and owned view/controller seam for the `Prep Report` tool so later prompts can build a cohesive dashboard instead of scattering report logic across `view.ts` and ad hoc helper objects
-
-Inspect first:
-- Patzer:
-  - `src/openings/types.ts`
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Prep Report` should feel like a coachable one-screen opponent dossier, not a second opening tree.
-- Every section should help the user answer “what should I prepare, what should I avoid, and what should I expect?”.
-- Use strong design judgment, but keep the content grounded in what the imported game history can actually prove today.
-
-Constraints:
-- keep this scoped to owned data/view-model structure for Prep Report
-- do not render the full dashboard in this prompt
-- prefer a dedicated openings owner seam if that is cleaner than growing `view.ts` monolithically
-- do not invent engine-backed sections the data model cannot support yet
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report the exact Prep Report section model now owned by the openings subsystem
-- report how later prompts should feed and render it
-- explicitly report whether there are console/runtime errors
-- explicitly report whether existing openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-357 - Derive Likely Lines And Expected Repertoire Modules
-
-```
-Prompt ID: CCP-357
-Task ID: CCP-357
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 5 — Prep Report dashboard / Task 2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-357`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings prep-report, analytics, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: derive the likely-line and expected-repertoire modules that tell the user what this opponent is most likely to play as White and Black right now, using the imported history and the current analytics foundation
-
-Inspect first:
-- Patzer:
-  - `src/openings/ctrl.ts`
-  - `src/openings/tree.ts`
-  - `src/openings/types.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Prep Report` should feel like a coachable one-screen opponent dossier, not a second opening tree.
-- Every section should help the user answer “what should I prepare, what should I avoid, and what should I expect?”.
-- Use strong design judgment, but keep the content grounded in what the imported game history can actually prove today.
-
-Constraints:
-- keep this prompt focused on likely-line and expectation modules only
-- use recency and sample-size honestly rather than blindly ranking by lifetime frequency alone
-- do not render the full dashboard in this prompt
-- be explicit about uncertainty when the imported collection is sparse or split across many branches
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report the exact likely-line/expected-repertoire modules now available
-- report how they weigh recency versus raw frequency at a high level
-- explicitly report whether there are console/runtime errors
-- explicitly report whether existing openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-358 - Derive Targetable Weaknesses And Practical Prep Notes
-
-```
-Prompt ID: CCP-358
-Task ID: CCP-358
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 5 — Prep Report dashboard / Task 3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-358`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings prep-report, analytics, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: derive the targetable weakness modules and practical prep notes that Patzer can honestly support today, such as weak-scoring branches, fresh trouble lines, narrow comfort zones, and lines the opponent may be underprepared for
-
-Inspect first:
-- Patzer:
-  - `src/openings/ctrl.ts`
-  - `src/openings/tree.ts`
-  - `src/openings/types.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Prep Report` should feel like a coachable one-screen opponent dossier, not a second opening tree.
-- Every section should help the user answer “what should I prepare, what should I avoid, and what should I expect?”.
-- Use strong design judgment, but keep the content grounded in what the imported game history can actually prove today.
-
-Constraints:
-- keep this prompt scoped to actionable prep modules grounded in current data only
-- do not invent engine-backed refutations, tactic scores, or time-trouble claims that the openings subsystem cannot prove yet
-- prefer honest caveated prep notes over overconfident pseudo-insights
-- do not render the full dashboard in this prompt
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- report the exact targetable weakness and prep-note modules now available
-- report what is still intentionally deferred because the openings subsystem lacks clocks or engine-backed opponent analysis
-- explicitly report whether there are console/runtime errors
-- explicitly report whether existing openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-359 - Render Prep Report As A Full Page Openings Tool Dashboard
-
-```
-Prompt ID: CCP-359
-Task ID: CCP-359
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 5 — Prep Report dashboard / Task 4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-359`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings prep-report view, styling, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: render `Prep Report` as a full-page openings tool dashboard that takes over the main content area and feels like a serious opponent-preparation surface rather than a generic stats dump
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/styles/main.scss`
-  - `src/openings/ctrl.ts`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Prep Report` should feel like a coachable one-screen opponent dossier, not a second opening tree.
-- Every section should help the user answer “what should I prepare, what should I avoid, and what should I expect?”.
-- Use strong design judgment, but keep the content grounded in what the imported game history can actually prove today.
-
-Constraints:
-- use strong product and design judgment, but let the data model drive the hierarchy
-- keep the dashboard focused on prep usefulness, not on decorative chart spam
-- do not redesign Repertoire or Style in this prompt
-- active Prep Report content should clearly take over the main openings session area once selected
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify Prep Report occupies the full main content area when selected from the tool rail
-- report the main Prep Report dashboard sections now visible
-- explicitly report whether there are console/runtime errors
-- explicitly report whether existing openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
-
-## CCP-360 - Add Interactive Likely Line And Target Line Modules To Prep Report
-
-```
-Prompt ID: CCP-360
-Task ID: CCP-360
-Source Document: docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md
-Source Step: Phase 5 — Prep Report dashboard / Task 5
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-360`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings prep-report view, controller, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: add the interactive likely-line and target-line modules to Prep Report so the user can click from the dashboard into the exact branch they should expect or the exact branch they should prepare to target
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/openings/ctrl.ts`
-  - `src/styles/main.scss`
-  - `docs/mini-sprints/OPENINGS_OPPONENT_TOOL_SUITE_SPRINT_2026-03-29.md`
-
-Product rules for this phase:
-- `Prep Report` should feel like a coachable one-screen opponent dossier, not a second opening tree.
-- Every section should help the user answer “what should I prepare, what should I avoid, and what should I expect?”.
-- Use strong design judgment, but keep the content grounded in what the imported game history can actually prove today.
-
-Constraints:
-- make these modules genuinely interactive and connected back to the current Repertoire tool or branch state when that is the most useful behavior
-- do not turn this prompt into a broader shell redesign
-- keep the interaction honest about uncertainty and sample size
-- do not add unrelated dashboard modules here
-
-Before coding, provide:
-- prompt id
-- task id
-- source document
-- source step
-- relevant Patzer Pro files
-- relevant reference files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- verify the new modules can move the user from Prep Report to the relevant repertoire context cleanly
-- report how likely lines and target lines are now surfaced interactively
-- explicitly report whether there are console/runtime errors
-- explicitly report whether existing openings behavior changed intentionally
-
-Also include a short manual test checklist with concrete user actions and expected results.
-```
 
 ## CCP-361 - Add Actionable Prep Cards And Opponent Plan Summary Modules
 
@@ -2792,3056 +254,6 @@ Completion step:
   Include dev-console checks if relevant. The user can open browser dev tools when needed.
 - If all validation passed, run: `npm run prompt:complete -- CCP-361 --checklist "- [ ] action and expected result|- [ ] another check"`
 - If errors were encountered, run: `npm run prompt:complete -- CCP-361 --errors "brief description" --checklist "- [ ] action and expected result"`
-```
-
-## CCP-520-F1 - Fix Study DB Fresh-Opener Store Creation Gap
-
-```
-Prompt ID: CCP-520-F1
-Task ID: CCP-520
-Parent Prompt ID: CCP-520
-Source Document: CCP-520 review
-Source Step: Fix fresh-study-route IDB store creation gap
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-520-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same study persistence / shared IndexedDB / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the study persistence foundation so a fresh `#/study` boot cannot upgrade the shared `patzer-pro` IndexedDB database without creating the Phase 0 study stores.
-
-Review-grounded bug to confirm:
-- `src/study/studyDb.ts` opens the shared `patzer-pro` database directly
-- its `onupgradeneeded` handler is currently a no-op
-- `initStudyLibrary()` can call `listStudies()` before `loadGamesFromIdb()` runs
-- if the study route is the first opener of the database, the version bump can complete without creating:
-  - `studies`
-  - `practice-lines`
-  - `position-progress`
-  - `drill-attempts`
-
-Inspect first:
-- Patzer:
-  - `src/study/studyDb.ts`
-  - `src/idb/index.ts`
-  - `src/study/studyCtrl.ts`
-  - `src/main.ts`
-- Relevant Lichess reference:
-  - `~/Development/lichess-source/lila/ui/analyse/src/idbTree.ts`
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- ensure the shared DB upgrade path creates the study stores no matter which module opens the DB first
-- preserve the shared `patzer-pro` database ownership model
-- keep the fix narrowly scoped to store creation / upgrade safety
-
-Constraints:
-- do not redesign study persistence
-- do not create a second study-specific database
-- do not bundle unrelated study feature work
-- prefer the smallest safe fix that keeps persistence identifiers consistent across modules
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- verify at least one live call site exists outside the defining file
-- verify all modules referencing this persistence layer use the same DB name, version, and store identifiers
-- explicitly report:
-  - what changed
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-520-F1 --checklist "- [ ] Open #/study first in a fresh browser profile — expected result: library loads without missing-store errors and IndexedDB shows studies, practice-lines, position-progress, and drill-attempts|- [ ] Reload the app and open analysis/game routes after opening #/study first — expected result: existing shared patzer-pro data still loads normally|- [ ] Open DevTools Application > IndexedDB > patzer-pro after a fresh study-first boot — expected result: the four study stores exist with no upgrade/runtime console errors"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-520-F1 --errors "<brief description>" --checklist "- [ ] Open #/study first in a fresh browser profile — expected result: library loads without missing-store errors|- [ ] Open DevTools Application > IndexedDB > patzer-pro — expected result: the four study stores exist"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-520-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-520-F1 --checklist "- [ ] Open #/study first in a fresh browser profile — expected result: library loads without missing-store errors and IndexedDB shows studies, practice-lines, position-progress, and drill-attempts|- [ ] Reload the app and open analysis/game routes after opening #/study first — expected result: existing shared patzer-pro data still loads normally|- [ ] Open DevTools Application > IndexedDB > patzer-pro after a fresh study-first boot — expected result: the four study stores exist with no upgrade/runtime console errors"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-520-F1 --errors "brief description of what went wrong" --checklist "- [ ] Open #/study first in a fresh browser profile — expected result: library loads without missing-store errors and IndexedDB shows studies, practice-lines, position-progress, and drill-attempts|- [ ] Reload the app and open analysis/game routes after opening #/study first — expected result: existing shared patzer-pro data still loads normally|- [ ] Open DevTools Application > IndexedDB > patzer-pro after a fresh study-first boot — expected result: the four study stores exist with no upgrade/runtime console errors"
-```
-```
-
-## CCP-549 - Board adapter for drill mode
-
-```
-Prompt ID: CCP-549
-Task ID: CCP-549
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 5 — Task 5.1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Create src/study/practice/boardAdapter.ts: setPosition, animateOpponentMove, enableUserInput, disableUserInput, showCorrectMove, flashFeedback.
-
-Inspect first:
-- The sprint doc section for Phase 5 — Task 5.1
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-549 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-549 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-549
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-549 --checklist "- [ ] boardAdapter.ts exports createDrillBoardAdapter — confirm no build errors|- [ ] drillView (Task 5.2) wires boardAdapter to a Chessground instance and calls setPosition/enableUserInput in sequence"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-549 --errors "brief description of what went wrong" --checklist "- [ ] boardAdapter.ts exports createDrillBoardAdapter — confirm no build errors|- [ ] drillView (Task 5.2) wires boardAdapter to a Chessground instance and calls setPosition/enableUserInput in sequence"
-```
-```
-
-## CCP-550 - Drill session UI — active view
-
-```
-Prompt ID: CCP-550
-Task ID: CCP-550
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 5 — Task 5.2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Create src/study/practice/drillView.ts: board, sequence label, move counter, feedback strip, Next button, End Session, progress bar.
-
-Inspect first:
-- The sprint doc section for Phase 5 — Task 5.2
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-550 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-550 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-550
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-550 --checklist "- [ ] drillView.ts exports renderDrillView and initDrillView — confirm no build errors|- [ ] Style drill-session renders correctly after connecting entry point in CCP-552|- [ ] Feedback strip shows 'Your turn' / 'Correct\!' / 'Try again (N left)' / 'The move was X' per state"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-550 --errors "brief description of what went wrong" --checklist "- [ ] drillView.ts exports renderDrillView and initDrillView — confirm no build errors|- [ ] Style drill-session renders correctly after connecting entry point in CCP-552|- [ ] Feedback strip shows 'Your turn' / 'Correct\!' / 'Try again (N left)' / 'The move was X' per state"
-```
-```
-
-## CCP-551 - Drill session summary
-
-```
-Prompt ID: CCP-551
-Task ID: CCP-551
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 5 — Task 5.3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Add session summary to drillView.ts: positions quizzed, accuracy, sequences completed, duration, Practice Again / Back to Library.
-
-Inspect first:
-- The sprint doc section for Phase 5 — Task 5.3
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-551 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-551 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-551
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-551 --checklist "- [ ] Complete all positions in a drill session — summary appears with positions quizzed, accuracy %, lines completed X/N, duration|- [ ] Click 'End Session' mid-drill — summary appears with stats captured at that point|- [ ] Click 'Practice Again' — drill restarts from the beginning|- [ ] Click 'Back to Library' — returns to study library view"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-551 --errors "brief description of what went wrong" --checklist "- [ ] Complete all positions in a drill session — summary appears with positions quizzed, accuracy %, lines completed X/N, duration|- [ ] Click 'End Session' mid-drill — summary appears with stats captured at that point|- [ ] Click 'Practice Again' — drill restarts from the beginning|- [ ] Click 'Back to Library' — returns to study library view"
-```
-```
-
-## CCP-552 - Practice entry from study detail
-
-```
-Prompt ID: CCP-552
-Task ID: CCP-552
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 5 — Task 5.4
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Add "Practice this line" button in study detail. Color selector. Extract mainline → launch drill. Transition to drill view.
-
-Inspect first:
-- The sprint doc section for Phase 5 — Task 5.4
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-552 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-552 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-552
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-552 --checklist "- [ ] Open any study detail — confirm 'Practice this line' button appears in header actions|- [ ] Click 'Practice this line' — color picker overlay appears with White and Black buttons|- [ ] Click 'White' or 'Black' — drill session starts with board oriented correctly|- [ ] Board shows first position; 'Your turn' appears in feedback strip|- [ ] Click 'End Session' from drill — returns to study annotation workspace"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-552 --errors "brief description of what went wrong" --checklist "- [ ] Open any study detail — confirm 'Practice this line' button appears in header actions|- [ ] Click 'Practice this line' — color picker overlay appears with White and Black buttons|- [ ] Click 'White' or 'Black' — drill session starts with board oriented correctly|- [ ] Board shows first position; 'Your turn' appears in feedback strip|- [ ] Click 'End Session' from drill — returns to study annotation workspace"
-```
-```
-
-## CCP-554 - Progress persistence wiring
-
-```
-Prompt ID: CCP-554
-Task ID: CCP-554
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 6 — Task 6.1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Wire drillCtrl onPositionGraded to: load PositionProgress, scheduleNext(), update IDB, append DrillAttempt.
-
-Inspect first:
-- The sprint doc section for Phase 6 — Task 6.1
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-554 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-554 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-554
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-554 --checklist "- [ ] Complete a drill with correct and incorrect moves — open DevTools > Application > IndexedDB > patzer-pro > position-progress and confirm records exist with non-zero levels|- [ ] Check drill-attempts store — confirm records with correct/incorrect results, expectedMove, and timestamp|- [ ] Verify PositionProgress.level increments on repeated correct answers and decrements on incorrect"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-554 --errors "brief description of what went wrong" --checklist "- [ ] Complete a drill with correct and incorrect moves — open DevTools > Application > IndexedDB > patzer-pro > position-progress and confirm records exist with non-zero levels|- [ ] Check drill-attempts store — confirm records with correct/incorrect results, expectedMove, and timestamp|- [ ] Verify PositionProgress.level increments on repeated correct answers and decrements on incorrect"
-```
-```
-
-## CCP-555 - Practice dashboard
-
-```
-Prompt ID: CCP-555
-Task ID: CCP-555
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 6 — Task 6.2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Add to library view: due count banner, Start Review button, Learn New Lines section, per-study due indicators.
-
-Inspect first:
-- The sprint doc section for Phase 6 — Task 6.2
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-555 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-555 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-555
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-555 --checklist "- [ ] Navigate to /study — if no practice data exists, banner is hidden|- [ ] After completing a drill session: navigate back to library — banner shows 'X positions due for review'|- [ ] Study rows show a 'N due' indicator when that study has due positions|- [ ] 'Start Review' button launches a drill session with due sequences|- [ ] Learn Now button appears for sequences with level-0 positions"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-555 --errors "brief description of what went wrong" --checklist "- [ ] Navigate to /study — if no practice data exists, banner is hidden|- [ ] After completing a drill session: navigate back to library — banner shows 'X positions due for review'|- [ ] Study rows show a 'N due' indicator when that study has due positions|- [ ] 'Start Review' button launches a drill session with due sequences|- [ ] Learn Now button appears for sequences with level-0 positions"
-```
-```
-
-## CCP-556 - Learn flow implementation
-
-```
-Prompt ID: CCP-556
-Task ID: CCP-556
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 6 — Task 6.3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: In drillCtrl when mode=learn: first pass auto-plays line (700ms/move), second pass quizzes. Positions start level 1.
-
-Inspect first:
-- The sprint doc section for Phase 6 — Task 6.3
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-556 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-556 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-556
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-556 --checklist "- [ ] Start drill with mode='learn' — board auto-plays all moves at ~700ms each without user interaction|- [ ] After learn pass completes, confirm board transitions to quiz mode (feedback strip shows 'Your turn')|- [ ] Check IDB position-progress after learn completes — all positions should have level=1|- [ ] Quiz mode works normally after learn pass"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-556 --errors "brief description of what went wrong" --checklist "- [ ] Start drill with mode='learn' — board auto-plays all moves at ~700ms each without user interaction|- [ ] After learn pass completes, confirm board transitions to quiz mode (feedback strip shows 'Your turn')|- [ ] Check IDB position-progress after learn completes — all positions should have level=1|- [ ] Quiz mode works normally after learn pass"
-```
-```
-
-## CCP-558 - Practice from here context action
-
-```
-Prompt ID: CCP-558
-Task ID: CCP-558
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 7 — Task 7.1
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Add "Practice from here" to study move list context menu. Extract TrainableSequence from clicked position to end of line.
-
-Inspect first:
-- The sprint doc section for Phase 7 — Task 7.1
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-558 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-558 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-558
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-558 --checklist "- [ ] Right-click any move in a study — context menu shows 'Practice from here'|- [ ] Click 'Practice from here' — color picker appears|- [ ] Select a color — drill starts from that position onwards (not from the beginning of the game)|- [ ] Board is oriented for the selected color"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-558 --errors "brief description of what went wrong" --checklist "- [ ] Right-click any move in a study — context menu shows 'Practice from here'|- [ ] Click 'Practice from here' — color picker appears|- [ ] Select a color — drill starts from that position onwards (not from the beginning of the game)|- [ ] Board is oriented for the selected color"
-```
-```
-
-## CCP-559 - Practice line manager panel
-
-```
-Prompt ID: CCP-559
-Task ID: CCP-559
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 7 — Task 7.2
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Practice Lines panel in study detail: list TrainableSequences, show label/color/status/counts, pause/resume/delete/rename/Practice now.
-
-Inspect first:
-- The sprint doc section for Phase 7 — Task 7.2
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-559 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-559 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-559
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-559 --checklist "- [ ] Open a study detail — Practice Lines panel appears in tools column below comment panel|- [ ] After creating a practice line via 'Practice this line', it appears in the panel|- [ ] '▶' Practice now button launches drill for that specific line|- [ ] Pause/resume button toggles line status (active ↔ paused)|- [ ] Delete (✕) removes line from the panel and IDB|- [ ] Double-click label to rename; Enter confirms, Escape cancels"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-559 --errors "brief description of what went wrong" --checklist "- [ ] Open a study detail — Practice Lines panel appears in tools column below comment panel|- [ ] After creating a practice line via 'Practice this line', it appears in the panel|- [ ] '▶' Practice now button launches drill for that specific line|- [ ] Pause/resume button toggles line status (active ↔ paused)|- [ ] Delete (✕) removes line from the panel and IDB|- [ ] Double-click label to rename; Enter confirms, Escape cancels"
-```
-```
-
-## CCP-560 - Sequence scope selection UI
-
-```
-Prompt ID: CCP-560
-Task ID: CCP-560
-Source Document: docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md
-Source Step: Phase 7 — Task 7.3
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Sprint reference:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same repo areas.
-- If overlapping work exists, stop and report it before editing.
-
-Task: Scope selector on "Practice this line": Full game / From current position / Selected variation. Training color picker.
-
-Inspect first:
-- The sprint doc section for Phase 7 — Task 7.3
-- All files listed in that section
-- Any existing code in src/study/ from earlier phases
-
-Constraints:
-- Implement only the smallest safe step described in the sprint doc
-- Do not bundle adjacent cleanup
-- Do not modify files outside scope unless necessary for wiring
-- Preserve the current architecture direction
-
-Before coding, provide:
-- prompt id, task id, source document, source step, task title
-- relevant Patzer Pro files
-- diagnosis
-- exact small step to implement
-- why that step is safely scoped
-
-Then implement the change directly.
-
-Validation after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- report: build result, typecheck result, what changed, remaining risks
-
-Manual test checklist with concrete user actions and expected results.
-
-Completion:
-- If passed: `npm run prompt:complete -- CCP-560 --checklist "items"`
-- If failed: `npm run prompt:complete -- CCP-560 --errors "desc" --checklist "items"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-560
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-560 --checklist "- [ ] Open a study chapter with multiple moves, click 'Practice this line' — confirm color picker shows scope selector at top (Full game / From current position / Selected variation)|- [ ] Navigate to a specific move in the tree, open picker — confirm 'From current position' scope is selectable|- [ ] Select 'Full game', choose White — confirm drill starts from move 1|- [ ] Right-click a move to open context menu, click 'Practice from here' — confirm picker shows NO scope selector, just color buttons|- [ ] Select a variation in the tree, open picker, choose 'Selected variation' — confirm drill starts from that variation path"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-560 --errors "brief description of what went wrong" --checklist "- [ ] Open a study chapter with multiple moves, click 'Practice this line' — confirm color picker shows scope selector at top (Full game / From current position / Selected variation)|- [ ] Navigate to a specific move in the tree, open picker — confirm 'From current position' scope is selectable|- [ ] Select 'Full game', choose White — confirm drill starts from move 1|- [ ] Right-click a move to open context menu, click 'Practice from here' — confirm picker shows NO scope selector, just color buttons|- [ ] Select a variation in the tree, open picker, choose 'Selected variation' — confirm drill starts from that variation path"
-```
-```
-
-## CCP-503-F1 - Reset Games Pagination On Filter Changes
-
-```
-Prompt ID: CCP-503-F1
-Task ID: CCP-503
-Parent Prompt ID: CCP-503
-Source Document: CCP-503 review
-Source Step: Fix pagination reset on game-list filter changes
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-503-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same games view / games filters / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the games pagination follow-up bug so changing ordinary game-list filters always resets pagination back to page 0.
-
-Review-grounded bug to confirm:
-- `CCP-503` added pagination to the games view
-- `src/games/view.ts` updates filters without always resetting the current page
-- when the user changes normal filters while on a later page, the list can stay stranded on an invalid or misleading page instead of returning to page 0
-
-Inspect first:
-- Patzer:
-  - `src/games/view.ts`
-  - `src/main.ts`
-  - any games filter state owner actually used by the page
-- Relevant Lichess reference:
-  - inspect only if there is a comparable filter/pagination reset pattern; otherwise keep this Patzer-local
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- reset the games pagination state to page 0 whenever the user changes a normal filter
-- preserve the current pagination behavior otherwise
-- keep the fix scoped to filter-change pagination reset only
-
-Constraints:
-- do not redesign the games page
-- do not change page size
-- do not bundle unrelated games-view cleanup
-- prefer the smallest safe fix in the current games state ownership seam
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for games filtering + pagination
-- explicitly report:
-  - what changed
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-503-F1 --checklist "- [ ] Open the Games page, navigate to page 2 or later, then change a normal filter — expected result: the list resets to page 0 and shows the first filtered results|- [ ] Change multiple filters in sequence while paging — expected result: pagination keeps returning to page 0 without console errors|- [ ] Import or reload games after using filters — expected result: the page still behaves normally and pagination remains valid"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-503-F1 --errors "<brief description>" --checklist "- [ ] Open the Games page and change filters from a later page — expected result: pagination resets to page 0|- [ ] Check console while filtering — expected result: no runtime errors"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-503-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-503-F1 --checklist "- [ ] Open the Games page, navigate to page 2 or later, then change a normal filter — expected result: the list resets to page 0 and shows the first filtered results|- [ ] Change multiple filters in sequence while paging — expected result: pagination keeps returning to page 0 without console errors|- [ ] Import or reload games after using filters — expected result: the page still behaves normally and pagination remains valid"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-503-F1 --errors "brief description of what went wrong" --checklist "- [ ] Open the Games page, navigate to page 2 or later, then change a normal filter — expected result: the list resets to page 0 and shows the first filtered results|- [ ] Change multiple filters in sequence while paging — expected result: pagination keeps returning to page 0 without console errors|- [ ] Import or reload games after using filters — expected result: the page still behaves normally and pagination remains valid"
-```
-```
-
-## CCP-504-F1 - Extend Route Skeletons Beyond Analysis Game
-
-```
-Prompt ID: CCP-504-F1
-Task ID: CCP-504
-Parent Prompt ID: CCP-504
-Source Document: CCP-504 review
-Source Step: Extend structured loading skeletons beyond the analysis-game route
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-504-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same route-loading / page shell / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: finish the structured loading-shell follow-up so the async routes named by `CCP-504` render real page skeletons instead of only the single `analysis-game` loading state.
-
-Review-grounded bug to confirm:
-- the current tree only shows the structured loading shell for `analysis-game`
-- the broader async routes covered by the original prompt still rely on simpler loading states
-- this leaves the intended route-change responsiveness only partially implemented
-
-Inspect first:
-- Patzer:
-  - `src/main.ts`
-  - route-specific view modules actually used by async pages
-  - any shared skeleton or placeholder helpers already in the repo
-- Relevant Lichess reference:
-  - inspect only for page-shell loading patterns if helpful; do not force a large parity rewrite
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- render a structured page shell immediately on route change for the intended async routes
-- preserve existing route ownership and async loading flow
-- keep the fix scoped to loading-shell completion, not a route redesign
-
-Constraints:
-- do not redesign the app layout
-- do not bundle unrelated route refactors
-- do not move medium-sized feature logic into `src/main.ts`
-- prefer the smallest safe shell/placeholder extension using existing route structure
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for async route loading shells
-- explicitly report:
-  - what changed
-  - which routes now render structured loading shells
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-504-F1 --checklist "- [ ] Navigate to each async route covered by this fix — expected result: the page shell appears immediately instead of a plain Loading text state|- [ ] Wait for async data to resolve on each route — expected result: the placeholders are replaced by the real content without layout jumps or console errors|- [ ] Reload directly into one of the async routes — expected result: the structured skeleton still appears during initial load"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-504-F1 --errors "<brief description>" --checklist "- [ ] Navigate to an affected async route — expected result: a structured loading shell appears immediately|- [ ] Confirm the final loaded page replaces the placeholders without runtime errors"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-504-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-504-F1 --checklist "- [ ] Navigate to each async route (games, puzzles, opponents, stats) during initial load — expected result: the page shell appears immediately instead of a plain Loading text state|- [ ] Wait for async data to resolve on each route — expected result: the placeholders are replaced by the real content without layout jumps or console errors|- [ ] Reload directly into one of the async routes — expected result: the structured skeleton still appears during initial load"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-504-F1 --errors "brief description of what went wrong" --checklist "- [ ] Navigate to each async route (games, puzzles, opponents, stats) during initial load — expected result: the page shell appears immediately instead of a plain Loading text state|- [ ] Wait for async data to resolve on each route — expected result: the placeholders are replaced by the real content without layout jumps or console errors|- [ ] Reload directly into one of the async routes — expected result: the structured skeleton still appears during initial load"
-```
-```
-
-## CCP-505-F1 - Make Import Count Update During Import
-
-```
-Prompt ID: CCP-505-F1
-Task ID: CCP-505
-Parent Prompt ID: CCP-505
-Source Document: CCP-505 review
-Source Step: Fix live import count updates during active import
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-505-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same import progress / header / import adapter / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the import progress follow-up so the header count updates while import work is still in progress instead of only once the full import finishes.
-
-Review-grounded bug to confirm:
-- `src/header/index.ts` can render a game count
-- the current import adapters still only set `gameCount` after the import fully completes
-- that means the user never sees real live progress during the import itself
-
-Inspect first:
-- Patzer:
-  - `src/header/index.ts`
-  - `src/import/chesscom.ts`
-  - `src/import/lichess.ts`
-  - any shared import-progress state owner actually used by the header
-- Relevant Lichess reference:
-  - inspect only if there is a useful incremental progress pattern; otherwise keep this Patzer-local
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- make the header import count update during active import work
-- preserve existing import behavior and storage semantics
-- keep the fix scoped to progress visibility, not a broader import rewrite
-
-Constraints:
-- do not redesign import UX
-- do not change final import results
-- do not bundle unrelated import cleanup
-- prefer the smallest safe progress-state wiring that works for both Chess.com and Lichess imports
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for import progress updates
-- explicitly report:
-  - what changed
-  - whether the count now updates during active import
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-505-F1 --checklist "- [ ] Start a Chess.com import with multiple archives — expected result: the header count increases during the import instead of only at the end|- [ ] Start a Lichess import — expected result: the header count updates during the active import flow without waiting for the final completion state|- [ ] Finish an import and reload the page — expected result: final import totals and normal behavior remain correct with no console errors"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-505-F1 --errors "<brief description>" --checklist "- [ ] Start an import — expected result: the header count changes during import progress|- [ ] Check console during import — expected result: no runtime errors"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-505-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-505-F1 --checklist "- [ ] Start a Chess.com import with multiple archives — expected result: the header count increases during the import instead of only at the end|- [ ] Start a Lichess import — expected result: the header count updates during the active import flow without waiting for the final completion state|- [ ] Finish an import and reload the page — expected result: final import totals and normal behavior remain correct with no console errors"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-505-F1 --errors "brief description of what went wrong" --checklist "- [ ] Start a Chess.com import with multiple archives — expected result: the header count increases during the import instead of only at the end|- [ ] Start a Lichess import — expected result: the header count updates during the active import flow without waiting for the final completion state|- [ ] Finish an import and reload the page — expected result: final import totals and normal behavior remain correct with no console errors"
-```
-```
-
-## CCP-513-F1 - Keep Inactive Username Slot Empty In Color Toggle
-
-```
-Prompt ID: CCP-513-F1
-Task ID: CCP-513
-Parent Prompt ID: CCP-513
-Source Document: CCP-513 review
-Source Step: Keep the inactive color-toggle username line empty
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-513-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings toggle UI / openings styles / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the color-toggle follow-up so the reserved username line stays empty on the inactive button instead of rendering `Opponents`.
-
-Review-grounded bug to confirm:
-- `CCP-513` reserved space for the username line on the color buttons
-- the inactive button still renders placeholder text instead of an empty reserved line
-- the prompt required the username line to appear on the active button only and stay empty otherwise
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - `src/styles/main.scss`
-- Relevant Lichess reference:
-  - inspect only if helpful for button structure; otherwise keep this Patzer-local
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- preserve equal button height
-- keep the username visible only on the active button
-- keep the inactive reserved line visually empty
-
-Constraints:
-- keep this scoped to the existing color-toggle UI
-- do not redesign button styling
-- do not bundle unrelated openings UI cleanup
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for the openings color buttons
-- explicitly report:
-  - what changed
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-513-F1 --checklist "- [ ] Open the affected openings surface with a username loaded — expected result: only the active color button shows the username line|- [ ] Switch between White and Black — expected result: the username moves to the active button and the inactive reserved line stays empty while both buttons remain equal height|- [ ] Check console while toggling colors — expected result: no runtime errors"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-513-F1 --errors "<brief description>" --checklist "- [ ] Toggle between White and Black — expected result: inactive button line stays empty and button heights match|- [ ] Check console while toggling — expected result: no runtime errors"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-513-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-513-F1 --checklist "- [ ] Open the affected openings surface with a username loaded — expected result: only the active color button shows the username line|- [ ] Switch between White and Black — expected result: the username moves to the active button and the inactive reserved line stays empty while both buttons remain equal height|- [ ] Check console while toggling colors — expected result: no runtime errors"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-513-F1 --errors "brief description of what went wrong" --checklist "- [ ] Open the affected openings surface with a username loaded — expected result: only the active color button shows the username line|- [ ] Switch between White and Black — expected result: the username moves to the active button and the inactive reserved line stays empty while both buttons remain equal height|- [ ] Check console while toggling colors — expected result: no runtime errors"
-```
-```
-
-## CCP-574-F1 - Initialize Stored Play Strength On Module Load
-
-```
-Prompt ID: CCP-574-F1
-Task ID: CCP-574
-Parent Prompt ID: CCP-574
-Source Document: CCP-574 review
-Source Step: Initialize stored play strength on module load
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-574-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine settings / play strength / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the engine-strength persistence follow-up so the stored play-strength level is initialized on module load using the same stored-int pattern as the other engine settings.
-
-Review-grounded bug to confirm:
-- `src/engine/ctrl.ts` exposes `getPlayStrengthLevel()` and `setPlayStrengthLevel()`
-- the current module does not seed localStorage or initialize the runtime config on module load
-- the original prompt explicitly required last-used strength initialization at startup
-
-Inspect first:
-- Patzer:
-  - `src/engine/ctrl.ts`
-  - any call sites reading play strength
-- Relevant Lichess reference:
-  - inspect only if there is a directly relevant engine-setting persistence pattern
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- initialize stored play strength on module load
-- preserve the existing engine strength ownership seam in `src/engine/ctrl.ts`
-- keep the fix scoped to persistence initialization only
-
-Constraints:
-- do not redesign engine settings
-- do not bundle unrelated strength-selector work
-- prefer the same persistence pattern already used for sibling engine settings
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for persisted play strength
-- explicitly report:
-  - what changed
-  - whether the stored level now initializes on module load
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-574-F1 --checklist "- [ ] Set a play strength level, reload the page, and inspect the active level — expected result: the stored level is restored immediately on load|- [ ] Inspect localStorage for patzer.playStrengthLevel — expected result: the stored/default value is present and consistent with runtime config|- [ ] Start a practice session after reload — expected result: the engine uses the restored strength with no console errors"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-574-F1 --errors "<brief description>" --checklist "- [ ] Reload after setting a strength level — expected result: the stored level restores immediately|- [ ] Check console during startup — expected result: no runtime errors"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-574-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-574-F1 --checklist "- [ ] Set a play strength level, reload the page, and inspect the active level — expected result: the stored level is restored immediately on load|- [ ] Inspect localStorage for patzer.playStrengthLevel — expected result: the stored/default value is present and consistent with runtime config|- [ ] Start a practice session after reload — expected result: the engine uses the restored strength with no console errors"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-574-F1 --errors "brief description of what went wrong" --checklist "- [ ] Set a play strength level, reload the page, and inspect the active level — expected result: the stored level is restored immediately on load|- [ ] Inspect localStorage for patzer.playStrengthLevel — expected result: the stored/default value is present and consistent with runtime config|- [ ] Start a practice session after reload — expected result: the engine uses the restored strength with no console errors"
-```
-```
-
-## CCP-580-F1 - Make Delayed Play-Move Requests Cancellable
-
-```
-Prompt ID: CCP-580-F1
-Task ID: CCP-580
-Parent Prompt ID: CCP-580
-Source Document: CCP-580 review
-Source Step: Make delayed play-move requests cancellable
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-580-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same engine play-move service / openings practice integration / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the delayed play-move follow-up so canceling during the pre-send thinking window actually prevents the later engine request from firing.
-
-Review-grounded bug to confirm:
-- `src/engine/playMove.ts` schedules delayed requests with `setTimeout`
-- `cancelPlayMove()` only cancels a request that has already been sent to the engine
-- pending timers are not cleared, so a stale delayed callback can still dispatch later
-
-Inspect first:
-- Patzer:
-  - `src/engine/playMove.ts`
-  - call sites that use `playMoveWithDelay()` and `cancelPlayMove()`
-  - any related openings practice flow that depends on cancel safety
-- Relevant Lichess reference:
-  - inspect only if there is a comparable cancellation pattern; otherwise keep the fix local to the current service
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- make delayed play-move requests fully cancellable before the engine request is sent
-- preserve the existing play-move service ownership seam
-- keep the fix scoped to timer cancellation / stale callback safety
-
-Constraints:
-- do not redesign the engine play-move API
-- do not bundle unrelated openings practice cleanup
-- prefer the smallest safe timer-state fix that keeps existing call sites working
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for delayed cancellation behavior
-- explicitly report:
-  - what changed
-  - whether delayed requests are now cancellable before dispatch
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-580-F1 --checklist "- [ ] Start a delayed engine move request, cancel during the thinking window, and wait past the original delay — expected result: no engine request fires and no stale callback runs|- [ ] Start a delayed engine move request without canceling — expected result: the engine request still fires after the intended delay|- [ ] Stop or close the dependent practice flow during the delay — expected result: no stale engine move arrives and no console errors appear"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-580-F1 --errors "<brief description>" --checklist "- [ ] Cancel during the thinking delay — expected result: no later engine request fires|- [ ] Check console after canceling — expected result: no stale callback errors"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-580-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-580-F1 --checklist "- [ ] Start a delayed engine move request, cancel during the thinking window, and wait past the original delay — expected result: no engine request fires and no stale callback runs|- [ ] Start a delayed engine move request without canceling — expected result: the engine request still fires after the intended delay|- [ ] Stop or close the dependent practice flow during the delay — expected result: no stale engine move arrives and no console errors appear"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-580-F1 --errors "brief description of what went wrong" --checklist "- [ ] Start a delayed engine move request, cancel during the thinking window, and wait past the original delay — expected result: no engine request fires and no stale callback runs|- [ ] Start a delayed engine move request without canceling — expected result: the engine request still fires after the intended delay|- [ ] Stop or close the dependent practice flow during the delay — expected result: no stale engine move arrives and no console errors appear"
-```
-```
-
-## CCP-592-F1 - Fix Practice Setup Copy For Immediate Start
-
-```
-Prompt ID: CCP-592-F1
-Task ID: CCP-592
-Parent Prompt ID: CCP-592
-Source Document: CCP-592 review
-Source Step: Fix misleading immediate-start practice setup copy
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-592-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings practice setup UI / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the practice-setup follow-up copy so the UI no longer claims a separate start button appears when color selection immediately starts practice.
-
-Review-grounded bug to confirm:
-- the current setup copy still describes a start button
-- the actual product behavior starts practice as soon as the user picks a color
-- this makes the final validation prompt incomplete even though the feature largely works
-
-Inspect first:
-- Patzer:
-  - `src/openings/view.ts`
-  - any nearby copy/constants that describe practice setup flow
-- Relevant Lichess reference:
-  - inspect only if helpful for wording/flow comparison; otherwise keep this Patzer-local
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- make the setup copy honestly describe the immediate-start behavior
-- preserve the current practice interaction model
-- keep the fix scoped to copy/UX truthfulness only
-
-Constraints:
-- do not redesign the practice flow
-- do not bundle unrelated openings UI changes
-- prefer the smallest safe copy update
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for practice setup messaging
-- explicitly report:
-  - what changed
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-592-F1 --checklist "- [ ] Open the practice setup panel — expected result: the copy no longer mentions a separate start button if color selection starts practice immediately|- [ ] Click a color choice — expected result: practice starts immediately and the preceding copy accurately described that behavior|- [ ] Check console while entering practice — expected result: no runtime errors"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-592-F1 --errors "<brief description>" --checklist "- [ ] Open the practice setup panel — expected result: copy accurately describes immediate-start behavior|- [ ] Click a color choice — expected result: practice starts immediately without console errors"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-592-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-592-F1 --checklist "- [ ] Open the practice setup panel — expected result: the copy no longer mentions a separate start button if color selection starts practice immediately|- [ ] Click a color choice — expected result: practice starts immediately and the preceding copy accurately described that behavior|- [ ] Check console while entering practice — expected result: no runtime errors"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-592-F1 --errors "brief description of what went wrong" --checklist "- [ ] Open the practice setup panel — expected result: the copy no longer mentions a separate start button if color selection starts practice immediately|- [ ] Click a color choice — expected result: practice starts immediately and the preceding copy accurately described that behavior|- [ ] Check console while entering practice — expected result: no runtime errors"
-```
-```
-
-## CCP-597-F1 - Make Retro Background Eval Run A Real One-Shot Analysis
-
-```
-Prompt ID: CCP-597-F1
-Task ID: CCP-597
-Parent Prompt ID: CCP-597
-Source Document: CCP-597 review
-Source Step: Make retro background eval perform a real one-shot analysis
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-597-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection / eval-diff / engine-analysis / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the retro eval-diff follow-up so missing or shallow candidate diff data triggers a real silent background engine evaluation instead of only rereading cache.
-
-Mandatory reference workflow:
-- Read and use:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
-- Inspect the relevant linked Lichess source files before deciding the fix.
-
-Review-grounded bug to confirm:
-- `requestRetroBackgroundEval()` currently only rereads `evalCache`
-- it does not invoke a real engine or single-item eval seam
-- the after-move hook likewise only refreshes from cache
-- that means candidates missing diff data never receive the one-shot background analysis this task promised
-
-Inspect first:
-- Patzer:
-  - `src/analyse/retro.ts`
-  - `src/analyse/retroMoveHandler.ts`
-  - the actual engine/eval cache seams used by retrospection
-- Relevant Lichess sources:
-  - the exact retrospection / analysis files you determine are closest to this background-eval behavior
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- perform a real silent one-shot background eval for retro candidates missing reliable diff data
-- preserve current retrospection UX with no visible engine noise
-- keep the fix scoped to the missing background-eval behavior
-
-Constraints:
-- do not redesign retrospection
-- do not introduce a second engine instance
-- do not bundle unrelated retro UI changes
-- explicitly separate what is confirmed by Lichess references from what is Patzer-specific inference
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for retro background eval behavior
-- explicitly report:
-  - what changed
-  - whether missing diff candidates now trigger real background evaluation
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-597-F1 --checklist "- [ ] Start Learn From Your Mistakes on a reviewed game with at least one candidate initially missing diff data — expected result: the candidate receives a real background eval and later has diff data without visible engine noise|- [ ] Resolve a retro candidate and advance to the next one — expected result: the next candidate can trigger the silent background eval path without arrows, ceval panel changes, or extra redraw churn|- [ ] Check console and engine behavior during the background pass — expected result: no runtime errors and no visible analysis-mode disruption"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-597-F1 --errors "<brief description>" --checklist "- [ ] Start a retro session with missing diff data — expected result: a real silent background eval occurs|- [ ] Confirm no visible engine UI noise appears during the background pass"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-597-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-597-F1 --checklist "- [ ] Start Learn From Your Mistakes on a reviewed game with at least one candidate initially missing diff data — expected result: the candidate receives a real background eval and later has diff data without visible engine noise|- [ ] Resolve a retro candidate and advance to the next one — expected result: the next candidate can trigger the silent background eval path without arrows, ceval panel changes, or extra redraw churn|- [ ] Check console and engine behavior during the background pass — expected result: no runtime errors and no visible analysis-mode disruption"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-597-F1 --errors "brief description of what went wrong" --checklist "- [ ] Start Learn From Your Mistakes on a reviewed game with at least one candidate initially missing diff data — expected result: the candidate receives a real background eval and later has diff data without visible engine noise|- [ ] Resolve a retro candidate and advance to the next one — expected result: the next candidate can trigger the silent background eval path without arrows, ceval panel changes, or extra redraw churn|- [ ] Check console and engine behavior during the background pass — expected result: no runtime errors and no visible analysis-mode disruption"
-```
-```
-
-## CCP-598-F1 - Hide Zero Or Negative Retro Eval Diff Badges
-
-```
-Prompt ID: CCP-598-F1
-Task ID: CCP-598
-Parent Prompt ID: CCP-598
-Source Document: CCP-598 review
-Source Step: Hide zero or negative retro diff badges
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-598-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection feedback UI / eval-diff display / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: fix the retro diff display follow-up so win/fail/view panels hide the diff badge entirely when the difference is zero or negative.
-
-Review-grounded bug to confirm:
-- `renderEvalDiff()` currently renders any populated diff
-- `formatPawns()` can clamp negative noise to `+0.0`
-- the prompt explicitly required showing nothing for zero or negative differences
-
-Inspect first:
-- Patzer:
-  - `src/analyse/retroView.ts`
-  - `src/analyse/evalDiff.ts`
-- Relevant Lichess reference:
-  - inspect only if there is a comparable feedback-display guard; otherwise keep the fix local
-
-Before coding, provide:
-- prompt id
-- task id
-- parent prompt id
-- source document
-- source step
-- task title
-- relevant Patzer Pro files
-- relevant Lichess files
-- exact diagnosis
-- exact small step to implement
-- why that step is safe and correctly scoped
-
-Implementation goal:
-- suppress retro diff output for zero or negative differences
-- preserve existing positive diff display behavior
-- keep the fix scoped to display gating, not data or copy redesign
-
-Constraints:
-- do not redesign retrospection feedback UI
-- do not bundle unrelated retro copy/styling cleanup
-- prefer the smallest safe render guard
-
-Then implement the change directly.
-
-Validation is required after coding:
-- run `npm run build`
-- run `npx tsc --noEmit`
-- run the most relevant task-specific check you can for retro diff rendering
-- explicitly report:
-  - what changed
-  - whether zero or negative diffs are now hidden
-  - whether behavior changed intentionally
-  - whether there are console/runtime errors
-  - remaining risks and limitations
-
-Completion step:
-- produce a manual verification checklist with specific actions and expected results
-- if validation passed, run:
-  - `npm run prompt:complete -- CCP-598-F1 --checklist "- [ ] Solve or fail a retro candidate with a positive diff — expected result: the Diff badge still appears|- [ ] Trigger a candidate whose diff is zero or negative — expected result: no Diff badge is rendered at all|- [ ] Check win, fail, and view states plus the console — expected result: the display logic stays clean with no runtime errors"`
-- if validation failed or another blocker remained, run:
-  - `npm run prompt:complete -- CCP-598-F1 --errors "<brief description>" --checklist "- [ ] Trigger a zero or negative diff case — expected result: no Diff badge is shown|- [ ] Check console during retro feedback rendering — expected result: no runtime errors"`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-598-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-598-F1 --checklist "- [ ] Solve or fail a retro candidate with a positive diff — expected result: the Diff badge still appears|- [ ] Trigger a candidate whose diff is zero or negative — expected result: no Diff badge is rendered at all|- [ ] Check win, fail, and view states plus the console — expected result: the display logic stays clean with no runtime errors"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-598-F1 --errors "brief description of what went wrong" --checklist "- [ ] Solve or fail a retro candidate with a positive diff — expected result: the Diff badge still appears|- [ ] Trigger a candidate whose diff is zero or negative — expected result: no Diff badge is rendered at all|- [ ] Check win, fail, and view states plus the console — expected result: the display logic stays clean with no runtime errors"
-```
-```
-
-## CCP-604 - Category 1 Root-Cause Fix Batch Manager
-
-```
-Prompt ID: CCP-604
-Task ID: CCP-604
-Source Document: category 1 follow-up fix queue
-Source Step: root-cause bug-fix batch manager
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-604`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Batch prompt IDs to execute in order:
-- `CCP-520-F1`
-- `CCP-580-F1`
-- `CCP-574-F1`
-- `CCP-597-F1`
-- `CCP-598-F1`
-- `CCP-503-F1`
-- `CCP-504-F1`
-- `CCP-505-F1`
-- `CCP-513-F1`
-- `CCP-592-F1`
-
-Manager-prompt rule:
-- `CCP-604` is the manager prompt id only
-- do not execute or recurse into `CCP-604` as if it were one of the child prompts
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same study / engine / retrospection / games / import / openings UI / prompt-tracking files covered by this batch.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- read the child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-
-Prompt sources:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-520-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-580-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-574-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-597-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-598-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-503-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-504-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-505-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-513-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-592-F1.md`
-
-Do not modify:
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during this batch
-- do not continue past a known issue just to finish the batch
-- if a child prompt's startup step already ran successfully in the current batch flow, do not rerun it
-- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
-- only continue into a child prompt after that command succeeds
-- use internal validation/self-check only; external review and review closeout happen separately
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build result
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, clearly report:
-- which child Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-604
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-604 --checklist "- [ ] All 10 child fix prompts (CCP-520-F1 through CCP-592-F1) are marked queued-run — expected result: visible in the dashboard pending review|- [ ] Each original parent prompt shows reviewOutcome = issues resolved — expected result: CCP-520, CCP-580, CCP-574, CCP-597, CCP-598, CCP-503, CCP-504, CCP-505, CCP-513, CCP-592 updated|- [ ] npm run build and npx tsc --noEmit both pass with no errors"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-604 --errors "brief description of what went wrong" --checklist "- [ ] All 10 child fix prompts (CCP-520-F1 through CCP-592-F1) are marked queued-run — expected result: visible in the dashboard pending review|- [ ] Each original parent prompt shows reviewOutcome = issues resolved — expected result: CCP-520, CCP-580, CCP-574, CCP-597, CCP-598, CCP-503, CCP-504, CCP-505, CCP-513, CCP-592 updated|- [ ] npm run build and npx tsc --noEmit both pass with no errors"
-```
-```
-
-## CCP-511-F1 - Review Cleanup Manager For Unreviewed CCP-511 Children
-
-```
-Prompt ID: CCP-511-F1
-Task ID: CCP-511
-Parent Prompt ID: CCP-511
-Source Document: CCP-511 review
-Source Step: Repair reviewed-manager state by reviewing all completed child prompts
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-511-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings-opponent-tool / prompt-review / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: repair the `CCP-511` process failure by reviewing the already-completed child prompts it incorrectly cleared, then re-close the manager honestly based on those child reviews.
-
-Current registry-grounded issue to confirm:
-- `CCP-511` was previously reviewed even though its child prompts `CCP-362`, `CCP-364` through `CCP-370`, and `CCP-372` through `CCP-378` remain `queued-run` and unreviewed
-- this is a review/process cleanup task, not a new implementation task
-- the child work already ran and now needs proper external review closeout
-
-Batch prompt IDs to review in order:
-- `CCP-362`
-- `CCP-364`
-- `CCP-365`
-- `CCP-366`
-- `CCP-367`
-- `CCP-368`
-- `CCP-369`
-- `CCP-370`
-- `CCP-372`
-- `CCP-373`
-- `CCP-374`
-- `CCP-375`
-- `CCP-376`
-- `CCP-377`
-- `CCP-378`
-
-Manager-prompt rule:
-- `CCP-511-F1` is the repair/review manager prompt id only
-- do not execute or recurse into `CCP-511-F1` as if it were one of the child prompts
-
-Task rules:
-- read each child prompt exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
-- inspect the actual landed code for each child prompt
-- perform external review, not implementation
-- update each child prompt through `npm run prompt:review -- ... --reviewed-by Claude --review-method full-review`
-- after all children are reviewed, re-review `CCP-511` itself with `--review-method manager-plus-children`
-- do not create new prompts during this review batch
-- if a child has concrete issues, mark it honestly and continue reviewing the remaining children unless repo state becomes too uncertain
-- do not silently preserve the old `CCP-511` reviewed state if the child outcomes do not support it
-
-Required review workflow for each child:
-- inspect the prompt item file
-- inspect the actual changed files
-- compare the implementation against the prompt and relevant Lichess references when applicable
-- run validation that materially tests the child prompt
-- report findings first, summary second
-- close out the review in the registry with the required provenance fields
-
-Required final step:
-- after all child reviews are done, run the appropriate `npm run prompt:review -- CCP-511 ... --reviewed-by Claude --review-method manager-plus-children --review-scope "re-review after child review cleanup"` command
-- then run `npm run prompts:refresh`
-
-After each reviewed child prompt, report briefly:
-- Prompt ID
-- review result
-- main finding or pass summary
-- whether the cleanup batch will continue
-
-If the batch stops, clearly report:
-- which prompt blocked it
-- why it blocked
-- what remains unreviewed
-
-If the batch finishes, report:
-- the child prompts reviewed
-- how many passed
-- how many had issues
-- the final corrected status of `CCP-511`
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-511-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-511-F1 --checklist "- [ ] Open Opponents page, load a collection, navigate to Prep Report — toggle Recent/All-time and verify it affects the line display|- [ ] On Style dashboard, confirm top3EcoPct appears only once (in style axes or behavioral, not both)|- [ ] Start a Practice session at a position where opponent data exists, confirm only player color pieces are draggable"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-511-F1 --errors "brief description of what went wrong" --checklist "- [ ] Open Opponents page, load a collection, navigate to Prep Report — toggle Recent/All-time and verify it affects the line display|- [ ] On Style dashboard, confirm top3EcoPct appears only once (in style axes or behavioral, not both)|- [ ] Start a Practice session at a position where opponent data exists, confirm only player color pieces are draggable"
-```
-```
-
-## CCP-553-F1 - Execute Missing Phase 5 Study Child Prompts
-
-```
-Prompt ID: CCP-553-F1
-Task ID: CCP-553
-Parent Prompt ID: CCP-553
-Source Document: CCP-553 review
-Source Step: Execute the Phase 5 child prompts that never actually ran
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-553-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same study drill / board UI / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: repair the `CCP-553` execution/process failure by actually running its Phase 5 child prompts, which remained `queued-pending` and were never executed.
-
-Current registry-grounded issue to confirm:
-- `CCP-553` was reviewed as issues found because `CCP-549` through `CCP-552` never ran
-- this follow-up should execute those child prompts in order and then complete the manager honestly
-
-Batch prompt IDs to execute in order:
-- `CCP-549`
-- `CCP-550`
-- `CCP-551`
-- `CCP-552`
-
-Manager-prompt rule:
-- `CCP-553-F1` is the follow-up execution manager only
-- do not execute or recurse into `CCP-553-F1` as if it were one of the child prompts
-
-Task:
-- read the child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-- after the child prompts finish, complete `CCP-553-F1` with a concise checklist
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during this batch
-- do not continue past a known issue just to finish the batch
-- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
-- only continue into a child prompt after that command succeeds
-- use internal validation/self-check only; external review and review closeout happen separately
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build result
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, clearly report:
-- which child Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-553-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-553-F1 --checklist "- [ ] Open study → Practice this line → select color → drill session starts|- [ ] Board shows correct orientation (user color at bottom)|- [ ] Correct move: board flashes green, 'Correct!' shown, auto-advances after 600ms|- [ ] Incorrect move: board flashes red, 'Try again (N left)' shown|- [ ] After 3 failures: 'The move was X' shown, board auto-plays correct move|- [ ] End session: drill summary shows positions quizzed, accuracy, lines completed, duration"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-553-F1 --errors "brief description of what went wrong" --checklist "- [ ] Open study → Practice this line → select color → drill session starts|- [ ] Board shows correct orientation (user color at bottom)|- [ ] Correct move: board flashes green, 'Correct!' shown, auto-advances after 600ms|- [ ] Incorrect move: board flashes red, 'Try again (N left)' shown|- [ ] After 3 failures: 'The move was X' shown, board auto-plays correct move|- [ ] End session: drill summary shows positions quizzed, accuracy, lines completed, duration"
-```
-```
-
-## CCP-557-F1 - Execute Missing Phase 6 Study Child Prompts
-
-```
-Prompt ID: CCP-557-F1
-Task ID: CCP-557
-Parent Prompt ID: CCP-557
-Source Document: CCP-557 review
-Source Step: Execute the Phase 6 child prompts that never actually ran
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-557-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same study scheduling / review dashboard / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: repair the `CCP-557` execution/process failure by actually running its Phase 6 child prompts, which remained `queued-pending` and were never executed.
-
-Current registry-grounded issue to confirm:
-- `CCP-557` was reviewed as issues found because `CCP-554` through `CCP-556` never ran
-- this follow-up should execute those child prompts in order and then complete the manager honestly
-
-Batch prompt IDs to execute in order:
-- `CCP-554`
-- `CCP-555`
-- `CCP-556`
-
-Manager-prompt rule:
-- `CCP-557-F1` is the follow-up execution manager only
-- do not execute or recurse into `CCP-557-F1` as if it were one of the child prompts
-
-Task:
-- read the child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-- after the child prompts finish, complete `CCP-557-F1` with a concise checklist
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during this batch
-- do not continue past a known issue just to finish the batch
-- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
-- only continue into a child prompt after that command succeeds
-- use internal validation/self-check only; external review and review closeout happen separately
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build result
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, clearly report:
-- which child Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-557-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-557-F1 --checklist "- [ ] Practice dashboard shows due count and Start Review button when positions are due|- [ ] Learn Now button appears for unlearned sequences|- [ ] Start Review launches drill with due sequences|- [ ] Learn mode auto-plays line then transitions to quiz|- [ ] After learn completes, position-progress in IDB shows level=1 for all positions|- [ ] IDB drill-attempts records appear after each graded move"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-557-F1 --errors "brief description of what went wrong" --checklist "- [ ] Practice dashboard shows due count and Start Review button when positions are due|- [ ] Learn Now button appears for unlearned sequences|- [ ] Start Review launches drill with due sequences|- [ ] Learn mode auto-plays line then transitions to quiz|- [ ] After learn completes, position-progress in IDB shows level=1 for all positions|- [ ] IDB drill-attempts records appear after each graded move"
-```
-```
-
-## CCP-561-F1 - Execute Missing Phase 7 Study Child Prompts
-
-```
-Prompt ID: CCP-561-F1
-Task ID: CCP-561
-Parent Prompt ID: CCP-561
-Source Document: CCP-561 review
-Source Step: Execute the Phase 7 child prompts that never actually ran
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-561-F1`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same practice line management / study UI / prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
-
-Task: repair the `CCP-561` execution/process failure by actually running its Phase 7 child prompts, which remained `queued-pending` and were never executed.
-
-Current registry-grounded issue to confirm:
-- `CCP-561` was reviewed as issues found because `CCP-558` through `CCP-560` never ran
-- this follow-up should execute those child prompts in order and then complete the manager honestly
-
-Batch prompt IDs to execute in order:
-- `CCP-558`
-- `CCP-559`
-- `CCP-560`
-
-Manager-prompt rule:
-- `CCP-561-F1` is the follow-up execution manager only
-- do not execute or recurse into `CCP-561-F1` as if it were one of the child prompts
-
-Task:
-- read the child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-- after the child prompts finish, complete `CCP-561-F1` with a concise checklist
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during this batch
-- do not continue past a known issue just to finish the batch
-- before starting each child prompt's startup coordination or implementation work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
-- only continue into a child prompt after that command succeeds
-- use internal validation/self-check only; external review and review closeout happen separately
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build result
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, clearly report:
-- which child Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-561-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-561-F1 --checklist "- [ ] CCP-558: 'Practice from here' context menu item present; picker shows color-only (no scope selector)|- [ ] CCP-559: Practice Lines panel renders in study detail with label, color, status, move count, due count, and action buttons|- [ ] CCP-560: Scope selector (Full game / From current position / Selected variation) appears in 'Practice this line' picker but NOT in the context-menu flow|- [ ] All three extract paths tested: full mainline, from current position, selected variation all launch drill correctly"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-561-F1 --errors "brief description of what went wrong" --checklist "- [ ] CCP-558: 'Practice from here' context menu item present; picker shows color-only (no scope selector)|- [ ] CCP-559: Practice Lines panel renders in study detail with label, color, status, move count, due count, and action buttons|- [ ] CCP-560: Scope selector (Full game / From current position / Selected variation) appears in 'Practice this line' picker but NOT in the context-menu flow|- [ ] All three extract paths tested: full mainline, from current position, selected variation all launch drill correctly"
-```
-```
-
-## CCP-605 - Category 3 Process Cleanup Batch Manager
-
-```
-Prompt ID: CCP-605
-Task ID: CCP-605
-Source Document: category 3 process cleanup queue
-Source Step: process/execution cleanup batch manager
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Queue execution marker step:
-- As the first task before startup coordination or implementation work, run:
-  - `npm run prompt:start -- CCP-605`
-- Only continue implementation work after that command succeeds.
-- Leave this prompt queued after marking it started, even if execution later fails, stops midway, or hits a blocker.
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-Batch prompt IDs to execute in order:
-- `CCP-511-F1`
-- `CCP-553-F1`
-- `CCP-557-F1`
-- `CCP-561-F1`
-
-Manager-prompt rule:
-- `CCP-605` is the manager prompt id only
-- do not execute or recurse into `CCP-605` as if it were one of the child prompts
-
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same openings opponent tool / study phase manager / prompt-review / prompt-tracking files covered by this batch.
-- If overlapping work exists, stop and report it before editing.
-
-Task:
-- read the child prompts exactly as written from `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/`
-- execute them sequentially in the exact order listed above
-- perform internal validation and self-check after each prompt
-- stop immediately on any real issue, failed validation, unsafe repo state, or unresolved architectural blocker
-
-Prompt sources:
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-511-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-553-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-557-F1.md`
-- `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-561-F1.md`
-
-Do not modify:
-
-Execution rules:
-- do not reorder child prompts
-- do not create new prompts during this batch
-- do not continue past a known issue just to finish the batch
-- if a child prompt's startup step already ran successfully in the current batch flow, do not rerun it
-- before starting each child prompt's startup coordination or real work, run `npm run prompt:start -- <CHILD_PROMPT_ID>` if that child has not already been marked started in the current batch flow
-- only continue into the child prompt after that command succeeds
-- use internal validation/self-check only; external review and review closeout happen separately unless a child prompt explicitly requires review cleanup as its main task
-
-After each completed child prompt, report briefly:
-- Prompt ID
-- task title
-- build/result or review/result as appropriate
-- validation result
-- internal check result
-- whether the batch will continue or stop
-
-If the batch stops, clearly report:
-- which child Prompt ID stopped the batch
-- why it stopped
-- what issue or failure was found
-
-If the batch finishes, report a compact summary of completed Prompt IDs.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-605
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-605 --checklist "- [ ] CCP-511-F1: 15 previously-unreviewed study Phase 5-7 child prompts reviewed and marked|- [ ] CCP-553-F1: Phase 5 drill children (CCP-549–552) all executed — board adapter, drill view, learn mode, study detail drill integration|- [ ] CCP-557-F1: Phase 6 scheduling/review children (CCP-554–556) all executed — scheduler, studyDb/studyCtrl data loading, library dashboard|- [ ] CCP-561-F1: Phase 7 practice line selection children (CCP-558–560) all executed — Practice from here, Practice Lines panel, scope selector"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-605 --errors "brief description of what went wrong" --checklist "- [ ] CCP-511-F1: 15 previously-unreviewed study Phase 5-7 child prompts reviewed and marked|- [ ] CCP-553-F1: Phase 5 drill children (CCP-549–552) all executed — board adapter, drill view, learn mode, study detail drill integration|- [ ] CCP-557-F1: Phase 6 scheduling/review children (CCP-554–556) all executed — scheduler, studyDb/studyCtrl data loading, library dashboard|- [ ] CCP-561-F1: Phase 7 practice line selection children (CCP-558–560) all executed — Practice from here, Practice Lines panel, scope selector"
-```
-```
-
-## CCP-606 - Dashboard refresh modal with server setup instructions
-
-```
-# CCP-606 — Dashboard refresh modal with server setup instructions
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-## Context
-
-The prompt tracking dashboard (`docs/prompts/dashboard.html`) has a **Refresh Data** button.
-
-When the dashboard is opened via the `file://` protocol (i.e. opened directly in the browser
-from the filesystem), clicking Refresh shows a plain `alert()` telling the user to run
-`npm run prompts:dashboard` and reload.
-
-The user wants this replaced with a proper modal that gives **two side-by-side options**:
-
-1. **Static rebuild** — run the npm command in terminal, then reload
-2. **Live server** — start the dev server and open the dashboard at localhost
-
-Both options should have code boxes with copy-to-clipboard buttons.
-
-## Target file
-
-`docs/prompts/dashboard.html` — this is a **generated file** but the generation script
-embeds the HTML/JS directly. The actual source to edit is the **generator script**:
-
-`scripts/generate-prompt-dashboard.mjs`
-
-Check which file contains the refresh button logic and modal HTML before editing.
-The refresh button click handler is near the bottom of the embedded `<script>` block.
-
-## Requirements
-
-### Modal design
-
-- Triggered when Refresh is clicked while `location.protocol === 'file:'`
-- Overlay backdrop (semi-transparent dark)
-- Modal card with:
-  - Title: "Refresh Options"
-  - Subtitle: "Opened via file:// — live refresh is unavailable. Choose an option below."
-  - Two side-by-side panels:
-
-**Panel 1 — Static Rebuild**
-- Heading: "Rebuild & Reload"
-- Description: "Run this command in your terminal, then reload the page."
-- Code box: `npm run prompts:dashboard`
-- Copy button on the code box
-- Note: "Then reload this page."
-
-**Panel 2 — Live Server (Recommended)**
-- Heading: "Use Live Server"
-- Description: "Start the dev server to get live auto-refresh."
-- Code box: `node server.mjs`
-- Copy button
-- Then a second line: "Then open:"
-- Code box: `http://localhost:3001/docs/prompts/dashboard.html`
-- Copy button
-- Note: "Live mode fetches registry data directly — no rebuild needed."
-
-- Close button (×) in top-right corner of modal
-- Clicking the backdrop also closes the modal
-- ESC key closes the modal
-
-### Styling
-
-- Match the existing dashboard dark theme (CSS variables already in the file)
-- Modal should be centered, max-width ~600px, responsive on narrow viewports
-- Code boxes use monospace font, dark background, slightly lighter than the card background
-- Copy buttons: small, inline, positioned to the right of the code text
-- "Copied!" feedback text replaces button label for 2 seconds after click
-
-### What NOT to change
-
-- Do not change the live-mode refresh behavior (when `location.protocol !== 'file:'`)
-- Do not change any other part of the dashboard HTML/JS
-- Do not add new npm scripts or server routes
-- Touch only the file(s) that contain the refresh button logic
-
-## Validation
-
-Run:
-```
-npm run prompts:dashboard
-```
-
-Then open `docs/prompts/dashboard.html` via `file://` in a browser and:
-- Click "Refresh Data"
-- Confirm the modal appears with two panels
-- Confirm copy buttons work
-- Confirm ESC and backdrop click close the modal
-
-No TypeScript compilation needed — this is a pure HTML/JS change inside the generator.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-606
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-606 --checklist "- [ ] Open docs/prompts/dashboard.html via file:// in a browser|- [ ] Click 'Refresh Data' — confirm modal appears (not an alert)|- [ ] Confirm two side-by-side panels: 'Rebuild & Reload' and 'Use Live Server'|- [ ] Click Copy next to 'npm run prompts:dashboard' — confirm clipboard copy and 'Copied!' feedback|- [ ] Click Copy next to 'node server.mjs' — confirm copy works|- [ ] Click Copy next to the localhost URL — confirm copy works|- [ ] Press ESC — confirm modal closes|- [ ] Click backdrop area outside modal — confirm modal closes|- [ ] Click × button — confirm modal closes|- [ ] Run 'node server.mjs' and open http://localhost:3001/docs/prompts/dashboard.html — confirm Refresh button still works in live mode (no modal)"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-606 --errors "brief description of what went wrong" --checklist "- [ ] Open docs/prompts/dashboard.html via file:// in a browser|- [ ] Click 'Refresh Data' — confirm modal appears (not an alert)|- [ ] Confirm two side-by-side panels: 'Rebuild & Reload' and 'Use Live Server'|- [ ] Click Copy next to 'npm run prompts:dashboard' — confirm clipboard copy and 'Copied!' feedback|- [ ] Click Copy next to 'node server.mjs' — confirm copy works|- [ ] Click Copy next to the localhost URL — confirm copy works|- [ ] Press ESC — confirm modal closes|- [ ] Click backdrop area outside modal — confirm modal closes|- [ ] Click × button — confirm modal closes|- [ ] Run 'node server.mjs' and open http://localhost:3001/docs/prompts/dashboard.html — confirm Refresh button still works in live mode (no modal)"
-```
-```
-
-## CCP-607 - Dashboard next-up urgent block and stable sort
-
-```
-# CCP-607 — Dashboard next-up urgent block and stable sort
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-## Context
-
-The prompt tracking dashboard (`docs/prompts/dashboard.html`) has a "Next Up" sort view.
-Currently within `queued-pending`, prompts sort by earliest ID first — so when a prompt
-above another gets run, everything below it jumps up a position. This is disorienting.
-
-Two changes are needed:
-
-1. **Stable sort within `queued-pending`**: sort by `createdAt` descending (newest first),
-   with priority tier as the primary sort key (`critical → high → normal → low`), then
-   `createdAt` descending within each tier. This keeps positions stable regardless of
-   which other prompts get run.
-
-2. **Urgent block**: A highlighted callout section pinned above the main prompt table,
-   visible only when "Next Up" is the active sort. It shows any `queued-pending` prompt
-   that meets at least one of:
-   - `priority === 'critical'`
-   - `priority === 'high'`
-   - `category === 'bugfix'`
-   - `category === 'typecheck'`
-
-   The same prompts also appear in their normal position in the main list below.
-   No cap on the number of items in the urgent block.
-
-## Target file
-
-`scripts/generate-prompt-dashboard.mjs` — the generator. Do not hand-edit `dashboard.html`.
-
-## Requirements
-
-### 1. Stable sort for `queued-pending` in "next up"
-
-Update `nextUpRank` and the `next-up` sort case in `sortPrompts()`:
-
-Within rank 0 (`queued-pending`), replace the current `idNum(a) - idNum(b)` tie-break with:
-- Primary: priority tier (`critical`=0, `high`=1, `normal`=2, `low`=3, anything else=2)
-- Secondary: `createdAt` descending (newest first)
-- Tertiary: `idNum` descending as a final stable tie-break
-
-Ranks 1 and 2 (`queued-started`, `queued-run`) and rank 3 (everything else) are unchanged.
-
-### 2. Urgent block HTML
-
-Insert a `<div id="urgent-block">` between the toolbar and the `<table>` element in the
-generated HTML body. It should be hidden by default and shown only when:
-- `sortPreset === 'next-up'`
-- there is at least one qualifying urgent prompt
-
-Structure:
-```
-div#urgent-block
-  div.urgent-block__header
-    span  "Needs Attention"
-    span.urgent-block__count  "N prompts"
-  div.urgent-block__list
-    div.urgent-row  (one per urgent prompt, same as a simplified table row)
-      span.status-badge  (reuse existing status badge styles)
-      span.urgent-row__id   CCP-###
-      span.urgent-row__title  prompt title
-      span.urgent-row__meta  priority · category
-```
-
-Clicking an urgent row should open the detail panel for that prompt (same behavior as
-clicking a table row — call the existing `openDetail(p)` or equivalent function).
-
-The urgent block must be updated whenever `renderList()` is called — show/hide and
-repopulate based on current sort and filter state.
-
-### 3. Styling
-
-Match the existing dark theme. Use an amber/orange left-border accent:
-
-```css
-#urgent-block {
-  /* amber left border, subtle warm background */
-  border-left: 3px solid #e8a040;
-  background: rgba(232, 160, 64, 0.06);
-  border-radius: 0 6px 6px 0;
-  margin-bottom: 16px;
-  padding: 12px 16px;
-}
-.urgent-block__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #e8a040;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.urgent-block__count {
-  font-weight: 400;
-  color: var(--text-dim);
-  text-transform: none;
-  letter-spacing: 0;
-}
-.urgent-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-  border-top: 1px solid rgba(255,255,255,0.05);
-  cursor: pointer;
-  font-size: 0.82rem;
-}
-.urgent-row:hover { background: rgba(255,255,255,0.03); }
-.urgent-row:first-child { border-top: none; }
-.urgent-row__id {
-  font-weight: 600;
-  color: var(--text-dim);
-  white-space: nowrap;
-  min-width: 70px;
-}
-.urgent-row__title {
-  flex: 1;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.urgent-row__meta {
-  font-size: 0.72rem;
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-```
-
-### What NOT to change
-
-- Do not change any other sort preset behavior
-- Do not change the table rendering logic
-- Do not change the filter button behavior
-- Do not add new npm scripts
-
-## Validation
-
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open `docs/prompts/dashboard.html` in a browser and verify:
-
-1. With "Next Up" selected:
-   - Urgent block appears above the table if any `queued-pending` prompts qualify
-   - Amber left border and header are visible
-   - Each urgent row shows ID, title, priority · category
-   - Clicking an urgent row opens the detail panel
-   - Urgent prompts also appear in their normal position in the main table below
-
-2. Switch to any other sort preset — urgent block disappears
-
-3. The `queued-pending` prompts in the main table are now sorted newest-first within
-   priority tier, not by ID ascending
-
-No TypeScript compilation needed — pure HTML/JS change in the generator.
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-607
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-607 --checklist "- [ ] Open dashboard.html in browser, select 'Next Up' sort — confirm amber 'Needs Attention' block appears above the table|- [ ] Confirm the block shows only queued-pending prompts that are critical, high, bugfix, or typecheck|- [ ] Confirm each row shows status badge, CCP ID, title, and priority · category meta|- [ ] Click an urgent row — confirm the detail panel opens for that prompt|- [ ] Confirm the same prompts also appear in their normal position in the main table below|- [ ] Switch to any other sort preset (e.g. ID newest first) — confirm urgent block disappears|- [ ] Switch back to Next Up — confirm urgent block reappears|- [ ] In the queued-pending section of the main table, confirm prompts are now sorted by priority tier (critical first, then high, then normal) and newest-first within each tier — not by ID ascending"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-607 --errors "brief description of what went wrong" --checklist "- [ ] Open dashboard.html in browser, select 'Next Up' sort — confirm amber 'Needs Attention' block appears above the table|- [ ] Confirm the block shows only queued-pending prompts that are critical, high, bugfix, or typecheck|- [ ] Confirm each row shows status badge, CCP ID, title, and priority · category meta|- [ ] Click an urgent row — confirm the detail panel opens for that prompt|- [ ] Confirm the same prompts also appear in their normal position in the main table below|- [ ] Switch to any other sort preset (e.g. ID newest first) — confirm urgent block disappears|- [ ] Switch back to Next Up — confirm urgent block reappears|- [ ] In the queued-pending section of the main table, confirm prompts are now sorted by priority tier (critical first, then high, then normal) and newest-first within each tier — not by ID ascending"
-```
-```
-
-## CCP-608 - Dashboard refresh button hard reload after live fetch
-
-```
-# CCP-608 — Dashboard refresh button hard reload after live fetch
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-## Context
-
-The prompt tracking dashboard (`docs/prompts/dashboard.html`) has a Refresh Data button.
-In live mode (served via HTTP, `location.protocol !== 'file:'`), clicking Refresh calls
-`fetchLiveData()` and re-renders the table in place — but does not reload the page.
-
-The user wants the button to also force a hard reload (cache-busted) after the live
-fetch completes, so the full page asset (HTML, CSS, JS) is always fresh.
-
-## Target file
-
-`scripts/generate-prompt-dashboard.mjs` — the generator. Do not hand-edit `dashboard.html`.
-
-The live-mode branch of the refresh button handler looks like this:
-
-```js
-} else {
-  // Live mode: re-fetch registry data directly
-  fetchLiveData().then(() => {
-    btn.textContent = 'Refresh Data';
-    btn.disabled = false;
-  });
-}
-```
-
-## Change required
-
-After `fetchLiveData()` resolves, trigger a hard reload using:
-
-```js
-location.href = location.href.split('?')[0] + '?t=' + Date.now();
-```
-
-This strips any existing query string and appends a cache-busting timestamp, forcing
-the browser to re-request the page without using a cached copy.
-
-The button state reset (`btn.textContent`, `btn.disabled`) can be removed from the
-`.then()` since the page will reload anyway — but leave a brief comment explaining why.
-
-## What NOT to change
-
-- Do not change the `file:` branch (the modal)
-- Do not change any other part of the refresh handler
-- Do not add new npm scripts or server routes
-
-## Validation
-
-Run:
-```
-npm run prompts:dashboard
-```
-
-Start the dev server (`node server.mjs`) and open
-`http://localhost:3001/docs/prompts/dashboard.html`.
-
-- Click Refresh Data
-- Confirm the page does a full reload (URL gains `?t=<timestamp>` briefly, then page reloads)
-- Confirm the reloaded page shows fresh data
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-608
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-608 --checklist "- [ ] Start dev server with 'node server.mjs' and open http://localhost:3001/docs/prompts/dashboard.html|- [ ] Click 'Refresh Data' — confirm page fully reloads (URL gains ?t=<timestamp> then page refreshes)|- [ ] Confirm reloaded page shows current data|- [ ] Confirm file:// modal still works (open dashboard.html directly, click Refresh — modal appears, no reload)"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-608 --errors "brief description of what went wrong" --checklist "- [ ] Start dev server with 'node server.mjs' and open http://localhost:3001/docs/prompts/dashboard.html|- [ ] Click 'Refresh Data' — confirm page fully reloads (URL gains ?t=<timestamp> then page refreshes)|- [ ] Confirm reloaded page shows current data|- [ ] Confirm file:// modal still works (open dashboard.html directly, click Refresh — modal appears, no reload)"
-```
-```
-
-## CCP-609 - Dashboard next-up flat creation-order sort
-
-```
-# CCP-609 — Dashboard next-up flat creation-order sort
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-## Context
-
-The "Next Up" sort in the prompt dashboard currently groups prompts by queue state
-(queued-pending at top, queued-started next, queued-run below, etc.) and sorts within
-each group by priority tier then createdAt. This causes prompts to jump positions when
-their status changes.
-
-The user wants the "Next Up" sort to be a flat list of ALL prompts, sorted by `createdAt`
-ascending (oldest first, newest at the bottom). No grouping. No rank. A prompt's position
-never changes regardless of status updates. New prompts always appear at the bottom.
-
-## Target file
-
-`scripts/generate-prompt-dashboard.mjs`
-
-## Changes required
-
-### 1. Replace the `next-up` sort case in `sortPrompts()`
-
-The current `next-up` case uses `nextUpRank()` and `priorityTier()` for multi-tier
-grouping. Replace it with a simple `createdAt` ascending sort with `idNum` ascending
-as tie-break:
-
-```js
-case 'next-up':
-  return (a.createdAt || '').localeCompare(b.createdAt || '') || idNum(a) - idNum(b);
-```
-
-### 2. Remove `nextUpRank()` and `priorityTier()` functions
-
-These are no longer used by any sort preset after this change. Remove both functions
-and their comments to keep the file clean.
-
-Note: `priorityTier()` is also used inside `renderUrgentBlock()`. Before removing it,
-inline the priority tier logic directly into `renderUrgentBlock()`'s sort comparator:
-
-```js
-const urgent = PROMPTS.filter(isUrgent).sort((a, b) => {
-  const TIER = { critical: 0, high: 1, low: 3 };
-  const pa = TIER[a.priority] ?? 2, pb = TIER[b.priority] ?? 2;
-  if (pa !== pb) return pa - pb;
-  return (b.createdAt || '').localeCompare(a.createdAt || '') || idNum(b) - idNum(a);
-});
-```
-
-### What NOT to change
-
-- Do not change any other sort preset
-- Do not change `renderUrgentBlock()` behavior beyond inlining the priority tier logic
-- Do not change the urgent block show/hide logic
-- Do not change filter behavior
-
-## Validation
-
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open the dashboard and select "Next Up":
-- Confirm all prompts appear (not just queued-pending)
-- Confirm oldest prompts (lowest CCP numbers) are at the top
-- Confirm newest prompts (highest CCP numbers) are at the bottom
-- Confirm the order does not change when switching away and back to Next Up
-- Confirm the urgent block still appears for qualifying prompts
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-609
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-609 --checklist "- [ ] Open dashboard at localhost, select 'Next Up' sort|- [ ] Confirm all 659 prompts appear (not filtered by queue state)|- [ ] Confirm CCP-1 or earliest prompts are at the top, CCP-609 is near the bottom|- [ ] Switch to a different sort and back to Next Up — confirm order is unchanged|- [ ] Confirm urgent block still appears for any qualifying queued-pending prompts"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-609 --errors "brief description of what went wrong" --checklist "- [ ] Open dashboard at localhost, select 'Next Up' sort|- [ ] Confirm all 659 prompts appear (not filtered by queue state)|- [ ] Confirm CCP-1 or earliest prompts are at the top, CCP-609 is near the bottom|- [ ] Switch to a different sort and back to Next Up — confirm order is unchanged|- [ ] Confirm urgent block still appears for any qualifying queued-pending prompts"
-```
-```
-
-## CCP-614 - Dashboard header bulk-copy buttons for needs-review and issues-found
-
-```
-# CCP-614 — Dashboard header bulk-copy buttons for needs-review and issues-found
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-## Context
-
-The dashboard header has a tab toggle on the left (Prompts / Sprints). The right side of
-the tab bar is currently empty. Add two bulk-copy buttons there:
-
-1. **Copy Needs Review IDs** — copies all prompt IDs where `queueState === 'queued-run'`
-2. **Copy Issues Found IDs** — copies all prompt IDs where `reviewOutcome === 'issues found'`
-   or `reviewOutcome === 'needs rework'`
-
-## Target file
-
-`scripts/generate-prompt-dashboard.mjs`
-
-## Behaviour
-
-Both buttons copy a numbered, comma-separated list of IDs to the clipboard. Format:
-
-```
-1. CCP-323, 2. CCP-355, 3. CCP-363, ...
-```
-
-If no prompts qualify, the button should flash a brief "None" feedback instead of copying.
-
-After a successful copy, the button label changes to "✓ Copied!" for 1.5 seconds then
-reverts to its original label.
-
-## HTML
-
-Add the two buttons to the right side of the existing `.tabs` bar. The tabs bar currently
-looks like:
-
-```html
-<div class="tabs">
-  <button class="tab-btn active" data-tab="prompts">Prompts</button>
-  <button class="tab-btn" data-tab="sprints">Sprints</button>
-</div>
-```
-
-Update it to:
-
-```html
-<div class="tabs">
-  <button class="tab-btn active" data-tab="prompts">Prompts</button>
-  <button class="tab-btn" data-tab="sprints">Sprints</button>
-  <div class="tabs__bulk-actions">
-    <button class="bulk-copy-btn" id="copy-needs-review">Copy Needs Review IDs</button>
-    <button class="bulk-copy-btn" id="copy-issues-found">Copy Issues Found IDs</button>
-  </div>
-</div>
-```
-
-## Styling
-
-The tabs bar already has `display: flex; align-items: center`. Add:
-
-```css
-.tabs__bulk-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-}
-.bulk-copy-btn {
-  background: var(--bg-card);
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 0.75rem;
-  padding: 4px 10px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-}
-.bulk-copy-btn:hover { background: #2a2a2a; color: var(--text); }
-.bulk-copy-btn.copied { color: var(--accent); border-color: var(--accent); }
-.bulk-copy-btn.empty { color: var(--text-dim); border-color: var(--border); }
-```
-
-## JS
-
-Add click handlers for both buttons in the `<script>` block:
-
-```js
-document.getElementById('copy-needs-review').addEventListener('click', () => {
-  const ids = PROMPTS
-    .filter(p => p.queueState === 'queued-run')
-    .map((p, i) => (i + 1) + '. ' + p.id);
-  bulkCopy(document.getElementById('copy-needs-review'), ids);
-});
-
-document.getElementById('copy-issues-found').addEventListener('click', () => {
-  const ids = PROMPTS
-    .filter(p => p.reviewOutcome === 'issues found' || p.reviewOutcome === 'needs rework')
-    .map((p, i) => (i + 1) + '. ' + p.id);
-  bulkCopy(document.getElementById('copy-issues-found'), ids);
-});
-
-function bulkCopy(btn, ids) {
-  if (ids.length === 0) {
-    const orig = btn.textContent;
-    btn.textContent = 'None';
-    btn.classList.add('empty');
-    setTimeout(() => { btn.textContent = orig; btn.classList.remove('empty'); }, 1500);
-    return;
-  }
-  navigator.clipboard.writeText(ids.join(', ')).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = '\u2713 Copied!';
-    btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
-  });
-}
-```
-
-## What NOT to change
-
-- Do not change tab switching behavior
-- Do not change any other part of the header or toolbar
-- Do not add new npm scripts
-
-## Validation
-
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open the dashboard and verify:
-- Two buttons appear on the right side of the tabs bar
-- "Copy Needs Review IDs" copies a numbered comma-separated list of all `queued-run` prompt IDs
-- "Copy Issues Found IDs" copies a numbered comma-separated list of all `issues found` / `needs rework` prompt IDs
-- Paste into a text editor to confirm the format: `1. CCP-xxx, 2. CCP-yyy, ...`
-- If no prompts qualify, button shows "None" briefly
-- Both buttons show "✓ Copied!" feedback for 1.5 seconds on success
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-614
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-614 --checklist "- [ ] Open dashboard, confirm two buttons appear on the right side of the Prompts/Sprints tab bar|- [ ] Click 'Copy Needs Review IDs' — paste into text editor, confirm format '1. CCP-xxx, 2. CCP-yyy, ...'|- [ ] Click 'Copy Issues Found IDs' — paste and confirm only issues found/needs rework prompts are listed|- [ ] Confirm '✓ Copied!' feedback appears for 1.5s then reverts|- [ ] If all prompts of a type are cleared, confirm button shows 'None' briefly"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-614 --errors "brief description of what went wrong" --checklist "- [ ] Open dashboard, confirm two buttons appear on the right side of the Prompts/Sprints tab bar|- [ ] Click 'Copy Needs Review IDs' — paste into text editor, confirm format '1. CCP-xxx, 2. CCP-yyy, ...'|- [ ] Click 'Copy Issues Found IDs' — paste and confirm only issues found/needs rework prompts are listed|- [ ] Confirm '✓ Copied!' feedback appears for 1.5s then reverts|- [ ] If all prompts of a type are cleared, confirm button shows 'None' briefly"
-```
-```
-
-## CCP-615 - Dashboard simplify filter buttons to 7 presets
-
-```
-# CCP-615 — Dashboard simplify filter buttons to 7 presets
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-## Context
-
-The dashboard toolbar has filter buttons driven by `STATUS_FILTERS` in
-`scripts/generate-prompt-dashboard.mjs`. The current set has 15+ filters including
-category and priority filters. The user wants this simplified to exactly 7 filters.
-
-## Target file
-
-`scripts/generate-prompt-dashboard.mjs`
-
-## New filter set (in order)
-
-| Label | Matches |
-|---|---|
-| All | all prompts (empty filter) |
-| Managers | `p.kind === 'manager'` |
-| Ready | `p.queueState === 'queued-pending'` → statusClass `status--ready` |
-| Started | `p.queueState === 'queued-started'` → statusClass `status--started` |
-| Errors | `statusClass === 'status--run-errors'` OR `reviewOutcome === 'issues found'` OR `reviewOutcome === 'needs rework'` |
-| Completed | `statusClass === 'status--run'` (queued-run, no errors) |
-| Passed Review | `statusClass === 'status--passed'` |
-
-## Changes required
-
-### 1. Replace `STATUS_FILTERS`
-
-```js
-const STATUS_FILTERS = [
-  { label: 'All',         value: '' },
-  { label: 'Managers',    value: 'kind:manager' },
-  { label: 'Ready',       value: 'status--ready' },
-  { label: 'Started',     value: 'status--started' },
-  { label: 'Errors',      value: 'multi:errors' },
-  { label: 'Completed',   value: 'status--run' },
-  { label: 'Passed Review', value: 'status--passed' },
-];
-```
-
-### 2. Update `filterPrompts()` to handle the new filter values
-
-The existing filter logic handles `cat:`, `prio:`, and statusClass matching.
-Add two new prefix handlers before the `else` fallback:
-
-```js
-} else if (filterStatus === 'kind:manager') {
-  list = list.filter(p => p.kind === 'manager');
-} else if (filterStatus === 'multi:errors') {
-  list = list.filter(p =>
-    p.statusClass === 'status--run-errors' ||
-    p.reviewOutcome === 'issues found' ||
-    p.reviewOutcome === 'needs rework'
-  );
-} else {
-  list = list.filter(p => p.statusClass === filterStatus);
-}
-```
-
-### What NOT to change
-
-- Do not change the category or priority filter infrastructure (it may be used elsewhere)
-- Do not change the filter button rendering logic beyond updating `STATUS_FILTERS`
-- Do not change any other toolbar behavior
-
-## Validation
-
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open the dashboard and verify:
-- Exactly 7 filter buttons appear: All, Managers, Ready, Started, Errors, Completed, Passed Review
-- Each filter correctly narrows the prompt list
-- "Errors" shows prompts with run-errors, issues found, OR needs rework
-- "Managers" shows only manager-kind prompts
-- "All" clears the filter and shows all prompts
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-615
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-615 --checklist "- [ ] Open dashboard and confirm exactly 7 filter buttons appear: All, Managers, Ready, Started, Errors, Completed, Passed Review|- [ ] Click 'Managers' and verify only manager-kind prompts are shown|- [ ] Click 'Errors' and verify prompts with run-errors, issues found, or needs rework are shown|- [ ] Click 'All' and verify full prompt list is restored|- [ ] Click 'Ready', 'Started', 'Completed', 'Passed Review' and verify each narrows correctly"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-615 --errors "brief description of what went wrong" --checklist "- [ ] Open dashboard and confirm exactly 7 filter buttons appear: All, Managers, Ready, Started, Errors, Completed, Passed Review|- [ ] Click 'Managers' and verify only manager-kind prompts are shown|- [ ] Click 'Errors' and verify prompts with run-errors, issues found, or needs rework are shown|- [ ] Click 'All' and verify full prompt list is restored|- [ ] Click 'Ready', 'Started', 'Completed', 'Passed Review' and verify each narrows correctly"
-```
 ```
 
 ## CCP-616 - AI Guided Questions mode for prompt and sprint creation
@@ -6195,999 +607,478 @@ npm run prompt:complete -- CCP-617 --errors "brief description of what went wron
 ```
 ```
 
-## CCP-618 - Dashboard: pin status and copy button columns
+## CCP-637 - Audit and fix bulk-review accuracy scores
 
 ```
-# CCP-618 — Dashboard: pin status and copy button columns
+# CCP-637 — Audit and fix bulk-review accuracy scores
 
 Read and follow:
 - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
 - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
 ## Context
 
-The prompt dashboard table has 8 columns: ID, Title, Priority, Category, Date, Source,
-Status, and a copy/actions button. At narrow window widths the Status and actions columns
-scroll out of view, making it impossible to see a prompt's status or copy it without
-scrolling right.
+Accuracy scores produced by bulk game review are incorrect regardless of engine depth.
+This is a user-reported bug: games reviewed in batch show accuracy numbers that do not
+reflect real play quality, and the problem persists even at higher depths.
 
-## Target file
+The goal of this prompt is to:
+1. Understand exactly how accuracy is computed from batch review data
+2. Identify the root cause of the incorrect numbers — depth may be a contributing factor
+   but is not confirmed as the sole cause
+3. Decide whether to fix the calculation, gate the display on a quality threshold,
+   or hide accuracy entirely for bulk-reviewed games
 
-`scripts/generate-prompt-dashboard.mjs`
+## Background
 
-## Goal
+Accuracy in Patzer Pro is derived from win-chance loss per move, following the Lichess model:
+- For each move, compute the win-chance delta (mover-perspective)
+- Accuracy per move = a function of that delta
+- Game accuracy = average across all moves
 
-Status and the copy/actions column must always be visible at any window width, using
-`position: sticky` on those two columns.
+The bug manifests as accuracy numbers that appear random or implausible across games reviewed
+in batch, at varying depths. The root cause is unknown — possibilities include a formula
+error, a sign or perspective bug, incorrect move inclusion, or a wiring problem between
+batch eval data and the accuracy calculation path.
 
-## Changes required
+## Investigation required
 
-### 1. Wrap the table in a scrollable container
+Before writing any fix, read and understand:
 
-Add a wrapper `div` around the `<table>` with `overflow-x: auto`:
+1. **Where accuracy is computed** — find the function(s) that calculate per-move and
+   per-game accuracy. Likely in `src/engine/` or `src/analyse/`.
 
-```html
-<div style="overflow-x: auto;">
-  <table>...</table>
-</div>
-```
+2. **How batch review feeds accuracy** — check `src/engine/batch.ts`. Trace how batch
+   eval results reach the accuracy calculation. Is the data path the same as for
+   single-game review? Are there places where eval fields (cp, mate, depth, best) could
+   be missing or structured differently?
 
-### 2. Add sticky CSS for the Status and actions columns
+3. **How Lichess handles accuracy** — check `ui/lib/src/ceval/winningChances.ts` and
+   the Lichess accuracy logic. What formula does Lichess use? Are there any guards,
+   exclusions (book moves, forced moves), or minimum-depth gates?
 
-Add to the embedded `<style>` block:
+4. **What "wildly off" looks like concretely** — trace an example game through the
+   accuracy path and identify the specific step where the output diverges from
+   expected. Report the diagnosis before writing any fix.
 
-```css
-/* Sticky last two columns */
-thead th:nth-last-child(1),
-thead th:nth-last-child(2),
-td:nth-last-child(1),
-td:nth-last-child(2) {
-  position: sticky;
-  background: #1a1a1a;
-}
-thead th:nth-last-child(1),
-td:nth-last-child(1) {
-  right: 0;
-}
-thead th:nth-last-child(2),
-td:nth-last-child(2) {
-  right: calc(/* actions col width */ 60px);
-}
-```
+## Decision tree
 
-Adjust the `right` offset for the second-to-last column to match the actual rendered
-width of the actions column (approximately 60px based on the `.row-copy` button width).
+After investigation, apply exactly one of these fixes:
 
-Add a subtle left border to the Status column to visually separate it from the
-scrolling content:
+**Option A — Formula or wiring fix**: If the root cause is a bad formula, wrong sign
+convention, or a wiring gap between batch evals and the accuracy path, fix it. Document
+the correct Lichess-aligned formula and verify output is plausible (e.g. 70–85% for a
+clean game, not 12% or 99%).
 
-```css
-thead th:nth-last-child(2),
-td:nth-last-child(2) {
-  border-left: 1px solid #2a2a2a;
-}
-```
+**Option B — Depth or quality gate**: If accuracy is inherently unreliable below a
+certain eval quality threshold, suppress the display when that threshold isn't met.
+Show "—" or "N/A" instead. Gate value should match Lichess's threshold if one exists
+in the source.
 
-Ensure sticky cells on hovered rows match the hover background:
+**Option C — Hide entirely for bulk**: If accuracy cannot be computed reliably from
+batch review data regardless of depth or formula, add a flag to suppress accuracy
+display on bulk-reviewed games and explain this clearly in the UI.
 
-```css
-tbody tr:hover td:nth-last-child(1),
-tbody tr:hover td:nth-last-child(2) {
-  background: #252525;
-}
-```
+Only implement one option. Do not bundle options. Pick the one that is most faithful to
+Lichess behavior and document why.
 
-For manager rows:
+## Files likely involved
 
-```css
-tr.row--manager td:nth-last-child(1),
-tr.row--manager td:nth-last-child(2) {
-  background: #1e2228;
-}
-tr.row--manager:hover td:nth-last-child(1),
-tr.row--manager:hover td:nth-last-child(2) {
-  background: #252a32;
-}
-```
+- `src/engine/batch.ts` — bulk review pipeline, eval data shape
+- `src/engine/winchances.ts` — win-chance calculation
+- `src/analyse/` — accuracy summary rendering
+- `src/main.ts` — where accuracy is wired into the display
+- `~/Development/lichess-source/lila/ui/lib/src/ceval/winningChances.ts` — Lichess reference
 
-### What NOT to change
+## What NOT to do
 
-- Do not change column order or content
-- Do not change any other table behavior or filtering logic
-- Do not touch the sprint table or urgent block
+- Do not change the bulk review depth target without a separate tracked prompt
+- Do not redesign the accuracy display UI beyond gating/hiding the broken number
+- Do not touch puzzle or retrospection logic
 
 ## Validation
 
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open the dashboard, narrow the browser window, and verify:
-- The Status badge and the copy button remain visible on the right as the table scrolls
-- The Status column has a subtle left border separator
-- Hovered row background is consistent across sticky and non-sticky cells
-- Manager row background is consistent across sticky and non-sticky cells
+- Run `npm run build` — must pass cleanly
+- Open a bulk-reviewed game and verify the accuracy display matches the chosen fix
+- Open a single-reviewed game and verify accuracy still displays correctly (or is
+  consistently gated/hidden if Option C)
+- If Option A: confirm formula output is plausible across multiple games
+- If Option B: confirm the gate threshold is documented and sourced from Lichess or
+  explicitly noted as a Patzer deviation
+- If Option C: confirm no accuracy number appears on any bulk-reviewed game
 
 ## Lifecycle
 
 Before making any changes, mark this prompt as started:
 ```sh
-npm run prompt:start -- CCP-618
+npm run prompt:start -- CCP-637
 ```
 
-After all work is complete, mark it as done:
+After all work is complete:
 ```sh
-npm run prompt:complete -- CCP-618 --checklist "- [ ] Narrow the browser window and confirm Status badge stays pinned to the right edge|- [ ] Narrow the browser window and confirm the copy button stays pinned to the right edge|- [ ] Hover a row and confirm background is consistent across sticky and non-sticky cells|- [ ] Confirm manager rows have correct background on both sticky and non-sticky cells"
+npm run prompt:complete -- CCP-637 --checklist "- [ ] Root cause of incorrect accuracy scores identified and documented|- [ ] Lichess accuracy formula and any gate behavior confirmed from source|- [ ] Fix implemented: Option A/B/C (state which and why)|- [ ] Bulk-reviewed game shows correct behavior|- [ ] Single-reviewed game accuracy unaffected (or consistently handled)|- [ ] Build passes cleanly"
+```
+
+If errors or issues were encountered:
+```sh
+npm run prompt:complete -- CCP-637 --errors "brief description" --checklist "- [ ] Root cause of incorrect accuracy scores identified and documented|- [ ] Lichess accuracy formula and any gate behavior confirmed from source|- [ ] Fix implemented: Option A/B/C (state which and why)|- [ ] Bulk-reviewed game shows correct behavior|- [ ] Single-reviewed game accuracy unaffected (or consistently handled)|- [ ] Build passes cleanly"
 ```
 ```
 
-## CCP-619 - Dashboard: make refresh button always visible
+## CCP-639 - Audit all buttons for hover text and aria-label accessibility
 
 ```
-# CCP-619 — Dashboard: make refresh button always visible
+# CCP-639 — Audit all buttons for hover text and aria-label accessibility
 
 Read and follow:
 - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
 - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
 ## Context
 
-The dashboard header contains the "Refresh Data" button. As the user scrolls down through
-a long prompt list, the header scrolls out of view, taking the Refresh button with it.
-The button should always be accessible regardless of scroll position.
+Every interactive button in the app should have:
+1. A `title` attribute — browser-native hover tooltip visible to sighted users
+2. An `aria-label` attribute — the WCAG-required accessible name read by screen readers
 
-The header already has `z-index: 10` set, indicating sticky behaviour was always the intent
-but was never applied.
+This prompt audits every button in the codebase, fixes all gaps, and establishes the
+standard that must be followed for all buttons created going forward.
 
-## Target file
+## Accessibility standard
 
-`scripts/generate-prompt-dashboard.mjs`
+The correct pattern for all buttons (especially icon-only buttons) is:
 
-## Changes required
-
-Add `position: sticky` and `top: 0` to the `.header` rule so the entire header — including
-the Refresh Data button — stays pinned to the top of the viewport as the page scrolls.
-
-Find the existing `.header` CSS rule:
-
-```css
-.header {
-  display: flex;
-  align-items: center;
+```typescript
+h('button', {
+  attrs: {
+    title: 'Human-readable description of what this button does',
+    'aria-label': 'Human-readable description of what this button does',
+  },
+}, iconOrLabel)
 ```
 
-Add the two sticky properties:
+**Why both:**
+- `title` renders as a browser tooltip on hover — visible to sighted users
+- `aria-label` is the WCAG 4.1.2 (Level A) accessible name — used by screen readers,
+  voice control, and other assistive technologies
+- `title` alone is not reliably announced by all screen readers
+- `aria-label` alone gives no visible affordance to sighted users
 
-```css
-.header {
-  position: sticky;
-  top: 0;
-  display: flex;
-  align-items: center;
+**When they can differ:**
+- `title` may include slightly more context (e.g. keyboard shortcut hint)
+- `aria-label` should be the concise accessible name
+- Example: `title: "Flip board (F)"`, `aria-label: "Flip board"`
+
+**For buttons with visible text labels:**
+- `aria-label` is not required if the button text already provides the accessible name
+- `title` is still encouraged for additional context or shortcut hints
+- Icon-only buttons always require both
+
+**For buttons with both an icon and a visible text label:**
+- `aria-label` is not required — the visible text is the accessible name
+- `title` may still be added for shortcut hints or extra context
+
+## Audit scope
+
+Search every `.ts` file under `src/` for `h('button'` and `h('a'` used as interactive
+controls. For each one, record:
+
+| File | Button description | Has `title`? | Has `aria-label`? | Action needed |
+|---|---|---|---|---|
+
+Categorise each button as one of:
+- **Icon-only** — no visible text label; both `title` and `aria-label` required
+- **Text label** — visible text present; `aria-label` not required, `title` encouraged
+- **Icon + text** — both visible; `aria-label` not required, `title` encouraged
+
+Priority order for fixing:
+1. Icon-only buttons missing both — highest risk, completely opaque to screen readers
+2. Icon-only buttons missing `aria-label` only
+3. Icon-only buttons missing `title` only
+4. Text-label buttons missing `title` (lower priority, not a WCAG failure)
+
+## Files to search
+
+Start with:
+- `src/analyse/retroView.ts`
+- `src/analyse/analysisControls.ts`
+- `src/header/index.ts`
+- `src/games/view.ts`
+- `src/board/index.ts`
+- `src/puzzles/view.ts`
+- `src/openings/view.ts`
+- `src/ceval/view.ts`
+- `src/main.ts`
+
+Then grep the full `src/` tree to catch any remaining files:
+```sh
+grep -rn "h('button'" src/
+grep -rn 'h("button"' src/
 ```
 
-No other changes needed. The existing `z-index: 10` already ensures the header sits above
-scrolling content.
+## Fix standard
 
-### What NOT to change
+For every icon-only button found missing `title` or `aria-label`, add both attributes.
+Write descriptions that are:
+- Concise (3–6 words)
+- Action-oriented ("Flip board", "Close", "Show engine", "Skip this move")
+- Consistent — if the same action appears in multiple places, use the same wording
 
-- Do not change header layout, flex behaviour, or responsive styles
-- Do not change the Refresh button itself
-- Do not touch the table, filters, or any other part of the dashboard
+For buttons with visible text where `title` is absent but would add value (e.g. shortcut
+hints), add `title` only — do not add a redundant `aria-label`.
+
+## Scope constraint
+
+This prompt touches rendering files only. Do not change:
+- Business logic
+- State management
+- Engine or batch pipeline
+- CSS / SCSS
+
+All changes are attribute additions to existing `h('button', ...)` or `h('a', ...)`
+vnodes. No new buttons, no layout changes.
+
+## Forward-looking standard (document in CLAUDE.md)
+
+After completing the audit and fixes, add the following note to `CLAUDE.md` under a
+new section **## Button Accessibility Rule**:
+
+```
+Every button created in this project must include:
+- `title` attribute — hover tooltip for sighted users (always required)
+- `aria-label` attribute — accessible name for screen readers (required for icon-only buttons)
+
+For icon-only buttons, both are always required. For buttons with visible text labels,
+`title` is encouraged and `aria-label` is not required. When in doubt, add both.
+
+Standard pattern:
+  h('button', { attrs: { title: 'Do the thing', 'aria-label': 'Do the thing' } }, icon)
+```
+
+Also add the same note to `AGENTS.md` under a matching **## Button Accessibility Rule**
+section so Codex agents follow the same standard.
 
 ## Validation
 
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open the dashboard and verify:
-- Scroll down past the first screenful of prompts
-- The header (brand, stats, Refresh Data button) remains pinned at the top
-- The Refresh Data button is clickable at all scroll positions
-- No visual overlap or z-index issues with table rows scrolling under the header
+- Run `npm run build` — must pass cleanly
+- Search `src/` for icon-only buttons — none should be missing both `title` and `aria-label`
+- Manually hover over 5–10 representative buttons and confirm tooltip text appears
+- Confirm CLAUDE.md and AGENTS.md both contain the Button Accessibility Rule section
 
 ## Lifecycle
 
 Before making any changes, mark this prompt as started:
 ```sh
-npm run prompt:start -- CCP-619
+npm run prompt:start -- CCP-639
 ```
 
-After all work is complete, mark it as done:
+After all work is complete:
 ```sh
-npm run prompt:complete -- CCP-619 --checklist "- [ ] Scroll down past the first screenful and confirm the header stays pinned at the top|- [ ] Confirm the Refresh Data button is clickable at all scroll positions|- [ ] Confirm table rows scroll under the header without visual overlap issues"
+npm run prompt:complete -- CCP-639 --checklist "- [ ] Full audit table produced covering all button/anchor elements in src/|- [ ] All icon-only buttons have both title and aria-label|- [ ] Descriptions are concise, action-oriented, and consistent|- [ ] Button Accessibility Rule added to CLAUDE.md|- [ ] Button Accessibility Rule added to AGENTS.md|- [ ] Build passes cleanly"
+```
+
+If errors or issues were encountered:
+```sh
+npm run prompt:complete -- CCP-639 --errors "brief description" --checklist "- [ ] Full audit table produced covering all button/anchor elements in src/|- [ ] All icon-only buttons have both title and aria-label|- [ ] Descriptions are concise, action-oriented, and consistent|- [ ] Button Accessibility Rule added to CLAUDE.md|- [ ] Button Accessibility Rule added to AGENTS.md|- [ ] Build passes cleanly"
 ```
 ```
 
-## CCP-619-F2 - Fix: hide header stats at narrow widths to keep header single-line
+## CCP-682 - Learn From Your Mistakes live eval hidden until after move
 
 ```
-# CCP-619-F2 — Fix: hide header stats at narrow widths to keep header single-line
-
 Read and follow:
 - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
 - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-682 — Learn From Your Mistakes: Hide Live Eval During Puzzle Attempt
+
+## Summary
+
+In Learn From Your Mistakes mode, the engine's live evaluation is currently visible while the user is attempting to find the correct move. This spoils the puzzle. The live eval should be hidden while the user is deciding, then cleared automatically when the user moves on to the next mistake.
+
 ## Context
 
-CCP-619-F1 proposed reordering header items with CSS `order` to fix the Refresh button
-disappearing at narrow widths. The user has chosen a simpler approach: hide the stats
-block and the generated timestamp when the window is too narrow, so the header stays
-on a single line and the Refresh button is always visible.
+In Learn From Your Mistakes, each position is presented as a puzzle — the user is supposed to find the best move without assistance. Displaying the live engine eval while the user is in the attempt phase gives away the answer (positive eval = they need to find a winning move; large swing = something dramatic is happening). This is a spoiler.
 
-CCP-619-F1 was never executed and is superseded by this prompt.
+The correct behavior (matching Lichess puzzle UX):
+- **Before a move is made:** live eval is hidden — no eval bar value, no centipawn number visible
+- **After a move is made:** the feedback panel can show the eval diff from the result
+- **When advancing to the next mistake:** the eval display resets/clears so it does not carry over
 
-## Target file
+## Tasks
 
-`scripts/generate-prompt-dashboard.mjs`
+1. Locate where the live engine eval is rendered during the Learn From Your Mistakes session
+2. Add a gate that suppresses the eval display while the player has not yet made their move attempt
+3. Ensure the suppression clears correctly when:
+   - the user makes a move (eval can then be shown as part of feedback if needed)
+   - the session advances to the next mistake position (eval resets, hidden again until next attempt)
 
-## Changes required
+## Scope
 
-Replace the existing `@media (max-width: 700px)` block. Remove the `flex-wrap: wrap`
-and `height: auto` rules from `.header`, and instead hide `.header__stats` and
-`.header__generated` so the header stays one line with only brand, title, and the
-Refresh button visible.
-
-Find:
-
-```css
-@media (max-width: 700px) {
-  .header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 6px; }
-  .header__stats { margin-left: 0; flex-wrap: wrap; }
-  .container { padding: 10px; }
-  .detail-meta { grid-template-columns: 1fr; }
-  .detail-meta dt { margin-top: 6px; }
-  td.title { max-width: none; }
-}
-```
-
-Replace with:
-
-```css
-@media (max-width: 700px) {
-  .header__stats { display: none; }
-  .header__generated { display: none; }
-  .container { padding: 10px; }
-  .detail-meta { grid-template-columns: 1fr; }
-  .detail-meta dt { margin-top: 6px; }
-  td.title { max-width: none; }
-}
-```
-
-### What NOT to change
-
-- Do not change the header HTML
-- Do not change any desktop styles
-- Do not touch any other part of the media query block beyond what is shown above
+- Touch only the code responsible for showing/hiding the eval during Learn From Your Mistakes
+- Do not change eval behavior on the main analysis board outside of LFYM mode
+- Maximum 1–3 files
 
 ## Validation
 
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open the dashboard and verify:
-- At full width: header shows brand, title, stats, generated timestamp, and Refresh button
-- Narrow to ~400px: stats and timestamp are hidden, header stays on one line
-- Narrow to ~400px: Refresh button is visible and clickable
-- No header wrapping or two-line header at any width
+- [ ] Live eval is not visible while the user is in the attempt phase (before making a move)
+- [ ] Eval display clears when advancing to the next mistake position
+- [ ] Eval is not accidentally hidden outside of Learn From Your Mistakes mode (main analysis board unaffected)
+- [ ] No regression in the feedback panel or the eval bar in normal analysis mode
 
 ## Lifecycle
 
 Before making any changes, mark this prompt as started:
 ```sh
-npm run prompt:start -- CCP-619-F2
+npm run prompt:start -- CCP-682
 ```
 
 After all work is complete, mark it as done:
 ```sh
-npm run prompt:complete -- CCP-619-F2 --checklist "- [ ] At full width header shows all elements including stats and timestamp|- [ ] Narrow to ~400px and confirm stats and timestamp are hidden|- [ ] Narrow to ~400px and confirm header stays on a single line|- [ ] Narrow to ~400px and confirm Refresh button is visible and clickable"
-```
-
-If errors occurred:
-```sh
-npm run prompt:complete -- CCP-619-F2 --errors "brief description" --checklist "- [ ] At full width header shows all elements including stats and timestamp|- [ ] Narrow to ~400px and confirm stats and timestamp are hidden|- [ ] Narrow to ~400px and confirm header stays on a single line|- [ ] Narrow to ~400px and confirm Refresh button is visible and clickable"
-```
-```
-
-## CCP-621 - Dashboard: remove stats block from header
-
-```
-# CCP-621 — Dashboard: remove stats block from header
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-## Context
-
-The dashboard header shows a row of stat counters (total, sprints, active/problem sprints,
-reviewed, started, run, ready, reserved) and a generated timestamp. The user no longer
-wants this information in the header.
-
-## Target file
-
-`scripts/generate-prompt-dashboard.mjs`
-
-## Changes required
-
-### 1. Remove the CSS
-
-Remove these two rule blocks:
-
-```css
-.header__stats {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.header__stat { white-space: nowrap; }
-.header__stat b { color: var(--text); }
-```
-
-And remove the `.header__generated` rule block:
-
-```css
-.header__generated {
-  font-size: 0.72rem;
-  color: #555;
-  white-space: nowrap;
-}
-```
-
-Also remove the two lines from the `@media (max-width: 700px)` block that are now redundant:
-
-```css
-  .header__stats { display: none; }
-  .header__generated { display: none; }
-```
-
-### 2. Remove the HTML elements
-
-Remove the stats div and the generated timestamp span from the header:
-
-```html
-  <div class="header__stats" id="stats"></div>
-  <span class="header__generated">Updated ${...}</span>
-```
-
-### 3. Remove the JS that populates the stats
-
-Remove the `document.getElementById('stats').innerHTML = ...` block (the multi-line
-assignment that writes the `header__stat` spans).
-
-Also remove the reference to `.header__generated` in the refresh handler:
-
-```js
-    const genEl = document.querySelector('.header__generated');
-    if (genEl) genEl.textContent = 'Live data';
-```
-
-### 4. Add margin-left: auto to the refresh button
-
-With the stats block gone, the Refresh button needs `margin-left: auto` to stay
-right-aligned in the header. Add to the existing `.header__refresh` rule:
-
-```css
-.header__refresh {
-  margin-left: auto;
-  ...
-}
-```
-
-### What NOT to change
-
-- Do not remove the stats variables themselves if they are used elsewhere in rendering
-- Do not change any other header elements (brand, title, refresh button)
-- Do not touch the sprint or prompt list rendering
-
-## Validation
-
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open the dashboard and verify:
-- Header shows only: brand, title, Refresh button
-- Refresh button is right-aligned
-- No stat counters or timestamp visible at any window width
-- Refresh button still works
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-621
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-621 --checklist "- [ ] Header shows only brand, title, and Refresh button|- [ ] Refresh button is right-aligned|- [ ] No stat counters or timestamp visible at any window width|- [ ] Refresh button still works"
-```
-
-If errors occurred:
-```sh
-npm run prompt:complete -- CCP-621 --errors "brief description" --checklist "- [ ] Header shows only brand, title, and Refresh button|- [ ] Refresh button is right-aligned|- [ ] No stat counters or timestamp visible at any window width|- [ ] Refresh button still works"
-```
-```
-
-## CCP-622 - Dashboard: turn Refresh button amber after 2 minutes
-
-```
-# CCP-622 — Dashboard: Refresh button amber stale timer + visual distinction from bulk-copy buttons
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-## Context
-
-The Refresh Data button in the dashboard header is pressed frequently. After 2 minutes
-of inactivity (no refresh), the button should turn amber to remind the user that the
-data may be stale.
-
-The timer resets every time the button is clicked. If the button is clicked within
-2 minutes, it stays its normal colour. After 2 minutes without a click, it turns amber.
-
-## Target file
-
-`scripts/generate-prompt-dashboard.mjs`
-
-## Changes required
-
-### 1. Add amber CSS state
-
-Add a new class to the existing `.header__refresh` rules:
-
-```css
-.header__refresh.is-stale {
-  border-color: #b8860b;
-  color: #f0a500;
-}
-```
-
-### 2. Add the stale timer JS
-
-After the existing refresh button click handler, add a timer that sets the button stale
-after 2 minutes of no refresh:
-
-```js
-// --- Stale indicator ---
-let staleTimer = null;
-function resetStaleTimer() {
-  const btn = document.getElementById('refresh-btn');
-  btn.classList.remove('is-stale');
-  clearTimeout(staleTimer);
-  staleTimer = setTimeout(() => {
-    btn.classList.add('is-stale');
-  }, 2 * 60 * 1000);
-}
-resetStaleTimer();
-document.getElementById('refresh-btn').addEventListener('click', resetStaleTimer);
-```
-
-Note: the existing click handler on `refresh-btn` already exists — add a second
-`addEventListener` call for `resetStaleTimer`, do not replace the existing handler.
-
-### 3. Make the Refresh button larger and visually distinct from the bulk-copy buttons
-
-The `.header__refresh` and `.bulk-copy-btn` currently share nearly identical styling
-(same size, same muted colour scheme). The Refresh button is the primary action in the
-header and should look distinct and more prominent.
-
-Update the existing `.header__refresh` rule:
-
-```css
-.header__refresh {
-  margin-left: auto;
-  padding: 6px 16px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  background: var(--bg-card);
-  color: var(--text);
-  border: 1px solid #444;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-  white-space: nowrap;
-}
-.header__refresh:hover { background: var(--accent); color: #111; border-color: var(--accent); }
-```
-
-The `.bulk-copy-btn` buttons stay visually smaller and muted — do not change them.
-
-### What NOT to change
-
-- Do not change the existing refresh button click handler
-- Do not change `.bulk-copy-btn` styles
-- Do not change any other header layout
-
-## Validation
-
-Run:
-```
-npm run prompts:dashboard
-```
-
-Open the dashboard and verify:
-- Refresh button is visibly larger and bolder than the Copy Needs Review IDs / Copy Issues Found buttons
-- Button starts in normal colour on page load
-- After 2 minutes without clicking, button turns amber
-- Clicking the button resets the timer and returns to normal colour
-- Hover state still works correctly
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-622
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-622 --checklist "- [ ] Refresh button is visibly larger and bolder than the bulk-copy buttons|- [ ] Button starts in normal colour on page load|- [ ] After 2 minutes without clicking button turns amber|- [ ] Clicking the button resets the timer and returns to normal colour|- [ ] Hover state still works correctly"
-```
-
-If errors occurred:
-```sh
-npm run prompt:complete -- CCP-622 --errors "brief description" --checklist "- [ ] Refresh button is visibly larger and bolder than the bulk-copy buttons|- [ ] Button starts in normal colour on page load|- [ ] After 2 minutes without clicking button turns amber|- [ ] Clicking the button resets the timer and returns to normal colour|- [ ] Hover state still works correctly"
-```
-```
-
-## CCP-623 - Old Issues Found Backlog Cleanup Campaign
-
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-623
-Task ID: CCP-623
-Source Document: old issues found backlog cleanup campaign
-Source Step: top-level tracked backlog re-triage manager
-Execution Target: Codex
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-This is a tracked cleanup campaign manager. It exists to run the four backlog re-triage waves in order and keep the registry/history truthful. It is not a feature implementation prompt.
-
-Batch prompt IDs to execute in order:
-- `CCP-626`
-- `CCP-624`
-- `CCP-625`
-- `CCP-627`
-
-Manager-prompt rule:
-- `CCP-623` is the manager prompt id only
-- do not recurse into `CCP-623` as if it were one of the child prompts
-
-Campaign goal:
-- re-triage the 109 prompts currently marked `issues found`
-- classify each prompt as one of:
-  - `fix now`
-  - `resolved already`
-  - `superseded`
-  - `manager-only fallout`
-- create follow-up fix prompts only for `fix now`
-- re-close prompts through the prompt-review workflow with explicit provenance
-
-Required campaign rules:
-- preserve historical truth; do not pretend old prompts passed originally if they did not
-- do not create follow-up prompts for superseded work or manager-only fallout
-- do not re-close any manager prompt until all relevant child prompts have current dispositions
-- use the current prompt workflow commands, never hand-edit generated docs
-- run `npm run prompts:refresh` after each coherent wave or subtree
-
-For each child wave manager:
-1. read the child prompt exactly as written from `docs/prompts/items/`
-2. run its lifecycle commands
-3. complete the wave before moving to the next one unless the wave explicitly blocks on a real uncertainty
-
-## Lifecycle
-
-Before executing any child prompts, mark this manager as started:
-```sh
-npm run prompt:start -- CCP-623
-```
-
-After all child prompts are complete, mark the manager as done:
-```sh
-npm run prompt:complete -- CCP-623 --checklist "- [ ] All four backlog re-triage waves completed with explicit prompt dispositions|- [ ] Any new follow-up fix prompts were created only for prompts classified as fix now|- [ ] Registry, queue, log, history, and dashboard were refreshed after the campaign"
+npm run prompt:complete -- CCP-682 --checklist "- [ ] Live eval hidden during LFYM attempt phase (before move is made)|- [ ] Eval clears when advancing to next mistake|- [ ] Main analysis board eval unaffected outside LFYM mode|- [ ] No regression in feedback panel or eval bar in normal analysis"
 ```
 
 If errors or issues were encountered during execution, use `--errors` instead:
 ```sh
-npm run prompt:complete -- CCP-623 --errors "brief description of what blocked the backlog cleanup campaign" --checklist "- [ ] At least one wave completed and wrote prompt dispositions|- [ ] Any blocked wave clearly reported what remains unresolved|- [ ] Prompt tracking artifacts were refreshed to reflect the partial campaign state"
+npm run prompt:complete -- CCP-682 --errors "brief description of what went wrong" --checklist "- [ ] Live eval hidden during LFYM attempt phase (before move is made)|- [ ] Eval clears when advancing to next mistake|- [ ] Main analysis board eval unaffected outside LFYM mode|- [ ] No regression in feedback panel or eval bar in normal analysis"
 ```
 ```
 
-## CCP-624 - Wave 2 Backlog Re-Triage — Manager Fallout
-
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-624
-Task ID: CCP-624
-Source Document: old issues found backlog cleanup campaign
-Source Step: Wave 2 — manager fallout re-triage
-Execution Target: Codex
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-This wave handles manager prompts that are currently marked `issues found` but may only be red because of child state. Do not create direct manager fix prompts unless the manager itself is broken independently of its children.
-
-Wave 2 prompt IDs to process:
-- `CCP-301`
-- `CCP-258`
-- `CCP-187`
-- `CCP-192`
-- `CCP-177`
-- `CCP-231`
-- `CCP-240`
-- `CCP-249`
-- `CCP-257`
-- `CCP-307`
-- `CCP-312`
-- `CCP-321`
-- `CCP-448`
-- `CCP-450`
-- `CCP-451`
-- `CCP-452`
-- `CCP-456`
-- `CCP-457`
-- `CCP-474`
-- `CCP-507`
-- `CCP-522`
-- `CCP-563`
-- `CCP-564`
-- `CCP-587`
-
-Required method for each prompt:
-1. inspect the original prompt item and current registry state
-2. inspect relevant child prompts and their current review outcomes
-3. determine whether the manager is:
-   - still blocked by child prompts
-   - resolved by later child work
-   - independently still broken
-   - superseded
-4. if children are stale or unresolved, re-triage the children first before re-closing the manager
-5. if the manager truly still needs code work, only then create a follow-up fix prompt
-
-Do not:
-- mark a manager `issues resolved` while relevant children still have stale or conflicting states
-- create manager follow-up prompts just because the original manager was red historically
-- hand-edit queue/log/history files
-
-Validation expectations:
-- every manager in this wave must end with a current disposition
-- no manager should remain ambiguous about whether its red state is child fallout or a real current problem
-- any child follow-up prompts created during this wave must be rooted in an actual current issue
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-624
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-624 --checklist "- [ ] Every Wave 2 manager prompt has a current disposition and review provenance|- [ ] No manager was re-closed before its relevant child states were checked|- [ ] Any newly created follow-up prompts in this wave are rooted only in real current issues"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-624 --errors "brief description of what blocked Wave 2 manager re-triage" --checklist "- [ ] At least one manager subtree was re-triaged and recorded|- [ ] Any blocked manager clearly reports which child state prevented closure|- [ ] Prompt tracking artifacts were refreshed to reflect the partial Wave 2 state"
-```
-```
-
-## CCP-625 - Wave 3 Backlog Re-Triage — Process And Artifact Prompts
+## CCP-683 - Fix evalView TypeScript Strict Errors
 
 ```
 Read and follow:
 - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
 - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
 
-Prompt ID: CCP-625
-Task ID: CCP-625
-Source Document: old issues found backlog cleanup campaign
-Source Step: Wave 3 — process and artifact prompt re-triage
-Execution Target: Codex
+# CCP-683 — Fix evalView TypeScript Strict Errors
 
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+## Summary
 
-This wave handles prompts whose historical issue may have been missing review, missing artifact, bad closeout, or other process debt rather than a current product bug.
+`src/analyse/evalView.ts` has 8 pre-existing TypeScript strict-mode errors that cause `npx tsc --noEmit` to fail. These were surfaced during CCP-681 validation. Fix them without changing runtime behavior.
 
-Wave 3 prompt IDs to process:
-- `CCP-151-F1`
-- `CCP-151-F2`
-- `CCP-153-F1`
-- `CCP-249-F1`
-- `CCP-249-F2`
-- `CCP-250`
-- `CCP-256`
+## Errors
 
-Required method for each prompt:
-1. inspect the original prompt item and the historical review finding
-2. inspect current code and any later follow-up prompts affecting the same task family
-3. determine whether the old issue is now:
-   - resolved already
-   - still meaningful and needing a real follow-up fix
-   - superseded by later work or changed product direction
-   - purely historical process debt that should remain truthful but not generate new engineering work
-4. create a follow-up fix prompt only if the missing behavior/artifact still matters now
+All errors are in `src/analyse/evalView.ts`:
 
-Default bias for this wave:
-- do not generate cleanup work just to satisfy old wording if the product has moved on
-- preserve historical truth in notes/scope even when marking a prompt effectively resolved or superseded
+- Line 281: `Argument of type 'string | undefined' is not assignable to parameter of type 'string'`
+- Lines 289, 310, 311: `'summary' is possibly 'null'`
+- Lines 319, 320, 321: `'worst' is possibly 'null'`
 
-Validation expectations:
-- every prompt in this wave ends with a current disposition
-- any missing artifact follow-up is created only if the artifact still matters for the repo
-- any prompt marked resolved or superseded has review provenance and scope explaining why
+## Tasks
+
+1. Read `src/analyse/evalView.ts` around lines 281 and 289–321 to understand the exact context
+2. For line 281: add a null/undefined guard or non-null assertion where appropriate, matching the existing code's intent
+3. For the `summary` null cases (289, 310, 311): add guards that match the surrounding logic — do not change what is rendered, only make the access type-safe
+4. For the `worst` null cases (319, 320, 321): same approach — guard or assert where the value is provably non-null at that code path
+
+## Scope
+
+- Touch only `src/analyse/evalView.ts`
+- Do not change rendered output or runtime behavior
+- Do not refactor surrounding logic
+- Maximum 1 file
+
+## Validation
+
+- [ ] `npx tsc --noEmit` passes with no errors in `evalView.ts`
+- [ ] `npm run build` passes
+- [ ] No change in rendered eval summary output in the browser
 
 ## Lifecycle
 
 Before making any changes, mark this prompt as started:
 ```sh
-npm run prompt:start -- CCP-625
+npm run prompt:start -- CCP-683
 ```
 
 After all work is complete, mark it as done:
 ```sh
-npm run prompt:complete -- CCP-625 --checklist "- [ ] Every Wave 3 prompt has a current disposition and review provenance|- [ ] Follow-up prompts were created only for still-meaningful process or artifact gaps|- [ ] Resolved/superseded decisions are explained in review scope or notes"
+npm run prompt:complete -- CCP-683 --checklist "- [ ] npx tsc --noEmit passes with no errors in evalView.ts|- [ ] npm run build passes|- [ ] No change in rendered eval summary output in the browser"
 ```
 
 If errors or issues were encountered during execution, use `--errors` instead:
 ```sh
-npm run prompt:complete -- CCP-625 --errors "brief description of what blocked Wave 3 process/artifact re-triage" --checklist "- [ ] At least one Wave 3 prompt was re-triaged and closed with provenance|- [ ] Any blocked prompt clearly reports the missing historical context|- [ ] Prompt tracking artifacts were refreshed to reflect the partial Wave 3 state"
+npm run prompt:complete -- CCP-683 --errors "brief description of what went wrong" --checklist "- [ ] npx tsc --noEmit passes with no errors in evalView.ts|- [ ] npm run build passes|- [ ] No change in rendered eval summary output in the browser"
 ```
 ```
 
-## CCP-626 - Wave 1 Backlog Re-Triage — Recent Leaf Issues
+## CCP-685 - Fix LFYM eval boxes and puzzle orientation regressions
 
 ```
 Read and follow:
 - `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
 - `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
 
-Prompt ID: CCP-626
-Task ID: CCP-626
-Source Document: old issues found backlog cleanup campaign
-Source Step: Wave 1 — recent leaf prompt re-triage
-Execution Target: Codex
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-This wave handles the recent non-manager prompts most likely to still represent real current bugs, missing wiring, or validation-cleanliness problems.
-
-Wave 1 prompt IDs to process:
-- `CCP-305`
-- `CCP-184`
-- `CCP-191`
-- `CCP-156-F1`
-- `CCP-226`
-- `CCP-229`
-- `CCP-234`
-- `CCP-236`
-- `CCP-238`
-- `CCP-245`
-- `CCP-313`
-- `CCP-314`
-- `CCP-406`
-- `CCP-408`
-- `CCP-417`
-- `CCP-565`
-- `CCP-566`
-- `CCP-571`
-- `CCP-572`
-- `CCP-575`
-- `CCP-577`
-- `CCP-578`
-- `CCP-581`
-- `CCP-582`
-- `CCP-584`
-- `CCP-586`
-- `CCP-588`
-- `CCP-594`
-- `CCP-595`
-
-Required method for each prompt:
-1. inspect the original prompt item
-2. inspect the current code and any relevant later follow-up prompts
-3. inspect relevant Lichess references if the issue depends on Lichess-aligned behavior
-4. decide whether the prompt is:
-   - `fix now`
-   - `resolved already`
-   - `superseded`
-   - `manager-only fallout` (should be rare in this wave)
-5. if `fix now`, create the next follow-up prompt in the same task family and leave the original prompt historically truthful
-6. if resolved or superseded, re-review the original prompt with explicit scope/provenance
-
-Default bias for this wave:
-- treat actual current bugs as actionable
-- do not create follow-up prompts for issues that are already gone in current code
-- explicitly separate a prompt-contract miss from a real runtime/typecheck bug when deciding whether to fix
-
-Validation expectations:
-- every prompt in this wave ends with one explicit disposition
-- at least one prompt should be able to land as `resolved already` if current code no longer has the issue
-- follow-up prompts created in this wave must be rooted only in real current bugs or still-important artifact gaps
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-626
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-626 --checklist "- [ ] Every Wave 1 prompt has one explicit disposition|- [ ] Any new follow-up prompts are rooted only in real current bugs or still-important artifact gaps|- [ ] Resolved and superseded prompts were re-reviewed with explicit scope and provenance"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-626 --errors "brief description of what blocked Wave 1 leaf re-triage" --checklist "- [ ] At least one Wave 1 prompt was re-triaged and closed with provenance|- [ ] Any blocked prompt clearly reports what evidence was insufficient|- [ ] Prompt tracking artifacts were refreshed to reflect the partial Wave 1 state"
-```
-```
-
-## CCP-627 - Wave 4 Backlog Re-Triage — Ancient Prompt Sweep
-
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-627
-Task ID: CCP-627
-Source Document: old issues found backlog cleanup campaign
-Source Step: Wave 4 — ancient prompt sweep
-Execution Target: Codex
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-This wave handles the oldest prompts in the backlog. The default bias is toward `superseded` unless the original issue still clearly matters in the current product and current code.
-
-Wave 4 prompt IDs to process:
-- `CCP-003`
-- `CCP-006`
-- `CCP-013`
-- `CCP-013-F1`
-- `CCP-014`
-- `CCP-014-F1`
-- `CCP-015`
-- `CCP-015-F1`
-- `CCP-016`
-- `CCP-019`
-- `CCP-020`
-- `CCP-021`
-- `CCP-023`
-- `CCP-024`
-- `CCP-025`
-- `CCP-026`
-- `CCP-027`
-- `CCP-028`
-- `CCP-034`
-- `CCP-044-F2`
-- `CCP-066`
-- `CCP-070`
-- `CCP-076`
-- `CCP-095`
-- `CCP-099`
-
-Required method for each prompt:
-1. inspect the original prompt item and review finding
-2. inspect the current code path or its modern replacement
-3. decide whether the old issue is:
-   - still a real current problem
-   - already resolved by later work
-   - superseded by later architecture or product direction
-4. create a follow-up fix prompt only if the old issue still matters now
-
-Default bias for this wave:
-- do not create busywork to satisfy stale historical wording
-- if the current product path has clearly moved on, mark the prompt effectively superseded with explicit review scope
-- preserve historical truth and explain why the old issue is no longer actionable
-
-Validation expectations:
-- every prompt in this wave ends with a current disposition
-- at least one prompt should be classified as superseded unless the current code clearly proves otherwise
-- follow-up prompts from this wave should be rare and only created for issues that still matter today
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-627
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-627 --checklist "- [ ] Every Wave 4 prompt has one explicit disposition|- [ ] Superseded decisions are documented with review scope or notes explaining the changed product path|- [ ] Any follow-up prompts created from this wave are limited to issues that still matter today"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-627 --errors "brief description of what blocked the ancient prompt sweep" --checklist "- [ ] At least one ancient prompt was re-triaged and closed with provenance|- [ ] Any blocked prompt clearly reports what historical context is missing|- [ ] Prompt tracking artifacts were refreshed to reflect the partial Wave 4 state"
-```
-```
-
-## CCP-628 - Investigate Mistake Detection Severity UI Behavior
-
-```
-Prompt ID: CCP-628
-Task ID: CCP-628
-Source Document: ad hoc user request
-Source Step: investigate mistake detection severity UI behavior
+Prompt ID: CCP-685
+Task ID: CCP-685
+Source Document: User request
+Source Step: Fix LFYM eval boxes and puzzle orientation regressions
 Execution Target: Claude Code
 
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+# CCP-685 — Fix LFYM Eval Boxes And Puzzle Orientation Regressions
 
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+## Summary
 
-## Lifecycle
+Two user-facing regressions need to be fixed in the Learn From Your Mistakes / puzzle flow:
 
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-628
-```
+1. In LFYM feedback, the dual eval boxes are still not showing the intended engine-backed
+   difference cleanly. The user is seeing output like:
 
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-628 --checklist "- [ ] Open the Mistake Detection modal and switch Minimum Severity between Inaccuracy, Mistake, and Blunder; verify the intended UI feedback is clear|- [ ] Confirm Missed Mate in N still changes value correctly and no unrelated retrospection settings regress"
-```
+   ```html
+   <div class="retro-eval-box retro-eval-box--near"><span class="retro-eval-box__label">vs Engine Best</span><span class="retro-eval-box__value">-0.0</span></div>
+   ```
 
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-628 --errors "brief description of what went wrong" --checklist "- [ ] Open the Mistake Detection modal and switch Minimum Severity between Inaccuracy, Mistake, and Blunder; verify the intended UI feedback is clear|- [ ] Confirm Missed Mate in N still changes value correctly and no unrelated retrospection settings regress"
-```
+   That is effectively blank/incorrect for the intended UX. The box should show a truthful,
+   non-empty eval difference based on the move played versus the best move.
 
-Startup coordination step:
-- Before editing, check whether any other tool, agent, Claude Code session, or Codex thread is actively touching the same retrospection settings, header modal, or prompt-tracking files.
-- If overlapping work exists, stop and report it before editing.
+2. When opening a puzzle round, the board orientation is wrong. Puzzle orientation should be from
+   the perspective of the user whose puzzles are being solved, not an arbitrary/default side.
 
-Task:
-Investigate the `Mistake Detection` modal behavior around `Minimum Severity` and determine whether the current UI is behaving as intended, misleading, or partially implemented.
+## Context
 
-Problem report:
-- In the `Mistake Detection` modal, the user sees `Minimum Severity` with pill buttons for `Inaccuracy`, `Mistake`, and `Blunder`.
-- Clicking those options does not reveal any additional sliders or parameter groups.
-- The only nearby slider is `Missed Mate in N`.
-- The user cannot tell whether the severity buttons are working correctly or if the UI is missing controls.
+Expected LFYM behavior:
+- after a move is judged in LFYM, the feedback area should show meaningful eval comparison values
+- the values should be based on the actual engine/review data available for:
+  - the played move
+  - the engine best move
+- the UI should not show effectively empty values like `-0.0` when a real difference exists
 
-Inspect first:
-- `src/header/index.ts`
-- `src/analyse/retroConfig.ts`
-- relevant modal styling in `src/styles/main.scss`
-- any docs or audits that mention Learn From Your Mistakes candidate selection or mistake-detection settings
-- relevant Lichess source only if it actually informs this behavior
+Expected puzzle behavior:
+- when a puzzle round opens, the board orientation should place the solving user's side at the
+  bottom
+- this should hold for both locally saved puzzle rounds and any compatible imported/derived puzzle
+  flow that uses the same runtime owner
 
-Required workflow:
-1. Inspect the actual Patzer Pro code first.
-2. Identify exactly what changes in state when `Inaccuracy`, `Mistake`, or `Blunder` is clicked.
-3. Determine whether the current behavior is:
-   - intentional but poorly communicated
-   - partially implemented
-   - a real bug or regression
-4. Compare the actual code behavior against what the UI wording suggests to a user.
-5. Choose the smallest safe fix.
-6. Implement only if the correct fix is clear and safely scoped.
+## Scope
 
-Constraints:
-- do not assume sliders are missing unless the code or design intent actually supports that conclusion
-- do not bundle unrelated retrospection or settings work
-- do not move substantial new logic into `src/main.ts`
-- prefer a clarity fix over a speculative behavior change if the underlying setting is already working as intended
+Keep this prompt tightly scoped to:
+- LFYM dual eval-box value computation / display correctness
+- puzzle-round board orientation ownership and application
 
-Before coding, provide:
+Do not bundle:
+- broader retrospection redesign
+- broader puzzle UX redesign
+- unrelated board theme/orientation polish
+- new puzzle metadata features
+- unrelated ceval or review-queue refactors
+
+## Required workflow
+
+1. Inspect the actual current Patzer code first.
+2. Locate the current LFYM dual-eval-box computation/render path.
+3. Locate the current puzzle-round orientation owner and open-round path.
+4. Inspect the relevant Lichess retrospection and puzzle UX sources before deciding how to fix it.
+5. Compare:
+   - how Patzer currently computes/renders these values
+   - how Patzer currently sets puzzle orientation
+   - what Lichess confirms about equivalent ownership/behavior
+6. Identify the smallest safe implementation step.
+7. Implement only that step.
+8. Validate with build plus task-specific manual checks.
+
+## Before coding, answer explicitly
+
+Provide:
 - prompt id
 - task id
 - source document
@@ -7198,484 +1089,5024 @@ Before coding, provide:
 - exact small step to implement
 - why that step is safely scoped
 
-Questions to answer explicitly:
-- What exactly changes in code when the user clicks `Inaccuracy`, `Mistake`, or `Blunder`?
-- Is the current UI behavior intentional?
-- If intentional, why does it read as if something is missing?
-- What is the smallest fix that makes the behavior obvious to users?
+If Lichess does not expose an exact equivalent for one of these details, say so clearly instead of
+claiming parity that the source does not prove.
 
-Validation after coding:
-- run `npm run build` if any code changes are made
-- report:
-  - build result
-  - whether behavior changed intentionally
-  - whether runtime or console issues were observed
-  - any remaining ambiguity or risk
+## Likely relevant Patzer files
 
-Manual test checklist with concrete user actions and expected results:
-- Open `Mistake Detection`, switch between `Inaccuracy`, `Mistake`, and `Blunder`, and verify the UI clearly communicates what changed.
-- Adjust `Missed Mate in N` and verify its value still updates independently from the severity setting.
-```
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroCtrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroMoveHandler.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/evalDiff.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/puzzles/ctrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/puzzles/view.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/board/index.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/main.ts`
 
-## CCP-566-F1 - Backfill Durable SF18 Strength-Limiting Research Artifact
+## Mandatory reference set
 
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+Because this touches LFYM and puzzle runtime behavior, inspect these before implementation:
 
-Prompt ID: CCP-566-F1
-Task ID: CCP-566
-Parent Prompt ID: CCP-566
-Source Document: CCP-566 review
-Source Step: Backfill durable SF18 strength-limiting research artifact
-Execution Target: Claude Code
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
 
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
+And inspect the relevant upstream files they point to, especially:
 
-Task: backfill the missing durable repo artifact for the Stockfish 18 WASM UCI strength-limiting research and make it discoverable from the most relevant nearby doc.
-
-Inspect first:
-- `docs/mini-sprints/ENGINE_STRENGTH_LEVELS_SPRINT_2026-03-30.md`
-- relevant nearby reference docs or sprint docs
-- `~/Development/lichess-source/lila/ui/botDev/src/rateBot.ts`
-- `~/Development/lichess-source/lila/ui/lib/src/ceval/protocol.ts`
-- `src/ceval/protocol.ts`
-- `node_modules/@lichess-org/stockfish-web/` docs or types if present
-
-Required output:
-- one durable checked-in audit/research document covering:
-  - supported UCI strength-limiting options in the shipped SF18 WASM path
-  - confirmed ranges for `UCI_LimitStrength`, `UCI_Elo`, and `Skill_Level`
-  - any depth-capping findings actually confirmed by source
-  - how Lichess `rateBot.ts` maps levels to UCI parameters
-  - recommended Patzer mapping approach
-- one minimal discoverability update in the nearest relevant sprint/reference doc
-
-Constraints:
-- doc-only unless a tiny discoverability link/update is needed
-- do not bundle engine code changes
-- distinguish source-confirmed findings from inference
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-566-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-566-F1 --fixes CCP-566 --checklist "- [ ] Open the new SF18 strength-limiting audit doc — expected result: it records the supported UCI options, confirmed ranges, and recommended Patzer mapping|- [ ] Open the nearby sprint/reference doc that was updated — expected result: it links to the new audit doc so the research is discoverable|- [ ] Run build and typecheck — expected result: both pass with no code impact"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-566-F1 --errors "brief description of what went wrong" --checklist "- [ ] Verify the new SF18 strength-limiting audit doc exists|- [ ] Verify at least one nearby doc links to it for discoverability|- [ ] Run build and typecheck — expected result: both pass with no code impact"
-```
-```
-
-## CCP-578-F1 - Backfill Durable Play-Mode Bestmove Routing Design Artifact
-
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-578-F1
-Task ID: CCP-578
-Parent Prompt ID: CCP-578
-Source Document: CCP-578 review
-Source Step: Backfill durable play-mode bestmove routing design artifact
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: backfill the missing durable repo artifact for the play-mode bestmove routing design decision and make it discoverable from the most relevant nearby doc.
-
-Inspect first:
-- `docs/mini-sprints/ENGINE_STRENGTH_LEVELS_SPRINT_2026-03-30.md`
-- relevant nearby reference docs or sprint docs
-- `src/engine/ctrl.ts` bestmove handling path
-- any later implementation prompts in the same sprint family that depended on this design decision
-
-Required output:
-- one durable checked-in design/audit document covering:
-  - the current bestmove handling path
-  - the two evaluated routing approaches
-  - the chosen safer approach and rationale
-  - where the guard belongs in the control flow
-  - how `info` lines and navigation/cancel edge cases should be handled
-- one minimal discoverability update in the nearest relevant sprint/reference doc
-
-Constraints:
-- doc-only unless a tiny discoverability link/update is needed
-- do not bundle engine code changes
-- distinguish source-confirmed findings from inference
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-578-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-578-F1 --fixes CCP-578 --checklist "- [ ] Open the new play-mode bestmove routing design doc — expected result: it records the evaluated approaches, chosen seam, and key edge-case handling|- [ ] Open the nearby sprint/reference doc that was updated — expected result: it links to the new design doc so the decision is discoverable|- [ ] Run build and typecheck — expected result: both pass with no code impact"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-578-F1 --errors "brief description of what went wrong" --checklist "- [ ] Verify the new play-mode bestmove routing design doc exists|- [ ] Verify at least one nearby doc links to it for discoverability|- [ ] Run build and typecheck — expected result: both pass with no code impact"
-```
-```
-
-## CCP-572-F1 - Backfill Durable Engine Lifecycle And Mode-Switch Research Artifact
-
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-572-F1
-Task ID: CCP-572
-Parent Prompt ID: CCP-572
-Source Document: CCP-572 review
-Source Step: Backfill durable engine lifecycle and mode-switch research artifact
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: backfill the missing durable repo artifact for the engine lifecycle / mode-switch research and make it discoverable from the most relevant nearby doc.
-
-Inspect first:
-- `docs/mini-sprints/ENGINE_STRENGTH_LEVELS_SPRINT_2026-03-30.md`
-- relevant nearby reference docs or sprint docs
-- `src/engine/ctrl.ts`
-- `src/engine/batch.ts`
-- `src/ceval/protocol.ts`
-
-Required output:
-- one durable checked-in audit/research document covering:
-  - the `toggleEngine()` -> init -> ready -> eval flow
-  - analysis-mode assumptions in the current engine lifecycle
-  - safe mode-switch injection points
-  - state that must be saved/restored across analysis/play mode switching
-  - whether batch analysis needs a guard against play mode activation
-- one minimal discoverability update in the nearest relevant sprint/reference doc
-
-Constraints:
-- doc-only unless a tiny discoverability link/update is needed
-- do not bundle engine code changes
-- distinguish source-confirmed findings from inference
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-572-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-572-F1 --fixes CCP-572 --checklist "- [ ] Open the new engine lifecycle / mode-switch audit doc — expected result: it records the lifecycle, safe injection points, and state-management risks|- [ ] Open the nearby sprint/reference doc that was updated — expected result: it links to the new audit doc so the research is discoverable|- [ ] Run build and typecheck — expected result: both pass with no code impact"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-572-F1 --errors "brief description of what went wrong" --checklist "- [ ] Verify the new engine lifecycle audit doc exists|- [ ] Verify at least one nearby doc links to it for discoverability|- [ ] Run build and typecheck — expected result: both pass with no code impact"
-```
-```
-
-## CCP-594-F1 - Backfill Durable LFYM Moment-Selection Audit Artifact
-
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-594-F1
-Task ID: CCP-594
-Parent Prompt ID: CCP-594
-Source Document: CCP-594 review
-Source Step: Backfill durable Lichess comparison audit for Learn From Your Mistakes moment selection
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: backfill the missing durable repo audit artifact for the Lichess comparison questions around Learn From Your Mistakes moment selection and make it discoverable from the most relevant nearby doc.
-
-Inspect first:
-- `docs/prompts/items/CCP-594.md`
-- relevant retrospection/reference docs already in the repo
 - `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroCtrl.ts`
-- `~/Development/lichess-source/lila/ui/analyse/src/retrospect/retroView.ts`
-- `src/analyse/retro.ts`
-- `src/analyse/retroCtrl.ts`
-- `src/analyse/retroMoveHandler.ts`
-- `src/main.ts` around `strictSolutionMove`
-
-Required output:
-- one durable checked-in audit document answering the original `CCP-594` questions:
-  - solution move assignment
-  - candidate scoring thresholds
-  - near-best acceptance
-  - false-positive candidate risks
-  - depth dependency
-- include source-confirmed Lichess vs Patzer comparisons and ranked divergences
-- one minimal discoverability update in the nearest relevant retrospection/reference doc
-
-Constraints:
-- doc-only unless a tiny discoverability link/update is needed
-- do not bundle retrospection code changes
-- distinguish source-confirmed findings from inference
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-594-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-594-F1 --fixes CCP-594 --checklist "- [ ] Open the new LFYM moment-selection audit doc — expected result: it answers the original comparison questions with Patzer vs Lichess findings and ranked divergences|- [ ] Open the nearby retrospection/reference doc that was updated — expected result: it links to the new audit so the research is discoverable|- [ ] Run build and typecheck — expected result: both pass with no code impact"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-594-F1 --errors "brief description of what went wrong" --checklist "- [ ] Verify the new LFYM audit doc exists|- [ ] Verify at least one nearby doc links to it for discoverability|- [ ] Run build and typecheck — expected result: both pass with no code impact"
-```
-```
-
-## CCP-236-F1 - Enable Real Explorer Top/Recent Games Responses
-
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-236-F1
-Task ID: CCP-236
-Parent Prompt ID: CCP-236
-Source Document: CCP-236 backlog re-triage
-Source Step: Finish explorer top/recent games by requesting and rendering real explorer game rows
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: finish the explorer top/recent games tables so they are populated from real explorer response data instead of remaining effectively disabled.
-
-Current review-grounded issue to confirm:
-- `src/openings/view.ts` already has explorer game-table rendering
-- but `src/openings/explorerCtrl.ts` still builds explorer params with:
-  - `topGames: false`
-  - `recentGames: false`
-- so the UI work from `CCP-236` exists, but the feature is still not honestly enabled through the request path
-
-Inspect first:
-- `src/openings/explorerCtrl.ts`
-- `src/openings/explorer.ts`
-- `src/openings/view.ts`
-- `src/openings/types.ts`
-- `src/styles/main.scss`
-- `docs/reference/OPENING_EXPLORER_AUDIT.md`
-- Relevant Lichess source:
-  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerView.ts`
-  - `~/Development/lichess-source/lila/ui/analyse/src/explorer/explorerCtrl.ts`
-  - `~/Development/lichess-source/lila/ui/analyse/css/explorer/_explorer.scss`
-
-Implementation goal:
-- request top/recent games from the explorer where the selected DB honestly supports them
-- keep the existing games-table rendering path
-- preserve current behavior for DBs that do not return those tables
-- keep the fix scoped to the explorer games request/enablement seam
-
-Constraints:
-- do not redesign the openings page
-- do not bundle unrelated explorer config or tablebase work
-- do not invent fake game rows when the backend does not provide them
-- if a DB cannot return top/recent games without auth or another precondition, handle that honestly in the UI/request path
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-236-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-236-F1 --fixes CCP-236 --checklist "- [ ] Open an explorer-supported position — expected result: top/recent games appear when the selected DB provides them|- [ ] Switch explorer DBs — expected result: unsupported DBs handle missing game rows honestly instead of showing fake data|- [ ] Hover and click explorer games/moves — expected result: existing move-table behavior still works and no console errors appear|- [ ] Run build and typecheck — expected result: both pass"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-236-F1 --errors "brief description of what went wrong" --checklist "- [ ] Open an explorer-supported position and confirm whether top/recent game rows now appear|- [ ] Verify unsupported DBs handle missing game data honestly|- [ ] Run build and typecheck"
-```
-```
-
-## CCP-305-F1 - Complete Rated Ladder History And Attempt Cloud Restore
-
-```
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-305-F1
-Task ID: CCP-305
-Parent Prompt ID: CCP-305
-Source Document: CCP-305 backlog re-triage
-Source Step: Complete rated ladder cloud restore for history and rated-attempt state
-Execution Target: Claude Code
-
-You are working in `/Users/leftcoast/Development/PatzerPatzer`.
-
-Task: complete the smallest safe rated-ladder cloud restore path so authenticated users can restore not just puzzle perf, but also rating history and the rated-attempt state needed for coherent cross-device ladder behavior.
-
-Current review-grounded issue to confirm:
-- `src/puzzles/puzzleDb.ts` now runs `syncRatedLadder()` from real runtime entry points
-- but that sync currently only:
-  - pulls/merges puzzle perf
-  - pushes perf
-  - pushes new rating history
-- it still does not:
-  - pull/merge server rating history into local IDB
-  - define a rated-attempt sync path in the rated-ladder restore flow
-
-Inspect first:
-- `src/puzzles/puzzleDb.ts`
-- `src/puzzles/ctrl.ts`
-- `src/puzzles/types.ts`
-- `server/sync.mjs`
-- `server/db.mjs`
-- `docs/reference/LICHESS_PUZZLE_RATING_SYSTEM_AUDIT.md`
-
-Implementation goal:
-- preserve the current local-first offline ladder behavior
-- keep the runtime sync entry points already in place
-- add the smallest honest pull/merge flow for rating history
-- add the smallest honest rated-attempt sync/restore path needed for cross-device continuity
-
-Constraints:
-- do not redesign the whole sync system
-- do not bundle unrelated auth or server refactors
-- choose and document one merge rule per synced record type
-- prefer additive fixes in the existing rated-ladder sync seam instead of inventing a second parallel sync flow
-
-## Lifecycle
-
-Before making any changes, mark this prompt as started:
-```sh
-npm run prompt:start -- CCP-305-F1
-```
-
-After all work is complete, mark it as done:
-```sh
-npm run prompt:complete -- CCP-305-F1 --fixes CCP-305 --checklist "- [ ] Authenticate and trigger rated ladder sync — expected result: local perf, rating history, and rated-attempt state restore without runtime errors|- [ ] Start rated puzzles on a second browser/profile after server data exists — expected result: cloud-restored ladder state is coherent enough for continued play|- [ ] Inspect the chosen merge rules in code/report — expected result: each synced record type has one explicit documented rule|- [ ] Run build and typecheck — expected result: both pass"
-```
-
-If errors or issues were encountered during execution, use `--errors` instead:
-```sh
-npm run prompt:complete -- CCP-305-F1 --errors "brief description of what went wrong" --checklist "- [ ] Trigger rated ladder sync and confirm whether rating history now pulls into local IDB|- [ ] Confirm whether rated-attempt state has a real restore path|- [ ] Run build and typecheck"
-```
-```
-
-## CCP-615-F1 - Show selected dashboard filter count in filter label
-
-```
-# CCP-615-F1 — Show selected dashboard filter count in filter label
-
-Read and follow:
-- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
-- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
-
-Prompt ID: CCP-615-F1
-Task ID: CCP-615
-Parent Prompt ID: CCP-615
-Short task title: Show selected dashboard filter count in filter label
-Source document: User request
-Source step: prompt dashboard filter count bug fix
-
-## Context
-
-The prompt dashboard already supports filter buttons for views like `All`, `Managers`,
-`Ready`, `Started`, `Errors`, `Completed`, and `Passed Review`.
-
-Current problem:
-- when the user clicks one of these filters, the selected filter label does not show how many
-  prompts currently match that filter
-- the user wants the pressed/active filter label to include the matching count so the filter
-  state is more informative at a glance
-
-Expected behavior:
-- when a filter is selected, its visible label should include the number of prompts that match
-  that filter under the current dataset
-- this should apply to the active filter button itself
-- the count should update correctly when the selected filter changes
-- the feature should not redesign the toolbar or add unrelated dashboard controls
-
-## Target files
-
-- `scripts/generate-prompt-dashboard.mjs`
-- generated output: `docs/prompts/dashboard.html`
-
-Do not hand-edit `docs/prompts/dashboard.html`.
-
-## Required workflow
-
-1. Inspect the current implementation in `scripts/generate-prompt-dashboard.mjs`.
-2. Confirm how filter buttons are generated and how active-filter state is tracked.
-3. Identify the smallest safe fix so only the active filter button shows the matching count.
-4. Keep the count logic aligned with the existing filter behavior rather than introducing a
-   second inconsistent filtering path.
-5. Regenerate the dashboard after the change.
-
-## Implementation guidance
-
-- reuse the existing filter logic if possible when computing the active-filter count
-- avoid duplicating the filter-matching rules in multiple places unless absolutely necessary
-- if the dashboard already computes a filtered list for the active state, prefer deriving the
-  count from that existing path
-- preserve the existing unselected filter labels unless there is a clear reason not to
-- keep this scoped to the prompt dashboard filter labels only
+- Lichess puzzle / board-orientation ownership files relevant to opening a solving round
 
 ## Validation
 
 Run:
 
 ```sh
-npm run prompts:dashboard
+npm run build
 ```
 
-Open the dashboard and verify:
-- clicking `All` shows the full list and the active `All` filter displays the full count
-- clicking `Managers` shows only manager prompts and the active `Managers` label shows that count
-- clicking `Ready`, `Started`, `Errors`, `Completed`, and `Passed Review` updates the active
-  filter label to the correct matching count
-- switching between filters updates the count correctly each time
-- no duplicate count text appears on inactive filter buttons
-- no console errors appear in the dashboard
-
-In your final report, echo:
-- `Prompt ID: CCP-615-F1`
-- `Task ID: CCP-615`
+Then verify:
+- in LFYM, the dual eval boxes no longer show effectively blank values like `-0.0` when a real
+  engine/review difference exists
+- the displayed LFYM eval-box values are truthful relative to the move played vs engine best
+- opening a puzzle round shows the board from the solving user's perspective
+- puzzle orientation remains correct after opening/reopening a puzzle round
+- no regression in surrounding LFYM feedback or puzzle round behavior
+- no console/runtime errors appear
 
 ## Lifecycle
 
 Before making any changes, mark this prompt as started:
 ```sh
-npm run prompt:start -- CCP-615-F1
+npm run prompt:start -- CCP-685
 ```
 
 After all work is complete, mark it as done:
 ```sh
-npm run prompt:complete -- CCP-615-F1 --checklist "- [ ] Open dashboard and click 'All' — expected result: full prompt list is shown and the active All filter label shows the full matching count|- [ ] Click 'Managers' — expected result: only manager prompts are shown and the active Managers filter label shows the correct count|- [ ] Click 'Ready', 'Started', 'Errors', 'Completed', and 'Passed Review' — expected result: each active filter label updates to the correct matching count|- [ ] Switch between filters repeatedly — expected result: the active count updates cleanly each time and inactive filter labels do not show duplicate counts|- [ ] Confirm no console errors appear while using the dashboard filters"
+npm run prompt:complete -- CCP-685 --checklist "- [ ] LFYM dual eval boxes show truthful non-blank values after a judged move|- [ ] LFYM no longer renders misleading empty output like -0.0 when a real diff exists|- [ ] Puzzle round opens with the solving user's side at the bottom|- [ ] Puzzle orientation remains correct when reopening or continuing a round|- [ ] No regression in surrounding LFYM or puzzle-round UI|- [ ] npm run build passes"
 ```
 
 If errors or issues were encountered during execution, use `--errors` instead:
 ```sh
-npm run prompt:complete -- CCP-615-F1 --errors "brief description of what went wrong" --checklist "- [ ] Open dashboard and click 'All' — expected result: full prompt list is shown and the active All filter label shows the full matching count|- [ ] Click 'Managers' — expected result: only manager prompts are shown and the active Managers filter label shows the correct count|- [ ] Click 'Ready', 'Started', 'Errors', 'Completed', and 'Passed Review' — expected result: each active filter label updates to the correct matching count|- [ ] Switch between filters repeatedly — expected result: the active count updates cleanly each time and inactive filter labels do not show duplicate counts|- [ ] Confirm no console errors appear while using the dashboard filters"
+npm run prompt:complete -- CCP-685 --errors "brief description of what went wrong" --checklist "- [ ] LFYM dual eval boxes show truthful non-blank values after a judged move|- [ ] LFYM no longer renders misleading empty output like -0.0 when a real diff exists|- [ ] Puzzle round opens with the solving user's side at the bottom|- [ ] Puzzle orientation remains correct when reopening or continuing a round|- [ ] No regression in surrounding LFYM or puzzle-round UI|- [ ] npm run build passes"
+```
+```
+
+## CCP-680-F1 - Audit LFYM Dual Eval Box Data Flow
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+Prompt ID: CCP-680-F1
+Task ID: CCP-680
+Parent Prompt ID: CCP-680
+Source Document: User request
+Source Step: Audit LFYM dual eval box data path before another fix
+Execution Target: Claude Code
+
+# CCP-680-F1 — Audit LFYM Dual Eval Box Data Flow
+
+## Summary
+
+The prior LFYM eval-display fixes did not solve the real regression. After a move is played in
+Learn From Your Mistakes, the UI can still show output like:
+
+- `+1.5`
+- `vs Engine Best`
+- `—`
+- `vs Move Played`
+- `—`
+- `Chosen because: Missed opportunity`
+- `The move played gave up a significant advantage.`
+
+That means the dual eval boxes are rendering, but their underlying comparison values are missing
+at the point of render.
+
+This prompt is an audit/discovery prompt, not a blind implementation prompt. The goal is to
+identify exactly where the LFYM dual-box data path breaks so the next fix prompt can target the
+real seam.
+
+## Problem framing
+
+Current evidence suggests the problem is no longer just formatting:
+
+- both `vs Engine Best` and `vs Move Played` can render as `—`
+- that implies one or more of the required solving snapshot values are absent at render time:
+  - played-move eval
+  - game-move eval
+  - engine-best eval
+- the break could be in:
+  - snapshot computation
+  - retro state transition timing
+  - ceval-backed data availability
+  - render-state selection
+  - a mismatch between review-backed and live-eval-backed LFYM flows
+
+Do not guess. Prove the broken seam.
+
+## Scope
+
+Keep this prompt tightly scoped to:
+
+- Learn From Your Mistakes dual eval-box value sourcing
+- the data path from move judgment to retro feedback rendering
+- identifying the exact missing/null/undefined values and why they are absent
+- producing the smallest safe next-step fix recommendation
+
+Do not bundle:
+
+- a broad LFYM redesign
+- generic retrospection cleanup
+- puzzle product work
+- unrelated engine review queue work
+- styling-only changes
+
+## Required workflow
+
+1. Inspect the actual Patzer code first.
+2. Inspect the relevant mandatory Lichess retrospection references before concluding anything.
+3. Trace the full Patzer data path for the dual eval boxes:
+   - move played
+   - move judged
+   - snapshot populated
+   - feedback state selected
+   - view rendered
+4. Identify exactly which values are missing when the boxes show `—`.
+5. Determine whether the break is:
+   - missing computation
+   - missing propagation
+   - wrong state timing
+   - wrong render-state selection
+   - or a mismatch between two LFYM evaluation sources
+6. Do not implement a speculative fix unless the broken seam is proven.
+7. If the seam is proven and the smallest safe fix is obvious, you may include a recommended
+   follow-up implementation step, but this prompt’s main deliverable is the audit result.
+
+## Mandatory reference set
+
+Read these before auditing:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+
+Inspect the relevant linked Lichess source files directly, especially the retrospection / LFYM
+state and feedback paths.
+
+If Lichess does not expose the exact same dual-box UI pattern, say so clearly. Use Lichess to
+confirm the intended evaluation-state ownership and timing, not to invent unsupported parity claims.
+
+## Likely relevant Patzer files
+
+You must confirm the actual ownership in code, but likely files include:
+
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroCtrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroMoveHandler.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retro.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/evalDiff.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/engine/ctrl.ts`
+
+## Before coding, answer explicitly
+
+Provide:
+
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- relevant Patzer Pro files
+- relevant Lichess files
+- exact diagnosis
+- exact missing data seam
+- exact smallest safe follow-up step
+- why that step is correctly scoped
+
+## Required audit output
+
+Your audit must answer all of these explicitly:
+
+1. What exact values do the dual eval boxes require at render time?
+2. Which of those values are actually missing when the UI shows `—`?
+3. Where should those values have been populated?
+4. At what step are they lost, skipped, or never produced?
+5. Is the regression in:
+   - move judgment
+   - ceval availability
+   - snapshot construction
+   - feedback state transition
+   - or rendering?
+6. What is the smallest safe implementation step to fix it?
+7. Which file or files should that fix touch?
+
+If you cannot prove the seam, say that clearly and stop at the audit result rather than faking a fix.
+
+## Validation
+
+Run:
+
+```sh
+npm run build
+```
+
+Also perform code-path validation sufficient to support the audit conclusions.
+
+Then report:
+
+- whether the broken seam was proven
+- what values are missing
+- where they go missing
+- whether a fix should be a view fix, controller fix, or engine/ceval timing fix
+- whether build passed
+- whether there are console/runtime concerns implied by the current code path
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-680-F1
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-680-F1 --checklist "- [ ] Proven which dual-box values are missing when LFYM shows em dashes|- [ ] Identified the exact code seam where those values fail to populate or propagate|- [ ] Recommended the smallest safe follow-up fix step with owning files|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-680-F1 --errors "brief description of what went wrong" --checklist "- [ ] Proven which dual-box values are missing when LFYM shows em dashes|- [ ] Identified the exact code seam where those values fail to populate or propagate|- [ ] Recommended the smallest safe follow-up fix step with owning files|- [ ] npm run build passes"
+```
+```
+
+## CCP-680-F2 - Fix LFYM Dual Eval Box Live Snapshot
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+Prompt ID: CCP-680-F2
+Task ID: CCP-680
+Parent Prompt ID: CCP-680-F1
+Source Document: User request
+Source Step: Fix LFYM dual eval boxes using the proven live-ceval snapshot seam
+Execution Target: Claude Code
+
+# CCP-680-F2 — Fix LFYM Dual Eval Box Live Snapshot
+
+## Summary
+
+The `CCP-680-F1` audit proved that the Learn From Your Mistakes dual eval boxes are not failing
+because of formatting anymore. They fail because the snapshot displayed by the boxes can still be
+missing the played-move eval at render time.
+
+Current broken user-visible output:
+
+- top eval diff can show a meaningful value such as `+1.5`
+- but both dual boxes still show:
+  - `vs Engine Best —`
+  - `vs Move Played —`
+
+The proven cause is a state-timing mismatch:
+
+- LFYM move judgment uses live ceval (`currentEval`) in `retroCtrl.onCeval()`
+- the dual-box snapshot still depends on an earlier `evalCache`-seeded snapshot
+- when the played-move position is judged and LFYM navigates away before the engine’s final
+  cache-write callback promotes that solving position into `evalCache`, the snapshot never gets a
+  real `solvingMoveCp`
+- with `solvingMoveCp` missing, both dual-box comparisons collapse to em dashes
+
+## Proven diagnosis from CCP-680-F1
+
+The audit established:
+
+- the dual boxes require:
+  - `solvingMoveCp`
+  - `engineBestCp`
+  - `gameMoveCp`
+- the critical missing value is `solvingMoveCp`
+- `solvingMoveCp` is currently seeded too early from `evalCache.get(ctrl.path)` in
+  `src/analyse/retroMoveHandler.ts`
+- LFYM judgment later succeeds using live `currentEval` in `src/analyse/retroCtrl.ts`
+- but the display snapshot may never be refreshed if the solving-path live result is rejected by the
+  stale-path/cached-write timing seam after navigation away
+
+That means this must be fixed at the live snapshot ownership seam, not in the render-only layer.
+
+## Scope
+
+Keep this prompt tightly scoped to:
+
+- ensuring LFYM dual eval boxes receive a real played-move eval from live ceval before the solve
+  state leaves the played node
+- preserving the existing dual-box UI and copy
+- preserving the existing LFYM win/fail behavior
+
+Do not bundle:
+
+- a broad LFYM redesign
+- generic retrospection cleanup
+- puzzle changes
+- eval-box styling changes
+- engine queue or review-pipeline refactors
+
+Touch the minimum number of files. Prefer 1–3 files.
+
+## Required workflow
+
+1. Inspect the actual current Patzer code first.
+2. Reconfirm the audited seam in the relevant Patzer files.
+3. Reinspect the relevant Lichess retrospection references before changing ownership.
+4. Identify the smallest safe implementation step.
+5. Implement only that step.
+6. Validate with build plus task-specific checks.
+
+## Mandatory reference set
+
+Read these before implementing:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+
+Inspect the linked Lichess source files relevant to retrospection state and ceval timing,
+especially:
+
+- `docs/reference/lichess-retrospection/RETROSPECTION_FLOW.md`
+- `docs/reference/lichess-retrospection-ux/sources/src/retrospect/retroCtrl.ts`
+- `docs/reference/lichess-retrospection-ux/sources/src/ctrl.ts`
+
+If Lichess does not expose the exact same dual-box UI, say so clearly. Use it to confirm solve
+state ownership and ceval timing, not to invent unsupported parity claims.
+
+## Relevant Patzer files to inspect first
+
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroCtrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroMoveHandler.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/main.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/engine/ctrl.ts`
+
+## Expected implementation direction
+
+The audit’s recommended smallest safe step was:
+
+- update the LFYM solving snapshot from live ceval before `onCeval()` resolves win/fail and leaves
+  the played-move node
+
+That means the likely ownership is:
+
+- `src/analyse/retroCtrl.ts`
+  - when `onCeval()` has a usable current-node eval, merge that live cp/mate into the active
+    solving snapshot before resolving `win` or `fail`
+
+Optional companion adjustment only if needed:
+
+- `src/analyse/retroMoveHandler.ts`
+  - keep the initial snapshot capture, but treat it as a seed rather than the final display payload
+
+Avoid touching `src/main.ts` unless absolutely necessary. The audit indicates the strongest seam is
+inside the retro controller’s live-ceval resolution path.
+
+## Before coding, answer explicitly
+
+Provide:
+
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- relevant Patzer Pro files
+- relevant Lichess files
+- exact diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+## Validation
+
+Run:
+
+```sh
+npm run build
+```
+
+Then verify:
+
+- in LFYM, after a judged move, `vs Engine Best` no longer shows `—` when a live played-move eval
+  exists
+- in LFYM, after a judged move, `vs Move Played` no longer shows `—` when the comparison inputs are
+  available
+- the dual boxes now reflect the same move-evaluation source that judged the move
+- win/fail LFYM behavior is unchanged apart from the fixed display
+- no console/runtime errors appear
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-680-F2
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-680-F2 --checklist "- [ ] LFYM dual eval boxes show real values instead of em dashes after a judged move when live ceval exists|- [ ] The played-move eval is sourced from the same live solve path that judged the move|- [ ] LFYM win/fail behavior is unchanged apart from the fixed box display|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-680-F2 --errors "brief description of what went wrong" --checklist "- [ ] LFYM dual eval boxes show real values instead of em dashes after a judged move when live ceval exists|- [ ] The played-move eval is sourced from the same live solve path that judged the move|- [ ] LFYM win/fail behavior is unchanged apart from the fixed box display|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+```
+
+## CCP-680-F3 - Fix LFYM Engine Target Ownership
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+Prompt ID: CCP-680-F3
+Task ID: CCP-680
+Parent Prompt ID: CCP-680-F2
+Source Document: User request
+Source Step: Fix LFYM engine targeting and background ownership for the played puzzle line
+Execution Target: Claude Code
+
+# CCP-680-F3 — Fix LFYM Engine Target Ownership
+
+## Summary
+
+The LFYM eval-box regression is still not fixed, and the latest runtime logs changed the diagnosis.
+
+The new evidence shows:
+
+- live ceval is running
+- the engine reaches deep search and returns `bestmove`
+- but the engine is not reliably targeting the user-played LFYM puzzle variation
+- review/batch analysis is still active during the solve flow
+- after the user move variation is inserted, the engine logs still show analysis on review/game or
+  root paths instead of clearly owning the just-played solving path
+
+That means the next fix should not be another render-only or snapshot-only patch.
+
+This prompt must prove and fix LFYM engine-target ownership so that during Learn From Your
+Mistakes:
+
+- the engine runs in the background regardless of the public engine toggle
+- the engine prioritizes the active solving variation after the user plays a move
+- review/batch analysis does not steal engine ownership from the LFYM solve path at the moment
+  feedback is needed
+
+## Current evidence
+
+User-provided console logs show all of the following:
+
+- LFYM starts live eval on non-solving paths such as review/game positions
+- batch/review analysis is still running during the solve flow
+- the inserted user variation appears later in the logs
+- the engine can restart at root (`path:  ply: 0`) during the same overall interaction
+- the eval boxes still render:
+  - `vs Engine Best —`
+  - `vs Move Played —`
+
+This strongly suggests LFYM is not force-owning the engine target for the active played move path.
+
+## Scope
+
+Keep this prompt tightly scoped to:
+
+- LFYM engine-target ownership
+- forcing background ceval availability during LFYM regardless of public engine state
+- ensuring the active solving variation becomes the engine target after the user plays a move
+- preventing review/batch analysis from preempting the LFYM solve target during feedback
+
+Do not bundle:
+
+- eval-box copy/styling changes
+- unrelated retrospection redesign
+- unrelated review-cache refactors
+- unrelated puzzle UX changes
+- global engine tuning changes such as increasing MultiPV to 10
+
+Important:
+- do not include the "10 lines deep" tuning change in this prompt
+- if needed later, that should be a separate follow-up prompt after engine-target ownership is
+  correct
+
+Touch the minimum necessary files. Prefer 1-4 files.
+
+## Required workflow
+
+1. Inspect the actual current Patzer code first.
+2. Reinspect the relevant mandatory Lichess retrospection and puzzle UX references.
+3. Trace LFYM engine ownership end-to-end:
+   - entering LFYM
+   - user playing a move
+   - variation insertion
+   - engine target selection
+   - batch/review interaction
+   - feedback resolution
+4. Confirm exactly which module currently owns:
+   - live engine target path
+   - LFYM solve-mode engine enabling
+   - batch/review preemption rules
+5. Identify the smallest safe implementation step.
+6. Implement only that step.
+7. Validate with build plus task-specific checks.
+
+## Mandatory reference set
+
+Read these before implementing:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+
+Inspect the linked Lichess source files relevant to retrospection state ownership, board mode, and
+ceval interaction, especially:
+
+- `docs/reference/lichess-retrospection/RETROSPECTION_FLOW.md`
+- `docs/reference/lichess-retrospection-ux/sources/src/retrospect/retroCtrl.ts`
+- `docs/reference/lichess-retrospection-ux/sources/src/ctrl.ts`
+
+If Lichess does not expose the exact same engine-ownership seam, say so clearly. Use Lichess to
+confirm solve-mode behavior and controller ownership, not to invent unsupported parity claims.
+
+## Relevant Patzer files to inspect first
+
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroCtrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroMoveHandler.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/main.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/engine/ctrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/engine/batch.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/board/index.ts`
+
+## Proven problem statement
+
+The current likely failure is:
+
+- LFYM can have live ceval running
+- but the engine target remains coupled to normal review/game analysis ownership
+- so when the user plays a solve move, the engine does not reliably pivot and stay on the active
+  solving variation long enough to provide the played-move feedback data
+
+That means the fix likely belongs in controller/engine ownership, not in `retroView.ts`.
+
+## Expected implementation direction
+
+The likely smallest safe step is one of these, depending on what current code proves:
+
+- when LFYM is active, force live engine ownership onto the current solving path after variation
+  insertion and before feedback resolution
+- suppress or defer batch/review engine work while LFYM is actively waiting for move feedback
+- make LFYM use its own explicit "solve target" path instead of inheriting whatever path the normal
+  analysis engine loop currently considers active
+
+Do not change global engine defaults unless required for the correctness of this fix.
+
+## Before coding, answer explicitly
+
+Provide:
+
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- relevant Patzer Pro files
+- relevant Lichess files
+- exact diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+## Validation
+
+Run:
+
+```sh
+npm run build
+```
+
+Then verify:
+
+- in LFYM, after the user plays a move, the engine targets the active solving variation rather than
+  drifting to root or unrelated review paths
+- LFYM background engine analysis runs even if the public engine state would otherwise be off
+- review/batch analysis does not steal the engine target during solve feedback collection
+- the eval feedback path now has the data needed to populate the dual comparison boxes
+- no console/runtime errors appear
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-680-F3
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-680-F3 --checklist "- [ ] LFYM engine targets the active solving variation after the user plays a move|- [ ] LFYM background engine analysis runs regardless of the public engine state while solving|- [ ] Review or batch analysis does not preempt LFYM solve feedback collection|- [ ] The eval feedback path now has the data needed to populate the dual comparison boxes|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-680-F3 --errors "brief description of what went wrong" --checklist "- [ ] LFYM engine targets the active solving variation after the user plays a move|- [ ] LFYM background engine analysis runs regardless of the public engine state while solving|- [ ] Review or batch analysis does not preempt LFYM solve feedback collection|- [ ] The eval feedback path now has the data needed to populate the dual comparison boxes|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+```
+
+## CCP-680-F4 - Fix LFYM hidden engine UX and feedback rendering
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+Prompt ID: CCP-680-F4
+Task ID: CCP-680
+Parent Prompt ID: CCP-680-F3
+Source Document: User request
+Source Step: Hide LFYM live engine until move and fix post-move feedback box rendering
+Execution Target: Claude Code
+
+# CCP-680-F4 — Fix LFYM Hidden Engine UX And Post-Move Feedback Rendering
+
+## Summary
+
+The latest runtime evidence changed the diagnosis again.
+
+What is now proven:
+
+- review analysis completes successfully
+- live ceval is running during LFYM
+- after the user plays a move, live ceval also runs on the played variation
+- but the LFYM feedback boxes can still render blank values:
+  - `vs Engine Best —`
+  - `vs Move Played —`
+
+There is also an explicit Patzer UX requirement that differs from Lichess:
+
+- LFYM should use background engine support while solving
+- but the user should not see the live engine eval/pv while they are still trying to find the move
+- engine-backed feedback should surface only after the move is played
+
+This prompt is therefore not another broad engine-startup fix.
+
+The likely remaining seam is now in LFYM-specific display/state consumption:
+
+- hide live ceval output while LFYM is waiting for the user's move
+- after a move is played, render the already-available review/live-eval values into the LFYM feedback UI instead of showing blanks
+
+## Scope
+
+Keep this prompt tightly scoped to:
+
+- LFYM-specific hiding of live engine output before the user moves
+- LFYM post-move feedback rendering/state consumption
+- ensuring the feedback boxes use the eval data that is already available after the move
+
+Do not bundle:
+
+- more engine-startup or batch-ownership refactors unless strictly required
+- broader retrospection redesign
+- puzzle UX changes outside LFYM
+- MultiPV tuning changes such as increasing to 10
+- styling-only changes unrelated to the missing values
+
+Touch the minimum necessary files. Prefer 1-4 files.
+
+## Current evidence
+
+User-provided logs now show:
+
+- review batch runs and completes
+- live ceval starts on the LFYM candidate position
+- after the move variation is inserted, live ceval also starts on the played variation
+
+So the remaining failure is not "no engine" and not obviously "wrong engine target."
+
+The likely current problems are:
+
+- LFYM feedback boxes are still reading the wrong snapshot/state at render time
+- or the correct snapshot is being populated but not surfaced by the LFYM render branch
+- or the pre-move LFYM UI is still exposing generic live-ceval state when it should be hidden until move feedback time
+
+## Patzer-specific behavior contract
+
+Use the repo docs as the explicit contract:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/ARCHITECTURE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
+
+Important:
+
+- Lichess is still the reference for retrospection flow, solve-state ownership, and feedback timing
+- Patzer intentionally diverges on LFYM engine policy:
+  - hidden background engine support during solve mode
+  - no visible live engine eval while the user is still trying to solve
+  - engine-backed feedback revealed only after the move is played
+
+Do not "fix" this by re-exposing the live engine UI during solve mode just because Lichess is different.
+
+## Required workflow
+
+1. Inspect the actual Patzer code first.
+2. Reinspect the relevant mandatory Lichess retrospection references.
+3. Inspect the current Patzer architecture/known-issues docs for the documented LFYM divergence.
+4. Trace the LFYM render path for:
+   - pre-move solve state
+   - post-move feedback state
+   - dual eval box value sourcing
+5. Identify the smallest safe implementation step.
+6. Implement only that step.
+7. Validate with build plus task-specific checks.
+
+## Mandatory reference set
+
+Read these before implementing:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/ARCHITECTURE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
+
+Inspect the linked Lichess source files relevant to retrospection state and solve-mode UI,
+especially:
+
+- `docs/reference/lichess-retrospection/RETROSPECTION_FLOW.md`
+- `docs/reference/lichess-retrospection-ux/sources/src/retrospect/retroCtrl.ts`
+- `docs/reference/lichess-retrospection-ux/sources/src/ctrl.ts`
+
+If Lichess does not expose the same hidden-engine UX, say so clearly and keep the Patzer-specific
+deviation explicit.
+
+## Relevant Patzer files to inspect first
+
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroCtrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroMoveHandler.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/engine/ctrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/main.ts`
+
+## Expected implementation direction
+
+The likely smallest safe step is:
+
+- gate LFYM pre-move solve mode so generic live engine output is hidden from the user
+- make the LFYM post-move feedback branch render from the actual solving snapshot/live eval data
+  that is already available after the move instead of falling back to blank placeholders
+
+This should stay a retrospection/view/state-consumption fix unless current code proves that one
+small engine callback adjustment is still necessary.
+
+## Before coding, answer explicitly
+
+Provide:
+
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- relevant Patzer Pro files
+- relevant Lichess files
+- exact diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+## Validation
+
+Run:
+
+```sh
+npm run build
+```
+
+Then verify:
+
+- while LFYM is waiting for the user to move, the live engine output is hidden from the visible UI
+- LFYM can still use hidden background engine support during solve mode
+- after the user plays a move, the LFYM feedback boxes no longer show `—` when the underlying eval data exists
+- post-move LFYM feedback reflects the actual available review/live eval values
+- no console/runtime errors appear
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-680-F4
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-680-F4 --checklist "- [ ] LFYM hides visible live engine output while waiting for the user move|- [ ] LFYM still uses hidden background engine support during solve mode|- [ ] After a played move the LFYM feedback boxes no longer show em dashes when eval data exists|- [ ] Post-move LFYM feedback reflects the actual available review/live eval values|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-680-F4 --errors "brief description of what went wrong" --checklist "- [ ] LFYM hides visible live engine output while waiting for the user move|- [ ] LFYM still uses hidden background engine support during solve mode|- [ ] After a played move the LFYM feedback boxes no longer show em dashes when eval data exists|- [ ] Post-move LFYM feedback reflects the actual available review/live eval values|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+```
+
+## CCP-680-F5 - Correct LFYM hidden engine UX
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+Prompt ID: CCP-680-F5
+Task ID: CCP-680
+Parent Prompt ID: CCP-680-F4
+Source Document: User request
+Source Step: Revert the broken LFYM hidden-engine UX and implement the visible/hidden engine split correctly
+Execution Target: Claude Code
+
+# CCP-680-F5 — Correct LFYM Hidden Engine UX
+
+## Summary
+
+`CCP-680-F4` implemented the LFYM hidden-engine requirement incorrectly.
+
+Current wrong behavior introduced by that prompt:
+
+- the ceval header was hidden entirely during LFYM
+- the user-facing engine control therefore disappeared instead of still appearing available
+- the eval bar still leaks visible engine output during LFYM solve mode
+
+The intended Patzer behavior is different:
+
+- LFYM may use background engine support while solving regardless of the public engine state
+- but the user-facing engine control should still remain visible
+- by default, LFYM should appear "engine off" from the user's perspective unless they explicitly turn it on
+- visible engine output should stay suppressed before the move:
+  - ceval score display
+  - eval bar leakage
+  - PV / visible engine lines unless the user explicitly enables them
+
+This prompt is specifically for correcting that UX regression and implementing the visible/hidden
+engine split correctly.
+
+Do not use this prompt to keep chasing the blank LFYM feedback-box values. That is being handled
+separately so the diagnosis stays clean.
+
+## Scope
+
+Keep this prompt tightly scoped to:
+
+- reverting the "hide the entire ceval header" mistake
+- preserving a visible user-facing engine control during LFYM
+- suppressing visible engine output during LFYM solve mode unless the user explicitly enables it
+- handling eval bar leakage during LFYM solve mode
+
+Do not bundle:
+
+- more review/batch engine ownership work unless strictly required
+- the persistent LFYM feedback-box blank-value bug
+- MultiPV / engine tuning changes
+- broader retrospection redesign
+
+Touch the minimum necessary files. Prefer 1-4 files.
+
+## Product requirement
+
+The intended contract is:
+
+- hidden LFYM engine support is allowed
+- user-visible engine state is a separate concern
+- LFYM should not expose live engine output before the user moves
+- the user should still be able to explicitly turn visible engine analysis on if they want
+
+Do not solve this by hiding the ceval header or by making the visible engine controls disappear.
+
+## Required workflow
+
+1. Inspect the current Patzer code first.
+2. Reinspect the relevant mandatory Lichess retrospection references.
+3. Reinspect the repo docs that now explicitly describe Patzer's LFYM engine-policy divergence:
+   - `docs/ARCHITECTURE.md`
+   - `docs/KNOWN_ISSUES.md`
+4. Identify the smallest safe implementation step.
+5. Implement only that step.
+6. Validate with build plus task-specific checks.
+
+## Mandatory reference set
+
+Read these before implementing:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/ARCHITECTURE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
+
+If Lichess does not expose the same visible/hidden engine split, say so clearly and keep the
+Patzer-specific divergence explicit.
+
+## Relevant Patzer files to inspect first
+
+- `/Users/leftcoast/Development/PatzerPatzer/src/main.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/ceval/view.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/evalView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/engine/ctrl.ts`
+
+## Before coding, answer explicitly
+
+Provide:
+
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- relevant Patzer Pro files
+- relevant Lichess files
+- exact diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+## Validation
+
+Run:
+
+```sh
+npm run build
+```
+
+Then verify:
+
+- in LFYM, the ceval header/control remains visible instead of disappearing
+- before the user moves, LFYM suppresses visible engine output such as eval score / eval bar / PV leakage by default
+- LFYM can still use hidden background engine support while solving
+- if the user explicitly enables visible engine analysis, the UI still behaves intentionally rather than being broken or missing
+- no console/runtime errors appear
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-680-F5
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-680-F5 --checklist "- [ ] LFYM keeps a visible ceval header or engine control instead of hiding it entirely|- [ ] Before the user moves, LFYM suppresses visible engine output by default|- [ ] LFYM still uses hidden background engine support while solving|- [ ] Explicit user-visible engine enablement still behaves intentionally|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-680-F5 --errors "brief description of what went wrong" --checklist "- [ ] LFYM keeps a visible ceval header or engine control instead of hiding it entirely|- [ ] Before the user moves, LFYM suppresses visible engine output by default|- [ ] LFYM still uses hidden background engine support while solving|- [ ] Explicit user-visible engine enablement still behaves intentionally|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+```
+
+## CCP-680-F6 - Audit persistent LFYM feedback box blank state
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+Prompt ID: CCP-680-F6
+Task ID: CCP-680
+Parent Prompt ID: CCP-680-F4
+Source Document: User request
+Source Step: Continue problem solving on the persistent LFYM feedback-box blank state after engine activity is confirmed
+Execution Target: Claude Code
+
+# CCP-680-F6 — Audit Persistent LFYM Feedback Box Blank State
+
+## Summary
+
+Even after multiple LFYM engine ownership fixes, the user reports that the LFYM feedback boxes
+still fail to show move-performance values after a move is played.
+
+Latest runtime evidence now proves:
+
+- review completes
+- live ceval runs on the LFYM candidate position
+- live ceval also runs on the played variation after the move
+
+So the remaining seam is no longer "engine never runs" and no longer obviously "wrong target path."
+
+This prompt is for continued problem solving on the persistent blank LFYM feedback response:
+
+- `vs Engine Best —`
+- `vs Move Played —`
+
+The current likely failure is now in LFYM-specific state selection, snapshot persistence, or
+feedback rendering rather than engine startup.
+
+## Scope
+
+Keep this prompt tightly scoped to:
+
+- proving exactly why the LFYM feedback boxes still show blanks after engine activity is confirmed
+- tracing the actual state object/path used by the LFYM feedback render branch
+- identifying the smallest safe follow-up fix
+
+This prompt is primarily an audit/discovery prompt.
+
+Only implement a code fix if the broken seam is proven and the smallest safe step is obvious.
+
+Do not bundle:
+
+- more hidden-engine UX rework
+- more generic engine-startup refactors
+- broader retrospection redesign
+- styling-only changes
+- MultiPV tuning
+
+## Current evidence
+
+User-provided logs prove:
+
+- the review engine completes the game review
+- the live engine starts on the LFYM candidate position
+- after the move variation is inserted, live engine analysis starts on the played variation
+
+Yet the LFYM box still does not surface the move-performance response.
+
+That means the likely remaining causes are now:
+
+- the LFYM render branch is reading the wrong snapshot/state
+- the solving snapshot is updated, but not the snapshot instance or branch the view actually uses
+- the render logic still treats available eval data as missing due to one specific field dependency
+- the feedback-state transition overwrites or discards the relevant data before render
+
+## Required workflow
+
+1. Inspect the current Patzer code first.
+2. Reinspect the relevant mandatory Lichess retrospection references.
+3. Reinspect the repo docs describing Patzer's LFYM engine-policy divergence.
+4. Trace the LFYM post-move state path end-to-end:
+   - move played
+   - variation inserted
+   - snapshot updated
+   - feedback state resolved
+   - view rendered
+5. Identify the exact missing or stale field at render time.
+6. Recommend the smallest safe follow-up fix.
+7. Only implement if the seam is proven and the fix is narrow.
+
+## Mandatory reference set
+
+Read these before auditing:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/ARCHITECTURE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
+
+If Lichess does not expose the same response-box behavior, say so clearly and keep the Patzer-specific
+requirements explicit instead of claiming unsupported parity.
+
+## Relevant Patzer files to inspect first
+
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroCtrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroMoveHandler.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/main.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/engine/ctrl.ts`
+
+## Before coding, answer explicitly
+
+Provide:
+
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- relevant Patzer Pro files
+- relevant Lichess files
+- exact diagnosis
+- exact broken seam
+- exact smallest safe next step
+- why that step is safely scoped
+
+## Required audit output
+
+Your audit must answer all of these explicitly:
+
+1. Which exact LFYM state object does the feedback box read from at render time?
+2. Which exact state object is updated when live eval finishes for the played move?
+3. Are those objects the same instance / same branch / same candidate state?
+4. Which field is still missing, stale, or discarded when the boxes render blank?
+5. Is the remaining bug in:
+   - snapshot construction
+   - snapshot persistence
+   - feedback-state transition
+   - or render-state selection?
+6. What is the smallest safe follow-up fix?
+7. Which file or files should that fix touch?
+
+If you cannot prove the seam, say so clearly and stop at the audit result rather than guessing.
+
+## Validation
+
+Run:
+
+```sh
+npm run build
+```
+
+Then report:
+
+- whether the broken seam was proven
+- which field or state branch is actually failing
+- whether the next step should be a view fix, controller fix, or state-persistence fix
+- whether build passed
+- whether any console/runtime concern remains implied by the current code path
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-680-F6
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-680-F6 --checklist "- [ ] Proven which LFYM feedback state object the response boxes read from|- [ ] Proven which state object is updated when live eval finishes for the played move|- [ ] Identified the exact missing or stale field or branch causing blank LFYM feedback output|- [ ] Recommended the smallest safe next fix step with owning files|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-680-F6 --errors "brief description of what went wrong" --checklist "- [ ] Proven which LFYM feedback state object the response boxes read from|- [ ] Proven which state object is updated when live eval finishes for the played move|- [ ] Identified the exact missing or stale field or branch causing blank LFYM feedback output|- [ ] Recommended the smallest safe next fix step with owning files|- [ ] npm run build passes"
+```
+```
+
+## CCP-680-F7 - Reduce LFYM Next Button Width
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+Prompt ID: CCP-680-F7
+Task ID: CCP-680
+Parent Prompt ID: CCP-680-F5
+Source Document: User request
+Source Step: Reduce the LFYM "Next" button width to 30% of the terminal feedback row
+Execution Target: Claude Code
+
+# CCP-680-F7 — Reduce LFYM Next Button Width
+
+## Summary
+
+The LFYM terminal-state layout currently gives the blue `Next` button about half of the
+available row width.
+
+Current implementation:
+
+- `.retro-continue { flex: 1 1 50%; }`
+
+Patzer wants this adjusted so the `Next` button occupies about 30% of the row instead, leaving
+more space for the left-side feedback content.
+
+This is a deliberately small Patzer-specific UI tweak. Do not turn it into a broader LFYM
+redesign.
+
+## Scope
+
+Keep this prompt tightly scoped to:
+
+- reducing the LFYM `Next` button width from roughly 50% to roughly 30%
+- preserving the current LFYM terminal-state structure and behavior
+- keeping the button usable on desktop and mobile
+
+Do not bundle:
+
+- any LFYM engine logic changes
+- feedback-box logic changes
+- copy changes
+- color/styling redesign
+- unrelated move-list or board layout work
+
+Touch the minimum necessary files. Prefer 1-2 files.
+
+## Required workflow
+
+1. Inspect the current Patzer code first.
+2. Reinspect any directly relevant Lichess retrospection layout references if needed.
+3. Identify the smallest safe implementation step.
+4. Implement only that step.
+5. Validate with build plus a task-specific visual sanity check.
+
+## Relevant references
+
+Patzer files to inspect first:
+
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/styles/main.scss`
+- `/Users/leftcoast/Development/PatzerPatzer/public/css/main.css`
+
+Relevant Lichess references if needed for structure only:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+
+Important:
+
+- this is a Patzer-specific layout adjustment
+- do not force Lichess width parity if Lichess uses a different split
+- do not edit generated CSS directly unless the repo workflow truly requires it
+
+## Desired implementation direction
+
+Prefer the smallest safe CSS change so the LFYM `Next` button takes about 30% of the horizontal
+terminal-state row instead of 50%.
+
+If the current flex shorthand is the right seam, update it there using an equivalent 30% basis.
+
+Preserve:
+
+- current button text
+- current button interaction
+- current terminal-state row structure
+- current mobile usability
+
+## Before coding, answer explicitly
+
+Provide:
+
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- relevant Patzer Pro files
+- relevant Lichess files
+- exact diagnosis
+- exact small step to implement
+- why that step is safely scoped
+
+## Validation
+
+Run:
+
+```sh
+npm run build
+```
+
+Then verify:
+
+- in LFYM terminal states, the `Next` button occupies about 30% of the row instead of about 50%
+- the left-side feedback content keeps the remaining space cleanly
+- the button remains a comfortable tap target on narrower layouts
+- no console/runtime errors appear
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-680-F7
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-680-F7 --checklist "- [ ] LFYM terminal states show the Next button at about 30 percent row width|- [ ] The left-side feedback content retains the remaining space cleanly|- [ ] The button remains usable on narrower layouts|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-680-F7 --errors "brief description of what went wrong" --checklist "- [ ] LFYM terminal states show the Next button at about 30 percent row width|- [ ] The left-side feedback content retains the remaining space cleanly|- [ ] The button remains usable on narrower layouts|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+```
+
+## CCP-680-F8 - Align LFYM engine-best identity with eval diff comparison
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+Prompt ID: CCP-680-F8
+Task ID: CCP-680
+Parent Prompt ID: CCP-680-F6
+Source Document: User request
+Source Step: Audit and fix LFYM engine-best identity so exact-best classification and dual eval diffs use the same source and comparison seam
+Execution Target: Claude Code
+
+# CCP-680-F8 — Align LFYM Engine-Best Identity With Eval Diff Comparison
+
+## Summary
+
+LFYM still has a correctness bug in post-move feedback even after the blank-box issue was fixed.
+
+Current observed mismatch:
+
+- the user can play what LFYM accepts as the literal best move
+- the win label can still say `Good enough!` instead of an exact-best success label
+- the `vs Engine Best` box can still show non-zero penalties such as `+0.4` or `+0.7`
+
+The current diagnosis is that LFYM exact-best identity and LFYM eval diff comparison are not using
+the same source or the same evaluation seam.
+
+What current Patzer code appears to do:
+
+- exact-best identity is decided from move identity:
+  - `retro.liveBestMove() ?? cand.bestMove`
+- but the `vs Engine Best` comparison box is still backed by `engineBestCp` /
+  `engineBestMate` seeded from the parent position eval rather than the engine-best child result
+
+If that diagnosis is correct, LFYM is currently mixing:
+
+- move identity from the engine-best child move
+- with an eval baseline from the parent position
+
+That would make exact-best labeling and eval-diff boxes disagree even when the user played the real
+best move.
+
+This prompt must first briefly confirm that seam, then implement the smallest safe fix so:
+
+- exact-best identity
+- exact-best / near-best success wording
+- and `vs Engine Best`
+
+all derive from the same engine-best move result seam.
+
+## Scope
+
+Keep this prompt tightly scoped to:
+
+- auditing the current LFYM exact-best vs eval-diff mismatch
+- proving which state fields or eval baselines are inconsistent
+- fixing the engine-best comparison seam so exact-best identity and `vs Engine Best` align
+- preserving existing LFYM hidden-engine UX and already-fixed blank-box behavior
+
+Do not bundle:
+
+- unrelated LFYM layout tweaks
+- broader engine ownership refactors unless strictly required
+- MultiPV tuning
+- unrelated retrospection redesign
+- copy-only polish beyond wording that must change because exact-best classification becomes more correct
+
+Touch the minimum necessary files. Prefer 1-4 files.
+
+## Required workflow
+
+1. Inspect the actual Patzer code first.
+2. Reinspect the mandatory Lichess retrospection references before changing comparison semantics.
+3. Briefly confirm whether the current code is in fact comparing against parent-position eval instead
+   of engine-best child eval.
+4. Identify the smallest safe implementation step.
+5. Implement only that step.
+6. Validate with build plus task-specific checks.
+
+## Mandatory reference set
+
+Read these before implementing:
+
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-puzzle-ux/README.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/ARCHITECTURE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/KNOWN_ISSUES.md`
+
+Inspect the linked Lichess source files relevant to retrospection solve judgment and feedback:
+
+- `docs/reference/lichess-retrospection/RETROSPECTION_FLOW.md`
+- `docs/reference/lichess-retrospection-ux/sources/src/retrospect/retroCtrl.ts`
+- `docs/reference/lichess-retrospection-ux/sources/src/ctrl.ts`
+
+If Lichess does not expose this exact dual-box comparison seam, say so clearly. Use Lichess to
+confirm solve judgment and retrospection semantics, not to invent unsupported parity claims.
+
+## Relevant Patzer files to inspect first
+
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroMoveHandler.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroCtrl.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/analyse/retroView.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/main.ts`
+- `/Users/leftcoast/Development/PatzerPatzer/src/engine/ctrl.ts`
+
+## Expected implementation direction
+
+The likely smallest safe step is:
+
+- keep exact-best and near-best judgment anchored to the same engine-best child result seam that
+  backs the displayed `vs Engine Best` box
+
+That probably means one of these, depending on what current code proves:
+
+- store the engine-best child eval result explicitly in the solving snapshot instead of using the
+  parent eval as the `engineBestCp` baseline
+- update the exact-best success classification / wording to use the same comparison seam and timing
+- adjust the dual-box computation so exact-best moves compare against the engine-best child outcome,
+  not against the pre-move parent position
+
+Do not guess. Prove the seam first, then implement the smallest safe correction.
+
+## Before coding, answer explicitly
+
+Provide:
+
+- prompt id
+- task id
+- parent prompt id
+- source document
+- source step
+- relevant Patzer Pro files
+- relevant Lichess files
+- exact diagnosis
+- exact broken seam
+- exact small step to implement
+- why that step is safely scoped
+
+## Required audit output
+
+Your audit must answer all of these explicitly before or as part of the fix:
+
+1. What exact eval is currently stored as `engineBestCp` / `engineBestMate` in LFYM?
+2. Is that value the parent-position eval or the engine-best child-position eval?
+3. What source decides exact-best identity today?
+4. Are exact-best identity and `vs Engine Best` currently using the same engine-best result seam?
+5. If not, what exact field(s) or snapshot semantics must change?
+6. What is the smallest safe fix?
+
+## Validation
+
+Run:
+
+```sh
+npm run build
+```
+
+Then verify:
+
+- LFYM exact-best identity and `vs Engine Best` now derive from the same engine-best result seam
+- when the user plays the literal engine-best move, LFYM no longer shows a misleading non-zero
+  `vs Engine Best` penalty purely because of parent-vs-child eval mismatch
+- if a move is accepted only as near-best, the wording still reflects that intentionally
+- no console/runtime errors appear
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-680-F8
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-680-F8 --checklist "- [ ] Briefly confirmed the current LFYM engine-best mismatch seam before changing code|- [ ] LFYM exact-best identity and vs Engine Best now use the same engine-best result seam|- [ ] Literal engine-best moves no longer show misleading non-zero penalties from a parent-vs-child eval mismatch|- [ ] Near-best wording still behaves intentionally when the move is not exact best|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-680-F8 --errors "brief description of what went wrong" --checklist "- [ ] Briefly confirmed the current LFYM engine-best mismatch seam before changing code|- [ ] LFYM exact-best identity and vs Engine Best now use the same engine-best result seam|- [ ] Literal engine-best moves no longer show misleading non-zero penalties from a parent-vs-child eval mismatch|- [ ] Near-best wording still behaves intentionally when the move is not exact best|- [ ] No console/runtime errors appear during the flow|- [ ] npm run build passes"
+```
+```
+
+## CCP-687 - Study: Save from openings research (8.1 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-687 — Study: Save from openings research (Task 8.1 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T36 (Phase 8, Task 8.1)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 8.1 requires wiring a "Save to Library" action into the openings (Opponents) tool so users can save lines directly from opening research into the study library.
+
+The sprint doc specifies:
+- Add a "Save to Library" button/action in `src/openings/view.ts`
+- On click: reconstruct a minimal PGN from the current UCI move sequence in the opening tree
+- Call `saveCurrentToLibrary()` from `src/study/saveAction.ts` (which must also be extended to accept a UCI move array as input)
+- Optionally create a TrainableSequence in the same action (training color is known in the openings context)
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify whether `src/study/saveAction.ts` exists and what its current interface is. If it only accepts a PGN string, extend it to also accept a `{ moves: string[]; color: 'white' | 'black' }` input shape.
+
+**Step 1:** In `src/study/saveAction.ts`, add or extend the save function to accept a UCI move array. Reconstruct a minimal PGN from the UCI moves using chessops (play moves from startpos, collect SAN, build PGN string with a [Result "*"] header).
+
+**Step 2:** In `src/openings/view.ts`, add a "Save to Library" button or menu item at the point where the current opening line is visible. On click, read the current path's UCI moves from the openings controller state, call the save function, and show a brief toast confirmation.
+
+## Files
+
+- `src/study/saveAction.ts` (extend — accept UCI move array)
+- `src/openings/view.ts` (extend — Save to Library action)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Navigate to the Opponents page → browse to a line → "Save to Library" button is visible → click it → open `#/study` → the saved study appears with the correct moves
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-687
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-687 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Save to Library button visible in Opponents tool|- [ ] Clicking saves the line and it appears in #/study"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-687 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Save to Library button visible in Opponents tool|- [ ] Clicking saves the line and it appears in #/study"
+```
+```
+
+## CCP-688 - Study: Save from puzzle session (8.2 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-688 — Study: Save from puzzle session (Task 8.2 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T37 (Phase 8, Task 8.2)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 8.2 requires adding a "Save position to Library" action in the puzzle session view so users can save interesting puzzle positions to the study library.
+
+The sprint doc specifies:
+- Add "Save position to Library" in the puzzle session view (`src/puzzles/ctrl.ts` or the puzzle view)
+- Creates a StudyItem from the puzzle's starting FEN and solution line
+- `src/study/saveAction.ts` must be extended to accept a FEN + solution line as input
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify:
+1. Whether `src/study/saveAction.ts` exists and what its current interface is
+2. Where in the puzzle UI a save action would be most appropriate (puzzle result view, puzzle controls bar, or context menu)
+3. What data the puzzle controller has available: starting FEN, solution moves (UCI/SAN), puzzle metadata
+
+**Step 1:** In `src/study/saveAction.ts`, add or extend the save function to accept a `{ fen: string; solutionMoves: string[]; title?: string }` input. Build a minimal PGN from the FEN (as a [FEN "..."] header) and the solution moves. Set source = 'puzzles'.
+
+**Step 2:** In the puzzle session view (check `src/puzzles/` for the relevant view file), add a "Save to Library" button that is visible after the puzzle is complete (or at any time). On click, call the save function with the puzzle's starting FEN and solution, and show a toast confirmation.
+
+## Files
+
+- `src/study/saveAction.ts` (extend — accept FEN + solution line input)
+- `src/puzzles/` view file (extend — Save to Library button in puzzle UI)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Solve a puzzle → "Save to Library" button is visible → click it → open `#/study` → the saved study appears with the puzzle's starting position and solution moves
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-688
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-688 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Save to Library button visible in puzzle session|- [ ] Clicking saves puzzle position and it appears in #/study with correct FEN and moves"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-688 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Save to Library button visible in puzzle session|- [ ] Clicking saves puzzle position and it appears in #/study with correct FEN and moves"
+```
+```
+
+## CCP-689 - Study: Keyboard shortcuts for drill mode (8.3 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-689 — Study: Keyboard shortcuts for drill mode (Task 8.3 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T38 (Phase 8, Task 8.3)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 8.3 requires keyboard handlers in the drill session view so users can advance and exit without using the mouse.
+
+The sprint doc specifies the following keyboard behaviors during an active drill session:
+- **Enter / Space** → "Next" (advance after correct answer or showAnswer state)
+- **Escape** → end session (same as clicking "End Session" button)
+- **Arrow keys** → disabled during drill to prevent accidental board navigation
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify:
+1. Where `src/study/practice/drillView.ts` exists and renders the drill session
+2. How the drill controller state machine exposes `handleNext()` and `endSession()` methods
+3. Whether keyboard event listeners are already attached anywhere in the drill view
+
+**Implementation:** In `src/study/practice/drillView.ts`, attach a `keydown` event listener when the drill session is active. The listener must:
+- Call `handleNext()` on Enter or Space when the session state is `correct`, `showAnswer`, or `sequenceComplete`
+- Call `endSession()` on Escape
+- Call `event.preventDefault()` for ArrowLeft, ArrowRight, ArrowUp, ArrowDown to suppress board navigation
+- Remove the listener when the session ends or the view is unmounted
+
+## Files
+
+- `src/study/practice/drillView.ts` (extend — keyboard event handlers)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- During a drill session: press Enter after correct answer → session advances to next position
+- During a drill session: press Space → same as Enter
+- During a drill session: press Escape → session ends, user returns to study detail or library
+- Arrow keys do not cause board navigation during drill
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-689
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-689 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Enter/Space advances drill after correct or showAnswer|- [ ] Escape ends drill session|- [ ] Arrow keys are suppressed during drill"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-689 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Enter/Space advances drill after correct or showAnswer|- [ ] Escape ends drill session|- [ ] Arrow keys are suppressed during drill"
+```
+```
+
+## CCP-690 - Study: Sound effects for drill feedback (8.4 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-690 — Study: Sound effects for drill feedback (Task 8.4 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T39 (Phase 8, Task 8.4)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 8.4 requires auditory feedback during drill sessions — a distinct sound for correct moves and a distinct sound for incorrect moves — that respects the existing board cosmetics mute toggle.
+
+The sprint doc specifies:
+- Play a short confirmation tone on correct move
+- Play a short error tone on incorrect move
+- Respect the existing mute toggle in board cosmetics
+- Use simple HTML5 Audio with pre-loaded samples
+- Add two small audio files to `public/` (correct.mp3, incorrect.mp3)
+- Sound playback logic goes in `src/study/practice/boardAdapter.ts`
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify:
+1. Where the mute toggle is stored in board cosmetics (`src/board/cosmetics.ts` or similar) and how to read its current state
+2. Whether `src/study/practice/boardAdapter.ts` exists and what it exports
+3. Whether `public/correct.mp3` and `public/incorrect.mp3` already exist
+
+**Step 1:** Add two small audio files to `public/`:
+- `public/sounds/correct.mp3` — short positive tone (~200ms)
+- `public/sounds/incorrect.mp3` — short error tone (~200ms)
+
+If suitable royalty-free audio files are not available, create placeholder silence files or note the missing assets with a comment and implement the playback logic so it's ready when the files are added.
+
+**Step 2:** In `src/study/practice/boardAdapter.ts`, add a `playFeedback(type: 'correct' | 'incorrect')` function that:
+- Reads the mute state from board cosmetics
+- If not muted: creates/reuses an `Audio` instance for the correct file, calls `.play()`
+- Pre-load both audio objects at module init to avoid latency on first play
+
+**Step 3:** In `src/study/practice/drillCtrl.ts` or wherever the drill state transitions to `correct`/`incorrect`, call `playFeedback()` at the appropriate state transitions.
+
+## Files
+
+- `src/study/practice/boardAdapter.ts` (extend — sound playback)
+- `public/sounds/correct.mp3` (new asset)
+- `public/sounds/incorrect.mp3` (new asset)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- During drill with sound on: correct move plays the confirmation tone
+- During drill with sound on: incorrect move plays the error tone
+- Board cosmetics mute toggle silences both sounds
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-690
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-690 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Correct move plays confirmation tone|- [ ] Incorrect move plays error tone|- [ ] Mute toggle silences drill sounds"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-690 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Correct move plays confirmation tone|- [ ] Incorrect move plays error tone|- [ ] Mute toggle silences drill sounds"
+```
+```
+
+## CCP-691 - Study: Warmup position behavior in drill (8.5 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-691 — Study: Warmup position behavior in drill (Task 8.5 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T40 (Phase 8, Task 8.5)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 8.5 requires the drill controller to distinguish between positions that are due for review and positions that are being played for context (warmup positions), with different grading consequences for each.
+
+The sprint doc specifies:
+- When processing a position, check if it is due via `isDue()` from the scheduler
+- **Due position (correct):** advance level, update PositionProgress normally
+- **Due position (incorrect):** drop 2 levels, update PositionProgress normally
+- **Warmup position (correct):** no progress change — the position is context, not graded
+- **Warmup position (incorrect):** reset to level 1 — creates a new review obligation even though it wasn't scheduled
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify:
+1. Where `src/study/practice/drillCtrl.ts` is and how it currently calls `onPositionGraded`
+2. Whether `isDue()` from `src/study/practice/scheduler.ts` is already imported and used
+3. How the current grading callback receives or can receive PositionProgress to call `isDue()` with
+
+**Implementation:** In `src/study/practice/drillCtrl.ts`, at the point where a user move is graded and `onPositionGraded` is called, add the warmup check:
+
+```typescript
+const progress = getPositionProgress(positionKey); // load from IDB or session cache
+const due = isDue(progress, Date.now());
+
+if (due) {
+  // Normal grading: pass result to onPositionGraded
+  onPositionGraded(positionKey, result);
+} else {
+  // Warmup: correct → no-op; incorrect → force reset to level 1
+  if (result === 'incorrect') {
+    onPositionGraded(positionKey, 'warmup-reset');
+  }
+  // correct → do nothing
+}
+```
+
+The `onPositionGraded` callback (in `src/study/studyCtrl.ts`) must handle the `'warmup-reset'` result by setting the position's level to 1 and scheduling a next review.
+
+## Files
+
+- `src/study/practice/drillCtrl.ts` (extend — warmup position logic)
+- `src/study/studyCtrl.ts` (extend — handle warmup-reset in grading callback, if needed)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Practice a line that contains both due and non-due positions
+- Getting a due position correct advances its level in PositionProgress
+- Getting a non-due (warmup) position correct leaves its PositionProgress unchanged
+- Getting a non-due (warmup) position incorrect resets it to level 1 in PositionProgress
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-691
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-691 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Due position correct: level advances|- [ ] Warmup position correct: no PositionProgress change|- [ ] Warmup position incorrect: PositionProgress resets to level 1"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-691 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Due position correct: level advances|- [ ] Warmup position correct: no PositionProgress change|- [ ] Warmup position incorrect: PositionProgress resets to level 1"
+```
+```
+
+## CCP-692 - Study: Library performance optimization (8.6 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-692 — Study: Library performance optimization (Task 8.6 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T41 (Phase 8, Task 8.6)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 8.6 requires paginating the study library view and switching from `getAll()` to IDB cursor-based loading to prevent slow initial loads for users with hundreds of studies.
+
+The sprint doc specifies:
+- Implement pagination in `src/study/libraryView.ts` (load 50 studies at a time, with "Load more" or infinite scroll)
+- In `src/study/studyDb.ts`, replace the current `getAll()` query with an IDB cursor using index-based sorting
+- This aligns with performance rule CR-2 (never load an entire object store eagerly) and CR-3 (lists >200 items must be virtualized or paginated)
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify:
+1. How `src/study/studyDb.ts` currently loads studies (likely a `getAll()` call)
+2. What indexes exist on the `studies` store (`createdAt`, `updatedAt`, `source`, `favorite`)
+3. How `src/study/studyCtrl.ts` manages the loaded studies array and triggers re-renders
+
+**Step 1:** In `src/study/studyDb.ts`, add a `getStudiesPaginated(index: string, direction: IDBCursorDirection, offset: number, limit: number): Promise<StudyItem[]>` function. Use `IDBKeyRange` and cursor advancement to skip `offset` records, then collect up to `limit` records. This replaces full `getAll()` for the library view.
+
+**Step 2:** In `src/study/studyCtrl.ts`, add pagination state:
+- `studyPage: number` (current page, starts at 0)
+- `hasMore: boolean` (whether more pages exist)
+- `loadNextPage(): Promise<void>` (advances page, appends to loaded studies)
+- `resetPagination(): Promise<void>` (resets to page 0 on filter/sort change)
+
+**Step 3:** In `src/study/libraryView.ts`, add a "Load more" button (or detect scroll-to-bottom for infinite scroll) that calls `loadNextPage()`. Show a loading indicator while loading. Hide the button when `hasMore === false`.
+
+## Files
+
+- `src/study/studyDb.ts` (extend — paginated cursor query)
+- `src/study/studyCtrl.ts` (extend — pagination state and loadNextPage)
+- `src/study/libraryView.ts` (extend — Load more / infinite scroll)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Create 60+ study items → library loads the first 50 only → "Load more" button appears → clicking loads the next batch
+- Changing sort or filter resets to page 0 and loads fresh results
+- No `getAll()` call on the studies store (verify via devtools network/IDB inspector)
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-692
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-692 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Library loads first 50 studies only|- [ ] Load more button loads next batch|- [ ] Filter/sort change resets pagination|- [ ] No getAll() on large studies store"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-692 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Library loads first 50 studies only|- [ ] Load more button loads next batch|- [ ] Filter/sort change resets pagination|- [ ] No getAll() on large studies store"
+```
+```
+
+## CCP-693 - Study: Folder hierarchy data model (9.1 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-693 — Study: Folder hierarchy data model (Task 9.1 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T42 (Phase 9, Task 9.1)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 9.1 requires establishing the data model and IDB store for a real folder hierarchy in the study library. The current `StudyItem.folders: string[]` is a flat name-string field with no hierarchy, ordering, or IDs.
+
+The sprint doc specifies:
+- Add `StudyFolder` type to `src/study/types.ts`:
+  ```typescript
+  interface StudyFolder {
+    id: string;
+    name: string;
+    parentId: string | null;  // null = root level
+    order: number;            // display order within parent
+    color?: string;           // optional visual identifier
+    createdAt: number;
+    updatedAt: number;
+  }
+  ```
+- Add a `folders` object store to IDB (bump version)
+- Update `StudyItem` to add `folderIds: string[]` (ID-based) alongside existing `folders: string[]` for backward compatibility — do not remove the old field yet
+- Add folder CRUD operations to `src/study/studyDb.ts`
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify:
+1. Current IDB version in `src/idb/index.ts` and what stores already exist
+2. Whether `src/study/types.ts` already has `StudyFolder` defined
+3. Whether `src/study/studyDb.ts` already has any folder operations
+
+**Step 1:** Add `StudyFolder` interface to `src/study/types.ts`. Add `folderIds?: string[]` to `StudyItem`.
+
+**Step 2:** In `src/idb/index.ts`, bump the DB version and add a `folders` object store keyed by `id` with indexes on `parentId` and `order` in the upgrade handler.
+
+**Step 3:** In `src/study/studyDb.ts`, add:
+- `createFolder(folder: StudyFolder): Promise<void>`
+- `getFolder(id: string): Promise<StudyFolder | undefined>`
+- `getAllFolders(): Promise<StudyFolder[]>` (folder count is bounded — full load is acceptable)
+- `updateFolder(folder: StudyFolder): Promise<void>`
+- `deleteFolder(id: string): Promise<void>`
+
+## Files
+
+- `src/study/types.ts` (extend — StudyFolder type, folderIds on StudyItem)
+- `src/idb/index.ts` (extend — add folders store, bump version)
+- `src/study/studyDb.ts` (extend — folder CRUD)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Existing studies still load after the IDB version bump (verify in devtools Application > IndexedDB)
+- New `folders` object store exists in the IDB
+- Creating a folder via `createFolder()` in the console writes to IDB and can be retrieved with `getFolder()`
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-693
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-693 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] StudyFolder type exists in src/study/types.ts|- [ ] folders IDB store exists after version bump|- [ ] Existing studies still load after migration|- [ ] Folder CRUD functions exist in studyDb.ts"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-693 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] StudyFolder type exists in src/study/types.ts|- [ ] folders IDB store exists after version bump|- [ ] Existing studies still load after migration|- [ ] Folder CRUD functions exist in studyDb.ts"
+```
+```
+
+## CCP-694 - Study: Folder sidebar and navigation (9.2 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-694 — Study: Folder sidebar and navigation (Task 9.2 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T43 (Phase 9, Task 9.2)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+**Dependency:** This task requires the `StudyFolder` type and IDB store from Task 9.1 (CCP-693). Verify that work is complete before implementing this task.
+
+## What is missing
+
+Task 9.2 requires adding a collapsible folder navigation sidebar to the study library view so users can browse their collection by folder.
+
+The sprint doc specifies:
+- A collapsible sidebar panel alongside the study list
+- Root level shows: "All Studies" option + "Unfiled" option + all top-level folders
+- Clicking a folder filters the study list to that folder's contents
+- Nested folders (parentId set) render as indented children under their parent
+- Folder expand/collapse toggles for nested folders
+- Active folder is highlighted
+- Count badges showing number of studies in each folder
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify the folder CRUD operations exist in `src/study/studyDb.ts` (from CCP-693).
+
+**Step 1:** In `src/study/studyCtrl.ts`, add:
+- `folders: StudyFolder[]` state (loaded from IDB on init)
+- `activeFolderId: string | null` (null = "All Studies")
+- `setActiveFolder(id: string | null): void`
+- `expandedFolderIds: Set<string>` (for sidebar toggle state)
+- `toggleFolderExpanded(id: string): void`
+- A filter function that filters the studies list based on `activeFolderId`
+
+**Step 2:** In `src/study/libraryView.ts`, add a sidebar panel rendered alongside the main list. The sidebar renders:
+- "All Studies" item (highlighted when `activeFolderId === null`)
+- "Unfiled" item (studies with empty `folderIds`)
+- Each root folder, with expand/collapse icon if it has children
+- Indented child folders under expanded parents
+- Count badge: number of studies matching each folder
+
+**Step 3:** In `src/styles/main.scss` (or equivalent), add sidebar layout styles: two-column layout (sidebar + content), active folder highlight, indent levels, count badge styling.
+
+## Files
+
+- `src/study/studyCtrl.ts` (extend — folder navigation state, active folder, filter)
+- `src/study/libraryView.ts` (extend — sidebar panel with folder tree)
+- `src/styles/main.scss` (extend — sidebar layout styles)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Navigate to `#/study` → sidebar is visible with "All Studies" and any created folders
+- Click a folder → study list filters to that folder's contents
+- Create a nested folder → it renders indented under its parent
+- Click expand/collapse icon → nested folders show/hide
+- Count badges show correct study counts per folder
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-694
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-694 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Sidebar visible in library view|- [ ] Clicking folder filters study list|- [ ] Nested folders indent and expand/collapse|- [ ] Count badges show correct numbers"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-694 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Sidebar visible in library view|- [ ] Clicking folder filters study list|- [ ] Nested folders indent and expand/collapse|- [ ] Count badges show correct numbers"
+```
+```
+
+## CCP-695 - Study: Create, rename, and delete folders (9.3 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-695 — Study: Create, rename, and delete folders (Task 9.3 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T44 (Phase 9, Task 9.3)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+**Dependency:** This task requires the folder sidebar from Task 9.2 (CCP-694). Verify that work is complete before implementing this task.
+
+## What is missing
+
+Task 9.3 requires basic folder management operations — create, rename, delete, and create subfolder — accessible from the sidebar UI.
+
+The sprint doc specifies:
+- "New Folder" button in the sidebar header → creates folder with editable inline name
+- Right-click a folder → context menu with Rename and Delete options
+- Rename: inline text edit on the folder name (click to activate, blur/Enter to save)
+- Delete: confirmation prompt. Option to move contained studies to parent folder or "Unfiled." Does NOT delete the studies themselves.
+- "New Subfolder" option inside existing folders (for nesting)
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify the sidebar renders folders (from CCP-694) and that `src/study/studyDb.ts` has `createFolder`, `updateFolder`, `deleteFolder` functions (from CCP-693).
+
+**Step 1:** In `src/study/studyCtrl.ts`, add:
+- `createFolder(name: string, parentId?: string): Promise<void>` — generates ID, timestamps, persists, refreshes folder list
+- `renameFolder(id: string, name: string): Promise<void>` — updates name, updatedAt, persists
+- `deleteFolder(id: string, moveStudiesTo?: string | null): Promise<void>` — removes folder, updates `folderIds` of all studies that were in the deleted folder
+
+**Step 2:** In `src/study/libraryView.ts`, wire the sidebar UI:
+- Add "New Folder" button at the top of the sidebar. On click, append an inline-editable new folder item to the folder list. On blur/Enter, call `createFolder()` with the typed name.
+- Right-click a folder item → show a context menu with "Rename," "New Subfolder," and "Delete"
+- "Rename": replace folder name with an `<input>` in-place; save on blur/Enter
+- "Delete": show a small confirmation dialog with radio buttons: "Move studies to parent" or "Move to Unfiled." On confirm, call `deleteFolder()` with the appropriate target.
+- "New Subfolder": same as "New Folder" but with `parentId` set to the right-clicked folder's ID
+
+## Files
+
+- `src/study/studyCtrl.ts` (extend — createFolder, renameFolder, deleteFolder)
+- `src/study/libraryView.ts` (extend — New Folder button, rename/delete context menu)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Click "New Folder" → inline name input appears → type name → Enter → folder appears in sidebar
+- Right-click folder → Rename → edit name → Enter → updated name appears
+- Right-click folder → "New Subfolder" → subfolder appears indented under parent
+- Right-click folder → Delete → confirmation appears → confirm → folder removed, studies moved to correct destination → no studies were deleted
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-695
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-695 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] New Folder button creates folder with inline name entry|- [ ] Rename works via right-click context menu|- [ ] New Subfolder creates nested folder|- [ ] Delete moves studies to parent or Unfiled without deleting them"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-695 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] New Folder button creates folder with inline name entry|- [ ] Rename works via right-click context menu|- [ ] New Subfolder creates nested folder|- [ ] Delete moves studies to parent or Unfiled without deleting them"
+```
+```
+
+## CCP-696 - Study: Drag-and-drop studies into folders (9.4 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-696 — Study: Drag-and-drop studies into folders (Task 9.4 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T45 (Phase 9, Task 9.4)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+**Dependency:** This task requires the folder sidebar (CCP-694) and folder data model (CCP-693). Verify that work is complete before implementing this task.
+
+## What is missing
+
+Task 9.4 requires HTML5 drag-and-drop so users can drag study rows from the list into folder targets in the sidebar.
+
+The sprint doc specifies:
+- Study rows in the list are `draggable="true"`
+- Folders in the sidebar are drop targets
+- On dragover: folder highlights to indicate valid drop
+- On drop: update the study's `folderIds` to include the target folder
+- Visual feedback: study row shows ghost while dragging, folder shows highlight ring
+- Moving between folders: dragging to a new folder updates membership
+- Use native HTML5 `dragstart`, `dragover`, `drop` events — no library
+- `event.dataTransfer.setData('text/plain', studyId)` on dragstart
+- `event.preventDefault()` on dragover to allow drop
+- Touch/mobile drag: not in scope for this task (deferred)
+
+## What to implement
+
+**Step 1:** In `src/study/libraryView.ts`, on each study row element:
+- Add `draggable: true` to the Snabbdom vnode props
+- Add `dragstart` handler: `event.dataTransfer.setData('text/plain', study.id)`
+- Add a CSS class for the drag ghost appearance
+
+**Step 2:** In `src/study/libraryView.ts`, on each folder item in the sidebar:
+- Add `dragover` handler: `event.preventDefault()` + add a `.drag-over` CSS class to the folder element
+- Add `dragleave` handler: remove the `.drag-over` CSS class
+- Add `drop` handler: read `event.dataTransfer.getData('text/plain')` (the studyId), call `moveStudyToFolder(studyId, folderId)`, remove `.drag-over` class
+
+**Step 3:** In `src/study/studyCtrl.ts`, add `moveStudyToFolder(studyId: string, folderId: string): Promise<void>` that updates the study's `folderIds` array and persists to IDB.
+
+**Step 4:** In `src/styles/main.scss` (or equivalent), add drag feedback styles: `.drag-over` folder highlight ring, dragging row opacity.
+
+## Files
+
+- `src/study/libraryView.ts` (extend — drag source on study rows, drop target on folders)
+- `src/study/studyCtrl.ts` (extend — moveStudyToFolder operation)
+- `src/styles/main.scss` (extend — drag feedback styles)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Drag a study row → hover over a folder in the sidebar → folder highlights → release → study now appears in that folder
+- Drag to a different folder → study moves to the new folder
+- Drag outside any folder → nothing changes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-696
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-696 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Study rows are draggable|- [ ] Hovering over folder highlights it as drop target|- [ ] Dropping study into folder updates its folderIds|- [ ] Dragging to a different folder moves the study"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-696 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Study rows are draggable|- [ ] Hovering over folder highlights it as drop target|- [ ] Dropping study into folder updates its folderIds|- [ ] Dragging to a different folder moves the study"
+```
+```
+
+## CCP-697 - Study: Multi-select and bulk operations (9.5 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-697 — Study: Multi-select and bulk operations (Task 9.5 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T46 (Phase 9, Task 9.5)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 9.5 requires multi-selection of study items in the library list, with a bulk action bar for operating on the selection.
+
+The sprint doc specifies:
+- Click selects one study (existing behavior — open detail)
+- Cmd/Ctrl + click: toggle individual selection without deselecting others
+- Shift + click: select a range from last selected to clicked item
+- Selected items visually highlighted (distinct from hover)
+- When multiple items selected: bulk action bar appears at top with "X selected" + buttons: Move to Folder, Add Tag, Delete, Export PGN
+- Click away or press Escape: clear selection
+
+## What to implement
+
+**Step 1:** In `src/study/studyCtrl.ts`, add:
+- `selectedIds: Set<string>` (empty by default)
+- `lastSelectedId: string | null` (for shift-click range)
+- `toggleSelection(id: string): void`
+- `selectRange(fromId: string, toId: string): void` (select all items between the two in the current list order)
+- `clearSelection(): void`
+- `isSelected(id: string): boolean`
+
+**Step 2:** In `src/study/libraryView.ts`:
+- On study row click: if Cmd/Ctrl is held → `toggleSelection(id)`, skip navigation. If Shift is held → `selectRange(lastSelectedId, id)`. Otherwise → `clearSelection()` + navigate to study (existing behavior).
+- Add a `.selected` CSS class to selected rows
+- Render the bulk action bar as a fixed panel at the top of the list when `selectedIds.size > 1`:
+  - "X selected" label
+  - "Move to Folder" button → dropdown of existing folders → call `moveStudyToFolder` for each selected ID
+  - "Add Tag" button → text input → add tag to all selected studies
+  - "Delete" button → confirmation prompt → delete all selected studies
+  - "Export PGN" button → concatenate PGNs and trigger download
+- Add a keyboard listener for Escape → `clearSelection()`
+
+**Step 3:** In `src/styles/main.scss` (or equivalent), add selection highlight styles and bulk action bar styles.
+
+Note: Selection state is ephemeral (in-memory only). Bulk operations call existing single-item operations in a loop.
+
+## Files
+
+- `src/study/studyCtrl.ts` (extend — selectedIds Set, selection logic)
+- `src/study/libraryView.ts` (extend — multi-select handlers, bulk action bar)
+- `src/styles/main.scss` (extend — selection highlight and bulk bar styles)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Cmd/Ctrl + click three studies → all three highlighted → "3 selected" bar appears
+- Shift + click a range → all items between are selected
+- "Move to Folder" moves all selected studies to chosen folder
+- "Delete" removes all selected after confirmation
+- Escape clears selection
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-697
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-697 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Cmd/Ctrl+click toggles individual selection|- [ ] Shift+click selects a range|- [ ] Bulk action bar appears when multiple selected|- [ ] Move to Folder works for all selected|- [ ] Delete works for all selected with confirmation|- [ ] Escape clears selection"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-697 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Cmd/Ctrl+click toggles individual selection|- [ ] Shift+click selects a range|- [ ] Bulk action bar appears when multiple selected|- [ ] Move to Folder works for all selected|- [ ] Delete works for all selected with confirmation|- [ ] Escape clears selection"
+```
+```
+
+## CCP-698 - Study: View mode toggle list vs grid (9.6 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-698 — Study: View mode toggle list vs grid (Task 9.6 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T47 (Phase 9, Task 9.6)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 9.6 requires a view mode toggle in the library header so users can switch between a compact list view and a visual grid view with board thumbnails.
+
+The sprint doc specifies:
+- View mode toggle in library header: list icon / grid icon
+- **List view** (default): rows with title, metadata, tags, icons (existing layout)
+- **Grid view**: cards with a small static Chessground board thumbnail (viewOnly: true), title below, key metadata
+- View mode persisted to localStorage
+- Both views respect the same sort/filter/folder state
+
+## What to implement
+
+**Step 1:** In `src/study/studyCtrl.ts`, add:
+- `viewMode: 'list' | 'grid'` — initialized from `localStorage.getItem('study-view-mode')` or `'list'`
+- `setViewMode(mode: 'list' | 'grid'): void` — updates state, persists to `localStorage.setItem('study-view-mode', mode)`
+
+**Step 2:** In `src/study/libraryView.ts`:
+- Add view toggle buttons (list icon / grid icon) in the library header
+- When rendering the study list, branch on `viewMode`:
+  - `'list'`: existing row rendering
+  - `'grid'`: render each study as a card in a CSS grid layout
+    - Small static Chessground board: initialize with `{ fen: study initialFen or startpos, viewOnly: true, coordinates: false }` — read the FEN from the first move of the study's PGN, or use startpos if unavailable
+    - Title below the board
+    - Source icon and date
+    - Favorite star
+    - Click → navigate to study detail (same as list)
+- On view mode toggle click, call `setViewMode()` and re-render
+
+**Step 3:** In `src/styles/main.scss` (or equivalent), add grid layout styles: CSS grid with auto-fill columns, card styles, thumbnail sizing.
+
+Note: The Chessground board instances in grid view are static (viewOnly, no interactivity). They are created when a card renders and destroyed when the card is removed from the DOM.
+
+## Files
+
+- `src/study/studyCtrl.ts` (extend — viewMode state, setViewMode with localStorage persistence)
+- `src/study/libraryView.ts` (extend — grid rendering, view toggle buttons)
+- `src/styles/main.scss` (extend — grid layout styles)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Toggle to grid → studies show as cards with board thumbnails → each card shows the starting position
+- Toggle back to list → standard row rendering
+- View mode persists across page reload (localStorage)
+- Both views respect active folder filter and sort
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-698
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-698 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Toggle buttons visible in library header|- [ ] Grid view shows cards with static board thumbnails|- [ ] List view shows standard rows|- [ ] View mode persists across reload|- [ ] Both views respect active folder and sort"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-698 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Toggle buttons visible in library header|- [ ] Grid view shows cards with static board thumbnails|- [ ] List view shows standard rows|- [ ] View mode persists across reload|- [ ] Both views respect active folder and sort"
+```
+```
+
+## CCP-699 - Study: Search across annotations (9.7 follow-up)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-699 — Study: Search across annotations (Task 9.7 follow-up)
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T48 (Phase 9, Task 9.7)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+This task was marked "Audit Found Mismatch" — audit evidence shows the implementation is partial or not started despite prompt completion. This follow-up prompt covers what was not built.
+
+## What is missing
+
+Task 9.7 requires extending the library search to cover annotation comments, notes, and tags — not just titles.
+
+The sprint doc specifies:
+- Search input in library header (may already exist as a title filter from Phase 2)
+- Extend to search across: title, notes, tags, and PGN comment text (extract from PGN comment blocks)
+- Results highlight which field matched
+- Debounced input (300ms) to avoid excessive filtering
+- Search is client-side (filter the loaded studies array)
+- Performance: for 100+ studies, pre-compute a search index on library load — extract all comment text from each study's PGN and store as a flat searchable string in memory only (not persisted)
+
+## What to implement
+
+**Prerequisite check:** Before coding, verify:
+1. Whether a search input already exists in `src/study/libraryView.ts` from earlier phases
+2. How comments are stored in PGN (they appear in `{...}` curly braces in standard PGN)
+3. Whether there is an existing text extraction utility or if one needs to be written
+
+**Step 1:** In `src/study/studyCtrl.ts`, add:
+- `searchIndex: Map<string, string>` — keyed by studyId, value is a concatenated searchable string (title + notes + tags joined + extracted PGN comment text)
+- `buildSearchIndex(studies: StudyItem[]): void` — extracts PGN comment text from each study using a regex like `/\{([^}]*)\}/g`, concatenates with other fields, stores in the map
+- `search(query: string): StudyItem[]` — filters the loaded studies array using the search index. Returns matching studies. If query is empty, returns all.
+- `searchQuery: string` state
+- `setSearchQuery(q: string): void` — debounced (300ms), calls `search()`, triggers re-render
+
+**Step 2:** In `src/study/libraryView.ts`:
+- If no search input exists yet, add one to the library header
+- Wire the input's `input` event to `setSearchQuery()`
+- When rendering study rows, if a match was found via annotation text (not just title), show a small indicator: which field matched ("comment", "notes", "tag")
+- Clear button (×) to reset search
+
+**Step 3:** Build the search index when the library initializes and when studies are added/updated.
+
+## Files
+
+- `src/study/studyCtrl.ts` (extend — search index, search function, debounced query)
+- `src/study/libraryView.ts` (extend — search UI, match field indicator)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Type a word that appears only in a study's PGN comment → study appears in filtered results
+- Type a tag name → studies with that tag appear
+- Type something in a study's notes → that study appears
+- Clear search → all studies shown
+- Rapid typing does not cause excessive re-renders (debounce working)
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-699
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-699 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Search finds studies by PGN comment text|- [ ] Search finds studies by tag|- [ ] Search finds studies by notes field|- [ ] Search input is debounced (no excessive re-renders)|- [ ] Clear search restores full list"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-699 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Search finds studies by PGN comment text|- [ ] Search finds studies by tag|- [ ] Search finds studies by notes field|- [ ] Search input is debounced (no excessive re-renders)|- [ ] Clear search restores full list"
+```
+```
+
+## CCP-700 - Manager: SPR-015 Phase 8 — Polish and Integration
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-700 — Manager: SPR-015 Phase 8 — Polish and Integration
+
+## Purpose
+
+This manager prompt executes the six follow-up prompts for SPR-015 Phase 8 (Polish and Integration) in order. All six child prompts cover work that was marked "Audit Found Mismatch" — implementation evidence showed partial or unstarted despite prior prompt completion.
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Phase: SPR-015-P9 (Phase 8 — Polish and Integration)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+## Child Prompts (execute in this order)
+
+1. **CCP-687** — Study: Save from openings research (Task 8.1)
+   - Wire "Save to Library" in the Opponents/openings tool
+   - Files: `src/openings/view.ts`, `src/study/saveAction.ts`
+
+2. **CCP-688** — Study: Save from puzzle session (Task 8.2)
+   - Wire "Save position to Library" in the puzzle session view
+   - Files: `src/puzzles/` view, `src/study/saveAction.ts`
+
+3. **CCP-689** — Study: Keyboard shortcuts for drill mode (Task 8.3)
+   - Add Enter/Space/Escape handlers in `src/study/practice/drillView.ts`
+
+4. **CCP-690** — Study: Sound effects for drill feedback (Task 8.4)
+   - Add correct/incorrect audio playback in `src/study/practice/boardAdapter.ts`
+   - Add `public/sounds/correct.mp3` and `public/sounds/incorrect.mp3`
+
+5. **CCP-691** — Study: Warmup position behavior in drill (Task 8.5)
+   - Distinguish due vs warmup positions in `src/study/practice/drillCtrl.ts`
+
+6. **CCP-692** — Study: Library performance optimization (Task 8.6)
+   - Replace `getAll()` with paginated IDB cursor in `src/study/studyDb.ts`
+   - Add "Load more" pagination to `src/study/libraryView.ts`
+
+## Execution Rules
+
+- Run each child prompt's `prompt:start` before beginning its work
+- Run each child prompt's `prompt:complete` after finishing its work
+- Do not skip steps or batch them — each child is a separate tracked unit
+- Verify `npm run build` and `npx tsc --noEmit` pass after each child prompt before moving to the next
+- If a child prompt fails, use `prompt:complete -- CCP-### --errors "..."` to record the failure — do not mark it clean
+
+## Lifecycle
+
+Before executing any child prompts, mark this manager as started:
+```sh
+npm run prompt:start -- CCP-700
+```
+
+After all child prompts are complete, mark the manager as done:
+```sh
+npm run prompt:complete -- CCP-700 --checklist "- [ ] CCP-687 completed (Save from openings)|- [ ] CCP-688 completed (Save from puzzle)|- [ ] CCP-689 completed (Drill keyboard shortcuts)|- [ ] CCP-690 completed (Drill sound effects)|- [ ] CCP-691 completed (Warmup position behavior)|- [ ] CCP-692 completed (Library pagination)"
+```
+
+If any child prompt had errors, record them when completing the manager:
+```sh
+npm run prompt:complete -- CCP-700 --errors "brief description of which children had issues" --checklist "- [ ] CCP-687 completed (Save from openings)|- [ ] CCP-688 completed (Save from puzzle)|- [ ] CCP-689 completed (Drill keyboard shortcuts)|- [ ] CCP-690 completed (Drill sound effects)|- [ ] CCP-691 completed (Warmup position behavior)|- [ ] CCP-692 completed (Library pagination)"
+```
+```
+
+## CCP-701 - Manager: SPR-015 Phase 9 — Library Navigation and Organization UX
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-701 — Manager: SPR-015 Phase 9 — Library Navigation and Organization UX
+
+## Purpose
+
+This manager prompt executes the seven follow-up prompts for SPR-015 Phase 9 (Library Navigation and Organization UX) in order. All seven child prompts cover work that was marked "Audit Found Mismatch" — implementation evidence showed partial or unstarted despite prior prompt completion.
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Phase: SPR-015-P10 (Phase 9 — Library Navigation and Organization UX)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+## Child Prompts (execute in this order)
+
+1. **CCP-693** — Study: Folder hierarchy data model (Task 9.1)
+   - Add `StudyFolder` type, `folders` IDB store, folder CRUD
+   - Files: `src/study/types.ts`, `src/idb/index.ts`, `src/study/studyDb.ts`
+   - **Must be completed before any subsequent task in this phase**
+
+2. **CCP-694** — Study: Folder sidebar and navigation (Task 9.2)
+   - Add collapsible folder sidebar with filter state to library view
+   - Files: `src/study/studyCtrl.ts`, `src/study/libraryView.ts`, `src/styles/main.scss`
+   - Depends on CCP-693
+
+3. **CCP-695** — Study: Create, rename, and delete folders (Task 9.3)
+   - Wire New Folder, rename, and delete folder operations in sidebar
+   - Files: `src/study/studyCtrl.ts`, `src/study/libraryView.ts`
+   - Depends on CCP-694
+
+4. **CCP-696** — Study: Drag-and-drop studies into folders (Task 9.4)
+   - Add HTML5 DnD drag source on study rows, drop target on sidebar folders
+   - Files: `src/study/libraryView.ts`, `src/study/studyCtrl.ts`, `src/styles/main.scss`
+   - Depends on CCP-694
+
+5. **CCP-697** — Study: Multi-select and bulk operations (Task 9.5)
+   - Add Cmd/Ctrl+click selection, shift-range, and bulk action bar
+   - Files: `src/study/studyCtrl.ts`, `src/study/libraryView.ts`, `src/styles/main.scss`
+
+6. **CCP-698** — Study: View mode toggle list vs grid (Task 9.6)
+   - Add list/grid toggle with static Chessground thumbnails
+   - Files: `src/study/studyCtrl.ts`, `src/study/libraryView.ts`, `src/styles/main.scss`
+
+7. **CCP-699** — Study: Search across annotations (Task 9.7)
+   - Extend library search to cover PGN comments, notes, and tags with in-memory index
+   - Files: `src/study/studyCtrl.ts`, `src/study/libraryView.ts`
+
+## Execution Rules
+
+- Run each child prompt's `prompt:start` before beginning its work
+- Run each child prompt's `prompt:complete` after finishing its work
+- Respect the dependency order: CCP-693 must finish before CCP-694, and CCP-694 before CCP-695 and CCP-696
+- CCP-697, CCP-698, and CCP-699 depend only on the library view existing — they can proceed after CCP-694
+- Verify `npm run build` and `npx tsc --noEmit` pass after each child prompt before moving to the next
+- If a child prompt fails, use `prompt:complete -- CCP-### --errors "..."` to record the failure — do not mark it clean
+
+## Lifecycle
+
+Before executing any child prompts, mark this manager as started:
+```sh
+npm run prompt:start -- CCP-701
+```
+
+After all child prompts are complete, mark the manager as done:
+```sh
+npm run prompt:complete -- CCP-701 --checklist "- [ ] CCP-693 completed (Folder data model)|- [ ] CCP-694 completed (Folder sidebar)|- [ ] CCP-695 completed (Create/rename/delete folders)|- [ ] CCP-696 completed (Drag-and-drop into folders)|- [ ] CCP-697 completed (Multi-select and bulk ops)|- [ ] CCP-698 completed (View mode toggle)|- [ ] CCP-699 completed (Search across annotations)"
+```
+
+If any child prompt had errors, record them when completing the manager:
+```sh
+npm run prompt:complete -- CCP-701 --errors "brief description of which children had issues" --checklist "- [ ] CCP-693 completed (Folder data model)|- [ ] CCP-694 completed (Folder sidebar)|- [ ] CCP-695 completed (Create/rename/delete folders)|- [ ] CCP-696 completed (Drag-and-drop into folders)|- [ ] CCP-697 completed (Multi-select and bulk ops)|- [ ] CCP-698 completed (View mode toggle)|- [ ] CCP-699 completed (Search across annotations)"
+```
+```
+
+## CCP-702 - Study: Seed master games as sample library studies
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-702 — Study: Seed master games as sample library studies
+
+## Context
+
+Sprint: SPR-015 — Study Page Sprint Plan
+Sprint Task: SPR-015-T52 (Phase 9 addition)
+Source doc: `docs/mini-sprints/STUDY_PAGE_SPRINT_2026-03-31.md`
+
+The study library is actively being built. As of this prompt, the IDB persistence, library view,
+drill mode, annotation workspace, and save actions are all wired up — but a fresh browser session
+starts with an empty library, making it tedious to manually test all the library UI, filtering,
+sorting, pagination, drill sessions, and detail views each time.
+
+The app already contains 200 public-domain master games (Fischer + Capablanca) loaded at app
+startup for the Opponents tool opening tree animation. These are available in:
+
+```
+src/showcase/masterGames.ts — exports MASTER_GAMES (MasterGame[])
+```
+
+Each `MasterGame` has: `id`, `white`, `black`, `result`, `year`, `event`, `eco`, `opening`,
+`label`, `moves` (UCI array).
+
+## What to implement
+
+Add a **"Seed sample studies"** developer button to the study library empty-state or header that,
+when clicked, saves all 200 master games as `StudyItem` entries into the Study Library IDB store.
+
+**Step 1:** In `src/study/saveAction.ts`, add a `seedMasterGamesToLibrary()` function that:
+- Imports `MASTER_GAMES` from `src/showcase/masterGames.ts`
+- Converts each `MasterGame` to a PGN string using the existing `uciMovesToPgn`-style pattern
+  (play moves from startpos via chessops, collect SAN, build PGN with standard headers)
+- Calls `saveStudy()` directly (not `saveCurrentToLibrary`) to avoid the `parsePgn()` re-parse
+  overhead; construct the `StudyItem` fields from the `MasterGame` metadata directly
+- Sets `source: 'import'`, `tags: ['sample', 'master-game']` on each item
+- Runs as a batched async loop — does not block the UI
+
+**Step 2:** In `src/study/studyCtrl.ts`, export a `seedSampleStudies(redraw)` function that:
+- Calls `seedMasterGamesToLibrary()`
+- After completion, calls `resetPagination(redraw)` to reload the library view with the seeded data
+- Optionally sets a short loading state while seeding runs
+
+**Step 3:** In `src/study/libraryView.ts`, add a "Seed sample studies" button that is visible
+only when the library is empty (`items.length === 0`). Place it in the empty-state block
+alongside the existing "No studies yet" copy. On click, call `seedSampleStudies(redraw)`.
+
+## Files
+
+- `src/study/saveAction.ts` (extend — `seedMasterGamesToLibrary()`)
+- `src/study/studyCtrl.ts` (extend — `seedSampleStudies()`)
+- `src/study/libraryView.ts` (extend — Seed button in empty state)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+- Navigate to `#/study` with an empty library → "Seed sample studies" button is visible
+- Click the button → library loads with ~200 master game study items
+- Each study has correct title (`White vs Black — Event Year`), source `import`, and tags `sample`, `master-game`
+- Filter by tag "sample" works
+- Sort by title / createdAt works
+- Load more pagination works (studies > 50 triggers the pagination button)
+- "Seed sample studies" button is hidden once studies exist
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-702
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-702 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Seed button visible in empty library state|- [ ] Clicking seeds ~200 master game studies into IDB|- [ ] Each study has correct title, source=import, tags include sample and master-game|- [ ] Pagination and filtering work on the seeded data|- [ ] Seed button hidden once studies exist"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-702 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes|- [ ] Seed button visible in empty library state|- [ ] Clicking seeds ~200 master game studies into IDB|- [ ] Each study has correct title, source=import, tags include sample and master-game|- [ ] Pagination and filtering work on the seeded data|- [ ] Seed button hidden once studies exist"
+```
+```
+
+## CCP-703 - Fix Opening Tree loading animation and game replay pacing
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+## Task
+
+Fix the Opening Tree loading animation on the Opponent Research page. There are three issues to address:
+
+1. **Loading animation does not settle cleanly after tree build completes.** The progress bar / loading state should resolve and disappear cleanly once the tree is ready. Currently it stays noisy or visible after the tree has finished loading. The loading copy also includes unnecessary per-game naming detail — keep it simple (e.g. "Building opening tree…") with no game-specific text in this slot.
+
+2. **Game replay speed should double.** The import animation that replays master games during the opponent fetch currently plays at a certain speed. Double that speed.
+
+3. **Once one game finishes replaying, the next game should load automatically.** The replay should auto-advance from one game to the next without requiring any user interaction.
+
+## Affected files
+
+- `src/openings/view.ts` — renders the tree-build progress bar, fetch/loading label, and import animation
+- Possibly `src/openings/ctrl.ts` if game replay sequencing is managed in the controller
+
+Do not touch more than 2 files.
+
+## Constraints
+
+- Do not change any other loading states, progress bars, or animation logic unrelated to this surface
+- Do not redesign the progress bar or import animation — fix the listed behaviors only
+- Keep loading copy minimal; do not add game-specific detail to the progress label
+
+## Validation
+
+- [ ] Loading animation and progress bar disappear cleanly when the Opening Tree finishes building
+- [ ] Loading copy does not include per-game naming during tree build
+- [ ] Game replay speed is visibly faster (doubled) compared to before
+- [ ] After one game finishes replaying, the next game begins automatically without user interaction
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-703
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-703 --checklist "- [ ] Loading animation and progress bar disappear cleanly when the Opening Tree finishes building|- [ ] Loading copy does not include per-game naming during tree build|- [ ] Game replay speed is visibly faster (doubled) compared to before|- [ ] After one game finishes replaying, the next game begins automatically without user interaction"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-703 --errors "brief description of what went wrong" --checklist "- [ ] Loading animation and progress bar disappear cleanly when the Opening Tree finishes building|- [ ] Loading copy does not include per-game naming during tree build|- [ ] Game replay speed is visibly faster (doubled) compared to before|- [ ] After one game finishes replaying, the next game begins automatically without user interaction"
+```
+```
+
+## CCP-704 - Fix Opening Tree player strip White vs Black clarity
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+## Task
+
+Fix the Opening Tree player strip so that White vs Black is visually clear. The current `renderPlayerStrip()` in `src/openings/view.ts` uses a custom `openings__player-strip` implementation with plain unicode dots that are not distinct enough.
+
+Replace it with the same structure and CSS classes used by `renderPlayerStrips()` in `src/board/index.ts`:
+- Use `analyse__player_strip` as the container class
+- Use `player-strip__identity` for the identity row
+- Use `player-strip__color-icon`, `player-strip__color-icon--white`, and `player-strip__color-icon--black` for the color dot
+- Use `player-strip__name` for the name label
+
+The result should look identical to the analysis board player strip. No custom openings-specific strip styling should remain for this element.
+
+## Reference
+
+- `src/board/index.ts` lines ~448–492 — `renderPlayerStrips()` — the exact structure and classes to match
+- `src/openings/view.ts` lines ~1931–1977 — `renderPlayerStrip()` — the function to replace
+
+## Affected files
+
+- `src/openings/view.ts` only
+
+Do not touch more than 1 file.
+
+## Constraints
+
+- Do not change the logic that determines which label (target vs opponent) appears on which side
+- Do not redesign or reposition the strips around the board
+- Only replace the vnode structure and CSS classes to match `src/board/index.ts`
+- Remove any now-unused `openings__player-strip` CSS if it lives in the same file; otherwise leave CSS cleanup for a separate task
+
+## Validation
+
+- [ ] Opening Tree player strip uses `analyse__player_strip`, `player-strip__color-icon--white/black`, and `player-strip__name` classes
+- [ ] White side shows a white color icon; Black side shows a black color icon — visually distinct
+- [ ] Target and opponent labels still appear on the correct sides
+- [ ] Strip looks consistent with the analysis board player strip
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-704
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-704 --checklist "- [ ] Opening Tree player strip uses analyse__player_strip and player-strip__color-icon--white/black classes|- [ ] White side shows a white color icon; Black side shows a black color icon — visually distinct|- [ ] Target and opponent labels still appear on the correct sides|- [ ] Strip looks consistent with the analysis board player strip"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-704 --errors "brief description of what went wrong" --checklist "- [ ] Opening Tree player strip uses analyse__player_strip and player-strip__color-icon--white/black classes|- [ ] White side shows a white color icon; Black side shows a black color icon — visually distinct|- [ ] Target and opponent labels still appear on the correct sides|- [ ] Strip looks consistent with the analysis board player strip"
+```
+```
+
+## CCP-705 - Remove master game label from fetch loading bar
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+## Task
+
+Remove the master game name label from the opponent fetch loading bar in the Openings page.
+
+During a fetch (`isFetching()` is true), `renderFetchBar()` in `src/openings/view.ts` renders a `span.openings__fetch-label` that shows `_animGame.label` — the name of the master game currently replaying on the board (e.g. "Fischer vs Spassky, 1972"). This label should not appear anywhere on the page. The loading bar should only show information about the games being downloaded (the existing "Fetching games… X games — Month" text), not anything about the master game animation.
+
+Remove the `_animGame.label` span from `renderFetchBar()`. Nothing else about the fetch bar, the animation, or the board should change.
+
+## Affected files
+
+- `src/openings/view.ts` only — remove the `_animGame ? h('span.openings__fetch-label', _animGame.label) : null` line from `renderFetchBar()`
+
+Do not touch more than 1 file.
+
+## Constraints
+
+- Do not change the animation itself — master games continue to replay on the board; only the label is removed
+- Do not change the fetch progress text ("Fetching games…") or the Cancel button
+- Do not remove or modify `_animGame` state or the `openings__fetch-label` CSS class (leave CSS cleanup for a separate task)
+
+## Validation
+
+- [ ] The master game name (e.g. "Fischer vs Spassky, 1972") no longer appears anywhere in the fetch loading bar
+- [ ] The "Fetching games… X games — Month" label and Cancel button still render correctly
+- [ ] The board animation continues to replay master games as before
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-705
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-705 --checklist "- [ ] The master game name no longer appears anywhere in the fetch loading bar|- [ ] The Fetching games label and Cancel button still render correctly|- [ ] The board animation continues to replay master games as before"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-705 --errors "brief description of what went wrong" --checklist "- [ ] The master game name no longer appears anywhere in the fetch loading bar|- [ ] The Fetching games label and Cancel button still render correctly|- [ ] The board animation continues to replay master games as before"
+```
+```
+
+## CCP-710 - Remove fetch-label span from all loading-area render paths
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+## Task
+
+Remove the `openings__fetch-label` span from all loading-area render paths in the Openings page so that the master-game name never appears in the fetch bar or tree-build bar.
+
+CCP-705 removed the `_animGame.label` span from `renderFetchBar()` in `src/openings/view.ts`. However, the label is still visible in the DOM during the fetch phase. Audit both `renderFetchBar()` and `renderTreeBuildBar()` to confirm neither outputs a `span.openings__fetch-label`, and verify the compiled output no longer includes that span after a clean rebuild.
+
+The expected post-fix HTML structure of the fetch bar is:
+
+```html
+<div class="openings__tree-build">
+  <div class="openings__tree-build-bar">
+    <div class="openings__tree-build-fill" style="width:100%;opacity:0.6"></div>
+  </div>
+  <span class="openings__tree-build-label">Fetching games… 1,587 games — March 2021</span>
+  <button class="openings__cancel-import-btn">Cancel</button>
+</div>
+```
+
+No `span.openings__fetch-label` should appear anywhere in that structure.
+
+## Affected files
+
+- `src/openings/view.ts` only — confirm `openings__fetch-label` is absent from both `renderFetchBar()` and `renderTreeBuildBar()`
+
+Do not touch more than 1 file.
+
+## Constraints
+
+- Do not change the fetch progress text, the tree-build progress bar, or the Cancel button
+- Do not remove or change `stopImportAnimation()` or the board animation logic — only the label span
+- Do not remove the `openings__fetch-label` CSS class definition (leave CSS cleanup for a separate task)
+- If the span is already absent from the source after CCP-705, confirm via grep and close with no changes; use `--errors` in `prompt:complete` only if code changes were needed and something went wrong
+
+## Validation
+
+- [ ] `grep openings__fetch-label src/openings/view.ts` returns no results inside `renderFetchBar` or `renderTreeBuildBar`
+- [ ] After `npm run build`, the compiled `public/js/main.js` does not contain `openings__fetch-label` rendered from those functions
+- [ ] The fetch bar shows only the progress text and Cancel button — no game name
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-710
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-710 --checklist "- [ ] grep openings__fetch-label src/openings/view.ts returns no results inside renderFetchBar or renderTreeBuildBar|- [ ] After npm run build the compiled main.js does not contain openings__fetch-label rendered from those functions|- [ ] The fetch bar shows only the progress text and Cancel button — no game name"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-710 --errors "brief description of what went wrong" --checklist "- [ ] grep openings__fetch-label src/openings/view.ts returns no results inside renderFetchBar or renderTreeBuildBar|- [ ] After npm run build the compiled main.js does not contain openings__fetch-label rendered from those functions|- [ ] The fetch bar shows only the progress text and Cancel button — no game name"
+```
+```
+
+## CCP-711 - Stop board animation and reset to start position when tree builds
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+## Task
+
+When the Openings page transitions from the fetch phase (`isFetching()`) to the tree-build phase (`treeBuilding()`), stop the master-game board animation and reset the board to the standard chess starting position, oriented for the colour currently selected in the colour toggle.
+
+Currently, the board animation started during `renderFetchBar()` continues to replay random master games throughout the tree-build phase and beyond. Once tree-building begins, the animation should stop and the board should display the standard starting position:
+
+- FEN: `rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1`
+- Orientation: white at bottom if white is selected in the colour toggle; black at bottom if black is selected
+- No pieces should be moving or animating
+
+The transition point to hook this on is when `renderTreeBuildBar()` first renders (i.e. when the state switches from `isFetching() === true` to `treeBuilding() === true`).
+
+## Affected files
+
+- `src/openings/view.ts` only — call `stopImportAnimation()` and reset Chessground to the starting position inside `renderTreeBuildBar()` when the animation is still running
+
+Do not touch more than 1 file.
+
+## Constraints
+
+- `stopImportAnimation()` already exists and clears `_animGame`, `_animTimer`, `_animPos` — call it, do not duplicate its logic
+- The colour toggle selection is accessible via the existing collection/target state already used in the openings module; read the current target colour from there to set board orientation
+- Do not change the tree-build progress bar rendering, its label, or any other part of `renderTreeBuildBar()`
+- Do not change `startImportAnimation()`, `scheduleNextAnimMove()`, or any fetch-phase animation logic
+- The board must remain non-interactive during tree-build (no clicks, no dragging) — do not change existing interactivity guards
+
+## Validation
+
+- [ ] When the fetch phase completes and tree-building begins, the board animation stops immediately
+- [ ] The board displays the standard starting position (all 32 pieces in starting squares)
+- [ ] The board is oriented with the selected colour at the bottom (white-bottom if white selected, black-bottom if black selected)
+- [ ] No master-game move animations continue during the tree-build phase
+- [ ] The tree-build progress bar and label render correctly and are unaffected
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-711
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-711 --checklist "- [ ] When the fetch phase completes and tree-building begins the board animation stops immediately|- [ ] The board displays the standard starting position (all 32 pieces in starting squares)|- [ ] The board is oriented with the selected colour at the bottom|- [ ] No master-game move animations continue during the tree-build phase|- [ ] The tree-build progress bar and label render correctly and are unaffected"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-711 --errors "brief description of what went wrong" --checklist "- [ ] When the fetch phase completes and tree-building begins the board animation stops immediately|- [ ] The board displays the standard starting position (all 32 pieces in starting squares)|- [ ] The board is oriented with the selected colour at the bottom|- [ ] No master-game move animations continue during the tree-build phase|- [ ] The tree-build progress bar and label render correctly and are unaffected"
+```
+```
+
+## CCP-712 - Correct CLAUDE/AGENTS slimdown audit docs after accuracy review
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-712 — Correct CLAUDE/AGENTS Slimdown Audit Docs After Accuracy Review
+
+## Summary
+
+The slimdown audit found that the current write-up overstates what happened.
+
+The docs currently describe the CLAUDE/AGENTS slimdown as a largely mechanical extraction:
+- `AGENTS.md` unchanged
+- no rules rewritten
+- pure extraction / no behavioral change
+
+That is not true in the current repo state.
+
+The actual diff shows:
+- `AGENTS.md` did change
+- always-loaded instruction behavior changed materially
+- some scoped rules were moved with stale path guidance
+- some scoped rule path coverage was initially too narrow for the live repo
+
+This prompt is a docs-only correction pass. The goal is to make the slimdown docs truthful and
+useful, not defensive.
+
+## Task
+
+Update the slimdown documentation so it accurately reflects the real repo changes.
+
+### Required files to inspect first
+
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+- `/Users/leftcoast/Development/PatzerPatzer/.claude/rules/architecture.md`
+- `/Users/leftcoast/Development/PatzerPatzer/.claude/rules/board-engine-tree.md`
+- `/Users/leftcoast/Development/PatzerPatzer/.claude/rules/import-and-storage.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/CLAUDE_MD_SLIMDOWN_AUDIT_BRIEF.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/CLAUDE_MD_SLIMDOWN-2026-04-03.md`
+- `/Users/leftcoast/Development/PatzerPatzer/docs/CLAUDE_CODE_USER_GUIDE.md`
+
+### Required corrections
+
+1. Fix any claim that `AGENTS.md` was unchanged.
+2. Fix any claim that no rules were rewritten or that this was a pure extraction if the repo diff
+   shows behavior changes.
+3. Add a truthful note that the slimdown included:
+   - context reduction
+   - path-scoped rule extraction
+   - some real instruction changes in always-loaded files
+4. Add a truthful note that the initial scoped-rule rollout had coverage/path issues that were
+   later corrected.
+5. Correct any stale statements about current rule coverage or safety guarantees.
+
+### Constraints
+
+- this is a docs-only task
+- do not change `CLAUDE.md`, `AGENTS.md`, or `.claude/rules/*.md` in this prompt
+- only update the slimdown/audit/user-guide docs if needed for truthfulness
+- do not soften contradictions; document them clearly
+- do not rewrite unrelated sections just for style
+
+## Validation
+
+- verify the corrected docs no longer claim `AGENTS.md` was unchanged
+- verify the corrected docs no longer describe the slimdown as purely mechanical if behavior changed
+- verify the corrected docs mention the scoped-rule coverage/path issue and its correction
+- run `npm run build` and confirm the docs-only change leaves the build unaffected
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-712
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-712 --checklist "- [ ] Slimdown docs no longer claim AGENTS.md was unchanged|- [ ] Slimdown docs no longer describe the work as a pure extraction if behavior changed|- [ ] Slimdown docs now mention the initial scoped-rule coverage/path issue and later correction|- [ ] npm run build passes after the docs-only correction"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-712 --errors "brief description of what went wrong" --checklist "- [ ] Slimdown docs no longer claim AGENTS.md was unchanged|- [ ] Slimdown docs no longer describe the work as a pure extraction if behavior changed|- [ ] Slimdown docs now mention the initial scoped-rule coverage/path issue and later correction|- [ ] npm run build passes after the docs-only correction"
+```
+```
+
+## CCP-713 - Audit: Played-Move Arrow Sync Coverage
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-713 — Audit: Played-Move Arrow Sync Coverage
+
+## Context
+
+The played-move arrow on the analysis board can get stuck showing a move from a previous position
+instead of updating when the user navigates. The bug is intermittent and the exact trigger is
+unknown.
+
+Code investigation has already confirmed that:
+- `buildArrowShapes()` in `src/engine/ctrl.ts` is the function that constructs the played-move arrow
+- `navigate()` in `src/main.ts` calls `syncArrow()` unconditionally on every move step
+- the arrow logic reads from `ctrl.node.children[0]` and is independent of engine state
+- `applyAutoShapes()` uses a hash to skip no-op redraws (`lastAutoShapesHash`)
+
+Since `syncArrow()` is already unconditional inside `navigate()`, the stuck-arrow bug must be
+triggered by a position-change code path that **bypasses `navigate()`**, or by an edge case in
+the hash deduplication or `pathIsMainline()` check.
+
+## What to audit
+
+**Step 1 — Map all position-change paths**
+
+Read `src/main.ts` in full and identify every code path that changes `ctrl.path` or `ctrl.node`
+(i.e. changes the active board position). For each path, record:
+- the function name
+- whether it calls `syncArrow()` or `syncBoardAndArrow()` after the position change
+- whether it calls `navigate()` (which already handles arrow sync) or bypasses it
+
+Include at minimum:
+- `navigate()`
+- `loadGame()` / game switching from the games list
+- LFYM puzzle jumps (`retroCtrl`, `rebuildRetroSession`)
+- variation switches
+- forward/back keyboard navigation
+- any direct `ctrl.setPath()` calls that are NOT inside `navigate()`
+
+**Step 2 — Inspect `applyAutoShapes()` hash guard**
+
+Read the hash deduplication in `src/engine/ctrl.ts` (`applyAutoShapes()`, `lastAutoShapesHash`,
+`autoShapesHash()`). Determine whether there is any scenario where the shapes for two different
+positions could produce the same hash, causing the arrow to silently skip the update.
+
+**Step 3 — Inspect `pathIsMainline()` edge cases**
+
+Read `pathIsMainline()` and determine whether it could return `false` for a position that IS on
+the mainline, causing the arrow to be suppressed when it should be visible.
+
+**Step 4 — Inspect `lastAutoShapesCg` guard**
+
+`applyAutoShapes()` resets `lastAutoShapesHash` when the Chessground instance changes
+(`lastAutoShapesCg`). Determine whether the Chessground instance can be replaced (e.g. on game
+load or board re-mount) in a way that leaves `lastAutoShapesCg` stale, preventing the hash reset
+from firing.
+
+## Output
+
+Produce a written audit report covering:
+1. Every position-change path found, with a checkmark or flag for whether arrow sync is covered
+2. Any paths that bypass `syncArrow()` — these are the primary suspects
+3. Findings from the hash guard, `pathIsMainline()`, and `lastAutoShapesCg` inspections
+4. A ranked list of the most likely root causes, with the specific code location for each
+5. A recommended fix approach for each suspect
+
+Do not make any code changes in this prompt. Findings only.
+
+## Files to read
+
+- `src/main.ts` — full file, focus on position-change paths
+- `src/engine/ctrl.ts` — `buildArrowShapes()`, `applyAutoShapes()`, `syncArrow()`, hash logic
+- `src/board/index.ts` — `syncBoard()`, `syncBoardAndArrow()`
+- `src/analyse/retroCtrl.ts` — any path-change calls
+
+## Validation
+
+- Audit report is written to `docs/audits/CCP-713-ARROW-SYNC-AUDIT.md`
+- Every position-change path in `src/main.ts` is accounted for
+- At least one concrete suspect code location is identified
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-713
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-713 --checklist "- [ ] Audit report written to docs/audits/CCP-713-ARROW-SYNC-AUDIT.md|- [ ] All position-change paths in src/main.ts are accounted for|- [ ] At least one concrete suspect code location identified with file and line number"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-713 --errors "brief description of what went wrong" --checklist "- [ ] Audit report written to docs/audits/CCP-713-ARROW-SYNC-AUDIT.md|- [ ] All position-change paths in src/main.ts are accounted for|- [ ] At least one concrete suspect code location identified with file and line number"
+```
+```
+
+## CCP-713-F1 - Fix: Played-Move Arrow Sync Coverage
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-713-F1 — Fix: Played-Move Arrow Sync Coverage
+
+## Context
+
+Sprint: none (standalone bugfix)
+Source: `docs/KNOWN_ISSUES.md` — "Played-move arrow can get stuck and stop updating"
+Audit: `docs/audits/CCP-713-ARROW-SYNC-AUDIT.md` (produced by CCP-713)
+
+The played-move arrow on the analysis board can get stuck showing a move from a previous position
+instead of updating when the user navigates. CCP-713 audited all position-change code paths and
+produced a ranked list of suspects with exact file locations.
+
+## What to implement
+
+Read `docs/audits/CCP-713-ARROW-SYNC-AUDIT.md` before writing any code.
+
+Fix every code path identified in the audit as missing `syncArrow()` coverage. The target behavior
+is:
+
+- the played-move arrow must always reflect `ctrl.node.children[0]` at the current board position,
+  regardless of engine state, navigation method, or how the position was reached
+- this matches Lichess analysis board behavior
+- the existing toggle to hide/show the played-move arrow must be preserved — this fix must not
+  affect that setting
+
+Apply only the fixes identified by the audit. Do not touch unrelated code. If the audit identified
+a hash deduplication edge case, fix that specifically. If it identified a missing `syncArrow()`
+call after a position-change path, add it there specifically.
+
+## Constraints
+
+- Maximum 3 files touched
+- Do not refactor `buildArrowShapes()` or `applyAutoShapes()` beyond what the audit recommends
+- Do not change any LFYM or retro arrow suppression logic
+- Preserve the `showPlayedArrow` setting and `pathIsMainline()` guard
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes with no new errors
+- Navigate forward and backward through a game with engine off — played-move arrow updates
+  correctly at every position
+- Load a new game from the games list — played-move arrow reflects the new game's first move
+  correctly from the start
+- Navigate into and out of a variation — arrow updates correctly on return to mainline
+- The hide/show played-move arrow setting still works as before
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-713-F1
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-713-F1 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Arrow updates correctly when navigating with engine off|- [ ] Arrow updates correctly on game load from games list|- [ ] Arrow updates correctly after variation navigation|- [ ] Hide/show played-move arrow setting still works"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-713-F1 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Arrow updates correctly when navigating with engine off|- [ ] Arrow updates correctly on game load from games list|- [ ] Arrow updates correctly after variation navigation|- [ ] Hide/show played-move arrow setting still works"
+```
+```
+
+## CCP-714 - Add missing analytics.ts exports to fix build
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+## Task
+
+Add three missing exports to `src/openings/analytics.ts` that are imported by `src/openings/view.ts` and `src/openings/practice.ts` but do not exist. These missing exports are breaking the esbuild compilation entirely, which means the compiled `public/js/main.js` is stale and no recent code changes are visible in the browser.
+
+The three missing items are:
+
+### 1. `PracticeSelectionResult` (type) + `selectPracticeMove` (function)
+
+Used in `src/openings/practice.ts`:
+```ts
+import { selectPracticeMove, type PracticeSelectionResult } from './analytics';
+
+const result = selectPracticeMove(node, session.minRepertoireFreq);
+// result.outcome === 'selected' | 'sparse-handoff' | 'empty-handoff'
+// result.move?.uci — the selected move UCI string, present when outcome === 'selected'
+```
+
+`selectPracticeMove` takes an `OpeningTreeNode` and a `minRepertoireFreq: number` threshold.
+It should look at the node's children, find the child with the highest `total` (frequency), and:
+- If the best child's `total >= minRepertoireFreq` → return `{ outcome: 'selected', move: { uci: child.uci } }`
+- If the best child exists but is below the threshold → return `{ outcome: 'sparse-handoff', move: null }`
+- If the node has no children → return `{ outcome: 'empty-handoff', move: null }`
+
+### 2. `LikelyLineEntry` (interface) + `computeLikelyLineModule` (function)
+
+Used in `src/openings/view.ts`:
+```ts
+import { computeLikelyLineModule, type LikelyLineEntry } from './analytics';
+
+const likelyModule = computeLikelyLineModule(openingTree(), colorPerspective, 8, 8, recencyMode());
+// likelyModule.lines: LikelyLineEntry[]
+// likelyModule.hasSufficientData: boolean
+
+// LikelyLineEntry shape (from rendering code):
+// { sans: string[], frequency: number, recencyBoost: number }
+// recencyBoost >= 2.0 → "hot" badge (played within 30 days)
+// recencyBoost >= 1.5 → "fresh" badge (played within 90 days)
+// recencyBoost === 1.0 → no boost
+```
+
+`computeLikelyLineModule(tree, color, maxDepth, minGames, recencyMode)`:
+- Walk the tree to depth `maxDepth`, collecting lines with `total >= minGames`
+- Apply a `recencyBoost` multiplier: lines played within 30 days get `2.0`, within 90 days get `1.5`, otherwise `1.0`
+- When `recencyMode === 'recent'`, sort lines by `frequency * recencyBoost` descending; otherwise sort by `frequency` descending
+- Return `{ lines: top 8 entries, hasSufficientData: lines.length >= 3 }`
+
+This is similar to `computePrepReportLines` already in `analytics.ts` — reuse its tree-walking pattern.
+
+### 3. `computePrepNotes` (function)
+
+Used in `src/openings/view.ts`:
+```ts
+import { computePrepNotes } from './analytics';
+
+const notes = computePrepNotes(summary, profile, lines);
+// notes: Array<{ title: string, body: string, confidence: 'high' | 'medium' | 'low' }>
+// rendered as note cards if notes.length > 0
+```
+
+`computePrepNotes(summary: CollectionSummary, profile: RepertoireProfile, lines: PrepReportLines)`:
+Generate 0–3 short contextual notes based on what the data shows. Examples:
+- If `profile.normalizedEntropy < 0.3` → note: "Narrow repertoire — opponent plays a small set of lines"
+- If `lines.freshLines.length > 3` → note: "Active lately — opponent has been playing frequently recently"
+- If `lines.weakLines.length > 0` → note: "Exploitable weakness — opponent scores poorly in some lines"
+Keep notes short (1 sentence body). Return `[]` when `summary.overall.total < MIN_COLLECTION_SIZE`.
+
+## Affected files
+
+- `src/openings/analytics.ts` only — add the three missing exports at the end of the file
+
+Do not touch more than 1 file.
+
+## Constraints
+
+- Do not change any existing exports in `analytics.ts`
+- Do not change `practice.ts` or `view.ts` — the imports are already correct; only the exports are missing
+- Match the exact names: `PracticeSelectionResult`, `selectPracticeMove`, `LikelyLineEntry`, `computeLikelyLineModule`, `computePrepNotes`
+- The implementations do not need to be sophisticated — correctness of the type shapes and a working implementation is the goal
+
+## Validation
+
+- [ ] `npm run build` completes with no errors
+- [ ] `npx tsc --noEmit` passes
+- [ ] Navigate to `#/study` — the "Seed sample studies" button is visible in the empty-state
+- [ ] Navigate to `#/opponents` and open the Prep Report panel — no runtime errors in the console
+- [ ] Opening a practice session against an opponent works without console errors
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-714
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-714 --checklist "- [ ] npm run build completes with no errors|- [ ] npx tsc --noEmit passes|- [ ] Seed sample studies button visible at #/study with empty library|- [ ] Prep Report panel at #/opponents opens without console errors|- [ ] Practice session against an opponent works without console errors"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-714 --errors "brief description of what went wrong" --checklist "- [ ] npm run build completes with no errors|- [ ] npx tsc --noEmit passes|- [ ] Seed sample studies button visible at #/study with empty library|- [ ] Prep Report panel at #/opponents opens without console errors|- [ ] Practice session against an opponent works without console errors"
+```
+```
+
+## CCP-715 - Audit: LFYM View-Solution Reveal Flow
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-715 — Audit: LFYM View-Solution Reveal Flow
+
+## Context
+
+Source: `docs/KNOWN_ISSUES.md` — "LFYM View the solution keeps board on original game move"
+
+When the user clicks "View the solution" in LFYM mode, the correct move text appears in the
+retrospection panel but the board stays on the mistake position instead of animating and
+navigating to the solution move. Engine output remains hidden and the board is not unlocked for
+free navigation.
+
+Prior code investigation has established the following:
+
+**Current "View the solution" click handler** (`src/analyse/retroView.ts` lines 220–242):
+```
+retro.viewSolution()          → sets feedback = 'view'
+navigate(cand.path)           → goes to the mistake node (wrong)
+```
+
+**What it should do:**
+```
+retro.viewSolution()          → sets feedback = 'view'
+navigate(solutionPath)        → goes to node after solution move is played
+enable engine visibility      → retroVisibleEngineEnabled = true (or equivalent)
+evalCurrentPosition()         → engine analyzes solution position
+lift LFYM solve restrictions  → user can navigate freely from this point
+```
+
+**Key data available on `RetroCandidate`:**
+- `cand.parentPath` — tree path to the puzzle-start position (before mistake)
+- `cand.path` — tree path to the mistake node (after wrong move)
+- `cand.bestMove` — UCI of the engine best move from `parentPath`
+- `cand.bestLine` — PV sequence from `parentPath` (UCI array)
+
+**The solution path problem:**
+To navigate to the solution position, we need the tree path for the node that results from
+playing `cand.bestMove` from `cand.parentPath`. This path may or may not exist in the tree:
+- If the user previously played `bestMove` as a variation, the node exists
+- If not, a new variation node must be added to the tree, or an alternative approach used
+
+## What to audit
+
+**Step 1 — Determine solution node strategy**
+
+Read `src/tree/ops.ts` and `src/tree/types.ts`. Determine:
+- Does a function exist to look up a child node of a given path by UCI move?
+- Does a function exist to add a new tree node as a variation at a given path?
+- What is the correct approach: find existing node, add new variation node, or navigate to
+  `parentPath` and display an arrow without full navigation?
+- What is the minimum tree mutation needed to make navigation to the solution position work?
+
+**Step 2 — Map engine visibility change path**
+
+Read `src/ceval/view.ts` and `src/engine/ctrl.ts`. Determine:
+- What is the correct call to make the engine visible to the user after reveal?
+  (`retroVisibleEngineEnabled`, `revealGuidance()`, or another mechanism?)
+- After the engine is made visible, what call ensures it is evaluating the solution position?
+- Does the `retroHidden` flag in `buildArrowShapes()` need to change on reveal, or is it
+  already governed by `guidanceRevealed()`?
+
+**Step 3 — Map analysis unlock path**
+
+Read `src/analyse/retroCtrl.ts`. Determine:
+- What flag or state controls whether the user can freely navigate the move tree during LFYM?
+- When feedback = `'view'`, are board interactions already unlocked, or does something
+  additional need to change?
+- Does `onJump()` need to behave differently once the solution has been revealed?
+
+**Step 4 — Identify the "Show Engine" button and its removal**
+
+Read `src/analyse/retroView.ts`. Locate the "Show Engine" button in the retrospection panel.
+Confirm which function it calls and which file owns the render logic for it. This button is
+being removed as part of the engine-reveal fix (see issue log).
+
+## Output
+
+Produce a written audit report at `docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md` covering:
+
+1. **Solution path strategy** — the recommended approach for resolving the solution node path,
+   with the specific function(s) from `src/tree/ops.ts` that will be used
+2. **Engine visibility call sequence** — the exact functions to call, in order, to transition
+   the engine from hidden to visible and analyzing the solution position
+3. **Analysis unlock** — whether any additional state change is needed to lift LFYM navigation
+   restrictions after the reveal, and if so what
+4. **Show Engine button location** — exact file, function, and line range for the button to remove
+5. **Proposed seam split** — how to split the implementation across CCP-715-F1 and CCP-715-F2
+   given the 1–3 file constraint per prompt
+
+Do not make any code changes in this prompt. Findings only.
+
+## Files to read
+
+- `src/analyse/retroView.ts` — "View the solution" handler, "Show Engine" button
+- `src/analyse/retroCtrl.ts` — state machine, `viewSolution()`, `onJump()`, `guidanceRevealed()`
+- `src/tree/ops.ts` — tree navigation and mutation operations
+- `src/tree/types.ts` — `TreeNode`, path encoding
+- `src/ceval/view.ts` — `retroVisibleEngineEnabled`, `resetRetroVisibleEngineUi()`
+- `src/engine/ctrl.ts` — `buildArrowShapes()`, `retroHidden`, `evalCurrentPosition()`
+
+## Validation
+
+- Audit report written to `docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md`
+- Solution path strategy is clearly decided with specific function references
+- Engine visibility call sequence is spelled out in order
+- Show Engine button location is identified with file + line range
+- Proposed seam split for F1/F2 is documented
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-715
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-715 --checklist "- [ ] Audit report written to docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md|- [ ] Solution path strategy decided with specific tree op function references|- [ ] Engine visibility call sequence spelled out in order|- [ ] Show Engine button location identified with file and line range|- [ ] Proposed seam split for F1 and F2 documented"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-715 --errors "brief description of what went wrong" --checklist "- [ ] Audit report written to docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md|- [ ] Solution path strategy decided with specific tree op function references|- [ ] Engine visibility call sequence spelled out in order|- [ ] Show Engine button location identified with file and line range|- [ ] Proposed seam split for F1 and F2 documented"
+```
+```
+
+## CCP-715-F1 - Fix: LFYM View-Solution Board Navigation
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-715-F1 — Fix: LFYM View-Solution Board Navigation
+
+## Context
+
+Sprint: none (standalone bugfix)
+Source: `docs/KNOWN_ISSUES.md` — "LFYM View the solution keeps board on original game move"
+Audit: `docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md` (produced by CCP-715)
+
+When the user clicks "View the solution" in LFYM, the board currently navigates to `cand.path`
+(the mistake node) instead of the position where the solution move has been played. This prompt
+fixes the board navigation and tree path resolution only. Engine reveal is handled in CCP-715-F2.
+
+## What to implement
+
+Read `docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md` before writing any code. Follow the solution
+path strategy and seam split documented there.
+
+**In `src/analyse/retroCtrl.ts`:**
+
+Add a `getSolutionPath()` method to `RetroCtrl` that:
+- Starts from `cand.parentPath` (the puzzle-start position)
+- Looks for an existing child node of `parentPath` whose UCI matches `cand.bestMove`
+- If the node exists, returns its path
+- If the node does not exist, adds it as a new variation using the appropriate tree operation
+  from `src/tree/ops.ts` (as identified by the CCP-715 audit), then returns the new path
+- Returns `null` if the solution move cannot be resolved (safety fallback)
+
+**In `src/analyse/retroView.ts`:**
+
+Update the "View the solution" click handler (`renderSkipOrView()`) to:
+- Call `retro.getSolutionPath()` to get the solution node path
+- If a solution path is found: call `navigate(solutionPath)` — this navigates to the node
+  after the solution move is played, which triggers the board animation via Chessground
+- If no solution path is found: fall back to `navigate(cand.parentPath)` so the board at
+  least returns to the puzzle-start position
+
+Do not change anything related to engine visibility or analysis unlock in this prompt —
+that is handled in CCP-715-F2.
+
+## Files
+
+- `src/analyse/retroCtrl.ts` (add `getSolutionPath()`)
+- `src/analyse/retroView.ts` (update click handler)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes with no new errors
+- Click "View the solution" → board animates to the position after the solution move is played
+- The move tree navigates to the solution node, making it the active position
+- If no solution node exists in the tree, the board returns to the puzzle-start position
+- Navigating to the solution position does NOT break existing retro state machine behavior
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-715-F1
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-715-F1 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] View the solution navigates board to position after solution move is played|- [ ] Move tree is at the solution node after reveal|- [ ] Fallback to parentPath works when solution node cannot be resolved|- [ ] Existing retro state machine behavior is unchanged"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-715-F1 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] View the solution navigates board to position after solution move is played|- [ ] Move tree is at the solution node after reveal|- [ ] Fallback to parentPath works when solution node cannot be resolved|- [ ] Existing retro state machine behavior is unchanged"
+```
+```
+
+## CCP-715-F2 - Fix: LFYM View-Solution Engine Reveal and Analysis Unlock
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-715-F2 — Fix: LFYM View-Solution Engine Reveal and Analysis Unlock
+
+## Context
+
+Sprint: none (standalone bugfix)
+Source: `docs/KNOWN_ISSUES.md` — "LFYM View the solution keeps board on original game move"
+Audit: `docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md` (produced by CCP-715)
+Depends on: CCP-715-F1 (board navigation fix must be in place first)
+
+CCP-715-F1 fixed the board navigation so that "View the solution" now navigates to the solution
+position. This prompt completes the reveal by:
+1. Making the engine visible to the user at the solution position
+2. Removing the now-redundant "Show Engine" button from the retro panel
+3. Unlocking full analysis board behavior from this point forward
+
+## What to implement
+
+Read `docs/audits/CCP-715-VIEW-SOLUTION-AUDIT.md` before writing any code. Follow the engine
+visibility call sequence and seam split documented there.
+
+**Engine reveal on solution view:**
+
+In `src/main.ts`, in the code path that handles the "View the solution" transition (where
+`retro.viewSolution()` is called and navigation to the solution position occurs):
+- After navigation, call the engine visibility function identified in the audit to make
+  engine output (eval bar, arrows, engine lines) visible to the user
+- Call `evalCurrentPosition()` to ensure the engine is analyzing the solution position
+- The engine should use the user's existing saved settings (depth, arrow preferences, etc.)
+  — no overrides
+
+**Remove the "Show Engine" button:**
+
+In `src/analyse/retroView.ts`, remove the "Show Engine" button from the retrospection panel.
+This button currently duplicates the main Stockfish toggle and causes a split-control problem.
+Use the location identified in the CCP-715 audit. Do not remove any other buttons or UI.
+
+**Analysis unlock:**
+
+Confirm from the audit whether any additional state change is needed to lift LFYM navigation
+restrictions after the reveal. If yes, implement that change. If the `'view'` feedback state
+already unlocks navigation, no change is needed.
+
+## Constraints
+
+- Do not change the main Stockfish toggle behavior
+- Do not change the engine depth or any other user setting
+- Do not add any new UI elements — only remove the "Show Engine" button
+- The engine must use the same visibility rules and user preferences as the normal analysis board
+
+## Files
+
+- `src/main.ts` (engine reveal after solution navigation)
+- `src/analyse/retroView.ts` (remove "Show Engine" button)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes with no new errors
+- Click "View the solution" → engine panel becomes visible with eval and arrows at the solution position
+- Engine is analyzing the solution position (not a stale previous position)
+- The "Show Engine" button no longer appears in the LFYM retro panel
+- The main Stockfish toggle still works as before outside LFYM
+- After reveal, user can navigate the move tree freely in all directions (full analysis board behavior)
+- If the user had arrows disabled in settings, arrows remain disabled after reveal
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-715-F2
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-715-F2 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Engine panel becomes visible with eval and arrows after View the solution|- [ ] Engine is analyzing the solution position|- [ ] Show Engine button removed from LFYM panel|- [ ] Main Stockfish toggle still works normally|- [ ] User can navigate move tree freely after reveal|- [ ] User arrow/display preferences respected after reveal"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-715-F2 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Engine panel becomes visible with eval and arrows after View the solution|- [ ] Engine is analyzing the solution position|- [ ] Show Engine button removed from LFYM panel|- [ ] Main Stockfish toggle still works normally|- [ ] User can navigate move tree freely after reveal|- [ ] User arrow/display preferences respected after reveal"
+```
+```
+
+## CCP-716 - Add persisted auto-review state and depth config
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-716 — Add Persisted Auto-Review State and Depth Config
+
+## Summary
+
+The current auto-review toggle in the import panel (`importFilters.autoReview`) is not persisted
+to localStorage. It resets every session, which is why auto-review appears unreliable. Additionally,
+the auto-review feature needs its own depth setting (range 2-18) separate from the main review
+depth (range 12-20), plus a confirmation flag for the two-toggle UX planned in CCP-717.
+
+This prompt adds the persisted state layer. The UI changes come in CCP-717.
+
+## Task
+
+Add three persisted auto-review settings to the import filter system.
+
+### Required files to inspect first
+
+- `src/import/filters.ts` — current `importFilters` object with `autoReview: false`
+- `src/engine/batch.ts` — existing `storedInt()` helper pattern, `reviewDepth` persistence
+- `src/engine/reviewQueue.ts` — `getAutoReview()` reads `localStorage.getItem('patzer.autoReview')`
+
+### Implementation
+
+1. In `src/import/filters.ts`:
+   - Add `autoReviewConfirmed: boolean` to the `importFilters` object (default `false`)
+   - Change `autoReview` initialization to read from `localStorage.getItem('patzer.autoReview') === 'true'`
+     so it persists across sessions
+   - Add `autoReviewDepth: number` initialized via the `storedInt` pattern (key
+     `'patzer.autoReviewDepth'`, default `12`, min `2`, max `18`)
+   - Add setter functions that write to localStorage:
+     - `setAutoReview(v: boolean)` — writes `'patzer.autoReview'`
+     - `setAutoReviewConfirmed(v: boolean)` — writes `'patzer.autoReviewConfirmed'`
+     - `setAutoReviewDepth(v: number)` — writes `'patzer.autoReviewDepth'`
+   - Export the setters and the `importFilters` object
+
+2. In `src/engine/reviewQueue.ts`:
+   - Update `getAutoReview()` to import and use `importFilters.autoReview` instead of reading
+     localStorage directly (single source of truth)
+
+3. Copy or import the `storedInt` helper. If it's not already exported from `src/engine/batch.ts`,
+   either export it or duplicate the 3-line helper in `src/import/filters.ts`.
+
+### Constraints
+
+- Do NOT change any UI rendering — CCP-717 handles the toggle/depth UI
+- Do NOT change the main `reviewDepth` (12-20) — auto-review depth is independent
+- `autoReviewConfirmed` must also be persisted so returning users who previously confirmed
+  don't have to re-confirm every session
+- localStorage keys must follow the `'patzer.<name>'` convention
+
+## Validation
+
+- `importFilters.autoReview` reads from localStorage on page load
+- `importFilters.autoReviewDepth` reads from localStorage on page load, defaults to 12
+- `setAutoReview(true)` writes to localStorage; next page load reads it back
+- `setAutoReviewDepth(8)` writes to localStorage; next page load reads it back
+- `getAutoReview()` in reviewQueue.ts uses the same source of truth
+- `npm run build` passes
+- `npx tsc --noEmit` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-716
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-716 --checklist "- [ ] autoReview reads from localStorage on load|- [ ] autoReviewDepth reads from localStorage on load, defaults to 12|- [ ] setAutoReview persists to localStorage|- [ ] setAutoReviewDepth persists to localStorage|- [ ] getAutoReview uses importFilters.autoReview|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-716 --errors "brief description of what went wrong" --checklist "- [ ] autoReview reads from localStorage on load|- [ ] autoReviewDepth reads from localStorage on load, defaults to 12|- [ ] setAutoReview persists to localStorage|- [ ] setAutoReviewDepth persists to localStorage|- [ ] getAutoReview uses importFilters.autoReview|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-717 - Build two-toggle confirmation UI with depth selector for auto-review
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-717 — Build Two-Toggle Confirmation UI with Depth Selector for Auto-Review
+
+## Summary
+
+Replace the existing single auto-review checkbox in the import panel with a two-toggle
+confirmation flow and an inline depth selector. This depends on CCP-716 (persisted state layer).
+
+## Task
+
+Rebuild the auto-review section of the import panel in `src/header/index.ts`.
+
+### Required files to inspect first
+
+- `src/header/index.ts` — current auto-review toggle at ~line 727-732
+- `src/import/filters.ts` — persisted state from CCP-716 (`importFilters`, setters)
+- `src/ui.ts` — `renderToggleRow()` component
+- `src/engine/batch.ts` — existing depth pill UI pattern in Review Menu (~line 162-169)
+
+### Implementation
+
+Replace the current auto-review toggle block (~lines 727-732) with:
+
+1. **Primary toggle**: `renderToggleRow('import-auto-review', 'Auto-review after import', ...)`
+   - reads/writes via `importFilters.autoReview` / `setAutoReview()`
+   - when toggled OFF, hide the confirmation toggle and depth selector
+
+2. **Confirmation toggle** (visible only when primary is ON):
+   - `renderToggleRow('import-auto-review-confirm', 'Are you sure?', ...)`
+   - reads/writes via `importFilters.autoReviewConfirmed` / `setAutoReviewConfirmed()`
+   - below it, show the existing yellow warning text:
+     "Large imports may take a long time to review. Each game runs through the engine at the
+     configured review depth."
+
+3. **Depth selector** (visible only when both toggles are ON):
+   - range: 2-18, integer steps of 1
+   - render as a row of selectable depth values (similar to the Review Menu depth pills)
+   - each value shows an estimated time multiplier relative to depth 2:
+     - depth 2: 1x, depth 4: ~4x, depth 6: ~9x, depth 8: ~25x, depth 10: ~60x,
+       depth 12: ~150x, depth 14: ~400x, depth 16: ~1000x, depth 18: ~2500x
+   - use approximate Stockfish exponential scaling (~2-3x per ply) for the multiplier labels
+   - reads/writes via `importFilters.autoReviewDepth` / `setAutoReviewDepth()`
+   - active depth is visually highlighted (same pattern as Review Menu pills)
+
+### Constraints
+
+- Touch only `src/header/index.ts` for the rendering changes
+- Use existing `renderToggleRow()` from `src/ui.ts` — do not create a new toggle component
+- The depth selector may use a new small render helper within `src/header/index.ts` if needed,
+  but do not create a new file for it
+- The warning text content must remain identical to the current text
+- The depth selector styling should match the existing Review Menu depth pills as closely
+  as possible (reuse the same CSS classes if they exist, or add minimal new styles)
+
+## Validation
+
+- Primary toggle OFF: confirmation toggle and depth selector are hidden
+- Primary toggle ON: confirmation toggle appears with yellow warning text
+- Both toggles ON: depth selector appears with range 2-18
+- Selecting a depth value highlights it and persists it
+- Refreshing the page restores all three states from localStorage
+- npm run build passes
+- npx tsc --noEmit passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-717
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-717 --checklist "- [ ] Primary toggle hides confirmation when OFF|- [ ] Confirmation toggle visible when primary ON|- [ ] Yellow warning text appears below confirmation|- [ ] Depth selector visible when both toggles ON|- [ ] Depth range is 2-18 with time multipliers shown|- [ ] Selected depth persists across page refresh|- [ ] All three states restore from localStorage|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-717 --errors "brief description of what went wrong" --checklist "- [ ] Primary toggle hides confirmation when OFF|- [ ] Confirmation toggle visible when primary ON|- [ ] Yellow warning text appears below confirmation|- [ ] Depth selector visible when both toggles ON|- [ ] Depth range is 2-18 with time multipliers shown|- [ ] Selected depth persists across page refresh|- [ ] All three states restore from localStorage|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-718 - Wire import auto-review trigger to use selected depth
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-718 — Wire Import Auto-Review Trigger to Use Selected Depth
+
+## Summary
+
+The import auto-review trigger in `src/main.ts` currently calls `enqueueBulkReview(dedupedGames)`
+without passing a depth. The review queue uses the global `reviewDepth` (12-20) rather than the
+auto-review depth (2-18) configured in the import panel. This prompt wires them together.
+
+Depends on CCP-716 (persisted state) and CCP-717 (UI).
+
+## Task
+
+Update the auto-review trigger and review queue to use the auto-review-specific depth.
+
+### Required files to inspect first
+
+- `src/main.ts` — auto-review trigger at ~lines 157-160
+- `src/engine/reviewQueue.ts` — `enqueueBulkReview()` function signature and queue entry structure
+- `src/import/filters.ts` — `importFilters.autoReviewDepth`, `importFilters.autoReviewConfirmed`
+
+### Implementation
+
+1. In `src/engine/reviewQueue.ts`:
+   - Add an optional `depth` parameter to `enqueueBulkReview(games, depth?)`:
+     - if provided, use it as the analysis depth for all enqueued games
+     - if not provided, fall back to the existing `reviewDepth` behavior
+   - Ensure the depth is stored per queue entry so it's used when the entry is actually analyzed
+
+2. In `src/main.ts`:
+   - Update the auto-review trigger guard:
+     - auto-review fires only when BOTH `importFilters.autoReview` AND
+       `importFilters.autoReviewConfirmed` are true
+     - pass `importFilters.autoReviewDepth` to `enqueueBulkReview()`
+   - Filter to only enqueue games that have not been previously reviewed (check existing
+     review data in IDB or the game's review state before enqueuing)
+
+### Constraints
+
+- Touch only `src/main.ts` and `src/engine/reviewQueue.ts`
+- Do NOT change the global `reviewDepth` or its range (12-20)
+- The auto-review depth is independent — it only applies to bulk import review
+- Do not break existing callers of `enqueueBulkReview()` — the depth parameter must be optional
+
+## Validation
+
+- With both auto-review toggles ON and depth set to 8: importing games enqueues them at depth 8
+- With only the primary toggle ON (confirmation OFF): no auto-review fires
+- With both toggles OFF: no auto-review fires
+- The global review depth (used by the Review button) is unaffected
+- Previously reviewed games are not re-enqueued
+- npm run build passes
+- npx tsc --noEmit passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-718
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-718 --checklist "- [ ] enqueueBulkReview accepts optional depth parameter|- [ ] Auto-review fires only when both toggles are ON|- [ ] Import uses autoReviewDepth, not global reviewDepth|- [ ] Previously reviewed games are not re-enqueued|- [ ] Global reviewDepth is unaffected|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-718 --errors "brief description of what went wrong" --checklist "- [ ] enqueueBulkReview accepts optional depth parameter|- [ ] Auto-review fires only when both toggles are ON|- [ ] Import uses autoReviewDepth, not global reviewDepth|- [ ] Previously reviewed games are not re-enqueued|- [ ] Global reviewDepth is unaffected|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-720 - Restore missing analytics.ts exports to fix broken build
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+## Task
+
+The build is currently broken with 3 esbuild errors due to missing exports in `src/openings/analytics.ts`.
+
+Errors:
+```
+No matching export in "src/openings/analytics.ts" for import "selectPracticeMove"     (src/openings/practice.ts:23)
+No matching export in "src/openings/analytics.ts" for import "computeLikelyLineModule" (src/openings/view.ts:66)
+No matching export in "src/openings/analytics.ts" for import "computePrepNotes"        (src/openings/view.ts:66)
+```
+
+These three functions exist in the compiled `public/js/main.js` (they were present in a previous working build) but were dropped from `src/openings/analytics.ts` at some point. Restore them by adding the three functions back as exports in `analytics.ts`.
+
+## Implementations to restore
+
+All three implementations can be recovered from `public/js/main.js`.
+
+### `computeLikelyLineModule` (main.js line ~22513)
+
+Computes a ranked list of likely opening lines for a given color perspective.
+Accepts `(treeRoot, colorPerspective, maxLines, maxDepth, recencyMode)`.
+Uses `computePrepReportLines` and `recencyBoostFor` (already in analytics.ts).
+Returns `{ lines, hasSufficientData, colorPerspective }`.
+
+### `computePrepNotes` (main.js line ~22591)
+
+Generates a list of human-readable prep notes from a summary, profile, and lines object.
+Accepts `(summary: CollectionSummary, profile: RepertoireProfile, lines: PrepReportLines)`.
+Returns an array of `{ title, body, confidence }` objects.
+
+### `selectPracticeMove` (main.js line ~22670)
+
+Selects a weighted-random opponent move from a tree node for the practice tool.
+Accepts `(node: OpeningTreeNode, minFreq?: number)`.
+Uses `buildPracticeCandidates` and `pickWeightedMove` helpers (also in the compiled output at ~22649–22668, restore these too if they are not already in analytics.ts).
+Returns `{ move, outcome, confidence, totalFrequency }`.
+
+## Affected files
+
+- `src/openings/analytics.ts` — add the missing exports (and any needed helpers)
+
+Do not touch more than 1 file.
+
+## Constraints
+
+- Recover the exact logic from `public/js/main.js` — do not rewrite or redesign
+- Add appropriate TypeScript types matching the existing interfaces already in `analytics.ts`
+- Do not change any call sites in `view.ts` or `practice.ts`
+- After the fix, run `npm run build` and confirm it succeeds with 0 errors
+
+## Validation
+
+- [ ] `npm run build` completes with 0 errors
+- [ ] `computeLikelyLineModule`, `computePrepNotes`, and `selectPracticeMove` are exported from `src/openings/analytics.ts`
+- [ ] No changes to `view.ts` or `practice.ts`
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-720
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-720 --checklist "- [ ] npm run build completes with 0 errors|- [ ] computeLikelyLineModule, computePrepNotes, and selectPracticeMove are exported from src/openings/analytics.ts|- [ ] No changes to view.ts or practice.ts"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-720 --errors "brief description of what went wrong" --checklist "- [ ] npm run build completes with 0 errors|- [ ] computeLikelyLineModule, computePrepNotes, and selectPracticeMove are exported from src/openings/analytics.ts|- [ ] No changes to view.ts or practice.ts"
+```
+```
+
+## CCP-721 - Audit: LFYM Engine Suppression and Surfacing Model
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-721 — Audit: LFYM Engine Suppression and Surfacing Model
+
+## Context
+
+Source: `docs/KNOWN_ISSUES.md` — "LFYM engine output is not correctly suppressed and surfaced during solve mode"
+
+Prior code investigation has established the following architecture:
+
+**Three independent systems currently gate engine output visibility during LFYM:**
+
+1. `engineEnabled` (global, `src/engine/ctrl.ts`) — whether Stockfish is actually running
+2. `retroVisibleEngineEnabled` (per-session, `src/ceval/view.ts`) — whether the UI shows engine output during LFYM; toggled by the header ceval button when `retroHiddenByDefault=true`
+3. `_guidanceRevealed` (per-candidate, `src/analyse/retroCtrl.ts`) — whether the "Show engine" button was clicked for the current puzzle; gates the `retroHidden` check in `buildArrowShapes()`
+
+**Current problems:**
+- The header ceval toggle sets `retroVisibleEngineEnabled` but does NOT call `revealGuidance()`, so arrows remain suppressed even when the toggle is ON
+- `retroVisibleEngineEnabled` is only reset at session start/end, not at puzzle transitions — it persists when the user navigates to the next puzzle
+- The "Show Engine" button in the retro panel (retroView.ts) only calls `revealGuidance()` + `syncArrow()`, not `retroVisibleEngineEnabled` — so the two flags are completely disconnected
+- Note: the "Show Engine" button removal is also targeted by CCP-715-F2 (as part of the solution reveal flow) — this audit must determine whether CCP-715-F2 handles the removal completely, or whether additional cleanup is needed here
+
+## What to audit
+
+**Step 1 — Confirm the exact call site for the header toggle during LFYM**
+
+Read `src/ceval/view.ts` lines 128–142. Confirm the exact current click handler for the ceval
+toggle when `retroHiddenByDefault=true`. Verify whether it calls `revealGuidance()`, `syncArrow()`,
+or `evalCurrentPosition()`. Identify exactly what needs to be added.
+
+**Step 2 — Confirm the puzzle-transition reset path**
+
+Read `src/analyse/retroCtrl.ts` `jumpToNext()` and `src/analyse/retroView.ts` "Next" / "Skip"
+handlers. Identify the exact line(s) where `resetRetroVisibleEngineUi()` should be inserted to
+reset the engine UI state when advancing to a new puzzle. Determine whether the reset belongs in
+`jumpToNext()`, in `retroView.ts` at the call site, or in `main.ts`'s navigate handler.
+
+**Step 3 — Confirm Show Engine button overlap with CCP-715-F2**
+
+Read `src/analyse/retroView.ts` and find the "Show Engine" button. Confirm its exact line range
+and render function. Determine whether CCP-715-F2's scope completely covers the removal of this
+button, or whether this family needs to handle it independently. Document the finding clearly so
+the executor of CCP-721-F1 can skip or include the removal accordingly.
+
+**Step 4 — Design the "Try another move" button interface**
+
+Read `src/analyse/retroCtrl.ts` and determine what state must be reset when the user clicks
+"Try another move" (resets to puzzle-start position without advancing the candidate index):
+- Does `_feedback` need to return to `'find'`?
+- Does `_guidanceRevealed` need to reset?
+- Does `retroVisibleEngineEnabled` need to reset?
+- Should this be a new method on `RetroCtrl` (e.g. `resetForRetry()`) or inline in retroView.ts?
+- Where in `retroView.ts` should the button appear (which render function, after which element)?
+
+## Output
+
+Produce a written audit report at `docs/audits/CCP-721-ENGINE-SUPPRESSION-AUDIT.md` covering:
+
+1. **Toggle fix** — exact lines to change in `src/ceval/view.ts`, and the exact calls to add
+2. **Reset path** — exact location(s) where `resetRetroVisibleEngineUi()` should be called on puzzle transition
+3. **Show Engine button** — whether CCP-715-F2 fully covers removal; if not, what remains
+4. **"Try another move" interface** — the recommended `RetroCtrl` method signature and state changes, and the exact render location in `retroView.ts`
+5. **Proposed seam split** — how to distribute the implementation across CCP-721-F1 and CCP-721-F2
+
+Do not make any code changes in this prompt. Findings only.
+
+## Files to read
+
+- `src/ceval/view.ts` — toggle handler, `retroVisibleEngineEnabled`, `resetRetroVisibleEngineUi()`
+- `src/analyse/retroCtrl.ts` — `jumpToNext()`, `guidanceRevealed()`, `revealGuidance()`, state fields
+- `src/analyse/retroView.ts` — "Show Engine" button, "Next"/"Skip" handlers, panel render functions
+- `src/engine/ctrl.ts` — `buildArrowShapes()` retroHidden gate, `evalCurrentPosition()`
+
+## Validation
+
+- Audit report written to `docs/audits/CCP-721-ENGINE-SUPPRESSION-AUDIT.md`
+- Toggle fix is specified with exact file, function, and lines to change
+- Puzzle-transition reset location is identified
+- Show Engine button overlap with CCP-715-F2 is explicitly resolved
+- "Try another move" interface is fully specified
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-721
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-721 --checklist "- [ ] Audit report written to docs/audits/CCP-721-ENGINE-SUPPRESSION-AUDIT.md|- [ ] Toggle fix specified with exact file and lines|- [ ] Puzzle-transition reset location identified|- [ ] Show Engine button overlap with CCP-715-F2 explicitly resolved|- [ ] Try another move interface fully specified with state changes and render location"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-721 --errors "brief description of what went wrong" --checklist "- [ ] Audit report written to docs/audits/CCP-721-ENGINE-SUPPRESSION-AUDIT.md|- [ ] Toggle fix specified with exact file and lines|- [ ] Puzzle-transition reset location identified|- [ ] Show Engine button overlap with CCP-715-F2 explicitly resolved|- [ ] Try another move interface fully specified with state changes and render location"
+```
+```
+
+## CCP-721-F1 - Fix: LFYM Engine Toggle Wiring and Per-Puzzle Reset
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-721-F1 — Fix: LFYM Engine Toggle Wiring and Per-Puzzle Reset
+
+## Context
+
+Source: `docs/KNOWN_ISSUES.md` — "LFYM engine output is not correctly suppressed and surfaced during solve mode"
+Audit: `docs/audits/CCP-721-ENGINE-SUPPRESSION-AUDIT.md` (produced by CCP-721)
+
+Read the audit report before writing any code. Follow the exact lines and call sites identified there.
+
+## What to implement
+
+**Fix 1 — Wire the header ceval toggle to surface all engine output during LFYM**
+
+In `src/ceval/view.ts`, in the toggle click handler for `retroHiddenByDefault=true` (lines ~132–140):
+
+When the user turns the toggle ON during LFYM:
+- Continue setting `retroVisibleEngineEnabled = true` (existing behavior)
+- Also call `_getCtrl()?.retro?.revealGuidance()` so that `retroHidden` in `buildArrowShapes()` evaluates to false and arrows become visible
+- Also call `syncArrow()` so arrows update immediately (no waiting for next engine tick)
+- Also call `evalCurrentPosition()` to ensure the engine is analyzing the current board position
+
+When the user turns the toggle OFF during LFYM:
+- Set `retroVisibleEngineEnabled = false` (existing behavior)
+- Also call `_getCtrl()?.retro?.hideGuidance()` if such a method exists (see audit for whether this needs to be added to retroCtrl), so that arrows are suppressed again
+- Also call `syncArrow()` to update arrows immediately
+
+The engine must use the user's existing saved settings (depth, arrow preferences, label preferences).
+If the user normally has arrows off (`showEngineArrows = false`), arrows must stay off even when
+the toggle is turned on during LFYM.
+
+**Fix 2 — Reset engine UI state on puzzle transition**
+
+At the location identified by the audit (in `src/analyse/retroCtrl.ts` `jumpToNext()`,
+`src/analyse/retroView.ts` transition handlers, or `src/main.ts` — whichever the audit recommends):
+- Call `resetRetroVisibleEngineUi()` when advancing to the next LFYM puzzle candidate
+- This resets `retroVisibleEngineEnabled = false` and `showEngineSettings = false`
+- The arrow suppression (`_guidanceRevealed = false`) is already handled by `jumpToNext()`
+
+**Note on "Show Engine" button removal:**
+The audit (CCP-721) will confirm whether CCP-715-F2 already removes the "Show Engine" button from
+the retro panel. If CCP-715-F2 has not yet run, remove the button here. If it has already run and
+the button is gone, skip this step. Do not remove the button twice.
+
+## Files
+
+- `src/ceval/view.ts` (toggle handler fix)
+- `src/analyse/retroCtrl.ts` or `src/analyse/retroView.ts` (per-puzzle reset — per audit recommendation)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes with no new errors
+- During LFYM solve mode: engine output (eval bar, arrows, engine lines) is suppressed by default
+- Clicking the main Stockfish toggle ON → eval bar, arrows, and engine lines all populate immediately for the current board position
+- Clicking the main Stockfish toggle OFF → eval bar, arrows, and engine lines all disappear
+- User's arrow preference is respected: if arrows are normally off, they stay off even when toggle is on
+- Advancing to the next puzzle → engine output is suppressed again regardless of previous state
+- Starting a new LFYM session always begins with engine output suppressed
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-721-F1
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-721-F1 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Engine output suppressed by default at LFYM puzzle start|- [ ] Main Stockfish toggle ON surfaces eval, arrows, and engine lines immediately|- [ ] Main Stockfish toggle OFF suppresses all engine output|- [ ] User arrow preference respected after toggle|- [ ] Advancing to next puzzle resets engine output to suppressed state"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-721-F1 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Engine output suppressed by default at LFYM puzzle start|- [ ] Main Stockfish toggle ON surfaces eval, arrows, and engine lines immediately|- [ ] Main Stockfish toggle OFF suppresses all engine output|- [ ] User arrow preference respected after toggle|- [ ] Advancing to next puzzle resets engine output to suppressed state"
+```
+```
+
+## CCP-721-F2 - Fix: LFYM Try Another Move Button
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-721-F2 — Fix: LFYM "Try Another Move" Button
+
+## Context
+
+Source: `docs/KNOWN_ISSUES.md` — "LFYM engine output is not correctly suppressed and surfaced during solve mode"
+Audit: `docs/audits/CCP-721-ENGINE-SUPPRESSION-AUDIT.md` (produced by CCP-721)
+Depends on: CCP-721-F1 (engine toggle wiring and per-puzzle reset must be in place first)
+
+Read the audit report before writing any code. Follow the interface design and render location
+identified there for the "Try another move" button.
+
+## What to implement
+
+**Add a `resetForRetry()` method to `RetroCtrl` in `src/analyse/retroCtrl.ts`:**
+
+This method resets the current puzzle back to its start state without advancing the candidate index:
+- Sets `_feedback = 'find'` (waiting for the user to make a move)
+- Sets `_guidanceRevealed = false` (re-suppresses arrows)
+- Clears `_solvingMoveSnapshot` (removes any move feedback from a previous attempt)
+- Clears `_winKind` and `_failKind`
+- Does NOT advance `currentIdx` — the user stays on the same puzzle
+- Does NOT reset `_liveBestMove` or engine state
+
+**Add a "Try another move" button to the LFYM retrospection panel in `src/analyse/retroView.ts`:**
+
+Place the button at the location identified by the CCP-721 audit. The button should:
+- Be visible after the user has made a move attempt (feedback is `'fail'`, `'win'`, or `'view'`) — not during the initial `'find'` state
+- On click:
+  1. Call `retro.resetForRetry()`
+  2. Call `resetRetroVisibleEngineUi()` (re-suppresses engine output per the target behavior)
+  3. Call `navigate(cand.parentPath)` to reset the board to the puzzle-start position
+  4. Call `syncArrow()` to update board arrows
+  5. Call `redraw()`
+- Label: "Try another move"
+
+## Constraints
+
+- Do not change candidate advancement logic (`jumpToNext()`)
+- Do not change the "Skip" or "Next" button behavior
+- The button must not appear during the initial `'find'` state (before the first move attempt)
+
+## Files
+
+- `src/analyse/retroCtrl.ts` (add `resetForRetry()`)
+- `src/analyse/retroView.ts` (add button to panel)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes with no new errors
+- During LFYM solve mode: "Try another move" button does not appear before the first move attempt
+- After a wrong move: "Try another move" button is visible
+- After a correct move: "Try another move" button is visible
+- After "View the solution": "Try another move" button is visible
+- Clicking "Try another move": board resets to puzzle-start position, engine output is suppressed, the panel returns to the initial solve state
+- Clicking "Try another move" does not advance to the next puzzle
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-721-F2
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-721-F2 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Try another move button hidden before first move attempt|- [ ] Try another move button visible after wrong move|- [ ] Try another move button visible after correct move|- [ ] Try another move button visible after View the solution|- [ ] Clicking button resets board to puzzle start and suppresses engine output|- [ ] Clicking button does not advance to next puzzle"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-721-F2 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Try another move button hidden before first move attempt|- [ ] Try another move button visible after wrong move|- [ ] Try another move button visible after correct move|- [ ] Try another move button visible after View the solution|- [ ] Clicking button resets board to puzzle start and suppresses engine output|- [ ] Clicking button does not advance to next puzzle"
+```
+```
+
+## CCP-725 - Suppress eval text in LFYM panel and arrow labels before first move attempt
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-725 — Suppress Eval Text in LFYM Panel and Arrow Labels Before First Move Attempt
+
+## Summary
+
+At puzzle start in LFYM (`find` feedback state), eval text appears in places it should not:
+1. The `renderGameMoveEvalDiff()` call in the `find` feedback block shows a cp/mate eval diff
+   before the user has attempted any move
+2. If arrow labels are enabled globally, eval labels may appear on arrows drawn during the
+   pre-attempt state
+
+Target: the puzzle start position should show only the red mistake arrow (no label) and the
+instruction text (no eval numbers) until the user makes their first move attempt.
+
+## Task
+
+Suppress eval text in the LFYM panel and on board arrows during the pre-attempt (`find`) state.
+
+### Required files to inspect first
+
+- `src/analyse/retroView.ts` — line 483: `renderGameMoveEvalDiff(cand)` in the `find` block
+- `src/engine/ctrl.ts` — lines 330-334: red mistake arrow during solving (no label currently)
+- `src/engine/ctrl.ts` — `buildArrowLabelSvg()` (line 389): reads `showArrowLabels` global flag
+
+### Implementation
+
+1. In `src/analyse/retroView.ts`:
+   - Remove or gate the `renderGameMoveEvalDiff(cand)` call in the `find` feedback block
+     (line ~483) so it returns `null` during the `find` state
+   - The simplest approach: delete the `renderGameMoveEvalDiff(cand)` line from the `find` block
+   - Leave `renderGameMoveEvalDiff()` calls in `fail`, `win`, and `view` blocks unchanged —
+     those are post-attempt states where eval feedback is expected
+
+2. In `src/engine/ctrl.ts`:
+   - Verify that the red mistake arrow (lines 330-334) does NOT call `buildArrowLabelShape()` —
+     it currently calls only `buildArrowShape(c.playedMove, 'red')` which is correct
+   - If any label IS being attached to the red arrow through another path, suppress it by
+     adding a guard: when `retroHidden && ctrl.retro!.isSolving()`, skip label generation
+     for shapes in that block
+
+### Constraints
+
+- Touch only `src/analyse/retroView.ts` and `src/engine/ctrl.ts` (if arrow label fix needed)
+- Do NOT suppress eval text in post-attempt states (`fail`, `win`, `view`, `eval`)
+- Do NOT change the red mistake arrow itself — same color, same squares, just no eval label
+- Do NOT change `renderDualEvalBoxes()` — those only appear in post-attempt states already
+- Post-move eval feedback (cp diff, move comparison) must remain unchanged
+
+## Validation
+
+- Start LFYM, arrive at a puzzle in `find` state
+- No eval diff text appears in the retro panel instruction area
+- The red mistake arrow has no eval label on the board
+- Make an incorrect move (enter `fail` state) — eval diff text now appears
+- Make a correct move (enter `win` state) — eval diff text appears
+- View solution — eval diff text appears
+- npm run build passes
+- npx tsc --noEmit passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-725
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-725 --checklist "- [ ] No eval diff text in retro panel during find state|- [ ] Red mistake arrow has no eval label|- [ ] Eval text appears normally in fail state|- [ ] Eval text appears normally in win state|- [ ] Eval text appears normally in view state|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-725 --errors "brief description of what went wrong" --checklist "- [ ] No eval diff text in retro panel during find state|- [ ] Red mistake arrow has no eval label|- [ ] Eval text appears normally in fail state|- [ ] Eval text appears normally in win state|- [ ] Eval text appears normally in view state|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-726 - Audit: LFYM Wrong-Move Post-Fail Navigation
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-726 — Audit: LFYM Wrong-Move Post-Fail Navigation
+
+## Context
+
+Source: `docs/KNOWN_ISSUES.md` — "LFYM wrong move auto-resets instead of waiting for user input"
+
+The issue was originally described as an "auto-reset timer" but prior code investigation found
+there is no timer. The actual mechanism is that `navigateTo(c.parentPath)` is called immediately
+after `retro.onFail()` inside the ceval evaluation callback, causing the board to snap back to
+the puzzle-start position the moment the engine judges a move as wrong.
+
+The target behavior is:
+- board holds on the wrong-move position indefinitely after a wrong move
+- the ✗ fail message and eval boxes appear in the retro panel while the board shows the wrong position
+- only the "Try another move" button (added by CCP-721-F2) resets the board to puzzle-start
+
+## What to audit
+
+**Step 1 — Locate the exact `navigateTo(c.parentPath)` call after onFail()**
+
+Read `src/analyse/retroCtrl.ts` around the `onCeval()` function and find the exact line where
+`navigateTo(c.parentPath)` (or equivalent) is called after `retro.onFail()`. Record the exact
+file, function name, and line number.
+
+Also check `src/analyse/retroMoveHandler.ts` — confirm whether the post-fail navigation happens
+there or in retroCtrl.
+
+**Step 2 — Understand the onJump() behavior while at the wrong-move position**
+
+Read `retroCtrl.ts` `onJump()`. When feedback = 'fail' and the board is at the child path (wrong
+move position rather than parentPath), what does `onJump()` do? Does it set feedback = 'offTrack'
+immediately, or only when the user actively navigates away?
+
+The goal is to confirm that removing the post-fail navigation is safe — i.e. the retro state
+machine handles feedback = 'fail' at the wrong-move child path without unexpected behavior.
+
+**Step 3 — Confirm the retro panel renders correctly at the wrong-move position**
+
+Read `src/analyse/retroView.ts`. When feedback = 'fail', the panel renders a ✗ icon, eval
+diff boxes, and the "Try another move" / "View solution" / "Skip" controls. Confirm that this
+rendering does NOT depend on the board being at `parentPath` — it should display identically
+whether the board is at parentPath or the wrong-move child path.
+
+**Step 4 — Check board interactivity during 'fail' state at wrong-move position**
+
+When the board is held at the wrong-move position (child of parentPath) and feedback = 'fail':
+- Can the user make further moves from this position? (They should not — the board should be
+  read-only from the wrong-move position, with only the retro panel controls active.)
+- How does the board interaction model work during 'fail'? Is it already locked, or does
+  something need to change?
+
+## Output
+
+Produce a written audit report at `docs/audits/CCP-726-WRONG-MOVE-RESET-AUDIT.md` covering:
+
+1. **Exact removal target** — file, function, and line number of the `navigateTo(c.parentPath)` call to remove
+2. **onJump() safety** — confirmation that retro state machine handles feedback='fail' at the child path safely
+3. **Panel rendering** — confirmation that the fail panel renders correctly regardless of board path
+4. **Board interactivity** — current lock behavior during 'fail', and whether any additional change is needed to prevent further moves from the wrong-move position
+5. **Dependency note** — explicit confirmation that CCP-721-F2 ("Try another move" button) must be in place before this fix ships, or else the user has no way to reset the board
+
+Do not make any code changes in this prompt. Findings only.
+
+## Files to read
+
+- `src/analyse/retroCtrl.ts` — `onCeval()`, `onFail()`, `onJump()`, `navigateTo()`
+- `src/analyse/retroMoveHandler.ts` — post-move hook, any navigation calls
+- `src/analyse/retroView.ts` — 'fail' state rendering
+
+## Validation
+
+- Audit report written to `docs/audits/CCP-726-WRONG-MOVE-RESET-AUDIT.md`
+- Exact removal target identified with file and line number
+- onJump() safety confirmed
+- Panel rendering confirmed as position-independent
+- Board interactivity model documented
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-726
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-726 --checklist "- [ ] Audit report written to docs/audits/CCP-726-WRONG-MOVE-RESET-AUDIT.md|- [ ] Exact removal target identified with file and line number|- [ ] onJump() safety confirmed for fail state at child path|- [ ] Panel rendering confirmed as position-independent|- [ ] Board interactivity model documented with any needed changes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-726 --errors "brief description of what went wrong" --checklist "- [ ] Audit report written to docs/audits/CCP-726-WRONG-MOVE-RESET-AUDIT.md|- [ ] Exact removal target identified with file and line number|- [ ] onJump() safety confirmed for fail state at child path|- [ ] Panel rendering confirmed as position-independent|- [ ] Board interactivity model documented with any needed changes"
+```
+```
+
+## CCP-727 - Fix board orientation reset on game load from IDB startup
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-727 — Fix Board Orientation Reset on Game Load from IDB Startup
+
+## Summary
+
+When the app boots and restores a game from IndexedDB, `setOrientation()` is never called.
+The board stays at the hardcoded default (`'white'`) regardless of which side the user played.
+User-initiated game loads from the games list DO call `setOrientation()` correctly (in
+`loadGame()` at ~line 464 of `src/main.ts`), but the initial IDB startup load path
+(~lines 1477-1504) skips this step.
+
+## Task
+
+Add orientation reset to the IDB startup game load path.
+
+### Required files to inspect first
+
+- `src/main.ts` — lines ~1477-1504: IDB startup load flow (missing `setOrientation()`)
+- `src/main.ts` — lines ~444-476: `loadGame()` which correctly sets orientation
+- `src/games/view.ts` — `getUserColor()` function (lines ~26-36)
+- `src/board/index.ts` — `setOrientation()` (lines ~123-132)
+
+### Implementation
+
+1. In `src/main.ts`, in the IDB startup load path (~lines 1494-1500), after selecting the
+   game to load and creating the `AnalyseCtrl`, add the same orientation logic used in
+   `loadGame()`:
+
+   ```typescript
+   const loadedGame = importedGames.find(g => g.id === selectedGameId);
+   if (loadedGame) {
+     const userColor = getUserColor(loadedGame);
+     if (userColor) setOrientation(userColor);
+   }
+   ```
+
+2. Ensure `getUserColor` is imported from `src/games/view.ts` (it may already be imported).
+
+3. Place the orientation call BEFORE `syncBoardAndArrow()` so the board renders with the
+   correct orientation on first paint.
+
+### Constraints
+
+- Touch only `src/main.ts`
+- Do NOT change `loadGame()` — it already works correctly
+- Do NOT change `getUserColor()` — it already works correctly
+- The `getUserColor()` null case is handled by CCP-728 (fallback)
+
+## Validation
+
+- Import a game as Black, close the app, reopen — board loads from Black's perspective
+- Import a game as White, close the app, reopen — board loads from White's perspective
+- User-initiated game loads from the games list continue to work correctly
+- npm run build passes
+- npx tsc --noEmit passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-727
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-727 --checklist "- [ ] IDB startup load sets orientation from user color|- [ ] Black game restores with Black perspective|- [ ] White game restores with White perspective|- [ ] User-initiated game loads unchanged|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-727 --errors "brief description of what went wrong" --checklist "- [ ] IDB startup load sets orientation from user color|- [ ] Black game restores with Black perspective|- [ ] White game restores with White perspective|- [ ] User-initiated game loads unchanged|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-728 - Add fallback orientation reset when getUserColor returns null
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-728 — Add Fallback Orientation Reset When getUserColor Returns Null
+
+## Summary
+
+When `getUserColor()` returns `null` (no username match against game headers), the orientation
+from the previous game persists into the new game load. This can happen with PGN paste imports,
+file uploads without player name metadata, or when the import username doesn't match the game
+headers.
+
+Depends on CCP-727 (the IDB startup orientation fix establishes the pattern).
+
+## Task
+
+Add a fallback `setOrientation('white')` when `getUserColor()` returns null, so the board
+always resets to a known state rather than inheriting the previous game's flip.
+
+### Required files to inspect first
+
+- `src/main.ts` — `loadGame()` (~lines 458-466): the orientation block
+- `src/main.ts` — IDB startup load path (will have orientation logic after CCP-727)
+- `src/board/index.ts` — `setOrientation()` (lines ~123-132)
+
+### Implementation
+
+1. In `src/main.ts` `loadGame()`, change the orientation block from:
+   ```typescript
+   if (loadedGame) {
+     const userColor = getUserColor(loadedGame);
+     if (userColor) setOrientation(userColor);
+   }
+   ```
+   to:
+   ```typescript
+   if (loadedGame) {
+     const userColor = getUserColor(loadedGame);
+     setOrientation(userColor ?? 'white');
+   } else {
+     setOrientation('white');
+   }
+   ```
+
+2. Apply the same fallback pattern to the IDB startup load path (added in CCP-727).
+
+3. This ensures orientation ALWAYS resets on game load — either to the user's color or to
+   the default `'white'` — never inheriting from the previous game.
+
+### Constraints
+
+- Touch only `src/main.ts`
+- Do NOT change `getUserColor()` — the null return is correct behavior for unmatched games
+- Do NOT change `setOrientation()` — it works correctly
+- Default to `'white'` when color cannot be determined (standard chess convention)
+
+## Validation
+
+- Load a game with matching username — board orients to user's color
+- Load a game with no matching username (e.g., PGN paste) — board resets to White perspective
+- Flip the board manually during analysis, then load a new game — flip does not carry over
+- Load two games in sequence where user plays opposite colors — orientation switches correctly
+- npm run build passes
+- npx tsc --noEmit passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-728
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-728 --checklist "- [ ] Matched game orients to user color|- [ ] Unmatched game resets to White perspective|- [ ] Manual flip does not carry over to next game|- [ ] Sequential opposite-color games orient correctly|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-728 --errors "brief description of what went wrong" --checklist "- [ ] Matched game orients to user color|- [ ] Unmatched game resets to White perspective|- [ ] Manual flip does not carry over to next game|- [ ] Sequential opposite-color games orient correctly|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-726-F1 - Fix: LFYM Wrong-Move Board Hold
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-726-F1 — Fix: LFYM Wrong-Move Board Hold
+
+## Context
+
+Source: `docs/KNOWN_ISSUES.md` — "LFYM wrong move auto-resets instead of waiting for user input"
+Audit: `docs/audits/CCP-726-WRONG-MOVE-RESET-AUDIT.md` (produced by CCP-726)
+Depends on: CCP-721-F2 ("Try another move" button) must already be in place
+
+Read the audit report before writing any code. Follow the exact removal target and any board
+interactivity findings documented there.
+
+## What to implement
+
+**Remove the post-fail board reset**
+
+At the exact location identified by the CCP-726 audit (in `src/analyse/retroCtrl.ts` after
+`retro.onFail()`, or in `src/analyse/retroMoveHandler.ts` — whichever the audit confirms):
+
+Remove the `navigateTo(c.parentPath)` call that currently fires immediately after `onFail()`.
+
+After this change:
+- when the engine judges a played move as wrong, `feedback` is set to `'fail'`
+- the board stays at the wrong-move position (the child path of parentPath)
+- the retro panel shows the ✗ fail message, eval diff boxes, and controls at the wrong-move position
+- the board stays there until the user explicitly clicks "Try another move" (CCP-721-F2)
+
+**Board interactivity during 'fail' at wrong-move position**
+
+Per the audit findings, apply any changes needed to prevent the user from making further moves
+from the wrong-move position while feedback = 'fail'. If the board is already locked in 'fail'
+state (no changes needed), note this in the implementation. If a lock needs to be added, add it.
+
+Do not change anything else. Do not modify `jumpToNext()`, `onWin()`, or the skip/view-solution
+flows.
+
+## Constraints
+
+- Maximum 2 files touched
+- Do not add any new UI elements — "Try another move" is handled by CCP-721-F2
+- Do not change the eval snapshot capture or the ceval judging flow
+- The 'fail' panel content (✗ icon, eval boxes, controls) must render identically after this fix
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` passes with no new errors
+- Play a wrong move in LFYM: board holds on the resulting position, retro panel shows ✗ fail message
+- The board does not snap back to puzzle-start automatically
+- The ✗ fail message, eval diff boxes, and "View the solution"/"Skip" controls are all visible
+- "Try another move" (CCP-721-F2) resets the board to puzzle-start and re-suppresses engine output
+- Playing a correct move (win) still works correctly and is unaffected by this change
+- "Skip" and "View the solution" still work correctly
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-726-F1
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-726-F1 --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Wrong move board holds on resulting position after engine judges it as fail|- [ ] Retro panel shows fail message and eval boxes at the wrong-move position|- [ ] Board does not auto-reset|- [ ] Win flow is unaffected|- [ ] Skip and View the solution still work correctly"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-726-F1 --errors "brief description of what went wrong" --checklist "- [ ] npm run build passes|- [ ] npx tsc --noEmit passes with no new errors|- [ ] Wrong move board holds on resulting position after engine judges it as fail|- [ ] Retro panel shows fail message and eval boxes at the wrong-move position|- [ ] Board does not auto-reset|- [ ] Win flow is unaffected|- [ ] Skip and View the solution still work correctly"
+```
+```
+
+## CCP-729 - Manager: LFYM View-Solution Follow-Up Fixes
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-729 — Manager: LFYM View-Solution Follow-Up Fixes
+
+## Summary
+
+Execute the currently available follow-up prompts in the `CCP-715` family in exact order:
+
+1. `CCP-715-F1` — Fix: LFYM View-Solution Board Navigation
+2. `CCP-715-F2` — Fix: LFYM View-Solution Engine Reveal and Analysis Unlock
+
+Do not reorder them.
+
+## Scope
+
+This manager exists only to run the currently available follow-up prompts from `CCP-715-F1`
+forward.
+
+Current child prompt set:
+- `CCP-715-F1`
+- `CCP-715-F2`
+
+Do not create additional prompts as part of this manager unless a child prompt explicitly requires
+that workflow.
+
+## Execution Rules
+
+- execute children in the exact listed order
+- do not skip ahead to `CCP-715-F2` before `CCP-715-F1` is complete
+- run each child prompt using its own lifecycle commands
+- preserve the existing prompt workflow and do not hand-edit generated prompt artifacts
+- if a child prompt fails or finishes with errors, stop and report that state instead of claiming
+  the whole manager completed cleanly
+
+## Validation
+
+- `CCP-715-F1` was executed and lifecycle-updated
+- `CCP-715-F2` was executed and lifecycle-updated
+- child prompts were handled in the exact listed order
+- final report clearly states whether either child prompt finished with errors or unresolved issues
+
+## Lifecycle
+
+Before executing any child prompts, mark this manager as started:
+```sh
+npm run prompt:start -- CCP-729
+```
+
+After all child prompts are complete, mark the manager as done:
+```sh
+npm run prompt:complete -- CCP-729 --checklist "- [ ] CCP-715-F1 completed through its lifecycle|- [ ] CCP-715-F2 completed through its lifecycle|- [ ] Child prompts were executed in the exact listed order|- [ ] Final report states any remaining errors or unresolved issues"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-729 --errors "brief description of what went wrong" --checklist "- [ ] CCP-715-F1 completed through its lifecycle|- [ ] CCP-715-F2 completed through its lifecycle|- [ ] Child prompts were executed in the exact listed order|- [ ] Final report states any remaining errors or unresolved issues"
+```
+```
+
+## CCP-730 - Fix Pre-existing TypeScript Strict Errors in retroView and Openings
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-730 — Fix Pre-existing TypeScript Strict Errors in retroView and Openings
+
+## Context
+
+Three groups of pre-existing TypeScript errors appear in every `npx tsc --noEmit` run. They
+were present before this sprint and have been filtered out of each build check with `grep -v`
+to avoid obscuring new errors. This prompt targets them for a clean fix.
+
+All errors are TypeScript strictness violations — no behavior changes are involved.
+
+## Error Groups
+
+### Group 1 — `src/analyse/retroView.ts` lines 155–156
+
+```
+error TS2379: Argument of type '{ cp: number | undefined; mate: number | undefined; }'
+is not assignable to parameter of type '{ cp?: number; mate?: number; }'
+with 'exactOptionalPropertyTypes: true'.
+```
+
+The eval objects are constructed with `{ cp: snapshot.X, mate: snapshot.Y }` where
+`snapshot.X` is `number | undefined`. With `exactOptionalPropertyTypes: true`, explicitly
+setting a property to `undefined` is not the same as omitting it.
+
+**Fix:** Build the three eval objects (`solvingEval`, `engineBestEval`, `gameMoveEval`) using
+conditional spreading so properties are only included when their value is not `undefined`:
+
+```typescript
+const solvingEval = {
+  ...(snapshot.solvingMoveCp  !== undefined && { cp:   snapshot.solvingMoveCp }),
+  ...(snapshot.solvingMoveMate !== undefined && { mate: snapshot.solvingMoveMate }),
+};
+```
+
+Apply the same pattern to `engineBestEval` and `gameMoveEval`.
+
+### Group 2 — `src/openings/analytics.ts` lines 289–298
+
+```
+error TS18048: 'g' is possibly 'undefined'.
+```
+
+A `for` loop accesses `sorted[i]` from a `sorted` array, but TypeScript doesn't narrow the
+result of array index access to non-undefined even with the bounds check. `g` has type
+`ImportedGame | undefined`.
+
+**Fix:** Add a guard immediately after the assignment:
+
+```typescript
+const g = sorted[i];
+if (!g) continue;
+```
+
+### Group 3 — `src/openings/view.ts` line 946
+
+```
+error TS2345: Argument of type '"white" | "black" | "both"' is not assignable to
+parameter of type '"white" | "black"'. Type '"both"' is not assignable to type '"white" | "black"'.
+```
+
+The ternary `colorFilter() === 'both' ? 'white' : colorFilter()` is used to get a
+`'white' | 'black'` perspective. TypeScript infers the false branch as `'white' | 'black' | 'both'`
+because it doesn't narrow `colorFilter()` across the re-call.
+
+**Fix:** Capture the value once and use a properly narrowed assignment:
+
+```typescript
+const cf = colorFilter();
+const colorPerspective: 'white' | 'black' = cf === 'both' ? 'white' : cf;
+```
+
+## Files
+
+- `src/analyse/retroView.ts` (Group 1)
+- `src/openings/analytics.ts` (Group 2)
+- `src/openings/view.ts` (Group 3)
+
+## Validation
+
+- `npm run build` passes
+- `npx tsc --noEmit` produces zero errors (no grep filtering needed)
+- All three error groups are resolved
+- No behavior changes — these are strictness-only fixes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-730
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-730 --checklist "- [ ] Group 1 fixed: retroView.ts eval objects use conditional spreading|- [ ] Group 2 fixed: analytics.ts loop guard added|- [ ] Group 3 fixed: openings/view.ts colorPerspective narrowed|- [ ] npx tsc --noEmit produces zero errors|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-730 --errors "brief description of what went wrong" --checklist "- [ ] Group 1 fixed: retroView.ts eval objects use conditional spreading|- [ ] Group 2 fixed: analytics.ts loop guard added|- [ ] Group 3 fixed: openings/view.ts colorPerspective narrowed|- [ ] npx tsc --noEmit produces zero errors|- [ ] npm run build passes"
+```
+```
+
+## CCP-731 - Overlay LFYM win-icon on Next button
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-731 — Overlay LFYM Win-Icon on Next Button
+
+## Summary
+
+The green checkmark (`✓`) in the LFYM feedback box currently sits inside the top content
+section alongside the instruction text. The design intent is to move it — along with all
+other feedback elements that appear while the Next button is visible — so they overlay the
+top 25% of the `.retro-continue` (Next) button, centered horizontally. The icon should have
+a large drop shadow so it stands out against the blue button background.
+
+## Task
+
+Make CSS-only changes to reposition the win-icon overlay. No changes to the TypeScript/HTML
+structure are needed — the layout shift is achieved purely with positioning.
+
+### Required files to inspect first
+
+- `src/analyse/retroView.ts` — structure of `.retro-feedback` / `.retro-half` / `.retro-continue`
+- `public/css/main.css` — existing `.retro-box .retro-icon`, `.retro-icon--win`,
+  `.retro-continue`, `.retro-half` rules (~lines 1781–1880)
+
+### What the current structure looks like
+
+```
+div.retro-feedback.win
+  div.retro-half.retro-half--top        ← top content
+    div.retro-player
+      div.retro-icon.retro-icon--win    ← green ✓ (currently here)
+      div.retro-instruction
+        ...
+  a.retro-continue                      ← blue Next button (flex: 0 1 30%)
+    span.retro-continue__icon  ▶
+    Next
+```
+
+### Required change
+
+1. Give `.retro-feedback` a `position: relative` context (if not already set).
+
+2. Remove the `✓` icon from its current inline position by pulling it out of normal flow:
+   - On `.retro-icon--win` (and `.retro-icon--fail` if it also appears alongside the Next
+     button), add:
+     ```css
+     position: absolute;
+     bottom: calc(30% - 1em);   /* vertically centered in the top 25% of the continue button */
+     left: 50%;
+     transform: translateX(-50%);
+     z-index: 2;
+     pointer-events: none;
+     filter: drop-shadow(0 2px 8px rgba(0,0,0,0.7)) drop-shadow(0 0 16px rgba(0,0,0,0.5));
+     ```
+   - Adjust the `bottom` value so the icon sits centered in the top 25% of the
+     `.retro-continue` area. Because `.retro-continue` has `flex: 0 1 30%`, "top 25% of
+     the button" is roughly the top `7.5%` of the overall `.retro-feedback` height.
+     Use absolute/percentage positioning to land there.
+
+3. Ensure `.retro-half.retro-half--top` still lays out correctly without the icon taking
+   up space. The `retro-player` flex row should collapse gracefully when the icon is
+   removed from flow; check that the instruction text does not shift awkwardly.
+
+### Constraints
+
+- Touch only `public/css/main.css` — no TypeScript or SCSS changes
+- Do not change the HTML/VNode structure in `retroView.ts`
+- The repositioned icon must not cover the `▶ Next` text — it sits above it
+- If the absolute positioning causes overflow outside `.retro-box`, add `overflow: visible`
+  to `.retro-box` or `.retro-feedback` as needed (not `overflow: hidden`)
+- The same positioning rules apply at the mobile breakpoint — verify the media query block
+  around ~line 2345 in main.css and update it if the mobile layout needs adjusting
+
+## Validation
+
+- [ ] Green `✓` icon appears overlaid on the top portion of the Next button, centered
+- [ ] Icon has a clearly visible drop shadow against the blue button background
+- [ ] `▶ Next` text is not obscured by the icon
+- [ ] Instruction text in `.retro-half--top` does not shift awkwardly without the icon
+- [ ] Layout looks correct on desktop and mobile
+- [ ] `npm run build` passes (CSS rebuild)
+- [ ] No console errors at `#/analysis` with LFYM open in win/view state
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-731
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-731 --checklist "- [ ] Green check overlaid on top of Next button, centered|- [ ] Drop shadow visible against blue background|- [ ] Next button text not obscured|- [ ] Instruction text layout intact|- [ ] Looks correct on mobile|- [ ] npm run build passes|- [ ] No console errors in win/view feedback state"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-731 --errors "brief description of what went wrong" --checklist "- [ ] Green check overlaid on top of Next button, centered|- [ ] Drop shadow visible against blue background|- [ ] Next button text not obscured|- [ ] Instruction text layout intact|- [ ] Looks correct on mobile|- [ ] npm run build passes|- [ ] No console errors in win/view feedback state"
 ```
 ```
