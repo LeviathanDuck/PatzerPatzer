@@ -145,9 +145,9 @@ with:
 
 ---
 
-## Sprint tasks
+## Phase 1 — Mobile Puzzle Layout And Flow
 
-## Task 1 — Add a real mobile puzzle layout mode
+### Task 1 — Add a real mobile puzzle layout mode
 
 ### Diagnosis
 
@@ -184,7 +184,7 @@ Keep desktop layout untouched.
 
 ---
 
-## Task 2 — Make the puzzle library and imported-session builder usable on mobile
+### Task 2 — Make the puzzle library and imported-session builder usable on mobile
 
 ### Diagnosis
 
@@ -219,7 +219,7 @@ For mobile only:
 
 ---
 
-## Task 3 — Make puzzle feedback and core actions board-adjacent on mobile
+### Task 3 — Make puzzle feedback and core actions board-adjacent on mobile
 
 ### Diagnosis
 
@@ -250,7 +250,7 @@ Keep desktop ordering intact.
 
 ---
 
-## Task 4 — Make engine, move list, and session surfaces readable as a mobile stack
+### Task 4 — Make engine, move list, and session surfaces readable as a mobile stack
 
 ### Diagnosis
 
@@ -286,7 +286,7 @@ For mobile only:
 
 ---
 
-## Task 5 — Add one minimal touch/mobile polish pass for continuity
+### Task 5 — Add one minimal touch/mobile polish pass for continuity
 
 ### Diagnosis
 

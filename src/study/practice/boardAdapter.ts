@@ -5,6 +5,7 @@
 
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
+import { playDrillFeedbackSound } from '../../board/sound';
 
 export type FeedbackType = 'correct' | 'incorrect';
 
@@ -85,6 +86,7 @@ export function createDrillBoardAdapter(cg: CgApi, wrapEl: HTMLElement): DrillBo
       const cls = type === 'correct' ? 'drill-flash--correct' : 'drill-flash--incorrect';
       wrapEl.classList.add(cls);
       setTimeout(() => wrapEl.classList.remove(cls), 350);
+      playDrillFeedbackSound(type);
     },
   };
 }

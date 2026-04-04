@@ -8,6 +8,7 @@ import { lichess, importLichess } from '../import/lichess';
 import { pgnState, importPgn } from '../import/pgn';
 import {
   importFilters, SPEED_OPTIONS, DATE_RANGE_OPTIONS,
+  setAutoReview, setAutoReviewConfirmed, setAutoReviewDepth,
   type ImportDateRange,
 } from '../import/filters';
 import {
@@ -39,6 +40,11 @@ let showDetectionModal    = false;
 let showRetroModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
+
+export function openRetroModal(redraw: () => void): void {
+  showRetroModal = true;
+  redraw();
+}
 
 // --- Auth state ---
 let headerAuthUser: string | null = null;
@@ -117,6 +123,30 @@ function renderNav(route: Route): VNode {
 // --- Bulk Review menu ---
 
 const REVIEW_DEPTHS = [12, 14, 16, 18, 20];
+
+// Auto-review depth options: range 2-18, step 2.
+// Multiplier labels approximate Stockfish exponential scaling (~2-3x per ply).
+const AUTO_REVIEW_DEPTHS: { depth: number; label: string }[] = [
+  { depth: 2,  label: '1×'    },
+  { depth: 4,  label: '4×'    },
+  { depth: 6,  label: '9×'    },
+  { depth: 8,  label: '25×'   },
+  { depth: 10, label: '60×'   },
+  { depth: 12, label: '150×'  },
+  { depth: 14, label: '400×'  },
+  { depth: 16, label: '1000×' },
+  { depth: 18, label: '2500×' },
+];
+
+function renderAutoReviewDepthPills(currentDepth: number, onSelect: (d: number) => void): VNode[] {
+  return AUTO_REVIEW_DEPTHS.map(({ depth, label }) =>
+    h('button.review-menu__pill', {
+      class: { active: currentDepth === depth },
+      attrs: { title: `Depth ${depth} — ~${label} relative cost` },
+      on: { click: () => onSelect(depth) },
+    }, String(depth)),
+  );
+}
 
 function renderReviewMenu(redraw: () => void): VNode | null {
   const running = isBulkRunning();
@@ -298,16 +328,11 @@ function renderDetectionModal(redraw: () => void): VNode {
 // Controls retroConfig (Learn From Your Mistakes candidate-selection parameters).
 // Uses the same detection-modal card structure and CSS classes as renderDetectionModal.
 
-const CLASSIFICATION_OPTIONS: { value: RetroConfig['minClassification']; label: string }[] = [
-  { value: 'inaccuracy', label: 'Inaccuracy' },
-  { value: 'mistake',    label: 'Mistake' },
-  { value: 'blunder',    label: 'Blunder' },
-];
-
-function renderRetroModal(redraw: () => void): VNode {
+// Exported so the action menu sub-panel can render these rows inline (CCP-756).
+export function renderRetroConfigBody(redraw: () => void): VNode[] {
   const cfg = retroConfig;
   const isDefault =
-    cfg.minClassification     === RETRO_CONFIG_DEFAULTS.minClassification &&
+    cfg.minLossThreshold      === RETRO_CONFIG_DEFAULTS.minLossThreshold &&
     cfg.missedMateDistance    === RETRO_CONFIG_DEFAULTS.missedMateDistance &&
     cfg.collapseEnabled      === RETRO_CONFIG_DEFAULTS.collapseEnabled &&
     cfg.collapseWcFloor      === RETRO_CONFIG_DEFAULTS.collapseWcFloor &&
@@ -319,6 +344,179 @@ function renderRetroModal(redraw: () => void): VNode {
     cfg.punishOpponentSwingMin === RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin &&
     cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin;
 
+  return [
+    // minLossThreshold — continuous 1–25% slider
+    h('div.detection-modal__row', [
+      h('div.detection-modal__row-header', [
+        h('span.detection-modal__label', 'Minimum Severity'),
+        h('span.detection-modal__value', `loss ≥ ${Math.round(cfg.minLossThreshold * 100)}%`),
+      ]),
+      h('p.detection-modal__desc',
+        'Minimum win-chance loss to include a move as a candidate. ' +
+        'Drag left for more candidates, right for fewer. Lichess parity: 5%. Patzer default: 10%.'),
+      h('div.detection-modal__severity-slider', [
+        h('input.severity-range', {
+          attrs: { type: 'range', min: 1, max: 25, step: 1,
+                   value: Math.round(cfg.minLossThreshold * 100) },
+          on: {
+            input: (e: Event) => {
+              const pct = parseInt((e.target as HTMLInputElement).value, 10);
+              setRetroConfig({ minLossThreshold: pct / 100 });
+              redraw();
+            },
+          },
+        }),
+        h('span.severity-divider--inaccuracy', { attrs: { title: 'Inaccuracy: loss ≥ 5%' } }),
+        h('span.severity-divider--mistake',    { attrs: { title: 'Lichess default / Mistake: loss ≥ 10%' } }),
+        h('span.severity-divider--blunder',    { attrs: { title: 'Blunder: loss ≥ 15%' } }),
+        h('span.detection-modal__default-mark', {
+          attrs: { style: 'left: 37.5%', title: 'Lichess default: loss ≥ 10%' },
+        }),
+        h('div.detection-modal__severity-ticks', [
+          h('span', '1%'),
+          h('span', 'Inaccuracy'),
+          h('span', 'Mistake'),
+          h('span', 'Blunder'),
+          h('span', '25%'),
+        ]),
+      ]),
+    ]),
+
+    // missedMateDistance — slider
+    h('div.detection-modal__row', [
+      h('div.detection-modal__row-header', [
+        h('span.detection-modal__label', 'Missed Mate in N'),
+        h('span.detection-modal__value',
+          cfg.missedMateDistance === 0 ? 'off' : `in ${cfg.missedMateDistance}`),
+      ]),
+      h('p.detection-modal__desc',
+        'Flag a move when a forced mate of this distance (or shorter) was available but not played. ' +
+        'Lichess default: mate in 3. Set to 0 to disable this category entirely.'),
+      h('div.detection-modal__slider-wrap', [
+        h('input', {
+          attrs: { type: 'range', min: 0, max: 10, step: 1, value: cfg.missedMateDistance },
+          on: {
+            input: (e: Event) => {
+              setRetroConfig({ missedMateDistance: parseInt((e.target as HTMLInputElement).value, 10) });
+              redraw();
+            },
+          },
+        }),
+        // Lichess default marker at position 3 (30% of 0–10 range)
+        h('span.detection-modal__default-mark', {
+          attrs: { style: 'left: 30%', title: 'Lichess default: in 3' },
+        }),
+      ]),
+    ]),
+
+    // ── Collapse (blown win) family ──────────────────────────────────
+    h('div.detection-modal__row', [
+      h('div.detection-modal__row-header', [
+        h('span.detection-modal__label', 'Blown Wins'),
+      ]),
+      h('p.detection-modal__desc',
+        'Flag positions where you were clearly winning but squandered the advantage. ' +
+        'Reuses the same thresholds as the engine\'s collapse detection.'),
+      renderToggleRow('detection-collapse', 'Enabled', cfg.collapseEnabled, (v) => { setRetroConfig({ collapseEnabled: v }); redraw(); }),
+      ...(cfg.collapseEnabled ? [
+        h('div.detection-modal__row-header', [
+          h('span.detection-modal__label', 'Win Chance Floor'),
+          h('span.detection-modal__value', cfg.collapseWcFloor.toFixed(2)),
+        ]),
+        h('div.detection-modal__slider-wrap', [
+          h('input', {
+            attrs: { type: 'range', min: 0.50, max: 0.95, step: 0.05, value: cfg.collapseWcFloor },
+            on: { input: (e: Event) => { setRetroConfig({ collapseWcFloor: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+          }),
+        ]),
+        h('div.detection-modal__row-header', [
+          h('span.detection-modal__label', 'Minimum Drop'),
+          h('span.detection-modal__value', cfg.collapseDropMin.toFixed(2)),
+        ]),
+        h('div.detection-modal__slider-wrap', [
+          h('input', {
+            attrs: { type: 'range', min: 0.02, max: 0.30, step: 0.01, value: cfg.collapseDropMin },
+            on: { input: (e: Event) => { setRetroConfig({ collapseDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+          }),
+        ]),
+      ] : []),
+    ]),
+
+    // ── Defensive resource family ────────────────────────────────────
+    h('div.detection-modal__row', [
+      h('div.detection-modal__row-header', [
+        h('span.detection-modal__label', 'Missed Defenses'),
+      ]),
+      h('p.detection-modal__desc',
+        'Flag positions where you were losing but had a significantly better defensive move available.'),
+      renderToggleRow('detection-defensive', 'Enabled', cfg.defensiveEnabled, (v) => { setRetroConfig({ defensiveEnabled: v }); redraw(); }),
+      ...(cfg.defensiveEnabled ? [
+        h('div.detection-modal__row-header', [
+          h('span.detection-modal__label', 'Position Ceiling'),
+          h('span.detection-modal__value', cfg.defensiveWcCeiling.toFixed(2)),
+        ]),
+        h('div.detection-modal__slider-wrap', [
+          h('input', {
+            attrs: { type: 'range', min: 0.10, max: 0.50, step: 0.05, value: cfg.defensiveWcCeiling },
+            on: { input: (e: Event) => { setRetroConfig({ defensiveWcCeiling: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+          }),
+        ]),
+        h('div.detection-modal__row-header', [
+          h('span.detection-modal__label', 'Salvage Gap'),
+          h('span.detection-modal__value', cfg.defensiveSalvageMin.toFixed(2)),
+        ]),
+        h('div.detection-modal__slider-wrap', [
+          h('input', {
+            attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.defensiveSalvageMin },
+            on: { input: (e: Event) => { setRetroConfig({ defensiveSalvageMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+          }),
+        ]),
+      ] : []),
+    ]),
+
+    // ── Punish-the-blunder family ────────────────────────────────────
+    h('div.detection-modal__row', [
+      h('div.detection-modal__row-header', [
+        h('span.detection-modal__label', 'Missed Punishments'),
+      ]),
+      h('p.detection-modal__desc',
+        'Flag positions where the opponent blundered but you failed to exploit the mistake.'),
+      renderToggleRow('detection-punish', 'Enabled', cfg.punishEnabled, (v) => { setRetroConfig({ punishEnabled: v }); redraw(); }),
+      ...(cfg.punishEnabled ? [
+        h('div.detection-modal__row-header', [
+          h('span.detection-modal__label', 'Opponent Swing'),
+          h('span.detection-modal__value', cfg.punishOpponentSwingMin.toFixed(2)),
+        ]),
+        h('div.detection-modal__slider-wrap', [
+          h('input', {
+            attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.punishOpponentSwingMin },
+            on: { input: (e: Event) => { setRetroConfig({ punishOpponentSwingMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+          }),
+        ]),
+        h('div.detection-modal__row-header', [
+          h('span.detection-modal__label', 'Exploit Drop'),
+          h('span.detection-modal__value', cfg.punishExploitDropMin.toFixed(2)),
+        ]),
+        h('div.detection-modal__slider-wrap', [
+          h('input', {
+            attrs: { type: 'range', min: 0.02, max: 0.20, step: 0.01, value: cfg.punishExploitDropMin },
+            on: { input: (e: Event) => { setRetroConfig({ punishExploitDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
+          }),
+        ]),
+      ] : []),
+    ]),
+
+    // Reset row
+    !isDefault ? h('div.detection-modal__row', [
+      h('button', {
+        class: { 'detection-modal__close': true },
+        on: { click: () => { setRetroConfig({ ...RETRO_CONFIG_DEFAULTS }); redraw(); } },
+      }, 'Reset to defaults'),
+    ]) : null,
+  ].filter((n): n is VNode => n !== null);
+}
+
+function renderRetroModal(redraw: () => void): VNode {
   return h('div.detection-modal', [
     h('div.detection-modal__backdrop', {
       on: { click: () => { showRetroModal = false; redraw(); } },
@@ -331,163 +529,7 @@ function renderRetroModal(redraw: () => void): VNode {
           on: { click: () => { showRetroModal = false; redraw(); } },
         }, '✕'),
       ]),
-      h('div.detection-modal__body', [
-
-        // minClassification — pill picker
-        h('div.detection-modal__row', [
-          h('div.detection-modal__row-header', [
-            h('span.detection-modal__label', 'Minimum Severity'),
-            h('span.detection-modal__value',
-              cfg.minClassification === 'inaccuracy' ? 'loss ≥ 5%' :
-              cfg.minClassification === 'mistake'    ? 'loss ≥ 10%' :
-                                                       'loss ≥ 15%'),
-          ]),
-          h('p.detection-modal__desc',
-            'Minimum move classification to include as a Learn From Your Mistakes candidate. ' +
-            'Inaccuracy catches all real errors (Lichess parity). Mistake is the default. Blunder shows only large drops.'),
-          h('div.detection-modal__pills',
-            CLASSIFICATION_OPTIONS.map(opt =>
-              h('button', {
-                class: { active: cfg.minClassification === opt.value },
-                on: { click: () => { setRetroConfig({ minClassification: opt.value }); redraw(); } },
-              }, opt.label),
-            ),
-          ),
-        ]),
-
-        // missedMateDistance — slider
-        h('div.detection-modal__row', [
-          h('div.detection-modal__row-header', [
-            h('span.detection-modal__label', 'Missed Mate in N'),
-            h('span.detection-modal__value',
-              cfg.missedMateDistance === 0 ? 'off' : `in ${cfg.missedMateDistance}`),
-          ]),
-          h('p.detection-modal__desc',
-            'Flag a move when a forced mate of this distance (or shorter) was available but not played. ' +
-            'Lichess default: mate in 3. Set to 0 to disable this category entirely.'),
-          h('div.detection-modal__slider-wrap', [
-            h('input', {
-              attrs: { type: 'range', min: 0, max: 10, step: 1, value: cfg.missedMateDistance },
-              on: {
-                input: (e: Event) => {
-                  setRetroConfig({ missedMateDistance: parseInt((e.target as HTMLInputElement).value, 10) });
-                  redraw();
-                },
-              },
-            }),
-            // Lichess default marker at position 3 (30% of 0–10 range)
-            h('span.detection-modal__default-mark', {
-              attrs: { style: 'left: 30%', title: 'Lichess default: in 3' },
-            }),
-          ]),
-        ]),
-
-        // ── Collapse (blown win) family ──────────────────────────────────
-        h('div.detection-modal__row', [
-          h('div.detection-modal__row-header', [
-            h('span.detection-modal__label', 'Blown Wins'),
-          ]),
-          h('p.detection-modal__desc',
-            'Flag positions where you were clearly winning but squandered the advantage. ' +
-            'Reuses the same thresholds as the engine\'s collapse detection.'),
-          renderToggleRow('detection-collapse', 'Enabled', cfg.collapseEnabled, (v) => { setRetroConfig({ collapseEnabled: v }); redraw(); }),
-          ...(cfg.collapseEnabled ? [
-            h('div.detection-modal__row-header', [
-              h('span.detection-modal__label', 'Win Chance Floor'),
-              h('span.detection-modal__value', cfg.collapseWcFloor.toFixed(2)),
-            ]),
-            h('div.detection-modal__slider-wrap', [
-              h('input', {
-                attrs: { type: 'range', min: 0.50, max: 0.95, step: 0.05, value: cfg.collapseWcFloor },
-                on: { input: (e: Event) => { setRetroConfig({ collapseWcFloor: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
-              }),
-            ]),
-            h('div.detection-modal__row-header', [
-              h('span.detection-modal__label', 'Minimum Drop'),
-              h('span.detection-modal__value', cfg.collapseDropMin.toFixed(2)),
-            ]),
-            h('div.detection-modal__slider-wrap', [
-              h('input', {
-                attrs: { type: 'range', min: 0.02, max: 0.30, step: 0.01, value: cfg.collapseDropMin },
-                on: { input: (e: Event) => { setRetroConfig({ collapseDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
-              }),
-            ]),
-          ] : []),
-        ]),
-
-        // ── Defensive resource family ────────────────────────────────────
-        h('div.detection-modal__row', [
-          h('div.detection-modal__row-header', [
-            h('span.detection-modal__label', 'Missed Defenses'),
-          ]),
-          h('p.detection-modal__desc',
-            'Flag positions where you were losing but had a significantly better defensive move available.'),
-          renderToggleRow('detection-defensive', 'Enabled', cfg.defensiveEnabled, (v) => { setRetroConfig({ defensiveEnabled: v }); redraw(); }),
-          ...(cfg.defensiveEnabled ? [
-            h('div.detection-modal__row-header', [
-              h('span.detection-modal__label', 'Position Ceiling'),
-              h('span.detection-modal__value', cfg.defensiveWcCeiling.toFixed(2)),
-            ]),
-            h('div.detection-modal__slider-wrap', [
-              h('input', {
-                attrs: { type: 'range', min: 0.10, max: 0.50, step: 0.05, value: cfg.defensiveWcCeiling },
-                on: { input: (e: Event) => { setRetroConfig({ defensiveWcCeiling: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
-              }),
-            ]),
-            h('div.detection-modal__row-header', [
-              h('span.detection-modal__label', 'Salvage Gap'),
-              h('span.detection-modal__value', cfg.defensiveSalvageMin.toFixed(2)),
-            ]),
-            h('div.detection-modal__slider-wrap', [
-              h('input', {
-                attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.defensiveSalvageMin },
-                on: { input: (e: Event) => { setRetroConfig({ defensiveSalvageMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
-              }),
-            ]),
-          ] : []),
-        ]),
-
-        // ── Punish-the-blunder family ────────────────────────────────────
-        h('div.detection-modal__row', [
-          h('div.detection-modal__row-header', [
-            h('span.detection-modal__label', 'Missed Punishments'),
-          ]),
-          h('p.detection-modal__desc',
-            'Flag positions where the opponent blundered but you failed to exploit the mistake.'),
-          renderToggleRow('detection-punish', 'Enabled', cfg.punishEnabled, (v) => { setRetroConfig({ punishEnabled: v }); redraw(); }),
-          ...(cfg.punishEnabled ? [
-            h('div.detection-modal__row-header', [
-              h('span.detection-modal__label', 'Opponent Swing'),
-              h('span.detection-modal__value', cfg.punishOpponentSwingMin.toFixed(2)),
-            ]),
-            h('div.detection-modal__slider-wrap', [
-              h('input', {
-                attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.punishOpponentSwingMin },
-                on: { input: (e: Event) => { setRetroConfig({ punishOpponentSwingMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
-              }),
-            ]),
-            h('div.detection-modal__row-header', [
-              h('span.detection-modal__label', 'Exploit Drop'),
-              h('span.detection-modal__value', cfg.punishExploitDropMin.toFixed(2)),
-            ]),
-            h('div.detection-modal__slider-wrap', [
-              h('input', {
-                attrs: { type: 'range', min: 0.02, max: 0.20, step: 0.01, value: cfg.punishExploitDropMin },
-                on: { input: (e: Event) => { setRetroConfig({ punishExploitDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
-              }),
-            ]),
-          ] : []),
-        ]),
-
-        // Reset row
-        !isDefault ? h('div.detection-modal__row', [
-          h('button', {
-            class: { 'detection-modal__close': true },
-            on: { click: () => { setRetroConfig({ ...RETRO_CONFIG_DEFAULTS }); redraw(); } },
-          }, 'Reset to defaults'),
-        ]) : null,
-
-      ]),
+      h('div.detection-modal__body', renderRetroConfigBody(redraw)),
     ]),
   ]);
 }
@@ -718,11 +760,20 @@ export function renderHeader(deps: HeaderDeps): VNode {
       ]),
 
       h('div.header__panel-row.--mt',
-        renderToggleRow('import-auto-review', 'Auto-review after import', importFilters.autoReview, (v) => { importFilters.autoReview = v; redraw(); }),
+        renderToggleRow('import-auto-review', 'Auto-review after import', importFilters.autoReview, (v) => { setAutoReview(v); redraw(); }),
       ),
-      importFilters.autoReview ? h('p.header__panel-hint.header__panel-warn',
-        'Large imports may take a long time to review. Each game runs through the engine at the configured review depth.'
-      ) : null,
+      importFilters.autoReview ? h('div.header__panel-section.--nested', [
+        h('div.header__panel-row',
+          renderToggleRow('import-auto-review-confirm', 'Are you sure?', importFilters.autoReviewConfirmed, (v) => { setAutoReviewConfirmed(v); redraw(); }),
+        ),
+        h('p.header__panel-hint.header__panel-warn',
+          'Large imports may take a long time to review. Each game runs through the engine at the configured review depth.'
+        ),
+        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
+          h('div.review-menu__label', `Auto-review depth: ${importFilters.autoReviewDepth}`),
+          h('div.review-menu__row', renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => { setAutoReviewDepth(d); redraw(); })),
+        ]) : null,
+      ]) : null,
     ]),
 
     h('div.header__panel-divider'),

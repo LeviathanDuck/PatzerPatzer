@@ -19,6 +19,7 @@ import {
   getAllPuzzleUserMeta, getPuzzleUserMetaSince, upsertPuzzleUserMetaBatch,
   getUserPuzzlePerf, upsertUserPuzzlePerf,
   getUserPuzzleRatingHistory, insertUserPuzzleRatingHistoryBatch,
+  getUserPuzzleRatedAttempts, insertUserPuzzleRatedAttemptsBatch,
 } from './db.mjs';
 
 /** Read the full JSON body from a request. */
@@ -182,6 +183,26 @@ export function handleSyncRoute(url, method, req, res) {
       if (!Array.isArray(entries)) return json(res, 400, { error: 'Expected history array' });
       await insertUserPuzzleRatingHistoryBatch(entries.map(e => ({ ...e, username })));
       json(res, 200, { ok: true, count: entries.length });
+    }).catch(err => json(res, 400, { error: err.message }));
+    return true;
+  }
+
+  if (path === '/api/sync/puzzle-rated-attempts' && method === 'GET') {
+    const username = requireAuthAndGetUsername(req, res);
+    if (!username) return true;
+    getUserPuzzleRatedAttempts(username)
+      .then(attempts => json(res, 200, { attempts }))
+      .catch(err => json(res, 500, { error: err.message }));
+    return true;
+  }
+  if (path === '/api/sync/puzzle-rated-attempts' && method === 'POST') {
+    const username = requireAuthAndGetUsername(req, res);
+    if (!username) return true;
+    readBody(req).then(async body => {
+      const attempts = body.attempts ?? body;
+      if (!Array.isArray(attempts)) return json(res, 400, { error: 'Expected attempts array' });
+      await insertUserPuzzleRatedAttemptsBatch(attempts.map(a => ({ ...a, username })));
+      json(res, 200, { ok: true, count: attempts.length });
     }).catch(err => json(res, 400, { error: err.message }));
     return true;
   }

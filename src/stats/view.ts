@@ -7,6 +7,7 @@ import { h, type VNode } from 'snabbdom';
 import {
   filteredSummaries,
   filteredGameCount,
+  importedGames,
   summariesLoaded,
   timeFilter,
   setTimeFilter,
@@ -141,8 +142,21 @@ const TIME_CONTROL_LABELS: Record<string, string> = {
   bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapid', classical: 'Classical', ultrabullet: 'UltraBullet',
 };
 
+/**
+ * Compute a rolling average over an array of values.
+ * Each output point is the mean of the preceding `window` values (or fewer at the start).
+ */
+function rollingAvg(values: number[], window: number): number[] {
+  return values.map((_, i) => {
+    const start = Math.max(0, i - window + 1);
+    const slice = values.slice(start, i + 1);
+    return slice.reduce((a, v) => a + v, 0) / slice.length;
+  });
+}
+
 function renderTrendSection(summaries: ReturnType<typeof filteredSummaries>): VNode {
-  const MIN_GAMES = 20;
+  const MIN_GAMES    = 20;
+  const ROLL_WINDOW  = 20;
 
   // Group by time class and sort by date within each group
   const byTc = new Map<string, typeof summaries>();
@@ -180,11 +194,13 @@ function renderTrendSection(summaries: ReturnType<typeof filteredSummaries>): VN
 
   const charts: VNode[] = [];
   for (const { label, summaries: gs } of groups) {
-    const accs     = gs.map(s => s.accuracy);
-    const blunders = gs.map(s => s.blunderCount);
+    // Apply 20-game rolling average so each point reflects recent form, not a single game
+    const accs     = rollingAvg(gs.map(s => s.accuracy), ROLL_WINDOW);
+    const blunders = rollingAvg(gs.map(s => s.blunderCount), ROLL_WINDOW);
+    const chartLabel = `${label} (${gs.length} games, ${ROLL_WINDOW}-game rolling avg)`;
     charts.push(
       h('div.stats-trend-group', [
-        h('div.stats-trend-group__title', label),
+        h('div.stats-trend-group__title', chartLabel),
         renderTrendChart('Accuracy', accs, 0, 100, '%', 'stats-chart__line--accuracy'),
         renderTrendChart('Blunders/game', blunders, 0, Math.max(5, ...blunders), '', 'stats-chart__line--blunders'),
       ]),
@@ -253,6 +269,115 @@ function renderWeaknessPanel(summaries: ReturnType<typeof filteredSummaries>): V
   return h('section.stats-section', [
     h('h3.stats-section-title', 'Your Weaknesses'),
     h('div.weakness-list', weaknesses.slice(0, 5).map(renderWeaknessCard)),
+  ]);
+}
+
+// ── Opening win rate table (import data only, no analysis required) ───────────
+
+interface ImportOpeningRow {
+  name:       string;
+  color:      'White' | 'Black';
+  games:      number;
+  wins:       number;
+  draws:      number;
+  losses:     number;
+  winRate:    number;  // percentage 0–100
+  belowAvg:   boolean; // > 15pp below user's overall win rate for that color
+  hasAnalysis: boolean; // hook for CCP-387-F2: at least one GameSummary exists for this opening+color
+}
+
+function buildImportOpeningRows(summaries: ReturnType<typeof filteredSummaries>): ImportOpeningRow[] {
+  const games  = importedGames();
+  if (games.length === 0) return [];
+
+  // Index GameSummary gameIds for the "has analysis" indicator
+  const analyzedIds = new Set(summaries.map(s => s.gameId));
+
+  // Determine player color per game: importedUsername matches white/black name (lowercased)
+  const byColorOpening = new Map<string, { wins: number; draws: number; losses: number; hasAnalysis: boolean }>();
+  const colorWins   = { White: 0, Black: 0 };
+  const colorGames  = { White: 0, Black: 0 };
+
+  for (const g of games) {
+    if (!g.result || (!g.opening && !g.eco)) continue;
+    const name = g.opening || g.eco || 'Unknown';
+    const username = (g.importedUsername ?? '').toLowerCase();
+    let color: 'White' | 'Black' | null = null;
+    if (username && g.white && g.white.toLowerCase() === username) color = 'White';
+    else if (username && g.black && g.black.toLowerCase() === username) color = 'Black';
+    // PGN paste: no username — skip color detection
+    if (!color) continue;
+
+    const key = `${name}||${color}`;
+    const entry = byColorOpening.get(key) ?? { wins: 0, draws: 0, losses: 0, hasAnalysis: false };
+    const won  = (color === 'White' && g.result === '1-0') || (color === 'Black' && g.result === '0-1');
+    const drew = g.result === '1/2-1/2';
+    if (won) entry.wins++;
+    else if (drew) entry.draws++;
+    else entry.losses++;
+    if (analyzedIds.has(g.id)) entry.hasAnalysis = true;
+    byColorOpening.set(key, entry);
+
+    if (won) colorWins[color]++;
+    colorGames[color]++;
+  }
+
+  const overallWinRate = {
+    White: colorGames.White > 0 ? (colorWins.White / colorGames.White) * 100 : 50,
+    Black: colorGames.Black > 0 ? (colorWins.Black / colorGames.Black) * 100 : 50,
+  };
+
+  const rows: ImportOpeningRow[] = [];
+  for (const [key, entry] of byColorOpening) {
+    const [name, colorStr] = key.split('||') as [string, 'White' | 'Black'];
+    const total = entry.wins + entry.draws + entry.losses;
+    if (total < 5) continue;
+    const winRate = (entry.wins / total) * 100;
+    rows.push({
+      name,
+      color:      colorStr,
+      games:      total,
+      wins:       entry.wins,
+      draws:      entry.draws,
+      losses:     entry.losses,
+      winRate:    Math.round(winRate),
+      belowAvg:   winRate < overallWinRate[colorStr] - 15,
+      hasAnalysis: entry.hasAnalysis,
+    });
+  }
+  rows.sort((a, b) => a.winRate - b.winRate);
+  return rows;
+}
+
+function renderImportOpeningTable(summaries: ReturnType<typeof filteredSummaries>): VNode | null {
+  const rows = buildImportOpeningRows(summaries);
+  // Hide when fewer than 3 qualifying opening+color rows
+  if (rows.length < 3) return null;
+
+  return h('section.stats-section', [
+    h('h3.stats-section-title', 'Opening Win Rates'),
+    h('p.stats-section-note', 'Sorted worst-first. Requires 5+ games per opening as each colour.'),
+    h('table.opening-table.opening-table--import', [
+      h('thead', h('tr', [
+        h('th', 'Opening'),
+        h('th', 'Colour'),
+        h('th', 'Games'),
+        h('th', 'W / D / L'),
+        h('th', 'Win %'),
+      ])),
+      h('tbody', rows.map(row =>
+        h(`tr.opening-table__row${row.belowAvg ? '.opening-table__row--weak' : ''}`, [
+          h('td.opening-table__name', [
+            row.name,
+            row.hasAnalysis ? h('span.opening-table__analyzed-badge', { attrs: { title: 'Analysis data available' } }, ' ●') : null,
+          ].filter(Boolean) as (VNode | string)[]),
+          h('td.opening-table__color', row.color),
+          h('td.opening-table__games', String(row.games)),
+          h('td.opening-table__wdl', `${row.wins} / ${row.draws} / ${row.losses}`),
+          h('td.opening-table__winrate', `${row.winRate}%`),
+        ]),
+      )),
+    ]),
   ]);
 }
 
@@ -353,10 +478,10 @@ function renderOpeningTable(summaries: GameSummary[], redraw: () => void): VNode
 // ── Tactical profile ──────────────────────────────────────────────────────────
 
 function renderTacticalProfile(summaries: GameSummary[]): VNode {
-  if (summaries.length < 5) {
+  if (summaries.length < 10) {
     return h('section.stats-section', [
       h('h3.stats-section-title', 'Tactical Profile'),
-      h('p.stats-insufficient', 'Need at least 5 analyzed games.'),
+      h('p.stats-insufficient', `Need at least 10 analyzed games. ${summaries.length} so far.`),
     ]);
   }
 
@@ -513,7 +638,9 @@ export function renderStatsPage(redraw: () => void): VNode {
     renderWeaknessPanel(summaries),
     // Accuracy & blunder trends
     renderTrendSection(summaries),
-    // Opening performance table
+    // Opening win rate table (import data only — renders before any games are reviewed)
+    renderImportOpeningTable(summaries),
+    // Opening performance table (analysis data — accuracy and blunder columns)
     renderOpeningTable(summaries, redraw),
     // Tactical profile
     renderTacticalProfile(summaries),

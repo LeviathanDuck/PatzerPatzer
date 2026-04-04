@@ -11,7 +11,7 @@
 // Then runs prompts:refresh.
 
 import { execSync } from 'node:child_process';
-import { ensureNotReserved, mutateRegistryLocked, requirePrompt } from './prompt-registry-lib.mjs';
+import { ensureActivePrompt, mutateRegistryLocked, requirePrompt } from './prompt-registry-lib.mjs';
 
 const root = process.cwd();
 const args = process.argv.slice(2);
@@ -82,7 +82,7 @@ if (!VALID_REVIEW_METHODS.has(reviewMethod)) {
 try {
   await mutateRegistryLocked(root, registry => {
     const prompt = requirePrompt(registry, id);
-    ensureNotReserved(prompt, 'prompt:review');
+    ensureActivePrompt(prompt, 'prompt:review');
 
     const now = new Date().toISOString();
     prompt.status = 'reviewed';

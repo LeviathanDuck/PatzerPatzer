@@ -966,182 +966,297 @@ Uses Chessground's programmatic API: `cg.set({ fen, orientation, movable: { dest
 
 ## Phase 9: Library Navigation and Organization UX
 
-**Goal:** Elevate the study library from a basic list view into a polished, intuitive navigation experience with folders, drag-and-drop organization, multi-select, and flexible view modes.
+**Goal:** Elevate the study library from a basic list view into a polished, intuitive navigation experience modeled on the best bookmark/collection management UX patterns in the market.
 
-**Design intent:** The library should feel as natural as a well-designed file manager. Users should be able to create folders, drag studies between them, select multiple items for bulk operations, and navigate their collection without friction. The exact layout pattern (sidebar tree, column view, or something else) should be determined during implementation based on what feels best — the goal is great navigation UX, not commitment to a specific visual paradigm.
+**Design reference:** The primary UX inspiration is the sidebar-tree + content-area pattern used by highly-praised collection management tools. Key patterns to adopt:
 
-**Reference patterns worth studying:**
-- Sidebar tree + content area (Gmail, Notion, VS Code explorer)
-- Column/breadcrumb drill-down (macOS Finder column view, iCloud.com)
-- Flat list with grouping and inline folder expansion
-- Kanban-style columns grouped by folder or tag
+1. **Sidebar as flat list with CSS indentation** — render folders as a flat array with `--level` CSS variable for visual nesting depth. This is simpler than true DOM nesting and avoids recursive component complexity. Expand/collapse state persists per folder.
+2. **Fixed navigation sections at sidebar top** — "All Studies", "Favorites", "Unsorted" (studies with no folder), "Trash" — always visible above the user's folder tree.
+3. **Studies can live in multiple folders** — unlike most collection managers that limit items to one container, our studies use a `folderIds: string[]` array. This multi-membership model is our UX advantage. Tags handle additional cross-cutting organization.
+4. **Toolbar transforms on selection** — when items are multi-selected, the header toolbar swaps from sort/view/filter controls to a bulk action bar showing: selected count, Move to Folder, Add Tag, Delete, Export PGN, Cancel. The transformation is the same content area, not a second bar.
+5. **Four view modes per folder** — each folder remembers its own view preference:
+   - **List** — compact rows with configurable visible fields (default)
+   - **Grid** — cards with board thumbnail + title + key metadata
+   - **Headlines** — ultra-compact text-only rows for scanning large collections
+   - **Moodboard** — masonry/waterfall grid with variable-size board thumbnails (aspirational, defer if complex)
+6. **Auto-populated metadata reduces filing burden** — opening name, ECO, player names, date, and result are auto-extracted from PGN on save. Users should never have to type what the system can infer.
+7. **Don't force organization at save time** — the one-click save flow (Phase 1) puts items into "Unsorted." Organization happens later in the library. Forcing folder selection at save time creates friction and slows down the save action.
 
-The right choice depends on how users actually structure their libraries. Start with the simplest pattern that supports the full set of operations, then refine based on real usage.
+### Task 9.1: Folder data model and persistence
 
-### Task 9.1: Folder hierarchy data model
+**Diagnosis:** The current StudyItem has a flat `folders: string[]` field — just name strings with no hierarchy, ordering, or metadata. A real folder system needs: stable IDs, parent references for nesting, display order, visual identity (icon/color/emoji), expand/collapse state, and timestamps.
 
-**Diagnosis:** The current StudyItem has a flat `folders: string[]` field — just folder name strings with no hierarchy, no ordering, no metadata. A real folder system needs: folder IDs, parent references (for nesting), display order, color/icon (optional), and creation timestamps.
+**Small safe step:** Add types and persistence:
 
-**Small safe step:** Add a `StudyFolder` type to `src/study/types.ts`:
 ```typescript
 interface StudyFolder {
   id: string;
   name: string;
   parentId: string | null;    // null = root level
   order: number;              // display order within parent
-  color?: string;             // optional visual identifier
+  icon?: string;              // optional emoji or icon identifier
+  color?: string;             // optional accent color
+  expanded: boolean;          // sidebar expand/collapse state (persisted)
   createdAt: number;
   updatedAt: number;
 }
 ```
-Add a `folders` object store to IDB. Update StudyItem's `folders` field to store folder IDs (not names) — or add a `folderIds: string[]` field alongside the existing `folders` for backward compatibility.
 
-**Why safe:** Type addition + IDB store addition. No UI changes. Existing `folders: string[]` data continues to work.
+Add a `study-folders` object store to IDB. Add a `folderIds: string[]` field to StudyItem (alongside the existing `folders: string[]` for backward compat during migration). Studies with empty `folderIds` appear in "Unsorted."
+
+**Why safe:** Type + store addition only. No UI changes. Existing data unaffected.
 
 **Files:**
-- `src/study/types.ts` (extend — StudyFolder type)
-- `src/idb/index.ts` (extend — add folders store, bump version)
-- `src/study/studyDb.ts` (extend — folder CRUD)
+- `src/study/types.ts` (extend)
+- `src/idb/index.ts` (extend — add store, bump version)
+- `src/study/studyDb.ts` (extend — folder CRUD, migration helper for existing string folders)
 
-**Validation:** `npm run build` + `npx tsc --noEmit`. Existing studies still load. New folders store exists in IDB.
+**Validation:** `npm run build` + `npx tsc --noEmit`. Existing studies load. New store exists in IDB.
 
 ---
 
-### Task 9.2: Folder sidebar and navigation
+### Task 9.2: Sidebar shell and fixed navigation sections
 
-**Diagnosis:** The library view is currently a flat list. Need a folder navigation panel that lets users browse by folder.
+**Diagnosis:** The library view is a flat list with no sidebar. Need the two-panel layout: sidebar on the left, content on the right.
 
-**Small safe step:** Add a collapsible sidebar to the library view:
-- Root level shows all top-level folders + an "All Studies" option + an "Unfiled" option
-- Clicking a folder filters the study list to that folder's contents
-- Nested folders (if parentId is set) render as indented children
-- Folder expand/collapse toggles for nested folders
-- Active folder is highlighted
-- Folder count badges (number of studies in each folder)
+**Small safe step:** Add the sidebar panel to the library view:
+- **Layout:** sidebar (240px default width) | content area (flex-grow). Sidebar collapsible on mobile.
+- **Fixed sections at top (always visible):**
+  - "All Studies" — shows total count, clicking shows all studies
+  - "Favorites" — shows count of favorited studies
+  - "Unsorted" — shows count of studies with no folder assignment
+  - "Trash" — shows count of soft-deleted studies (defer actual soft-delete to 9.3)
+- **Folder tree below fixed sections:**
+  - Render folders as flat list with CSS `padding-left: calc(var(--level) * 16px)` for indentation
+  - Each folder row: expand/collapse triangle (if has children) + icon/emoji + name + count badge
+  - Active folder highlighted with background color
+  - Expand/collapse state read from `folder.expanded` field, toggled on click, persisted to IDB
+- Clicking any sidebar item sets the active folder filter; content area re-renders with filtered studies
 
-**Why safe:** Additive UI panel alongside the existing list view. The list view rendering is unchanged — it just receives a folder filter.
+**Why safe:** Additive layout change. The existing list view becomes the content area. Sidebar is a new panel alongside it.
 
 **Files:**
-- `src/study/libraryView.ts` (extend — sidebar panel + folder filter state)
-- `src/study/studyCtrl.ts` (extend — folder navigation state, active folder)
-- `src/styles/main.scss` (extend — sidebar layout)
+- `src/study/libraryView.ts` (extend — sidebar + two-panel layout)
+- `src/study/studyCtrl.ts` (extend — active folder state, folder tree computation)
+- `src/styles/main.scss` (extend — sidebar styles, two-panel layout, responsive collapse)
 
-**Validation:** Create folders → they appear in sidebar → click folder → list filters correctly → nested folders indent and expand/collapse.
+**Validation:** Sidebar renders with fixed sections. "All Studies" shows correct count. Create a folder via dev console → appears in sidebar. Click folder → content filters. Expand/collapse persists across reload.
 
 ---
 
-### Task 9.3: Create, rename, and delete folders
+### Task 9.3: Folder CRUD operations
 
-**Diagnosis:** Users need basic folder management operations.
+**Diagnosis:** Users need to create, rename, reorder, and delete folders from the sidebar.
 
 **Small safe step:**
-- "New Folder" button in the sidebar header → creates folder with editable inline name
-- Right-click folder → context menu with Rename and Delete options
-- Rename: inline text edit on the folder name
-- Delete: confirmation prompt. Option to move contained studies to parent folder or "Unfiled." Does NOT delete the studies themselves.
-- "New Subfolder" option inside existing folders (for nesting)
+- **Create:** "+" button in sidebar header → inline editable text field at bottom of folder tree. Enter confirms, Escape cancels. New folder gets `parentId: null`, `order: nextAvailable`.
+- **Create subfolder:** Right-click folder → "New Subfolder" → inline editable field indented under parent.
+- **Rename:** Double-click folder name → transforms to inline text input. Enter confirms, Escape reverts.
+- **Delete:** Right-click → "Delete Folder." Confirmation: "Move X studies to Unsorted?" Studies are NOT deleted, only unlinked from this folder (their `folderIds` entry is removed). If folder has subfolders, subfolders are also deleted (studies in them become Unsorted).
+- **Reorder:** Drag folders within the sidebar to reorder. Updates `order` field. Drag onto another folder to nest (makes it a subfolder by setting `parentId`).
+- **Right-click context menu on folders:** New Subfolder, Rename, Change Icon, Change Color, Delete
+
+**Technical note for sidebar drag-and-drop:** Use native HTML5 DnD. On `dragover` of a folder row, show one of two indicators: (a) insertion line between folders (reorder) or (b) folder highlight ring (nest into). Determine which by cursor position: top/bottom 25% of the row = insertion, middle 50% = nest. This is the standard pattern used by file managers.
 
 **Files:**
-- `src/study/libraryView.ts` (extend — folder management UI)
-- `src/study/studyCtrl.ts` (extend — create/rename/delete folder operations)
-- `src/study/studyDb.ts` (extend — folder persistence)
+- `src/study/libraryView.ts` (extend — CRUD UI, inline editing, context menu, sidebar DnD)
+- `src/study/studyCtrl.ts` (extend — CRUD operations, reorder/nest logic)
+- `src/study/studyDb.ts` (extend — folder update/delete with cascade)
 
-**Validation:** Create folder → rename → create subfolder inside it → delete subfolder → studies move to parent.
+**Validation:** Create folder → rename → create subfolder → drag subfolder to reorder → delete folder → studies become Unsorted. All operations persist across reload.
 
 ---
 
 ### Task 9.4: Drag-and-drop studies into folders
 
-**Diagnosis:** Users need to organize studies by dragging them into folders in the sidebar.
+**Diagnosis:** Users need to organize studies by dragging them from the content area into folders in the sidebar.
 
-**Small safe step:** Implement HTML5 Drag and Drop:
-- Study rows in the list are `draggable="true"`
-- Folders in the sidebar are drop targets
-- On dragover: folder highlights to indicate valid drop
-- On drop: update the study's `folderIds` to include the target folder
-- Visual feedback: study row shows a ghost while dragging, folder shows a highlight ring
-- Moving between folders: dragging to a new folder updates the membership
+**Small safe step:**
+- Study rows/cards in the content area get `draggable="true"` attribute
+- On `dragstart`: set `dataTransfer` with study ID(s). If multi-selected, include all selected IDs. Show ghost image (clone of the row, or a badge showing "3 items" for multi-drag).
+- Sidebar folders are drop targets. On `dragover`: folder row gets a highlight class (e.g., `.drag-target-active` with a colored ring/background). On `dragleave`: remove highlight.
+- On `drop`: add the target folder's ID to each dragged study's `folderIds`. If the study was in "Unsorted," it leaves Unsorted (it now has a folder).
+- Dragging to "Unsorted" removes all folder assignments.
+- Dragging to "Favorites" toggles the favorite flag.
+- Multi-drag: if 3 items are selected and you drag one, all 3 move.
 
-**Technical notes:**
-- Use native HTML5 `dragstart`, `dragover`, `drop` events — no library needed for this scope
-- `event.dataTransfer.setData('text/plain', studyId)` on dragstart
-- `event.preventDefault()` on dragover to allow drop
-- Touch/mobile drag: defer to Phase 9.6 (touch events need different handling)
-
-**Why safe:** Event handlers on existing DOM elements. No structural changes to the list or sidebar.
+**Key UX detail:** Dropping a study into a folder ADDS it to that folder — it doesn't REMOVE it from its current folder. This supports multi-folder membership. To move (remove from current + add to new), use the bulk action "Move to Folder" which offers "Move" (replace) vs "Also add to" (append) options.
 
 **Files:**
-- `src/study/libraryView.ts` (extend — drag source on study rows, drop target on folders)
-- `src/study/studyCtrl.ts` (extend — move-to-folder operation)
-- `src/styles/main.scss` (extend — drag feedback styles)
+- `src/study/libraryView.ts` (extend — drag source on items, drop targets on sidebar, ghost image)
+- `src/study/studyCtrl.ts` (extend — add-to-folder / move-to-folder logic)
+- `src/styles/main.scss` (extend — drag-target highlight, ghost image styles)
 
-**Validation:** Drag a study row → hover over a folder → folder highlights → drop → study now appears in that folder. Drag to a different folder → study moves.
+**Validation:** Drag a study → hover over folder → folder highlights → drop → study appears in folder. Multi-select 3 → drag → all 3 added to folder. Drag to "Unsorted" → folder assignments removed.
 
 ---
 
-### Task 9.5: Multi-select and bulk operations
+### Task 9.5: Multi-select with toolbar transformation
 
-**Diagnosis:** Users with large libraries need to select multiple studies for bulk operations (move to folder, tag, delete, export).
+**Diagnosis:** Users with growing libraries need to select multiple items for batch operations.
 
 **Small safe step:**
-- Click selects one study (existing behavior)
-- Cmd/Ctrl + click toggles individual selection without deselecting others
-- Shift + click selects a range (from last selected to clicked)
-- Selected items are visually highlighted (distinct from hover)
-- When multiple items are selected, a bulk action bar appears at the top: "X selected" + action buttons: Move to Folder, Add Tag, Delete, Export PGN
-- Clicking away or pressing Escape clears the selection
 
-**Why safe:** Selection state is ephemeral (in-memory). Bulk operations call existing single-item operations in a loop.
+**Selection mechanics:**
+- Click = select one (deselects others)
+- Cmd/Ctrl + click = toggle one without affecting others
+- Shift + click = range select (from last single-clicked item to this one)
+- Checkbox column (optional): small checkbox on hover for each row. Click checkbox = toggle without deselecting others (matches the "casual select" pattern).
+
+**Toolbar transformation:** When `selectedIds.size > 0`, the content area header transforms:
+- **Normal header:** search input | sort dropdown | view mode toggle | filter pills
+- **Selection header:** ☑ select-all checkbox | "3 selected" label | Move to Folder | Add Tag | Remove Tag | Delete | Export PGN | ✕ Cancel
+
+The transformation is a swap of the same DOM area, not a second bar. Smooth CSS transition (opacity crossfade, ~150ms).
+
+**Deselect triggers:** Click empty space in content area, press Escape, navigate to different folder, or click Cancel in the selection header.
 
 **Files:**
-- `src/study/studyCtrl.ts` (extend — selectedIds: Set<string>, selection logic)
-- `src/study/libraryView.ts` (extend — multi-select handlers, bulk action bar)
-- `src/styles/main.scss` (extend — selection highlight + bulk bar styles)
+- `src/study/studyCtrl.ts` (extend — selectedIds: Set<string>, lastClickedId, selection logic with range support)
+- `src/study/libraryView.ts` (extend — selection rendering, toolbar transform, bulk action handlers)
+- `src/styles/main.scss` (extend — selected row highlight, toolbar transition)
 
-**Validation:** Cmd+click three studies → all highlighted → "3 selected" bar appears → "Move to Folder" → all three move → Escape → selection clears.
+**Validation:** Click row → selected. Cmd+click two more → 3 selected, toolbar transforms. Shift+click → range selects. "Move to Folder" → folder picker dropdown → all selected items move. Escape → deselects, toolbar returns to normal.
 
 ---
 
-### Task 9.6: View mode toggle (list vs grid)
+### Task 9.6: View modes — list, grid, headlines
 
-**Diagnosis:** Some users prefer a compact list; others prefer a visual grid with board thumbnails.
+**Diagnosis:** Different tasks benefit from different information density. Scanning a large collection wants compact headlines. Reviewing studies visually wants board thumbnails.
 
-**Small safe step:**
-- Add a view mode toggle in the library header: list icon / grid icon
-- **List view** (default, current): rows with title, metadata, tags, icons
-- **Grid view**: cards with a small board thumbnail (render the study's starting position as a static Chessground mini-board), title below, and key metadata
-- View mode persisted to localStorage
-- Both views respect the same sort/filter/folder state
+**Small safe step:** Implement 3 view modes (defer moodboard/masonry to later):
 
-**Why safe:** Two CSS layouts rendering the same data. The grid view adds small static board renderings (Chessground supports this natively with `viewOnly: true`).
+**List view (default):**
+- Each row: favorite star | board mini-thumbnail (32×32) | title | opening/ECO tag | player names | date | tag pills | due-review indicator
+- Configurable visible fields: a small gear icon opens a dropdown where users toggle which fields appear (title always visible, others optional). Setting persisted per folder.
+- Row height ~40px for density.
+
+**Grid view:**
+- Cards in a responsive CSS grid (auto-fill, min 180px columns)
+- Each card: board thumbnail (Chessground `viewOnly: true`, ~160×160) | title below | opening tag | date
+- Card hover: subtle lift shadow
+- Fewer metadata fields than list (space constrained)
+
+**Headlines view:**
+- Ultra-compact: title only, with tiny inline indicators (favorite dot, due-review dot, tag count)
+- No thumbnails, no expanded metadata
+- Row height ~28px — maximum density for large collections
+
+**View mode toggle:** 3 small icons in the content header (list/grid/headlines). Active mode highlighted. Each folder remembers its own view mode (stored on `StudyFolder.viewMode`). Global default for folders without a preference: list.
 
 **Files:**
-- `src/study/libraryView.ts` (extend — grid rendering, view mode toggle)
-- `src/study/studyCtrl.ts` (extend — view mode state + localStorage persistence)
-- `src/styles/main.scss` (extend — grid layout styles)
+- `src/study/libraryView.ts` (extend — 3 view mode renderers, toggle UI, field visibility config)
+- `src/study/studyCtrl.ts` (extend — view mode state per folder, field visibility state)
+- `src/styles/main.scss` (extend — grid layout, headlines layout, card styles, responsive breakpoints)
 
-**Validation:** Toggle to grid → studies show as cards with board thumbnails → toggle back to list → standard rows. View mode persists across reload.
+**Validation:** Toggle list → grid → headlines. Each renders correctly. Switch folders → each remembers its view mode. Resize browser → grid reflows responsively. Toggle field visibility in list view → columns appear/disappear.
 
 ---
 
-### Task 9.7: Search across annotations
+### Task 9.7: Tag system
 
-**Diagnosis:** Users need full-text search across their study library — not just titles but also annotation comments, notes, and tags.
+**Diagnosis:** Tags provide cross-cutting organization that folders can't. A study tagged "endgame" and "rook endings" should be findable regardless of which folder it's in.
 
 **Small safe step:**
-- Search input in the library header (already exists from Phase 2 as a title filter)
-- Extend to search across: title, notes, tags, PGN comments (extract text from PGN comment blocks)
-- Results highlight which field matched
-- Debounced input (300ms) to avoid excessive filtering on every keystroke
-- Search is client-side (filter the loaded studies array)
 
-**Performance note:** For libraries with 100+ studies, extracting and searching PGN comments on every keystroke could be slow. Pre-compute a search index on library load: for each study, extract all comment text from the PGN and store as a flat searchable string. This index lives in memory only (not persisted).
+**Adding tags:**
+- In study detail view: tag input field with autocomplete against existing tags. Type → dropdown shows matching existing tags + "Create new tag" option. Enter or click to add. Tags appear as removable pills.
+- In bulk action bar: "Add Tag" opens same autocomplete. Selected tag is applied to all selected studies.
+
+**Viewing/filtering by tag:**
+- Sidebar section "Tags" (collapsible) below the folder tree. Lists all tags with usage counts.
+- Click a tag in the sidebar → filters content to studies with that tag (works alongside folder filter — shows intersection).
+- Tag pills in study rows are clickable → same filter behavior.
+
+**Tag management (right-click tag in sidebar):**
+- Rename tag (updates all studies referencing it)
+- Merge with another tag (combine two tags into one)
+- Delete tag (removes from all studies, does not delete studies)
+- Set tag color (optional visual identity — small colored dot next to tag name)
+
+**Auto-suggested tags:** On study save, auto-suggest tags based on PGN content: opening name, ECO code first letter ("e4 openings", "d4 openings"), "annotated" (if PGN contains comments), "analyzed" (if PGN contains eval data). User can accept or dismiss suggestions.
 
 **Files:**
-- `src/study/studyCtrl.ts` (extend — search index, search function)
-- `src/study/libraryView.ts` (extend — search UI, result highlighting)
+- `src/study/types.ts` (extend — add `StudyTag` type if needed, or keep tags as strings)
+- `src/study/studyCtrl.ts` (extend — tag CRUD, autocomplete, filter-by-tag, merge, rename)
+- `src/study/libraryView.ts` (extend — tag section in sidebar, tag pills in rows, tag input with autocomplete)
+- `src/study/studyDetailView.ts` (extend — tag editing in study detail)
 
-**Validation:** Type a word that appears in a study's comment → study appears in filtered results. Type a tag name → studies with that tag appear. Clear search → all studies shown.
+**Validation:** Add tags to studies → tags appear in sidebar with counts. Click tag → filters. Rename tag → all studies updated. Merge tags → combined. Bulk-add tag to 5 selected studies → all 5 show the tag.
+
+---
+
+### Task 9.8: Search with scope and highlighting
+
+**Diagnosis:** Users need to find studies by content, not just browse by folder. Search should work across titles, notes, tags, and annotation text within PGNs.
+
+**Small safe step:**
+
+**Search UI:**
+- Search input in the content header (always visible). Placeholder: "Search studies..."
+- As user types (debounced 300ms), results filter in real-time within the current scope
+- Scope indicator: "Searching in: All Studies" or "Searching in: [Folder Name]" — clickable to toggle between searching current folder vs all studies
+
+**Search targets:**
+- Title (weighted highest in relevance)
+- Tags (exact and partial match)
+- Game-level notes
+- Player names (white, black)
+- Opening name and ECO code
+- PGN comment text (extracted and indexed on library load)
+
+**Search index:** On library load, build an in-memory search index: for each study, concatenate all searchable text into a lowercase string. Store as `Map<studyId, searchText>`. Rebuild on study update. This avoids re-parsing PGN on every keystroke.
+
+**Result display:**
+- Matching studies shown in the current view mode (list/grid/headlines)
+- In list view: the matching field is subtly highlighted or indicated (e.g., if the match was in a comment, show a small "matched in annotations" indicator)
+- Result count shown: "12 results for 'endgame'"
+- Clear search: × button in search input, or Escape key
+
+**Keyboard shortcut:** Cmd/Ctrl+F focuses the search input (override browser find for this page).
+
+**Files:**
+- `src/study/studyCtrl.ts` (extend — search index build, search function, scope state)
+- `src/study/libraryView.ts` (extend — search input, result count, match indicators)
+
+**Validation:** Type "endgame" → studies with "endgame" in title, tags, or comments appear. Clear search → all studies return. Search within a folder → only that folder's items searched. Toggle to "All Studies" scope → global search.
+
+---
+
+### Task 9.9: Favorites and quick access
+
+**Diagnosis:** Favorites (already a boolean on StudyItem) need a dedicated fast-access path — not just a filter, but a persistent sidebar section.
+
+**Small safe step:**
+- "Favorites" in the sidebar fixed section shows all favorited studies (already planned in 9.2)
+- Favorite toggle: star icon on each study row. Click to toggle. Animated fill transition (empty star → filled gold star, ~200ms).
+- Drag a study to the "Favorites" sidebar section → toggles favorite on.
+- Favorites persist across sessions (already stored on StudyItem.favorite).
+- "Favorites" section in sidebar shows a mini-list of favorited study titles for instant access (click to navigate directly to study detail, bypassing the content area filter).
+
+**Files:**
+- `src/study/libraryView.ts` (extend — favorites sidebar rendering, star toggle animation, drag-to-favorite)
+- `src/styles/main.scss` (extend — star animation, favorites mini-list styles)
+
+**Validation:** Star a study → appears in Favorites section instantly. Unstar → disappears. Drag to Favorites → starred. Click study name in Favorites → navigates to #/study/:id.
+
+---
+
+### Task 9.10: Responsive and mobile sidebar
+
+**Diagnosis:** The sidebar needs to work on small screens. A permanently visible 240px sidebar consumes too much space on mobile.
+
+**Small safe step:**
+- **Desktop (>768px):** Sidebar always visible at 240px. Content area fills remaining width.
+- **Tablet (768px–1024px):** Sidebar collapses to icon-only mode (40px) showing only folder icons/emojis. Hover expands to full width as an overlay. Click outside collapses.
+- **Mobile (<768px):** Sidebar hidden by default. Hamburger icon in content header toggles sidebar as a full-height overlay. Selecting a folder closes the overlay automatically.
+- Sidebar state (expanded/collapsed/hidden) transitions smoothly with CSS transform (translateX, ~200ms ease).
+
+**Files:**
+- `src/study/libraryView.ts` (extend — responsive sidebar logic, toggle button)
+- `src/styles/main.scss` (extend — media queries, sidebar transitions, overlay styles)
+
+**Validation:** Resize browser → sidebar collapses at tablet breakpoint → hides at mobile. Toggle button shows/hides sidebar. Folder selection on mobile closes overlay.
 
 ---
 
@@ -1165,7 +1280,7 @@ Every task must validate with:
 | 6 | 6.1–6.3 | CCP-544 to CCP-546 | Phase 5 |
 | 7 | 7.1–7.3 | CCP-547 to CCP-549 | Phase 6 |
 | 8 | 8.1–8.6 | CCP-550 to CCP-555 | Phase 7 |
-| 9 | 9.1–9.7 | TBD | Phase 2 (minimum) |
+| 9 | 9.1–9.10 | TBD (10 tasks) | Phase 2 (minimum) |
 
 **Note:** Phases 3 and 4 can execute in parallel (annotation workspace and drill engine are independent until Phase 5 wires them together).
 

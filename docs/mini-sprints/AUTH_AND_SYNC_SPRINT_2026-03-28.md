@@ -5,16 +5,20 @@
 **Source:** docs/FUTURE_FUNCTIONALITY.md
 **Goal:** Add admin login, server-side persistence, and cross-device sync so analysis and puzzle data survives across sessions and devices.
 
-### Task Status (as of 2026-03-30)
+### Task Snapshot (as of 2026-03-30)
 
-| Task | Status | Notes |
-|---|---|---|
-| Task 1 — Server database module | **Done** | Migrated from MySQL to SQLite (CCP-472) |
-| Task 2 — Admin auth / login | **Done** | Lichess OAuth in `server/auth.mjs` |
-| Task 3 — Server API endpoints | **Done** | `server/sync.mjs` push/pull endpoints |
-| Task 4 — Client sync service | **Done** | `src/sync/client.ts` with push/pull |
-| Task 5 — Pull → IDB write | **Fixed (CCP-466)** | DB name corrected, attempts now written |
-| Task 6 — Bidirectional validation | **Not done** | Needs end-to-end testing |
+- Task 1 — Server database module: **Done**
+  Migrated from MySQL to SQLite (CCP-472)
+- Task 2 — Admin auth / login: **Done**
+  Lichess OAuth in `server/auth.mjs`
+- Task 3 — Server API endpoints: **Done**
+  `server/sync.mjs` push/pull endpoints
+- Task 4 — Client sync service: **Done**
+  `src/sync/client.ts` with push/pull
+- Task 5 — Pull → IDB write: **Fixed (CCP-466)**
+  DB name corrected, attempts now written
+- Task 6 — Bidirectional validation: **Not done**
+  Needs end-to-end testing
 
 **Known blockers:** Full merge logic (last-write-wins dedup for attempts) not yet implemented. End-to-end sync validation not yet performed.
 
@@ -44,7 +48,7 @@ This sprint covers Phases 1–3. Phase 4 is deferred.
 - **Sync model:** Client-initiated push/pull. IDB is the primary write store. Server is the durable backup. On login, pull server state into IDB. On save, push IDB changes to server.
 - **What syncs:** Imported games list (metadata only, not full PGN), analysis/review results, puzzle definitions (user-library), puzzle attempts, puzzle user meta.
 
-## Task Breakdown
+## Phase 1 — Core Auth And Sync Delivery
 
 ### Task 1 — SQLite schema and server database module (CCP-210)
 - Add `better-sqlite3` dependency

@@ -1,0 +1,2403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patzer Pro — Lookbook</title>
+<style>
+/* Shared base */
+:root { --bg: #1a1a1a; --text: #e8e8e8; --border: #3a3a3a; --accent: #629924; }
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 18px; line-height: 1.6; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Top header */
+.lookbook-header { position: sticky; top: 0; z-index: 200; background: #111; border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.lookbook-header h1 { margin: 0; font-size: 22px; font-weight: 600; white-space: nowrap; }
+
+/* Tab bar */
+.tab-bar { display: flex; gap: 4px; }
+.tab-bar button { background: var(--border); color: var(--text); border: 1px solid #555; border-radius: 6px 6px 0 0; padding: 6px 18px; cursor: pointer; font-size: 15px; font-family: inherit; border-bottom: none; transition: all 0.15s; }
+.tab-bar button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab-bar button:hover:not(.active) { background: #444; }
+
+/* Tab content */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Regen button */
+.lookbook-regen { margin-left: auto; position: relative; }
+.lookbook-regen button { background: var(--border); color: var(--text); border: 1px solid #555; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 14px; }
+.lookbook-regen button:hover { border-color: var(--accent); }
+.regen-tooltip { display: none; position: absolute; right: 0; top: calc(100% + 8px); background: #222; border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; width: 320px; font-size: 13px; line-height: 1.5; z-index: 300; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.regen-tooltip.visible { display: block; }
+.regen-tooltip code { background: #333; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+.regen-tooltip p { margin: 0 0 8px; }
+.regen-tooltip p:last-child { margin: 0; }
+
+
+:root { --bg: #1a1a1a; --text: #e8e8e8; --border: #3a3a3a; --accent: #629924; }
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 18px; line-height: 1.6; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Sticky header */
+.header { position: sticky; top: 0; z-index: 100; background: #111; border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.header h1 { margin: 0; font-size: 22px; font-weight: 600; white-space: nowrap; }
+.header nav { display: flex; gap: 12px; flex-wrap: wrap; font-size: 16px; }
+.tone-toggle { display: flex; align-items: center; gap: 8px; }
+.tone-toggle button { background: var(--border); color: var(--text); border: 1px solid #555; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 16px; }
+.tone-toggle button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.regen-hint { position: relative; }
+.regen-hint button { background: var(--border); color: var(--text); border: 1px solid #555; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 16px; }
+.regen-hint button:hover { border-color: var(--accent); }
+.regen-tooltip { display: none; position: absolute; right: 0; top: calc(100% + 8px); background: #222; border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; width: 320px; font-size: 15px; line-height: 1.5; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.regen-tooltip.visible { display: block; }
+.regen-tooltip code { background: #333; padding: 2px 6px; border-radius: 3px; font-size: 14px; }
+.regen-tooltip p { margin: 0 0 8px; }
+.regen-tooltip p:last-child { margin: 0; }
+
+/* Board glyph squares */
+.glyph-gallery { display: flex; flex-wrap: wrap; gap: 24px; }
+.glyph-card { text-align: center; }
+.glyph-card__label { margin-top: 8px; font-weight: 600; font-size: 16px; }
+.glyph-card__sub { font-size: 14px; opacity: 0.6; margin-top: 2px; }
+.glyph-square { width: 80px; height: 80px; position: relative; border-radius: 4px; overflow: hidden; }
+.glyph-square--light { background: #f0d9b5; }
+.glyph-square--dark { background: #b58863; }
+.glyph-square svg.piece { position: absolute; bottom: 0; left: 0; width: 80px; height: 80px; }
+.glyph-square svg.badge { position: absolute; top: 2px; right: 2px; width: 28px; height: 28px; }
+
+/* LFYM preview cards */
+.lfym-preview { display: flex; flex-direction: column; gap: 20px; }
+.lfym-card { background: #222; border: 1px solid var(--border); border-radius: 6px; padding: 16px 20px; max-width: 600px; }
+.lfym-card__header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.lfym-card__reason { font-size: 13px; opacity: 0.5; margin-bottom: 2px; }
+.lfym-card__label { font-weight: 700; font-size: 17px; }
+.lfym-card__detail { font-size: 15px; line-height: 1.5; margin: 8px 0; padding: 8px 12px; border-left: 3px solid; border-radius: 0 4px 4px 0; background: rgba(255,255,255,0.03); }
+.lfym-card__summary { font-size: 14px; opacity: 0.7; font-style: italic; }
+.lfym-card__meta { font-size: 12px; opacity: 0.4; margin-top: 8px; }
+.lfym-reason-group { margin-bottom: 32px; }
+.lfym-reason-group__title { font-size: 18px; font-weight: 600; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+
+/* Editable cells */
+[contenteditable] { outline: 1px dashed rgba(255,255,255,0.15); border-radius: 2px; padding: 1px 3px; min-height: 1.4em; transition: outline-color 0.15s; }
+[contenteditable]:hover { outline-color: rgba(255,255,255,0.3); }
+[contenteditable]:focus { outline: 1px solid var(--accent); background: rgba(255,255,255,0.05); }
+.edit-dirty { outline-color: #e69d00 !important; }
+.save-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 200; background: #111; border-top: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 16px; transform: translateY(100%); transition: transform 0.2s; }
+.save-bar.visible { transform: translateY(0); }
+.save-bar button { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 8px 20px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.save-bar button:hover { opacity: 0.9; }
+.save-bar .save-status { font-size: 16px; opacity: 0.7; }
+.save-bar .edit-count { font-size: 16px; color: #e69d00; font-weight: 600; }
+
+/* Content */
+.content { max-width: 1200px; margin: 0 auto; padding: 20px; }
+section { margin-bottom: 48px; }
+h2 { font-size: 24px; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+h3 { font-size: 18px; margin: 24px 0 8px; }
+
+/* Color strip */
+.color-strip { display: flex; border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
+.color-strip__tier { flex: 1; padding: 12px 4px; text-align: center; font-size: 14px; line-height: 1.3; min-width: 0; }
+.color-strip__tier .label { font-weight: 600; font-size: 15px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.color-strip__tier .hex { opacity: 0.7; font-size: 13px; }
+.color-strip__tier .range { opacity: 0.6; font-size: 13px; display: block; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 16px; }
+th { text-align: left; padding: 8px 10px; background: #222; border-bottom: 2px solid var(--border); font-weight: 600; white-space: nowrap; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+.swatch { display: inline-block; width: 18px; height: 18px; border-radius: 3px; vertical-align: middle; border: 1px solid rgba(255,255,255,0.1); }
+.glyph { font-weight: 700; font-size: 18px; }
+
+/* Matrix */
+.matrix { overflow-x: auto; }
+.matrix table { min-width: 700px; }
+.matrix th.reason { min-width: 140px; }
+.matrix td { font-size: 15px; line-height: 1.4; }
+.matrix td.cell { min-width: 120px; }
+
+/* Positive row */
+.positive-row { margin-bottom: 16px; }
+.positive-row table td { font-size: 15px; }
+
+/* Special cards */
+.special-cards { display: flex; gap: 16px; flex-wrap: wrap; }
+.special-card { background: #222; border: 1px solid var(--border); border-radius: 6px; padding: 16px; min-width: 200px; flex: 1; }
+.special-card .card-label { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.special-card .card-summary { font-size: 16px; opacity: 0.8; }
+.special-card .card-color { font-size: 14px; opacity: 0.6; margin-top: 6px; }
+
+/* Review label mapping */
+.mapping-arrow { opacity: 0.5; }
+
+/* Hidden tone sections */
+.tone-section { display: none; }
+.tone-section.visible { display: block; }
+
+@media (max-width: 700px) {
+  .color-strip { flex-wrap: wrap; }
+  .color-strip__tier { min-width: 33%; flex: none; }
+  .header { flex-direction: column; align-items: flex-start; }
+  .tone-toggle { margin-left: 0; }
+}
+
+
+.lfym-panel { background: #262421; border: 1px solid #3a3a3a; border-radius: 6px; max-width: 400px; padding: 0; margin-bottom: 24px; font-size: 15px; }
+.lfym-panel__title { background: #1a1a1a; padding: 8px 12px; border-bottom: 1px solid #3a3a3a; display: flex; justify-content: space-between; align-items: center; font-size: 13px; border-radius: 6px 6px 0 0; }
+.lfym-panel__title span:first-child { font-weight: 600; }
+.lfym-panel__title .progress { opacity: 0.5; }
+.lfym-panel__body { padding: 14px 16px; }
+.lfym-panel__icon { font-size: 22px; margin-right: 8px; display: inline-block; vertical-align: middle; }
+.lfym-panel__icon--win { color: #759900; }
+.lfym-panel__icon--fail { color: #dc322f; }
+.lfym-panel__icon--off { color: #e0a030; }
+.lfym-panel strong { display: block; margin-bottom: 6px; font-size: 15px; }
+.lfym-panel em { display: block; margin-bottom: 8px; font-size: 14px; opacity: 0.8; }
+.lfym-panel .eval-boxes { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
+.lfym-panel .eval-box { display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; border-radius: 4px; border: 1px solid transparent; }
+.lfym-panel .eval-box__label { font-size: 13px; color: #888; }
+.lfym-panel .eval-box__value { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lfym-panel .reason { margin-top: 10px; padding: 7px 10px; border-radius: 4px; background: rgba(255,255,255,0.03); }
+.lfym-panel .reason__label { font-size: 13px; font-weight: 600; }
+.lfym-panel .reason__detail { font-size: 13px; line-height: 1.4; margin-top: 4px; padding-left: 8px; border-left: 2px solid; }
+.lfym-panel .reason__summary { font-size: 13px; opacity: 0.6; font-style: italic; margin-top: 4px; }
+.lfym-panel .actions { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.lfym-panel .actions a, .lfym-panel .actions button { display: block; background: none; border: none; color: #629924; font-size: 13px; text-align: left; padding: 2px 0; cursor: pointer; font-family: inherit; }
+.lfym-panel .actions button.btn-save { color: #888; }
+.lfym-panel .continue { margin-top: 10px; text-align: right; }
+.lfym-panel .continue a { color: #629924; font-size: 14px; font-weight: 600; cursor: pointer; }
+.lfym-states-grid { display: flex; flex-wrap: wrap; gap: 24px; }
+.lfym-state-label { font-size: 14px; font-weight: 600; margin-bottom: 8px; opacity: 0.5; }
+.lfym-state-section { margin-bottom: 32px; }
+.lfym-state-section h3 { font-size: 17px; margin: 0 0 16px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.class-tag { display: inline-block; font-size: 10px; background: #333; color: #aaa; padding: 1px 5px; border-radius: 3px; font-family: monospace; margin-left: 4px; vertical-align: middle; }
+.panel-id { display: block; font-size: 11px; font-family: monospace; color: #555; margin-top: 6px; text-align: center; cursor: pointer; transition: color 0.15s; user-select: none; }
+.panel-id:hover { color: #888; }
+.panel-id.copied { color: #26a641; }
+.usage-note { background: #222; border: 1px solid #3a3a3a; border-radius: 6px; padding: 12px 16px; font-size: 14px; line-height: 1.6; margin-top: 16px; margin-bottom: 0; color: #bbb; position: relative; cursor: pointer; }
+.usage-note strong { color: #ddd; }
+.usage-note code { background: #333; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ccc; }
+.usage-note ul { color: #aaa; }
+.usage-note .usage-summary { display: block; padding-right: 90px; }
+.usage-note .usage-expand { position: absolute; bottom: 10px; right: 14px; font-size: 12px; color: #666; display: flex; align-items: center; gap: 4px; pointer-events: none; transition: color 0.15s; }
+.usage-note:hover .usage-expand { color: #999; }
+.usage-note.expanded .usage-expand .expand-text { display: none; }
+.usage-note .usage-expand .collapse-text { display: none; }
+.usage-note.expanded .usage-expand .collapse-text { display: inline; }
+.usage-note .usage-expand .expand-icon { transition: transform 0.2s; }
+.usage-note.expanded .usage-expand .expand-icon { transform: rotate(180deg); }
+.usage-note .usage-details { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #3a3a3a; color: #999; }
+.usage-note.expanded .usage-details { display: block; }
+
+
+:root { --bg: #1a1a1a; --text: #e8e8e8; --border: #3a3a3a; --accent: #629924; }
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 18px; line-height: 1.6; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.header { position: sticky; top: 0; z-index: 100; background: #111; border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.header h1 { margin: 0; font-size: 22px; font-weight: 600; white-space: nowrap; }
+.header nav { display: flex; gap: 12px; flex-wrap: wrap; font-size: 15px; }
+.header .regen-hint { margin-left: auto; }
+.header .regen-hint button { background: var(--border); color: var(--text); border: 1px solid #555; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 14px; }
+
+.content { max-width: 1200px; margin: 0 auto; padding: 20px; }
+section { margin-bottom: 48px; }
+h2 { font-size: 24px; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+h3 { font-size: 18px; margin: 24px 0 8px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 16px; }
+th { text-align: left; padding: 8px 10px; background: #222; border-bottom: 2px solid var(--border); font-weight: 600; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+code { background: #333; padding: 2px 6px; border-radius: 3px; font-size: 14px; }
+
+.usage-note { background: #222; border: 1px solid #3a3a3a; border-radius: 6px; padding: 12px 16px; font-size: 14px; line-height: 1.6; margin-top: 16px; margin-bottom: 0; color: #bbb; position: relative; cursor: pointer; }
+.usage-note strong { color: #ddd; }
+.usage-note code { color: #ccc; }
+.usage-note ul { color: #aaa; }
+.usage-note .usage-summary { display: block; padding-right: 90px; }
+.usage-note .usage-expand { position: absolute; bottom: 10px; right: 14px; font-size: 12px; color: #666; display: flex; align-items: center; gap: 4px; pointer-events: none; transition: color 0.15s; }
+.usage-note:hover .usage-expand { color: #999; }
+.usage-note.expanded .usage-expand .expand-text { display: none; }
+.usage-note .usage-expand .collapse-text { display: none; }
+.usage-note.expanded .usage-expand .collapse-text { display: inline; }
+.usage-note .usage-expand .expand-icon { transition: transform 0.2s; }
+.usage-note.expanded .usage-expand .expand-icon { transform: rotate(180deg); }
+.usage-note .usage-details { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #3a3a3a; color: #999; }
+.usage-note.expanded .usage-details { display: block; }
+
+.color-strip { display: flex; border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
+.color-strip__item { flex: 1; padding: 12px 6px; text-align: center; font-size: 13px; line-height: 1.3; min-width: 0; }
+.color-strip__item .label { font-weight: 600; font-size: 14px; display: block; }
+.color-strip__item .hex { opacity: 0.7; font-size: 12px; }
+
+.demo-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0; align-items: center; }
+.demo-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #303030; font-size: 14px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.demo-toggle { position: relative; width: 36px; height: 20px; border-radius: 10px; display: inline-block; vertical-align: middle; }
+.demo-toggle .knob { position: absolute; width: 16px; height: 16px; border-radius: 50%; top: 2px; transition: transform 0.2s; }
+.demo-input { padding: 8px 12px; border-radius: 6px; border: 1px solid; font-size: 14px; font-family: inherit; width: 200px; }
+.demo-arrow { display: inline-block; width: 120px; height: 30px; border-radius: 4px; position: relative; overflow: hidden; }
+.demo-arrow .shaft { position: absolute; top: 50%; left: 10px; right: 30px; height: 4px; transform: translateY(-50%); border-radius: 2px; }
+.demo-arrow .head { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 10px solid; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+
+.wdl-bar { display: flex; height: 22px; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+.wdl-bar > div { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+
+.eval-bar-demo { width: 26px; height: 160px; background: #333; border-radius: 3px; position: relative; overflow: hidden; display: inline-block; vertical-align: top; box-shadow: inset 0 0 4px rgba(0,0,0,0.5); }
+.eval-bar-demo .fill { position: absolute; bottom: 0; left: 0; right: 0; background: #c8c8c8; transition: height 0.3s; }
+.eval-bar-demo .tick { position: absolute; left: 0; right: 0; border-bottom: 1px solid #888; opacity: 0.35; }
+.eval-bar-demo .tick.zero { border-bottom: 2px solid #aaa; opacity: 0.7; }
+.eval-bar-demo .score { position: absolute; left: 50%; transform: translateX(-50%); font-size: 8px; font-weight: 700; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.9); }
+
+.nav-demo { display: inline-flex; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 3px; gap: 2px; }
+.nav-demo button { background: transparent; border: none; color: #bbb; padding: 5px 10px; border-radius: 5px; font-size: 16px; cursor: pointer; font-family: inherit; }
+.nav-demo button:hover { background: rgba(56,147,232,0.15); color: #e0e0e0; }
+
+.move-demo { display: inline-flex; gap: 0; background: #141414; border-radius: 4px; overflow: hidden; font-size: 14px; }
+.move-demo .idx { background: #141414; color: #666; padding: 4px 6px; min-width: 28px; text-align: center; }
+.move-demo .mv { padding: 4px 8px; cursor: pointer; }
+.move-demo .mv:hover { background: rgba(255,255,255,0.05); }
+.move-demo .mv.active { background: rgba(56,147,232,0.2); color: #fff; }
+
+.badge-demo { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 13px; font-weight: 600; background: #222; border: 1px solid #333; margin-right: 8px; }
+
+.loading-bar-demo { width: 300px; height: 22px; background: #252525; border-radius: 11px; overflow: hidden; position: relative; }
+.loading-bar-demo .fill { height: 100%; border-radius: 11px; background: linear-gradient(90deg, #2d7a3a, #4a9); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; font-weight: 600; text-shadow: 0 0 4px rgba(0,0,0,0.5); }
+
+.tab-demo { display: inline-flex; gap: 2px; }
+.tab-demo a { padding: 6px 10px; font-size: 15px; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+
+</style>
+</head>
+<body>
+
+<div class="lookbook-header">
+  <h1>Patzer Lookbook</h1>
+  <div class="tab-bar">
+    <button class="active" onclick="switchTab('feedback')">Feedback</button>
+    <button onclick="switchTab('ui')">General UI</button>
+  </div>
+  <div class="tone-toggle" id="tone-toggle">
+    <span>Harshness:</span>
+    <button class="active" data-tone="standard" onclick="setTone('standard')">Standard</button>
+    <button data-tone="harsh" onclick="setTone('harsh')">Harsh</button>
+  </div>
+  <div class="lookbook-regen">
+    <button onclick="this.nextElementSibling.classList.toggle('visible')">Regenerate</button>
+    <div class="regen-tooltip">
+      <p>This is a static snapshot. To regenerate after editing source files:</p>
+      <p><code>npm run lookbook:generate</code></p>
+      <p style="opacity:0.6">Then refresh this page to see the changes.</p>
+    </div>
+  </div>
+</div>
+
+<div class="tab-content active" id="tab-feedback">
+<div class="content">
+
+<!-- A. Color Scale Strip -->
+<section id="color-strip">
+<h2>A. Severity Color Scale</h2>
+<div class="color-strip">
+  <div class="color-strip__tier" style="background:#26a641;color:#e8e8e8">
+    <span class="label">Best Move</span>
+    <span class="hex">#26a641</span>
+    <span class="range">loss = 0 (exact)</span>
+  </div>
+  <div class="color-strip__tier" style="background:#57ab5a;color:#1a1a1a">
+    <span class="label">Excellent</span>
+    <span class="hex">#57ab5a</span>
+    <span class="range">loss ≤ 0.02</span>
+  </div>
+  <div class="color-strip__tier" style="background:#7bc67e;color:#1a1a1a">
+    <span class="label">Good</span>
+    <span class="hex">#7bc67e</span>
+    <span class="range">0.02 &lt; loss ≤ 0.04</span>
+  </div>
+  <div class="color-strip__tier" style="background:#8bb8a8;color:#1a1a1a">
+    <span class="label">Playable</span>
+    <span class="hex">#8bb8a8</span>
+    <span class="range">0.04 &lt; loss ≤ 0.05</span>
+  </div>
+  <div class="color-strip__tier" style="background:#56b4e9;color:#1a1a1a">
+    <span class="label">Inaccuracy</span>
+    <span class="hex">#56b4e9</span>
+    <span class="range">0.05 &lt; loss ≤ 0.1</span>
+  </div>
+  <div class="color-strip__tier" style="background:#e69d00;color:#1a1a1a">
+    <span class="label">Mistake</span>
+    <span class="hex">#e69d00</span>
+    <span class="range">0.1 &lt; loss ≤ 0.15</span>
+  </div>
+  <div class="color-strip__tier" style="background:#e06c4e;color:#1a1a1a">
+    <span class="label">Serious Mistake</span>
+    <span class="hex">#e06c4e</span>
+    <span class="range">0.15 &lt; loss ≤ 0.2</span>
+  </div>
+  <div class="color-strip__tier" style="background:#db3031;color:#e8e8e8">
+    <span class="label">Blunder</span>
+    <span class="hex">#db3031</span>
+    <span class="range">0.2 &lt; loss ≤ 0.3</span>
+  </div>
+  <div class="color-strip__tier" style="background:#8b1a1a;color:#e8e8e8">
+    <span class="label">Catastrophic Blunder</span>
+    <span class="hex">#8b1a1a</span>
+    <span class="range">loss &gt; 0.3</span>
+  </div>
+</div>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> This color scale appears throughout the app whenever a move’s quality is communicated visually. The colored label in the "Chosen because:" box during Learn From Your Mistakes, the colored dots on the eval graph after game review, and the severity badges next to games in the games list all pull from this palette. ...</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details">This color scale appears throughout the app whenever a move’s quality is communicated visually. The colored label in the "Chosen because:" box during Learn From Your Mistakes, the colored dots on the eval graph after game review, and the severity badges next to games in the games list all pull from this palette. Green = good, crimson = catastrophic.<br><br><strong>Code:</strong> <code>SEVERITY_TIERS</code> in <code>src/feedback/severity.ts</code>.<br><br><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>LFYM "Chosen because:" label — Game Analysis tool</li><li>Eval graph colored dots — Game Analysis tool</li><li>Game list severity badges — Games tab</li><li>Weakness detection thresholds — Stats Dashboard tool</li></ul></div></div>
+</section>
+
+<!-- B. Tier Reference Table -->
+<section id="tier-ref">
+<h2>B. Tier Reference</h2>
+<table>
+<thead><tr><th>Tier</th><th>Color</th><th>Hex</th><th>Glyph</th><th>Loss Range</th><th>Approx CP</th><th>Label</th></tr></thead>
+<tbody>
+<tr>
+  <td>best</td>
+  <td><span class="swatch" style="background:#26a641"></span></td>
+  <td><code>#26a641</code></td>
+  <td class="glyph">!</td>
+  <td>loss = 0 (exact)</td>
+  <td>0</td>
+  <td>Best Move</td>
+</tr>
+<tr>
+  <td>excellent</td>
+  <td><span class="swatch" style="background:#57ab5a"></span></td>
+  <td><code>#57ab5a</code></td>
+  <td class="glyph">!</td>
+  <td>loss ≤ 0.02</td>
+  <td>~5–15</td>
+  <td>Excellent</td>
+</tr>
+<tr>
+  <td>good</td>
+  <td><span class="swatch" style="background:#7bc67e"></span></td>
+  <td><code>#7bc67e</code></td>
+  <td class="glyph">—</td>
+  <td>0.02 &lt; loss ≤ 0.04</td>
+  <td>~15–35</td>
+  <td>Good</td>
+</tr>
+<tr>
+  <td>playable</td>
+  <td><span class="swatch" style="background:#8bb8a8"></span></td>
+  <td><code>#8bb8a8</code></td>
+  <td class="glyph">—</td>
+  <td>0.04 &lt; loss ≤ 0.05</td>
+  <td>~35–50</td>
+  <td>Playable</td>
+</tr>
+<tr>
+  <td>inaccuracy</td>
+  <td><span class="swatch" style="background:#56b4e9"></span></td>
+  <td><code>#56b4e9</code></td>
+  <td class="glyph">?!</td>
+  <td>0.05 &lt; loss ≤ 0.1</td>
+  <td>~50–100</td>
+  <td>Inaccuracy</td>
+</tr>
+<tr>
+  <td>mistake</td>
+  <td><span class="swatch" style="background:#e69d00"></span></td>
+  <td><code>#e69d00</code></td>
+  <td class="glyph">?</td>
+  <td>0.1 &lt; loss ≤ 0.15</td>
+  <td>~100–200</td>
+  <td>Mistake</td>
+</tr>
+<tr>
+  <td>serious</td>
+  <td><span class="swatch" style="background:#e06c4e"></span></td>
+  <td><code>#e06c4e</code></td>
+  <td class="glyph">?</td>
+  <td>0.15 &lt; loss ≤ 0.2</td>
+  <td>~200–350</td>
+  <td>Serious Mistake</td>
+</tr>
+<tr>
+  <td>blunder</td>
+  <td><span class="swatch" style="background:#db3031"></span></td>
+  <td><code>#db3031</code></td>
+  <td class="glyph">??</td>
+  <td>0.2 &lt; loss ≤ 0.3</td>
+  <td>~350–600</td>
+  <td>Blunder</td>
+</tr>
+<tr>
+  <td>catastrophic</td>
+  <td><span class="swatch" style="background:#8b1a1a"></span></td>
+  <td><code>#8b1a1a</code></td>
+  <td class="glyph">??</td>
+  <td>loss &gt; 0.3</td>
+  <td>600+</td>
+  <td>Catastrophic Blunder</td>
+</tr>
+</tbody>
+</table>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> Every move in a reviewed game is silently classified into one of these tiers based on how much winning chance it cost. The user sees this tier reflected in the color of the "Chosen because:" label during LFYM, and in the colored dots on the eval graph below the board.</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details"><strong>Code:</strong> <code>classifySeverity()</code> in <code>src/feedback/severity.ts</code>.<br><br><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>LFYM "Chosen because:" label + summary — Game Analysis tool</li><li>Eval graph dot colors — Game Analysis tool</li><li>Game summary panel stats — Game Analysis tool</li></ul></div></div>
+</section>
+
+<!-- C. Existing Game Review Labels -->
+<section id="review-labels">
+<h2>C. Existing Game Review Labels (3-tier)</h2>
+<p>Current classification from <code>winchances.ts</code> — these map onto the 9-tier gradient:</p>
+<table>
+<thead><tr><th>Label</th><th>Glyph</th><th>Threshold (loss)</th><th>Threshold (WC%)</th><th class="mapping-arrow">Maps to new tier(s)</th></tr></thead>
+<tbody>
+<tr>
+  <td>Inaccuracy</td><td class="glyph">?!</td><td>≥ 0.05</td><td>≥ 10%</td>
+  <td class="mapping-arrow">→ <span style="color:#56b4e9">inaccuracy</span> + <span style="color:#e69d00">mistake</span></td>
+</tr>
+<tr>
+  <td>Mistake</td><td class="glyph">?</td><td>≥ 0.10</td><td>≥ 20%</td>
+  <td class="mapping-arrow">→ <span style="color:#e69d00">mistake</span> + <span style="color:#e06c4e">serious</span></td>
+</tr>
+<tr>
+  <td>Blunder</td><td class="glyph">??</td><td>≥ 0.15</td><td>≥ 30%</td>
+  <td class="mapping-arrow">→ <span style="color:#e06c4e">serious</span> + <span style="color:#db3031">blunder</span> + <span style="color:#8b1a1a">catastrophic</span></td>
+</tr>
+</tbody>
+</table>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> After pressing Review, the app labels each move as an inaccuracy, mistake, or blunder. These labels appear as glyphs (<code>?!</code>, <code>?</code>, <code>??</code>) in the move list next to each move, in the game summary panel ("3 blunders, 2 mistakes, 1 inaccuracy"), and as colored dots on the eval graph. This is the original Lichess 3-tier system — the 9-tier severity gradient above is a finer subdivision of the same scale.<br><br><strong>Code:</strong> <code>classifyLoss()</code> in <code>src/engine/winchances.ts</code>.<br><br><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>Move list glyphs (<code>?!</code> <code>?</code> <code>??</code>) — Game Analysis tool</li><li>Game summary panel ("3 blunders, 2 mistakes") — Game Analysis tool</li><li>Stats extraction (blunder/mistake/inaccuracy counts) — Stats Dashboard tool</li><li>LFYM candidate selection threshold — Game Analysis tool</li></ul></div></div>
+</section>
+
+<!-- D. Eval Box Grades -->
+<section id="expanded-grades">
+<h2>D. Eval Box Grades</h2>
+<p>Proposed 9-tier replacement for the current 4-grade eval box system. Measures how close the solving attempt is to the engine’s best move. Same color palette as the severity tiers.</p>
+<div class="color-strip" style="margin-bottom:16px">
+  <div class="color-strip__tier" style="background:#a855f7;color:#1a1a1a">
+    <span class="label">Checkmate!</span>
+    <span class="hex">#a855f7</span>
+    <span class="range">best move is mate</span>
+  </div>
+  <div class="color-strip__tier" style="background:#26a641;color:#e8e8e8">
+    <span class="label">Exact match</span>
+    <span class="hex">#26a641</span>
+    <span class="range">loss = 0</span>
+  </div>
+  <div class="color-strip__tier" style="background:#57ab5a;color:#1a1a1a">
+    <span class="label">Near perfect</span>
+    <span class="hex">#57ab5a</span>
+    <span class="range">loss ≤ 0.02</span>
+  </div>
+  <div class="color-strip__tier" style="background:#7bc67e;color:#1a1a1a">
+    <span class="label">Close</span>
+    <span class="hex">#7bc67e</span>
+    <span class="range">loss ≤ 0.04</span>
+  </div>
+  <div class="color-strip__tier" style="background:#8bb8a8;color:#1a1a1a">
+    <span class="label">Acceptable</span>
+    <span class="hex">#8bb8a8</span>
+    <span class="range">loss ≤ 0.05</span>
+  </div>
+  <div class="color-strip__tier" style="background:#56b4e9;color:#1a1a1a">
+    <span class="label">Off target</span>
+    <span class="hex">#56b4e9</span>
+    <span class="range">loss ≤ 0.1</span>
+  </div>
+  <div class="color-strip__tier" style="background:#e69d00;color:#1a1a1a">
+    <span class="label">Wide miss</span>
+    <span class="hex">#e69d00</span>
+    <span class="range">loss ≤ 0.15</span>
+  </div>
+  <div class="color-strip__tier" style="background:#e06c4e;color:#1a1a1a">
+    <span class="label">Far off</span>
+    <span class="hex">#e06c4e</span>
+    <span class="range">loss ≤ 0.2</span>
+  </div>
+  <div class="color-strip__tier" style="background:#db3031;color:#e8e8e8">
+    <span class="label">Way off</span>
+    <span class="hex">#db3031</span>
+    <span class="range">loss ≤ 0.3</span>
+  </div>
+  <div class="color-strip__tier" style="background:#8b1a1a;color:#e8e8e8">
+    <span class="label">Completely wrong</span>
+    <span class="hex">#8b1a1a</span>
+    <span class="range">loss &gt; 0.3</span>
+  </div>
+</div>
+<table>
+<thead><tr><th>Grade</th><th>Color</th><th>Hex</th><th>Label</th><th>Loss Range</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>checkmate</code></td>
+  <td><span class="swatch" style="background:#a855f7"></span></td>
+  <td><code>#a855f7</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="checkmate" data-tier="checkmate" data-field="label">Checkmate!</strong></td>
+  <td>best move is mate</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="checkmate" data-tier="checkmate" data-field="meaning">You found the best move and it delivers checkmate.</span></td>
+</tr>
+<tr>
+  <td><code>exact</code></td>
+  <td><span class="swatch" style="background:#26a641"></span></td>
+  <td><code>#26a641</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="exact" data-tier="exact" data-field="label">Exact match</strong></td>
+  <td>loss = 0</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="exact" data-tier="exact" data-field="meaning">You found the engine’s top choice.</span></td>
+</tr>
+<tr>
+  <td><code>near-perfect</code></td>
+  <td><span class="swatch" style="background:#57ab5a"></span></td>
+  <td><code>#57ab5a</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="near-perfect" data-tier="near-perfect" data-field="label">Near perfect</strong></td>
+  <td>loss ≤ 0.02</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="near-perfect" data-tier="near-perfect" data-field="meaning">Virtually identical to the best move — no practical difference.</span></td>
+</tr>
+<tr>
+  <td><code>close</code></td>
+  <td><span class="swatch" style="background:#7bc67e"></span></td>
+  <td><code>#7bc67e</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="close" data-tier="close" data-field="label">Close</strong></td>
+  <td>loss ≤ 0.04</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="close" data-tier="close" data-field="meaning">A strong alternative. Only a small edge separates this from the best.</span></td>
+</tr>
+<tr>
+  <td><code>acceptable</code></td>
+  <td><span class="swatch" style="background:#8bb8a8"></span></td>
+  <td><code>#8bb8a8</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="acceptable" data-tier="acceptable" data-field="label">Acceptable</strong></td>
+  <td>loss ≤ 0.05</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="acceptable" data-tier="acceptable" data-field="meaning">A reasonable attempt, but a noticeably stronger move exists.</span></td>
+</tr>
+<tr>
+  <td><code>off-target</code></td>
+  <td><span class="swatch" style="background:#56b4e9"></span></td>
+  <td><code>#56b4e9</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="off-target" data-tier="off-target" data-field="label">Off target</strong></td>
+  <td>loss ≤ 0.1</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="off-target" data-tier="off-target" data-field="meaning">Not close to the solution. A significantly better move was available.</span></td>
+</tr>
+<tr>
+  <td><code>wide-miss</code></td>
+  <td><span class="swatch" style="background:#e69d00"></span></td>
+  <td><code>#e69d00</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="wide-miss" data-tier="wide-miss" data-field="label">Wide miss</strong></td>
+  <td>loss ≤ 0.15</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="wide-miss" data-tier="wide-miss" data-field="meaning">Far from the best move. This attempt misses the point of the position.</span></td>
+</tr>
+<tr>
+  <td><code>far-off</code></td>
+  <td><span class="swatch" style="background:#e06c4e"></span></td>
+  <td><code>#e06c4e</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="far-off" data-tier="far-off" data-field="label">Far off</strong></td>
+  <td>loss ≤ 0.2</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="far-off" data-tier="far-off" data-field="meaning">This move makes things dramatically worse than the solution would.</span></td>
+</tr>
+<tr>
+  <td><code>way-off</code></td>
+  <td><span class="swatch" style="background:#db3031"></span></td>
+  <td><code>#db3031</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="way-off" data-tier="way-off" data-field="label">Way off</strong></td>
+  <td>loss ≤ 0.3</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="way-off" data-tier="way-off" data-field="meaning">Nowhere near the right idea. The position is fundamentally different now.</span></td>
+</tr>
+<tr>
+  <td><code>wrong</code></td>
+  <td><span class="swatch" style="background:#8b1a1a"></span></td>
+  <td><code>#8b1a1a</code></td>
+  <td><strong contenteditable="true" data-tone="eval-grade" data-reason="wrong" data-tier="wrong" data-field="label">Completely wrong</strong></td>
+  <td>loss &gt; 0.3</td>
+  <td><span contenteditable="true" data-tone="eval-grade" data-reason="wrong" data-tier="wrong" data-field="meaning">This move is as bad or worse than the original mistake.</span></td>
+</tr>
+</tbody>
+</table>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> During LFYM, after the user plays a move, two small comparison boxes appear: "vs Engine Best" and "vs Move Played." Each box’s number and border are colored on this 10-grade scale to show how close the user’s attempt was to the engine’s best move. Green means very close, crimson means way off. ...</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details">During LFYM, after the user plays a move, two small comparison boxes appear: "vs Engine Best" and "vs Move Played." Each box’s number and border are colored on this 10-grade scale to show how close the user’s attempt was to the engine’s best move. Green means very close, crimson means way off. If the user finds a checkmate, the box turns purple with "#KO!".<br><br><strong>Code:</strong> <code>classifyEvalBoxGrade()</code> and <code>getEvalBoxGradeMeta()</code> in <code>src/feedback/severity.ts</code>.<br><br><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>LFYM "vs Engine Best" eval box — Game Analysis tool</li><li>LFYM "vs Move Played" eval box — Game Analysis tool</li></ul></div></div>
+</section>
+
+<!-- E & F. Reason x Severity Matrix -->
+<section id="matrix">
+<h2>E/F. Reason × Severity Matrix</h2>
+
+
+<div class="tone-section visible" data-tone-section="standard">
+<h3>Standard Tone — Positive Tiers (all reasons)</h3>
+<div class="positive-row">
+<table>
+<thead><tr><th style="color:#26a641">Best Move</th><th style="color:#57ab5a">Excellent</th><th style="color:#7bc67e">Good</th><th style="color:#8bb8a8">Playable</th></tr></thead>
+<tbody><tr><td class="cell" style="background:#26a64115"><strong contenteditable="true" data-tone="standard" data-reason="swing" data-tier="best" data-field="label">Best move!</strong><br><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="best" data-field="summary">This is the engine's top choice.</span></td><td class="cell" style="background:#57ab5a15"><strong contenteditable="true" data-tone="standard" data-reason="swing" data-tier="excellent" data-field="label">Excellent move.</strong><br><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="excellent" data-field="summary">Virtually indistinguishable from the engine's top pick.</span></td><td class="cell" style="background:#7bc67e15"><strong contenteditable="true" data-tone="standard" data-reason="swing" data-tier="good" data-field="label">Good move.</strong><br><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="good" data-field="summary">A small edge was left on the table, but this is a perfectly reasonable choice.</span></td><td class="cell" style="background:#8bb8a815"><strong contenteditable="true" data-tone="standard" data-reason="swing" data-tier="playable" data-field="label">Reasonable move.</strong><br><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="playable" data-field="summary">Not the strongest continuation, but a playable choice.</span></td></tr></tbody>
+</table>
+</div>
+
+<h3>Standard Tone — Negative Tiers by Reason</h3>
+<div class="matrix">
+<table>
+<thead><tr><th class="reason">Reason</th><th style="color:#56b4e9">Inaccuracy</th><th style="color:#e69d00">Mistake</th><th style="color:#e06c4e">Serious Mistake</th><th style="color:#db3031">Blunder</th><th style="color:#8b1a1a">Catastrophic Blunder</th></tr></thead>
+<tbody>
+<tr>
+  <td class="reason"><strong>Missed Opportunity</strong><br><code>swing</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="inaccuracy" data-field="summary">A slightly stronger continuation was available.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="mistake" data-field="summary">The move played gave up a meaningful part of your advantage.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="serious" data-field="summary">A much stronger move was available — this significantly weakened your position.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="blunder" data-field="summary">This move threw away a major advantage. The position has fundamentally changed.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="standard" data-reason="swing" data-tier="catastrophic" data-field="summary">The position went from clearly favorable to lost in a single move.</span></td>
+</tr>
+<tr>
+  <td class="reason"><strong>Missed Forced Mate</strong><br><code>missed-mate</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="standard" data-reason="missed-mate" data-tier="inaccuracy" data-field="summary">A forced checkmate sequence was available but a slower path was chosen.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="standard" data-reason="missed-mate" data-tier="mistake" data-field="summary">A forced checkmate was available. The chosen move lets the opponent fight on.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="standard" data-reason="missed-mate" data-tier="serious" data-field="summary">A forced checkmate was on the board and was missed entirely.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="standard" data-reason="missed-mate" data-tier="blunder" data-field="summary">Checkmate was right there. This move lets the opponent escape.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="standard" data-reason="missed-mate" data-tier="catastrophic" data-field="summary">Checkmate in one was available and was not played.</span></td>
+</tr>
+<tr>
+  <td class="reason"><strong>Blown Win</strong><br><code>collapse</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="standard" data-reason="collapse" data-tier="inaccuracy" data-field="summary">A clearly winning position was slightly weakened.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="standard" data-reason="collapse" data-tier="mistake" data-field="summary">A clearly winning position was damaged — the advantage has shrunk significantly.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="standard" data-reason="collapse" data-tier="serious" data-field="summary">A won game was thrown into doubt. The opponent is back in it.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="standard" data-reason="collapse" data-tier="blunder" data-field="summary">A completely winning position was squandered.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="standard" data-reason="collapse" data-tier="catastrophic" data-field="summary">A completely won position was thrown away. The game may now be lost.</span></td>
+</tr>
+<tr>
+  <td class="reason"><strong>Missed Defense</strong><br><code>defensive</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="standard" data-reason="defensive" data-tier="inaccuracy" data-field="summary">A slightly more resilient defensive move was available.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="standard" data-reason="defensive" data-tier="mistake" data-field="summary">A defensive resource was available that would have kept the game alive.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="standard" data-reason="defensive" data-tier="serious" data-field="summary">A critical saving move was missed. The position is now much harder to hold.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="standard" data-reason="defensive" data-tier="blunder" data-field="summary">A saving move existed that could have turned the game around — it was missed.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="standard" data-reason="defensive" data-tier="catastrophic" data-field="summary">The one move that could have saved the game was not played.</span></td>
+</tr>
+<tr>
+  <td class="reason"><strong>Missed Punishment</strong><br><code>punish</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="standard" data-reason="punish" data-tier="inaccuracy" data-field="summary">The opponent's error went partially unpunished — a stronger reply was available.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="standard" data-reason="punish" data-tier="mistake" data-field="summary">The opponent made a clear error and it was not fully exploited.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="standard" data-reason="punish" data-tier="serious" data-field="summary">The opponent handed you a significant advantage and it was not seized.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="standard" data-reason="punish" data-tier="blunder" data-field="summary">The opponent's blunder went completely unpunished.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="standard" data-reason="punish" data-tier="catastrophic" data-field="summary">The opponent handed you a decisive advantage and it slipped through your fingers.</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+
+
+<div class="tone-section " data-tone-section="harsh">
+<h3>Harsh Tone — Positive Tiers (all reasons)</h3>
+<div class="positive-row">
+<table>
+<thead><tr><th style="color:#26a641">Best Move</th><th style="color:#57ab5a">Excellent</th><th style="color:#7bc67e">Good</th><th style="color:#8bb8a8">Playable</th></tr></thead>
+<tbody><tr><td class="cell" style="background:#26a64115"><strong contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="best" data-field="label">Best move.</strong><br><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="best" data-field="summary">Even a broken clock is right twice a day.</span></td><td class="cell" style="background:#57ab5a15"><strong contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="excellent" data-field="label">Fine.</strong><br><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="excellent" data-field="summary">Not the best, but close enough that I'll let it slide.</span></td><td class="cell" style="background:#7bc67e15"><strong contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="good" data-field="label">Adequate.</strong><br><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="good" data-field="summary">You left a little on the table. The engine noticed.</span></td><td class="cell" style="background:#8bb8a815"><strong contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="playable" data-field="label">Passable.</strong><br><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="playable" data-field="summary">The engine would not have played this.</span></td></tr></tbody>
+</table>
+</div>
+
+<h3>Harsh Tone — Negative Tiers by Reason</h3>
+<div class="matrix">
+<table>
+<thead><tr><th class="reason">Reason</th><th style="color:#56b4e9">Inaccuracy</th><th style="color:#e69d00">Mistake</th><th style="color:#e06c4e">Serious Mistake</th><th style="color:#db3031">Blunder</th><th style="color:#8b1a1a">Catastrophic Blunder</th></tr></thead>
+<tbody>
+<tr>
+  <td class="reason"><strong>Missed Opportunity</strong><br><code>swing</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="inaccuracy" data-field="summary">There was a better move. You did not find it.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="mistake" data-field="summary">You had something good and you let it go.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="serious" data-field="summary">The engine is embarrassed on your behalf.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="blunder" data-field="summary">You just donated material to charity.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="harsh" data-reason="swing" data-tier="catastrophic" data-field="summary">This move should come with a trigger warning.</span></td>
+</tr>
+<tr>
+  <td class="reason"><strong>Missed Forced Mate</strong><br><code>missed-mate</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="harsh" data-reason="missed-mate" data-tier="inaccuracy" data-field="summary">You found a checkmate. Just not the fastest one.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="harsh" data-reason="missed-mate" data-tier="mistake" data-field="summary">Checkmate was right there. You looked the other way.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="harsh" data-reason="missed-mate" data-tier="serious" data-field="summary">The checkmate was gift-wrapped and you returned it.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="harsh" data-reason="missed-mate" data-tier="blunder" data-field="summary">Mate was on the board. You chose suffering instead.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="harsh" data-reason="missed-mate" data-tier="catastrophic" data-field="summary">Mate in one. You missed mate in one.</span></td>
+</tr>
+<tr>
+  <td class="reason"><strong>Blown Win</strong><br><code>collapse</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="harsh" data-reason="collapse" data-tier="inaccuracy" data-field="summary">You were winning. Emphasis on “were.”</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="harsh" data-reason="collapse" data-tier="mistake" data-field="summary">Your advantage just filed for divorce.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="harsh" data-reason="collapse" data-tier="serious" data-field="summary">Congratulations, you've made this a game again.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="harsh" data-reason="collapse" data-tier="blunder" data-field="summary">You snatched defeat from the jaws of victory.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="harsh" data-reason="collapse" data-tier="catastrophic" data-field="summary">The engine would like to speak with your manager.</span></td>
+</tr>
+<tr>
+  <td class="reason"><strong>Missed Defense</strong><br><code>defensive</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="harsh" data-reason="defensive" data-tier="inaccuracy" data-field="summary">There was a tougher defense. You chose the easy way out.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="harsh" data-reason="defensive" data-tier="mistake" data-field="summary">You could have made your opponent work for it. You didn't.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="harsh" data-reason="defensive" data-tier="serious" data-field="summary">The life raft was right there. You swam past it.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="harsh" data-reason="defensive" data-tier="blunder" data-field="summary">There was one way to survive. This was not it.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="harsh" data-reason="defensive" data-tier="catastrophic" data-field="summary">You resigned three moves early — you just don't know it yet.</span></td>
+</tr>
+<tr>
+  <td class="reason"><strong>Missed Punishment</strong><br><code>punish</code></td>
+  <td class="cell" style="background:#56b4e915"><span contenteditable="true" data-tone="harsh" data-reason="punish" data-tier="inaccuracy" data-field="summary">Your opponent blundered and you barely noticed.</span></td><td class="cell" style="background:#e69d0015"><span contenteditable="true" data-tone="harsh" data-reason="punish" data-tier="mistake" data-field="summary">Free material was on the table. You left it there.</span></td><td class="cell" style="background:#e06c4e15"><span contenteditable="true" data-tone="harsh" data-reason="punish" data-tier="serious" data-field="summary">Your opponent handed you the game and you handed it back.</span></td><td class="cell" style="background:#db303115"><span contenteditable="true" data-tone="harsh" data-reason="punish" data-tier="blunder" data-field="summary">Your opponent played the worst move on the board and you matched them.</span></td><td class="cell" style="background:#8b1a1a15"><span contenteditable="true" data-tone="harsh" data-reason="punish" data-tier="catastrophic" data-field="summary">They blundered. You blundered harder. Impressive.</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> In the LFYM panel, after solving or viewing the solution, a "Chosen because:" note appears explaining why this position was selected as a learning moment. The label (e.g., "Serious mistake.") is colored by severity, and the summary text below it explains the nature of the error in plain language. ...</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details">In the LFYM panel, after solving or viewing the solution, a "Chosen because:" note appears explaining why this position was selected as a learning moment. The label (e.g., "Serious mistake.") is colored by severity, and the summary text below it explains the nature of the error in plain language. The text varies based on both what kind of mistake it was (missed opportunity, blown win, missed mate, etc.) and how severe it was.<br><br><strong>Code:</strong> <code>getSeverityFeedback(reasonCode, loss, isExactBest)</code> in <code>src/feedback/severity.ts</code>, wired in the <code>renderReasonNote()</code> function of <code>retroView.ts</code>.</div></div>
+</section>
+
+<!-- F2. LFYM Feedback Detail Lines -->
+<section id="detail-lines">
+<h2>F2. LFYM Feedback Preview — Detail Lines</h2>
+<p>How the expanded "Chosen because" section would appear in the LFYM panel. Each card shows the three-line structure: <strong>label</strong> (colored by severity), <strong>detail line</strong> (data-grounded, referencing actual move and eval data from the candidate), and <strong>summary</strong> (severity-modulated).</p>
+<p style="opacity:0.6">Placeholders like {playedSan} and {bestSan} are filled at render time from the RetroCandidate. Sample values shown in parentheses.</p>
+
+<div class="lfym-reason-group">
+<div class="lfym-reason-group__title">Missed Opportunity <code style="opacity:0.4;font-size:13px">swing</code></div>
+<div class="lfym-preview">
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="inaccuracy" data-field="label">Inaccuracy.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#56b4e940;color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="inaccuracy" data-field="detail">The engine found a slightly stronger continuation. The move played was the 2nd-best option.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="inaccuracy" data-field="summary">A slightly stronger continuation was available.</div>
+  <div class="lfym-card__meta">Inaccuracy • Loss: ≤0.1 • #56b4e9</div>
+  <div class="panel-id">detail-swing-inaccuracy</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e69d00" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="mistake" data-field="label">Mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e69d0040;color:#e69d00" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="mistake" data-field="detail">The engine’s best move was worth roughly +1.5 pawns more. This was a meaningful missed opportunity.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="mistake" data-field="summary">The move played gave up a meaningful part of your advantage.</div>
+  <div class="lfym-card__meta">Mistake • Loss: ≤0.15 • #e69d00</div>
+  <div class="panel-id">detail-swing-mistake</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="serious" data-field="label">Serious mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e06c4e40;color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="serious" data-field="detail">The played move (Nxf3) cost roughly Bd3. The engine strongly preferred +2.4 pawns.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="serious" data-field="summary">A much stronger move was available — this significantly weakened your position.</div>
+  <div class="lfym-card__meta">Serious Mistake • Loss: ≤0.2 • #e06c4e</div>
+  <div class="panel-id">detail-swing-serious</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#db3031" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="blunder" data-field="label">Blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#db303140;color:#db3031" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="blunder" data-field="detail">Ng5 was played. The engine’s top choice Bc2 was worth roughly +4.1 pawns more.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="blunder" data-field="summary">This move threw away a major advantage. The position has fundamentally changed.</div>
+  <div class="lfym-card__meta">Blunder • Loss: ≤0.3 • #db3031</div>
+  <div class="panel-id">detail-swing-blunder</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="catastrophic" data-field="label">Catastrophic blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#8b1a1a40;color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="catastrophic" data-field="detail">f4 was played instead of Qe2. The evaluation swung by roughly +8.3 pawns.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="swing" data-tier="catastrophic" data-field="summary">The position went from clearly favorable to lost in a single move.</div>
+  <div class="lfym-card__meta">Catastrophic Blunder • Loss: >0.30 • #8b1a1a</div>
+  <div class="panel-id">detail-swing-catastrophic</div>
+</div>
+</div>
+</div>
+<div class="lfym-reason-group">
+<div class="lfym-reason-group__title">Missed Forced Mate <code style="opacity:0.4;font-size:13px">missed-mate</code></div>
+<div class="lfym-preview">
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="inaccuracy" data-field="label">Inaccuracy.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#56b4e940;color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="inaccuracy" data-field="detail">Checkmate in 3 was available via Qxf7+. A slower but winning path was chosen.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="inaccuracy" data-field="summary">A forced checkmate sequence was available but a slower path was chosen.</div>
+  <div class="lfym-card__meta">Inaccuracy • Loss: ≤0.1 • #56b4e9</div>
+  <div class="panel-id">detail-missed-mate-inaccuracy</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e69d00" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="mistake" data-field="label">Mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e69d0040;color:#e69d00" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="mistake" data-field="detail">Forced checkmate in 3 was available. Rxh7+ would have started the mating sequence.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="mistake" data-field="summary">A forced checkmate was available. The chosen move lets the opponent fight on.</div>
+  <div class="lfym-card__meta">Mistake • Loss: ≤0.15 • #e69d00</div>
+  <div class="panel-id">detail-missed-mate-mistake</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="serious" data-field="label">Serious mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e06c4e40;color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="serious" data-field="detail">Checkmate in 2 was on the board. 2 was played instead of Kf2.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="serious" data-field="summary">A forced checkmate was on the board and was missed entirely.</div>
+  <div class="lfym-card__meta">Serious Mistake • Loss: ≤0.2 • #e06c4e</div>
+  <div class="panel-id">detail-missed-mate-serious</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#db3031" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="blunder" data-field="label">Blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#db303140;color:#db3031" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="blunder" data-field="detail">Mate in 1 via Qxh7#. The move 1 lets the opponent escape entirely.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="blunder" data-field="summary">Checkmate was right there. This move lets the opponent escape.</div>
+  <div class="lfym-card__meta">Blunder • Loss: ≤0.3 • #db3031</div>
+  <div class="panel-id">detail-missed-mate-blunder</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="catastrophic" data-field="label">Catastrophic blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#8b1a1a40;color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="catastrophic" data-field="detail">Checkmate in 1 was available (Qh7#). 1 was played instead.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="missed-mate" data-tier="catastrophic" data-field="summary">Checkmate in one was available and was not played.</div>
+  <div class="lfym-card__meta">Catastrophic Blunder • Loss: >0.30 • #8b1a1a</div>
+  <div class="panel-id">detail-missed-mate-catastrophic</div>
+</div>
+</div>
+</div>
+<div class="lfym-reason-group">
+<div class="lfym-reason-group__title">Blown Win <code style="opacity:0.4;font-size:13px">collapse</code></div>
+<div class="lfym-preview">
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="inaccuracy" data-field="label">Inaccuracy.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#56b4e940;color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="inaccuracy" data-field="detail">The position was clearly in your favor before Bd3. A small part of the advantage slipped.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="inaccuracy" data-field="summary">A clearly winning position was slightly weakened.</div>
+  <div class="lfym-card__meta">Inaccuracy • Loss: ≤0.1 • #56b4e9</div>
+  <div class="panel-id">detail-collapse-inaccuracy</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e69d00" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="mistake" data-field="label">Mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e69d0040;color:#e69d00" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="mistake" data-field="detail">You had a commanding position. f4 gave back a significant portion of the advantage.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="mistake" data-field="summary">A clearly winning position was damaged — the advantage has shrunk significantly.</div>
+  <div class="lfym-card__meta">Mistake • Loss: ≤0.15 • #e69d00</div>
+  <div class="panel-id">detail-collapse-mistake</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="serious" data-field="label">Serious mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e06c4e40;color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="serious" data-field="detail">The position was winning. f4 let the opponent back into the game — Qe2 held the edge.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="serious" data-field="summary">A won game was thrown into doubt. The opponent is back in it.</div>
+  <div class="lfym-card__meta">Serious Mistake • Loss: ≤0.2 • #e06c4e</div>
+  <div class="panel-id">detail-collapse-serious</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#db3031" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="blunder" data-field="label">Blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#db303140;color:#db3031" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="blunder" data-field="detail">A won position was squandered with Re7. The engine’s choice Qd2 maintained a decisive advantage.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="blunder" data-field="summary">A completely winning position was squandered.</div>
+  <div class="lfym-card__meta">Blunder • Loss: ≤0.3 • #db3031</div>
+  <div class="panel-id">detail-collapse-blunder</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="catastrophic" data-field="label">Catastrophic blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#8b1a1a40;color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="catastrophic" data-field="detail">The game was effectively won. Kh1 threw everything away — Qf3 would have kept it.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="collapse" data-tier="catastrophic" data-field="summary">A completely won position was thrown away. The game may now be lost.</div>
+  <div class="lfym-card__meta">Catastrophic Blunder • Loss: >0.30 • #8b1a1a</div>
+  <div class="panel-id">detail-collapse-catastrophic</div>
+</div>
+</div>
+</div>
+<div class="lfym-reason-group">
+<div class="lfym-reason-group__title">Missed Defense <code style="opacity:0.4;font-size:13px">defensive</code></div>
+<div class="lfym-preview">
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="inaccuracy" data-field="label">Inaccuracy.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#56b4e940;color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="inaccuracy" data-field="detail">The position was difficult. A tougher defensive try existed with Be2 instead of Rd1.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="inaccuracy" data-field="summary">A slightly more resilient defensive move was available.</div>
+  <div class="lfym-card__meta">Inaccuracy • Loss: ≤0.1 • #56b4e9</div>
+  <div class="panel-id">detail-defensive-inaccuracy</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e69d00" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="mistake" data-field="label">Mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e69d0040;color:#e69d00" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="mistake" data-field="detail">Under pressure, Kf1 made things worse. Qd2 was a more resilient defense.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="mistake" data-field="summary">A defensive resource was available that would have kept the game alive.</div>
+  <div class="lfym-card__meta">Mistake • Loss: ≤0.15 • #e69d00</div>
+  <div class="panel-id">detail-defensive-mistake</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="serious" data-field="label">Serious mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e06c4e40;color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="serious" data-field="detail">A critical defensive resource (Be7) was available. Rd8 let the position deteriorate sharply.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="serious" data-field="summary">A critical saving move was missed. The position is now much harder to hold.</div>
+  <div class="lfym-card__meta">Serious Mistake • Loss: ≤0.2 • #e06c4e</div>
+  <div class="panel-id">detail-defensive-serious</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#db3031" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="blunder" data-field="label">Blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#db303140;color:#db3031" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="blunder" data-field="detail">Ng5 would have kept the game alive. Qd1 collapsed the defense.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="blunder" data-field="summary">A saving move existed that could have turned the game around — it was missed.</div>
+  <div class="lfym-card__meta">Blunder • Loss: ≤0.3 • #db3031</div>
+  <div class="panel-id">detail-defensive-blunder</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="catastrophic" data-field="label">Catastrophic blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#8b1a1a40;color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="catastrophic" data-field="detail">One defensive move could save the game: a3. Kf1 ended all resistance.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="defensive" data-tier="catastrophic" data-field="summary">The one move that could have saved the game was not played.</div>
+  <div class="lfym-card__meta">Catastrophic Blunder • Loss: >0.30 • #8b1a1a</div>
+  <div class="panel-id">detail-defensive-catastrophic</div>
+</div>
+</div>
+</div>
+<div class="lfym-reason-group">
+<div class="lfym-reason-group__title">Missed Punishment <code style="opacity:0.4;font-size:13px">punish</code></div>
+<div class="lfym-preview">
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="inaccuracy" data-field="label">Inaccuracy.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#56b4e940;color:#56b4e9" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="inaccuracy" data-field="detail">The opponent’s previous move was slightly inaccurate. d4 would have exploited it more precisely than Nxe5.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="inaccuracy" data-field="summary">The opponent's error went partially unpunished — a stronger reply was available.</div>
+  <div class="lfym-card__meta">Inaccuracy • Loss: ≤0.1 • #56b4e9</div>
+  <div class="panel-id">detail-punish-inaccuracy</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e69d00" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="mistake" data-field="label">Mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e69d0040;color:#e69d00" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="mistake" data-field="detail">The opponent made an error. Nc3 would have punished it cleanly — Bxf7+ let them off the hook.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="mistake" data-field="summary">The opponent made a clear error and it was not fully exploited.</div>
+  <div class="lfym-card__meta">Mistake • Loss: ≤0.15 • #e69d00</div>
+  <div class="panel-id">detail-punish-mistake</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="serious" data-field="label">Serious mistake.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#e06c4e40;color:#e06c4e" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="serious" data-field="detail">The opponent handed over a significant advantage. h3 was played instead of the punishing Nxd5.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="serious" data-field="summary">The opponent handed you a significant advantage and it was not seized.</div>
+  <div class="lfym-card__meta">Serious Mistake • Loss: ≤0.2 • #e06c4e</div>
+  <div class="panel-id">detail-punish-serious</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#db3031" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="blunder" data-field="label">Blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#db303140;color:#db3031" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="blunder" data-field="detail">The opponent blundered badly. Qxd4 would have won material or decisive advantage — Be2 missed it completely.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="blunder" data-field="summary">The opponent's blunder went completely unpunished.</div>
+  <div class="lfym-card__meta">Blunder • Loss: ≤0.3 • #db3031</div>
+  <div class="panel-id">detail-punish-blunder</div>
+</div>
+<div class="lfym-card">
+  <div class="lfym-card__reason">Chosen because:</div>
+  <div class="lfym-card__header">
+    <span class="lfym-card__label" style="color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="catastrophic" data-field="label">Catastrophic blunder.</span>
+  </div>
+  <div class="lfym-card__detail" style="border-color:#8b1a1a40;color:#8b1a1a" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="catastrophic" data-field="detail">The opponent’s move was a game-losing mistake. Bxf2+ would have ended it. Kh1 threw away the gift entirely.</div>
+  <div class="lfym-card__summary" contenteditable="true" data-tone="detail" data-reason="punish" data-tier="catastrophic" data-field="summary">The opponent handed you a decisive advantage and it slipped through your fingers.</div>
+  <div class="lfym-card__meta">Catastrophic Blunder • Loss: >0.30 • #8b1a1a</div>
+  <div class="panel-id">detail-punish-catastrophic</div>
+</div>
+</div>
+</div>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> Not yet visible — this is a designed expansion. When wired, a third line will appear in the "Chosen because:" box between the label and summary. ...</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details">Not yet visible — this is a designed expansion. When wired, a third line will appear in the "Chosen because:" box between the label and summary. It will reference the actual moves and eval data from the position (e.g., "Ng5 was played instead of Bc2. The evaluation swung by roughly +2.4 pawns.") giving the user concrete, data-grounded context without guessing at chess meaning.<br><br><strong>Status:</strong> Designed but not yet wired. A future prompt will build the detail line generator and connect it to <code>renderReasonNote()</code> in <code>retroView.ts</code>.</div></div>
+</section>
+
+<!-- F3. LFYM Panel States -->
+<section id="lfym-states">
+<h2>F3. LFYM Panel States</h2>
+<p>Every possible screen the user sees during a Learn From Your Mistakes session. The first panel is annotated with CSS class names.</p>
+
+<style>
+.lfym-panel { background: #262421; border: 1px solid #3a3a3a; border-radius: 6px; max-width: 400px; padding: 0; margin-bottom: 24px; font-size: 15px; }
+.lfym-panel__title { background: #1a1a1a; padding: 8px 12px; border-bottom: 1px solid #3a3a3a; display: flex; justify-content: space-between; align-items: center; font-size: 13px; border-radius: 6px 6px 0 0; }
+.lfym-panel__title span:first-child { font-weight: 600; }
+.lfym-panel__title .progress { opacity: 0.5; }
+.lfym-panel__body { padding: 14px 16px; }
+.lfym-panel__icon { font-size: 22px; margin-right: 8px; display: inline-block; vertical-align: middle; }
+.lfym-panel__icon--win { color: #759900; }
+.lfym-panel__icon--fail { color: #dc322f; }
+.lfym-panel__icon--off { color: #e0a030; }
+.lfym-panel strong { display: block; margin-bottom: 6px; font-size: 15px; }
+.lfym-panel em { display: block; margin-bottom: 8px; font-size: 14px; opacity: 0.8; }
+.lfym-panel .eval-boxes { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
+.lfym-panel .eval-box { display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; border-radius: 4px; border: 1px solid transparent; }
+.lfym-panel .eval-box__label { font-size: 13px; color: #888; }
+.lfym-panel .eval-box__value { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lfym-panel .reason { margin-top: 10px; padding: 7px 10px; border-radius: 4px; background: rgba(255,255,255,0.03); }
+.lfym-panel .reason__label { font-size: 13px; font-weight: 600; }
+.lfym-panel .reason__detail { font-size: 13px; line-height: 1.4; margin-top: 4px; padding-left: 8px; border-left: 2px solid; }
+.lfym-panel .reason__summary { font-size: 13px; opacity: 0.6; font-style: italic; margin-top: 4px; }
+.lfym-panel .actions { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.lfym-panel .actions a, .lfym-panel .actions button { display: block; background: none; border: none; color: #629924; font-size: 13px; text-align: left; padding: 2px 0; cursor: pointer; font-family: inherit; }
+.lfym-panel .actions button.btn-save { color: #888; }
+.lfym-panel .continue { margin-top: 10px; text-align: right; }
+.lfym-panel .continue a { color: #629924; font-size: 14px; font-weight: 600; cursor: pointer; }
+.lfym-states-grid { display: flex; flex-wrap: wrap; gap: 24px; }
+.lfym-state-label { font-size: 14px; font-weight: 600; margin-bottom: 8px; opacity: 0.5; }
+.lfym-state-section { margin-bottom: 32px; }
+.lfym-state-section h3 { font-size: 17px; margin: 0 0 16px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.class-tag { display: inline-block; font-size: 10px; background: #333; color: #aaa; padding: 1px 5px; border-radius: 3px; font-family: monospace; margin-left: 4px; vertical-align: middle; }
+.panel-id { display: block; font-size: 11px; font-family: monospace; color: #555; margin-top: 6px; text-align: center; cursor: pointer; transition: color 0.15s; user-select: none; }
+.panel-id:hover { color: #888; }
+.panel-id.copied { color: #26a641; }
+.usage-note { background: #222; border: 1px solid #3a3a3a; border-radius: 6px; padding: 12px 16px; font-size: 14px; line-height: 1.6; margin-top: 16px; margin-bottom: 0; color: #bbb; position: relative; cursor: pointer; }
+.usage-note strong { color: #ddd; }
+.usage-note code { background: #333; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #ccc; }
+.usage-note ul { color: #aaa; }
+.usage-note .usage-summary { display: block; padding-right: 90px; }
+.usage-note .usage-expand { position: absolute; bottom: 10px; right: 14px; font-size: 12px; color: #666; display: flex; align-items: center; gap: 4px; pointer-events: none; transition: color 0.15s; }
+.usage-note:hover .usage-expand { color: #999; }
+.usage-note.expanded .usage-expand .expand-text { display: none; }
+.usage-note .usage-expand .collapse-text { display: none; }
+.usage-note.expanded .usage-expand .collapse-text { display: inline; }
+.usage-note .usage-expand .expand-icon { transition: transform 0.2s; }
+.usage-note.expanded .usage-expand .expand-icon { transform: rotate(180deg); }
+.usage-note .usage-details { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #3a3a3a; color: #999; }
+.usage-note.expanded .usage-details { display: block; }
+</style>
+
+<!-- === FIND STATE === -->
+<div class="lfym-state-section">
+<h3>Find State</h3>
+<p style="font-size:14px;opacity:0.6">Prompt to solve. Annotated with CSS class names.</p>
+<div class="lfym-states-grid">
+<div>
+<div class="lfym-state-label">FIND — feedback='find' <span class="panel-id">panel-find</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <strong>Nxf3 was played <span class="class-tag">retro-instruction > strong</span></strong>
+    <em>Find a better move for White <span class="class-tag">retro-instruction > em</span></em>
+    <div class="actions">
+      <a>View the solution <span class="class-tag">retro-choices > a</span></a>
+      <a>Skip this move <span class="class-tag">retro-choices > a</span></a>
+    </div>
+  </div>
+</div>
+</div>
+
+<div>
+<div class="lfym-state-label">FIND — Vindicated (deeper review confirms game move was best)</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong style="font-size:14px">Actually upon deeper review, you did play the best move during the game.</strong>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- === FAIL STATES === -->
+<div class="lfym-state-section">
+<h3>Fail States</h3>
+<p style="font-size:14px;opacity:0.6">User attempted a move but it wasn’t good enough. Three variants based on <code>failKind</code>.</p>
+<div class="lfym-states-grid">
+
+<div>
+<div class="lfym-state-label">FAIL (better) — Improved but not best</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--fail">✗ <span class="class-tag">retro-icon--fail</span></span>
+    <strong>Better, but not the best move available. <span class="class-tag">failKind='better'</span></strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#56b4e966;background:#56b4e91a">
+        <span class="eval-box__label">vs Engine Best <span class="class-tag">retro-eval-box</span></span>
+        <span class="eval-box__value" style="color:#56b4e9">-0.8 <span class="class-tag">off-target</span></span>
+      </div>
+      <div class="eval-box" style="border-color:#7bc67e66;background:#7bc67e1a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#7bc67e">+1.2 <span class="class-tag">close</span></span>
+      </div>
+    </div>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<div>
+<div class="lfym-state-label">FAIL (default) — You can do better <span class="panel-id">panel-fail-default</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--fail">✗</span>
+    <strong>You can do better. <span class="class-tag">failKind=null</span></strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#e69d0066;background:#e69d001a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#e69d00">-1.5 <span class="class-tag">wide-miss</span></span>
+      </div>
+      <div class="eval-box" style="border-color:#8bb8a866;background:#8bb8a81a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#8bb8a8">+0.5 <span class="class-tag">acceptable</span></span>
+      </div>
+    </div>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<div>
+<div class="lfym-state-label">FAIL (worse) — Even worse than game move</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--fail">✗</span>
+    <strong>That move is even worse. <span class="class-tag">failKind='worse'</span></strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#db303166;background:#db30311a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#db3031">-4.1 <span class="class-tag">way-off</span></span>
+      </div>
+      <div class="eval-box" style="border-color:#8b1a1a66;background:#8b1a1a1a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#8b1a1a">-2.3 <span class="class-tag">wrong</span></span>
+      </div>
+    </div>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- === WIN STATES === -->
+<div class="lfym-state-section">
+<h3>Win States — Correct Move Found</h3>
+<p style="font-size:14px;opacity:0.6">User found the best or near-best move. Shown across the full severity spectrum of the <em>original mistake</em> that was being solved.</p>
+<div class="lfym-states-grid">
+
+<!-- Win: exact best, inaccuracy-level original mistake -->
+<div>
+<div class="lfym-state-label">WIN (exact) — Inaccuracy-level mistake solved <span class="panel-id">panel-win-inaccuracy</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">1 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Good move!</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#26a641">✓</span>
+      </div>
+      <div class="eval-box" style="border-color:#57ab5a66;background:#57ab5a1a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#57ab5a">+0.3</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#56b4e9">Chosen because: Inaccuracy.</div>
+      <div class="reason__detail" style="border-color:#56b4e940;color:#56b4e9">The engine found a slightly stronger continuation. The move played was the 2nd-best option.</div>
+      <div class="reason__summary">A slightly stronger continuation was available.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+<!-- Win: exact best, mistake-level -->
+<div>
+<div class="lfym-state-label">WIN (exact) — Mistake-level solved <span class="panel-id">panel-win-mistake</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">2 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Good move!</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#26a641">✓</span>
+      </div>
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#26a641">+1.2</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#e69d00">Chosen because: Mistake.</div>
+      <div class="reason__detail" style="border-color:#e69d0040;color:#e69d00">The engine’s best move was worth roughly +1.2 pawns more. This was a meaningful missed opportunity.</div>
+      <div class="reason__summary">The move played gave up a meaningful part of your advantage.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+<!-- Win: exact best, serious-level (swing) -->
+<div>
+<div class="lfym-state-label">WIN (exact) — Serious mistake solved <span class="panel-id">panel-win-serious</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Good move!</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#26a641">✓</span>
+      </div>
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#26a641">+2.4</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#e06c4e">Chosen because: Serious mistake.</div>
+      <div class="reason__detail" style="border-color:#e06c4e40;color:#e06c4e">Ng5 was played instead of Bc2. The evaluation swung by roughly +2.4 pawns.</div>
+      <div class="reason__summary">A much stronger move was available — this significantly weakened your position.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+<!-- Win: exact best, blunder-level (collapse) -->
+<div>
+<div class="lfym-state-label">WIN (exact) — Blunder solved (collapse) <span class="panel-id">panel-win-blunder-collapse</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">4 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Good move!</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#26a641">✓</span>
+      </div>
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#26a641">+4.6</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#db3031">Chosen because: Blunder.</div>
+      <div class="reason__detail" style="border-color:#db303140;color:#db3031">A won position was squandered with f4. The engine’s choice Qe2 maintained a decisive advantage.</div>
+      <div class="reason__summary">A completely winning position was squandered.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+<!-- Win: near-best -->
+<div>
+<div class="lfym-state-label">WIN (near-best) — Good enough <span class="panel-id">panel-win-near-best</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Good enough!</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#57ab5a66;background:#57ab5a1a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#57ab5a">-0.1 <span class="class-tag">near-perfect</span></span>
+      </div>
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#26a641">+1.8</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#e69d00">Chosen because: Mistake.</div>
+      <div class="reason__detail" style="border-color:#e69d0040;color:#e69d00">The engine’s best move was worth roughly +1.2 pawns more. This was a meaningful missed opportunity.</div>
+      <div class="reason__summary">The move played gave up a meaningful part of your advantage.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+<!-- Win: checkmate found -->
+<div>
+<div class="lfym-state-label">WIN (checkmate) — Found forced mate <span class="panel-id">panel-win-checkmate</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">5 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon" style="color:#a855f7">✓</span>
+    <strong>Good move!</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#a855f766;background:#a855f71a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#a855f7">#KO! <span class="class-tag">checkmate</span></span>
+      </div>
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#26a641">+5.2</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#db3031">Chosen because: Blunder.</div>
+      <div class="reason__detail" style="border-color:#db303140;color:#db3031">Mate in 1 via Qxh7# was available. Bd3 was played instead.</div>
+      <div class="reason__summary">Checkmate was right there. This move lets the opponent escape.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+<!-- Win: catastrophic original mistake -->
+<div>
+<div class="lfym-state-label">WIN (exact) — Catastrophic blunder solved <span class="panel-id">panel-win-catastrophic</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">6 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Good move!</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#26a641">✓</span>
+      </div>
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#26a641">+8.3</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#8b1a1a">Chosen because: Catastrophic blunder.</div>
+      <div class="reason__detail" style="border-color:#8b1a1a40;color:#8b1a1a">f4 was played instead of Qe2. The evaluation swung by roughly +8.3 pawns.</div>
+      <div class="reason__summary">The position went from clearly favorable to lost in a single move.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- === VIEW STATE === -->
+<div class="lfym-state-section">
+<h3>View State — Solution Revealed</h3>
+<p style="font-size:14px;opacity:0.6">User clicked "View the solution" without solving. Shows best move and full reason note.</p>
+<div class="lfym-states-grid">
+
+<div>
+<div class="lfym-state-label">VIEW — Catastrophic blunder revealed <span class="panel-id">panel-view-catastrophic</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Solution</strong>
+    <em>Best was <strong>Qe2</strong></em>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#8b1a1a66;background:#8b1a1a1a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#8b1a1a">-6.3 <span class="class-tag">wrong</span></span>
+      </div>
+      <div class="eval-box" style="border-color:#db303166;background:#db30311a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#db3031">-1.2 <span class="class-tag">way-off</span></span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#8b1a1a">Chosen because: Catastrophic blunder.</div>
+      <div class="reason__detail" style="border-color:#8b1a1a40;color:#8b1a1a">f4 was played instead of Qe2. The evaluation swung by roughly +8.3 pawns.</div>
+      <div class="reason__summary">The position went from clearly favorable to lost in a single move.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+<div>
+<div class="lfym-state-label">VIEW — Missed mate revealed <span class="panel-id">panel-view-missed-mate</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">5 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Solution</strong>
+    <em>Best was <strong>Qxh7#</strong></em>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#e06c4e66;background:#e06c4e1a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#e06c4e">-3.8 <span class="class-tag">far-off</span></span>
+      </div>
+      <div class="eval-box" style="border-color:#8bb8a866;background:#8bb8a81a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#8bb8a8">+0.4 <span class="class-tag">acceptable</span></span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#db3031">Chosen because: Blunder.</div>
+      <div class="reason__detail" style="border-color:#db303140;color:#db3031">Mate in 1 via Qxh7# was available. Bd3 was played instead.</div>
+      <div class="reason__summary">Checkmate was right there. This move lets the opponent escape.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save to Library</button>
+      <button>Try another move</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- === HARSH MODE EXAMPLES === -->
+<div class="lfym-state-section">
+<h3>Harsh Mode Examples</h3>
+<p style="font-size:14px;opacity:0.6">Representative panels showing how all text changes when harsh tone is active. Every user-facing string has a harsh variant.</p>
+<div class="lfym-states-grid">
+
+<div>
+<div class="lfym-state-label">FIND (harsh)</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e06c4e">1 / 12</span></div>
+  <div class="lfym-panel__body">
+    <div style="color:#e06c4e;font-size:14px;font-style:italic;margin-bottom:10px">I hope you're sitting down.</div>
+    <strong>Ng5 was played. Let's fix that.</strong>
+    <em>Find a better move for White. It's not hard.</em>
+    <div class="actions">
+      <a>Just show me the answer</a>
+      <a>Give up on this one</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-harsh-find</div>
+</div>
+
+<div>
+<div class="lfym-state-label">FAIL (harsh)</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e06c4e">3 / 12</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--fail">✗</span>
+    <strong>Getting warmer. Still wrong.</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#e69d0066;background:#e69d001a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#e69d00">-1.5</span>
+      </div>
+      <div class="eval-box" style="border-color:#8bb8a866;background:#8bb8a81a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#8bb8a8">+0.5</span>
+      </div>
+    </div>
+    <div class="actions">
+      <a>Just show me the answer</a>
+      <a>Give up on this one</a>
+      <button class="btn-save">Save this embarrassment</button>
+      <button>Try again.</button>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-harsh-fail</div>
+</div>
+
+<div>
+<div class="lfym-state-label">WIN (harsh)</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e06c4e">3 / 12</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Well, you got one right.</strong>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#26a641">✓</span>
+      </div>
+      <div class="eval-box" style="border-color:#26a64166;background:#26a6411a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#26a641">+2.4</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#e06c4e">Chosen because: Serious mistake.</div>
+      <div class="reason__detail" style="border-color:#e06c4e40;color:#e06c4e">Ng5 instead of Bc2. That cost you roughly +2.4 pawns.</div>
+      <div class="reason__summary">The engine is embarrassed on your behalf.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save this embarrassment</button>
+      <button>Try again.</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-harsh-win</div>
+</div>
+
+<div>
+<div class="lfym-state-label">VIEW (harsh)</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e06c4e">5 / 12</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong>Here's what you should have played.</strong>
+    <em>The answer was <strong>Qe2</strong></em>
+    <div class="eval-boxes">
+      <div class="eval-box" style="border-color:#8b1a1a66;background:#8b1a1a1a">
+        <span class="eval-box__label">vs Engine Best</span>
+        <span class="eval-box__value" style="color:#8b1a1a">-6.3</span>
+      </div>
+      <div class="eval-box" style="border-color:#db303166;background:#db30311a">
+        <span class="eval-box__label">vs Move Played</span>
+        <span class="eval-box__value" style="color:#db3031">-1.2</span>
+      </div>
+    </div>
+    <div class="reason">
+      <div class="reason__label" style="color:#8b1a1a">Chosen because: Catastrophic blunder.</div>
+      <div class="reason__detail" style="border-color:#8b1a1a40;color:#8b1a1a">f4 threw away a won game. Qe2 was right there. Cost: +8.3 pawns.</div>
+      <div class="reason__summary">The engine would like to speak with your manager.</div>
+    </div>
+    <div class="actions">
+      <button class="btn-save">Save this embarrassment</button>
+      <button>Try again.</button>
+    </div>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-harsh-view</div>
+</div>
+
+<div>
+<div class="lfym-state-label">OFF TRACK (harsh)</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e06c4e">3 / 12</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--off">!</span>
+    <strong>Focus.</strong>
+    <div class="actions">
+      <a>Get back to work.</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-harsh-offtrack</div>
+</div>
+
+<div>
+<div class="lfym-state-label">END (harsh, disaster)</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#8b1a1a">18 / 18</span></div>
+  <div class="lfym-panel__body">
+    <strong style="color:#8b1a1a">Done. Let's never speak of this game again.</strong>
+    <div class="actions" style="margin-top:8px">
+      <a>Suffer through it again</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-harsh-end</div>
+</div>
+
+<div>
+<div class="lfym-state-label">VINDICATED (harsh)</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--win">✓</span>
+    <strong style="font-size:14px">Fine. You were right this time. Don't let it go to your head.</strong>
+    <div class="continue"><a>▶ Next</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-harsh-vindicated</div>
+</div>
+
+</div>
+</div>
+
+<!-- === UTILITY STATES === -->
+<div class="lfym-state-section">
+<h3>Utility States</h3>
+<p style="font-size:14px;opacity:0.6">Non-solving screens: engine evaluation, off-track navigation, and session end.</p>
+<div class="lfym-states-grid">
+
+<div>
+<div class="lfym-state-label">EVAL — Engine thinking <span class="panel-id">panel-eval</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body" style="text-align:center;padding:24px 16px">
+    <strong>Evaluating your move…</strong>
+    <div style="margin-top:12px;background:#3a3a3a;border-radius:4px;height:6px;overflow:hidden">
+      <div style="width:60%;height:100%;background:#629924;border-radius:4px"></div>
+    </div>
+    <div style="font-size:12px;opacity:0.4;margin-top:4px">Depth: 14 / 18</div>
+  </div>
+</div>
+</div>
+
+<div>
+<div class="lfym-state-label">OFF TRACK — Browsed away <span class="panel-id">panel-offtrack</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">3 / 7</span></div>
+  <div class="lfym-panel__body">
+    <span class="lfym-panel__icon lfym-panel__icon--off">!</span>
+    <strong>You browsed away</strong>
+    <div class="actions">
+      <a>Resume learning</a>
+    </div>
+  </div>
+</div>
+</div>
+
+<div>
+<div class="lfym-state-label">END — No mistakes found <span class="panel-id">panel-end-empty</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">0 / 0</span></div>
+  <div class="lfym-panel__body">
+    <strong>No mistakes found.</strong>
+  </div>
+</div>
+</div>
+
+<div>
+<div class="lfym-state-label">END — Session complete <span class="panel-id">panel-end-complete</span></div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress">7 / 7</span></div>
+  <div class="lfym-panel__body">
+    <strong>Done reviewing mistakes.</strong>
+    <div class="actions" style="margin-top:8px">
+      <a>Do it again</a>
+      <button class="btn-save">Save 3 failed position(s) to Library</button>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> The LFYM panel is the box that appears on the right side of the analysis board when the user clicks "Mistakes." It walks through each flagged position one at a time. The user sees a prompt to find a better move, then feedback on their attempt (correct, close, or wrong), with colored eval boxes and a reason note. ...</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details">The LFYM panel is the box that appears on the right side of the analysis board when the user clicks "Mistakes." It walks through each flagged position one at a time. The user sees a prompt to find a better move, then feedback on their attempt (correct, close, or wrong), with colored eval boxes and a reason note. These panels show every possible state that box can be in.<br><br><strong>Code:</strong> <code>renderRetroStrip()</code> in <code>src/analyse/retroView.ts</code>.<br><br><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>LFYM panel (all states) — Game Analysis tool</li><li>Eval comparison boxes — Game Analysis tool</li><li>Reason notes — Game Analysis tool</li><li>Session intro/end messaging — Game Analysis tool</li><li>Save to Library button — Game Analysis tool → Puzzle Library</li></ul></div></div>
+</section>
+
+<!-- F4. Mistake Count Gradient -->
+<section id="mistake-count">
+<h2>F4. Mistake Count Gradient</h2>
+<p>Session-level messaging that escalates based on how many learnable moments were found in the game.</p>
+
+<div class="color-strip" style="margin-bottom:16px">
+  <div class="color-strip__tier" style="background:#26a641;color:#e8e8e8">
+    <span class="label">clean</span>
+    <span class="hex">#26a641</span>
+    <span class="range">0</span>
+  </div>
+  <div class="color-strip__tier" style="background:#57ab5a;color:#1a1a1a">
+    <span class="label">minor</span>
+    <span class="hex">#57ab5a</span>
+    <span class="range">1–2</span>
+  </div>
+  <div class="color-strip__tier" style="background:#56b4e9;color:#1a1a1a">
+    <span class="label">notable</span>
+    <span class="hex">#56b4e9</span>
+    <span class="range">3–4</span>
+  </div>
+  <div class="color-strip__tier" style="background:#e69d00;color:#1a1a1a">
+    <span class="label">concerning</span>
+    <span class="hex">#e69d00</span>
+    <span class="range">5–7</span>
+  </div>
+  <div class="color-strip__tier" style="background:#e06c4e;color:#1a1a1a">
+    <span class="label">rough</span>
+    <span class="hex">#e06c4e</span>
+    <span class="range">8–10</span>
+  </div>
+  <div class="color-strip__tier" style="background:#db3031;color:#e8e8e8">
+    <span class="label">brutal</span>
+    <span class="hex">#db3031</span>
+    <span class="range">11–15</span>
+  </div>
+  <div class="color-strip__tier" style="background:#8b1a1a;color:#e8e8e8">
+    <span class="label">disaster</span>
+    <span class="hex">#8b1a1a</span>
+    <span class="range">16+</span>
+  </div>
+</div>
+
+<table style="margin-bottom:24px">
+<thead><tr><th>Tier</th><th>Count</th><th>Color</th><th>Session Intro</th><th>Session End</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>clean</code></td>
+  <td>0</td>
+  <td><span class="swatch" style="background:#26a641"></span> <code>#26a641</code></td>
+  <td contenteditable="true" data-tone="count" data-reason="clean" data-tier="clean" data-field="intro">—</td>
+  <td contenteditable="true" data-tone="count" data-reason="clean" data-tier="clean" data-field="end">No mistakes found. Well played.</td>
+</tr>
+<tr>
+  <td><code>minor</code></td>
+  <td>1–2</td>
+  <td><span class="swatch" style="background:#57ab5a"></span> <code>#57ab5a</code></td>
+  <td contenteditable="true" data-tone="count" data-reason="minor" data-tier="minor" data-field="intro">A couple of moments to revisit.</td>
+  <td contenteditable="true" data-tone="count" data-reason="minor" data-tier="minor" data-field="end">Done. Only a few things to tighten up.</td>
+</tr>
+<tr>
+  <td><code>notable</code></td>
+  <td>3–4</td>
+  <td><span class="swatch" style="background:#56b4e9"></span> <code>#56b4e9</code></td>
+  <td contenteditable="true" data-tone="count" data-reason="notable" data-tier="notable" data-field="intro">A few key moments to work through.</td>
+  <td contenteditable="true" data-tone="count" data-reason="notable" data-tier="notable" data-field="end">Done reviewing. Some clear areas to improve.</td>
+</tr>
+<tr>
+  <td><code>concerning</code></td>
+  <td>5–7</td>
+  <td><span class="swatch" style="background:#e69d00"></span> <code>#e69d00</code></td>
+  <td contenteditable="true" data-tone="count" data-reason="concerning" data-tier="concerning" data-field="intro">Several moments need your attention.</td>
+  <td contenteditable="true" data-tone="count" data-reason="concerning" data-tier="concerning" data-field="end">Done. There were quite a few missed opportunities here.</td>
+</tr>
+<tr>
+  <td><code>rough</code></td>
+  <td>8–10</td>
+  <td><span class="swatch" style="background:#e06c4e"></span> <code>#e06c4e</code></td>
+  <td contenteditable="true" data-tone="count" data-reason="rough" data-tier="rough" data-field="intro">This game had a lot of room for improvement.</td>
+  <td contenteditable="true" data-tone="count" data-reason="rough" data-tier="rough" data-field="end">Done reviewing. This was a tough game — lots to learn from.</td>
+</tr>
+<tr>
+  <td><code>brutal</code></td>
+  <td>11–15</td>
+  <td><span class="swatch" style="background:#db3031"></span> <code>#db3031</code></td>
+  <td contenteditable="true" data-tone="count" data-reason="brutal" data-tier="brutal" data-field="intro">This game needs serious work. Let's go.</td>
+  <td contenteditable="true" data-tone="count" data-reason="brutal" data-tier="brutal" data-field="end">Done. That was a difficult watch. Plenty of material to drill.</td>
+</tr>
+<tr>
+  <td><code>disaster</code></td>
+  <td>16+</td>
+  <td><span class="swatch" style="background:#8b1a1a"></span> <code>#8b1a1a</code></td>
+  <td contenteditable="true" data-tone="count" data-reason="disaster" data-tier="disaster" data-field="intro">There's a lot to unpack here. Buckle up.</td>
+  <td contenteditable="true" data-tone="count" data-reason="disaster" data-tier="disaster" data-field="end">Done. That was rough — but every one of these is a chance to improve.</td>
+</tr>
+</tbody>
+</table>
+
+<h3>Harsh Tone</h3>
+<table style="margin-bottom:24px">
+<thead><tr><th>Tier</th><th>Count</th><th>Session Intro (harsh)</th><th>Session End (harsh)</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>clean</code></td>
+  <td>0</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="clean" data-tier="clean" data-field="intro">—</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="clean" data-tier="clean" data-field="end">No mistakes found. Suspiciously clean.</td>
+</tr>
+<tr>
+  <td><code>minor</code></td>
+  <td>1–2</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="minor" data-tier="minor" data-field="intro">Two moments. You'll survive.</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="minor" data-tier="minor" data-field="end">That wasn't too painful.</td>
+</tr>
+<tr>
+  <td><code>notable</code></td>
+  <td>3–4</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="notable" data-tier="notable" data-field="intro">A few things went wrong. Let's see how wrong.</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="notable" data-tier="notable" data-field="end">Done. You've got homework.</td>
+</tr>
+<tr>
+  <td><code>concerning</code></td>
+  <td>5–7</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="concerning" data-tier="concerning" data-field="intro">This is going to take a while.</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="concerning" data-tier="concerning" data-field="end">Done. The engine would like a word.</td>
+</tr>
+<tr>
+  <td><code>rough</code></td>
+  <td>8–10</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="rough" data-tier="rough" data-field="intro">This game was not your finest work.</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="rough" data-tier="rough" data-field="end">Done. That was hard to watch.</td>
+</tr>
+<tr>
+  <td><code>brutal</code></td>
+  <td>11–15</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="brutal" data-tier="brutal" data-field="intro">I hope you're sitting down.</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="brutal" data-tier="brutal" data-field="end">Done. We don't need to talk about it.</td>
+</tr>
+<tr>
+  <td><code>disaster</code></td>
+  <td>16+</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="disaster" data-tier="disaster" data-field="intro">What happened here?</td>
+  <td contenteditable="true" data-tone="count-harsh" data-reason="disaster" data-tier="disaster" data-field="end">Done. Let's never speak of this game again.</td>
+</tr>
+</tbody>
+</table>
+
+<h3>LFYM Panel Previews — Session Intro by Count</h3>
+<div class="lfym-states-grid">
+<div>
+<div class="lfym-state-label">MINOR — 1–2 mistakes</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#57ab5a">1 / 2</span></div>
+  <div class="lfym-panel__body">
+    <div style="color:#57ab5a;font-size:14px;font-style:italic;margin-bottom:10px" contenteditable="true" data-tone="count-panel" data-reason="minor" data-tier="minor" data-field="intro">A couple of moments to revisit.</div>
+    <strong>Nxf3 was played</strong>
+    <em>Find a better move for White</em>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-count-intro-minor</div>
+</div>
+<div>
+<div class="lfym-state-label">NOTABLE — 3–4 mistakes</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#56b4e9">1 / 4</span></div>
+  <div class="lfym-panel__body">
+    <div style="color:#56b4e9;font-size:14px;font-style:italic;margin-bottom:10px" contenteditable="true" data-tone="count-panel" data-reason="notable" data-tier="notable" data-field="intro">A few key moments to work through.</div>
+    <strong>Nxf3 was played</strong>
+    <em>Find a better move for White</em>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-count-intro-notable</div>
+</div>
+<div>
+<div class="lfym-state-label">CONCERNING — 5–7 mistakes</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e69d00">1 / 6</span></div>
+  <div class="lfym-panel__body">
+    <div style="color:#e69d00;font-size:14px;font-style:italic;margin-bottom:10px" contenteditable="true" data-tone="count-panel" data-reason="concerning" data-tier="concerning" data-field="intro">Several moments need your attention.</div>
+    <strong>Nxf3 was played</strong>
+    <em>Find a better move for White</em>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-count-intro-concerning</div>
+</div>
+<div>
+<div class="lfym-state-label">ROUGH — 8–10 mistakes</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e06c4e">1 / 9</span></div>
+  <div class="lfym-panel__body">
+    <div style="color:#e06c4e;font-size:14px;font-style:italic;margin-bottom:10px" contenteditable="true" data-tone="count-panel" data-reason="rough" data-tier="rough" data-field="intro">This game had a lot of room for improvement.</div>
+    <strong>Nxf3 was played</strong>
+    <em>Find a better move for White</em>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-count-intro-rough</div>
+</div>
+<div>
+<div class="lfym-state-label">BRUTAL — 11–15 mistakes</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#db3031">1 / 13</span></div>
+  <div class="lfym-panel__body">
+    <div style="color:#db3031;font-size:14px;font-style:italic;margin-bottom:10px" contenteditable="true" data-tone="count-panel" data-reason="brutal" data-tier="brutal" data-field="intro">This game needs serious work. Let's go.</div>
+    <strong>Nxf3 was played</strong>
+    <em>Find a better move for White</em>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-count-intro-brutal</div>
+</div>
+<div>
+<div class="lfym-state-label">DISASTER — 16+ mistakes</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#8b1a1a">1 / 18</span></div>
+  <div class="lfym-panel__body">
+    <div style="color:#8b1a1a;font-size:14px;font-style:italic;margin-bottom:10px" contenteditable="true" data-tone="count-panel" data-reason="disaster" data-tier="disaster" data-field="intro">There's a lot to unpack here. Buckle up.</div>
+    <strong>Nxf3 was played</strong>
+    <em>Find a better move for White</em>
+    <div class="actions">
+      <a>View the solution</a>
+      <a>Skip this move</a>
+    </div>
+  </div>
+</div>
+<div class="panel-id">panel-count-intro-disaster</div>
+</div>
+</div>
+
+<h3>Session End Previews</h3>
+<div class="lfym-states-grid">
+<div>
+<div class="lfym-state-label">END — clean</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#26a641">0 / 0</span></div>
+  <div class="lfym-panel__body">
+    <strong style="color:#26a641" contenteditable="true" data-tone="count-end-panel" data-reason="clean" data-tier="clean" data-field="end">No mistakes found. Well played.</strong>
+    
+  </div>
+</div>
+<div class="panel-id">panel-count-end-clean</div>
+</div>
+<div>
+<div class="lfym-state-label">END — minor</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#57ab5a">2 / 2</span></div>
+  <div class="lfym-panel__body">
+    <strong style="color:#57ab5a" contenteditable="true" data-tone="count-end-panel" data-reason="minor" data-tier="minor" data-field="end">Done. Only a few things to tighten up.</strong>
+    <div class="actions" style="margin-top:8px"><a>Do it again</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-count-end-minor</div>
+</div>
+<div>
+<div class="lfym-state-label">END — notable</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#56b4e9">4 / 4</span></div>
+  <div class="lfym-panel__body">
+    <strong style="color:#56b4e9" contenteditable="true" data-tone="count-end-panel" data-reason="notable" data-tier="notable" data-field="end">Done reviewing. Some clear areas to improve.</strong>
+    <div class="actions" style="margin-top:8px"><a>Do it again</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-count-end-notable</div>
+</div>
+<div>
+<div class="lfym-state-label">END — concerning</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e69d00">7 / 7</span></div>
+  <div class="lfym-panel__body">
+    <strong style="color:#e69d00" contenteditable="true" data-tone="count-end-panel" data-reason="concerning" data-tier="concerning" data-field="end">Done. There were quite a few missed opportunities here.</strong>
+    <div class="actions" style="margin-top:8px"><a>Do it again</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-count-end-concerning</div>
+</div>
+<div>
+<div class="lfym-state-label">END — rough</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#e06c4e">10 / 10</span></div>
+  <div class="lfym-panel__body">
+    <strong style="color:#e06c4e" contenteditable="true" data-tone="count-end-panel" data-reason="rough" data-tier="rough" data-field="end">Done reviewing. This was a tough game — lots to learn from.</strong>
+    <div class="actions" style="margin-top:8px"><a>Do it again</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-count-end-rough</div>
+</div>
+<div>
+<div class="lfym-state-label">END — brutal</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#db3031">15 / 15</span></div>
+  <div class="lfym-panel__body">
+    <strong style="color:#db3031" contenteditable="true" data-tone="count-end-panel" data-reason="brutal" data-tier="brutal" data-field="end">Done. That was a difficult watch. Plenty of material to drill.</strong>
+    <div class="actions" style="margin-top:8px"><a>Do it again</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-count-end-brutal</div>
+</div>
+<div>
+<div class="lfym-state-label">END — disaster</div>
+<div class="lfym-panel">
+  <div class="lfym-panel__title"><span>Learn from your mistakes</span><span class="progress" style="color:#8b1a1a">18 / 18</span></div>
+  <div class="lfym-panel__body">
+    <strong style="color:#8b1a1a" contenteditable="true" data-tone="count-end-panel" data-reason="disaster" data-tier="disaster" data-field="end">Done. That was rough — but every one of these is a chance to improve.</strong>
+    <div class="actions" style="margin-top:8px"><a>Do it again</a></div>
+  </div>
+</div>
+<div class="panel-id">panel-count-end-disaster</div>
+</div>
+</div>
+
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> When the user opens Learn From Your Mistakes, the number in the top-right corner ("3 / 7") is tinted with a color that reflects how many mistakes the game had overall. On the very first puzzle, a short intro message appears (e.g., "This game had a lot of room for improvement.") that sets the tone for the session. ...</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details">When the user opens Learn From Your Mistakes, the number in the top-right corner ("3 / 7") is tinted with a color that reflects how many mistakes the game had overall. On the very first puzzle, a short intro message appears (e.g., "This game had a lot of room for improvement.") that sets the tone for the session. At the end, a closing message replaces the generic "Done reviewing mistakes" with something that matches the overall severity. More mistakes = warmer/redder colors and more direct language.<br><br><strong>Code:</strong> <code>classifyMistakeCount(total)</code> in <code>src/feedback/severity.ts</code>, wired in <code>retroView.ts</code>. Affects <code>.retro-box__progress</code> color, first-find intro, and session-end message.<br><br><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>LFYM panel — Game Analysis tool — progress counter tint</li><li>LFYM panel — Game Analysis tool — first puzzle intro message</li><li>LFYM panel — Game Analysis tool — session end message</li></ul></div></div>
+</section>
+
+<!-- G. Special Classifications -->
+<section id="special">
+<h2>G. Special Classifications</h2>
+<div class="special-cards">
+<div class="special-card">
+  <div class="card-label" style="color:#9a8c98">Book move</div>
+  <div class="card-summary">Opening book move.</div>
+  <div class="card-color"><span class="swatch" style="background:#9a8c98"></span> #9a8c98</div>
+</div>
+<div class="special-card">
+  <div class="card-label" style="color:#888888">Forced</div>
+  <div class="card-summary">Only legal move.</div>
+  <div class="card-color"><span class="swatch" style="background:#888888"></span> #888888</div>
+</div>
+<div class="special-card">
+  <div class="card-label" style="color:#8b1a1a">Missed checkmate</div>
+  <div class="card-summary">Checkmate was available.</div>
+  <div class="card-color"><span class="swatch" style="background:#8b1a1a"></span> #8b1a1a</div>
+</div>
+</div>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>Status:</strong> Defined in <code>SPECIAL_CLASSIFICATIONS</code> in <code>src/feedback/severity.ts</code> but not yet wired.<br><br><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>Not yet used in any tool — reserved for future surfaces</li></ul></div></div>
+</section>
+
+<!-- H. Board Glyphs -->
+<section id="glyphs">
+<h2>H. Board Glyphs</h2>
+<p>Annotation badges as they appear on board squares after game review.</p>
+<div class="glyph-gallery">
+<div class="glyph-card">
+  <div class="glyph-square glyph-square--light">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" class="piece"><g style="opacity:1;fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" style="fill:#000;stroke:#000"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" style="fill:#000;stroke:#000"/><path d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z" style="fill:#fff;stroke:#fff"/><path d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)" style="fill:#fff;stroke:#fff"/></g></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="badge"><circle cx="50" cy="50" r="50" fill="#168226"/><path fill="#fff" d="M71.967 62.349h-9.75l-2.049-39.083h13.847zM60.004 76.032q0-3.77 2.049-5.244 2.048-1.557 4.998-1.557 2.867 0 4.916 1.557 2.048 1.475 2.048 5.244 0 3.605-2.048 5.244-2.049 1.556-4.916 1.556-2.95 0-4.998-1.556-2.049-1.64-2.049-5.244zM37.967 62.349h-9.75l-2.049-39.083h13.847zM26.004 76.032q0-3.77 2.049-5.244 2.048-1.557 4.998-1.557 2.867 0 4.916 1.557 2.048 1.475 2.048 5.244 0 3.605-2.048 5.244-2.049 1.556-4.916 1.556-2.95 0-4.998-1.556-2.049-1.64-2.049-5.244z"/></svg>
+  </div>
+  <div class="glyph-card__label" style="color:#168226">!!</div>
+  <div class="glyph-card__sub">Brilliant</div>
+  <div class="glyph-card__sub">Non-obvious best move in complex position</div>
+</div>
+<div class="glyph-card">
+  <div class="glyph-square glyph-square--dark">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" class="piece"><g style="opacity:1;fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" style="fill:#000;stroke:#000"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" style="fill:#000;stroke:#000"/><path d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z" style="fill:#fff;stroke:#fff"/><path d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)" style="fill:#fff;stroke:#fff"/></g></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="badge"><circle cx="50" cy="50" r="50" fill="#22ac38"/><path fill="#fff" d="M54.967 62.349h-9.75l-2.049-39.083h13.847zM43.004 76.032q0-3.77 2.049-5.244 2.048-1.557 4.998-1.557 2.867 0 4.916 1.557 2.048 1.475 2.048 5.244 0 3.605-2.048 5.244-2.049 1.556-4.916 1.556-2.95 0-4.998-1.556-2.049-1.64-2.049-5.244z"/></svg>
+  </div>
+  <div class="glyph-card__label" style="color:#22ac38">!</div>
+  <div class="glyph-card__sub">Good move</div>
+  <div class="glyph-card__sub">Best / excellent tier moves</div>
+</div>
+<div class="glyph-card">
+  <div class="glyph-square glyph-square--light">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" class="piece"><g style="opacity:1;fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" style="fill:#000;stroke:#000"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" style="fill:#000;stroke:#000"/><path d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z" style="fill:#fff;stroke:#fff"/><path d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)" style="fill:#fff;stroke:#fff"/></g></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="badge"><circle cx="50" cy="50" r="50" fill="#ea45d8"/><path fill="#fff" d="M60.823 58.9q0-4.098 1.72-6.883 1.721-2.786 5.9-5.818 3.687-2.622 5.243-4.506 1.64-1.966 1.64-4.588t-1.967-3.933q-1.885-1.393-5.326-1.393t-6.8 1.065q-3.36 1.065-6.883 2.868l-4.343-8.767q4.015-2.212 8.685-3.605 4.67-1.393 10.242-1.393 8.521 0 13.192 4.097 4.752 4.096 4.752 10.405 0 3.36-1.065 5.818-1.066 2.458-3.196 4.588-2.13 2.048-5.326 4.424-2.376 1.72-3.687 2.95-1.31 1.229-1.802 2.376-.41 1.147-.41 2.868v2.376h-10.57zm-1.311 16.632q0-3.77 2.048-5.244 2.049-1.557 4.998-1.557 2.868 0 4.916 1.557 2.049 1.475 2.049 5.244 0 3.605-2.049 5.244-2.048 1.556-4.916 1.556-2.95 0-4.998-1.556-2.048-1.64-2.048-5.244zM36.967 61.849h-9.75l-2.049-39.083h13.847zM25.004 75.532q0-3.77 2.049-5.244 2.048-1.557 4.998-1.557 2.867 0 4.916 1.557 2.048 1.475 2.048 5.244 0 3.605-2.048 5.244-2.049 1.556-4.916 1.556-2.95 0-4.998-1.556-2.049-1.64-2.049-5.244z"/></svg>
+  </div>
+  <div class="glyph-card__label" style="color:#ea45d8">!?</div>
+  <div class="glyph-card__sub">Interesting move</div>
+  <div class="glyph-card__sub">Speculative or sharp choice</div>
+</div>
+<div class="glyph-card">
+  <div class="glyph-square glyph-square--dark">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" class="piece"><g style="opacity:1;fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" style="fill:#000;stroke:#000"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" style="fill:#000;stroke:#000"/><path d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z" style="fill:#fff;stroke:#fff"/><path d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)" style="fill:#fff;stroke:#fff"/></g></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="badge"><circle cx="50" cy="50" r="50" fill="#56b4e9"/><path fill="#fff" d="M37.734 21.947c-3.714 0-7.128.464-10.242 1.393-3.113.928-6.009 2.13-8.685 3.605l4.343 8.766c2.35-1.202 4.644-2.157 6.883-2.867a22.366 22.366 0 0 1 6.799-1.065c2.294 0 4.07.464 5.326 1.393 1.311.874 1.967 2.186 1.967 3.933 0 1.748-.546 3.277-1.639 4.588-1.038 1.257-2.786 2.758-5.244 4.506-2.786 2.021-4.751 3.961-5.898 5.819-1.147 1.857-1.721 4.15-1.721 6.88v2.952h10.568v-2.377c0-1.147.137-2.103.41-2.868.328-.764.93-1.557 1.803-2.376.874-.82 2.104-1.803 3.688-2.95 2.13-1.584 3.906-3.058 5.326-4.424 1.42-1.42 2.485-2.95 3.195-4.59.71-1.638 1.065-3.576 1.065-5.816 0-4.206-1.584-7.675-4.752-10.406-3.114-2.731-7.51-4.096-13.192-4.096zm24.745.819 2.048 39.084h9.75l2.047-39.084zM35.357 68.73c-1.966 0-3.632.52-4.998 1.557-1.365.983-2.047 2.732-2.047 5.244 0 2.404.682 4.152 2.047 5.244 1.366 1.038 3.032 1.557 4.998 1.557 1.912 0 3.55-.519 4.916-1.557 1.366-1.092 2.05-2.84 2.05-5.244 0-2.512-.684-4.26-2.05-5.244-1.365-1.038-3.004-1.557-4.916-1.557zm34.004 0c-1.966 0-3.632.52-4.998 1.557-1.365.983-2.049 2.732-2.049 5.244 0 2.404.684 4.152 2.05 5.244 1.365 1.038 3.03 1.557 4.997 1.557 1.912 0 3.55-.519 4.916-1.557 1.366-1.092 2.047-2.84 2.047-5.244 0-2.512-.681-4.26-2.047-5.244-1.365-1.038-3.004-1.557-4.916-1.557z"/></svg>
+  </div>
+  <div class="glyph-card__label" style="color:#56b4e9">?!</div>
+  <div class="glyph-card__sub">Dubious / Inaccuracy</div>
+  <div class="glyph-card__sub">Inaccuracy tier</div>
+</div>
+<div class="glyph-card">
+  <div class="glyph-square glyph-square--light">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" class="piece"><g style="opacity:1;fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" style="fill:#000;stroke:#000"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" style="fill:#000;stroke:#000"/><path d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z" style="fill:#fff;stroke:#fff"/><path d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)" style="fill:#fff;stroke:#fff"/></g></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="badge"><circle cx="50" cy="50" r="50" fill="#e69f00"/><path fill="#fff" d="M40.436 60.851q0-4.66 1.957-7.83 1.958-3.17 6.712-6.619 4.195-2.983 5.967-5.127 1.864-2.237 1.864-5.22 0-2.983-2.237-4.475-2.144-1.585-6.06-1.585-3.915 0-7.737 1.212t-7.83 3.263l-4.941-9.975q4.568-2.517 9.881-4.101 5.314-1.585 11.653-1.585 9.695 0 15.008 4.661 5.407 4.661 5.407 11.839 0 3.822-1.212 6.619-1.212 2.796-3.635 5.22-2.424 2.33-6.06 5.034-2.703 1.958-4.195 3.356-1.491 1.398-2.05 2.703-.467 1.305-.467 3.263v2.703H40.436zm-1.492 18.924q0-4.288 2.33-5.966 2.331-1.771 5.687-1.771 3.263 0 5.594 1.771 2.33 1.678 2.33 5.966 0 4.102-2.33 5.966-2.331 1.772-5.594 1.772-3.356 0-5.686-1.772-2.33-1.864-2.33-5.966z"/></svg>
+  </div>
+  <div class="glyph-card__label" style="color:#e69f00">?</div>
+  <div class="glyph-card__sub">Mistake</div>
+  <div class="glyph-card__sub">Mistake / serious mistake tier</div>
+</div>
+<div class="glyph-card">
+  <div class="glyph-square glyph-square--dark">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" class="piece"><g style="opacity:1;fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" style="fill:#000;stroke:#000"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" style="fill:#000;stroke:#000"/><path d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z" style="fill:#fff;stroke:#fff"/><path d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)" style="fill:#fff;stroke:#fff"/></g></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="badge"><circle cx="50" cy="50" r="50" fill="#df5353"/><path fill="#fff" d="M31.8 22.22c-3.675 0-7.052.46-10.132 1.38-3.08.918-5.945 2.106-8.593 3.565l4.298 8.674c2.323-1.189 4.592-2.136 6.808-2.838a22.138 22.138 0 0 1 6.728-1.053c2.27 0 4.025.46 5.268 1.378 1.297.865 1.946 2.16 1.946 3.89s-.541 3.242-1.622 4.539c-1.027 1.243-2.756 2.73-5.188 4.458-2.756 2-4.7 3.918-5.836 5.755-1.134 1.837-1.702 4.107-1.702 6.808v2.92h10.457v-2.35c0-1.135.135-2.082.406-2.839.324-.756.918-1.54 1.783-2.35.864-.81 2.079-1.784 3.646-2.918 2.107-1.568 3.863-3.026 5.268-4.376 1.405-1.405 2.46-2.92 3.162-4.541.703-1.621 1.054-3.54 1.054-5.755 0-4.161-1.568-7.592-4.702-10.294-3.08-2.702-7.43-4.052-13.05-4.052zm38.664 0c-3.675 0-7.053.46-10.133 1.38-3.08.918-5.944 2.106-8.591 3.565l4.295 8.674c2.324-1.189 4.593-2.136 6.808-2.838a22.138 22.138 0 0 1 6.728-1.053c2.27 0 4.026.46 5.269 1.378 1.297.865 1.946 2.16 1.946 3.89s-.54 3.242-1.62 4.539c-1.027 1.243-2.757 2.73-5.189 4.458-2.756 2-4.7 3.918-5.835 5.755-1.135 1.837-1.703 4.107-1.703 6.808v2.92h10.457v-2.35c0-1.135.134-2.082.404-2.839.324-.756.918-1.54 1.783-2.35.865-.81 2.081-1.784 3.648-2.918 2.108-1.568 3.864-3.026 5.269-4.376 1.405-1.405 2.46-2.92 3.162-4.541.702-1.621 1.053-3.54 1.053-5.755 0-4.161-1.567-7.592-4.702-10.294-3.08-2.702-7.43-4.052-13.05-4.052zM29.449 68.504c-1.945 0-3.593.513-4.944 1.54-1.351.973-2.027 2.703-2.027 5.188 0 2.378.676 4.108 2.027 5.188 1.35 1.027 3 1.54 4.944 1.54 1.892 0 3.512-.513 4.863-1.54 1.35-1.08 2.026-2.81 2.026-5.188 0-2.485-.675-4.215-2.026-5.188-1.351-1.027-2.971-1.54-4.863-1.54zm38.663 0c-1.945 0-3.592.513-4.943 1.54-1.35.973-2.026 2.703-2.026 5.188 0 2.378.675 4.108 2.026 5.188 1.351 1.027 2.998 1.54 4.943 1.54 1.891 0 3.513-.513 4.864-1.54 1.351-1.08 2.027-2.81 2.027-5.188 0-2.485-.676-4.215-2.027-5.188-1.35-1.027-2.973-1.54-4.864-1.54z"/></svg>
+  </div>
+  <div class="glyph-card__label" style="color:#df5353">??</div>
+  <div class="glyph-card__sub">Blunder</div>
+  <div class="glyph-card__sub">Blunder / catastrophic tier</div>
+</div>
+<div class="glyph-card">
+  <div class="glyph-square glyph-square--light">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" class="piece"><g style="opacity:1;fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"><path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" style="fill:#000;stroke:#000"/><path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,9.506 13.5,8.5 13.5,7.5 C 14.5,6.5 16.5,10 16.5,10 L 18.5,10 C 18.5,10 19.28,8.008 21,7 C 22,7 22,10 22,10" style="fill:#000;stroke:#000"/><path d="M 9.5 25.5 A 0.5 0.5 0 1 1 8.5,25.5 A 0.5 0.5 0 1 1 9.5 25.5 z" style="fill:#fff;stroke:#fff"/><path d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z" transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)" style="fill:#fff;stroke:#fff"/></g></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="badge" style="width:80px;height:80px;top:0;right:0"><defs><linearGradient id="ko-g" x1="0%" y1="20%" x2="100%" y2="80%"><stop offset="0%" stop-color="#f3b7ff"/><stop offset="18%" stop-color="#c86bff"/><stop offset="48%" stop-color="#8a35ff"/><stop offset="100%" stop-color="#3d0b73"/></linearGradient></defs><svg viewBox="0 0 433 405" width="100" height="100"><path d="M 398 142 L 368 128 L 344 127 L 340 131 L 327 133 L 320 130 L 316 135 L 302 137 L 285 144 L 281 140 L 278 147 L 266 144 L 267 149 L 257 162 L 309 159 L 311 162 L 307 165 L 294 166 L 289 171 L 282 172 L 267 184 L 258 187 L 249 204 L 243 209 L 243 217 L 240 220 L 238 219 L 230 234 L 230 245 L 226 248 L 220 246 L 215 269 L 219 277 L 217 282 L 222 294 L 233 304 L 232 306 L 236 311 L 247 318 L 264 322 L 296 322 L 322 313 L 327 308 L 343 301 L 378 273 L 401 242 L 416 212 L 420 196 L 419 175 L 415 162 Z M 251 128 L 160 170 L 171 125 L 168 117 L 145 112 L 131 126 L 109 164 L 89 213 L 45 238 L 55 242 L 48 250 L 50 255 L 38 264 L 42 267 L 59 260 L 62 273 L 59 288 L 42 322 L 41 331 L 47 325 L 43 349 L 53 329 L 56 332 L 52 342 L 65 327 L 71 330 L 68 341 L 78 326 L 84 328 L 83 333 L 87 331 L 116 257 L 121 259 L 146 296 L 200 340 L 226 349 L 237 344 L 220 330 L 230 327 L 189 285 L 164 240 L 153 236 L 151 228 L 162 217 L 166 205 L 181 201 L 185 195 L 247 164 L 249 151 L 238 151 L 236 146 L 253 136 L 244 136 Z" fill="url(#ko-g)" fill-rule="evenodd" stroke="#f8dcff" stroke-width="1.6" stroke-linejoin="round"/></svg></svg>
+  </div>
+  <div class="glyph-card__label" style="color:#a855f7">#KO!</div>
+  <div class="glyph-card__sub">Checkmate</div>
+  <div class="glyph-card__sub">Terminal checkmate — delivered on the board</div>
+</div>
+</div>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary" ><strong>What the user sees:</strong> After game review, colored circle badges appear on the board squares where each move lands — blue for inaccuracies, orange for mistakes, red for blunders, green for good moves. The same glyphs appear as text symbols in the move list. ...</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details">After game review, colored circle badges appear on the board squares where each move lands — blue for inaccuracies, orange for mistakes, red for blunders, green for good moves. The same glyphs appear as text symbols in the move list. The purple KO skull appears on the losing king’s square at checkmate.<br><br><strong>Code:</strong> <code>annotationShapes()</code> in <code>src/analyse/boardGlyphs.ts</code>, <code>GLYPH_COLORS</code> in <code>moveList.ts</code>, KO overlay in <code>engine/ctrl.ts</code>.<br><br><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>Board square badges after review — Game Analysis tool</li><li>Move list glyph symbols — Game Analysis tool</li><li>Eval graph dot colors — Game Analysis tool</li><li>KO skull overlay at checkmate — Game Analysis tool</li></ul></div></div>
+</section>
+
+<!-- I. LFYM Feedback Icons -->
+<section id="lfym-icons">
+<h2>I. LFYM Feedback Icons</h2>
+<p style="margin:0 0 16px;color:#aaa;font-size:15px;">Icons shown in the Learn From Your Mistakes feedback box. Each maps to a specific session feedback state.</p>
+<div class="glyph-gallery">
+
+  <div class="glyph-card">
+    <div style="width:80px;height:80px;border-radius:8px;background:#222;border:2px solid #759900;display:flex;align-items:center;justify-content:center;font-size:44px;color:#759900;line-height:1;">✓</div>
+    <div class="glyph-card__label">Good move / Solution</div>
+    <div class="glyph-card__sub">State: win, view</div>
+    <div class="glyph-card__sub" style="color:#759900">#759900</div>
+    <div class="glyph-card__sub" style="max-width:140px;white-space:normal;margin-top:4px;font-size:13px;">User found the engine best move or a near-best move, or the solution was revealed.</div>
+  </div>
+
+  <div class="glyph-card">
+    <div style="width:80px;height:80px;border-radius:8px;background:#222;border:2px solid #dc322f;display:flex;align-items:center;justify-content:center;font-size:44px;color:#dc322f;line-height:1;">✗</div>
+    <div class="glyph-card__label">Wrong move</div>
+    <div class="glyph-card__sub">State: fail</div>
+    <div class="glyph-card__sub" style="color:#dc322f">#dc322f</div>
+    <div class="glyph-card__sub" style="max-width:140px;white-space:normal;margin-top:4px;font-size:13px;">User played a suboptimal move that does not meet the near-best threshold.</div>
+  </div>
+
+  <div class="glyph-card">
+    <div style="width:80px;height:80px;border-radius:8px;background:#222;border:2px solid #e0a030;display:flex;align-items:center;justify-content:center;font-size:44px;color:#e0a030;line-height:1;">!</div>
+    <div class="glyph-card__label">Off track</div>
+    <div class="glyph-card__sub">State: offTrack</div>
+    <div class="glyph-card__sub" style="color:#e0a030">#e0a030</div>
+    <div class="glyph-card__sub" style="max-width:140px;white-space:normal;margin-top:4px;font-size:13px;">User navigated away from the exercise position during solving.</div>
+  </div>
+</div>
+</section>
+
+</div><!-- .content -->
+
+<!-- Save bar (hidden until edits are made) -->
+<div class="save-bar" id="save-bar">
+  <span class="edit-count" id="edit-count">0 edits</span>
+  <button onclick="saveEdits()">Save Edits</button>
+  <span class="save-status" id="save-status"></span>
+</div>
+
+<!-- Save confirmation modal -->
+<div id="save-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center">
+  <div style="background:#222;border:1px solid #3a3a3a;border-radius:8px;padding:24px 32px;max-width:480px;text-align:center;line-height:1.6">
+    <div style="font-size:18px;font-weight:600;margin-bottom:12px;color:#26a641">Edits saved!</div>
+    <p style="margin:0 0 16px;font-size:14px">Your changes have been downloaded as <code style="background:#333;padding:2px 6px;border-radius:3px">feedback-edits.json</code></p>
+    <p style="margin:0 0 16px;font-size:13px;opacity:0.8">To apply them, tell Claude:</p>
+    <div style="background:#1a1a1a;border:1px solid #3a3a3a;border-radius:6px;padding:12px 16px;font-size:14px;text-align:left;margin-bottom:16px;color:#e8e8e8;font-family:monospace">Apply my feedback edits from docs/feedback-edits.json</div>
+    <button onclick="document.getElementById('save-modal').style.display='none'" style="background:#629924;color:#fff;border:none;border-radius:4px;padding:8px 20px;cursor:pointer;font-size:14px">Got it</button>
+  </div>
+</div>
+
+<script>
+// Click-to-copy for panel IDs
+document.addEventListener('click', function(e) {
+  const el = e.target.closest('.panel-id');
+  if (!el) return;
+  const text = el.textContent.trim();
+  navigator.clipboard.writeText(text).then(function() {
+    el.classList.add('copied');
+    const orig = el.textContent;
+    el.textContent = '✓ copied';
+    setTimeout(function() { el.textContent = orig; el.classList.remove('copied'); }, 1200);
+  });
+});
+function setTone(tone) {
+  document.querySelectorAll('.tone-section').forEach(el => {
+    el.classList.toggle('visible', el.dataset.toneSection === tone);
+  });
+  document.querySelectorAll('.tone-toggle button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tone === tone);
+  });
+}
+function toggleRegen() {
+  document.getElementById('regen-tooltip').classList.toggle('visible');
+}
+document.addEventListener('click', function(e) {
+  const hint = document.querySelector('.regen-hint');
+  if (hint && !hint.contains(e.target)) {
+    document.getElementById('regen-tooltip').classList.remove('visible');
+  }
+});
+
+// --- Edit tracking ---
+const originalValues = new Map();
+const editedCells = new Set();
+
+// Snapshot originals on load
+document.querySelectorAll('[contenteditable]').forEach(el => {
+  const key = editKey(el);
+  originalValues.set(key, el.textContent.trim());
+});
+
+function editKey(el) {
+  return [el.dataset.tone, el.dataset.reason, el.dataset.tier, el.dataset.field].join('|');
+}
+
+document.addEventListener('input', function(e) {
+  const el = e.target;
+  if (!el.hasAttribute('contenteditable') || !el.dataset.tone) return;
+  const key = editKey(el);
+  const current = el.textContent.trim();
+  const original = originalValues.get(key);
+  if (current !== original) {
+    editedCells.add(key);
+    el.classList.add('edit-dirty');
+  } else {
+    editedCells.delete(key);
+    el.classList.remove('edit-dirty');
+  }
+  updateSaveBar();
+});
+
+function updateSaveBar() {
+  const bar = document.getElementById('save-bar');
+  const count = editedCells.size;
+  document.getElementById('edit-count').textContent = count + ' edit' + (count !== 1 ? 's' : '');
+  bar.classList.toggle('visible', count > 0);
+}
+
+function saveEdits() {
+  const edits = {};
+  document.querySelectorAll('[contenteditable].edit-dirty').forEach(el => {
+    const { tone, reason, tier, field } = el.dataset;
+    if (!edits[tone]) edits[tone] = {};
+    if (!edits[tone][reason]) edits[tone][reason] = {};
+    if (!edits[tone][reason][tier]) edits[tone][reason][tier] = {};
+    edits[tone][reason][tier][field] = el.textContent.trim();
+  });
+
+  const json = JSON.stringify(edits, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'feedback-edits.json';
+  a.click();
+  URL.revokeObjectURL(url);
+
+  // Also try to save to docs/ via fetch if served through the dev server
+  fetch('/api/save-feedback-edits', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: json,
+  }).catch(function() {
+    // Silently ignore if not served through dev server — download is the primary path
+  });
+
+  document.getElementById('save-status').textContent = 'Downloaded!';
+  document.getElementById('save-modal').style.display = 'flex';
+}
+</script>
+</div>
+
+<div class="tab-content" id="tab-ui">
+<div class="content">
+
+<!-- 1. FOUNDATIONS -->
+<section id="foundations">
+<h2>1. Foundations</h2>
+<table>
+<thead><tr><th>Variable</th><th>Value</th><th>Swatch</th><th>Usage</th></tr></thead>
+<tbody>
+<tr><td><code>--bg</code></td><td><code>#1a1a1a</code></td><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td>Page background</td></tr>
+<tr><td><code>--text</code></td><td><code>#e8e8e8</code></td><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#e8e8e8;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td>Default text color</td></tr>
+<tr><td><code>--border</code></td><td><code>#3a3a3a</code></td><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#3a3a3a;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td>Borders, dividers, separators</td></tr>
+<tr><td><code>--accent</code></td><td><code>#629924</code></td><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#629924;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td>Primary accent (links, active states)</td></tr>
+</tbody>
+</table>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary"><strong>What the user sees:</strong> The base dark theme that underpins every screen in the app. All text, backgrounds, and borders derive from these root values.</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details"><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>Every page — all tools</li></ul></div></div>
+</section>
+
+<!-- 2. GREEN PALETTE -->
+<section id="green-palette">
+<h2>2. Patzer Pro Green Palette</h2>
+<div class="color-strip">
+  <div class="color-strip__item" style="background:#1e3a1e;color:#e8e8e8">
+    <span class="label">Active filter pill bg</span>
+    <span class="hex">#1e3a1e</span>
+  </div>
+  <div class="color-strip__item" style="background:#2a4a2a;color:#e8e8e8">
+    <span class="label">Import button bg</span>
+    <span class="hex">#2a4a2a</span>
+  </div>
+  <div class="color-strip__item" style="background:#15781B;color:#e8e8e8">
+    <span class="label">Arrow brush green</span>
+    <span class="hex">#15781B</span>
+  </div>
+  <div class="color-strip__item" style="background:#168226;color:#e8e8e8">
+    <span class="label">Brilliant move glyph</span>
+    <span class="hex">#168226</span>
+  </div>
+  <div class="color-strip__item" style="background:#3a6e46;color:#e8e8e8">
+    <span class="label">Win bar (card)</span>
+    <span class="hex">#3a6e46</span>
+  </div>
+  <div class="color-strip__item" style="background:#2d7a3a;color:#e8e8e8">
+    <span class="label">Loading gradient start</span>
+    <span class="hex">#2d7a3a</span>
+  </div>
+  <div class="color-strip__item" style="background:#22ac38;color:#e8e8e8">
+    <span class="label">Good move glyph</span>
+    <span class="hex">#22ac38</span>
+  </div>
+  <div class="color-strip__item" style="background:#629924;color:#e8e8e8">
+    <span class="label">Primary accent</span>
+    <span class="hex">#629924</span>
+  </div>
+  <div class="color-strip__item" style="background:#5b9b5b;color:#1a1a1a">
+    <span class="label">Win bar (overview)</span>
+    <span class="hex">#5b9b5b</span>
+  </div>
+  <div class="color-strip__item" style="background:#5a9a6a;color:#1a1a1a">
+    <span class="label">Win label</span>
+    <span class="hex">#5a9a6a</span>
+  </div>
+  <div class="color-strip__item" style="background:#44aa99;color:#1a1a1a">
+    <span class="label">Toggle/action green (#4a9)</span>
+    <span class="hex">#44aa99</span>
+  </div>
+</div>
+<table>
+<thead><tr><th>Swatch</th><th>Hex</th><th>Name</th><th>SCSS occurrences</th></tr></thead>
+<tbody>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#1e3a1e;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#1e3a1e</code></td><td>Active filter pill bg</td><td>5</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#2a4a2a;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#2a4a2a</code></td><td>Import button bg</td><td>8</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#15781B;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#15781B</code></td><td>Arrow brush green</td><td>0</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#168226;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#168226</code></td><td>Brilliant move glyph</td><td>0</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#3a6e46;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#3a6e46</code></td><td>Win bar (card)</td><td>1</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#2d7a3a;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#2d7a3a</code></td><td>Loading gradient start</td><td>2</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#22ac38;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#22ac38</code></td><td>Good move glyph</td><td>0</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#629924;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#629924</code></td><td>Primary accent</td><td>15</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#5b9b5b;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#5b9b5b</code></td><td>Win bar (overview)</td><td>6</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#5a9a6a;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#5a9a6a</code></td><td>Win label</td><td>1</td></tr>
+<tr><td><span style="display:inline-block;width:20px;height:20px;border-radius:3px;background:#44aa99;border:1px solid rgba(255,255,255,0.1);vertical-align:middle"></span></td><td><code>#44aa99</code></td><td>Toggle/action green (#4a9)</td><td>0</td></tr>
+</tbody>
+</table>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary"><strong>What the user sees:</strong> Green is the signature color of Patzer Pro. Different shades appear in toggle switches, buttons, loading bars, import controls, win/loss indicators, and the primary accent throughout navigation and links.</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details"><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>Toggle switches — all tools (settings panels)</li><li>Primary action buttons — Puzzles tool</li><li>Import button — header</li><li>Loading bars — Opponents tool</li><li>Active filter pills — Games tab, Opponents tool</li><li>Win bars in W/D/L — Opponents tool</li><li>Board glyph badges (good/brilliant) — Game Analysis tool</li><li>Arrow brush — Game Analysis tool</li></ul></div></div>
+</section>
+
+<!-- 3. ENGINE ARROWS -->
+<section id="arrows">
+<h2>3. Engine Arrows</h2>
+<table>
+<thead><tr><th>Brush</th><th>Color</th><th>Swatch</th><th>Opacity</th><th>Line Width</th><th>Preview</th></tr></thead>
+<tbody>
+
+</tbody>
+</table>
+<div class="usage-note" onclick="this.classList.toggle('expanded')"><div class="usage-summary"><strong>What the user sees:</strong> Colored arrows drawn on the board showing the engine’s suggested moves. The primary best-move arrow is blue, secondary alternatives are grey, and threat/opponent arrows are red. Arrow thickness varies by how much better the move is.</div><div class="usage-expand"><span class="expand-icon">▼</span><span class="expand-text">Show details</span><span class="collapse-text">Hide details</span></div><div class="usage-details"><strong>Present in:</strong><ul style="margin:4px 0 0;padding-left:20px"><li>Best move arrow — Game Analysis tool (board)</li><li>Secondary PV arrows — Game Analysis tool (board)</li><li>Threat mode arrows — Game Analysis tool (board)</li></ul></div></div>
+</section>
+
+<!-- 4. EVAL BAR -->
+<section id="eval-bar">
+<h2>4. Eval Bar</h2>
+<div class="demo-row" style="gap:40px">
+</div>
+
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-bar button').forEach(btn => btn.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.querySelector('.tab-bar button[onclick*="' + tab + '"]').classList.add('active');
+  // Close regen tooltip
+  document.querySelector('.regen-tooltip')?.classList.remove('visible');
+}
+// Close regen tooltip on outside click
+document.addEventListener('click', function(e) {
+  const hint = document.querySelector('.lookbook-regen');
+  if (hint && !hint.contains(e.target)) {
+    document.querySelector('.regen-tooltip')?.classList.remove('visible');
+  }
+});
+</script>
+</body>
+</html>

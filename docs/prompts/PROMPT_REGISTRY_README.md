@@ -26,6 +26,14 @@ read this file first, then the relevant process doc.
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REVIEW_PROCESS.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_MANAGER_PROCESS.md`
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_USER_GUIDE.md`
+  - shared user-facing phrasing guide for tracked prompts, sprint asks, bug logging, feature requests, and workflow changes
+
+Responsibility split:
+- `CLAUDE.md` = concise top-level execution brief that prompt bodies always point agents to first
+- `AGENTS.md` = detailed operating rules and routing table for repo work
+- prompt workflow docs in this folder = canonical operational source of truth for prompt creation, manager prompts, review, queueing, and workflow changes
+
+If `CLAUDE.md` is slimmed down or reorganized, prompt workflow behavior still comes from this canonical prompt doc set plus `AGENTS.md`, not from historical expectations about old `CLAUDE.md` wording.
 
 ## Authority And Ownership
 
@@ -38,6 +46,7 @@ It owns:
 - review state
 - queue state
 - prompt metadata and provenance
+- dashboard-authored prompt edits and superseded prompt archives
 - prompt taxonomy fields:
   - `kind`
   - `category`
@@ -63,6 +72,29 @@ Generated files:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/dashboard.html`
 
 Do not hand-edit generated files.
+
+## Dashboard Prompt Editing
+
+The prompt detail view in `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/dashboard.html`
+is an official prompt-workflow surface when the dashboard is served through `node server.mjs`.
+
+Rules:
+- prompt detail starts read-only
+- only prompts in `status: created` and `queueState: queued-pending` may be edited from the dashboard
+- dashboard editing requires the local server — changes only persist when served via `node server.mjs`
+- the editor shows locked metadata (read-only) above a `<textarea>` for the editable body
+- clicking Save shows a line diff for confirmation before writing; Decline reverts to the original
+- registry-owned metadata remains source-of-truth and must stay locked/non-editable
+- saving from the dashboard writes the real prompt body back to `docs/prompts/items/`
+- saving creates a hidden superseded reference record for the replaced version
+- the active prompt keeps the same `CCP-###` id and lifecycle state
+- the active prompt gets `lastEditedAt`
+- superseded archived records must never appear as active runnable prompts in the main dashboard list
+- all prompt artifacts must be regenerated after a dashboard save
+
+Superseded archive identity:
+- archived retired ids use the `RETIRED-PROMPT-DONOTRUN-REFERENCE-ONLY-<PROMPT_ID>-V#` pattern
+- archived records are reference-only and must never be started, completed, reviewed, or queued
 
 ## Lifecycle Summary
 
@@ -115,6 +147,8 @@ Prompt states:
 - `reserved`
 - `created`
 - `reviewed`
+- `superseded`
+- `skipped`
 
 Queue states:
 - `not-queued`
@@ -131,6 +165,15 @@ Normal lifecycle:
 6. complete prompt (`prompt:complete`) → `queueState: queued-run`
 7. review prompt (`prompt:review`) → `status: reviewed`
 
+Skipped lifecycle:
+- `npm run prompt:skip -- <PROMPT_ID>` transitions an unrun queued prompt to:
+  - `status: skipped`
+  - `queueState: not-queued`
+  - `skippedAt: <timestamp>`
+- skipped prompts are tracked records but are never runnable queue candidates
+- skipped prompts must never appear in queue / next-up / available-prompt surfaces
+- skipped prompts must never be started, completed, or reviewed
+
 Execution rule:
 - `prompt:start` must be called before any code changes begin
 - `prompt:complete` must be called after the work is done, with a concrete manual checklist
@@ -138,6 +181,14 @@ Execution rule:
 - using the clean `prompt:complete` when there were known issues silently hides the error state — do not do this
 - skipping steps 4 or 6 leaves the prompt stuck at `queued-pending` with no execution record
 - this applies even when a prompt is delivered as the first message in a conversation
+
+Output truncation rule (CRITICAL):
+- NEVER pipe any lifecycle command through `head`, `tail`, or any output limiter
+- this includes: `prompt:reserve`, `prompt:start`, `prompt:complete`, `prompt:create`, `prompt:release`, `prompt:review`
+- and `prompt:skip`
+- reason: every lifecycle command ends by running `prompts:refresh` as a subprocess; piping through `head` sends SIGPIPE which kills the node process before `prompts:refresh` completes — the registry JSON may be written correctly but the dashboard HTML is never regenerated, leaving the dashboard showing stale state
+- symptom: dashboard shows a prompt as "READY TO RUN" or "STARTED: NOT COMPLETED" even after it was completed
+- recovery: run `npm run prompts:refresh` manually without any pipe to regenerate the dashboard
 
 ## Command Map
 
@@ -159,6 +210,8 @@ Execution rule:
   - `npm run prompt:complete -- <PROMPT_ID> --errors "brief description" --checklist "..."`
 - review prompt:
   - `npm run prompt:review -- <PROMPT_ID> ...`
+- skip prompt:
+  - `npm run prompt:skip -- <PROMPT_ID> [--reason "..."]`
 - regenerate docs and audit:
   - `npm run prompts:refresh`
 
@@ -180,6 +233,9 @@ Important command interpretation note:
 - execute a prompt (start + complete lifecycle):
   - `PROMPT_REVIEW_PROCESS.md` (see Completion section)
 - review / close out prompt work:
+  - `PROMPT_REVIEW_PROCESS.md`
+- edit an unrun prompt from the dashboard:
+  - this file
   - `PROMPT_REVIEW_PROCESS.md`
 - create or reason about manager prompts:
   - `PROMPT_MANAGER_PROCESS.md`
@@ -222,6 +278,19 @@ Manager prompt triggers:
 - `make a batch manager`
 - `run these prompts in order`
 - `create a prompt to run all of these`
+- `run these prompts one after another`
+- `do these prompts in sequence`
+- `execute multiple prompts in a row`
+
+Default multi-prompt execution rule:
+- if the user asks an agent to execute more than one tracked prompt sequentially, the agent must default to the manager-prompt workflow
+- this rule applies even if the user does not explicitly say `manager`
+- the agent must either:
+  - create/use a manager prompt that owns the ordered child list, or
+  - if a suitable manager prompt already exists, use that manager instead of handling the prompts ad hoc
+- manager prompts must follow the stricter manager body standard in `PROMPT_MANAGER_PROCESS.md`
+- do not execute multiple tracked prompts one-by-one outside the manager workflow unless the user explicitly asks to handle them individually without a manager
+- if the user explicitly asks to handle them individually, the agent may do so, but should note that this is an exception to the normal manager rule
 
 Workflow change triggers:
 - `update our prompt process`

@@ -114,11 +114,15 @@ function playBuffer(name: string): void {
 // --- Public API ---
 
 const SOUND_FILES: Record<string, string> = {
-  Move:      '/sounds/Move.mp3',
-  Capture:   '/sounds/Capture.mp3',
-  Castles:   '/sounds/Castles.mp3',
-  Check:     '/sounds/Check.mp3',
-  Checkmate: '/sounds/Checkmate.mp3',
+  Move:         '/sounds/Move.mp3',
+  Capture:      '/sounds/Capture.mp3',
+  Castles:      '/sounds/Castles.mp3',
+  Check:        '/sounds/Check.mp3',
+  Checkmate:    '/sounds/Checkmate.mp3',
+  // Drill feedback sounds — files added to public/sounds/
+  // Place correct.mp3 and incorrect.mp3 in public/sounds/ for playback.
+  DrillCorrect:   '/sounds/correct.mp3',
+  DrillIncorrect: '/sounds/incorrect.mp3',
 };
 
 /**
@@ -131,6 +135,16 @@ export function preloadBoardSounds(): void {
   for (const [name, path] of Object.entries(SOUND_FILES)) {
     void loadBuffer(name, path);
   }
+}
+
+/**
+ * Play a short drill feedback tone (correct or incorrect).
+ * Only plays when the sound toggle is enabled.
+ * Silently no-ops if the audio file is not yet loaded (missing asset).
+ */
+export function playDrillFeedbackSound(type: 'correct' | 'incorrect'): void {
+  if (!boardSoundEnabled) return;
+  playBuffer(type === 'correct' ? 'DrillCorrect' : 'DrillIncorrect');
 }
 
 /**

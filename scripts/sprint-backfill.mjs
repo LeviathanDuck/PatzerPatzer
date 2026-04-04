@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { readRegistry as readPromptRegistry, writeRegistry as writePromptRegistry } from './prompt-registry-lib.mjs';
-import { readSprintRegistry, writeSprintRegistry, ensureSprintAllocator, reserveNextSprintId } from './sprint-registry-lib.mjs';
+import { readSprintRegistry, writeSprintRegistry, ensureSprintAllocator, reserveNextSprintId, hasNormalizedSprintStructure, normalizeRepoPath } from './sprint-registry-lib.mjs';
 
 const root = process.cwd();
 const SPRINTS_DIR = resolve(root, 'docs/mini-sprints');
@@ -16,9 +16,28 @@ const EXCLUDE_FILES = new Set([
   'SPRINT_USER_GUIDE.md',
   'SPRINT_STATUS.md',
 ]);
+const args = process.argv.slice(2);
+
+if (!args.includes('--confirm-overwrite')) {
+  console.error('sprint:backfill is a global destructive rebuild. Re-run with --confirm-overwrite if you really want to replace all sprint structure and relink sprint prompts.');
+  process.exit(1);
+}
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function isSupervisoryPrompt(prompt) {
+  if (!prompt) return false;
+  if (prompt.kind === 'manager' || prompt.category === 'manager') return true;
+  const sourceStep = String(prompt.sourceStep || '').toLowerCase();
+  const title = String(prompt.title || '').toLowerCase();
+  const task = String(prompt.task || '').toLowerCase();
+  return sourceStep.includes('integration review')
+    || sourceStep.includes('sprint review')
+    || sourceStep.includes('sprint audit')
+    || title.includes('review')
+    || task.includes('full sprint');
 }
 
 function normalizeKey(value) {
@@ -387,6 +406,7 @@ for (const file of docFiles) {
   const table = parseMarkdownTable(text);
   const rowInfo = table ? buildTaskRowsFromTable(table) : { unit: 'task', rows: [] };
   const structuredPlan = rowInfo.rows.length === 0 ? parseStructuredPhasePlan(text) : null;
+  const normalizedStructure = hasNormalizedSprintStructure(text);
   const existingSprint = existingSprintBySource.get(sourceDocument);
   const sprintId = existingSprint?.id || reserveNextSprintId(sprintRegistry);
   sprintIdsByFile.set(file, sprintId);
@@ -424,6 +444,9 @@ for (const file of docFiles) {
         linkedPromptIds: [],
         dependencyTaskIds: [],
         auditRefs: [],
+        auditState: '',
+        auditSourceDocument: '',
+        auditUpdatedAt: '',
         notes: phaseAudit?.notes || row.notes || '',
         acceptance: '',
         sourceAnchor: row.anchor,
@@ -455,6 +478,9 @@ for (const file of docFiles) {
         linkedPromptIds: [],
         dependencyTaskIds: [],
         auditRefs: [],
+        auditState: '',
+        auditSourceDocument: '',
+        auditUpdatedAt: '',
         notes: auditRow?.notes || row.notes || '',
         acceptance: '',
         sourceAnchor: row.anchor,
@@ -496,6 +522,9 @@ for (const file of docFiles) {
         linkedPromptIds: [],
         dependencyTaskIds: [],
         auditRefs: [],
+        auditState: '',
+        auditSourceDocument: '',
+        auditUpdatedAt: '',
         notes: taskAudit?.notes || phaseAudit?.notes || row.notes || '',
         acceptance: '',
         sourceAnchor: row.anchor,
@@ -522,6 +551,9 @@ for (const file of docFiles) {
       linkedPromptIds: [],
       dependencyTaskIds: [],
       auditRefs: [],
+      auditState: '',
+      auditSourceDocument: '',
+      auditUpdatedAt: '',
       notes: '',
       acceptance: '',
       sourceAnchor: 'Implementation',
@@ -549,6 +581,7 @@ for (const file of docFiles) {
     recommendedNextSteps: [],
     completionSummary,
     unassignedPromptIds: [],
+    normalizedStructure,
     scope: text.match(/^Scope:\s+(.+)$/m)?.[1]?.trim() || '',
     date: meta.dateLine,
   };
@@ -556,7 +589,7 @@ for (const file of docFiles) {
   if (meta.sourceAudit) {
     sprint.auditRefs.push({
       id: `${sprintId}-audit-source`,
-      sourceDocument: meta.sourceAudit,
+      sourceDocument: normalizeRepoPath(root, meta.sourceAudit),
       title: 'Source audit',
       type: 'audit',
       status: 'present',
@@ -595,7 +628,10 @@ for (const task of newTasks) {
 for (const sprint of newSprints) {
   const taskSet = new Set(newTasks.filter(task => task.sprintId === sprint.id).flatMap(task => task.linkedPromptIds));
   const sprintPrompts = promptRegistry.prompts.filter(prompt => prompt.sourceDocument === sprint.sourceDocument);
-  sprint.unassignedPromptIds = sprintPrompts.map(prompt => prompt.id).filter(id => !taskSet.has(id));
+  sprint.unassignedPromptIds = sprintPrompts
+    .filter(prompt => !isSupervisoryPrompt(prompt))
+    .map(prompt => prompt.id)
+    .filter(id => !taskSet.has(id));
   const sprintTasks = newTasks.filter(task => task.sprintId === sprint.id);
   sprint.recommendedNextSteps = buildRecommendedSteps(sprintTasks, 'docs/audits/SPRINT_VS_IMPLEMENTATION_AUDIT_2026-03-30.md');
 }
@@ -604,13 +640,6 @@ for (const prompt of promptRegistry.prompts) {
   prompt.sprintId = '';
   prompt.sprintPhaseId = '';
   prompt.sprintTaskId = '';
-}
-
-for (const sprint of newSprints) {
-  const sprintPrompts = promptRegistry.prompts.filter(prompt => prompt.sourceDocument === sprint.sourceDocument);
-  for (const prompt of sprintPrompts) {
-    prompt.sprintId = sprint.id;
-  }
 }
 
 for (const task of newTasks) {

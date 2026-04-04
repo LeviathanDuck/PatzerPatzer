@@ -10,12 +10,6 @@ import { computeEvalDiff, type EvalDiff } from './evalDiff';
 import { retroConfig } from './retroConfig';
 import { LEARNABLE_REASONS, type LearnableReason, type TreeNode } from '../tree/types';
 
-// Classification rank: higher = stricter. Used to compare against retroConfig.minClassification.
-const CLASSIFICATION_RANK: Readonly<Record<MoveLabel, number>> = {
-  inaccuracy: 1,
-  mistake:    2,
-  blunder:    3,
-};
 
 /**
  * Opening/book lookup boundary.
@@ -205,14 +199,10 @@ export function buildRetroCandidates(
     );
 
     // --- Condition 1: significant win-chance loss ---
-    // Floor is retroConfig.minClassification (default: 'mistake' = loss >= 0.10).
-    const loss           = nodeEval.loss;
+    // Floor is retroConfig.minLossThreshold (default: 0.10 = 10%).
+    const loss = nodeEval.loss;
     const classification = loss !== undefined ? classifyLoss(loss) : null;
-    const minRank        = CLASSIFICATION_RANK[retroConfig.minClassification];
-    const qualifiesByLoss = (
-      classification !== null &&
-      CLASSIFICATION_RANK[classification] >= minRank
-    );
+    const qualifiesByLoss = loss !== undefined && loss >= retroConfig.minLossThreshold;
 
     // --- Condition 3: collapse (blown win) ---
     // User was clearly winning but squandered advantage in one move.

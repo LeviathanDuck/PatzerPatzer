@@ -82,6 +82,27 @@ Before writing any code, Claude must:
 
 3. Confirm:
    - this task fits within 1–3 files
+   - whether the requested implementation would materially diverge from Lichess behavior, flow,
+     terminology, or subsystem shape
+
+If the requested implementation appears to materially diverge from Lichess and the user has not
+already explicitly asked for that divergence, Claude must stop and ask whether the divergence is
+intentional before coding.
+
+Material divergence includes things like:
+- behavior flow changes
+- engine/review interaction changes
+- move-tree behavior changes
+- puzzle/review logic changes
+- board interaction model changes
+- major UI workflow differences
+- architecture or module-boundary choices that depart from the Lichess reference
+
+This confirmation step is not required for:
+- copy changes
+- purely cosmetic styling
+- minor spacing/layout polish
+- clearly Patzer-specific additions with no Lichess analog
 
 
 ## Anti-Drift Rule
@@ -92,50 +113,6 @@ Claude must NOT:
 - simplify core systems
 - introduce new architecture patterns
 - replace Lichess patterns with abstractions
-
-## File-structure and extraction rules
-
-- Do not add new feature code to `src/main.ts` by default.
-- Treat `src/main.ts` as orchestration/bootstrap code only.
-- Before implementing a new feature, identify which subsystem owns it.
-- If a clear subsystem exists, implement there.
-- If no subsystem exists and the feature is substantial, create a new module rather than expanding `main.ts`.
-- Separate “extract code” tasks from “change behavior” tasks.
-- When extracting, move one coherent subsystem at a time and verify behavior remains unchanged.
-- Update the active architecture docs when subsystem ownership changes, and archive completed plans under `docs/archive/` instead of keeping them as live planning documents.
-
-### Preferred subsystem boundaries
-- `src/engine/` → live analysis, review pipeline, UCI parsing, PV state
-- `src/games/` → game import, Games tab, game-row rendering, filtering
-- `src/board/` → board settings, orientation, theme, piece/filter UI
-- `src/persistence/` or `src/idb.ts` → IndexedDB and serialization
-- `src/analysis/` → move list, eval graph, summary, engine lines rendering
-
-### Constraints
-- Do not combine extraction + redesign + styling overhaul in one task.
-- Do not invent hidden dependencies between modules.
-- Prefer explicit parameters and return values over reaching into unrelated module state.
-
-### When building new features
-
-Before writing any code for a new tool or UI feature, find the equivalent in Lichess
-and mirror its module structure. Lichess consistently separates each tool into:
-
-- `ctrl.ts` — controller: state, logic, event handling, side effects
-- `view.ts` — rendering: pure Snabbdom `h()` functions, no state mutation
-- `config.ts` / `types.ts` — shared types and constants (if substantial)
-
-**Examples:**
-
-| Feature to build | Lichess reference | Create in this project |
-|---|---|---|
-| Puzzle tool (future rebuild) | `ui/puzzle/src/ctrl.ts` + `view.ts` | `src/puzzles/ctrl.ts` + `view.ts` when the standalone puzzle product is reintroduced |
-| Opening trainer | `ui/learn/src/` | `src/openings/ctrl.ts` + `view.ts` |
-| Stats dashboard | `ui/dasher/src/` | `src/stats/ctrl.ts` + `view.ts` |
-
-New modules always go in the appropriate subsystem directory. Never add new feature
-code to `main.ts` — it is bootstrap and orchestration only.
-
 
 ## Terminology Clarification Rule
 
@@ -171,11 +148,20 @@ matching what was implemented, not generic placeholders.
 ## Prompt Command Output Rule
 
 Lifecycle commands must NEVER have their output truncated:
-- never pipe `prompt:reserve`, `prompt:start`, `prompt:complete`, `prompt:create`,
+- never pipe `prompt:reserve`, `prompt:start`, `prompt:skip`, `prompt:complete`, `prompt:create`,
   `prompt:release`, or `prompt:review` through `head`, `tail`, or any output limiter
 - always let the full output run so the allocated ID and refresh results are visible
 - if a reserve command output was truncated and the ID is unknown, run
   `npm run prompt:reservations` to find it before proceeding — do not re-run the reserve
+
+Why this is critical: every lifecycle command ends by running `npm run prompts:refresh` as a
+subprocess. Piping through `head` sends SIGPIPE when the line limit is reached, which kills the
+node process before `prompts:refresh` completes. The registry JSON write happens early and
+succeeds, but the dashboard HTML is never regenerated — the dashboard then shows stale state
+(e.g., "READY TO RUN" or "STARTED: NOT COMPLETED") even though the underlying registry data is
+correct. This is a silent failure with no error message.
+
+Recovery if it happens: run `npm run prompts:refresh` manually with no pipe to fix the dashboard.
 
 ## Prompt Creation Output Rule
 
@@ -190,38 +176,21 @@ When creating a prompt, Claude must:
 
 ## Prompt Tracking Rule
 
-Prompt workflow rules are owned by the canonical prompt docs, not by this file.
+Prompt workflow rules are owned by the canonical prompt docs and AGENTS.md, not by this file.
 
-When the task involves:
-- prompt creation
-- prompt review
-- prompt tracking
-- manager prompts
-- follow-up fix prompts
-- prompt workflow changes
+Role split:
+- this file is the concise top-level brief
+- `AGENTS.md` contains the fuller operating rules and routing details
+- the canonical prompt docs own the actual prompt workflow
 
-Claude must first read:
+When the task involves prompt creation, prompt review, prompt tracking, manager prompts,
+follow-up fix prompts, or prompt workflow changes — Claude must first read:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REGISTRY_README.md`
 
-Then Claude must read the matching process doc:
-- id reservation / follow-up ids / release:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_ID_PROCESS.md`
-- prompt creation:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_CREATION_PROCESS.md`
-- prompt review / closeout:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REVIEW_PROCESS.md`
-- manager prompts:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_MANAGER_PROCESS.md`
-- user phrasing / examples:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_USER_GUIDE.md`
+Then read the matching process doc (see AGENTS.md for the full routing table and hard rules).
 
-Hard rules:
-- deprecated or removed prompt docs are non-authoritative and must not be followed
-- if the user's natural language clearly maps to one prompt workflow, Claude must follow that workflow even if the user did not use the exact process name
-- if prompt-related intent is materially ambiguous or could map to multiple workflows, Claude must clarify before mutating files
-- if the user asks to change prompt IDs, prompt creation, prompt review, manager prompts, prompt tracking, or prompt docs, Claude must treat that as a workflow-change request and update the canonical prompt docs before considering the work complete
-- if the user says `update our prompt workflow so that ...`, Claude must automatically treat that as a full workflow-change request with the workflow-change propagation rule implied by default
-- Claude must not assume allocator input labels are identical to the final registry/dashboard taxonomy; the created prompt record must be verified after `prompt:create`
+For manager prompts specifically, Claude must follow the stricter manager-body standard in
+`PROMPT_MANAGER_PROCESS.md`.
 
 Tracked Prompt Gate:
 - before ANY code change — regardless of size — Claude must determine whether the work is already covered by an existing `CCP-###` prompt
@@ -235,35 +204,18 @@ Tracked Prompt Gate:
 
 ## Sprint Tracking Rule
 
-Sprint workflow rules are owned by the canonical sprint docs, not by this file.
+Sprint workflow rules are owned by the canonical sprint docs and AGENTS.md, not by this file.
 
-When the task involves:
-- sprint creation
-- sprint tracking
-- sprint progress reporting
-- sprint audits
-- sprint dashboard work
-- prompt-to-sprint linkage
-- sprint workflow changes
+Role split:
+- this file is the concise top-level brief
+- `AGENTS.md` contains the fuller operating rules and routing details
+- the canonical sprint docs own the actual sprint workflow
 
-Claude must first read:
+When the task involves sprint creation, sprint tracking, sprint progress, sprint audits,
+sprint dashboard work, prompt-to-sprint linkage, or sprint workflow changes — Claude must first read:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_REGISTRY_README.md`
 
-Then Claude must read the matching process doc:
-- sprint creation / registration:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_CREATION_PROCESS.md`
-- sprint progress / task state / dashboard rollups:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_PROGRESS_PROCESS.md`
-- sprint audits / next-best-step updates:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_AUDIT_PROCESS.md`
-- user phrasing / examples:
-  - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_USER_GUIDE.md`
-
-Hard rules:
-- if the user asks to create a sprint plan, Claude must create or update both the sprint markdown doc and the sprint registry entry
-- if the user asks to create prompts for a sprint, Claude must link prompt records with `sprintId`, `sprintPhaseId`, and `sprintTaskId` when the work maps to a concrete sprint task
-- if the user asks to review or audit a sprint, Claude must use the sprint registry first, then cross-check linked prompts, audits, and code evidence
-- if the user asks to change sprint creation, sprint tracking, sprint audits, sprint dashboard behavior, or sprint docs, Claude must treat it as a sprint-workflow change request and update the canonical sprint docs before considering the work complete
+Then read the matching process doc (see AGENTS.md for the full routing table and hard rules).
 
 ## Stop Condition
 
@@ -285,526 +237,9 @@ Claude should **not redesign features that already exist in Lichess**.
 
 ## Retrospection / Puzzle Research Rule
 
-For any work related to:
-- Learn From Your Mistakes
-- retrospection
-- puzzle extraction
-- puzzle-candidate generation
-- saved puzzles
-- "puzzle-worthy" move selection
-
-Claude must use:
-- `docs/reference/lichess-retrospection/README.md`
-- `docs/reference/lichess-retrospection-ux/README.md`
-- `docs/reference/lichess-puzzle-ux/README.md`
-- and the linked files under `docs/reference/lichess-retrospection/`
-
-as mandatory repo reference material.
-
-This is not optional.
-
-Claude must:
-- inspect the relevant Lichess source files directly
-- compare them against the Patzer research docs
-- explicitly pick the right reference family:
-  - `lichess-retrospection/` for candidate logic and source-backed generation thresholds
-  - `lichess-retrospection-ux/` for Learn From Your Mistakes board UX and interaction behavior
-  - `lichess-puzzle-ux/` for standalone puzzle product behavior, filters, themes, openings, Storm, and Racer
-- follow the visible Lichess logic pipeline as closely as possible before proposing any Patzer-only
-  tuning
-- explicitly call out which rules are source-confirmed vs inferred vs unknown
-
-Claude must not:
-- invent custom puzzle-selection heuristics early
-- replace Lichess thresholds with "better feeling" local parameters
-- treat unexplained source gaps as permission to freestyle
-
-If tuning or divergence is ever proposed, it must come after parity-oriented work and be called out
-explicitly as a conscious departure from the documented Lichess reference.
-
----
-
-## Lichess Reference Source
-
-Local path:
-`~/Development/lichess-source/lila`
-
-Claude should use this for:
-- analysis board behavior
-- move tree and variation logic
-- engine controls and UX
-- puzzle extraction logic
-- learn-from-mistakes / retrospection logic
-- board interactions
-- keyboard navigation
-- UI state transitions
-- contextual board UI (analysis vs puzzle vs play)
-
-Claude must:
-- study how Lichess implements a feature
-- determine what can be reused directly
-- adapt only what is necessary
-
-## Change Log, Comments, and Provenance Rules
-
-### Public commit messages
-Public commit messages must describe:
-- what changed
-- why it changed
-- user-visible impact
-
-Do NOT include:
-- brainstorming notes
-- exploratory prompt history
-- irrelevant reference material
-- competitor/site names unless legally or technically necessary
-
-Good examples:
-- `Improve engine lines panel hierarchy and spacing`
-- `Add board theme preview tiles and filter sliders`
-- `Fix variation rendering order in move list`
-
-Bad examples:
-- `Copied header idea from X`
-- `Reverse engineered X`
-- `Made ours look like X`
-
-### Code comments
-Code comments must explain:
-- intent
-- behavior
-- constraints
-- implementation details
-
-Do NOT include:
-- prompt history
-- competitor/site references
-- “copied from” notes for non-licensed third-party sites
-- commentary about hiding or disguising influence
-
-Allowed:
-- source references when legally required
-- source references for Lichess-derived logic/code where AGPL/license compliance applies
-- neutral technical notes such as:
-  - `Adapted to match existing board-area sizing model`
-  - `Uses path-keyed analysis identity to avoid node-id collisions`
-
-### External reference handling
-When outside references influence design or implementation:
-
-- Use them to understand patterns and requirements
-- Reimplement in a way that fits the current Patzer Pro architecture
-- Avoid copying markup, wording, CSS, or distinctive presentation directly
-- Do not mention non-required external references in public commits/comments
-
-### Provenance tracking (private/internal)
-For any work materially influenced by external sources, maintain a private provenance note outside public-facing code comments and commit messages.
-
-Use a private file such as:
-- `docs/internal/PROVENANCE_NOTES.md` (only if intended to remain private)
-or another non-public workflow record
-
-For each influenced feature, record:
-- date
-- feature
-- source reviewed
-- what was learned
-- whether any license obligations apply
-
-### Lichess-specific rule
-Lichess is the one approved exception for explicit source-derived implementation references, because this project assumes AGPL-compliant handling for Lichess-derived or compatible work.
-
-For Lichess-derived logic/code:
-- preserve required attribution where appropriate
-- keep license obligations in mind
-- it is acceptable to reference Lichess source files in internal implementation notes and, where needed, in code comments
-
-### Default writing behavior for Claude
-When generating:
-- commit messages
-- code comments
-- changelog text
-- PR summaries
-
-Claude must:
-- describe the implementation directly and neutrally
-- avoid mentioning prompts, reverse engineering, or third-party references unless required
-- avoid naming external sites except Lichess or where legally/technically necessary
-- never add concealment language
-- never suggest hiding provenance or license obligations
-
-### If unsure
-If a source reference might be legally or ethically important, keep it out of public fluff text but do not omit required attribution or compliance obligations.
-
-### Key Source Paths (Lichess)
-
-| Feature | Path within `lila/` |
-|---|---|
-| Move tree types & ops | `ui/lib/src/tree/` |
-| Engine / ceval controller | `ui/lib/src/ceval/` |
-| Stockfish Web Worker engine | `ui/lib/src/ceval/engines/stockfishWebEngine.ts` |
-| UCI protocol | `ui/lib/src/ceval/protocol.ts` |
-| Win/loss/draw calculation | `ui/lib/src/ceval/winningChances.ts` |
-| Chessground game wrapper | `ui/lib/src/game/ground.ts` |
-| Analysis board controller | `ui/analyse/src/ctrl.ts` |
-| Analysis board view | `ui/analyse/src/view/` |
-| Arrow / highlight drawing | `ui/analyse/src/autoShape.ts` |
-| Keyboard navigation | `ui/analyse/src/keyboard.ts` |
-| IndexedDB tree cache | `ui/analyse/src/idbTree.ts` |
-| Puzzle controller | `ui/puzzle/src/ctrl.ts` |
-| Puzzle move tree | `ui/puzzle/src/moveTree.ts` |
-| PGN import (backend) | `modules/tree/src/main/ParseImport.scala` |
-| Tree builder (backend) | `modules/tree/src/main/TreeBuilder.scala` |
-| Analysis backend | `modules/analyse/` |
-| Puzzle backend | `modules/puzzle/` |
-| Game import backend | `modules/game/` |
-
----
-
-## Technical Direction
-
-### Preferred Stack (Closest to Lichess)
-
-- Backend: **Scala + Play Framework**
-- Frontend: **TypeScript modules + Snabbdom** (virtual DOM, matches Lichess exactly)
-- Chess logic: **scalachess** (via GitHub: lichess-org/scalachess)
-- Board UI: **Chessground** (`@lichess-org/chessground`)
-- PGN display: **`@lichess-org/pgn-viewer`** (reuse directly)
-- Engine: **Stockfish** (Web Worker, WASM)
-- Bundler: **esbuild**
-- Package tooling: **pnpm** (Node 24.13.0+)
-- Database: **SQLite or PostgreSQL** (see Deliberate Divergences below)
-
-This stack minimizes translation from Lichess architecture.
-
----
-
-### Acceptable Alternative (Simplified)
-
-If Scala is not used:
-
-- Full stack: **TypeScript**
-- Backend: **Node.js (minimal, no heavy frameworks)**
-- Frontend: **TypeScript + Snabbdom** (NO React, NO raw DOM manipulation)
-- Chess logic: **chessops** (TypeScript, Lichess-community aligned)
-- Board UI: **Chessground** (`@lichess-org/chessground`)
-- PGN display: **`@lichess-org/pgn-viewer`**
-- Engine: **Stockfish (Web Worker, WASM)**
-- Bundler: **esbuild**
-- Package tooling: **pnpm** (Node 24.13.0+)
-- Database: **SQLite or PostgreSQL**
-
----
-
-## Deliberate Divergences from Lichess
-
-These are intentional simplifications. Claude must NOT introduce the Lichess production equivalents.
-
-| Lichess uses | Patzer Pro uses | Reason |
-|---|---|---|
-| MongoDB | SQLite or PostgreSQL | Personal project scale; simpler ops |
-| Redis | In-memory or local state | No distributed caching needed |
-| Fishnet cluster | Local Stockfish only | Single user; no distributed analysis |
-| Elasticsearch | SQLite FTS or none | No game search at scale needed |
-| CDN + asset pipeline | Local static serving | Development simplicity |
-| ReactiveMongo | SQL ORM or raw SQL | Stack simplification |
-
-If a feature requires something from the Lichess column, discuss with the developer before adding it.
-
----
-
-## Key Lichess Packages to Reuse Directly
-
-These are published npm packages. Import them, do not reimplement them.
-
-| Package | Purpose |
-|---|---|
-| `@lichess-org/chessground` | Chess board UI — rendering, interaction, drag/click |
-| `@lichess-org/pgn-viewer` | PGN display component |
-| `snabbdom` | Virtual DOM (matches Lichess UI rendering pattern) |
-| `chessops` | TypeScript chess logic (move gen, validation, FEN, PGN) |
-
----
-
-## Frontend Rules
-
-- Do NOT use React
-- Do NOT build a component-heavy UI system
-- Do NOT manipulate the DOM directly with `querySelector` / `innerHTML` patterns
-- Do NOT introduce unnecessary abstraction layers
-- All UI must be built using Snabbdom vnode patterns (`h()`), not ad-hoc DOM updates ## Task Scope Rule (CRITICAL)
-
-Claude must only implement ONE small task at a time.
-
-Constraints:
-- Touch a maximum of 1–3 files per task
-- Do NOT bundle multiple features together
-- Do NOT refactor unrelated code
-- Do NOT "improve" adjacent systems
-
-If the requested task is too large:
-- Break it into smaller steps
-- Implement only the first step
-
-
-## Pre-Implementation Checklist (MANDATORY)
-
-Before writing any code, Claude must:
-
-1. Locate relevant Lichess source files in:
-   ~/Development/lichess-source/lila
-
-2. Identify:
-   - which files implement this feature
-   - what logic is reusable vs tightly coupled
-
-3. Confirm:
-   - this task fits within 1–3 files
-
-
-## Anti-Drift Rule
-
-Claude must NOT:
-
-- redesign UX that already exists in Lichess
-- simplify core systems
-- introduce new architecture patterns
-- replace Lichess patterns with abstractions
-
-
-## Terminology Clarification Rule
-
-If the user uses unclear or incorrect terminology:
-
-Claude must:
-- identify closest Lichess concept
-- ask for clarification before implementing
-
-
-## Prompt Compliance Rule
-
-Claude must:
-- follow instructions exactly
-- not add extra features
-
-
-## Prompt Execution Rule
-
-When Claude receives a CCP prompt to execute (i.e. a message whose primary content is a
-`CCP-###` prompt body), Claude must:
-
-1. Run `npm run prompt:start -- <PROMPT_ID>` before making any code changes
-2. Execute the prompt
-3. Run `npm run prompt:complete -- <PROMPT_ID> --checklist "..."` after the work is done
-
-This applies even when the prompt is delivered as the first message in a conversation.
-The `## Lifecycle` section in the prompt body contains the exact commands to run.
-
-## Prompt Command Output Rule
-
-Lifecycle commands must NEVER have their output truncated:
-- never pipe `prompt:reserve`, `prompt:start`, `prompt:complete`, `prompt:create`,
-  `prompt:release`, or `prompt:review` through `head`, `tail`, or any output limiter
-- always let the full output run so the allocated ID and refresh results are visible
-- if a reserve command output was truncated and the ID is unknown, run
-  `npm run prompt:reservations` to find it before proceeding — do not re-run the reserve
-
-## Prompt Creation Output Rule
-
-When creating a prompt, Claude must:
-1. State the reserved prompt ID to the user before writing the body
-2. Output the Pre-Creation Checklist from `PROMPT_CREATION_PROCESS.md` visibly in the
-   response so the user can verify each step was followed
-
-
-## Stop Condition
-
-Claude must stop if:
-- task exceeds 3 files
-- unclear requirements
-- no Lichess reference
-
-Instead:
-- Use **Snabbdom** (`h()` + `patch()`) for all UI rendering — this is exactly what Lichess does
-- Use **Chessground** directly for the board
-- Keep UI logic close to Lichess module patterns
-- Build a thin app shell around Lichess-like behavior
-
-### TypeScript Configuration
-
-Match Lichess TypeScript settings:
-- Strict mode: `"strict": true`
-- Target: `"ES2021"`
-- Module resolution: `"bundler"`
-- Path alias: `@/*` maps to `src/*`
-- No JSX
-
----
-
-## Backend Rules
-
-- Do NOT default to Express unless necessary
-- Prefer architecture patterns similar to Lichess when practical
-- Keep backend minimal and focused:
-  - game storage
-  - analysis orchestration
-  - puzzle persistence
-
----
-
-## Board Implementation Direction
-
-The chessboard should behave like Lichess.
-
-Use:
-- Chessground for rendering and interaction
-- Lichess source as behavioral reference
-
-Required features:
-- arrow drawing
-- square highlighting
-- drag + click move input
-- board flipping
-- keyboard navigation
-- move list synchronization
-- engine evaluation bar
-- engine toggle
-- hints
-- player metadata
-- board-perimeter controls
-- theme/piece customization
-
-Behavior must match Lichess analysis board UX.
-
-Reference: `ui/analyse/src/autoShape.ts`, `ui/analyse/src/keyboard.ts`
-
----
-
-## State Architecture Rule
-
-Claude should follow Lichess concepts for state separation:
-
-- Board UI state (Chessground)
-- Game state (moves, variations)
-- Analysis state (engine evaluations)
-- UI/tool state (mode: analysis, puzzle, etc.)
-
-Do NOT tightly couple these layers.
-
-Reference: `ui/analyse/src/ctrl.ts` for how Lichess separates these concerns.
-
-## Naming & Structure Rule
-
-- Match Lichess naming where possible, and doesn’t violate their open source policy
-- Avoid unnecessary renaming
-
----
-
-## Engine Architecture
-
-Follow Lichess approach exactly:
-
-- Use Stockfish WASM
-- Run engine in a **Web Worker** — never on the main thread
-- Communicate via UCI protocol
-- Do NOT block UI during analysis
-
-Reference implementation: `ui/lib/src/ceval/engines/stockfishWebEngine.ts`
-
-Support:
-- evaluation per move (centipawns + mate)
-- best move suggestions
-- win/draw/loss percentages (`winningChances.ts`)
-- configurable depth / time
-
----
-
-## Move Tree / Variations
-
-Must match Lichess behavior exactly. Reference: `ui/lib/src/tree/`
-
-Core types to match:
-```typescript
-type TreePath = string; // immutable path notation
-
-type TreeNode = {
-  id: string;
-  ply: number;
-  move: { san: string; uci: string };
-  fen: string;
-  eval?: { cp?: number; mate?: number; best?: string };
-  glyphs: Glyph[];
-  children: TreeNode[];
-  comments: TreeComment[];
-  clock?: Clock;
-};
-```
-
-Required operations (match `ui/lib/src/tree/tree.ts` TreeWrapper interface):
-- full move tree with children (not a flat list)
-- side variations
-- promotion to mainline
-- navigation across branches
-- keyboard navigation
-- delete node at path
-- add node / add nodes at path
-
-Do NOT simplify this into a flat move list.
-
----
-
-## Puzzle Generation Logic
-
-Puzzle extraction should be derived from Lichess concepts.
-
-Reference:
-- `docs/reference/lichess-puzzle-reference.md`
-- `modules/puzzle/` in Lichess source
-
-Future configurable parameters:
-- evaluation swing threshold
-- minimum depth
-- game phase filters
-- time spent filters
-
----
-
-## Game Import System
-
-Game import occurs globally in the header.
-
-Sources:
-- Chess.com
-- Lichess
-
-Support:
-- username import (API)
-- PGN paste
-- PGN file upload
-
-Filters:
-- time control
-- date range
-- rated/unrated
-
-Games populate shared application state.
-
-Backend reference: `modules/tree/src/main/ParseImport.scala`
-
----
-
-## Data Storage
-
-Anonymous users:
-- IndexedDB (local)
-
-Admin/server:
-- SQLite or PostgreSQL
-
-Rules:
-- IndexedDB acts as cache + local persistence (reference: `ui/analyse/src/idbTree.ts`)
-- Server storage is optional for MVP
-- Do NOT introduce MongoDB, Redis, or Elasticsearch
+For retrospection, puzzle extraction, or Learn From Your Mistakes work, follow the
+Retrospection and puzzle-generation rule in AGENTS.md. The reference docs in
+`docs/reference/lichess-retrospection*/` and `docs/reference/lichess-puzzle-ux/` are mandatory.
 
 ---
 
@@ -821,19 +256,6 @@ Routes:
 - /openings
 - /stats
 - /admin
-
----
-
-## Build System
-
-Use esbuild as the bundler, matching Lichess's approach.
-
-- pnpm workspace monorepo
-- esbuild for bundling TypeScript modules
-- Sass/SCSS for styles
-- Content-hash filenames for cache busting (in production)
-
-Node.js requirement: **24.13.0+**
 
 ---
 
@@ -868,40 +290,6 @@ When fixing bugs:
 
 ---
 
-## First Task Rule
-
-When starting work:
-
-Claude must:
-- inspect existing repo
-- understand current structure
-- identify smallest next step
-- avoid rebuilding existing systems
-- follow current code patterns
-
----
-
-## Reuse Priority
-
-1. `@lichess-org/chessground` — board UI
-2. `@lichess-org/pgn-viewer` — PGN display
-3. Analysis board UI patterns (from `ui/analyse/`)
-4. Move tree implementation (from `ui/lib/src/tree/`)
-5. Engine/ceval patterns (from `ui/lib/src/ceval/`)
-6. Puzzle logic (from `ui/puzzle/`)
-7. Layout/styling
-
----
-
-## Adaptation Rule
-
-If Lichess code is tightly coupled:
-
-1. Extract smallest useful behavior
-2. Recreate it in this project's stack
-3. Preserve user-facing behavior
-4. Avoid copying unrelated infrastructure (MongoDB, Redis, Fishnet, etc.)
-
 ## File Discipline Rule
 
 Claude must:
@@ -915,67 +303,6 @@ Claude must NOT create new files to:
 - split code that belongs together
 - add abstraction layers not present in Lichess
 - work around the 1–3 file limit by creating throwaway helpers
-
----
-
-## Performance Rules (MANDATORY)
-
-Claude must follow `docs/PERFORMANCE_GUIDELINES.md` for all implementation work.
-Violations of Core Rules (CR-1 through CR-10) are blocking — code must not ship
-until they are resolved.
-
-### Quick reference (non-negotiable rules)
-
-- **CR-1:** Never block UI on large dataset queries (>100 records must be async)
-- **CR-2:** Never load an entire object store eagerly (use cursors, pagination, on-demand)
-- **CR-3:** All lists >200 items must be virtualized or paginated
-- **CR-4:** Heavy computation (>1000 records or >50ms) must be deferred or offloaded
-- **CR-5:** Game imports must never freeze the UI
-- **CR-6:** Analysis data stored once — eval cache for runtime, IDB for persistence
-- **CR-7:** IDB records must be individually keyed (never store a collection as one record)
-- **CR-8:** Sync must be differential (transfer only changed records)
-- **CR-9:** Server writes must be batched (multi-row INSERT, not sequential loops)
-- **CR-10:** Engine UI updates must be throttled to 200ms maximum frequency
-
-### Performance pre-implementation step
-
-Before writing any code, Claude must:
-1. Identify performance risks in the proposed approach
-2. Confirm the approach scales to 30k+ games
-3. Check `docs/PERFORMANCE_CHECKLIST.md` against the implementation plan
-4. Compare with Lichess implementation for performance patterns
-5. Verify no anti-patterns from `docs/PERFORMANCE_GUIDELINES.md` (AP-1 through AP-8)
-
-If the task involves data storage, query patterns, list rendering, engine
-integration, or sync, Claude must read the relevant section of
-`docs/DATA_ARCHITECTURE.md` before implementing.
-
-### Known debt
-
-Active performance debt is tracked in `docs/PERFORMANCE_DEBT.md`. Claude must
-not add new features on top of Critical-severity debt without explicit approval.
-When fixing debt items, mark them as resolved in that document.
-
-### Rendering rules
-
-- Do not re-render board unnecessarily (Snabbdom patches only changed vnodes)
-- Throttle engine updates to 200ms (Lichess pattern: `ui/lib/src/ceval/ctrl.ts`)
-- Gate all `redraw()` calls through `requestAnimationFrame`
-- Chunk large imports with `setTimeout(fn, 0)` yielding
-- Cache analysis results (IndexedDB)
-- Use `requestIdleCallback` for non-critical initialization
-- Render page shell immediately; fill data asynchronously
-
-### Anti-patterns (explicitly forbidden)
-
-- Storing collections as single IDB records (AP-1)
-- `getAll()` on stores exceeding 500 records (AP-2)
-- Sequential single-row server inserts in loops (AP-3)
-- Full-dump sync of entire datasets (AP-4)
-- Unthrottled engine-to-UI redraws (AP-5)
-- Dedup via full-content Set (AP-6)
-- Unbounded in-memory caches without eviction (AP-7)
-- Version-based analysis data discard (AP-8)
 
 ---
 
@@ -1017,56 +344,42 @@ All research and notes live in:
 
 Claude should consult these when relevant.
 
----
+## Doc Line Item Dating Rule (MANDATORY)
 
-## Header / Navigation UI Reference
+Any time a new item is added to any of the following tracking docs — or any other doc that
+functions as a running log of issues, ideas, or action items — that item **must include the date
+it was added**. This is automatic. Do not skip it.
 
-A working header and game import system was built in a previous iteration of
-this project (PatzPro, React-based). Reference files have been copied into:
+Tracked docs:
+- `docs/KNOWN_ISSUES.md`
+- `docs/NEXT_STEPS.md`
+- `docs/FUTURE_FUNCTIONALITY.md`
+- `docs/WISHLIST.md`
 
-```
-docs/reference/
-  TopNav.jsx                  — main header component (logo, tool nav, import bar,
-                                filters panel, mobile hamburger menu)
-  AppShell.jsx                — layout wrapper that pins TopNav at the top and
-                                renders the main content area below
-  App.jsx                     — app root: wraps routes in GameLibraryProvider +
-                                AppShell, defines tool routes
-  GameLibraryContext.jsx      — shared state for platform, username, filters,
-                                fetched games list, and selectedGame
-  ImportControls/index.jsx    — filter pills component (time control + date range)
-                                used inside the header filters panel
-  GameImport/index.jsx        — scrollable game list shown after a successful import
-  api/chesscom.js             — Chess.com API adapter (fetchRecentGames)
-  api/lichess.js              — Lichess API adapter (stub, same interface)
-```
+Format by doc type:
 
-When building the header or game import system, Claude should:
+- **KNOWN_ISSUES.md** — entries use `## [SEVERITY] Title` headers; add `_Logged: YYYY-MM-DD_`
+  on the line immediately after the header, before the body text
+- **WISHLIST.md** — bullet items; add `_(YYYY-MM-DD)_` immediately after the `- [ ]` or `- [x]`
+  marker, before the item text
+- **NEXT_STEPS.md** — numbered section entries; add `_(added: YYYY-MM-DD)_` after the
+  section heading
+- **FUTURE_FUNCTIONALITY.md** — bullet items; add `_(YYYY-MM-DD)_` immediately after the `-`
+  bullet marker, before the item text
 
-1. Read the relevant reference file(s) first
-2. Understand the structure, state shape, and behavior
-3. Adapt to this project's stack (TypeScript modules, not React)
-4. Preserve the same user-facing behavior and feature set
+Use the current date from the session context (`currentDate`). Never guess or cache a date.
 
-These files are **reference only** — do not copy them verbatim into the new
-build. Adapt patterns and behavior to match the chosen stack.
+This rule triggers automatically whenever the user says any of the following (or similar):
+- "log a bug"
+- "log a known issue"
+- "add to the wishlist"
+- "add a next step"
+- "note this down"
+- "add to future functionality"
+- "record this"
+- "jot this down"
 
----
-
-## Current Build Priority
-
-1. Project setup (pnpm, esbuild, TypeScript config)
-2. Chessground integration
-3. Analysis board shell (Snabbdom UI + move list)
-4. Move tree + navigation
-5. Engine integration (Stockfish Web Worker)
-6. Game import
-7. Puzzle extraction MVP
-8. Puzzle play
-9. Persistence (IndexedDB + SQLite)
-10. Admin sync
-
----
+An item added without a date is an incomplete entry.
 
 ## Goal
 

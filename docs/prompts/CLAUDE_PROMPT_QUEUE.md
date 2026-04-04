@@ -180,7 +180,109 @@ Use this file to store Claude Code prompts that are available for future use and
 - [x] CCP-730: Fix Pre-existing TypeScript Strict Errors in retroView and Openings [COMPLETED]
   - Reserved prompt slot
 
-- [ ] CCP-731: Overlay LFYM win-icon on Next button
+- [x] CCP-731: Overlay LFYM win-icon on Next button [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-732: Fix LFYM eval-vs-engine-best box never populates [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-733: Audit LFYM wrong-position engine arrows diagnostic logging [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-734: Remove redundant retro-feedback eval-diff span [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-735: Style Try Another Move as retro-save button [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-736: Reposition LFYM win-icon to top-right of content panel [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-736-F1: Fix win-icon still overlapping Next button [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-737: Fix vs-Engine-Best eval accuracy in LFYM dual eval boxes [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-738: Fix CCP-737: vs Move Played should show real diff not checkmark when exact best is played [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-739: Return win-icon to inline flow next to feedback message [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-740: Severity-modulated feedback module [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-741: Feedback lookbook HTML dashboard [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-742: Wire severity feedback into LFYM [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-743: Severity feedback system manager [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-744: Fix win-icon top-right positioning using content panel as anchor [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-745: Adaptive height compression for retro feedback box [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-746: Expanded eval box grades [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-747: Add Mistake Detection to action menu and Lichess default marker to severity slider [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-748: Feedback test PGN seed game [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-751: Fix missing eval box grade colors in LFYM feedback states [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-752: Add LFYM feedback icons to the lookbook [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-753: Mistake count feedback gradient [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-754: Wire mistake count gradient into LFYM [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-755: General UI lookbook page [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-756: Action menu: Mistakes subheading + inline Mistake Detection sub-panel [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-757: Add pagination to prompt dashboard (200 per page) [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-758: Merge lookbooks into single Patzer Lookbook [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-759: Detail line generator and LFYM wiring [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-760: Complete harsh tone text variants [COMPLETED]
+  - Reserved prompt slot
+
+- [x] CCP-761: Wire harsh tone toggle into LFYM [COMPLETED]
+  - Reserved prompt slot
+
+- [ ] CCP-762: Escalating harsh tone levels
+  - Reserved prompt slot
+
+- [ ] CCP-763: Wire harsh level selector into LFYM
+  - Reserved prompt slot
+
+- [ ] CCP-764: Move harsh toggle to settings menu
+  - Reserved prompt slot
+
+- [x] CCP-765: Harsh tone escalation manager
+  - Reserved prompt slot
+
+- [x] CCP-773: Review All Current Completed Unreviewed Prompts Batch 2
   - Reserved prompt slot
 
 ## Queue
@@ -6108,5 +6210,3847 @@ npm run prompt:complete -- CCP-731 --checklist "- [ ] Green check overlaid on to
 If errors or issues were encountered during execution, use `--errors` instead:
 ```sh
 npm run prompt:complete -- CCP-731 --errors "brief description of what went wrong" --checklist "- [ ] Green check overlaid on top of Next button, centered|- [ ] Drop shadow visible against blue background|- [ ] Next button text not obscured|- [ ] Instruction text layout intact|- [ ] Looks correct on mobile|- [ ] npm run build passes|- [ ] No console errors in win/view feedback state"
+```
+```
+
+## CCP-732 - Fix LFYM eval-vs-engine-best box never populates
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-732 — Fix LFYM eval-vs-engine-best box never populates
+
+## Context
+
+The LFYM (Learn From Your Mistakes) feedback UI has two eval comparison boxes:
+- **vs Engine Best** — how the user's solving move compared to the engine's best line
+- **vs Move Played** — how the user's solving move compared to the original game mistake
+
+The "vs Move Played" box populates correctly. The "vs Engine Best" box never populates.
+
+Two separate failure modes were identified by code audit:
+
+**Failure mode A — wrong move path:**
+In `src/analyse/retroMoveHandler.ts`, `setSolvingMoveSnapshot()` is called after the user
+plays a move. At that moment:
+
+```ts
+const engineBestForSnapshot = isExactBest ? solvingEval : evalCache.get(cand.parentPath);
+```
+
+When the user plays a non-best move, `engineBestForSnapshot` reads `evalCache.get(cand.parentPath)`.
+That parent position eval is not in cache yet at move time — it is populated asynchronously by
+`evalFenSilent()` which is called *after* the snapshot is already frozen. So `engineBestCp` is
+always `undefined` in the snapshot, and the view renders `—` permanently for the vs-Engine-Best box.
+
+**Failure mode B — correct move (win) path:**
+When the user plays the exact engine best move, `retro.feedback()` is already `'win'` (set by
+the before-move hook). The after-move hook returns early at line 97–98 before ever calling
+`setSolvingMoveSnapshot()`. The snapshot is never set. `renderDualEvalBoxes()` returns `null`
+at line 150 — the box does not render at all.
+
+## Root Cause Summary
+
+The snapshot is an immutable capture taken synchronously at move time. The two fields that
+power the vs-Engine-Best box (`engineBestCp`, `engineBestMate`) are not in cache at that moment
+(failure A) or are never written at all (failure B).
+
+## Fix
+
+Touch at most these 3 files:
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/retroMoveHandler.ts`
+- `src/analyse/retroView.ts`
+
+### Step 1 — Add `parentPath` and `solvingPath` to `SolvingMoveSnapshot`
+
+In `src/analyse/retroCtrl.ts`, add two new fields to the `SolvingMoveSnapshot` type:
+
+```ts
+parentPath:   string;   // cand.parentPath — used for live cache lookup of engine best eval
+solvingPath:  string;   // ctrl.path after the move — used for live cache lookup of solving eval
+```
+
+These path fields allow the view to do a live `evalCache` lookup on every render instead of
+relying on the frozen snapshot cp values. The cp values remain in the snapshot as a fast path
+when available.
+
+### Step 2 — Fix failure mode B: set snapshot before the 'win' early-return
+
+In `src/analyse/retroMoveHandler.ts`, move the `setSolvingMoveSnapshot()` call to BEFORE the
+`if (retro.feedback() === 'win') return;` gate (currently lines 97–98).
+
+For the win path `isExactBest` will be `true` (the user played the engine best move), so
+`engineBestForSnapshot = solvingEval`. Both `solvingMoveCp` and `engineBestCp` will come from
+the same `evalCache.get(ctrl.path)` lookup. If the eval is in cache, both values are present and
+the diff is ±0. If not yet cached, both are `undefined` — the live lookup in step 3 handles that.
+
+Also populate the new `parentPath` and `solvingPath` fields when calling `setSolvingMoveSnapshot`.
+
+### Step 3 — Fix failure mode A: live cache lookup in the view
+
+In `src/analyse/retroView.ts`, inside `renderDualEvalBoxes()`, change `engineBestEval` and
+`solvingEval` construction to fall back to live `evalCache` lookups when the snapshot cp fields
+are `undefined`:
+
+```ts
+// Prefer frozen snapshot values; fall back to live cache on each render.
+const liveSolving     = snapshot.solvingPath   ? evalCache.get(snapshot.solvingPath)   : undefined;
+const liveEngineBest  = snapshot.parentPath    ? evalCache.get(snapshot.parentPath)    : undefined;
+
+const solvingEval = {
+  ...(snapshot.solvingMoveCp   !== undefined ? { cp: snapshot.solvingMoveCp }   : liveSolving?.cp   !== undefined ? { cp: liveSolving.cp }   : {}),
+  ...(snapshot.solvingMoveMate !== undefined ? { mate: snapshot.solvingMoveMate } : liveSolving?.mate !== undefined ? { mate: liveSolving.mate } : {}),
+};
+const engineBestEval = {
+  ...(snapshot.engineBestCp   !== undefined ? { cp: snapshot.engineBestCp }   : liveEngineBest?.cp   !== undefined ? { cp: liveEngineBest.cp }   : {}),
+  ...(snapshot.engineBestMate !== undefined ? { mate: snapshot.engineBestMate } : liveEngineBest?.mate !== undefined ? { mate: liveEngineBest.mate } : {}),
+};
+```
+
+This means: on every render after `evalFenSilent()` populates `evalCache.get(cand.parentPath)`,
+the view picks up the result automatically without needing to mutate the snapshot.
+
+## Important: `evalCache` import in retroView
+
+`evalCache` is exported from `src/engine/ctrl.ts`. Import it in `src/analyse/retroView.ts` if not
+already imported.
+
+## Acceptance Criteria
+
+- When the user plays a wrong move in LFYM, the vs-Engine-Best box populates once the engine
+  has evaluated the parent position (may appear after a brief delay on the first attempt)
+- When the user plays the exact engine best move (wins the puzzle), both eval boxes render and
+  the vs-Engine-Best box shows `✓` (±0 diff)
+- The vs-Move-Played box continues to work as before — no regression
+- No TypeScript strict errors introduced
+
+## Validation
+
+Manual steps:
+- [ ] Play a wrong move in LFYM — confirm vs-Engine-Best box populates (may take a moment)
+- [ ] Play the exact best move in LFYM — confirm both boxes render and vs-Engine-Best shows `✓`
+- [ ] Confirm vs-Move-Played box still populates correctly on wrong moves
+- [ ] Open browser console — confirm no new TypeScript or runtime errors
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-732
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-732 --checklist "- [ ] Wrong move: vs-Engine-Best box populates after brief delay|- [ ] Correct move: both boxes render, vs-Engine-Best shows checkmark|- [ ] vs-Move-Played box still works correctly|- [ ] No new console errors or TypeScript errors"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-732 --errors "brief description of what went wrong" --checklist "- [ ] Wrong move: vs-Engine-Best box populates after brief delay|- [ ] Correct move: both boxes render, vs-Engine-Best shows checkmark|- [ ] vs-Move-Played box still works correctly|- [ ] No new console errors or TypeScript errors"
+```
+```
+
+## CCP-733 - Audit LFYM wrong-position engine arrows diagnostic logging
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-733 — Audit LFYM wrong-position engine arrows diagnostic logging
+
+## Context
+
+During LFYM puzzle solving, the engine arrows sometimes draw analysis for a position that is not
+the current board position. This is intermittent — it does not happen on every puzzle attempt.
+The user reproduced it after navigating forward and backward through the move tree before toggling
+the engine on.
+
+The existing `[live-diag] starting live eval` log (in `src/engine/ctrl.ts:929`) captures the
+`evalNodePath` and `ply` when a new search starts, but does not capture what `currentEval` and
+`evalNodePath` contain at the moment arrows are actually drawn. The gap between "search started
+for path X" and "arrows drawn using currentEval" is where the staleness can enter undetected.
+
+## Goal of this prompt
+
+This is a **diagnostic/audit prompt only**. The goal is to add targeted console logging so that
+the next time the wrong-arrow bug occurs, the exact mismatch is captured in the console. No
+behavioral changes. No UI changes. After the logging is added, the developer will reproduce the
+bug and report what the logs show — a follow-up fix prompt will use those findings.
+
+## What to instrument
+
+Touch only `src/engine/ctrl.ts`.
+
+### 1. Log inside `buildArrowShapes()` when engine arrows are about to draw
+
+At the top of the `if (engineEnabled && showEngineArrows && !retroHidden)` block (around line 290),
+add a log that fires only when `currentEval.best` is present and is about to be drawn:
+
+```ts
+if (currentEval.best) {
+  console.log(
+    '[arrow-diag] drawing engine arrow — evalNodePath:', evalNodePath,
+    '| ctrl.path:', ctrl.path,
+    '| match:', evalNodePath === ctrl.path,
+    '| best:', currentEval.best,
+  );
+  // ... existing arrow build code ...
+}
+```
+
+The critical field is `match: evalNodePath === ctrl.path`. When this is `false`, the arrow being
+drawn belongs to a different position than the board is showing — that is the bug.
+
+### 2. Log inside `evalCurrentPosition()` when the pending-eval early-return fires
+
+In the `if (engineSearchActive)` early-return branch (around line 904), before `pendingEval = true`,
+add:
+
+```ts
+console.log(
+  '[eval-diag] pendingEval set — engineSearchActive, deferring. evalNodePath:', evalNodePath,
+  '| ctrl.path:', ctrl.path,
+  '| pendingEval was:', pendingEval,
+);
+```
+
+This captures when a position change is queued but the engine is mid-search for a different
+position. If `evalNodePath !== ctrl.path` here, arrows from the old search may render before
+the new search starts.
+
+### 3. Log inside the bestmove path guard when it fires
+
+At line 731, when the bestmove path guard fires (`evalNodePath !== _getCtrl().path`), add:
+
+```ts
+console.log(
+  '[bestmove-diag] stale bestmove discarded — evalNodePath:', evalNodePath,
+  '| ctrl.path:', _getCtrl().path,
+  '| pendingEval:', pendingEval,
+);
+```
+
+This confirms whether the bestmove guard is actually firing during the bug reproduction.
+
+## What NOT to do
+
+- Do not change any engine behavior
+- Do not change arrow rendering logic
+- Do not add logs outside `src/engine/ctrl.ts`
+- Do not remove or modify the existing `[live-diag]` log at line 929
+- These logs are temporary diagnostic aids — mark each with `// [TEMP DIAG — remove after CCP-733]`
+
+## After adding the logs
+
+The developer will:
+1. Load a LFYM puzzle
+2. Navigate forward and backward through the move tree a few times
+3. Toggle the engine on
+4. Watch the console for `[arrow-diag]` entries where `match: false`
+5. Report the full sequence of `[live-diag]`, `[eval-diag]`, `[bestmove-diag]`, and
+   `[arrow-diag]` logs that appear immediately before wrong arrows show
+
+A follow-up fix prompt (`CCP-733-F1`) will be created once the logs confirm the exact sequence.
+
+## Acceptance Criteria
+
+- `[arrow-diag]` log appears in the console whenever engine arrows are drawn in LFYM
+- `match: false` in that log when wrong arrows are present
+- No behavioral regression — engine analysis and arrow display still work correctly when the
+  bug is not occurring
+- All new logs are marked `// [TEMP DIAG — remove after CCP-733]`
+
+## Validation
+
+Manual steps:
+- [ ] Load a LFYM puzzle, navigate forward/back, toggle engine — confirm `[arrow-diag]` logs appear
+- [ ] Confirm `[eval-diag]` logs appear when navigation happens while engine is mid-search
+- [ ] Confirm no behavioral regression in normal engine arrow display
+- [ ] All new log lines include the `[TEMP DIAG]` comment marker
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-733
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-733 --checklist "- [ ] [arrow-diag] logs appear when engine arrows draw in LFYM|- [ ] [eval-diag] logs appear when pendingEval deferred|- [ ] [bestmove-diag] logs appear when stale bestmove discarded|- [ ] No behavioral regression in arrow display|- [ ] All new logs marked with TEMP DIAG comment"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-733 --errors "brief description of what went wrong" --checklist "- [ ] [arrow-diag] logs appear when engine arrows draw in LFYM|- [ ] [eval-diag] logs appear when pendingEval deferred|- [ ] [bestmove-diag] logs appear when stale bestmove discarded|- [ ] No behavioral regression in arrow display|- [ ] All new logs marked with TEMP DIAG comment"
+```
+```
+
+## CCP-734 - Remove redundant retro-feedback eval-diff span
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-734 — Remove redundant retro-feedback eval-diff span
+
+## Context
+
+The LFYM move feedback area renders a `<span class="retro-feedback__eval-diff">` element
+(e.g. `+0.9`) alongside the dedicated eval comparison boxes (vs Engine Best, vs Move Played).
+
+This span is redundant for two reasons:
+
+**Reason 1 — duplicate information.** The dedicated eval boxes already display the same
+evaluation information in a clearer, labeled format. The span adds nothing that the boxes
+do not already communicate.
+
+**Reason 2 — wrong sign convention.** The span uses `cand.evalDiff.formatted` which is
+produced by `formatPawns()` in `src/analyse/evalDiff.ts`. `formatPawns()` always clamps
+to zero and always prepends `+`, so the span can only ever display `+X.X` — it never shows
+a negative value. From the user's perspective, a solving move that is *worse* than the engine
+best should be represented as a negative difference, not positive. The span's sign is
+conceptually backwards for that context, adding to user confusion.
+
+## Fix
+
+Touch only `src/analyse/retroView.ts`.
+
+Locate the function that renders the `retro-feedback__eval-diff` span. Based on the audit:
+
+```ts
+// retroView.ts ~line 89
+function renderRetroEvalDiff(cand: RetroCandidateCtrl): VNode | null {
+  const diff = cand.evalDiff;
+  if (!diff) return null;
+  return h('span.retro-feedback__eval-diff', diff.formatted);
+}
+```
+
+And its call site(s) (~line 94):
+
+```ts
+return renderEvalDiff(cand.evalDiff);
+```
+
+**Remove both the function definition and every call site of this function.**
+
+Do not remove anything else. Do not modify the eval boxes, the `EvalDiff` type, `formatPawns`,
+or any other eval-related code.
+
+## Important: verify nothing else depends on `retro-feedback__eval-diff`
+
+Before removing, grep the codebase for `retro-feedback__eval-diff` and `renderRetroEvalDiff`
+(or whatever the actual function name is) to confirm there are no other call sites or CSS rules
+that need to be cleaned up:
+
+```sh
+grep -r "retro-feedback__eval-diff" src/ public/
+```
+
+If CSS rules exist for `.retro-feedback__eval-diff`, remove those too — they are dead styles
+once the element is gone. The CSS lives in `public/css/main.css` (generated) and the source
+is likely in `src/styles/`. Remove only from the source SCSS, not the generated CSS directly.
+
+## Acceptance Criteria
+
+- The `retro-feedback__eval-diff` span no longer appears in the LFYM move feedback area
+- The eval comparison boxes (vs Engine Best, vs Move Played) are unaffected
+- No visual regression in the LFYM feedback panel layout
+- No TypeScript strict errors introduced
+- No dead CSS left for `.retro-feedback__eval-diff`
+
+## Validation
+
+Manual steps:
+- [ ] Play a wrong move in LFYM — confirm the redundant `+X.X` span is gone from the feedback area
+- [ ] Confirm the vs-Engine-Best and vs-Move-Played boxes still render correctly
+- [ ] Inspect the DOM — confirm no `retro-feedback__eval-diff` element exists
+- [ ] Confirm no layout shift or visual regression in the feedback panel
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-734
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-734 --checklist "- [ ] redundant eval-diff span no longer renders in LFYM feedback|- [ ] eval comparison boxes unaffected|- [ ] no retro-feedback__eval-diff element in DOM after wrong move|- [ ] no layout regression in feedback panel|- [ ] no dead CSS remaining"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-734 --errors "brief description of what went wrong" --checklist "- [ ] redundant eval-diff span no longer renders in LFYM feedback|- [ ] eval comparison boxes unaffected|- [ ] no retro-feedback__eval-diff element in DOM after wrong move|- [ ] no layout regression in feedback panel|- [ ] no dead CSS remaining"
+```
+```
+
+## CCP-735 - Style Try Another Move as retro-save button
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-735 — Style "Try Another Move" as a retro-save button
+
+## Summary
+
+The "Try another move" link in the LFYM feedback box is currently a bare `<a>` element with
+no button styling. It should be restyled to match the `.retro-save__btn` button (the Save
+to Library button) and placed directly underneath it, consistent with the existing render order.
+
+## Task
+
+Change the "Try another move" element in `src/analyse/retroView.ts` from a plain `<a>` to a
+`<button>` using the `.retro-save__btn` class, and wrap it in a `.retro-save` container
+div to match the Save to Library structure.
+
+### Required files to inspect first
+
+- `src/analyse/retroView.ts` — `h('a', ..., 'Try another move')` appears three times (~lines
+  559, 598, 625) inside `renderSaveToLibrary` call sites
+- `public/css/main.css` — `.retro-box .retro-save` and `.retro-box .retro-save__btn` rules
+  (~lines 1988–2015)
+
+### Current structure (appears three times in the win / fail-retry / view blocks)
+
+```ts
+renderSaveToLibrary(cand, retro, redraw),
+h('a', { on: { click: () => {
+  retro.resetForRetry();
+  resetRetroVisibleEngineUi();
+  if (cand) navigate(cand.parentPath);
+  syncArrow();
+  redraw();
+}}}, 'Try another move'),
+```
+
+### Required change
+
+Replace each `h('a', ...)` with a wrapped button element matching the save button style:
+
+```ts
+renderSaveToLibrary(cand, retro, redraw),
+h('div.retro-save', h('button.retro-save__btn', {
+  on: { click: () => {
+    retro.resetForRetry();
+    resetRetroVisibleEngineUi();
+    if (cand) navigate(cand.parentPath);
+    syncArrow();
+    redraw();
+  }},
+}, 'Try another move')),
+```
+
+Apply this change to all three occurrences (~lines 559, 598, 625).
+
+### Constraints
+
+- Touch only `src/analyse/retroView.ts` — no CSS changes needed (reuses existing classes)
+- Do not change the click handler logic — only the element type and class
+- Do not change the render order — "Try another move" stays below "Save to Library"
+- All three occurrences must be updated (fail/retry, win, and view feedback states)
+
+## Validation
+
+- [ ] "Try another move" renders as a button with the same visual style as Save to Library
+- [ ] "Try another move" button appears directly below Save to Library
+- [ ] Clicking the button still resets and navigates correctly
+- [ ] All three feedback states (fail, win, view) show the styled button
+- [ ] `npm run build` passes
+- [ ] `npx tsc --noEmit` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-735
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-735 --checklist "- [ ] Try another move rendered as retro-save__btn button|- [ ] Appears below Save to Library in all three feedback states|- [ ] Click handler logic unchanged|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-735 --errors "brief description of what went wrong" --checklist "- [ ] Try another move rendered as retro-save__btn button|- [ ] Appears below Save to Library in all three feedback states|- [ ] Click handler logic unchanged|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-736 - Reposition LFYM win-icon to top-right of content panel
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-736 — Reposition LFYM win-icon to top-right of content panel
+
+## Summary
+
+CCP-731 moved the green ✓ icon to overlay the Next button (right side). The intended position
+is the top-right corner of the left content panel instead — floating absolutely so it never
+pushes text or buttons down.
+
+## Task
+
+In `src/styles/main.scss`, change the `right` value on `.retro-icon--win` from `15%`
+(center of the Next button) to `calc(30% + 8px)` (just inside the right edge of the left
+content panel, clear of the Next button boundary).
+
+Only `right` changes. Everything else (`top`, `transform`, `z-index`, `filter`, etc.) stays.
+
+## Validation
+
+- [ ] Green ✓ appears in the top-right corner of the "Good move!" / "Good enough!" panel
+- [ ] Icon does not overlap the Next button
+- [ ] No text or buttons are pushed down by the icon
+- [ ] `npm run build` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-736
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-736 --checklist "- [ ] Icon in top-right of content panel|- [ ] Does not overlap Next button|- [ ] No layout shift|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-736 --errors "brief description" --checklist "- [ ] Icon in top-right of content panel|- [ ] Does not overlap Next button|- [ ] No layout shift|- [ ] npm run build passes"
+```
+```
+
+## CCP-736-F1 - Fix win-icon still overlapping Next button
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-736-F1 — Fix win-icon still overlapping Next button after CCP-736
+
+## Summary
+
+CCP-736 changed `right: 15%` to `right: calc(30% + 8px)` but left `transform: translateX(50%)`
+in place. That transform shifts the icon 28px to the right, pushing it back into the Next button.
+Remove the transform so `right: calc(30% + 8px)` alone positions the icon's right edge 8px
+inside the content panel boundary.
+
+## Task
+
+In `src/styles/main.scss`, on `.retro-icon--win`, remove the `transform: translateX(50%)` line.
+
+## Validation
+
+- [ ] Green ✓ sits in the top-right corner of the content panel, not over the Next button
+- [ ] `npm run build` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-736-F1
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-736-F1 --checklist "- [ ] Icon no longer overlaps Next button|- [ ] npm run build passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-736-F1 --errors "brief description" --checklist "- [ ] Icon no longer overlaps Next button|- [ ] npm run build passes"
+```
+```
+
+## CCP-737 - Fix vs-Engine-Best eval accuracy in LFYM dual eval boxes
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-737 — Fix vs-Engine-Best eval accuracy in LFYM dual eval boxes
+
+## Summary
+
+When the user plays the exact engine best move in LFYM, the "vs Engine Best" box shows ~0.2
+instead of ✓. The cause: `engineBestEval` falls back to `evalCache.get(parentPath)` (the parent
+position, analyzed at full depth), while `solvingEval` reads `evalCache.get(solvingPath)` (the
+child position, just starting analysis at depth 0). These naturally differ by 0.2–0.5 due to the
+engine depth horizon — even when both positions are the same node.
+
+The correct fix: add `isExactBest: boolean` to `SolvingMoveSnapshot` and, when true, bypass the
+diff computation entirely and show ✓ directly.
+
+## Files to touch
+
+- `src/analyse/retroCtrl.ts`
+- `src/analyse/retroMoveHandler.ts`
+- `src/analyse/retroView.ts`
+
+## Implementation
+
+### Step 1 — Add `isExactBest` to `SolvingMoveSnapshot` (`retroCtrl.ts`)
+
+```ts
+export interface SolvingMoveSnapshot {
+  // ... existing fields ...
+  isExactBest: boolean;
+}
+```
+
+Also add `isExactBest: prev?.isExactBest ?? false` in `mergeLiveEvalIntoSolvingSnapshot`.
+
+### Step 2 — Populate `isExactBest` in `retroMoveHandler.ts`
+
+In the `retro.setSolvingMoveSnapshot({...})` call, add:
+
+```ts
+isExactBest,
+```
+
+`isExactBest` is already computed at that point in the handler.
+
+### Step 3 — Short-circuit in `renderDualEvalBoxes` (`retroView.ts`)
+
+After `const snapshot = retro.getSolvingMoveSnapshot();` and the null guard, add:
+
+```ts
+if (snapshot.isExactBest) {
+  return h('div.retro-eval-boxes', [
+    renderEvalBox('best', 'vs Engine Best', '✓'),
+    renderEvalBox('best', 'vs Move Played', '✓'),
+  ]);
+}
+```
+
+This bypasses all diff computation when the user played the engine's exact best move.
+Both boxes show ✓ — the user matched engine best, and also beat the original game mistake.
+
+## Constraints
+
+- Do not change how wrong-move diffs are computed — `parentPath` as engine-best reference is
+  correct and standard (it represents optimal-play outcome from that position)
+- Do not touch the live fallback logic for wrong-move case
+- The `mergeLiveEvalIntoSolvingSnapshot` call in `retroCtrl.ts` must also set `isExactBest`
+  to preserve the flag across live eval merges
+
+## Validation
+
+- [ ] Playing the exact engine best move → both boxes show ✓
+- [ ] Playing a wrong move → vs Engine Best shows a meaningful negative diff
+- [ ] vs Move Played continues to work correctly on wrong moves
+- [ ] `npm run build` passes
+- [ ] `npx tsc --noEmit` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-737
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-737 --checklist "- [ ] Exact best move shows checkmark in both boxes|- [ ] Wrong move shows meaningful negative diff in vs Engine Best|- [ ] vs Move Played unaffected|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-737 --errors "brief description" --checklist "- [ ] Exact best move shows checkmark in both boxes|- [ ] Wrong move shows meaningful negative diff in vs Engine Best|- [ ] vs Move Played unaffected|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-738 - Fix CCP-737: vs Move Played should show real diff not checkmark when exact best is played
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-738 — Fix CCP-737: vs Move Played should show real diff, not ✓, when exact best is played
+
+## Summary
+
+CCP-737 short-circuits both eval boxes to ✓ when `snapshot.isExactBest` is true.
+This is incorrect for the "vs Move Played" box — that box should always show the
+real centipawn diff between the user's move and the original game mistake, because
+it answers a different question: "how much better did I play than I did in the game?"
+
+Only "vs Engine Best" should show ✓ when the user plays the exact best move.
+"vs Move Played" should fall through to the normal diff computation path.
+
+## File to touch
+
+- `src/analyse/retroView.ts`
+
+## Implementation
+
+In `renderDualEvalBoxes`, replace the current early-return block:
+
+```ts
+if (snapshot.isExactBest) {
+  return h('div.retro-eval-boxes', [
+    renderEvalBox('best', 'vs Engine Best', '✓'),
+    renderEvalBox('best', 'vs Move Played', '✓'),
+  ]);
+}
+```
+
+with logic that only forces "vs Engine Best" to ✓ and lets "vs Move Played"
+fall through to the existing diff computation.
+
+The simplest restructure: compute solvingEval and gameMoveEval unconditionally,
+then for vs Engine Best check `isExactBest` first before falling into the diff path.
+
+Concretely — remove the early return block entirely and change the vs Engine Best
+grading section to:
+
+```ts
+let vsBestGrade: string;
+let vsBestDisplay: string;
+if (snapshot.isExactBest) {
+  vsBestGrade = 'best';
+  vsBestDisplay = '✓';
+} else if (vsBestDiff === null) {
+  vsBestGrade = 'bad';
+  vsBestDisplay = '—';
+} else if (Math.abs(vsBestDiff.diff) < 0.005) {
+  vsBestGrade = 'best';
+  vsBestDisplay = '✓';
+} else if (vsBestDiff.kind === 'cp' && vsBestDiff.diff > -0.5 && vsBestDiff.diff < 0) {
+  vsBestGrade = 'near';
+  vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+} else if (vsGameDiff !== null && vsGameDiff.diff > 0) {
+  vsBestGrade = 'ok';
+  vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+} else {
+  vsBestGrade = 'bad';
+  vsBestDisplay = formatDualEvalDiff(vsBestDiff);
+}
+```
+
+The "vs Move Played" grading section is unchanged.
+
+Note: `engineBestEval` and `vsBestDiff` are still computed even when `isExactBest`
+is true — that's fine, they're just unused in that case. No need to gate them.
+
+## Validation
+
+- [ ] Playing the exact engine best move → vs Engine Best shows ✓, vs Move Played shows real positive diff (e.g. +1.2)
+- [ ] Playing a wrong move → both boxes compute normally (no regression)
+- [ ] `npm run build` passes
+- [ ] `npx tsc --noEmit` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-738
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-738 --checklist "- [ ] Exact best: vs Engine Best shows ✓, vs Move Played shows real diff|- [ ] Wrong move: both boxes unaffected|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-739 - Return win-icon to inline flow next to feedback message
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-739 — Return win-icon to inline flow next to feedback message
+
+## Summary
+
+The win icon (✓) on the LFYM win/view states is currently `position: absolute`,
+which causes it to overlap the Next button regardless of its `right` value.
+The fail (✗) and offtrack (!) icons are normal flex siblings inside `.retro-player`
+and appear correctly next to their feedback messages without any layout issues.
+
+The fix: remove `position: absolute` and all the positioning overrides from
+`.retro-icon--win` so it flows as a normal flex item exactly like `.retro-icon--fail`
+and `.retro-icon--off`. The `.retro-icon` base class already supplies the correct
+size, width, shrink, and margin-inline-end for inline flow.
+
+## File to touch
+
+- `src/styles/main.scss`
+
+## Implementation
+
+In `.retro-icon--win`, remove:
+- `position: absolute`
+- `right: calc(30% + 8px)`
+- `top: 6px`
+- `z-index: 2`
+- `pointer-events: none`
+- `margin-inline-end: 0`
+- the `filter: drop-shadow(...)` block
+- the stale comment above about the Next button boundary
+
+Keep only: `color: #759900;`
+
+The result is `.retro-icon--win { color: #759900; }` — everything else is inherited
+from the `.retro-icon` base rule.
+
+## Validation
+
+- [ ] ✓ icon appears to the left of "Good move!" / "Good enough!" / "Solution" text,
+      same visual slot as ✗ in fail state
+- [ ] ✓ does not overlap the Next button
+- [ ] No layout shift — no elements pushed down
+- [ ] Fail (✗) and offtrack (!) states unaffected
+- [ ] `npm run build` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-739
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-739 --checklist "- [ ] Win icon inline next to feedback text|- [ ] No overlap with Next button|- [ ] No layout shift|- [ ] Fail and offtrack states unaffected|- [ ] npm run build passes"
+```
+```
+
+## CCP-740 - Severity-modulated feedback module
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-740: Severity-Modulated Feedback Module
+
+## Summary
+
+Create a centralized feedback lookup module at `src/feedback/severity.ts` that provides
+severity-modulated reason language, colors, and glyphs for move quality feedback across
+the entire app. This replaces the static one-size-fits-all summaries in `LEARNABLE_REASONS`
+with a graduated system that varies by both reason code and loss severity.
+
+No Lichess analog exists for this — it is a Patzer-specific addition filling a gap where
+Lichess has no equivalent system.
+
+## Context
+
+Currently, `LEARNABLE_REASONS` in `src/tree/types.ts` provides a single static label and
+summary per reason code. A 5% inaccuracy and a 40% catastrophic blunder both get the same
+"Missed opportunity / The move played gave up a significant advantage." text. This module
+introduces severity-awareness so the language matches the emotional weight of what happened.
+
+## Requirements
+
+### 1. Severity Tiers
+
+Define a `SeverityTier` type with these tiers keyed to the existing win-chance loss scale
+(0–0.50, as used in `winchances.ts`):
+
+| Tier ID | Label | Loss Range | Approx CP (equal pos) |
+|---|---|---|---|
+| `best` | Best Move | loss = 0 (exact engine first-choice) | 0 |
+| `excellent` | Excellent | loss <= 0.02 | ~5–15cp |
+| `good` | Good | loss <= 0.04 | ~15–35cp |
+| `playable` | Playable | loss <= 0.05 | ~35–50cp |
+| `inaccuracy` | Inaccuracy | loss <= 0.10 | ~50–100cp |
+| `mistake` | Mistake | loss <= 0.15 | ~100–200cp |
+| `serious` | Serious Mistake | loss <= 0.20 | ~200–350cp |
+| `blunder` | Blunder | loss <= 0.30 | ~350–600cp |
+| `catastrophic` | Catastrophic Blunder | loss > 0.30 | 600+cp |
+
+The `best` and `excellent` tiers are positive feedback — they require knowing whether the
+move matched the engine's first choice (for `best`) or was within the near-best acceptance
+threshold (for `excellent`).
+
+### 2. Color Palette
+
+Export a color for each tier:
+
+| Tier | Hex | Description |
+|---|---|---|
+| `best` | `#26a641` | Strong green |
+| `excellent` | `#57ab5a` | Medium green |
+| `good` | `#7bc67e` | Soft green |
+| `playable` | `#8bb8a8` | Muted teal |
+| `inaccuracy` | `#56b4e9` | Blue (Lichess inaccuracy) |
+| `mistake` | `#e69d00` | Orange (Lichess mistake) |
+| `serious` | `#e06c4e` | Red-orange |
+| `blunder` | `#db3031` | Red (Lichess blunder) |
+| `catastrophic` | `#8b1a1a` | Dark crimson |
+
+### 3. Glyphs
+
+Export a glyph symbol for each tier where applicable:
+
+| Tier | Glyph |
+|---|---|
+| `best` | `!` |
+| `excellent` | `!` |
+| `good` | (none) |
+| `playable` | (none) |
+| `inaccuracy` | `?!` |
+| `mistake` | `?` |
+| `serious` | `?` |
+| `blunder` | `??` |
+| `catastrophic` | `??` |
+
+### 4. Tone System
+
+Support two tones: `'standard'` and `'harsh'`. The tone is a key into parallel string sets.
+Export a `FeedbackTone` type.
+
+### 5. Reason x Severity Matrix — Standard Tone
+
+For each `LearnableReasonCode` x `SeverityTier` combination where the tier is `inaccuracy`
+or worse, provide a severity-modulated summary string. For tiers `best` through `playable`,
+the reason code is less relevant — use generic positive feedback.
+
+#### Positive tiers (all reason codes):
+
+| Tier | Label | Summary |
+|---|---|---|
+| `best` | Best move! | This is the engine's top choice. |
+| `excellent` | Excellent move. | Virtually indistinguishable from the engine's top pick. |
+| `good` | Good move. | A small edge was left on the table, but this is a perfectly reasonable choice. |
+| `playable` | Reasonable move. | Not the strongest continuation, but a playable choice. |
+
+#### `swing` (Missed Opportunity):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | A slightly stronger continuation was available. |
+| `mistake` | The move played gave up a meaningful part of your advantage. |
+| `serious` | A much stronger move was available — this significantly weakened your position. |
+| `blunder` | This move threw away a major advantage. The position has fundamentally changed. |
+| `catastrophic` | The position went from clearly favorable to lost in a single move. |
+
+#### `missed-mate` (Missed Forced Mate):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | A forced checkmate sequence was available but a slower path was chosen. |
+| `mistake` | A forced checkmate was available. The chosen move lets the opponent fight on. |
+| `serious` | A forced checkmate was on the board and was missed entirely. |
+| `blunder` | Checkmate was right there. This move lets the opponent escape. |
+| `catastrophic` | Checkmate in one was available and was not played. |
+
+#### `collapse` (Blown Win):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | A clearly winning position was slightly weakened. |
+| `mistake` | A clearly winning position was damaged — the advantage has shrunk significantly. |
+| `serious` | A won game was thrown into doubt. The opponent is back in it. |
+| `blunder` | A completely winning position was squandered. |
+| `catastrophic` | A completely won position was thrown away. The game may now be lost. |
+
+#### `defensive` (Missed Defense):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | A slightly more resilient defensive move was available. |
+| `mistake` | A defensive resource was available that would have kept the game alive. |
+| `serious` | A critical saving move was missed. The position is now much harder to hold. |
+| `blunder` | A saving move existed that could have turned the game around — it was missed. |
+| `catastrophic` | The one move that could have saved the game was not played. |
+
+#### `punish` (Missed Punishment):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | The opponent's error went partially unpunished — a stronger reply was available. |
+| `mistake` | The opponent made a clear error and it was not fully exploited. |
+| `serious` | The opponent handed you a significant advantage and it was not seized. |
+| `blunder` | The opponent's blunder went completely unpunished. |
+| `catastrophic` | The opponent handed you a decisive advantage and it slipped through your fingers. |
+
+### 6. Reason x Severity Matrix — Harsh Tone
+
+Same structure, different language. Examples:
+
+#### Positive tiers (harsh):
+
+| Tier | Label | Summary |
+|---|---|---|
+| `best` | Best move. | Even a broken clock is right twice a day. |
+| `excellent` | Fine. | Not the best, but close enough that I'll let it slide. |
+| `good` | Adequate. | You left a little on the table. The engine noticed. |
+| `playable` | Passable. | The engine would not have played this. |
+
+#### `swing` (harsh):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | There was a better move. You did not find it. |
+| `mistake` | You had something good and you let it go. |
+| `serious` | The engine is embarrassed on your behalf. |
+| `blunder` | You just donated material to charity. |
+| `catastrophic` | This move should come with a trigger warning. |
+
+#### `missed-mate` (harsh):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | You found a checkmate. Just not the fastest one. |
+| `mistake` | Checkmate was right there. You looked the other way. |
+| `serious` | The checkmate was gift-wrapped and you returned it. |
+| `blunder` | Mate was on the board. You chose suffering instead. |
+| `catastrophic` | Mate in one. You missed mate in one. |
+
+#### `collapse` (harsh):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | You were winning. Emphasis on "were." |
+| `mistake` | Your advantage just filed for divorce. |
+| `serious` | Congratulations, you've made this a game again. |
+| `blunder` | You snatched defeat from the jaws of victory. |
+| `catastrophic` | The engine would like to speak with your manager. |
+
+#### `defensive` (harsh):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | There was a tougher defense. You chose the easy way out. |
+| `mistake` | You could have made your opponent work for it. You didn't. |
+| `serious` | The life raft was right there. You swam past it. |
+| `blunder` | There was one way to survive. This was not it. |
+| `catastrophic` | You resigned three moves early — you just don't know it yet. |
+
+#### `punish` (harsh):
+
+| Tier | Summary |
+|---|---|
+| `inaccuracy` | Your opponent blundered and you barely noticed. |
+| `mistake` | Free material was on the table. You left it there. |
+| `serious` | Your opponent handed you the game and you handed it back. |
+| `blunder` | Your opponent played the worst move on the board and you matched them. |
+| `catastrophic` | They blundered. You blundered harder. Impressive. |
+
+### 7. Exports
+
+The module must export:
+
+```typescript
+// Types
+export type SeverityTier = 'best' | 'excellent' | 'good' | 'playable' | 'inaccuracy' | 'mistake' | 'serious' | 'blunder' | 'catastrophic';
+export type FeedbackTone = 'standard' | 'harsh';
+
+// Tier metadata
+export interface TierMeta {
+  id: SeverityTier;
+  label: string;
+  color: string;
+  glyph: string | null;
+  lossFloor: number;   // lower bound (inclusive), 0 for best
+  lossCeiling: number;  // upper bound (exclusive), Infinity for catastrophic
+}
+
+// Full feedback result
+export interface SeverityFeedback {
+  tier: TierMeta;
+  label: string;     // tier-appropriate label for this reason+severity
+  summary: string;   // severity-modulated summary text
+}
+
+// Core lookup
+export function classifySeverity(loss: number, isExactBest: boolean): SeverityTier;
+export function getSeverityFeedback(reasonCode: LearnableReasonCode, loss: number, isExactBest: boolean, tone?: FeedbackTone): SeverityFeedback;
+export function getTierMeta(tier: SeverityTier): TierMeta;
+
+// Full data access (for dashboard/lookbook)
+export const SEVERITY_TIERS: readonly TierMeta[];
+export const ALL_FEEDBACK: Record<FeedbackTone, Record<LearnableReasonCode, Record<SeverityTier, { label: string; summary: string }>>>;
+```
+
+### 8. Special Classification Overlays
+
+Export a separate `SpecialClassification` type for situational labels that override or
+augment the gradient:
+
+```typescript
+export type SpecialClassification = 'book' | 'forced' | 'missed-mate-override';
+
+export interface SpecialFeedback {
+  id: SpecialClassification;
+  label: string;
+  color: string;
+  summary: string;
+}
+```
+
+| ID | Label | Color | Summary |
+|---|---|---|---|
+| `book` | Book move | `#9a8c98` | Opening book move. |
+| `forced` | Forced | `#888888` | Only legal move. |
+| `missed-mate-override` | Missed checkmate | `#8b1a1a` | Checkmate was available. |
+
+These are exported but not wired in this prompt — they are reference data for future
+consumers.
+
+## Files To Create/Modify
+
+1. **Create:** `src/feedback/severity.ts` — the entire module described above
+2. **Modify:** `src/tree/types.ts` — add a re-export or cross-reference comment pointing
+   consumers to the new module for severity-aware feedback. Do NOT remove `LEARNABLE_REASONS`
+   — it remains the canonical reason-code registry. The severity module imports from it.
+
+## What NOT To Do
+
+- Do not modify any UI files
+- Do not modify retroView.ts, retroCtrl.ts, or evalView.ts
+- Do not add UI rendering code to this module
+- Do not create React/Snabbdom components
+- Do not add localStorage or persistence logic
+- This is pure data + lookup functions only
+
+## Validation
+
+- Module compiles with no TypeScript errors under strict mode
+- `classifySeverity(0, true)` returns `'best'`
+- `classifySeverity(0, false)` returns `'excellent'` (non-exact, zero loss = near-best)
+- `classifySeverity(0.03, false)` returns `'good'`
+- `classifySeverity(0.07, false)` returns `'inaccuracy'`
+- `classifySeverity(0.12, false)` returns `'mistake'`
+- `classifySeverity(0.18, false)` returns `'serious'`
+- `classifySeverity(0.25, false)` returns `'blunder'`
+- `classifySeverity(0.40, false)` returns `'catastrophic'`
+- `getSeverityFeedback('swing', 0.25, false)` returns blunder-tier swing feedback
+- `getSeverityFeedback('swing', 0.25, false, 'harsh')` returns harsh blunder-tier swing feedback
+- Every `LearnableReasonCode` x negative `SeverityTier` combination has both standard and harsh strings
+- `SEVERITY_TIERS` array is ordered from best to catastrophic
+- `ALL_FEEDBACK` object is complete (no missing combinations)
+- `tree/types.ts` still exports `LEARNABLE_REASONS` unchanged
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-740
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-740 --checklist "- [ ] src/feedback/severity.ts exists and compiles|- [ ] classifySeverity returns correct tier for each threshold boundary|- [ ] getSeverityFeedback returns different text for different severity tiers|- [ ] Both standard and harsh tones have complete coverage|- [ ] SEVERITY_TIERS is ordered best-to-catastrophic|- [ ] tree/types.ts still exports LEARNABLE_REASONS unchanged|- [ ] No UI files were modified"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-740 --errors "brief description of what went wrong" --checklist "- [ ] src/feedback/severity.ts exists and compiles|- [ ] classifySeverity returns correct tier for each threshold boundary|- [ ] getSeverityFeedback returns different text for different severity tiers|- [ ] Both standard and harsh tones have complete coverage|- [ ] SEVERITY_TIERS is ordered best-to-catastrophic|- [ ] tree/types.ts still exports LEARNABLE_REASONS unchanged|- [ ] No UI files were modified"
+```
+```
+
+## CCP-741 - Feedback lookbook HTML dashboard
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-741: Feedback Lookbook HTML Dashboard
+
+## Summary
+
+Create a standalone HTML lookbook at `docs/feedback-lookbook.html` that visualizes the
+entire severity-modulated feedback system from `src/feedback/severity.ts`. This is a
+design review tool — a single-page reference showing every combination of reason code,
+severity tier, tone, color, glyph, and threshold in a browsable format styled to match
+Patzer Pro's dark theme.
+
+The lookbook must be self-contained (inline CSS, no external dependencies beyond the
+severity module data) and viewable by opening the HTML file directly or serving through
+the Patzer dev server.
+
+## Prerequisite
+
+CCP-740 must be complete. This prompt imports data from `src/feedback/severity.ts`.
+
+## Requirements
+
+### 1. Data Extraction
+
+Create a small build script at `scripts/generate-feedback-lookbook.mjs` that:
+- Imports `SEVERITY_TIERS`, `ALL_FEEDBACK`, and the special classifications from the
+  compiled severity module
+- Also imports the existing classification data:
+  - `LOSS_THRESHOLDS` and `classifyLoss` from `src/engine/winchances.ts` (the current
+    3-tier game review labels: inaccuracy/mistake/blunder)
+  - `labelToBoardReviewSymbol` glyph mapping from `src/engine/ctrl.ts`
+  - The CSS grade classes and their colors from `src/analyse/retroView.ts` (the dual
+    eval box grades: best/near/ok/bad)
+- Generates the HTML file with all data embedded as inline JSON
+- Add an npm script: `"lookbook:generate": "node scripts/generate-feedback-lookbook.mjs"`
+
+### 2. Lookbook Sections
+
+The HTML page must contain the following sections:
+
+#### A. Color Scale Strip
+A horizontal gradient bar showing all 9 severity tiers left-to-right, each tier as a
+colored block with its label, hex code, and loss range displayed. This is the "at a glance"
+view of the entire gradient.
+
+#### B. Tier Reference Table
+A full table with columns:
+| Tier | Color Swatch | Hex | Glyph | Loss Range | Approx CP | Label |
+
+Each row should have the tier's color as a background swatch in the color column.
+
+#### C. Existing Game Review Labels
+A separate reference section showing the current 3-tier classification system used in
+game review (from `winchances.ts`):
+| Label | Glyph | Threshold (loss) | Threshold (WC%) |
+Show how the existing labels map onto the new 9-tier gradient.
+
+#### D. Existing Dual Eval Box Grades
+Show the 4 CSS grade classes used in LFYM dual eval boxes (from `retroView.ts`):
+| Grade | Color Swatch | Hex | Meaning |
+Reference: `--best` (#759900), `--near` (#f0a500), `--ok` (#7aaddf), `--bad` (#dc322f)
+
+#### E. Reason x Severity Matrix — Standard Tone
+A large matrix table with:
+- Rows: each `LearnableReasonCode` (swing, missed-mate, collapse, defensive, punish)
+- Columns: each `SeverityTier` from inaccuracy through catastrophic
+- Cells: the summary text for that combination
+- Cell background: tinted with the tier's color at low opacity
+- The positive tiers (best through playable) shown as a separate row above the matrix
+  since they don't vary by reason code
+
+#### F. Reason x Severity Matrix — Harsh Tone
+Same layout as section E but with harsh tone strings. Include a toggle button or tab
+that switches between standard and harsh views (simple JS toggle, no framework needed).
+
+#### G. Special Classifications
+A card-style display of the special overlays (book, forced, missed-mate-override) with
+their colors and descriptions.
+
+#### H. Glyph Reference
+A compact table of all chess annotation glyphs used in the app:
+| Symbol | Name | Used For |
+Include: `!` (good), `!!` (brilliant), `!?` (interesting), `?!` (dubious/inaccuracy),
+`?` (mistake), `??` (blunder), `□` (only move)
+
+### 3. Styling
+
+The lookbook must match Patzer Pro's visual identity:
+- Background: `#1a1a1a` (var(--bg))
+- Text: `#e8e8e8` (var(--text))
+- Font: system sans-serif stack (matching Patzer)
+- Border color: `#3a3a3a`
+- Accent: `#629924`
+- Table styling: dark rows with subtle alternating stripes
+- All CSS inline in the HTML file (self-contained)
+- Responsive: readable on mobile
+
+### 4. Interactive Elements
+
+- Tone toggle: switch between standard/harsh for the matrix sections
+- Sticky header for the page title and tone toggle
+- Smooth scroll navigation via anchor links in a simple top nav
+
+## Files To Create
+
+1. **Create:** `scripts/generate-feedback-lookbook.mjs` — build script
+2. **Create:** `docs/feedback-lookbook.html` — generated output (run the script as part of this prompt)
+
+## Files To Modify
+
+1. **Modify:** `package.json` — add `"lookbook:generate"` script
+
+## What NOT To Do
+
+- Do not modify any source TypeScript files
+- Do not modify the severity module
+- Do not add runtime dependencies
+- Do not use React, Snabbdom, or any framework
+- Do not create a build pipeline — this is a simple node script that writes HTML
+
+## Validation
+
+- `npm run lookbook:generate` runs without errors
+- `docs/feedback-lookbook.html` exists and opens in a browser
+- All 9 severity tiers are visible in the color strip
+- The tier reference table shows all tiers with correct colors
+- The existing game review labels section shows the 3-tier system
+- The dual eval box grades section shows the 4 CSS grades
+- Both standard and harsh matrices are complete (5 reasons x 5 negative tiers each)
+- The tone toggle switches between standard and harsh views
+- Positive tier feedback (best/excellent/good/playable) is displayed
+- Special classifications are shown
+- The glyph reference table is complete
+- Page looks correct on dark background matching Patzer styling
+- Page is self-contained (no external CSS/JS dependencies)
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-741
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-741 --checklist "- [ ] generate-feedback-lookbook.mjs script exists|- [ ] npm run lookbook:generate runs without errors|- [ ] docs/feedback-lookbook.html is generated|- [ ] Color scale strip shows all 9 tiers|- [ ] Tier reference table is complete with swatches|- [ ] Existing game review labels section present|- [ ] Dual eval box grades section present|- [ ] Standard tone matrix is complete (5 reasons x 5 tiers)|- [ ] Harsh tone matrix is complete|- [ ] Tone toggle works|- [ ] Special classifications displayed|- [ ] Glyph reference table present|- [ ] Dark theme matches Patzer styling|- [ ] package.json has lookbook:generate script"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-741 --errors "brief description of what went wrong" --checklist "- [ ] generate-feedback-lookbook.mjs script exists|- [ ] npm run lookbook:generate runs without errors|- [ ] docs/feedback-lookbook.html is generated|- [ ] Color scale strip shows all 9 tiers|- [ ] Tier reference table is complete with swatches|- [ ] Existing game review labels section present|- [ ] Dual eval box grades section present|- [ ] Standard tone matrix is complete (5 reasons x 5 tiers)|- [ ] Harsh tone matrix is complete|- [ ] Tone toggle works|- [ ] Special classifications displayed|- [ ] Glyph reference table present|- [ ] Dark theme matches Patzer styling|- [ ] package.json has lookbook:generate script"
+```
+```
+
+## CCP-742 - Wire severity feedback into LFYM
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-742: Wire Severity Feedback into LFYM
+
+## Summary
+
+Replace the static `LEARNABLE_REASONS` summaries in the LFYM retrospection panel with
+calls to the severity-modulated feedback module (`src/feedback/severity.ts`). After this
+change, the "Chosen because:" text in the retro panel will vary based on how severe the
+mistake was, instead of showing the same generic text for every severity level.
+
+## Prerequisite
+
+CCP-740 must be complete. This prompt depends on `src/feedback/severity.ts` existing.
+
+## Context
+
+Currently in `retroView.ts`, the "Chosen because:" section renders:
+```
+"Chosen because: ${cand.reason.label}"
+"${cand.reason.summary}"
+```
+
+This always shows the same static label and summary from `LEARNABLE_REASONS` regardless of
+whether the mistake was a 5% inaccuracy or a 40% catastrophic blunder. After this change,
+the label and summary will come from `getSeverityFeedback()` which modulates based on the
+candidate's `loss` value.
+
+## Requirements
+
+### 1. Import the severity module
+
+In `retroView.ts`, import `getSeverityFeedback` and `getTierMeta` from
+`src/feedback/severity.ts`.
+
+### 2. Replace the reason note rendering
+
+Find the reason note rendering in `retroView.ts` (around line 278-283) where the
+"Chosen because:" text is assembled. Replace the static `cand.reason.label` and
+`cand.reason.summary` with a call to:
+
+```typescript
+const feedback = getSeverityFeedback(cand.reason.code, cand.loss, isExactBest);
+```
+
+Where `isExactBest` is determined from the retro controller's win state (available in
+the rendering context).
+
+Use `feedback.label` and `feedback.summary` instead of the static reason fields.
+
+### 3. Apply tier color to the reason note
+
+The "Chosen because:" label text should be colored with the tier's color from
+`feedback.tier.color`. This gives a visual severity signal alongside the text.
+
+### 4. Tone preference
+
+For MVP, hardcode the tone as `'standard'`. Do NOT add a UI toggle for tone yet —
+that will be a separate task. The severity module's default tone parameter is already
+`'standard'`, so simply omitting the tone argument is correct.
+
+### 5. Positive feedback in win state
+
+When the retro panel shows a "win" state (user found the correct or near-best move),
+the severity feedback should also be used. Pass the solving move's loss (which will be
+0 for exact-best or very small for near-best) to get appropriate positive feedback text.
+
+If the win state's `isExactBest` is true, the feedback should show "Best move!" tier
+language. If it's near-best, it should show "Excellent move." tier language.
+
+## Files To Modify
+
+1. **Modify:** `src/analyse/retroView.ts` — import severity module, replace reason note
+   rendering, apply tier color
+
+## What NOT To Do
+
+- Do not modify `src/feedback/severity.ts`
+- Do not modify `src/tree/types.ts`
+- Do not add a tone toggle UI
+- Do not change the retro controller logic
+- Do not modify retroCtrl.ts
+- Do not change how candidates are selected or classified
+- Do not add localStorage preferences for tone
+- Do not modify any other files beyond retroView.ts
+
+## Validation
+
+- The LFYM panel compiles and renders without errors
+- "Chosen because:" text varies based on the candidate's loss value
+- A blunder-level candidate shows blunder-tier language (e.g., "This move threw away a
+  major advantage.")
+- An inaccuracy-level candidate shows inaccuracy-tier language (e.g., "A slightly stronger
+  continuation was available.")
+- The reason label text is colored with the tier's color
+- Win state shows appropriate positive feedback ("Best move!" for exact, "Excellent move."
+  for near-best)
+- The static `LEARNABLE_REASONS` summaries are no longer displayed in the retro panel
+  (they still exist in types.ts for other consumers, just not used here)
+- Standard tone is used (no harsh mode visible)
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-742
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-742 --checklist "- [ ] retroView.ts imports from severity module|- [ ] Reason note text varies by candidate loss value|- [ ] Blunder-level candidates show blunder-tier language|- [ ] Inaccuracy-level candidates show inaccuracy-tier language|- [ ] Reason label is colored with tier color|- [ ] Win state shows positive feedback matching exact/near-best|- [ ] Standard tone is used (no harsh mode)|- [ ] No other files modified besides retroView.ts"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-742 --errors "brief description of what went wrong" --checklist "- [ ] retroView.ts imports from severity module|- [ ] Reason note text varies by candidate loss value|- [ ] Blunder-level candidates show blunder-tier language|- [ ] Inaccuracy-level candidates show inaccuracy-tier language|- [ ] Reason label is colored with tier color|- [ ] Win state shows positive feedback matching exact/near-best|- [ ] Standard tone is used (no harsh mode)|- [ ] No other files modified besides retroView.ts"
+```
+```
+
+## CCP-743 - Severity feedback system manager
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-743: Severity Feedback System Manager
+
+## Summary
+
+Execute the severity-modulated feedback system prompts in exact order.
+
+## Child Prompt Order
+
+1. `CCP-740` — Severity-modulated feedback module (data layer)
+2. `CCP-741` — Feedback lookbook HTML dashboard (visualization)
+3. `CCP-742` — Wire severity feedback into LFYM (integration)
+
+Before executing each child:
+- read that child prompt body file fully
+- run that child prompt's lifecycle commands
+
+## Execution Rules
+
+- execute children in the exact listed order
+- do not reorder children
+- do not skip ahead
+- stop immediately if a child fails or completes with unresolved errors
+- do not claim manager success if a required child did not complete cleanly
+- CCP-741 depends on CCP-740 (imports from the compiled severity module)
+- CCP-742 depends on CCP-740 (imports getSeverityFeedback)
+- CCP-741 and CCP-742 are independent of each other but both depend on CCP-740
+
+## Final Report
+
+Report:
+- manager prompt id
+- ordered child prompt list
+- result for each child:
+  - completed cleanly
+  - completed with errors
+  - not run
+- exact stopping point if execution halted early
+- any unresolved issues or follow-up prompts created
+
+## Validation
+
+- CCP-740 executed through its lifecycle — severity module exists and compiles
+- CCP-741 executed through its lifecycle — lookbook HTML generates and displays correctly
+- CCP-742 executed through its lifecycle — LFYM panel shows severity-modulated feedback
+- children were run in the documented order
+- final report states child-by-child outcomes accurately
+
+## Lifecycle
+
+Before executing any child prompts, mark this manager as started:
+```sh
+npm run prompt:start -- CCP-743
+```
+
+After all child prompts are complete, mark the manager as done:
+```sh
+npm run prompt:complete -- CCP-743 --checklist "- [ ] CCP-740 completed — severity module exists and compiles|- [ ] CCP-741 completed — lookbook generates and displays|- [ ] CCP-742 completed — LFYM shows severity-modulated feedback|- [ ] Children run in documented order|- [ ] Final report lists child-by-child outcomes"
+```
+
+If one or more child prompts failed, stopped early, or completed with unresolved issues, use:
+```sh
+npm run prompt:complete -- CCP-743 --errors "brief description of which child prompt failed or stopped and why" --checklist "- [ ] Executed child prompts in the documented order|- [ ] Final report states which child failed or stopped|- [ ] Remaining child prompt status is reported accurately"
+```
+```
+
+## CCP-744 - Fix win-icon top-right positioning using content panel as anchor
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-744 — Fix win-icon top-right positioning using content panel as anchor
+
+## Summary
+
+Previous attempts (CCP-736, CCP-736-F1) positioned the win icon absolute relative to
+`.retro-feedback` (the full-width container that includes the Next button), using
+`right: calc(30% + 8px)` as an approximation of the content panel boundary. This kept
+drifting into the Next button because the calculation was imprecise.
+
+The correct approach: make `.retro-half.retro-half--top` (the content panel itself)
+the positioning context by adding `position: relative` to it. Then `position: absolute;
+right: 8px; top: 6px` on `.retro-icon--win` will land exactly inside the content
+panel's right edge — structurally guaranteed, no approximation needed.
+
+## File to touch
+
+- `src/styles/main.scss`
+
+## Implementation
+
+### Step 1 — Add positioning context to `.retro-half--top`
+
+```scss
+&.retro-half--top {
+  flex-direction: column;
+  justify-content: center;
+  position: relative;   // ← add this
+}
+```
+
+### Step 2 — Position `.retro-icon--win` absolute within content panel
+
+```scss
+&.retro-icon--win {
+  color: #759900;
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 1;
+}
+```
+
+The icon is already a child of `.retro-player` which is inside `.retro-half.retro-half--top`.
+With `.retro-half.retro-half--top` as the nearest positioned ancestor, `right: 8px` is
+relative to the content panel's right edge — it cannot cross into the Next button.
+
+## Validation
+
+- [ ] ✓ icon appears in the top-right corner of the content panel ("Good move!" side)
+- [ ] ✓ does not overlap or touch the Next button at any viewport width
+- [ ] Content ("Good move!", eval boxes, buttons) not pushed down — icon is out of flow
+- [ ] `npm run build` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-744
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-744 --checklist "- [ ] Win icon in top-right of content panel|- [ ] No overlap with Next button|- [ ] No layout shift|- [ ] npm run build passes"
+```
+```
+
+## CCP-745 - Adaptive height compression for retro feedback box
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-745 — Adaptive height compression for retro feedback box
+
+## Summary
+
+When the viewport shrinks vertically, the retro feedback box clips its header and
+bottom content because the internal elements don't compress to fit the reduced space.
+The fix uses `clamp()` + `vh` units for smooth proportional compression of spacing,
+and two `@media (max-height)` breakpoints for structural changes to the Next button.
+
+## Compression spec (decided with user)
+
+**Priority order:**
+1. Internal padding/margins shrink first — smooth via `clamp()` + `vh`
+2. Next button width shrinks — at `max-height: 520px`
+3. Next button becomes absolute mini-button — at `max-height: 380px`
+
+**Next button final state (≤ 380px viewport):**
+- `position: absolute; bottom: 0; right: 0`
+- Blue box preserved, just shrunk
+- "Next" label hidden, only ▶ arrow visible
+- Leaves the flex flow so content panel expands to full width
+
+**All retro feedback states affected (find, fail, eval, win, view)**
+
+## File to touch
+
+- `src/styles/main.scss`
+
+## Implementation
+
+### Step 1 — Smooth spacing compression via clamp()
+
+Inside the `.retro-box { }` block, update the following rules:
+
+**.retro-feedback** — allow min-height to shrink with viewport:
+```scss
+min-height: clamp(50px, 10vh, 120px);
+```
+
+**.retro-choices** — reduce top margin smoothly:
+```scss
+margin-top: clamp(2px, 0.8vh, 8px);
+```
+
+**.retro-progress** — reduce top margin smoothly:
+```scss
+margin-top: clamp(1px, 0.6vh, 6px);
+```
+
+**.retro-instruction em** — reduce top margin smoothly:
+```scss
+margin-top: clamp(0px, 0.3vh, 2px);
+```
+
+### Step 2 — `@media (max-height: 520px)` — narrow Next button, hide label
+
+```scss
+@media (max-height: 520px) {
+  .retro-box {
+    .retro-player { margin: 0 6px; }
+    .retro-continue {
+      flex: 0 1 18%;
+      font-size: 0;
+      gap: 0;
+      padding: 0 8px;
+      min-height: 52px;
+      .retro-continue__icon { font-size: 1.5em; }
+    }
+  }
+}
+```
+
+`font-size: 0` collapses the "Next" text node while preserving the icon (which has
+its own explicit font-size restored). This is a clean CSS-only way to hide a bare
+text node without HTML changes.
+
+### Step 3 — `@media (max-height: 380px)` — mini absolute Next button
+
+```scss
+@media (max-height: 380px) {
+  .retro-box {
+    .retro-box__title { line-height: 1.6em; }
+    .retro-feedback { min-height: 40px; }
+    .retro-continue {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      flex: none;
+      width: auto;
+      min-height: 32px;
+      padding: 6px 10px;
+      font-size: 0;
+      .retro-continue__icon { font-size: 1.1em; }
+    }
+  }
+}
+```
+
+`.retro-feedback` already has `position: relative` so the absolute Next button
+is anchored correctly.
+
+## Validation
+
+- [ ] At full viewport height: no visual change
+- [ ] At ~500px viewport: Next button narrows, "Next" label gone, ▶ only, no overflow
+- [ ] At ~350px viewport: Next button is a small absolute blue box in bottom-right
+- [ ] At ~350px viewport: content panel expands to fill space vacated by button
+- [ ] No horizontal scroll introduced
+- [ ] `npm run build` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-745
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-745 --checklist "- [ ] Full height: no change|- [ ] ~500px: Next narrows to arrow only|- [ ] ~350px: Next is absolute mini button bottom-right|- [ ] Content panel fills vacated space|- [ ] npm run build passes"
+```
+```
+
+## CCP-746 - Expanded eval box grades
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-746: Expanded Eval Box Grades
+
+## Summary
+
+Replace the 4-grade LFYM dual eval box system (best/near/ok/bad) with a 10-grade system
+that matches the severity tier color palette. This applies to both the "vs Engine Best"
+and "vs Move Played" eval boxes in the retro panel. The expanded scale gives much more
+granular feedback about how close the solving attempt was to the engine's best move.
+
+No Lichess analog — Patzer-specific addition. The old 4-grade system was loosely adapted
+from Lichess but had no formal specification there either.
+
+## Context
+
+The current system in `retroView.ts` (lines 160–216) assigns one of 4 CSS grade classes
+to each eval box: `best`, `near`, `ok`, `bad`. Each has a single color defined in
+`main.scss` (lines 1750–1777). The grading logic uses hardcoded cp thresholds and a
+binary "better/worse than game move" check.
+
+The new system expands to 10 grades using win-chance loss thresholds that align with the
+severity tier scale from `src/feedback/severity.ts`, plus a special purple "checkmate"
+grade.
+
+## Requirements
+
+### 1. Add eval box grade data to the severity module
+
+In `src/feedback/severity.ts`, add:
+
+```typescript
+export type EvalBoxGrade =
+  | 'checkmate'
+  | 'exact'
+  | 'near-perfect'
+  | 'close'
+  | 'acceptable'
+  | 'off-target'
+  | 'wide-miss'
+  | 'far-off'
+  | 'way-off'
+  | 'wrong';
+
+export interface EvalBoxGradeMeta {
+  id: EvalBoxGrade;
+  label: string;
+  color: string;
+  /** Win-chance loss floor (inclusive). */
+  lossFloor: number;
+  /** Win-chance loss ceiling (exclusive). Infinity for the worst grade. */
+  lossCeiling: number;
+}
+
+export const EVAL_BOX_GRADES: readonly EvalBoxGradeMeta[];
+export function classifyEvalBoxGrade(loss: number, isExactBest: boolean, isMate: boolean): EvalBoxGrade;
+export function getEvalBoxGradeMeta(grade: EvalBoxGrade): EvalBoxGradeMeta;
+```
+
+Grade definitions:
+
+| Grade | Color | Loss Range | Label |
+|---|---|---|---|
+| `checkmate` | `#a855f7` | best move is mate & user found it | Checkmate! |
+| `exact` | `#26a641` | loss = 0, exact best | Exact match |
+| `near-perfect` | `#57ab5a` | loss <= 0.02 | Near perfect |
+| `close` | `#7bc67e` | loss <= 0.04 | Close |
+| `acceptable` | `#8bb8a8` | loss <= 0.05 | Acceptable |
+| `off-target` | `#56b4e9` | loss <= 0.10 | Off target |
+| `wide-miss` | `#e69d00` | loss <= 0.15 | Wide miss |
+| `far-off` | `#e06c4e` | loss <= 0.20 | Far off |
+| `way-off` | `#db3031` | loss <= 0.30 | Way off |
+| `wrong` | `#8b1a1a` | loss > 0.30 | Completely wrong |
+
+`classifyEvalBoxGrade` takes `loss` (win-chance loss between the solving move and the
+reference move, on the 0–0.50 scale), `isExactBest` (for the exact grade), and `isMate`
+(true when the best move delivers checkmate and the user found it — triggers the purple
+checkmate grade).
+
+### 2. Replace eval box grading logic in retroView.ts
+
+Replace the current grading logic in `renderDualEvalBoxes` (lines 160–216) to use the
+new `classifyEvalBoxGrade` function.
+
+**vs Engine Best box:**
+- Compute win-chance loss between the solving move eval and the engine best eval
+  (using `evalWinChances` which is already imported)
+- Use the mover-perspective win-chance: `loss = (moverBestWc - moverSolvingWc) / 2`
+  (same formula used elsewhere in the codebase)
+- Pass `isExactBest` from `snapshot.isExactBest`
+- Pass `isMate = true` when `snapshot.engineBestMate !== undefined && snapshot.isExactBest`
+  (user found the best move and it's checkmate)
+- Use `classifyEvalBoxGrade(loss, isExactBest, isMate)` to get the grade
+- Use the grade's color directly via inline style instead of CSS class
+
+**vs Move Played (game move) box:**
+- Compute win-chance loss between the solving move eval and the game move eval
+- Here, a positive diff means the solving move is BETTER than the game move
+- Invert: if solving is better than game move, loss is 0 (or negative — clamp to 0)
+- If solving is worse than game move, loss = the diff
+- `isExactBest` is false for this box (not comparing against engine best)
+- `isMate` is false for this box
+- Use same grading function
+
+**Display string:** Keep the existing `formatDualEvalDiff` for the numeric display.
+For the `checkmate` grade, display `#KO!` instead of a numeric diff. For `exact` grade,
+display `✓`.
+
+### 3. Replace CSS grade classes with inline colors
+
+Since the grade set is now 10 values instead of 4, replace the CSS class approach with
+inline `style` on the eval box value element. The grade's color from `EvalBoxGradeMeta`
+is applied directly.
+
+Keep the eval box structural CSS (layout, padding, border-radius) but remove the 4
+color-specific modifier classes (`--best`, `--near`, `--ok`, `--bad`). Replace them
+with a single dynamic border/background derived from the grade color:
+- Border: grade color at ~40% opacity
+- Background: grade color at ~10% opacity
+
+The `renderEvalBox` function signature changes to accept the grade meta instead of a
+string class name.
+
+### 4. Update lookbook data
+
+Update the `EVAL_BOX_GRADES` constant in the lookbook generator
+(`scripts/generate-feedback-lookbook.mjs`) to import from the severity module instead
+of using hardcoded inline data. Remove the old `EVAL_BOX_GRADES` inline constant.
+
+## Files To Modify
+
+1. `src/feedback/severity.ts` — add EvalBoxGrade type, grade data, classify function
+2. `src/analyse/retroView.ts` — replace grading logic, use inline colors
+3. `src/styles/main.scss` — remove the 4 color-specific modifier classes, keep structural styles
+4. `scripts/generate-feedback-lookbook.mjs` — import grade data from severity module
+
+## What NOT To Do
+
+- Do not change the retro controller logic (retroCtrl.ts)
+- Do not change how candidates are selected
+- Do not change the eval computation functions (evalWinChances, etc.)
+- Do not change the KO overlay SVG on the board
+- Do not modify the severity tier system (the 9-tier move quality gradient)
+- Do not add new npm dependencies
+
+## Validation
+
+- TypeScript compiles with no errors under strict mode
+- Build succeeds (`npm run build`)
+- The vs Engine Best box shows the correct grade color for an exact-best move (green)
+- The vs Engine Best box shows purple `#KO!` when the user finds a checkmate
+- The vs Engine Best box shows graduated colors for non-exact moves
+  (near-perfect green → blue → orange → red → crimson as quality decreases)
+- The vs Move Played box shows green shades when the solving move is better than the
+  game move, and red shades when it's worse
+- The old CSS modifier classes (`--best`, `--near`, `--ok`, `--bad`) are removed from SCSS
+- The lookbook generates successfully with `npm run lookbook:generate`
+- The lookbook D2 section now pulls from the severity module data
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-746
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-746 --checklist "- [ ] EvalBoxGrade type and data added to severity.ts|- [ ] classifyEvalBoxGrade function works correctly|- [ ] retroView.ts uses new grading logic|- [ ] vs Engine Best shows graduated colors|- [ ] Checkmate grade shows purple #KO!|- [ ] vs Move Played shows graduated colors|- [ ] Old CSS modifier classes removed from main.scss|- [ ] Structural eval box CSS preserved|- [ ] TypeScript compiles clean|- [ ] Build succeeds|- [ ] Lookbook generates and shows updated grades"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-746 --errors "brief description of what went wrong" --checklist "- [ ] EvalBoxGrade type and data added to severity.ts|- [ ] classifyEvalBoxGrade function works correctly|- [ ] retroView.ts uses new grading logic|- [ ] vs Engine Best shows graduated colors|- [ ] Checkmate grade shows purple #KO!|- [ ] vs Move Played shows graduated colors|- [ ] Old CSS modifier classes removed from main.scss|- [ ] Structural eval box CSS preserved|- [ ] TypeScript compiles clean|- [ ] Build succeeds|- [ ] Lookbook generates and shows updated grades"
+```
+```
+
+## CCP-747 - Add Mistake Detection to action menu and Lichess default marker to severity slider
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-747 — Add Mistake Detection to action menu + add Lichess default marker to severity slider
+
+## Summary
+
+Two related changes:
+
+1. **Dual location**: The "Mistake Detection…" button currently only exists in the top-nav
+   global settings menu. Wire the same modal to also open from the analysis board action
+   menu (hamburger) in the Tools section.
+
+2. **Missing default marker**: The Minimum Severity slider in `renderRetroModal` has
+   divider markers (inaccuracy / mistake / blunder) but is missing the
+   `.detection-modal__default-mark` indicator that other sliders (e.g. Missed Mate in N)
+   use to show the Lichess default. Add it at the correct position.
+
+## Files to touch
+
+- `src/header/index.ts`
+- `src/analyse/analysisControls.ts`
+
+## Implementation
+
+### Step 1 — Export `openRetroModal` from `header/index.ts`
+
+`showRetroModal` is a module-level variable. The global menu currently sets it inline:
+```ts
+on: { click: () => { showRetroModal = true; showGlobalMenu = false; redraw(); } }
+```
+
+Export a named function so external callers can open the modal without reaching into
+the module:
+
+```ts
+export function openRetroModal(redraw: () => void): void {
+  showRetroModal = true;
+  redraw();
+}
+```
+
+Place this near the other `showRetroModal` references (after the variable declaration).
+
+### Step 2 — Add Lichess default marker to the severity slider
+
+In `renderRetroModal`, the `.detection-modal__severity-slider` contains dividers but
+no `.detection-modal__default-mark`. The Lichess default for `minLossThreshold` is
+10% (mistake floor), on a 1–25% range:
+
+  position = (10 - 1) / (25 - 1) × 100 = 37.5%
+
+Add the marker inside `.detection-modal__severity-slider`, after the existing divider
+spans:
+
+```ts
+h('span.detection-modal__default-mark', {
+  attrs: { style: 'left: 37.5%', title: 'Lichess default: loss ≥ 10%' },
+}),
+```
+
+### Step 3 — Add "Mistake Detection" button to action menu Tools section
+
+In `analysisControls.ts`:
+
+Import `openRetroModal`:
+```ts
+import { openRetroModal } from '../header/index';
+```
+
+Add a button in the Tools section of `renderActionMenu`, after the LFYM button:
+
+```ts
+// Mistake Detection settings — mirrors top-nav global menu entry (CCP-747)
+h('button', {
+  attrs: { title: 'Configure mistake detection thresholds' },
+  on: { click: () => { openRetroModal(deps.redraw); close(); } },
+}, 'Mistake Detection…'),
+```
+
+The `close()` call dismisses the action menu before the modal opens, matching the
+pattern of other Tools buttons (e.g. Save game to Library).
+
+## Validation
+
+- [ ] "Mistake Detection…" button appears in action menu Tools section
+- [ ] Clicking it closes the action menu and opens the Mistake Detection modal
+- [ ] Modal closes correctly via ✕ or backdrop click
+- [ ] Top-nav "Mistake Detection…" button still works unchanged
+- [ ] Lichess default marker (▲ at 37.5%) visible on Minimum Severity slider
+- [ ] Marker tooltip reads "Lichess default: loss ≥ 10%"
+- [ ] `npm run build` passes
+- [ ] `npx tsc --noEmit` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-747
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-747 --checklist "- [ ] Mistake Detection button in action menu Tools|- [ ] Opens modal, closes action menu|- [ ] Top-nav entry unaffected|- [ ] Lichess default marker on severity slider at 37.5%|- [ ] npm run build passes|- [ ] npx tsc --noEmit passes"
+```
+```
+
+## CCP-748 - Feedback test PGN seed game
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-748: Feedback Test PGN Seed Game
+
+## Summary
+
+Add a seed game to the app that auto-loads into the database on first launch (when IDB
+is empty). This is a deliberately crafted PGN where white plays a wide spectrum of move
+quality — from solid opening moves through inaccuracies, mistakes, blunders, missed
+mates, and collapses — so the full severity feedback gradient can be tested end-to-end
+by running game review and then LFYM.
+
+This is temporary test scaffolding. The seed will be removed after feedback system
+testing is complete.
+
+## Requirements
+
+### 1. Create the test PGN constant
+
+Add a constant `FEEDBACK_TEST_PGN` to `src/main.ts` (near the existing `SAMPLE_PGN`
+on line 166). The PGN is a legal 30-move game where white (TestPlayer, 1200) plays
+against black (Stockfish, 2800) in an Italian Game that deteriorates through:
+
+- Solid opening (moves 1-6) — should produce best/excellent/good tiers
+- Minor inaccuracies (moves 7-10) — b4, a4 instead of engine-preferred moves
+- Mistake territory (move 13, 15) — suboptimal recapture and bishop placement
+- Blunder (move 16) — Ng5?? hangs a knight
+- Collapse (move 18) — f4?? while already down, loses more material
+- Missed defensive resources (moves 20, 27) — Re7?/Rb1? instead of holding moves
+- End position is lost for white
+
+PGN text:
+```
+[Event "Feedback Test Game"]
+[Site "PatzerPro Testing"]
+[Date "2026.04.04"]
+[White "TestPlayer"]
+[Black "Stockfish"]
+[Result "0-1"]
+[WhiteElo "1200"]
+[BlackElo "2800"]
+[TimeControl "600+0"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 Nf6 5. c3 d6
+6. O-O Bg4 7. h3 Bh5 8. b4 Bb6 9. a4 a6 10. Nbd2 O-O
+11. d4 exd4 12. cxd4 Bxf3 13. Nxf3 d5 14. e5 Ne4 15. Bd3 f5
+16. Ng5 Nxg5 17. Bxg5 Qd7 18. f4 Nxe5 19. Re1 Nxd3 20. Re7 Qd8
+21. Rxb7 Bxd4+ 22. Kh1 Nf2+ 23. Kg1 Nxh3+ 24. Kh1 Qxg5 25. Qf3 Nf2+
+26. Kg1 Nd1+ 27. Rb1 Qe3+ 28. Kh2 Qxf4+ 29. Kg1 Ne3 30. Rf1 Rab8
+0-1
+```
+
+### 2. Seed the game on empty IDB load
+
+In `src/main.ts`, modify the `loadGamesFromIdb().then()` block (around line 1485-1487).
+When `!stored || stored.games.length === 0`, instead of just calling `redraw()`:
+
+1. Create an `ImportedGame` object from the test PGN:
+   - `id: 'game-feedback-test'`
+   - `pgn: FEEDBACK_TEST_PGN`
+   - `white: 'TestPlayer'`
+   - `black: 'Stockfish'`
+   - `result: '0-1'`
+   - `date: '2026.04.04'`
+   - `timeClass: 'rapid'`
+   - `whiteRating: 1200`
+   - `blackRating: 2800`
+   - `source: undefined` (PGN paste equivalent)
+   - `importedAt: Date.now()`
+
+2. Set `importedGames = [seedGame]`
+3. Set `selectedGameId = seedGame.id`
+4. Set `selectedGamePgn = seedGame.pgn`
+5. Save to IDB: `void saveGamesToIdb([seedGame])`
+6. Build the analysis ctrl: `ctrl = new AnalyseCtrl(pgnToTree(seedGame.pgn))`
+7. Clear eval state: `clearEvalCache(); resetCurrentEval();`
+8. Set orientation to white: `setOrientation('white')`
+9. Call `redraw()`
+
+Add a `// TEMPORARY: feedback test seed — remove after testing` comment above the block.
+
+### 3. Ensure the game appears in the games list
+
+The game should appear in the games list tab with proper metadata so the user can
+click "Review" on it. No special handling needed — the normal `importedGames` array
+integration handles this.
+
+## Files To Modify
+
+1. `src/main.ts` — add `FEEDBACK_TEST_PGN` constant, modify empty-IDB branch to seed it
+
+## What NOT To Do
+
+- Do not modify any other files
+- Do not change the import system
+- Do not change the IDB schema
+- Do not add a permanent seed system — this is temporary
+- Do not auto-trigger game review — the user will press Review manually
+
+## Validation
+
+- App loads with the test game visible in the games list when IDB is empty
+- The test game is selected and displayed on the analysis board
+- Board shows white's perspective
+- The game has 30 moves and ends in 0-1
+- Clicking "Review" starts engine analysis of the game
+- After review, LFYM shows multiple learnable moments across different severity tiers
+- The game metadata (TestPlayer vs Stockfish, ratings, date) displays correctly
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-748
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-748 --checklist "- [ ] FEEDBACK_TEST_PGN constant added to main.ts|- [ ] Empty-IDB branch seeds the test game|- [ ] Game appears in games list on fresh load|- [ ] Game displays on analysis board with white orientation|- [ ] Game has 30 moves ending 0-1|- [ ] Review button works on the seeded game|- [ ] LFYM produces multiple learnable moments after review|- [ ] Temporary comment marks the seed code for removal"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-748 --errors "brief description of what went wrong" --checklist "- [ ] FEEDBACK_TEST_PGN constant added to main.ts|- [ ] Empty-IDB branch seeds the test game|- [ ] Game appears in games list on fresh load|- [ ] Game displays on analysis board with white orientation|- [ ] Game has 30 moves ending 0-1|- [ ] Review button works on the seeded game|- [ ] LFYM produces multiple learnable moments after review|- [ ] Temporary comment marks the seed code for removal"
+```
+```
+
+## CCP-751 - Fix missing eval box grade colors in LFYM feedback states
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-751 — Fix missing eval box grade colors in LFYM feedback states
+
+## Summary
+
+`renderEvalBox` in `retroView.ts` applies CSS classes like `retro-eval-box--best`,
+`retro-eval-box--near`, `retro-eval-box--ok`, `retro-eval-box--bad` to the dual eval
+boxes. No CSS rules exist for any of these classes — `main.scss` has only a comment
+saying "Grade colors applied inline via severity module" which was never implemented.
+The result: the eval boxes show numbers but are completely unstyled (no border color,
+no background tint, no value color).
+
+The fix: add the four grade modifier rules inside the `.retro-eval-box` block.
+
+These boxes appear on: fail, win, and view feedback states.
+
+## File to touch
+
+- `src/styles/main.scss`
+
+## Implementation
+
+Inside the `.retro-eval-box { }` block, replace the stale comment with four grade
+modifier rules. Colors match the `EVAL_BOX_GRADES` constants in the lookbook:
+
+```scss
+&.retro-eval-box--best {
+  border-color: rgba(117, 153, 0, 0.45);
+  background: rgba(117, 153, 0, 0.08);
+  .retro-eval-box__value { color: #759900; }
+}
+&.retro-eval-box--near {
+  border-color: rgba(240, 165, 0, 0.45);
+  background: rgba(240, 165, 0, 0.08);
+  .retro-eval-box__value { color: #f0a500; }
+}
+&.retro-eval-box--ok {
+  border-color: rgba(122, 173, 223, 0.45);
+  background: rgba(122, 173, 223, 0.08);
+  .retro-eval-box__value { color: #7aaddf; }
+}
+&.retro-eval-box--bad {
+  border-color: rgba(220, 50, 47, 0.45);
+  background: rgba(220, 50, 47, 0.08);
+  .retro-eval-box__value { color: #dc322f; }
+}
+```
+
+## Validation
+
+- [ ] Fail state: "vs Engine Best" and "vs Move Played" boxes show colored borders/backgrounds
+- [ ] Win state (exact best): both boxes green (best grade)
+- [ ] Win state (wrong move fail): boxes correctly colored per grade
+- [ ] View state: boxes colored per grade
+- [ ] `npm run build` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-751
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-751 --checklist "- [ ] Fail state boxes colored|- [ ] Win state boxes colored|- [ ] View state boxes colored|- [ ] npm run build passes"
+```
+```
+
+## CCP-752 - Add LFYM feedback icons to the lookbook
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-752 — Add LFYM feedback icons to the lookbook
+
+## Summary
+
+The feedback lookbook (`docs/feedback-lookbook.html`, generated by
+`scripts/generate-feedback-lookbook.mjs`) covers severity tiers, eval box grades,
+feedback text matrices, and board glyphs — but does not include the LFYM state icons
+(✓, ✗, !) that appear in the retro feedback box.
+
+Add a new section "I. LFYM Feedback Icons" documenting each icon, its color, which
+feedback state it appears in, and its meaning.
+
+## Icons to document
+
+| Icon | State(s)    | Color   | Meaning |
+|------|-------------|---------|---------|
+| ✓    | win, view   | #759900 | User found a good or exact best move / solution revealed |
+| ✗    | fail        | #dc322f | User played a suboptimal move |
+| !    | offTrack    | #e0a030 | User navigated away from the exercise position |
+
+## File to touch
+
+- `scripts/generate-feedback-lookbook.mjs`
+
+## Implementation
+
+### Step 1 — Add data constant near top of file (after GLYPHS)
+
+```js
+const LFYM_ICONS = [
+  { symbol: '✓', name: 'Good move / Solution', state: 'win, view', color: '#759900',
+    meaning: 'User found the engine best move or a near-best move, or the solution was revealed.' },
+  { symbol: '✗', name: 'Wrong move', state: 'fail', color: '#dc322f',
+    meaning: 'User played a suboptimal move that does not meet the near-best threshold.' },
+  { symbol: '!', name: 'Off track', state: 'offTrack', color: '#e0a030',
+    meaning: 'User navigated away from the exercise position during solving.' },
+];
+```
+
+### Step 2 — Add nav link
+
+In the `<nav>` block, add after the Glyphs link:
+```html
+<a href="#lfym-icons">LFYM Icons</a>
+```
+
+### Step 3 — Add section after the existing Glyphs section (H)
+
+```html
+<!-- I. LFYM Feedback Icons -->
+<section id="lfym-icons">
+<h2>I. LFYM Feedback Icons</h2>
+<p style="margin:0 0 16px;color:#aaa;font-size:15px;">Icons shown in the Learn From Your Mistakes feedback box during a retro session.</p>
+<div class="glyph-gallery">
+${LFYM_ICONS.map(icon => `
+  <div class="glyph-card">
+    <div style="width:80px;height:80px;border-radius:8px;background:#222;border:2px solid ${icon.color};display:flex;align-items:center;justify-content:center;font-size:44px;color:${icon.color};line-height:1;">${icon.symbol}</div>
+    <div class="glyph-card__label">${icon.name}</div>
+    <div class="glyph-card__sub">State: ${icon.state}</div>
+    <div class="glyph-card__sub" style="color:${icon.color}">${icon.color}</div>
+    <div class="glyph-card__sub" style="max-width:140px;white-space:normal;margin-top:4px;">${icon.meaning}</div>
+  </div>`).join('\n')}
+</div>
+</section>
+```
+
+## Validation
+
+- [ ] New "LFYM Icons" section visible in the lookbook at `docs/feedback-lookbook.html`
+- [ ] ✓ shown in green, ✗ in red, ! in amber with correct labels and states
+- [ ] Nav link "LFYM Icons" jumps to the section
+- [ ] Run `npm run lookbook:generate` to regenerate
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-752
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-752 --checklist "- [ ] LFYM Icons section present in lookbook|- [ ] All three icons shown with correct colors and states|- [ ] Nav link works|- [ ] lookbook:generate succeeds"
+```
+```
+
+## CCP-753 - Mistake count feedback gradient
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-753: Mistake Count Feedback Gradient
+
+## Summary
+
+Add a mistake-count-based messaging gradient to the severity module and display the full
+gradient in the feedback lookbook. The messaging escalates in intensity based on how many
+learnable moments were found in the game. This affects the LFYM session title bar, the
+initial "find" state intro text, and the session-end summary.
+
+Patzer-specific — no Lichess analog.
+
+## Requirements
+
+### 1. Add mistake count gradient to severity.ts
+
+Add the following to `src/feedback/severity.ts`:
+
+```typescript
+export type MistakeCountTier =
+  | 'clean'       // 0 mistakes
+  | 'minor'       // 1-2
+  | 'notable'     // 3-4
+  | 'concerning'  // 5-7
+  | 'rough'       // 8-10
+  | 'brutal'      // 11-15
+  | 'disaster';   // 16+
+
+export interface MistakeCountFeedback {
+  tier: MistakeCountTier;
+  color: string;
+  /** Shown in the title bar area when the session starts. */
+  sessionTitle: string;
+  /** Shown as the intro/subtitle on the first find state. */
+  sessionIntro: string;
+  /** Shown at session end. */
+  sessionEnd: string;
+  /** Harsh-tone variant of sessionTitle. */
+  sessionTitleHarsh: string;
+  /** Harsh-tone variant of sessionIntro. */
+  sessionIntroHarsh: string;
+  /** Harsh-tone variant of sessionEnd. */
+  sessionEndHarsh: string;
+  /** Lower bound (inclusive). */
+  countFloor: number;
+  /** Upper bound (inclusive). Infinity for the worst tier. */
+  countCeiling: number;
+}
+
+export const MISTAKE_COUNT_TIERS: readonly MistakeCountFeedback[];
+export function classifyMistakeCount(count: number): MistakeCountFeedback;
+```
+
+Tier definitions:
+
+| Tier | Count | Color | Session Title (standard) | Session Intro (standard) | Session End (standard) |
+|---|---|---|---|---|---|
+| `clean` | 0 | `#26a641` | Learn from your mistakes | — | No mistakes found. Well played. |
+| `minor` | 1–2 | `#57ab5a` | Learn from your mistakes | A couple of moments to revisit. | Done. Only a few things to tighten up. |
+| `notable` | 3–4 | `#8bb8a8` | Learn from your mistakes | A few key moments to work through. | Done reviewing. Some clear areas to improve. |
+| `concerning` | 5–7 | `#56b4e9` | Learn from your mistakes | Several moments need your attention. | Done. There were quite a few missed opportunities here. |
+| `rough` | 8–10 | `#e69d00` | Learn from your mistakes | This game had a lot of room for improvement. | Done reviewing. This was a tough game — lots to learn from. |
+| `brutal` | 11–15 | `#e06c4e` | Learn from your mistakes | This game needs serious work. Let's go. | Done. That was a difficult watch. Plenty of material to drill. |
+| `disaster` | 16+ | `#db3031` | Learn from your mistakes | There's a lot to unpack here. Buckle up. | Done. That was rough — but every one of these is a chance to improve. |
+
+Harsh-tone variants:
+
+| Tier | Title (harsh) | Intro (harsh) | End (harsh) |
+|---|---|---|---|
+| `clean` | Learn from your mistakes | — | No mistakes found. Suspiciously clean. |
+| `minor` | Learn from your mistakes | Two moments. You'll survive. | That wasn't too painful. |
+| `notable` | Learn from your mistakes | A few things went wrong. Let's see how wrong. | Done. You've got homework. |
+| `concerning` | Learn from your mistakes | This is going to take a while. | Done. The engine would like a word. |
+| `rough` | Learn from your mistakes | This game was not your finest work. | Done. That was hard to watch. |
+| `brutal` | Learn from your mistakes | I hope you're sitting down. | Done. We don't need to talk about it. |
+| `disaster` | Learn from your mistakes | What happened here? | Done. Let's never speak of this game again. |
+
+Note: the session title stays "Learn from your mistakes" across all tiers in both tones.
+The escalation is in the intro and end messages. The color tints the progress counter
+and session intro text.
+
+### 2. Add to lookbook
+
+Add a new section **F4. Mistake Count Gradient** to the lookbook showing:
+
+- A color strip of all 7 tiers
+- A reference table with tier, count range, color, and all message variants
+- Rendered LFYM panels showing the first "find" state at each tier level,
+  with the intro message displayed below the title bar, styled with the tier color
+- Standard and harsh tone toggle (reuse existing toggle)
+- Session-end panels for at least 3 representative tiers (clean, concerning, disaster)
+
+All text fields should be editable (contenteditable with data attributes).
+
+## Files To Modify
+
+1. `src/feedback/severity.ts` — add MistakeCountTier, data, and classify function
+2. `scripts/generate-feedback-lookbook.mjs` — add F4 section
+3. `docs/feedback-lookbook.html` — regenerated
+
+## What NOT To Do
+
+- Do not modify retroView.ts (wiring is CCP-754)
+- Do not modify retroCtrl.ts
+- Do not modify main.scss
+
+## Validation
+
+- TypeScript compiles clean
+- `classifyMistakeCount(0).tier` returns `'clean'`
+- `classifyMistakeCount(3).tier` returns `'notable'`
+- `classifyMistakeCount(9).tier` returns `'rough'`
+- `classifyMistakeCount(20).tier` returns `'disaster'`
+- Lookbook generates and shows the new F4 section
+- All 7 tiers visible in the color strip
+- LFYM panel previews show intro messages at each tier
+- Tone toggle switches between standard and harsh
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-753
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-753 --checklist "- [ ] MistakeCountTier type added to severity.ts|- [ ] MISTAKE_COUNT_TIERS array with 7 tiers|- [ ] classifyMistakeCount function works correctly|- [ ] Both standard and harsh messages complete|- [ ] Lookbook F4 section added with color strip|- [ ] Lookbook shows LFYM panel previews at each tier|- [ ] Tone toggle works for mistake count section|- [ ] Session-end panels shown|- [ ] All text fields editable|- [ ] TypeScript compiles clean"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-753 --errors "brief description of what went wrong" --checklist "- [ ] MistakeCountTier type added to severity.ts|- [ ] MISTAKE_COUNT_TIERS array with 7 tiers|- [ ] classifyMistakeCount function works correctly|- [ ] Both standard and harsh messages complete|- [ ] Lookbook F4 section added with color strip|- [ ] Lookbook shows LFYM panel previews at each tier|- [ ] Tone toggle works for mistake count section|- [ ] Session-end panels shown|- [ ] All text fields editable|- [ ] TypeScript compiles clean"
+```
+```
+
+## CCP-754 - Wire mistake count gradient into LFYM
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-754: Wire Mistake Count Gradient into LFYM
+
+## Summary
+
+Wire the mistake count feedback gradient from `src/feedback/severity.ts` into the LFYM
+retro panel in `retroView.ts`. The session intro message and session-end message now
+vary based on how many learnable moments were found, and the progress counter is tinted
+with the tier color.
+
+## Prerequisite
+
+CCP-753 must be complete.
+
+## Requirements
+
+### 1. Import classifyMistakeCount
+
+In `retroView.ts`, import `classifyMistakeCount` from `src/feedback/severity.ts`.
+
+### 2. Add intro message to the first find state
+
+When `feedback === 'find'` and `solved === 0` (this is the first puzzle in the session),
+display the `sessionIntro` message from `classifyMistakeCount(total)` as an additional
+line below the existing "Find a better move for White/Black" instruction.
+
+Style the intro message with the tier's color and slightly smaller/italic font to
+distinguish it from the main instruction.
+
+When `total === 0` (clean game), the intro is empty — this case is handled by the
+session-end branch already.
+
+### 3. Update session-end messages
+
+Replace the current hardcoded end messages:
+- `'No mistakes found.'` → `classifyMistakeCount(0).sessionEnd`
+- `'Done reviewing mistakes.'` → `classifyMistakeCount(total).sessionEnd`
+
+Color the end message with the tier's color.
+
+### 4. Tint the progress counter
+
+The progress text (`"3 / 7"`) in the title bar should be colored with the tier's color
+from `classifyMistakeCount(total)`. This gives a subtle visual signal throughout the
+session.
+
+### 5. Tone
+
+Use `'standard'` tone for now (use the standard fields). No tone toggle UI.
+
+## Files To Modify
+
+1. `src/analyse/retroView.ts` — import and wire mistake count gradient
+
+## What NOT To Do
+
+- Do not modify severity.ts
+- Do not modify retroCtrl.ts
+- Do not add a tone toggle UI
+- Do not change the session title text ("Learn from your mistakes" stays fixed)
+- Do not modify any other files
+
+## Validation
+
+- A game with 1-2 mistakes shows "A couple of moments to revisit." on first find
+- A game with 8+ mistakes shows "This game had a lot of room for improvement." on first find
+- A clean game shows "No mistakes found. Well played." at session end
+- A rough game shows the appropriate escalated end message
+- The progress counter is tinted with the tier color
+- The intro message only appears on the first puzzle (solved === 0)
+- TypeScript compiles clean
+- Build succeeds
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-754
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-754 --checklist "- [ ] classifyMistakeCount imported in retroView.ts|- [ ] Intro message shown on first find state|- [ ] Intro message varies by mistake count|- [ ] Session-end messages use tier-appropriate text|- [ ] End messages colored with tier color|- [ ] Progress counter tinted with tier color|- [ ] Intro only on first puzzle (solved === 0)|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-754 --errors "brief description of what went wrong" --checklist "- [ ] classifyMistakeCount imported in retroView.ts|- [ ] Intro message shown on first find state|- [ ] Intro message varies by mistake count|- [ ] Session-end messages use tier-appropriate text|- [ ] End messages colored with tier color|- [ ] Progress counter tinted with tier color|- [ ] Intro only on first puzzle (solved === 0)|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+```
+
+## CCP-755 - General UI lookbook page
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-755: General UI Lookbook Page
+
+## Summary
+
+Create a second lookbook page (`docs/ui-lookbook.html`) generated by
+`scripts/generate-ui-lookbook.mjs` that documents all general UI elements,
+colors, and components used across Patzer Pro. The generator reads live
+source files (main.scss, TypeScript modules) at build time so the lookbook
+stays in sync with the codebase.
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-755
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-755 --checklist "- [ ] generate-ui-lookbook.mjs script exists|- [ ] npm run ui-lookbook:generate runs without errors|- [ ] docs/ui-lookbook.html is generated|- [ ] Colors extracted from live source files|- [ ] All major UI sections present|- [ ] Dark theme matches Patzer styling|- [ ] package.json has ui-lookbook:generate script|- [ ] FEEDBACK_STYLE_GUIDE.md updated"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-755 --errors "brief description" --checklist "- [ ] generate-ui-lookbook.mjs script exists|- [ ] npm run ui-lookbook:generate runs without errors|- [ ] docs/ui-lookbook.html is generated|- [ ] Colors extracted from live source files|- [ ] All major UI sections present|- [ ] Dark theme matches Patzer styling|- [ ] package.json has ui-lookbook:generate script|- [ ] FEEDBACK_STYLE_GUIDE.md updated"
+```
+```
+
+## CCP-756 - Action menu: Mistakes subheading + inline Mistake Detection sub-panel
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-756 — Action menu: Mistakes subheading + inline Mistake Detection sub-panel
+
+## Summary
+
+The action menu (hamburger) currently has LFYM and Mistake Detection buttons listed without
+grouping. Problems to fix:
+
+1. No "Mistakes" subheading grouping the two related buttons
+2. "Mistake Detection…" text is cut off due to overflow
+3. Clicking "Mistake Detection" opens a modal popup — instead it should expand an inline
+   sub-panel inside the action menu, with a "← Back" button to return to the main menu
+
+## Files to touch
+
+- `src/analyse/analysisControls.ts`
+- `src/header/index.ts`
+- `src/styles/main.scss`
+
+## Implementation
+
+### Step 1 — Extract `renderRetroConfigBody` from `src/header/index.ts`
+
+Extract the body rows (everything inside the `detection-modal__body` div) from
+`renderRetroModal` into a new exported function:
+
+```ts
+export function renderRetroConfigBody(redraw: () => void): VNode[] {
+  const cfg = retroConfig;
+  const isDefault = /* ... same isDefault check ... */;
+  return [
+    // minLossThreshold row
+    // missedMateDistance row
+    // collapse family row
+    // defensive family row
+    // punish family row
+    // reset row (conditional)
+  ];
+}
+```
+
+Update `renderRetroModal` to call `renderRetroConfigBody(redraw)` for the body:
+
+```ts
+h('div.detection-modal__body', renderRetroConfigBody(redraw)),
+```
+
+### Step 2 — Add sub-view state to `src/analyse/analysisControls.ts`
+
+Add module-level state:
+
+```ts
+let _actionMenuSubView: null | 'mistake-detection' = null;
+```
+
+Update `closeActionMenu()`:
+
+```ts
+export function closeActionMenu(): void {
+  _actionMenuOpen = false;
+  _actionMenuSubView = null;
+}
+```
+
+Remove the `openRetroModal` import — it's no longer used in the action menu.
+
+Import `renderRetroConfigBody` from `../header/index`.
+
+### Step 3 — Update `renderActionMenu` in `src/analyse/analysisControls.ts`
+
+When `_actionMenuSubView === 'mistake-detection'`, render the sub-panel:
+
+```ts
+if (_actionMenuSubView === 'mistake-detection') {
+  return h('div.action-menu', [
+    h('button.action-menu__back-btn', {
+      on: { click: () => { _actionMenuSubView = null; deps.redraw(); } },
+    }, '← Back'),
+    h('h2', 'Mistake Detection'),
+    h('div.action-menu__subpanel', renderRetroConfigBody(deps.redraw)),
+  ]);
+}
+```
+
+When sub-view is null (main menu), replace the Mistake Detection button and add
+"Mistakes" h2 subheading:
+
+```ts
+h('h2', 'Tools'),
+h('div.action-menu__tools', [
+  // Save game to Library
+  // Flip board
+]),
+h('h2', 'Mistakes'),
+h('div.action-menu__tools', [
+  // Learn From Your Mistakes button (unchanged)
+  h('button', {
+    class:  { active: hasRetro },
+    attrs:  { 'data-icon': ICON_RETRO, ... },
+    on: { click: ... },
+  }, hasRetro ? 'Close Mistakes' : 'Learn From Your Mistakes'),
+  // Mistake Detection — now opens sub-panel instead of modal
+  h('button', {
+    attrs: { title: 'Configure mistake detection thresholds' },
+    on: { click: () => { _actionMenuSubView = 'mistake-detection'; deps.redraw(); } },
+  }, 'Mistake Detection'),
+]),
+```
+
+### Step 4 — Add CSS in `src/styles/main.scss`
+
+Fix text overflow in action menu buttons:
+
+```scss
+.action-menu {
+  button {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+```
+
+Add scrollable sub-panel container and back button:
+
+```scss
+.action-menu__subpanel {
+  overflow-y: auto;
+  max-height: calc(100% - 80px);
+  padding: 0 4px;
+}
+
+.action-menu__back-btn {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  color: #aaa;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  &:hover { color: #fff; }
+}
+```
+
+## Validation
+
+- [ ] Action menu has "Mistakes" h2 subheading grouping LFYM and Mistake Detection buttons
+- [ ] "Mistake Detection" text no longer cut off
+- [ ] Clicking "Mistake Detection" opens inline sub-panel (no modal popup)
+- [ ] Sub-panel shows all detection settings (severity slider, mate distance, families, reset)
+- [ ] "← Back" button returns to main menu
+- [ ] Closing action menu (X or clicking outside) also resets sub-view to null
+- [ ] `npm run build` passes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-756
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-756 --checklist "- [ ] Mistakes subheading present|- [ ] Mistake Detection text not cut off|- [ ] Inline sub-panel works|- [ ] Back button returns to main menu|- [ ] npm run build passes"
+```
+```
+
+## CCP-757 - Add pagination to prompt dashboard (200 per page)
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-757 — Add pagination to prompt dashboard (200 per page)
+
+## Context
+
+The prompt dashboard (`docs/prompts/dashboard.html`) renders all prompts into a single table
+with no pagination. With 800+ prompts the list is long to scroll. Pagination should break the
+list into pages of 200, while keeping search and filter working across the full dataset.
+
+The dashboard is a generated static HTML file. All logic lives in inline `<script>` inside
+`scripts/generate-prompt-dashboard.mjs`. That is the only file to touch.
+
+## Architecture
+
+Key globals in the embedded JS (from code audit):
+- `PROMPTS` — full array of all prompt data, set at page load
+- `filterPrompts()` — filters `PROMPTS` by `filterStatus` and `searchText`, returns full filtered list
+- `renderList()` — calls `filterPrompts()`, renders ALL results into `#prompt-list` tbody, updates `#count-label`
+- `filterStatus` and `searchText` — mutable state, changed by filter buttons and search input
+
+## Required Changes
+
+Touch only `scripts/generate-prompt-dashboard.mjs`.
+
+### 1. Add `currentPage` state variable
+
+Near the `filterStatus` and `searchText` declarations, add:
+
+```js
+let currentPage = 1;
+const PAGE_SIZE = 200;
+```
+
+### 2. Modify `renderList()` to paginate the display
+
+`filterPrompts()` must still run on the full dataset (no change to that function). Pagination
+is applied after filtering, only for display:
+
+```js
+function renderList() {
+  renderUrgentBlock();
+  const list = filterPrompts();           // full filtered set
+  const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = list.slice(start, start + PAGE_SIZE);
+
+  // ... render pageItems into tbody (existing row-build logic, unchanged) ...
+
+  // Update count label to show pagination info
+  document.getElementById('count-label').textContent =
+    list.length + ' of ' + PROMPTS.length + ' prompts' +
+    (totalPages > 1 ? ' — page ' + currentPage + ' of ' + totalPages : '');
+
+  // Render pagination controls
+  renderPaginationControls(totalPages, list.length);
+
+  // ... existing event-listener attachment for tr clicks, row-copy, id-copy (unchanged) ...
+}
+```
+
+### 3. Add `renderPaginationControls(totalPages, filteredCount)`
+
+Add a new function that writes into a `#pagination` container element:
+
+```js
+function renderPaginationControls(totalPages, filteredCount) {
+  const el = document.getElementById('pagination');
+  if (!el) return;
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+  const parts = [];
+  parts.push('<button class="page-btn" id="page-prev"' + (currentPage <= 1 ? ' disabled' : '') + '>&#8592; Prev</button>');
+
+  // Show up to 7 page buttons: always first, last, current ±2, with ellipsis gaps
+  const pages = paginationPageNumbers(currentPage, totalPages);
+  for (const p of pages) {
+    if (p === '...') {
+      parts.push('<span class="page-ellipsis">…</span>');
+    } else {
+      parts.push('<button class="page-btn' + (p === currentPage ? ' active' : '') + '" data-page="' + p + '">' + p + '</button>');
+    }
+  }
+
+  parts.push('<button class="page-btn" id="page-next"' + (currentPage >= totalPages ? ' disabled' : '') + '>Next &#8594;</button>');
+  el.innerHTML = parts.join('');
+
+  el.querySelector('#page-prev')?.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderList(); scrollToTop(); } });
+  el.querySelector('#page-next')?.addEventListener('click', () => { if (currentPage < totalPages) { currentPage++; renderList(); scrollToTop(); } });
+  el.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+    btn.addEventListener('click', () => { currentPage = Number(btn.dataset.page); renderList(); scrollToTop(); });
+  });
+}
+
+function paginationPageNumbers(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, total, current]);
+  for (let d = 1; d <= 2; d++) { if (current - d >= 1) pages.add(current - d); if (current + d <= total) pages.add(current + d); }
+  const sorted = [...pages].sort((a, b) => a - b);
+  const result = [];
+  let prev = 0;
+  for (const p of sorted) { if (p - prev > 1) result.push('...'); result.push(p); prev = p; }
+  return result;
+}
+
+function scrollToTop() {
+  document.querySelector('.prompt-table-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+```
+
+### 4. Reset `currentPage` to 1 on filter or search change
+
+Wherever `filterStatus` is changed (in filter button click handlers) and wherever `searchText`
+is changed (in the search input handler), add `currentPage = 1;` before calling `renderList()`.
+
+Find the existing patterns:
+```js
+filterStatus = btn.dataset.filter;
+// ... add here:
+currentPage = 1;
+renderList();
+```
+
+```js
+searchText = e.target.value.trim();
+// ... add here:
+currentPage = 1;
+renderList();
+```
+
+### 5. Add `#pagination` container to the HTML template
+
+In the HTML template string inside the generator, add a `<div id="pagination"></div>` element
+directly below the `<table>` (or its wrapper) and above (or below) the `#count-label`. A natural
+placement is between the table and the footer info line:
+
+```html
+<div id="pagination" class="pagination"></div>
+```
+
+### 6. Add CSS for pagination controls
+
+In the inline `<style>` block, add:
+
+```css
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.page-btn {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  min-width: 32px;
+}
+.page-btn:hover:not(:disabled) { background: #2a2a2a; border-color: #555; }
+.page-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 600; }
+.page-btn:disabled { opacity: 0.35; cursor: default; }
+.page-ellipsis { color: #666; padding: 0 4px; font-size: 0.82rem; }
+```
+
+## Constraints
+
+- `filterPrompts()` must NOT be modified — it always returns the full filtered set
+- Search and status/category filters must continue to work across all pages
+- `currentPage` resets to 1 on every filter or search change
+- If the filtered set fits on one page, no pagination controls render
+- The existing `#count-label` text update stays, enhanced with page info when paginated
+
+## Validation
+
+- [ ] With no filter/search active, prompts render in pages of 200
+- [ ] Page 2 shows items 201–400, page 3 shows 401–600, etc.
+- [ ] Searching or changing a filter resets to page 1 and shows correct results
+- [ ] The count label updates correctly on each page and filter change
+- [ ] When filtered results fit on one page, no pagination controls appear
+- [ ] Prev/Next buttons disable correctly at first and last page
+- [ ] Page number buttons highlight the active page
+- [ ] Clicking a page number scrolls the table into view
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-757
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-757 --checklist "- [ ] Prompts render in pages of 200|- [ ] Search and filters reset to page 1 and show correct results across all data|- [ ] Count label shows pagination info when paginated|- [ ] No pagination controls when filtered set fits one page|- [ ] Prev/Next and page number buttons work correctly"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-757 --errors "brief description of what went wrong" --checklist "- [ ] Prompts render in pages of 200|- [ ] Search and filters reset to page 1 and show correct results across all data|- [ ] Count label shows pagination info when paginated|- [ ] No pagination controls when filtered set fits one page|- [ ] Prev/Next and page number buttons work correctly"
+```
+```
+
+## CCP-758 - Merge lookbooks into single Patzer Lookbook
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-758: Merge Lookbooks into Single Patzer Lookbook
+
+## Summary
+
+Merge the feedback lookbook and general UI lookbook into a single page at
+`docs/patzer-lookbook.html` with tab navigation between sections.
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-758
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-758 --checklist "- [ ] Single generate-patzer-lookbook.mjs script|- [ ] docs/patzer-lookbook.html generated|- [ ] Tab navigation between Feedback and General UI|- [ ] All feedback sections present|- [ ] All UI sections present|- [ ] Old files removed|- [ ] package.json updated|- [ ] FEEDBACK_STYLE_GUIDE.md updated"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-758 --errors "brief description" --checklist "- [ ] Single generate-patzer-lookbook.mjs script|- [ ] docs/patzer-lookbook.html generated|- [ ] Tab navigation between Feedback and General UI|- [ ] All feedback sections present|- [ ] All UI sections present|- [ ] Old files removed|- [ ] package.json updated|- [ ] FEEDBACK_STYLE_GUIDE.md updated"
+```
+```
+
+## CCP-759 - Detail line generator and LFYM wiring
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-759: Detail Line Generator and LFYM Wiring
+
+## Summary
+
+Build a detail line generator function in `src/feedback/severity.ts` and wire it into
+the "Chosen because:" section of the LFYM retro panel. The detail line is the
+data-grounded middle line between the label and summary that references actual move
+and evaluation data from the RetroCandidate.
+
+## Requirements
+
+### 1. Add detail line generator to severity.ts
+
+Add a function that takes candidate data and returns a context string:
+
+```typescript
+export interface DetailLineInput {
+  reasonCode: LearnableReasonCode;
+  tier: SeverityTier;
+  playedMoveSan: string;
+  bestMoveSan: string;
+  /** Formatted eval diff string (e.g., "+2.4") from EvalDiff.formatted. Null if unavailable. */
+  evalDiffFormatted: string | null;
+  /** Mate distance from parent eval. Only set for missed-mate reason. */
+  mateDistance: number | null;
+}
+
+export function buildDetailLine(input: DetailLineInput): string;
+```
+
+The function returns a plain string built from templates per reason code × severity tier.
+Use the templates from the lookbook F2 section (DETAIL_LINES in the lookbook generator),
+replacing placeholders with actual values from the input.
+
+**Key rules:**
+- Only reference data actually available in the input — never guess at chess meaning
+- If `evalDiffFormatted` is null, omit pawn-value references and use a simpler template
+- If `mateDistance` is null for a missed-mate reason, fall back to generic "forced checkmate"
+- The function must never return an empty string — always produce at least a basic line
+
+Template examples by reason (inaccuracy through catastrophic, varying by tier):
+
+**swing:**
+- inaccuracy: "The engine found a slightly stronger continuation."
+- mistake: "{playedSan} was played. The engine's best move {bestSan} was worth roughly {evalDiff} more." (or without evalDiff: "The engine's best move {bestSan} was significantly stronger than {playedSan}.")
+- serious+: "{playedSan} was played instead of {bestSan}. The evaluation swung by roughly {evalDiff}." (or without evalDiff: "{playedSan} was played instead of {bestSan}.")
+
+**missed-mate:**
+- "Forced checkmate in {mateDistance} was available via {bestSan}. {playedSan} was played instead." (or without mate distance: "A forced checkmate sequence was available via {bestSan}. {playedSan} was played instead.")
+
+**collapse:**
+- "A winning position collapsed with {playedSan}. {bestSan} maintained the advantage." (scales with tier)
+
+**defensive:**
+- "{bestSan} was a more resilient defense. {playedSan} was played instead."
+
+**punish:**
+- "The opponent's previous move was an error. {bestSan} would have exploited it. {playedSan} was played instead."
+
+### 2. Wire into retroView.ts
+
+In `renderReasonNote()`, after computing the severity feedback, also compute the
+detail line:
+
+```typescript
+import { buildDetailLine } from '../feedback/severity';
+```
+
+Build the input from the RetroCandidate:
+- `reasonCode`: `cand.reason.code`
+- `tier`: `fb.tier.id` (from the already-computed severity feedback)
+- `playedMoveSan`: `cand.playedMoveSan`
+- `bestMoveSan`: compute from `uciToSan(cand.fenBefore, cand.bestMove)` (the function
+  is already available in the retroView rendering context — pass it as a parameter)
+- `evalDiffFormatted`: `cand.evalDiff?.formatted ?? null`
+- `mateDistance`: for missed-mate reason, extract from parent eval if available, else null
+
+Render the detail line as a new element between the label and summary:
+```typescript
+h('span.retro-reason__detail', {
+  style: { borderColor: fb.tier.color + '40', color: fb.tier.color }
+}, detailLine),
+```
+
+### 3. Add CSS for the detail line
+
+In `main.scss`, add styling for `.retro-reason__detail`:
+- `font-size: 0.82rem`
+- `line-height: 1.4`
+- `margin-top: 4px`
+- `padding-left: 8px`
+- `border-left: 2px solid` (color applied inline)
+- `border-radius: 0 3px 3px 0`
+
+## Files To Modify
+
+1. `src/feedback/severity.ts` — add `DetailLineInput` interface and `buildDetailLine()` function
+2. `src/analyse/retroView.ts` — wire detail line into `renderReasonNote()`
+3. `src/styles/main.scss` — add `.retro-reason__detail` styling
+
+## What NOT To Do
+
+- Do not modify retroCtrl.ts
+- Do not change candidate selection logic
+- Do not add new data to RetroCandidate — use existing fields only
+- Do not reference chess concepts the data doesn't support
+
+## Validation
+
+- TypeScript compiles clean, build succeeds
+- LFYM "Chosen because:" section now shows three lines: label, detail, summary
+- Detail line references the played move SAN and best move SAN
+- When evalDiff is available, pawn values appear in the detail line
+- When evalDiff is null, the detail line gracefully omits pawn references
+- Missed-mate candidates show mate distance when available
+- Detail line is colored with tier color and has a left border
+- Detail line varies by reason code (swing vs collapse vs missed-mate etc.)
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-759
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-759 --checklist "- [ ] buildDetailLine function added to severity.ts|- [ ] DetailLineInput interface defined|- [ ] retroView.ts calls buildDetailLine in renderReasonNote|- [ ] Detail line renders between label and summary|- [ ] Detail line references playedMoveSan and bestMoveSan|- [ ] Pawn values shown when evalDiff available|- [ ] Graceful fallback when evalDiff is null|- [ ] Missed-mate shows mate distance|- [ ] CSS styling added for retro-reason__detail|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-759 --errors "brief description" --checklist "- [ ] buildDetailLine function added to severity.ts|- [ ] DetailLineInput interface defined|- [ ] retroView.ts calls buildDetailLine in renderReasonNote|- [ ] Detail line renders between label and summary|- [ ] Detail line references playedMoveSan and bestMoveSan|- [ ] Pawn values shown when evalDiff available|- [ ] Graceful fallback when evalDiff is null|- [ ] Missed-mate shows mate distance|- [ ] CSS styling added for retro-reason__detail|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+```
+
+## CCP-760 - Complete harsh tone text variants
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-760: Complete Harsh Tone Text Variants
+
+## Summary
+
+Add harsh-tone variants for ALL user-facing LFYM feedback messages that don't already
+have them. The severity module already has harsh variants for the reason×severity matrix
+and the mistake count gradient. This prompt adds harsh variants for the remaining
+hardcoded UI strings: win/fail state messages, find state prompt, view state text,
+off-track message, and action button labels.
+
+## Requirements
+
+### 1. Add LFYM state messages to severity.ts
+
+Add a new export for all LFYM feedback state messages with both tones:
+
+```typescript
+export interface LfymStateMessages {
+  // Win states
+  winExact: string;           // "Good move!"
+  winNearBest: string;        // "Good enough!"
+  // Fail states
+  failBetter: string;         // "Better, but not the best move available."
+  failWorse: string;          // "That move is even worse."
+  failDefault: string;        // "You can do better."
+  // Find state
+  findPrompt: string;         // "Find a better move for {color}"
+  findPlayed: string;         // "{move} was played"
+  // View state
+  viewSolution: string;       // "Solution"
+  viewBestWas: string;        // "Best was"
+  // Off-track
+  offTrackMessage: string;    // "You browsed away"
+  offTrackResume: string;     // "Resume learning"
+  // Actions
+  viewTheSolution: string;    // "View the solution"
+  skipThisMove: string;       // "Skip this move"
+  tryAnotherMove: string;     // "Try another move"
+  saveToLibrary: string;      // "Save to Library"
+  doItAgain: string;          // "Do it again"
+  // Session
+  sessionTitle: string;       // "Learn from your mistakes"
+  // Vindication
+  vindicated: string;         // "Actually upon deeper review, you did play the best move during the game."
+}
+
+export const LFYM_MESSAGES: Readonly<Record<FeedbackTone, LfymStateMessages>>;
+```
+
+**Standard tone** — exactly what's currently hardcoded in retroView.ts (preserve existing text).
+
+**Harsh tone** examples:
+
+| Key | Standard | Harsh |
+|---|---|---|
+| winExact | Good move! | Well, you got one right. |
+| winNearBest | Good enough! | Close enough. I'll allow it. |
+| failBetter | Better, but not the best move available. | Getting warmer. Still wrong. |
+| failWorse | That move is even worse. | Somehow you made it worse. |
+| failDefault | You can do better. | Try harder. |
+| findPrompt | Find a better move for {color} | Find a better move for {color}. It's not hard. |
+| findPlayed | {move} was played | {move} was played. Let's fix that. |
+| viewSolution | Solution | Here's what you should have played. |
+| viewBestWas | Best was | The answer was |
+| offTrackMessage | You browsed away | Focus. |
+| offTrackResume | Resume learning | Get back to work. |
+| viewTheSolution | View the solution | Just show me the answer |
+| skipThisMove | Skip this move | Give up on this one |
+| tryAnotherMove | Try another move | Try again. |
+| saveToLibrary | Save to Library | Save this embarrassment |
+| doItAgain | Do it again | Suffer through it again |
+| sessionTitle | Learn from your mistakes | Learn from your mistakes |
+| vindicated | Actually upon deeper review, you did play the best move during the game. | Fine. You were right this time. Don't let it go to your head. |
+
+### 2. Add harsh detail line variants
+
+Add a `tone` parameter to `buildDetailLine()` (from CCP-759). When harsh, the
+detail lines should be more blunt:
+
+**swing (harsh):**
+- inaccuracy: "There was a better move. You didn't find it."
+- mistake+: "{playedSan} instead of {bestSan}. That cost you roughly {evalDiff}."
+
+**missed-mate (harsh):**
+- "Mate in {mateDistance} via {bestSan}. You played {playedSan}."
+
+**collapse (harsh):**
+- "{playedSan} threw away a won game. {bestSan} was right there."
+
+**defensive (harsh):**
+- "{bestSan} would have saved you. {playedSan} didn't."
+
+**punish (harsh):**
+- "Your opponent blundered with their last move. {bestSan} would have punished it. You played {playedSan}."
+
+### 3. Update lookbook
+
+Update the lookbook to show harsh variants of the LFYM state messages. Add a new
+subsection in the F3 LFYM Panel States showing representative panels with harsh text,
+toggled by the existing tone toggle.
+
+## Files To Modify
+
+1. `src/feedback/severity.ts` — add `LfymStateMessages`, `LFYM_MESSAGES`, update `buildDetailLine` with tone param
+2. `scripts/generate-feedback-lookbook.mjs` — add harsh LFYM state panels to F3
+
+## What NOT To Do
+
+- Do not modify retroView.ts (wiring is CCP-761)
+- Do not add the toggle UI yet
+- Do not modify retroCtrl.ts
+
+## Validation
+
+- TypeScript compiles clean
+- `LFYM_MESSAGES.standard.winExact` === "Good move!"
+- `LFYM_MESSAGES.harsh.winExact` === "Well, you got one right."
+- All 17 message keys have both standard and harsh variants
+- `buildDetailLine` accepts optional `tone` parameter
+- Lookbook regenerates and shows harsh LFYM panels
+- No retroView.ts changes
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-760
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-760 --checklist "- [ ] LfymStateMessages interface added|- [ ] LFYM_MESSAGES exported with both tones|- [ ] All 17 keys have standard and harsh variants|- [ ] buildDetailLine accepts tone parameter|- [ ] Harsh detail lines are blunt and direct|- [ ] Lookbook shows harsh LFYM panels|- [ ] TypeScript compiles clean|- [ ] No retroView.ts changes"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-760 --errors "brief description" --checklist "- [ ] LfymStateMessages interface added|- [ ] LFYM_MESSAGES exported with both tones|- [ ] All 17 keys have standard and harsh variants|- [ ] buildDetailLine accepts tone parameter|- [ ] Harsh detail lines are blunt and direct|- [ ] Lookbook shows harsh LFYM panels|- [ ] TypeScript compiles clean|- [ ] No retroView.ts changes"
+```
+```
+
+## CCP-761 - Wire harsh tone toggle into LFYM
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-761: Wire Harsh Tone Toggle into LFYM
+
+## Summary
+
+Add a tone toggle to the LFYM panel and wire it so that ALL user-facing text in the
+retro panel switches between standard and harsh mode. This includes the reason note
+label+summary, detail lines, win/fail/find state messages, session intro/end, action
+labels, and off-track text.
+
+## Prerequisites
+
+CCP-759 (detail lines) and CCP-760 (harsh text variants) must be complete.
+
+## Requirements
+
+### 1. Add tone preference to retroConfig
+
+In `src/analyse/retroConfig.ts`, add a `feedbackTone` field to `RetroConfig`:
+
+```typescript
+feedbackTone: FeedbackTone;  // 'standard' | 'harsh'
+```
+
+Default: `'standard'`. Persisted to localStorage with the rest of retroConfig.
+
+Import `FeedbackTone` from `src/feedback/severity.ts`.
+
+### 2. Add tone toggle to LFYM panel
+
+In `retroView.ts`, add a small toggle in the title bar of the retro box (next to the
+close button). Use the existing toggle-switch CSS pattern:
+
+- A small pill toggle labeled with a flame icon or "Harsh" text
+- When on, the retroConfig `feedbackTone` switches to `'harsh'`
+- When off, it returns to `'standard'`
+- The toggle state persists across page reloads via retroConfig localStorage
+
+### 3. Wire tone through all text consumers
+
+Every place in `retroView.ts` that currently uses a hardcoded string or calls a severity
+module function must pass the active tone:
+
+**Already tone-aware (just need to pass `retroConfig.feedbackTone`):**
+- `getSeverityFeedback(reasonCode, loss, isExactBest, tone)` — reason note label + summary
+- `buildDetailLine(input, tone)` — detail line (from CCP-759/760)
+- Mistake count gradient — `classifyMistakeCount(total)` returns both tone variants,
+  select the correct one based on `feedbackTone`
+
+**Needs to use `LFYM_MESSAGES[tone]` instead of hardcoded strings:**
+- `'Good move!'` / `'Good enough!'` → `LFYM_MESSAGES[tone].winExact` / `.winNearBest`
+- `'Better, but not the best move available.'` → `LFYM_MESSAGES[tone].failBetter`
+- `'That move is even worse.'` → `LFYM_MESSAGES[tone].failWorse`
+- `'You can do better.'` → `LFYM_MESSAGES[tone].failDefault`
+- `'Find a better move for ${color}'` → `LFYM_MESSAGES[tone].findPrompt` (replace {color})
+- `'${san} was played'` → `LFYM_MESSAGES[tone].findPlayed` (replace {move})
+- `'Solution'` → `LFYM_MESSAGES[tone].viewSolution`
+- `'Best was '` → `LFYM_MESSAGES[tone].viewBestWas`
+- `'You browsed away'` → `LFYM_MESSAGES[tone].offTrackMessage`
+- `'Resume learning'` → `LFYM_MESSAGES[tone].offTrackResume`
+- `'View the solution'` → `LFYM_MESSAGES[tone].viewTheSolution`
+- `'Skip this move'` → `LFYM_MESSAGES[tone].skipThisMove`
+- `'Try another move'` → `LFYM_MESSAGES[tone].tryAnotherMove`
+- `'Save to Library'` → `LFYM_MESSAGES[tone].saveToLibrary`
+- `'Do it again'` → `LFYM_MESSAGES[tone].doItAgain`
+- Vindication text → `LFYM_MESSAGES[tone].vindicated`
+- Session end messages → use tone-specific fields from `classifyMistakeCount()`
+- Session intro → use tone-specific fields from `classifyMistakeCount()`
+
+### 4. Redraw on toggle
+
+When the tone toggle is changed, call `redraw()` to immediately re-render all text
+in the active panel state with the new tone.
+
+## Files To Modify
+
+1. `src/analyse/retroConfig.ts` — add `feedbackTone` to RetroConfig
+2. `src/analyse/retroView.ts` — add toggle UI, wire all text through tone
+
+## What NOT To Do
+
+- Do not modify severity.ts (all data added in CCP-760)
+- Do not modify retroCtrl.ts
+- Do not change candidate selection logic
+- Do not add tone to non-LFYM surfaces yet (stats, game list, etc.)
+
+## Validation
+
+- A tone toggle appears in the LFYM title bar
+- Toggling to harsh immediately changes all visible text
+- Toggling back to standard restores all original text
+- The tone preference persists across page reloads
+- Win state "Good move!" becomes "Well, you got one right." in harsh
+- Fail state "You can do better." becomes "Try harder." in harsh
+- Reason note label+summary use harsh severity text
+- Detail lines use harsh detail text
+- Session intro uses harsh mistake count text
+- Session end uses harsh mistake count text
+- Action labels ("View the solution" → "Just show me the answer") change
+- TypeScript compiles clean, build succeeds
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-761
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-761 --checklist "- [ ] feedbackTone added to retroConfig|- [ ] Tone toggle renders in LFYM title bar|- [ ] Toggle persists to localStorage|- [ ] All win/fail/find state text uses LFYM_MESSAGES[tone]|- [ ] Reason notes use tone parameter|- [ ] Detail lines use tone parameter|- [ ] Mistake count messages use correct tone variant|- [ ] Action labels switch with tone|- [ ] Off-track text switches with tone|- [ ] Vindication text switches with tone|- [ ] Redraw fires on toggle change|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-761 --errors "brief description" --checklist "- [ ] feedbackTone added to retroConfig|- [ ] Tone toggle renders in LFYM title bar|- [ ] Toggle persists to localStorage|- [ ] All win/fail/find state text uses LFYM_MESSAGES[tone]|- [ ] Reason notes use tone parameter|- [ ] Detail lines use tone parameter|- [ ] Mistake count messages use correct tone variant|- [ ] Action labels switch with tone|- [ ] Off-track text switches with tone|- [ ] Vindication text switches with tone|- [ ] Redraw fires on toggle change|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+```
+
+## CCP-762 - Escalating harsh tone levels
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-762: Escalating Harsh Tone Levels
+
+## Summary
+
+Expand `FeedbackTone` from 2 levels to 4: `'standard' | 'harsh' | 'brutal' | 'unhinged'`.
+Add complete text variants for every user-facing string at all levels. The escalation
+goes from firm coach → genuinely mean → absurdly savage with chess memes.
+
+## Requirements
+
+### 1. Expand FeedbackTone
+
+In `src/feedback/severity.ts`, change:
+```typescript
+export type FeedbackTone = 'standard' | 'harsh' | 'brutal' | 'unhinged';
+```
+
+### 2. Add brutal + unhinged variants to ALL_FEEDBACK
+
+Add `brutal` and `unhinged` entries to the reason×severity matrix. Examples:
+
+**swing brutal:**
+- inaccuracy: "The engine found a better move in 0.001 seconds. You had all game."
+- mistake: "That move physically hurt to watch."
+- serious: "The engine needs a moment to compose itself."
+- blunder: "Congratulations, you've invented a new kind of bad."
+- catastrophic: "This move will be used as a teaching example of what not to do."
+
+**swing unhinged:**
+- inaccuracy: "My dead grandmother finds better moves and she never played chess."
+- mistake: "Were you playing with your eyes closed or is this just how you play?"
+- serious: "I've seen better chess from a random number generator."
+- blunder: "This is the kind of move that makes engines question their purpose in life."
+- catastrophic: "Delete the app. Uninstall chess. Take up checkers. Actually, don't — you'd probably lose at that too."
+
+Apply this pattern to ALL 5 reason codes × 5 negative tiers × 2 new tones = 50 new strings.
+Plus 4 positive tiers × 2 tones = 8 more.
+
+**Positive tiers brutal:**
+- best: "Broken clock. Twice a day."
+- excellent: "Acceptable. Barely."
+- good: "The engine is mildly less disappointed."
+- playable: "At least you didn't hang a piece."
+
+**Positive tiers unhinged:**
+- best: "Holy shit, you actually found it."
+- excellent: "Okay fine, that was almost not terrible."
+- good: "The engine grudgingly acknowledges your existence."
+- playable: "That move is the chess equivalent of a participation trophy."
+
+### 3. Add brutal + unhinged to LFYM_MESSAGES
+
+All 17 state message keys need brutal and unhinged variants:
+
+**brutal:**
+- winExact: "Finally."
+- winNearBest: "Acceptable. Moving on."
+- failBetter: "Warmer. Still wrong."
+- failWorse: "How? How is it worse?"
+- failDefault: "No."
+- findPrompt: "Find a better move for {color}. The bar is low."
+- findPlayed: "{move} happened. We need to talk about it."
+- viewSolution: "Since you clearly need help."
+- viewBestWas: "Obviously the answer was"
+- offTrackMessage: "Are you even paying attention?"
+- offTrackResume: "Focus up."
+- viewTheSolution: "I give up. Show me."
+- skipThisMove: "Admit defeat."
+- tryAnotherMove: "Again."
+- saveToLibrary: "Archive this failure"
+- doItAgain: "Punish yourself again"
+- vindicated: "You were right. I'm as surprised as you are."
+
+**unhinged:**
+- winExact: "A miracle."
+- winNearBest: "Close enough. I'll allow it. This time."
+- failBetter: "Is this a joke?"
+- failWorse: "You absolute donkey."
+- failDefault: "Please tell me you're trolling."
+- findPrompt: "Find a better move for {color}. A trained monkey could."
+- findPlayed: "{move} was played. I need to lie down."
+- viewSolution: "Let me show you what a chess player would do."
+- viewBestWas: "Even Stockfish is laughing. The answer was"
+- offTrackMessage: "Hello? We're in the middle of something."
+- offTrackResume: "Get your ass back here."
+- viewTheSolution: "Fine, I'll do it myself."
+- skipThisMove: "Concede this one. No shame. Well, some shame."
+- tryAnotherMove: "For the love of Kasparov, try again."
+- saveToLibrary: "Preserve this crime scene"
+- doItAgain: "Subject yourself to this again"
+- vindicated: "You were right and I hate it."
+
+### 4. Add brutal + unhinged to mistake count gradient
+
+Add `sessionIntroBrutal`, `sessionEndBrutal`, `sessionIntroUnhinged`, `sessionEndUnhinged`
+fields to `MistakeCountFeedback`. Examples:
+
+**brutal disaster (16+):**
+- intro: "I've seen car crashes more graceful than this game."
+- end: "I need therapy after watching that."
+
+**unhinged disaster (16+):**
+- intro: "This game is a war crime against chess."
+- end: "That game should be classified and never spoken of again."
+
+### 5. Add brutal + unhinged detail lines
+
+Add `brutal` and `unhinged` branches to `buildDetailLine`. Make them increasingly savage:
+
+**brutal swing:** "{played}?? Really?? {best} was RIGHT THERE."
+**unhinged swing:** "{played}. You played {played}. With {best} on the board. I'm speechless. Actually no I'm not — that was fucking awful."
+
+### 6. Update lookbook
+
+Add a 4-position selector in the lookbook harsh section showing standard → harsh → brutal → unhinged.
+Show representative panels at each level.
+
+### 7. Update retroConfig
+
+Change the `feedbackTone` type validation to accept all 4 values.
+
+## Files To Modify
+
+1. `src/feedback/severity.ts` — expand FeedbackTone, add all text variants
+2. `src/analyse/retroConfig.ts` — update validation for new tone values
+3. `scripts/generate-feedback-lookbook.mjs` — update harsh mode section with 4 levels
+
+## Validation
+
+- TypeScript compiles clean
+- All 4 tones have complete coverage across all matrices
+- `LFYM_MESSAGES` has all 4 tone keys with 17 messages each
+- `buildDetailLine` handles all 4 tones
+- Mistake count tiers have all 4 tone variants
+- Lookbook shows panels at all 4 levels
+- Build succeeds
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-762
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-762 --checklist "- [ ] FeedbackTone expanded to 4 levels|- [ ] ALL_FEEDBACK has brutal+unhinged matrices|- [ ] LFYM_MESSAGES has all 4 tones x 17 keys|- [ ] buildDetailLine handles 4 tones|- [ ] MistakeCountFeedback has 4 tone variants|- [ ] retroConfig validates 4 tone values|- [ ] Lookbook shows 4-level selector|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-762 --errors "brief description" --checklist "- [ ] FeedbackTone expanded to 4 levels|- [ ] ALL_FEEDBACK has brutal+unhinged matrices|- [ ] LFYM_MESSAGES has all 4 tones x 17 keys|- [ ] buildDetailLine handles 4 tones|- [ ] MistakeCountFeedback has 4 tone variants|- [ ] retroConfig validates 4 tone values|- [ ] Lookbook shows 4-level selector|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+```
+
+## CCP-763 - Wire harsh level selector into LFYM
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-763: Wire Harsh Level Selector into LFYM
+
+## Summary
+
+Replace the boolean harsh toggle in the Mistake Detection modal with a 4-position
+selector (Standard / Harsh / Brutal / Unhinged) that writes to `retroConfig.feedbackTone`.
+
+## Prerequisites
+
+CCP-764 (move toggle to settings) and CCP-762 (escalating text) must be complete.
+
+## Requirements
+
+1. In `src/header/index.ts`, replace the "Harsh Mode" toggle row with a segmented
+   button group or a range slider with 4 positions labeled:
+   - 0: Standard
+   - 1: Harsh
+   - 2: Brutal  
+   - 3: Unhinged
+   
+   Use the existing `.detection-modal__row` pattern. The selector should show the
+   current level name and a brief description that changes per level:
+   - Standard: "Professional and encouraging"
+   - Harsh: "Direct and blunt"
+   - Brutal: "Genuinely mean"
+   - Unhinged: "Absolutely savage"
+
+2. The selector writes to `retroConfig.feedbackTone` via `setRetroConfig()` and calls `redraw()`
+
+3. Style the selector labels with escalating warmth — standard is neutral grey, harsh
+   is orange-ish, brutal is red-ish, unhinged is dark crimson
+
+4. In `retroView.ts`, all existing `retroConfig.feedbackTone` reads already work
+   since FeedbackTone was expanded in CCP-762. No changes needed there unless the
+   compile reveals issues.
+
+## Files To Modify
+
+1. `src/header/index.ts` — replace toggle with 4-position selector
+2. `src/styles/main.scss` — add selector styling if needed
+
+## Validation
+
+- Settings modal shows a 4-level feedback tone selector
+- Selecting each level updates retroConfig.feedbackTone
+- LFYM panel text changes immediately when level is changed
+- Level persists across page reloads
+- TypeScript compiles clean, build succeeds
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-763
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-763 --checklist "- [ ] 4-position selector in Mistake Detection modal|- [ ] Each level writes correct FeedbackTone value|- [ ] Selector shows level name and description|- [ ] Escalating color styling on labels|- [ ] LFYM text changes on selection|- [ ] Persists across reloads|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-763 --errors "brief description" --checklist "- [ ] 4-position selector in Mistake Detection modal|- [ ] Each level writes correct FeedbackTone value|- [ ] Selector shows level name and description|- [ ] Escalating color styling on labels|- [ ] LFYM text changes on selection|- [ ] Persists across reloads|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+```
+
+## CCP-764 - Move harsh toggle to settings menu
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-764: Move Harsh Toggle to Settings Menu
+
+## Summary
+
+Remove the tone toggle from the LFYM panel title bar and move it to the Mistake
+Detection settings modal, under a "Feedback Tone" heading at the top of the config body.
+
+## Requirements
+
+1. Remove the `label.retro-tone-toggle` element from `retroView.ts` title bar rendering
+2. Add a "Feedback Tone" toggle row at the top of `renderRetroConfigBody()` in
+   `src/header/index.ts`, using the existing `.settings-toggle` or `.detection-modal__row`
+   pattern. Label: "Harsh Mode". Description: "Switches all LFYM feedback text to a
+   more direct tone."
+3. The toggle reads/writes `retroConfig.feedbackTone` via `setRetroConfig()`
+4. Remove the `.retro-tone-toggle` CSS from `main.scss` (no longer needed)
+
+## Files To Modify
+
+1. `src/analyse/retroView.ts` — remove toggle from title bar
+2. `src/header/index.ts` — add toggle to renderRetroConfigBody
+3. `src/styles/main.scss` — remove `.retro-tone-toggle` CSS
+
+## Lifecycle
+
+Before making any changes, mark this prompt as started:
+```sh
+npm run prompt:start -- CCP-764
+```
+
+After all work is complete, mark it as done:
+```sh
+npm run prompt:complete -- CCP-764 --checklist "- [ ] Toggle removed from LFYM title bar|- [ ] Toggle added to Mistake Detection modal|- [ ] Reads/writes retroConfig.feedbackTone|- [ ] Old CSS removed|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-764 --errors "brief description" --checklist "- [ ] Toggle removed from LFYM title bar|- [ ] Toggle added to Mistake Detection modal|- [ ] Reads/writes retroConfig.feedbackTone|- [ ] Old CSS removed|- [ ] TypeScript compiles clean|- [ ] Build succeeds"
+```
+```
+
+## CCP-765 - Harsh tone escalation manager
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-765: Harsh Tone Escalation Manager
+
+## Summary
+
+Execute the harsh tone escalation prompts in exact order.
+
+## Child Prompt Order
+
+1. `CCP-764` — Move harsh toggle from LFYM title bar to Mistake Detection settings modal
+2. `CCP-762` — Expand FeedbackTone to 4 levels (standard/harsh/brutal/unhinged) with complete text variants for all user-facing strings
+3. `CCP-763` — Replace boolean toggle with 4-position selector in Mistake Detection modal
+
+Before executing each child:
+- read that child prompt body file fully
+- run that child prompt's lifecycle commands
+
+## Execution Rules
+
+- execute children in the exact listed order
+- do not reorder children
+- do not skip ahead
+- stop immediately if a child fails or completes with unresolved errors
+- do not claim manager success if a required child did not complete cleanly
+- CCP-762 depends on CCP-764 (toggle must be in settings before expanding it)
+- CCP-763 depends on CCP-762 (4 tone values must exist before building the selector)
+
+## Final Report
+
+Report:
+- manager prompt id
+- ordered child prompt list
+- result for each child:
+  - completed cleanly
+  - completed with errors
+  - not run
+- exact stopping point if execution halted early
+- any unresolved issues or follow-up prompts created
+
+## Validation
+
+- CCP-764 executed — toggle moved to settings modal
+- CCP-762 executed — 4 tone levels with complete text coverage
+- CCP-763 executed — 4-position selector in settings modal
+- children were run in the documented order
+- final report states child-by-child outcomes accurately
+
+## Lifecycle
+
+Before executing any child prompts, mark this manager as started:
+```sh
+npm run prompt:start -- CCP-765
+```
+
+After all child prompts are complete, mark the manager as done:
+```sh
+npm run prompt:complete -- CCP-765 --checklist "- [ ] CCP-764 completed — toggle in settings modal|- [ ] CCP-762 completed — 4 tone levels with all text|- [ ] CCP-763 completed — 4-position selector wired|- [ ] Children run in documented order|- [ ] Final report lists child-by-child outcomes"
+```
+
+If one or more child prompts failed, stopped early, or completed with unresolved issues, use:
+```sh
+npm run prompt:complete -- CCP-765 --errors "brief description of which child failed or stopped and why" --checklist "- [ ] Executed child prompts in the documented order|- [ ] Final report states which child failed or stopped|- [ ] Remaining child prompt status is reported accurately"
+```
+```
+
+## CCP-773 - Review All Current Completed Unreviewed Prompts Batch 2
+
+```
+Read and follow:
+- `/Users/leftcoast/Development/PatzerPatzer/CLAUDE.md`
+- `/Users/leftcoast/Development/PatzerPatzer/AGENTS.md`
+
+# CCP-773 — Review All Current Completed Unreviewed Prompts Batch 2
+
+## Summary
+
+Review the six subgroup manager prompts in exact order. This top-level manager is review-only:
+- do not execute implementation work again
+- do not create follow-up prompts unless a child review proves one is needed under the review workflow
+- review subgroup manager prompts in the exact order listed below
+- each subgroup manager must review its own children before this top-level manager is reviewed
+- close out each subgroup manager first
+- only after all subgroup managers are complete, review and close this manager
+
+## Child Prompt Order
+
+1. `CCP-766` — Review LFYM Hotfix Cluster
+2. `CCP-767` — Review Study Sprint Follow-Up Cluster
+3. `CCP-769` — Review LFYM/Openings Follow-Up Cluster
+4. `CCP-768` — Review LFYM Navigation/Orientation Cluster
+5. `CCP-771` — Review Feedback/Lookbook Cluster
+6. `CCP-772` — Review Harsh Tone Cluster
+
+Before reviewing each child:
+- read the subgroup manager body fully
+- confirm its child prompt order before letting it run
+- compare the subgroup scope against the current registry truth
+- record findings before summary if the subgroup manager is still wrong
+- use `npm run prompt:review -- ... --reviewed-by Codex --review-method manager-plus-children` for the subgroup manager itself, after its own children are reviewed
+
+## Execution Rules
+
+- review the subgroup managers in exact order
+- do not reorder or skip ahead
+- do not mark this manager reviewed while any child above remains unreviewed
+- if a subgroup manager still has live issues, record them honestly and keep the manager blocked until its child reviews are complete
+- if a subgroup review requires a follow-up fix prompt, create it only after the review establishes the need
+
+## Final Report
+
+Report:
+- manager prompt id
+- ordered child prompt list
+- result for each child:
+  - completed cleanly
+  - completed with errors
+  - not run
+- exact stopping point if review halted early
+- any unresolved issues or follow-up prompts created
+
+## Validation
+
+- every subgroup manager listed above is no longer in `queued-run` / unreviewed state after the batch review
+- every subgroup manager review uses explicit provenance fields:
+  - `reviewedBy`
+  - `reviewMethod`
+- this manager is reviewed only after all subgroup managers are reviewed
+- `npm run prompts:refresh` completes after the batch review
+
+## Lifecycle
+
+Before reviewing any subgroup managers, mark this manager as started:
+```sh
+npm run prompt:start -- CCP-773
+```
+
+After all subgroup managers are reviewed, mark the manager as done:
+```sh
+npm run prompt:complete -- CCP-773 --checklist "- [ ] All 6 subgroup managers were reviewed in order|- [ ] Every subgroup manager review recorded reviewedBy and reviewMethod|- [ ] CCP-773 was reviewed only after all subgroup managers were reviewed|- [ ] npm run prompts:refresh completed after the batch review"
+```
+
+If errors or issues were encountered during execution, use `--errors` instead:
+```sh
+npm run prompt:complete -- CCP-773 --errors "One or more subgroup manager reviews could not be completed or the manager could not be honestly closed" --checklist "- [ ] All reachable subgroup managers were reviewed in order|- [ ] Any blocked subgroup manager review was recorded honestly|- [ ] CCP-773 remained open or issues-found if subgroup review state was incomplete|- [ ] npm run prompts:refresh completed after the partial batch review"
 ```
 ```

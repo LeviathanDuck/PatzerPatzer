@@ -14,7 +14,7 @@ import { parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 import { createDrillBoardAdapter, type DrillBoardAdapter } from './boardAdapter';
 import { createDrillSession, type DrillSession, type DrillMode } from './drillCtrl';
-import { scheduleNext, positionKey } from './scheduler';
+import { scheduleNext, positionKey, isDue } from './scheduler';
 import { getPositionProgress, savePositionProgress, saveDrillAttempt } from '../studyDb';
 import type { TrainableSequence, PositionProgress, DrillAttempt } from '../types';
 
@@ -265,7 +265,33 @@ async function persistGrading(
     sequenceIds:     [],
   };
 
-  const { newLevel, nextDueAt } = scheduleNext(prev.level, correct, now);
+  // Warmup check: if this position is not yet due, grade differently.
+  // Due position: normal grading (advance or drop level).
+  // Warmup correct: no-op (do not update progress — position is context, not scheduled review).
+  // Warmup incorrect: reset to level 1 (creates a new review obligation).
+  const due = isDue(prev, now);
+  if (!due && correct) {
+    // Warmup correct — record sequenceId link but do not change level or scheduling.
+    if (existing && !existing.sequenceIds.includes(seqId)) {
+      await savePositionProgress({
+        ...existing,
+        sequenceIds: [...existing.sequenceIds, seqId],
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  let newLevel: number;
+  let nextDueAt: number;
+  if (!due && !correct) {
+    // Warmup incorrect — reset to level 1 and schedule for review tomorrow.
+    newLevel  = 1;
+    nextDueAt = now + (await import('./scheduler')).INTERVALS_MS[1]!;
+  } else {
+    // Normal grading (due position).
+    ({ newLevel, nextDueAt } = scheduleNext(prev.level, correct, now));
+  }
+
   const updated: PositionProgress = {
     ...prev,
     level:         newLevel,
@@ -356,12 +382,51 @@ function onUserMove(orig: Key, dest: Key): void {
 
 // --- VNode rendering ---
 
+let _drillKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+
 export function renderDrillView(redraw: () => void): VNode {
   if (_showSummary || !_session || _session.isDone || _session.feedback === 'complete') {
     if (_session?.isDone || _session?.feedback === 'complete') captureSummary();
     return renderDrillSummary(redraw);
   }
-  return h('div.drill-session', [
+  return h('div.drill-session', {
+    hook: {
+      insert: () => {
+        _drillKeyHandler = (e: KeyboardEvent) => {
+          const tag = (e.target as HTMLElement)?.tagName;
+          if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+          if (e.key === 'Enter' || e.key === ' ') {
+            const fb = _session?.feedback;
+            if (fb === 'correct' || fb === 'showAnswer' || fb === 'complete') {
+              e.preventDefault();
+              if (!_session) return;
+              _session = _session.advance();
+              redraw();
+              syncDrillBoard();
+            }
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            captureSummary();
+            endDrill();
+            redraw();
+          } else if (
+            e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+            e.key === 'ArrowUp'   || e.key === 'ArrowDown'
+          ) {
+            e.preventDefault();
+          }
+        };
+        document.addEventListener('keydown', _drillKeyHandler);
+      },
+      destroy: () => {
+        if (_drillKeyHandler) {
+          document.removeEventListener('keydown', _drillKeyHandler);
+          _drillKeyHandler = null;
+        }
+      },
+    },
+  }, [
     renderDrillBoard(),
     renderDrillSidebar(redraw),
   ]);

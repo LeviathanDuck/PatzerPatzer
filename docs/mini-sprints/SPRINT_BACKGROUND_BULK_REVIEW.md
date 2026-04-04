@@ -77,12 +77,14 @@ doesn't match `selectedGameId`. There is no guard for "bulk review is active."
 
 ---
 
-## Sprint 0 — Make `StockfishProtocol` configurable
+## Phase 0 — Make `StockfishProtocol` configurable
 
 **Goal**: Allow the background engine to initialize with different thread/hash settings
 than the live engine.
 
 **Files: `src/ceval/protocol.ts` only**
+
+- CCP-120 — Configurable StockfishProtocol Engine Options
 
 Currently `received()` hardcodes `Threads = cores - 1` and `Hash = 256`. These need to
 be overridable so the background engine can run at `Threads=1, Hash=32`.
@@ -114,12 +116,15 @@ with no arguments — **no behavior change for live analysis**.
 
 ---
 
-## Sprint 1 — Isolated background review queue with its own engine
+## Phase 1 — Isolated background review queue with its own engine
 
 **Goal**: Each queued game has its own `AnalyseCtrl` built at enqueue time. The background
 queue has its own `StockfishProtocol` instance, completely independent of live analysis.
 
 **Files: `src/engine/reviewQueue.ts` (new), `src/engine/batch.ts`**
+
+- CCP-121 — Background Review Engine Module Skeleton
+- CCP-122 — Per-Game Analysis Loop in `reviewQueue.ts`
 
 ### `reviewQueue.ts` — new module
 
@@ -177,11 +182,13 @@ in one module rather than distributing it across batch.ts.
 
 ---
 
-## Sprint 2 — Route-change resilience
+## Phase 2 — Route-change resilience
 
 **Goal**: Navigating anywhere in the app does not interrupt or destroy the queue.
 
 **Files: `src/main.ts` (2 targeted changes)**
+
+- CCP-123 — Route-change resilience in `main.ts`
 
 ### Change 1: Guard `loadGame()`
 
@@ -225,11 +232,13 @@ any queue state — it only calls `enqueueBulkReview(games)` and reads `isBulkRu
 
 ---
 
-## Sprint 3 — Per-game progress display in the games list
+## Phase 3 — Per-game progress display in the games list
 
 **Goal**: Games being analyzed show a live progress percentage on their row.
 
 **Files: `src/games/view.ts`, `src/styles/main.scss`**
+
+- CCP-124 — Per-game progress display in games list
 
 ### Progress badge on game rows
 
@@ -284,11 +293,13 @@ sees `!isBulkRunning()` and omits the element).
 
 ---
 
-## Sprint 4 — Bulk Review settings submenu in the header
+## Phase 4 — Bulk Review settings submenu in the header
 
 **Goal**: Dedicated submenu in the main nav for bulk review settings and queue controls.
 
 **Files: `src/header/index.ts`, `src/styles/main.scss`**
+
+- CCP-125 — Bulk review settings submenu in header
 
 ### New nav entry with live badge
 

@@ -5,20 +5,24 @@ Status: partially implemented (audited 2026-03-30)
 Source audit: [docs/research/OPPONENT_RESEARCH_AUDIT.md](/Users/leftcoast/Development/PatzerPatzer/docs/research/OPPONENT_RESEARCH_AUDIT.md)
 Scope: Rename "Openings" to "Opponents", add scouting features (deviation detection, termination profile, sparklines, recommendations, traps, ORP variation save), strengthen data honesty
 
-### Phase Status (as of 2026-03-30)
+### Phase Snapshot (as of 2026-03-30)
 
-| Phase | Status | Notes |
-|---|---|---|
-| Phase 0 — Rename to Opponents | **Done** | Route, nav, and user-facing text updated |
-| Phase 1 — Rating Sparkline | **Done** | Typecheck issues fixed (CCP-458) |
-| Phase 2 — Termination Profile | **Done** | Analytics + display. Typecheck fixed (CCP-460) |
-| Phase 3 — Deviation Detection | **Done** | Engine, summary panel, and move-row markers (CCP-468) |
-| Phase 4 — Recommendations | **Not started** | |
-| Phase 5 — Traps | **Code only** | `openings/traps.ts` detection logic exists, no UI |
-| Phase 6 — Sample Size Warnings | **Not started** | |
-| Phase 7 — Recency-Weighted Default | **Not started** | |
-| Phase 8 — Save to ORP | **Not started** | ORP drill system deferred |
-| Phase 9 — Research Tasks | **Not started** | |
+- Phase 0 — Rename to Opponents: **Done**
+  Route, nav, and user-facing text updated
+- Phase 1 — Rating Sparkline: **Done**
+  Typecheck issues fixed (CCP-458)
+- Phase 2 — Termination Profile: **Done**
+  Analytics + display. Typecheck fixed (CCP-460)
+- Phase 3 — Deviation Detection: **Done**
+  Engine, summary panel, and move-row markers (CCP-468)
+- Phase 4 — Recommendations: **Not started**
+- Phase 5 — Traps: **Code only**
+  `openings/traps.ts` detection logic exists, no UI
+- Phase 6 — Sample Size Warnings: **Not started**
+- Phase 7 — Recency-Weighted Default: **Not started**
+- Phase 8 — Save to ORP: **Not started**
+  ORP drill system deferred
+- Phase 9 — Research Tasks: **Not started**
 
 ---
 
@@ -34,12 +38,14 @@ Transform the current "Openings" page into a full "Opponents" research platform.
 
 This sprint is the **new source of truth** for opponent research work.
 
-| CCP-323 Phase | Status | This Sprint |
-|---|---|---|
-| Phases 1-4: Tool rail, analytics, repertoire, prep report foundations | Done | Reused as infrastructure |
-| Phase 5: Prep Report interactive modules | Partial | **Absorbed** — Phases 4, 5, 6, 7 of this sprint cover remaining work |
-| Phase 6: Style dashboard | Not started | **Not in this sprint** — remains in CCP-323 |
-| Phase 7: Practice Against Them | Not started | **Not in this sprint** — remains in CCP-323 |
+- CCP-323 phases 1-4: **Done**
+  Reused as infrastructure
+- CCP-323 phase 5: **Partial**
+  Absorbed here. Phases 4, 5, 6, and 7 of this sprint cover the remaining work.
+- CCP-323 phase 6: **Not started**
+  Not in this sprint. Remains in CCP-323.
+- CCP-323 phase 7: **Not started**
+  Not in this sprint. Remains in CCP-323.
 
 CCP-323 Phases 6-7 can proceed independently after this sprint.
 

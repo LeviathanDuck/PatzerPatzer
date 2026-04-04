@@ -26,6 +26,33 @@ import type { RetroCandidate } from './retro';
 import { evalWinChances } from '../engine/winchances';
 
 /**
+ * Snapshot of evals captured at the moment the user plays a move during solving.
+ * Used to compute and display dual eval diff boxes (vs engine best, vs game move).
+ * All cp values are WHITE-perspective (positive = white winning), matching evalCache.
+ */
+export interface SolvingMoveSnapshot {
+  solvingMoveUci:  string;
+  solvingMoveCp:   number | undefined;
+  solvingMoveMate: number | undefined;
+  engineBestUci:   string;
+  engineBestCp:    number | undefined;
+  engineBestMate:  number | undefined;
+  gameMoveUci:     string;
+  gameMoveCp:      number | undefined;
+  gameMoveMate:    number | undefined;
+  playerColor:     'white' | 'black';
+  // Paths for live evalCache lookup in renderDualEvalBoxes.
+  // cp fields above are frozen at move time; these allow the view to re-read
+  // cache on each render after evalFenSilent() populates asynchronously.
+  parentPath:      string;
+  solvingPath:     string;
+  // True when the user played the engine's exact best move.
+  // When set, renderDualEvalBoxes short-circuits directly to ✓ for both boxes,
+  // bypassing diff computation entirely (avoids depth-horizon false positives).
+  isExactBest:     boolean;
+}
+
+/**
  * Mirrors Lichess Feedback union type from retroCtrl.ts.
  * 'find'     — waiting for the user to find the best move
  * 'eval'     — ceval running to judge the played move
@@ -96,6 +123,21 @@ export interface RetroCtrl {
    * The flag resets automatically in jumpToNext() — no manual reset needed.
    */
   revealGuidance(): void;
+
+  /**
+   * Suppress engine guidance for the current candidate.
+   * Called when the header ceval toggle is turned OFF during LFYM so that
+   * arrows are suppressed again even if guidance was previously revealed.
+   */
+  hideGuidance(): void;
+
+  /**
+   * Reset the current puzzle back to its start state for a retry attempt.
+   * Sets feedback to 'find', clears solving-move snapshot and win/fail classification.
+   * Does NOT advance to the next candidate — the user stays on the same puzzle.
+   * Does NOT reset guidance reveal or engine state.
+   */
+  resetForRetry(): void;
 
   /** True if the given ply has already been solved or skipped this session. */
   isPlySolved(ply: number): boolean;
@@ -191,6 +233,51 @@ export interface RetroCtrl {
 
   /** Color filter active for this session, or null for both colors. */
   readonly userColor: 'white' | 'black' | null;
+
+  // --- Live engine tracking ---
+
+  /**
+   * The engine's current best move UCI for the active candidate position.
+   * Starts as the batch best move; updated by onEngineUpdate() as depth increases.
+   */
+  liveBestMove(): string | undefined;
+
+  /**
+   * The eval backing the current live best move.
+   * undefined until the first onEngineUpdate() call for this candidate.
+   */
+  liveBestEval(): { cp?: number; mate?: number; depth: number } | undefined;
+
+  /**
+   * Called by main.ts whenever the live engine reports a new best move for the
+   * active candidate position. Ignored if depth is not higher than current.
+   * Fires the vindication callback if the engine's best move matches the game move.
+   */
+  onEngineUpdate(best: string, eval_: { cp?: number; mate?: number; depth: number }): void;
+
+  /**
+   * Register a callback fired once when the live engine determines the game move
+   * was actually the best move available. Cleared on candidate transition.
+   */
+  onVindication(cb: () => void): void;
+
+  /** True once the engine has determined the game move was actually best. */
+  isVindicated(): boolean;
+
+  // --- Solving move snapshot ---
+
+  /**
+   * Store a snapshot of the evals at the moment the user plays a move during solving.
+   * Consumed by retroView to render dual eval diff boxes.
+   * Cleared on candidate transition.
+   */
+  setSolvingMoveSnapshot(snapshot: SolvingMoveSnapshot): void;
+
+  /**
+   * Returns the snapshot from the most recently played solving move, or undefined
+   * if no move has been played for the current candidate yet.
+   */
+  getSolvingMoveSnapshot(): SolvingMoveSnapshot | undefined;
 }
 
 /**
@@ -239,6 +326,40 @@ export function makeRetroCtrl(
   let _winKind:  WinKind  | null = null;
   let _failKind: FailKind | null = null;
 
+  // Live engine best move tracking — updated by onEngineUpdate().
+  let _liveBestMove: string | undefined                                   = undefined;
+  let _liveBestDepth: number                                              = 0;
+  let _liveBestEval: { cp?: number; mate?: number; depth: number } | undefined = undefined;
+  let _vindicationCb: (() => void) | undefined                           = undefined;
+  let _vindicated: boolean                                                = false;
+
+  // Snapshot of evals at the moment the user plays a move during solving.
+  let _solvingMoveSnapshot: SolvingMoveSnapshot | undefined              = undefined;
+
+  function mergeLiveEvalIntoSolvingSnapshot(
+    candidate: RetroCandidate,
+    liveEval: { cp?: number; mate?: number },
+  ): void {
+    const parentEval = getEval(candidate.parentPath);
+    const gameEval = getEval(candidate.path);
+    const prev = _solvingMoveSnapshot;
+    _solvingMoveSnapshot = {
+      solvingMoveUci: prev?.solvingMoveUci ?? '',
+      solvingMoveCp: liveEval.cp,
+      solvingMoveMate: liveEval.mate,
+      engineBestUci: prev?.engineBestUci ?? _liveBestMove ?? candidate.bestMove,
+      engineBestCp: prev?.engineBestCp ?? parentEval?.cp,
+      engineBestMate: prev?.engineBestMate ?? parentEval?.mate,
+      gameMoveUci: prev?.gameMoveUci ?? candidate.playedMove,
+      gameMoveCp: prev?.gameMoveCp ?? gameEval?.cp,
+      gameMoveMate: prev?.gameMoveMate ?? gameEval?.mate,
+      playerColor: prev?.playerColor ?? candidate.playerColor,
+      parentPath: prev?.parentPath ?? candidate.parentPath,
+      solvingPath: prev?.solvingPath ?? '',
+      isExactBest: prev?.isExactBest ?? false,
+    };
+  }
+
   const isPlySolved = (ply: number): boolean => solvedPlies.includes(ply);
 
   // Fire the optional persistence callback after any outcome is recorded.
@@ -264,7 +385,15 @@ export function makeRetroCtrl(
     _guidanceRevealed = false;
     _winKind  = null;
     _failKind = null;
+    _vindicated         = false;
+    _vindicationCb      = undefined;
+    _solvingMoveSnapshot = undefined;
     currentIdx = findNextIdx();
+    // Seed live best from batch so liveBestMove() is never undefined for a valid candidate.
+    const c = currentIdx >= 0 ? candidates[currentIdx] : undefined;
+    _liveBestMove  = c?.bestMove;
+    _liveBestDepth = 0;
+    _liveBestEval  = undefined;
   }
 
   function skip(): void {
@@ -305,6 +434,13 @@ export function makeRetroCtrl(
     isSolving(): boolean { return _feedback === 'find' || _feedback === 'fail'; },
     guidanceRevealed(): boolean { return _guidanceRevealed; },
     revealGuidance(): void { _guidanceRevealed = true; },
+    hideGuidance(): void { _guidanceRevealed = false; },
+    resetForRetry(): void {
+      _feedback = 'find';
+      _winKind  = null;
+      _failKind = null;
+      _solvingMoveSnapshot = undefined;
+    },
     isPlySolved,
 
     jumpToNext,
@@ -355,6 +491,10 @@ export function makeRetroCtrl(
       if (!c) return;
       const ev = getNodeEval();
       if (!ev) return;
+      // Keep the dual eval-box snapshot aligned with the same live ceval that
+      // is about to judge the move. This avoids relying on a later evalCache
+      // promotion that may be skipped once LFYM navigates away from the played node.
+      mergeLiveEvalIntoSolvingSnapshot(c, ev);
       // Ceval readiness — mirrors lichess-org/lila: retroCtrl.ts isCevalReady:
       //   node.ceval.depth >= 18 || (node.ceval.depth >= 14 && millis > 6000)
       // Patzer tracks depth only (no millis); require depth >= 14 as the minimum gate.
@@ -391,7 +531,7 @@ export function makeRetroCtrl(
           }
           if (c) outcomes.set(c.ply, 'fail');
           _feedback = 'fail';
-          navigateTo(c.parentPath); // return user to exercise start for retry
+          // Board holds at the wrong-move position; user resets via "Try another move".
           notifyPersist();
         }
       } else {
@@ -399,7 +539,7 @@ export function makeRetroCtrl(
         if (c) outcomes.set(c.ply, 'fail');
         _failKind = null;
         _feedback = 'fail';
-        navigateTo(c.parentPath);
+        // Board holds at the wrong-move position; user resets via "Try another move".
         notifyPersist();
       }
     },
@@ -451,6 +591,49 @@ export function makeRetroCtrl(
 
     getOutcome(ply: number): RetroOutcome | undefined {
       return outcomes.get(ply);
+    },
+
+    // --- Live engine tracking ---
+
+    liveBestMove(): string | undefined {
+      return _liveBestMove;
+    },
+
+    liveBestEval(): { cp?: number; mate?: number; depth: number } | undefined {
+      return _liveBestEval;
+    },
+
+    onEngineUpdate(best: string, eval_: { cp?: number; mate?: number; depth: number }): void {
+      if (eval_.depth <= _liveBestDepth) return;
+      _liveBestMove  = best;
+      _liveBestDepth = eval_.depth;
+      _liveBestEval  = eval_;
+      // Vindication: engine now considers the original game move to be best.
+      const c = currentIdx >= 0 ? (candidates[currentIdx] ?? null) : null;
+      if (c && !_vindicated && best === c.playedMove) {
+        _vindicated = true;
+        _vindicationCb?.();
+      }
+    },
+
+    onVindication(cb: () => void): void {
+      _vindicationCb = cb;
+      // If already vindicated before the callback was registered, fire immediately.
+      if (_vindicated) cb();
+    },
+
+    isVindicated(): boolean {
+      return _vindicated;
+    },
+
+    // --- Solving move snapshot ---
+
+    setSolvingMoveSnapshot(snapshot: SolvingMoveSnapshot): void {
+      _solvingMoveSnapshot = snapshot;
+    },
+
+    getSolvingMoveSnapshot(): SolvingMoveSnapshot | undefined {
+      return _solvingMoveSnapshot;
     },
   };
 }

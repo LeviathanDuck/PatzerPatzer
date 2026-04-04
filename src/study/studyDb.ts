@@ -1,9 +1,9 @@
-// Study Library IDB persistence — CRUD for studies, practice-lines, position-progress, drill-attempts.
+// Study Library IDB persistence — CRUD for studies, practice-lines, position-progress, drill-attempts, folders.
 // Uses the shared 'patzer-pro' database opened by src/idb/index.ts.
 // Adapted from lichess-org/lila: ui/analyse/src/idbTree.ts cursor patterns.
 
 import { DB_NAME, DB_VERSION } from '../idb/index';
-import type { StudyItem, TrainableSequence, PositionProgress, DrillAttempt } from './types';
+import type { StudyItem, TrainableSequence, PositionProgress, DrillAttempt, StudyFolder } from './types';
 
 // Re-use the shared IDB connection so version negotiation happens once.
 // We open it ourselves here so study code doesn't pull in unrelated idb exports.
@@ -39,6 +39,12 @@ function openDb(): Promise<IDBDatabase> {
         const attemptsStore = db.createObjectStore('drill-attempts', { autoIncrement: true });
         attemptsStore.createIndex('positionKey', 'positionKey', { unique: false });
         attemptsStore.createIndex('timestamp',   'timestamp',   { unique: false });
+      }
+      // v9: study folder hierarchy store
+      if (!db.objectStoreNames.contains('folders')) {
+        const foldersStore = db.createObjectStore('folders', { keyPath: 'id' });
+        foldersStore.createIndex('parentId',  'parentId',  { unique: false });
+        foldersStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };
@@ -82,6 +88,47 @@ export async function listStudies(): Promise<StudyItem[]> {
     });
   } catch (e) {
     console.warn('[studyDb] listStudies failed', e);
+    return [];
+  }
+}
+
+/**
+ * Load a page of studies using an IDB cursor over the given index.
+ * Skips the first `offset` records, then collects up to `limit`.
+ * Replaces full getAll() for the library view — satisfies CR-2 / CR-3.
+ * Adapted from lichess-org/lila: ui/analyse/src/idbTree.ts cursor patterns.
+ */
+export async function getStudiesPaginated(
+  sortIndex: 'createdAt' | 'updatedAt',
+  direction: IDBCursorDirection,
+  offset: number,
+  limit: number,
+): Promise<StudyItem[]> {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const index = db.transaction('studies', 'readonly')
+        .objectStore('studies').index(sortIndex);
+      const req = index.openCursor(null, direction);
+      const results: StudyItem[] = [];
+      let skipped = 0;
+
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) { resolve(results); return; }
+        if (skipped < offset) {
+          skipped++;
+          cursor.continue();
+          return;
+        }
+        results.push(cursor.value as StudyItem);
+        if (results.length >= limit) { resolve(results); return; }
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[studyDb] getStudiesPaginated failed', e);
     return [];
   }
 }
@@ -244,5 +291,59 @@ export async function listDrillAttempts(positionKey?: string): Promise<DrillAtte
   } catch (e) {
     console.warn('[studyDb] listDrillAttempts failed', e);
     return [];
+  }
+}
+
+// --- Folders ---
+
+/**
+ * Persist a folder record (create or update).
+ * Keyed by id. Adapted from lichess-org/lila: ui/study/src/studyChapters.ts group-save pattern.
+ */
+export async function saveFolder(folder: StudyFolder): Promise<void> {
+  try {
+    const db = await openDb();
+    const tx = db.transaction('folders', 'readwrite');
+    tx.objectStore('folders').put(folder);
+  } catch (e) {
+    console.warn('[studyDb] saveFolder failed', e);
+  }
+}
+
+export async function getFolder(id: string): Promise<StudyFolder | undefined> {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('folders', 'readonly').objectStore('folders').get(id);
+      req.onsuccess = () => resolve(req.result as StudyFolder | undefined);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[studyDb] getFolder failed', e);
+    return undefined;
+  }
+}
+
+export async function listFolders(): Promise<StudyFolder[]> {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('folders', 'readonly').objectStore('folders').getAll();
+      req.onsuccess = () => resolve((req.result as StudyFolder[] | undefined) ?? []);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[studyDb] listFolders failed', e);
+    return [];
+  }
+}
+
+export async function deleteFolder(id: string): Promise<void> {
+  try {
+    const db = await openDb();
+    const tx = db.transaction('folders', 'readwrite');
+    tx.objectStore('folders').delete(id);
+  } catch (e) {
+    console.warn('[studyDb] deleteFolder failed', e);
   }
 }

@@ -84,6 +84,36 @@ docs, prompts, comments, and plans:
 Do not use third-party product names or third-party feature names as in-repo shorthand for this
 feature. We are building something distinct, and unique. Not a copy cat
 
+## Decision Lock Rule
+
+Before implementing behavior changes, UI changes, or new features, agents must produce an **Implementation Decision Summary**. 
+
+The summary must include:
+- feature description
+- scope (UI / behavior / architecture)
+- Lichess parity vs intentional deviation
+- affected subsystem
+- expected files
+- behavior changes
+- edge cases
+- acceptance criteria
+
+Agents must:
+- ask clarification questions if any item is unclear
+- not invent missing decisions
+- confirm decisions with the user before implementation
+
+This rule applies to:
+- feature implementation
+- UI changes
+- behavioral changes
+- architectural changes
+
+This rule does **not apply to**:
+- docs-only edits
+- prompt-only work
+- audits with no code changes
+
 ## Mandatory workflow for non-trivial implementation tasks
 
 For every non-trivial task, always do this in order:
@@ -95,14 +125,30 @@ For every non-trivial task, always do this in order:
    - how Patzer Pro currently works
    - how Lichess works
    - where they differ
-   - Detect if the difference is internal based off prompt language
-   - If necessary ask the user if the difference is intentional
+   - detect whether the requested implementation would materially diverge from Lichess behavior,
+     flow, terminology, or subsystem shape
+   - if that divergence is not already explicitly requested by the user, stop and ask whether the
+     divergence is intentional before coding
 5. Identify the smallest safe implementation step
 6. Explain diagnosis before coding
 7. Implement
 8. Validate with build + task-specific checks
 
 Never skip steps 1–4 for behavior or architecture work touching core chess features.
+
+Material divergence means differences such as:
+- behavior flow
+- engine/review interaction
+- move-tree behavior
+- puzzle/review logic
+- board interaction model
+- major UI workflow differences
+- architecture or subsystem ownership choices that depart from the Lichess reference
+
+Do not interrupt for tiny or clearly local differences such as:
+- copy changes
+- spacing or purely cosmetic styling
+- clearly Patzer-specific features that have no Lichess analog
 
 ## Review workflow
 
@@ -159,11 +205,20 @@ The checklist must contain concrete manual verification steps matching what was 
 ## Prompt command output rule
 
 Lifecycle commands must NEVER have their output truncated:
-- never pipe `prompt:reserve`, `prompt:start`, `prompt:complete`, `prompt:create`,
+- never pipe `prompt:reserve`, `prompt:start`, `prompt:skip`, `prompt:complete`, `prompt:create`,
   `prompt:release`, or `prompt:review` through `head`, `tail`, or any output limiter
 - always let the full output run so the allocated ID and refresh results are visible
 - if a reserve command output was truncated and the ID is unknown, run
   `npm run prompt:reservations` to find it before proceeding — do not re-run the reserve
+
+Why this is critical: every lifecycle command ends by running `npm run prompts:refresh` as a
+subprocess. Piping through `head` sends SIGPIPE when the line limit is reached, which kills the
+node process before `prompts:refresh` completes. The registry JSON write happens early and
+succeeds, but the dashboard HTML is never regenerated — the dashboard then shows stale state
+(e.g., "READY TO RUN" or "STARTED: NOT COMPLETED") even though the underlying registry data is
+correct. This is a silent failure with no error message.
+
+Recovery if it happens: run `npm run prompts:refresh` manually with no pipe to fix the dashboard.
 
 ## Prompt creation output rule
 
@@ -180,6 +235,11 @@ When creating a prompt, the agent must:
 
 Prompt workflow rules are owned by the canonical prompt docs, not by this file.
 
+Role split:
+- `CLAUDE.md` is the concise top-level brief
+- this file is the detailed operating reference
+- the canonical prompt docs own the actual prompt workflow
+
 If the task involves:
 - prompt creation
 - prompt review
@@ -191,6 +251,21 @@ If the task involves:
 first read:
 - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REGISTRY_README.md`
 
+Treat that file as the source of truth for:
+- prompt lifecycle
+- prompt IDs and task IDs
+- parent/child prompt relationships
+- queue state
+- review state
+- prompt metadata and provenance
+- prompt taxonomy:
+  - `kind`
+  - `category`
+
+Do not follow removed, renamed, or superseded prompt-workflow docs just because they are mentioned
+elsewhere in the repo. If a referenced prompt doc does not exist, treat it as stale guidance and
+fall back to the canonical prompt-registry doc set below.
+
 then read the relevant process doc:
 - id reservation / follow-up ids / release:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_ID_PROCESS.md`
@@ -200,16 +275,32 @@ then read the relevant process doc:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_REVIEW_PROCESS.md`
 - manager prompts:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_MANAGER_PROCESS.md`
-- user phrasing / examples:
+- shared user request phrasing / examples:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_USER_GUIDE.md`
 
 Hard rules:
 - deprecated or removed prompt docs are non-authoritative and must not be followed
+- do not hand-edit generated prompt artifacts:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_QUEUE.md`
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_LOG.md`
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/CLAUDE_PROMPT_HISTORY.md`
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/dashboard.html`
+- the canonical prompt records live in:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/prompt-registry.json`
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/items/CCP-###.md`
 - if the user’s natural language clearly maps to one prompt workflow, follow that workflow even if the user did not use the exact process name
 - if prompt-related intent is materially ambiguous, ask a clarifying question before mutating files
 - if the user asks to change prompt IDs, prompt creation, prompt review, manager prompts, prompt tracking, or the prompt docs themselves, treat it as a workflow-change request and update the canonical prompt docs before considering the work complete
 - if the user says `update our prompt workflow so that ...`, automatically treat that as a full workflow-change request with the workflow-change propagation rule implied by default
 - do not assume allocator input labels are the same thing as final registry/dashboard taxonomy; verify the final created prompt record after `prompt:create`
+- if the user asks to run multiple tracked prompts in order, sequentially, or one after another, default to the manager-prompt workflow even if the user does not explicitly say `manager`
+- only bypass the manager workflow for a multi-prompt request when the user explicitly asks to handle the prompts individually
+- when creating a manager prompt, follow the stricter manager-body standard in `PROMPT_MANAGER_PROCESS.md`
+- dashboard prompt editing is part of the official prompt workflow:
+  - only edit prompts that are still `created` / `queued-pending`
+  - keep registry-owned metadata locked
+  - treat superseded archived versions as reference-only, never runnable prompts
+  - treat skipped prompts as non-runnable queue removals; if a prompt is skipped it must never be treated as available to run
 
 Tracked Prompt Gate:
 - before ANY code change — regardless of size — first determine whether the work is already covered by an existing `CCP-###` prompt
@@ -224,6 +315,11 @@ Tracked Prompt Gate:
 ## Sprint tracking
 
 Sprint workflow rules are owned by the canonical sprint docs, not by this file.
+
+Role split:
+- `CLAUDE.md` is the concise top-level brief
+- this file is the detailed operating reference
+- the canonical sprint docs own the actual sprint workflow
 
 If the task involves:
 - sprint creation
@@ -244,13 +340,21 @@ then read the relevant process doc:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_PROGRESS_PROCESS.md`
 - sprint audits / next-best-step updates:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_AUDIT_PROCESS.md`
-- user phrasing / examples:
+- shared user request phrasing / examples:
+  - `/Users/leftcoast/Development/PatzerPatzer/docs/prompts/PROMPT_USER_GUIDE.md`
+- sprint-specific phrasing supplement:
   - `/Users/leftcoast/Development/PatzerPatzer/docs/mini-sprints/SPRINT_USER_GUIDE.md`
 
 Hard rules:
-- if the user asks to create a sprint plan, create or update both the sprint markdown doc and the sprint registry entry
-- if the user asks to create prompts for a sprint, prompt records must include `sprintId`, `sprintPhaseId`, and `sprintTaskId` when the work maps to a concrete sprint task
+- if the user asks to create a sprint plan, create or update both the sprint markdown doc and the sprint registry entry, and treat new sprint plans as invalid unless the sprint markdown doc already has normalized phase/task structure
+- the normal sprint creation path is: normalized sprint markdown doc -> `sprint:create` -> `sprint:seed`; do not use global `sprint:backfill` for ordinary new-sprint work
+- `sprint:backfill` is migration/bootstrap tooling only and must not be used without its explicit overwrite confirmation
+- if the user asks to create prompts for a sprint, prompt records must include exact `sprintId`, `sprintPhaseId`, and `sprintTaskId` linkage at creation time
 - if the user asks to review or audit a sprint, use the sprint registry first, then cross-check linked prompts, audits, and code evidence
+- sprint detail prompt panels are operational workflow surfaces, not decorative UI:
+  - `Copy` uses the current edited textarea contents
+  - `Save` persists the current sprint panel body and archives the previous saved version
+  - sprint append/update requests from the dashboard must remain agent-mediated and must not directly mutate sprint structure from the UI
 - if the user asks to change sprint creation, sprint tracking, sprint audits, sprint dashboard behavior, or sprint docs, treat it as a sprint-workflow change request and update the canonical sprint docs before considering the work complete
 
 ## Lichess-first rule
@@ -548,6 +652,43 @@ Completed plans should be archived rather than left in the active doc set. Do no
 plans as current roadmap or architecture truth.
 
 Do not overwrite audit history unless explicitly asked.
+
+## Doc line item dating rule (MANDATORY)
+
+Any time a new item is added to any tracking doc — or any doc that functions as a running log of
+issues, ideas, or action items — that item **must include the date it was added**. This is
+automatic. Do not skip it.
+
+Tracked docs:
+- `docs/KNOWN_ISSUES.md`
+- `docs/NEXT_STEPS.md`
+- `docs/FUTURE_FUNCTIONALITY.md`
+- `docs/WISHLIST.md`
+
+Format by doc type:
+
+- **KNOWN_ISSUES.md** — entries use `## [SEVERITY] Title` headers; add `_Logged: YYYY-MM-DD_`
+  on the line immediately after the header, before the body text
+- **WISHLIST.md** — bullet items; add `_(YYYY-MM-DD)_` immediately after the `- [ ]` or `- [x]`
+  marker, before the item text
+- **NEXT_STEPS.md** — numbered section entries; add `_(added: YYYY-MM-DD)_` after the
+  section heading
+- **FUTURE_FUNCTIONALITY.md** — bullet items; add `_(YYYY-MM-DD)_` immediately after the `-`
+  bullet marker, before the item text
+
+Use the current date from the session context (`currentDate`). Never guess or cache a date.
+
+This rule triggers automatically whenever the user says any of the following (or similar):
+- "log a bug"
+- "log a known issue"
+- "add to the wishlist"
+- "add a next step"
+- "note this down"
+- "add to future functionality"
+- "record this"
+- "jot this down"
+
+An item added without a date is an incomplete entry.
 
 ## Anti-drift rules
 

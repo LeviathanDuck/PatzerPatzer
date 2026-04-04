@@ -57,6 +57,14 @@ let _getUserColor: (game: ImportedGame) => 'white' | 'black' | null;
 let _redraw: () => void = () => {};
 let _onBatchComplete: (() => void) | null = null;
 
+function isRetroSessionActive(): boolean {
+  try {
+    return !!_getCtrl().retro;
+  } catch {
+    return false;
+  }
+}
+
 export function initBatch(deps: {
   getCtrl:              () => AnalyseCtrl;
   getSelectedGameId:    () => string | null;
@@ -83,6 +91,11 @@ export function initBatch(deps: {
   setOnBatchBestmove(onBatchBestmove);
   setOnEngineReady(() => {
     if (pendingBatchOnReady) {
+      if (isRetroSessionActive()) {
+        pendingBatchOnReady = false;
+        evalCurrentPosition();
+        return;
+      }
       pendingBatchOnReady = false;
       startBatchAnalysis();
     } else {
@@ -243,8 +256,8 @@ export function advanceBatch(): void {
 }
 
 export function startBatchAnalysis(): void {
-  console.log('[batch] startBatchAnalysis — engineEnabled:', engineEnabled, 'engineReady:', engineReady, 'batchAnalyzing:', batchAnalyzing);
-  if (!engineEnabled || !engineReady || batchAnalyzing) return;
+  console.log('[batch] startBatchAnalysis — engineEnabled:', engineEnabled, 'engineReady:', engineReady, 'batchAnalyzing:', batchAnalyzing, 'retroActive:', isRetroSessionActive());
+  if (!engineEnabled || !engineReady || batchAnalyzing || isRetroSessionActive()) return;
 
   const ctrl = _getCtrl();
   const queue: BatchItem[] = [];
@@ -272,12 +285,45 @@ export function startBatchAnalysis(): void {
 }
 
 /**
+ * Stop the foreground single-game batch review cleanly while preserving any
+ * partial evalCache data already collected for the current game.
+ *
+ * Used by LFYM when solve-mode needs immediate live-engine ownership of the
+ * current variation instead of letting review batch keep the engine target.
+ */
+export function stopBatchAnalysis(): void {
+  if (!batchAnalyzing) return;
+  incrementPendingStopCount();
+  protocol.stop();
+  setEngineSearchActive(false);
+  batchAnalyzing = false;
+  batchState = 'idle';
+  analysisRunning = false;
+  pendingBatchOnReady = false;
+  const gameId = _getSelectedGameId();
+  if (gameId) {
+    void saveAnalysisToIdb(
+      'partial',
+      gameId,
+      buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)),
+      reviewDepth,
+    );
+  }
+  syncArrow();
+  _redraw();
+}
+
+/**
  * Enable the engine if needed, then start batch analysis.
  * If the engine is mid-init (enabled but not yet ready), queues the batch
  * via pendingBatchOnReady so it fires automatically on readyok.
  */
 export function startBatchWhenReady(): void {
-  console.log('[batch] startBatchWhenReady — engineEnabled:', engineEnabled, 'engineReady:', engineReady, 'batchAnalyzing:', batchAnalyzing);
+  console.log('[batch] startBatchWhenReady — engineEnabled:', engineEnabled, 'engineReady:', engineReady, 'batchAnalyzing:', batchAnalyzing, 'retroActive:', isRetroSessionActive());
+  if (isRetroSessionActive()) {
+    pendingBatchOnReady = false;
+    return;
+  }
   if (!engineEnabled) {
     pendingBatchOnReady = true;
     toggleEngine();

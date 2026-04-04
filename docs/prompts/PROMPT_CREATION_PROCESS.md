@@ -5,6 +5,12 @@ Use this file for:
 - creating follow-up fix prompts
 - creating manager prompts as tracked artifacts
 
+Routing note:
+- prompt bodies still begin with `Read and follow:` pointing to `CLAUDE.md` and `AGENTS.md`
+- `CLAUDE.md` is now the concise top-level brief
+- `AGENTS.md` contains the fuller operating rules
+- this file and the other canonical prompt docs remain the source of truth for the actual prompt-creation workflow
+
 ## Pre-Creation Checklist (must be output visibly before writing any prompt body)
 
 Before writing a prompt body, the agent must output this checklist in the response so the
@@ -114,6 +120,29 @@ Finalize with:
 - `queueState: not-queued` unless the user explicitly asks for queued manager prompts
 - verify the created record also uses the intended manager category semantics after finalize
 
+Manager body requirements:
+- follow the required manager body structure in `PROMPT_MANAGER_PROCESS.md`
+- at minimum include:
+  - `## Summary`
+  - `## Child Prompt Order`
+  - `## Execution Rules`
+  - `## Final Report`
+  - `## Validation`
+  - `## Lifecycle`
+- list exact ordered child prompt ids
+- require reading each child prompt body before executing that child
+- require each child to run its own lifecycle commands
+- say the manager must stop on child failure or unresolved child errors
+- include both clean and `--errors` manager lifecycle completion variants
+
+Default manager final taxonomy:
+- `kind: manager`
+- `category: manager`
+
+Default manager completion interpretation:
+- use clean `prompt:complete` only if all listed children completed cleanly in order
+- use `prompt:complete --errors` if any child failed, stopped early, or ended with unresolved issues
+
 ## Required Prompt Body Header
 
 Every prompt body must begin with the following two lines before any other content:
@@ -159,6 +188,7 @@ Rules:
 - the executor must run these commands; skipping them leaves the prompt stuck at `queued-pending`
 - if anything went wrong during execution — partial failure, incorrect diagnosis, unresolved issues — the executor must use `--errors` so the status reflects `status--run-errors` in the dashboard
 - do not use the clean `prompt:complete` if there were known issues; that silently hides the error state
+- NEVER pipe lifecycle commands through `head`, `tail`, or any output limiter — `prompt:start`, `prompt:skip`, `prompt:complete`, `prompt:create`, and `prompt:reserve` all end by running `prompts:refresh`; piping through `head` kills that subprocess via SIGPIPE before the dashboard HTML is regenerated, leaving the dashboard showing stale state even though the registry JSON was updated correctly
 
 ## Creation Rules
 
@@ -172,6 +202,7 @@ All created prompts must:
   - `kind`
   - `category`
 - include `--sprint-id`, `--sprint-phase-id`, and `--sprint-task-id` when the prompt belongs to sprint work
+- treat sprint-linked prompt creation as invalid unless all three sprint linkage fields are present at creation time
 - not hand-edit generated queue/log/history docs
 
 Tracked code work is the default.
@@ -179,3 +210,32 @@ Tracked code work is the default.
 If the user requests code work and there is no existing CCP prompt yet, the agent must
 stop and ask whether this should be handled as a tracked prompt unless the user explicitly
 asked for untracked work.
+
+## Dashboard Edit Rule
+
+Dashboard prompt editing is not a replacement for `prompt:create`.
+
+Use it only to refine an already-created prompt before it has been run.
+
+Rules:
+- dashboard editing is allowed only for prompts still in `status: created` and `queueState: queued-pending`
+- registry-owned metadata lines remain locked and are not editable from the dashboard
+- saving from the dashboard overwrites the canonical prompt body file directly
+- the replaced body is archived as a hidden superseded reference record
+- the active prompt keeps the same `CCP-###` id
+- prompt creation rules still apply after the edit:
+  - the body must remain a valid tracked prompt body
+  - the prompt must still be traceable through registry/log/history/dashboard artifacts
+
+## Skip Rule
+
+If an unrun queued prompt should no longer be executed, use:
+
+```sh
+npm run prompt:skip -- <PROMPT_ID> [--reason "..."]
+```
+
+Rules:
+- skip is allowed only for prompts still in `status: created` and `queueState: queued-pending`
+- skipping removes the prompt from runnable queue surfaces
+- skipped prompts remain tracked records but must never be treated as available to run
