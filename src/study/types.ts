@@ -3,6 +3,17 @@
 
 export type StudySource = 'analysis' | 'openings' | 'puzzles' | 'manual' | 'import';
 
+// Folder entity — persisted to the 'folders' IDB store.
+// Supports a two-level hierarchy: a folder may have one optional parent.
+// Adapted from lichess-org/lila: ui/study/src/studyChapters.ts folder/chapter grouping concept.
+export interface StudyFolder {
+  id: string;         // generated UUID-like id
+  name: string;       // user-editable display name
+  parentId?: string;  // id of parent folder (undefined = top-level)
+  createdAt: number;
+  updatedAt: number;
+}
+
 // Core study item — persisted to the 'studies' IDB store.
 export interface StudyItem {
   id: string;

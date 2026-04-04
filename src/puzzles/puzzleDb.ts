@@ -430,8 +430,48 @@ export async function getRatingHistory(): Promise<PuzzleRatingHistoryEntry[]> {
   }
 }
 
+function normalizeServerHistoryEntry(raw: unknown): PuzzleRatingHistoryEntry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const entry = raw as Record<string, unknown>;
+  const timestamp = Number(entry.timestamp ?? entry.timestampMs ?? entry.timestamp_ms);
+  const rating = Number(entry.rating);
+  const deviation = Number(entry.deviation);
+  if (!Number.isFinite(timestamp) || !Number.isFinite(rating) || !Number.isFinite(deviation)) return null;
+  return { timestamp, rating, deviation };
+}
+
+function isRatedAttempt(attempt: PuzzleAttempt): boolean {
+  return attempt.sessionMode === 'rated' || !!(attempt.ratedOutcome && attempt.ratedOutcome !== 'not-rated');
+}
+
+function ratedAttemptKey(attempt: Pick<PuzzleAttempt, 'puzzleId' | 'completedAt'>): string {
+  return `${attempt.puzzleId}::${attempt.completedAt}`;
+}
+
+async function listRatedAttempts(): Promise<PuzzleAttempt[]> {
+  try {
+    const db = await openPuzzleDb();
+    return new Promise((resolve, reject) => {
+      const results: PuzzleAttempt[] = [];
+      const req = db.transaction(STORE_ATTEMPTS, 'readonly')
+        .objectStore(STORE_ATTEMPTS).openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result as IDBCursorWithValue | null;
+        if (!cursor) { resolve(results); return; }
+        const attempt = cursor.value as PuzzleAttempt;
+        if (isRatedAttempt(attempt)) results.push(attempt);
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[puzzleDb] listRatedAttempts failed', e);
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
-// Cloud sync: push/pull/merge for user puzzle perf and rating history
+// Cloud sync: push/pull/merge for user puzzle perf, rating history, and rated attempts
 //
 // Merge rule for UserPuzzlePerf:
 //   Server wins if nb (total rated puzzles) is higher — prevents overwrites
@@ -460,13 +500,80 @@ export async function pullAndMergePuzzlePerf(): Promise<void> {
       const merged: UserPuzzlePerf = {
         glicko: { rating: serverPerf.rating, deviation: serverPerf.deviation, volatility: serverPerf.volatility },
         nb: serverPerf.nb,
-        recent: serverPerf.recent_json ? JSON.parse(serverPerf.recent_json) : [],
-        latest: serverPerf.latest_at ?? null,
+        recent: serverPerf.recent_json
+          ? JSON.parse(serverPerf.recent_json)
+          : (serverPerf.recentJson ? JSON.parse(serverPerf.recentJson) : []),
+        latest: serverPerf.latest_at ?? serverPerf.latestAt ?? null,
       };
       await saveUserPuzzlePerf(merged);
     }
   } catch (e) {
     console.warn('[puzzleDb] pullAndMergePuzzlePerf failed', e);
+  }
+}
+
+/**
+ * Pull rating history from the server and append any locally-missing entries.
+ * Merge rule: append-only, keyed by timestamp.
+ */
+export async function pullAndMergePuzzleRatingHistory(): Promise<void> {
+  try {
+    const res = await fetch('/api/sync/puzzle-rating-history');
+    if (!res.ok) return;
+    const { history: serverHistory } = await res.json();
+    if (!Array.isArray(serverHistory) || serverHistory.length === 0) return;
+
+    const localHistory = await getRatingHistory();
+    const localKeys = new Set(localHistory.map(entry => `${entry.timestamp}`));
+    const missing = serverHistory
+      .map(normalizeServerHistoryEntry)
+      .filter((entry): entry is PuzzleRatingHistoryEntry => !!entry)
+      .filter(entry => !localKeys.has(`${entry.timestamp}`));
+    if (missing.length === 0) return;
+
+    const db = await openPuzzleDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_RATING_HISTORY, 'readwrite');
+      const store = tx.objectStore(STORE_RATING_HISTORY);
+      for (const entry of missing) store.add(entry);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('[puzzleDb] pullAndMergePuzzleRatingHistory failed', e);
+  }
+}
+
+/**
+ * Pull rated attempts from the server and append locally-missing entries.
+ * Merge rule: append-only, keyed by (puzzleId, completedAt).
+ */
+export async function pullAndMergeRatedAttempts(): Promise<void> {
+  try {
+    const res = await fetch('/api/sync/puzzle-rated-attempts');
+    if (!res.ok) return;
+    const { attempts: serverAttempts } = await res.json();
+    if (!Array.isArray(serverAttempts) || serverAttempts.length === 0) return;
+
+    const localAttempts = await listRatedAttempts();
+    const localKeys = new Set(localAttempts.map(ratedAttemptKey));
+    const missing = serverAttempts.filter((attempt: unknown): attempt is PuzzleAttempt => {
+      if (!attempt || typeof attempt !== 'object') return false;
+      const candidate = attempt as PuzzleAttempt;
+      return !!candidate.puzzleId && !!candidate.completedAt && !localKeys.has(ratedAttemptKey(candidate));
+    });
+    if (missing.length === 0) return;
+
+    const db = await openPuzzleDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_ATTEMPTS, 'readwrite');
+      const store = tx.objectStore(STORE_ATTEMPTS);
+      for (const attempt of missing) store.add(attempt);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('[puzzleDb] pullAndMergeRatedAttempts failed', e);
   }
 }
 
@@ -508,7 +615,7 @@ export async function pushNewRatingHistory(): Promise<void> {
     if (!res.ok) return;
     const { history: serverHistory } = await res.json();
     const serverLatest: number = Array.isArray(serverHistory) && serverHistory.length > 0
-      ? Math.max(...serverHistory.map((h: { timestamp_ms: number }) => h.timestamp_ms))
+      ? Math.max(...serverHistory.map((h: Record<string, unknown>) => Number(h.timestamp ?? h.timestampMs ?? h.timestamp_ms ?? 0)))
       : 0;
 
     const localHistory = await getRatingHistory();
@@ -532,14 +639,52 @@ export async function pushNewRatingHistory(): Promise<void> {
 }
 
 /**
- * Full rated ladder sync: pull-merge perf, then push any new history.
+ * Push rated attempts the server has not seen yet.
+ * Merge rule: append-only, keyed by (puzzleId, completedAt).
+ */
+export async function pushNewRatedAttempts(): Promise<void> {
+  try {
+    const res = await fetch('/api/sync/puzzle-rated-attempts');
+    if (!res.ok) return;
+    const { attempts: serverAttempts } = await res.json();
+    const serverKeys = new Set(
+      (Array.isArray(serverAttempts) ? serverAttempts : [])
+        .filter((attempt: unknown): attempt is PuzzleAttempt => !!attempt && typeof attempt === 'object')
+        .map(ratedAttemptKey),
+    );
+
+    const localAttempts = await listRatedAttempts();
+    const newAttempts = localAttempts.filter(attempt => !serverKeys.has(ratedAttemptKey(attempt)));
+    if (newAttempts.length === 0) return;
+
+    await fetch('/api/sync/puzzle-rated-attempts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attempts: newAttempts }),
+    });
+  } catch (e) {
+    console.warn('[puzzleDb] pushNewRatedAttempts failed', e);
+  }
+}
+
+/**
+ * Full rated ladder sync:
+ * - perf: server wins when it has more rated rounds (`nb`)
+ * - history: append-only, keyed by timestamp
+ * - rated attempts: append-only, keyed by (puzzleId, completedAt)
+ *
+ * Pull first so a fresh device restores ladder state before local additions
+ * are pushed back to the server.
  * Called after the user authenticates or on puzzle page entry when online.
  * Preserves local-first offline behavior — gracefully no-ops on network failure.
  */
 export async function syncRatedLadder(): Promise<void> {
   await pullAndMergePuzzlePerf();
+  await pullAndMergePuzzleRatingHistory();
+  await pullAndMergeRatedAttempts();
   await pushPuzzlePerf();
   await pushNewRatingHistory();
+  await pushNewRatedAttempts();
 }
 
 // --- Rated eligibility helpers ---

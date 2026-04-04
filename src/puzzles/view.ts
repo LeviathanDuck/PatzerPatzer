@@ -46,6 +46,7 @@ import { syncPuzzleBoard, peekPuzzleContext, getCurrentSessionMode, setSessionMo
 import { mainlineNodeList, promoteAt, pathInit } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
 import type { Role } from '@lichess-org/chessground/types';
+import { savePuzzleToLibrary } from '../study/saveAction';
 
 // ---------------------------------------------------------------------------
 // Puzzle player strips
@@ -830,6 +831,24 @@ function formatThemeName(theme: string): string {
 // --- Puzzle round view ---
 
 let _puzzleInfoExpanded = false;
+let _puzzleSaveLibFeedback: string | null = null;
+let _puzzleSaveLibTimer: ReturnType<typeof setTimeout> | null = null;
+
+function handlePuzzleSaveToLibrary(rc: PuzzleRoundCtrl, redraw: () => void): void {
+  const fen = rc.definition.startFen;
+  const moves = rc.definition.solutionLine;
+  void savePuzzleToLibrary(fen, moves).then(() => {
+    _puzzleSaveLibFeedback = 'Saved to Library!';
+    if (_puzzleSaveLibTimer) clearTimeout(_puzzleSaveLibTimer);
+    _puzzleSaveLibTimer = setTimeout(() => { _puzzleSaveLibFeedback = null; redraw(); }, 1800);
+    redraw();
+  }).catch(() => {
+    _puzzleSaveLibFeedback = 'Save failed';
+    if (_puzzleSaveLibTimer) clearTimeout(_puzzleSaveLibTimer);
+    _puzzleSaveLibTimer = setTimeout(() => { _puzzleSaveLibFeedback = null; redraw(); }, 1800);
+    redraw();
+  });
+}
 
 function renderPuzzleInfo(def: PuzzleDefinition, redraw: () => void): VNode {
   const rating = def.sourceKind === 'imported-lichess' ? `${def.rating}` : null;
@@ -1315,6 +1334,12 @@ function renderSolvedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
         on: { click: () => { rc.showEngineArrows(redraw); } },
       }, 'Engine Arrows'),
       renderAnalysisToggle(rc, redraw),
+      _puzzleSaveLibFeedback
+        ? h('span.puzzle__save-lib-feedback', _puzzleSaveLibFeedback)
+        : h('button.button.button-empty.puzzle__save-lib', {
+            attrs: { title: 'Save this puzzle to the Study Library' },
+            on: { click: () => { handlePuzzleSaveToLibrary(rc, redraw); } },
+          }, '\uD83D\uDCDA Save to Library'),
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     renderNextNav(redraw),
@@ -1376,6 +1401,12 @@ function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
         on: { click: () => { rc.showEngineArrows(redraw); } },
       }, 'Engine Arrows'),
       renderAnalysisToggle(rc, redraw),
+      _puzzleSaveLibFeedback
+        ? h('span.puzzle__save-lib-feedback', _puzzleSaveLibFeedback)
+        : h('button.button.button-empty.puzzle__save-lib', {
+            attrs: { title: 'Save this puzzle to the Study Library' },
+            on: { click: () => { handlePuzzleSaveToLibrary(rc, redraw); } },
+          }, '\uD83D\uDCDA Save to Library'),
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     h('div.puzzle__feedback__nav', [

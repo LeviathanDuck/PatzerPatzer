@@ -92,6 +92,9 @@ export function initRetroMoveHandler(getCtrl: () => AnalyseCtrl): { unsubscribe:
       gameMoveCp:      gameMoveEval?.cp,
       gameMoveMate:    gameMoveEval?.mate,
       playerColor:     cand.playerColor,
+      parentPath:      cand.parentPath,
+      solvingPath:     ctrl.path,
+      isExactBest,
     });
 
     // Win was already handled by the before-move hook; skip the fail/eval path.

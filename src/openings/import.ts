@@ -17,7 +17,8 @@ import {
   importSource, importUsername, importColor,
   importSpeeds, importDateRange, importCustomFrom, importCustomTo,
   importRated, importMaxGames,
-  setImportStep, setImportError, setImportProgress, setImportAbort,
+  setImportStep, setImportError, setImportProgress, setImportMonth, setImportAbort,
+  setIsFetching, setOpeningsPage,
   setLastCreatedCollection, addCollection, openCollection,
 } from './ctrl';
 import type { ImportDateRange } from '../import/filters';
@@ -111,6 +112,19 @@ function filterResearchGamesByDate<T extends { date?: string }>(
   return games.filter(g => !g.date || g.date.slice(0, 10) >= cutoffStr);
 }
 
+const MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+
+function formatArchiveMonth(archiveUrl: string): string | undefined {
+  const parts = archiveUrl.split('/');
+  const year  = parts[parts.length - 2];
+  const month = parseInt(parts[parts.length - 1] ?? '', 10);
+  if (!year || isNaN(month) || month < 1 || month > 12) return undefined;
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
+
 function splitPgnText(text: string): string[] {
   return text.trim().split(/\n\n(?=\[Event )/).filter(s => s.trim());
 }
@@ -144,7 +158,7 @@ async function fetchLichessResearch(username: string, signal: AbortSignal): Prom
 // --- Chess.com fetch ---
 
 async function fetchChesscomResearch(
-  username: string, signal: AbortSignal, onProgress: (n: number) => void,
+  username: string, signal: AbortSignal, onProgress: (n: number, month?: string) => void,
 ): Promise<ResearchGame[]> {
   const base = 'https://api.chess.com/pub/player';
   const archivesRes = await fetch(`${base}/${username.toLowerCase()}/games/archives`, { signal });
@@ -195,7 +209,10 @@ async function fetchChesscomResearch(
   for (let i = 0; i < relevantArchives.length; i++) {
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
     if (games.length >= max) break;
-    const res = await fetch(relevantArchives[i]!, { signal });
+    const archiveUrl = relevantArchives[i]!;
+    const month = formatArchiveMonth(archiveUrl);
+    onProgress(games.length, month);
+    const res = await fetch(archiveUrl, { signal });
     if (!res.ok) continue;
     const data = await res.json() as { games?: any[] };
     for (const raw of (data.games ?? []).reverse()) {
@@ -208,7 +225,7 @@ async function fetchChesscomResearch(
       const g = pgnToResearchGame(pgn, 'chesscom');
       if (g) games.push(g);
     }
-    onProgress(games.length);
+    onProgress(games.length, month);
   }
   return games;
 }
@@ -239,16 +256,20 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
 
   const abort = new AbortController();
   setImportAbort(abort);
-  setImportStep('importing');
+  setIsFetching(true);
+  setOpeningsPage('session');
+  setImportStep('idle');
   setImportError(null);
   setImportProgress(0);
+  setImportMonth(null);
   redraw();
 
   try {
     let games: ResearchGame[];
 
-    const progressCb = (n: number) => {
+    const progressCb = (n: number, month?: string) => {
       setImportProgress(n);
+      if (month !== undefined) setImportMonth(month);
       redraw();
     };
 
@@ -279,6 +300,8 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
     setImportProgress(games.length);
 
     if (games.length === 0) {
+      setIsFetching(false);
+      setOpeningsPage('library');
       setImportStep('details');
       setImportError('No games found.');
       setImportAbort(null);
@@ -295,6 +318,8 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
         return color === 'white' ? isWhite : isBlack;
       });
       if (games.length === 0) {
+        setIsFetching(false);
+        setOpeningsPage('library');
         setImportStep('details');
         setImportError(`No games found where ${username} plays as ${color}.`);
         setImportAbort(null);
@@ -339,9 +364,12 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
     addCollection(collection);
     setLastCreatedCollection(collection);
     setImportAbort(null);
+    setIsFetching(false);
     openCollection(collection, redraw);
   } catch (err) {
-    if ((err as DOMException)?.name === 'AbortError') return; // user cancelled
+    if ((err as DOMException)?.name === 'AbortError') return; // user cancelled — cancelImport() already cleaned up
+    setIsFetching(false);
+    setOpeningsPage('library');
     setImportStep('details');
     setImportError(err instanceof Error ? err.message : 'Import failed.');
     setImportAbort(null);

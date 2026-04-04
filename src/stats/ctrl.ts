@@ -6,7 +6,8 @@
  * used by openings and puzzles subsystems.
  */
 
-import { listGameSummaries } from '../idb/index';
+import { listGameSummaries, loadGamesFromIdb } from '../idb/index';
+import type { ImportedGame } from '../import/types';
 import type { GameSummary } from './types';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
@@ -21,6 +22,7 @@ let _timeFilter: StatsTimeFilter = 'all';
 let _summaries:       GameSummary[] = [];
 let _summariesLoaded  = false;
 let _summariesLoading = false;
+let _importedGames:   ImportedGame[] = [];
 let _redraw: () => void = () => {};
 let _filteredCache: GameSummary[] | null = null;
 
@@ -52,8 +54,9 @@ export function invalidateSummariesCache(): void {
 function loadSummaries(): void {
   if (_summariesLoading) return;
   _summariesLoading = true;
-  void listGameSummaries().then(list => {
-    _summaries        = list;
+  void Promise.all([listGameSummaries(), loadGamesFromIdb()]).then(([summaries, stored]) => {
+    _summaries        = summaries;
+    _importedGames    = stored?.games ?? [];
     _summariesLoaded  = true;
     _summariesLoading = false;
     _filteredCache    = null;
@@ -88,6 +91,9 @@ export function setTimeFilter(f: StatsTimeFilter): void {
   _filteredCache = null;
   _redraw();
 }
+
+/** All raw imported games (not filtered by time control). */
+export function importedGames(): ImportedGame[] { return _importedGames; }
 
 /** Total analyzed game count across all time controls. */
 export function totalGameCount(): number { return _summaries.length; }
