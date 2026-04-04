@@ -10,9 +10,12 @@ import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
 import type { DrawShape } from '@lichess-org/chessground/draw';
-import { parseFen } from 'chessops/fen';
+import { parseFen, makeFen } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
+import { parseUci } from 'chessops/util';
+import { randomMasterGame } from '../showcase/masterGames';
+import type { MasterGame } from '../showcase/masterGames';
 import { bindBoardResizeHandle } from '../board/index';
 import { renderMoveList } from '../analyse/moveList';
 import type { TreeNode } from '../tree/types';
@@ -20,11 +23,12 @@ import {
   collections, collectionsLoaded, loadSavedCollections,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
+  sessionDateRange, setSessionDateRange, SESSION_DATE_RANGE_OPTIONS,
   openCollection, closeSession, navigateToMove, navigateBack, navigateToRoot, navigateToPath, navigateToEnd,
   removeCollection, renameCollection,
   treeBuilding, treeBuildProgress, treeBuildTotal,
-  importStep, importSource, importUsername, importColor, importError,
-  importProgress, lastCreatedCollection, cancelImport,
+  isFetching, importStep, importSource, importUsername, importColor, importError,
+  importProgress, importMonth, cancelImport,
   importSpeeds, setImportSpeeds, importDateRange, setImportDateRange,
   importCustomFrom, setImportCustomFrom, importCustomTo, setImportCustomTo,
   importRated, setImportRated, importMaxGames, setImportMaxGames,
@@ -61,19 +65,34 @@ import {
   computeRepertoireProfile, computePrepReport, computePrepReportLines,
   computeLikelyLineModule, computeWeaknessModule, computePrepNotes,
   computeTerminationProfile, computeGameLengthProfile,
-  computeOpeningRecommendations,
+  computeOpeningRecommendations, buildPracticeCandidates,
+  MIN_COLLECTION_SIZE, MIN_RELIABLE_SAMPLE, isCollectionSmall, isStatReliable,
   type PrepLine, type LikelyLineEntry, type StyleViewModel,
 } from './analytics';
 import { detectTrapPatterns } from './traps';
 import { saveVariation } from './db';
 import type { SavedVariation } from './types';
+import { saveUciLinesToLibrary } from '../study/saveAction';
 
 let _openingsCg: CgApi | undefined;
 let _lastBoardFen: string = '';
+let _lastBoardPractice: boolean = false;
+
+// ─── Import animation state ───────────────────────────────────────────────────
+// While isFetching(), the board plays through a random master game to give the
+// user something engaging to watch. State lives at module level so it persists
+// across Snabbdom patch cycles during the fetch.
+let _animGame:    MasterGame | null = null;
+let _animMoveIdx: number = 0;
+let _animTimer:   ReturnType<typeof setTimeout> | null = null;
+let _animPos:     Chess | null = null;
+
+const ANIM_MOVE_MS = 300; // ms per move
 
 // --- Openings action-menu state ---
 // Mirrors the analysis action-menu pattern in src/analyse/analysisControls.ts
 let _openingsMenuOpen = false;
+let _dateRangePopupOpen = false;
 
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
@@ -380,8 +399,6 @@ function renderImportWorkflow(redraw: () => void): VNode {
       }, 'Cancel'),
     ]),
     step === 'details' ? renderDetailsStep(redraw) : null,
-    step === 'importing' ? renderImportingStep(redraw) : null,
-    step === 'done' ? renderDoneStep(redraw) : null,
   ]);
 }
 
@@ -393,6 +410,14 @@ function renderDetailsStep(redraw: () => void): VNode {
   const dateRange = importDateRange();
 
   const sections: (VNode | null)[] = [];
+  const focusUsernameInput = (elm: Element | undefined): void => {
+    const input = elm as HTMLInputElement | undefined;
+    if (!input) return;
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  };
 
   // --- Source ---
   const sources: { value: ResearchSource; label: string }[] = [
@@ -427,13 +452,41 @@ function renderDetailsStep(redraw: () => void): VNode {
         },
         props: { value: importUsername() },
         on: { input: (e: Event) => { setImportUsername((e.target as HTMLInputElement).value); redraw(); } },
+        hook: { insert: vnode => focusUsernameInput(vnode.elm as Element | undefined) },
       }),
     ]) : h('div.header__panel-section', [
-      h('div.header__panel-label', 'Paste PGN'),
+      h('div.header__panel-label', 'Paste PGN or upload file'),
       h('textarea.header__pgn-input', {
         attrs: { placeholder: 'Paste PGN text here\u2026', rows: '6' },
         on: { input: (e: Event) => { setImportUsername((e.target as HTMLTextAreaElement).value); redraw(); } },
       }),
+      h('div.header__pgn-file-upload', {
+        on: {
+          dragover: (e: DragEvent) => { e.preventDefault(); (e.currentTarget as HTMLElement).classList.add('dragover'); },
+          dragleave: (e: DragEvent) => { (e.currentTarget as HTMLElement).classList.remove('dragover'); },
+          drop: (e: DragEvent) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).classList.remove('dragover');
+            const file = e.dataTransfer?.files[0];
+            if (file && file.name.endsWith('.pgn')) {
+              file.text().then(text => { setImportUsername(text); redraw(); });
+            }
+          },
+        },
+      }, [
+        h('input', {
+          attrs: { type: 'file', accept: '.pgn' },
+          on: {
+            change: (e: Event) => {
+              const file = (e.target as HTMLInputElement).files?.[0];
+              if (file) {
+                file.text().then(text => { setImportUsername(text); redraw(); });
+              }
+            },
+          },
+        }),
+        h('span', 'or drag & drop a .pgn file'),
+      ]),
     ]),
   );
 
@@ -540,42 +593,6 @@ function renderDetailsStep(redraw: () => void): VNode {
   return h('div.openings__step', sections);
 }
 
-function renderImportingStep(redraw: () => void): VNode {
-  const progress = importProgress();
-
-  return h('div.openings__step', [
-    h('h3', 'Importing Games'),
-    // Transfer animation
-    h('div.openings__transfer', [
-      h('div.openings__transfer-track', [
-        h('div.openings__transfer-pulse'),
-        h('div.openings__transfer-pulse.openings__transfer-pulse--delayed'),
-      ]),
-      h('div.openings__transfer-count',
-        progress > 0
-          ? `${progress.toLocaleString()} game${progress !== 1 ? 's' : ''} found`
-          : 'Connecting\u2026',
-      ),
-    ]),
-    h('button.openings__cancel-import-btn', {
-      on: { click: () => { cancelImport(); redraw(); } },
-    }, 'Cancel'),
-  ]);
-}
-
-function renderDoneStep(redraw: () => void): VNode {
-  const collection = lastCreatedCollection();
-  return h('div.openings__step', [
-    h('h3', 'Import Complete'),
-    collection ? h('p.openings__done-summary', [
-      `Created collection "${collection.name}" with ${collection.games.length} game${collection.games.length !== 1 ? 's' : ''}.`,
-    ]) : null,
-    h('button.openings__done-btn', {
-      on: { click: () => { resetImport(); redraw(); } },
-    }, 'Back to Library'),
-  ]);
-}
-
 // ========== Session page (board shell) ==========
 
 /**
@@ -625,9 +642,9 @@ const ICON_SWORDS    = '\ue033'; // licon.Swords     → Practice Against Them
 interface ToolDef { id: OpeningsTool; label: string; icon: string }
 
 const TOOL_DEFS: ToolDef[] = [
-  { id: 'opening-tree', label: 'Opening Tree', icon: ICON_BRANCH },
-  { id: 'repertoire',   label: 'Repertoire',   icon: ICON_BOOK },
-  { id: 'prep-report',  label: 'Prep Report',  icon: ICON_BAR_GRAPH },
+  { id: 'opening-tree', label: 'Tree',        icon: ICON_BRANCH },
+  { id: 'repertoire',   label: 'Repertoire',  icon: ICON_BOOK },
+  { id: 'prep-report',  label: 'Report',      icon: ICON_BAR_GRAPH },
   { id: 'style',        label: 'Style',        icon: ICON_EYE },
   { id: 'practice',     label: 'Practice',     icon: ICON_SWORDS },
 ];
@@ -904,6 +921,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
   // Loading state — tree still building
   if (!vm || !collection) {
     return h('div.openings__tool-content', [
+      renderFilterBadge(redraw),
       h('div.openings__prep-report', [
         h('div.openings__pr-header', [
           h('span.openings__pr-label', 'Prep Report'),
@@ -918,13 +936,14 @@ function renderPrepReportTool(redraw: () => void): VNode {
 
   const { summary, report, lines } = vm;
   const total = summary.overall.total || 1;
-  const isSparse = summary.overall.total < 20;
+  const isSparse = isCollectionSmall(summary.overall.total);
   const wPct = (summary.overall.wins   / total * 100).toFixed(0);
   const dPct = (summary.overall.draws  / total * 100).toFixed(0);
   const lPct = (summary.overall.losses / total * 100).toFixed(0);
 
   // Likely lines (recency-weighted)
-  const colorPerspective = colorFilter() === 'both' ? 'white' : colorFilter();
+  const cf = colorFilter();
+  const colorPerspective: 'white' | 'black' = cf === 'both' ? 'white' : cf;
   const likelyModule = computeLikelyLineModule(openingTree(), colorPerspective, 8, 8, recencyMode());
 
   // Weakness module
@@ -947,6 +966,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
     const boostRecent  = line.recencyBoost >= 2.0;  // ≤30d
     const boostFresh   = line.recencyBoost >= 1.5 && line.recencyBoost < 2.0;  // ≤90d
     return h('button.openings__pr-line-row', {
+      class: { 'openings__pr-unreliable': !isStatReliable(line.frequency) },
       attrs: { title: 'Open in Repertoire' },
       on: { click: onClick },
     }, [
@@ -954,11 +974,11 @@ function renderPrepReportTool(redraw: () => void): VNode {
       h('span.openings__pr-line-meta', [
         h('span.openings__pr-line-freq', `${line.frequency}g`),
         boostRecent
-          ? h('span.openings__pr-boost-badge.openings__pr-boost--hot', '↑ now')
+          ? h('span.openings__pr-boost-badge.openings__pr-boost--hot', '\u2191 now')
           : boostFresh
-            ? h('span.openings__pr-boost-badge.openings__pr-boost--fresh', '↑ recent')
+            ? h('span.openings__pr-boost-badge.openings__pr-boost--fresh', '\u2191 recent')
             : null,
-        !line.isReliable ? h('span.openings__pr-line-caveat', 'small') : null,
+        !line.isReliable ? h('span.openings__pr-line-caveat', `n=${line.frequency}`) : null,
       ]),
       h('span.openings__pr-line-nav', '\u2192'),
     ]);
@@ -969,13 +989,14 @@ function renderPrepReportTool(redraw: () => void): VNode {
     const moveSan    = line.sans.slice(0, 5).join(' ') + (line.sans.length > 5 ? '\u2026' : '');
     const oppWinPct  = (line.opponentWinPct * 100).toFixed(0);
     return h('button.openings__pr-target-row', {
+      class: { 'openings__pr-unreliable': !isStatReliable(line.frequency) },
       attrs: { title: 'Open in Repertoire' },
       on: { click: onClick },
     }, [
       h('span.openings__pr-line-moves', moveSan),
       h('span.openings__pr-line-meta', [
         h('span.openings__pr-line-freq', `${line.frequency}g`),
-        h('span.openings__pr-target-score', `opp ${oppWinPct}%W`),
+        h('span.openings__pr-target-score', `opp ${oppWinPct}%W (n=${line.frequency})`),
         line.isRecent ? h('span.openings__pr-line-recent', 'recent') : null,
       ]),
       h('span.openings__pr-line-nav', '\u2192'),
@@ -983,6 +1004,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
   }
 
   return h('div.openings__tool-content', [
+    renderFilterBadge(redraw),
     h('div.openings__prep-report', [
 
       // Header with recency toggle
@@ -1007,7 +1029,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
         : null,
 
       // Small-sample warning banner
-      isSparse ? h('div.openings__pr-sparse-banner', '\u26A0 Small sample size — statistics may not be reliable with fewer than 20 games.') : null,
+      isSparse ? h('div.openings__pr-sparse-banner', `\u26A0 Small sample (n=${summary.overall.total}) — statistics may not be reliable with fewer than ${MIN_COLLECTION_SIZE} games.`) : null,
 
       // Prep notes strip
       notes.length > 0 ? h('div.openings__pr-notes', notes.map(note =>
@@ -1022,7 +1044,9 @@ function renderPrepReportTool(redraw: () => void): VNode {
       // Overview: W/D/L bar + quick stats
       h('div.openings__pr-overview', [
         h('div.openings__pr-wdl', [
-          h('div.openings__pr-wdl-bar', [
+          h('div.openings__pr-wdl-bar', {
+            class: { 'openings__pr-unreliable': !isStatReliable(summary.overall.total) },
+          }, [
             h('span.wdl-w', { attrs: { style: `width:${wPct}%` } }, summary.overall.wins > 0   ? `${wPct}%` : ''),
             h('span.wdl-d', { attrs: { style: `width:${dPct}%` } }, summary.overall.draws > 0  ? `${dPct}%` : ''),
             h('span.wdl-l', { attrs: { style: `width:${lPct}%` } }, summary.overall.losses > 0 ? `${lPct}%` : ''),
@@ -1031,16 +1055,21 @@ function renderPrepReportTool(redraw: () => void): VNode {
             h('span.wdl-w', `${summary.overall.wins}W`),
             h('span.wdl-d', `${summary.overall.draws}D`),
             h('span.wdl-l', `${summary.overall.losses}L`),
+            h('span.openings__pr-sample', `n=${summary.overall.total}`),
           ]),
         ]),
         // Top ECOs
         report.topEcos.length > 0 ? h('div.openings__pr-ecos', [
           h('div.openings__pr-section-title', 'Top Openings'),
           ...report.topEcos.slice(0, 5).map(eco =>
-            h('div.openings__pr-eco-row', [
+            h('div.openings__pr-eco-row', {
+              class: { 'openings__pr-unreliable': !isStatReliable(eco.count) },
+            }, [
               h('span.openings__pr-eco-code', eco.eco),
               h('span.openings__pr-eco-name', eco.opening),
               h('span.openings__pr-eco-count', `${eco.count}g`),
+              h('span.openings__pr-eco-pct', `${Math.round(eco.count / total * 100)}%`),
+              h('span.openings__pr-sample', `n=${eco.count}`),
             ])
           ),
         ]) : null,
@@ -1209,6 +1238,7 @@ function renderVulnerablePositions(
     h('div.openings__pr-section-title', 'Vulnerable Positions'),
     h('div.openings__pr-traps-list', significant.slice(0, 6).map(trap =>
       h('button.openings__pr-trap-card', {
+        class: { 'openings__pr-unreliable': !isStatReliable(trap.totalAtNode) },
         on: { click: () => { navigateToPath(trap.path.slice(0, -1)); setActiveTool('opening-tree'); syncOpeningsBoard(redraw); redraw(); } },
       }, [
         h('div.openings__pr-trap-moves', trap.sans.slice(0, 5).join(' ')),
@@ -1255,12 +1285,13 @@ function renderRecommendations(
  * Grounded in `StyleViewModel` which wraps only what the imported data can honestly support.
  * Signals are labeled as 'descriptive', 'interpretive', or 'cautious' to control display tone.
  */
-function renderStyleTool(): VNode {
+function renderStyleTool(redraw: () => void): VNode {
   const collection = activeCollection();
   const vm = getStyleViewModel();
 
   if (!vm || !collection) {
     return h('div.openings__tool-content', [
+      renderFilterBadge(redraw),
       h('div.openings__style', [
         h('div.openings__style-header', [
           h('span.openings__style-label', 'Style'),
@@ -1273,6 +1304,7 @@ function renderStyleTool(): VNode {
   }
 
   return h('div.openings__tool-content', [
+    renderFilterBadge(redraw),
     h('div.openings__style', [
       renderStyleHeader(collection, vm),
       renderStylePlayerCard(vm),
@@ -1567,27 +1599,7 @@ function renderStyleBehavioral(vm: StyleViewModel): VNode | null {
 
   const items: VNode[] = [];
 
-  // --- Opening commitment ---
-  // high top3EcoPct = committed to a small set; low = experimenting
-  const top3Pct = Math.round(profile.top3EcoPct * 100);
-  if (profile.top3EcoPct > 0) {
-    let commitLabel: string;
-    let commitDetail: string;
-    if (profile.top3EcoPct >= 0.75) {
-      commitLabel = 'High opening commitment';
-      commitDetail = `${top3Pct}% of games in top 3 openings — stays in familiar territory`;
-    } else if (profile.top3EcoPct >= 0.5) {
-      commitLabel = 'Moderate opening commitment';
-      commitDetail = `${top3Pct}% of games in top 3 openings — some variety`;
-    } else {
-      commitLabel = 'Low opening commitment';
-      commitDetail = `Only ${top3Pct}% of games in top 3 openings — experiments frequently`;
-    }
-    items.push(h('div.openings__style-behavioral-row', [
-      h('span.openings__style-behavioral-label', commitLabel),
-      h('span.openings__style-behavioral-detail', commitDetail),
-    ]));
-  }
+  // Opening variety (top3EcoPct) is already shown as a style axis bar — omitted here to avoid duplication.
 
   // --- ECO switching — recent vs all-time ---
   // If the recent topEco differs from the baseline topEco, they may have switched lines.
@@ -1727,24 +1739,28 @@ function renderPracticeActivePanel(
 ): VNode {
   if (!session) return h('div'); // type narrowing only; never reached
 
-  const plan = planOpponentTurn(node, session);
-
-  const engineStrength = plan.source === 'engine'
+  // Read source from session state — set by schedulePracticeOpponentResponse after each opponent turn.
+  // Calling planOpponentTurn here would invoke random move selection on every render, which is wrong.
+  const source = session.opponentSource;
+  const engineStrength = source === 'engine'
     ? STRENGTH_LEVELS[(session.strengthLevel ?? 4) - 1] ?? STRENGTH_LEVELS[3]!
     : null;
-  const sourceBannerText = plan.source === 'repertoire'
+  const sourceBannerText = source === 'repertoire'
     ? 'Playing from imported repertoire'
-    : plan.source === 'engine' && engineStrength
+    : source === 'engine' && engineStrength
       ? `Engine playing at Level ${engineStrength.level} (${engineStrength.label} ~${engineStrength.uciElo} Elo)`
-      : plan.source === 'engine'
+      : source === 'engine'
         ? 'Engine has taken over — repertoire data exhausted'
         : 'No moves available — practice has ended at this branch';
 
-  const sourceBannerClass = plan.source === 'repertoire'
+  const sourceBannerClass = source === 'repertoire'
     ? 'openings__practice-source--repertoire'
-    : plan.source === 'engine'
+    : source === 'engine'
       ? 'openings__practice-source--engine'
       : 'openings__practice-source--exhausted';
+
+  // Compute total opponent frequency from node data — pure, no random selection.
+  const totalFreq = buildPracticeCandidates(node).reduce((s, c) => s + c.frequency, 0);
 
   const moveCount = session.moveHistory.length;
 
@@ -1753,13 +1769,13 @@ function renderPracticeActivePanel(
       class: { [sourceBannerClass]: true },
     }, [
       h('span.openings__practice-source-icon',
-        plan.source === 'repertoire' ? '●' : plan.source === 'engine' ? '⚡' : '✕'),
+        source === 'repertoire' ? '●' : source === 'engine' ? '⚡' : '✕'),
       h('span.openings__practice-source-text', sourceBannerText),
     ]),
 
-    plan.selectionResult.totalFrequency > 0
+    totalFreq > 0
       ? h('div.openings__practice-freq-note',
-        `Opponent played this position ${plan.selectionResult.totalFrequency} time${plan.selectionResult.totalFrequency !== 1 ? 's' : ''} in imported games`)
+        `Opponent played this position ${totalFreq} time${totalFreq !== 1 ? 's' : ''} in imported games`)
       : null,
 
     h('div.openings__practice-controls', [
@@ -1797,6 +1813,7 @@ function renderOpeningTreeTool(
     ]),
     h('div.openings__session-panel', [
       renderOpeningsActionMenu(redraw),
+      renderFilterBadge(redraw),
       // Keep FEN override in sync with the current openings position on every render.
       // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
       (() => {
@@ -1804,7 +1821,7 @@ function renderOpeningTreeTool(
         return null;
       })(),
       renderColorToggle(collection?.target ?? '', redraw),
-      treeBuilding() ? renderTreeBuildBar() : null,
+      isFetching() ? renderFetchBar(redraw) : treeBuilding() ? renderTreeBuildBar() : null,
       // Engine section at the top of the panel, before position-context content.
       renderCeval(),
       renderEngineSettings(),
@@ -1903,7 +1920,7 @@ function renderSessionPage(redraw: () => void): VNode {
           : activeTool() === 'prep-report'
             ? [renderPrepReportTool(redraw)]
             : activeTool() === 'style'
-              ? [renderStyleTool()]
+              ? [renderStyleTool(redraw)]
               : activeTool() === 'practice'
                 ? renderPracticeTool(collection, node, redraw)
                 : [renderToolPlaceholder(activeTool())]),
@@ -1933,30 +1950,27 @@ function renderPlayerStrip(
 
   // Is the target player on this side?
   let label: string;
-  let isTarget = false;
   if (filter === 'white') {
-    isTarget = stripColor === 'white';
-    label = isTarget ? target : 'Imported Game Opponents';
+    label = stripColor === 'white' ? target : 'Imported Game Opponents';
   } else if (filter === 'black') {
-    isTarget = stripColor === 'black';
-    label = isTarget ? target : 'Imported Game Opponents';
+    label = stripColor === 'black' ? target : 'Imported Game Opponents';
   } else {
     // 'both' — show target on bottom, opponents on top
-    isTarget = position === 'bottom';
-    label = isTarget ? target : 'Imported Game Opponents';
+    label = position === 'bottom' ? target : 'Imported Game Opponents';
   }
 
-  const colorDot = stripColor === 'white' ? '\u25CB' : '\u25CF'; // ○ or ●
+  const animLabel = isFetching() && position === 'bottom' && _animGame ? _animGame.label : null;
 
-  return h('div.openings__player-strip', {
-    class: {
-      'openings__player-strip--target': isTarget,
-      'openings__player-strip--top': position === 'top',
-      'openings__player-strip--bottom': position === 'bottom',
-    },
-  }, [
-    h('span.openings__player-dot', colorDot),
-    h('span.openings__player-name', label),
+  return h('div.analyse__player_strip', [
+    h('div.player-strip__identity', [
+      h('span.player-strip__color-icon', {
+        class: {
+          'player-strip__color-icon--white': stripColor === 'white',
+          'player-strip__color-icon--black': stripColor === 'black',
+        },
+      }),
+      h('span.player-strip__name', animLabel ?? label),
+    ]),
   ]);
 }
 
@@ -2014,7 +2028,7 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
         redraw();
       } },
     }, [
-      h('span.openings__color-username', filter === 'white' ? playerName : ''),
+      h('span.openings__color-username', filter === 'white' ? playerName : 'Opponents'),
       h('span.openings__color-label', [h('span.openings__color-dot', '○'), '\u00a0White']),
     ]),
     h('button', {
@@ -2028,7 +2042,7 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
         redraw();
       } },
     }, [
-      h('span.openings__color-username', filter === 'black' ? playerName : ''),
+      h('span.openings__color-username', filter === 'black' ? playerName : 'Opponents'),
       h('span.openings__color-label', [h('span.openings__color-dot', '●'), '\u00a0Black']),
     ]),
     // Flip button — inline, icon-only, sized like the book button in the nav bar.
@@ -2053,6 +2067,8 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
  */
 let _saveFeedback: string | null = null;
 let _saveFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+let _saveLibFeedback: string | null = null;
+let _saveLibFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 function handleSaveLine(path: readonly string[], redraw: () => void): void {
   const collection = activeCollection();
@@ -2086,6 +2102,22 @@ function handleSaveLine(path: readonly string[], redraw: () => void): void {
   redraw();
 }
 
+function handleSaveToLibrary(path: readonly string[], redraw: () => void): void {
+  if (path.length < 1) return;
+  const color = boardOrientation();
+  void saveUciLinesToLibrary([...path], color).then(() => {
+    _saveLibFeedback = 'Saved to Library!';
+    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+    _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+    redraw();
+  }).catch(() => {
+    _saveLibFeedback = 'Save failed';
+    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+    _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+    redraw();
+  });
+}
+
 function renderOpeningsMoveList(
   tree: OpeningTreeNode,
   path: readonly string[],
@@ -2108,13 +2140,21 @@ function renderOpeningsMoveList(
     h('div.analyse__moves.areplay', [
       renderMoveList(root, currentPath, () => undefined, navigate, null, false),
     ]),
-    // Save to training button (visible when line is >= 3 moves)
-    path.length >= 3 ? h('div.openings__save-line-row', [
-      _saveFeedback
-        ? h('span.openings__save-feedback', _saveFeedback)
-        : h('button.openings__save-line-btn', {
-            on: { click: () => handleSaveLine(path, redraw) },
-          }, '\u2B50 Save line to training'),
+    // Save-line row: training shortcut + Study Library (visible when at least 1 move played)
+    path.length >= 1 ? h('div.openings__save-line-row', [
+      path.length >= 3
+        ? (_saveFeedback
+            ? h('span.openings__save-feedback', _saveFeedback)
+            : h('button.openings__save-line-btn', {
+                on: { click: () => handleSaveLine(path, redraw) },
+              }, '\u2B50 Save line to training'))
+        : null,
+      _saveLibFeedback
+        ? h('span.openings__save-feedback', _saveLibFeedback)
+        : h('button.openings__save-lib-btn', {
+            attrs: { title: 'Save this line to the Study Library' },
+            on: { click: () => handleSaveToLibrary(path, redraw) },
+          }, '\uD83D\uDCDA Save to Library'),
     ]) : null,
     renderMoveNavBar([], {
       canPrev,
@@ -2235,6 +2275,13 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         if (node && _openingsCg) {
           _openingsCg.setAutoShapes(buildFrequencyArrows(node));
         }
+        // If a fetch is in progress and the animation hasn't started yet, start it
+        // now that the board is mounted. The first renderFetchBar call happens in
+        // the same patch cycle as this insert hook, so _openingsCg wasn't available
+        // there yet — this catches that race.
+        if (isFetching() && _animTimer === null && _animGame === null) {
+          startImportAnimation(redraw);
+        }
       },
       postpatch: () => {
         // Sync arrows on every redraw (tree may have updated from background build)
@@ -2266,17 +2313,88 @@ function destsForFen(fen: string): Map<Key, Key[]> {
   return _cachedDests;
 }
 
+// ─── Import animation ─────────────────────────────────────────────────────────
+
+function stopImportAnimation(): void {
+  if (_animTimer !== null) {
+    clearTimeout(_animTimer);
+    _animTimer = null;
+  }
+  _animGame    = null;
+  _animMoveIdx = 0;
+  _animPos     = null;
+}
+
+function startImportAnimation(redraw: () => void): void {
+  stopImportAnimation();
+  _animGame    = randomMasterGame();
+  _animMoveIdx = 0;
+
+  const setup = parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  try {
+    _animPos = setup.isOk ? Chess.fromSetup(setup.value).unwrap() : null;
+  } catch {
+    _animPos = null;
+  }
+  if (!_animPos || !_openingsCg) return;
+
+  _openingsCg.set({
+    fen:      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    lastMove: [] as Key[],
+    movable:  { color: 'both', free: false, dests: new Map() },
+    animation: { enabled: true },
+  });
+  // Start first move immediately so there is no visible gap between games.
+  scheduleNextAnimMove(redraw, 0);
+}
+
+function scheduleNextAnimMove(redraw: () => void, delay = ANIM_MOVE_MS): void {
+  _animTimer = setTimeout(() => {
+    _animTimer = null;
+    if (!isFetching() || !_animGame || !_animPos || !_openingsCg) return;
+
+    const uciStr = _animGame.moves[_animMoveIdx];
+    if (!uciStr) {
+      // Game ended — pick a new random game and restart.
+      startImportAnimation(redraw);
+      return;
+    }
+
+    const move = parseUci(uciStr);
+    if (!move || !_animPos.isLegal(move)) {
+      // Bad move in dataset — skip to next game gracefully.
+      startImportAnimation(redraw);
+      return;
+    }
+
+    _animPos.play(move);
+    const newFen = makeFen(_animPos.toSetup());
+    const from   = uciStr.slice(0, 2) as Key;
+    const to     = uciStr.slice(2, 4) as Key;
+    _openingsCg.set({ fen: newFen, lastMove: [from, to] });
+
+    _animMoveIdx++;
+    scheduleNextAnimMove(redraw);
+  }, delay);
+}
+
 function syncOpeningsBoard(_redraw: () => void): void {
+  // Stop any running import animation so the board is cleanly handed back.
+  if (!isFetching() && _animGame !== null) stopImportAnimation();
+
   const node = sessionNode();
   if (!_openingsCg || !node) return;
   const fen = node.fen;
-  // Skip if nothing changed
-  if (fen === _lastBoardFen) return;
+  const session = practiceSession();
+  const isPractice = !!session;
+  // Skip only if neither FEN nor practice mode has changed.
+  // Must re-sync on practice start/stop even at the same FEN so movable.color updates.
+  if (fen === _lastBoardFen && isPractice === _lastBoardPractice) return;
   _lastBoardFen = fen;
+  _lastBoardPractice = isPractice;
 
   // In practice mode, restrict movable.color to the user's color.
   // In browse mode, allow both sides to move freely.
-  const session = practiceSession();
   const movableColor: 'white' | 'black' | 'both' = session ? session.userColor : 'both';
 
   _openingsCg.set({
@@ -2390,6 +2508,19 @@ function buildFrequencyArrows(node: OpeningTreeNode): DrawShape[] {
 }
 
 function renderTreeBuildBar(): VNode {
+  // When the fetch→tree-build transition fires, stop the board animation and show
+  // the standard starting position oriented for the selected colour.
+  if ((_animGame !== null || _animTimer !== null) && _openingsCg) {
+    stopImportAnimation();
+    const orient: 'white' | 'black' = colorFilter() === 'black' ? 'black' : 'white';
+    _openingsCg.set({
+      fen:         'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      lastMove:    [] as Key[],
+      movable:     { color: 'both', free: false, dests: new Map() },
+      animation:   { enabled: false },
+      orientation: orient,
+    });
+  }
   const progress = treeBuildProgress();
   const total = treeBuildTotal();
   const pct = total > 0 ? Math.min(100, Math.round((progress / total) * 100)) : 0;
@@ -2399,8 +2530,37 @@ function renderTreeBuildBar(): VNode {
         attrs: { style: `width:${pct}%` },
       }),
     ]),
-    h('span.openings__tree-build-label',
-      `Building tree\u2026 ${progress.toLocaleString()} / ${total.toLocaleString()} games (${pct}%)`),
+    h('span.openings__tree-build-label', 'Building opening tree\u2026'),
+  ]);
+}
+
+function renderFetchBar(redraw: () => void): VNode {
+  // Kick off the board animation the first time this renders (or if it stopped).
+  if (_animTimer === null && _animGame === null && _openingsCg) {
+    startImportAnimation(redraw);
+  }
+
+  const progress = importProgress();
+  const month = importMonth();
+  let label: string;
+  if (progress > 0) {
+    const base = `${progress.toLocaleString()} games`;
+    label = month ? `Fetching games\u2026 ${base} \u2014 ${month}` : `Fetching games\u2026 ${base}`;
+  } else {
+    label = 'Connecting\u2026';
+  }
+  return h('div.openings__tree-build', [
+    h('div.openings__tree-build-bar', [
+      h('div.openings__tree-build-fill', {
+        attrs: { style: 'width:100%;opacity:0.6' },
+      }),
+    ]),
+    h('div.openings__tree-build-footer', [
+      h('span.openings__tree-build-label', label),
+      h('button.openings__cancel-import-btn', {
+        on: { click: () => { cancelImport(); stopImportAnimation(); redraw(); } },
+      }, 'Cancel'),
+    ]),
   ]);
 }
 
@@ -2511,15 +2671,26 @@ function renderSpeedFilter(redraw: () => void): VNode {
   }
 
   const toggle = (value: string) => {
-    // Expand the implicit "all" state to an explicit set before modifying.
-    const current = filter.size === 0
-      ? new Set(SPEED_OPTIONS.map(s => s.value))
-      : new Set(filter);
-    if (current.has(value)) current.delete(value);
-    else current.add(value);
-    // If all speeds are selected again, collapse back to the empty "all" shorthand.
-    const allSelected = SPEED_OPTIONS.every(s => current.has(s.value));
-    setSpeedFilter(allSelected || current.size === 0 ? new Set() : current, redraw);
+    let next: Set<string>;
+    if (filter.size === 0) {
+      // All active → narrow to just this chip.
+      next = new Set([value]);
+    } else if (filter.has(value)) {
+      if (filter.size === 1) {
+        // Only active chip → snap back to "all".
+        next = new Set();
+      } else {
+        // Remove from active set.
+        next = new Set(filter);
+        next.delete(value);
+      }
+    } else {
+      // Add to active set; collapse to "all" if every speed is now selected.
+      next = new Set(filter);
+      next.add(value);
+      if (SPEED_OPTIONS.every(s => next.has(s.value))) next = new Set();
+    }
+    setSpeedFilter(next, redraw);
     redraw();
   };
 
@@ -2539,6 +2710,136 @@ function renderSpeedFilter(redraw: () => void): VNode {
       ]);
     })),
   ]);
+}
+
+/**
+ * Date range filter row — shown below speed chips in the Opening Tree panel.
+ * Default: all time. Active: filters tree to games within the selected window.
+ * Popup counts are colour-filtered, speed-ignored (raw availability counts).
+ */
+function renderDateRangeFilter(redraw: () => void): VNode {
+  const collection = activeCollection();
+  const color = colorFilter();
+  const target = collection?.target?.toLowerCase() ?? '';
+  const activeRange = sessionDateRange();
+
+  // Colour-filtered games (no speed, no date) for popup counts and total.
+  let colourGames = collection?.games ?? [];
+  if (color !== 'both' && target && collection) {
+    colourGames = colourGames.filter(g => {
+      const isWhite = g.white?.toLowerCase() === target;
+      const isBlack = g.black?.toLowerCase() === target;
+      return color === 'white' ? isWhite : isBlack;
+    });
+  }
+  const totalCount = colourGames.length;
+
+  // Compute the actual date span of the colour-filtered game set for the "All" label.
+  function formatMonthYear(dateStr: string): string {
+    const ts = Date.parse(dateStr.replace(/\./g, '-'));
+    if (isNaN(ts)) return '';
+    return new Date(ts).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }
+  let spanLabel = '';
+  if (colourGames.length > 0) {
+    let earliest = '', latest = '';
+    for (const g of colourGames) {
+      if (!g.date) continue;
+      if (!earliest || g.date < earliest) earliest = g.date;
+      if (!latest   || g.date > latest)   latest   = g.date;
+    }
+    if (earliest && latest) {
+      const from = formatMonthYear(earliest);
+      const to   = formatMonthYear(latest);
+      spanLabel  = from === to ? from : `${from} – ${to}`;
+    }
+  }
+
+  function countInRange(days: number): number {
+    const cutoff = Date.now() - days * 86_400_000;
+    return colourGames.filter(g => {
+      if (!g.date) return false;
+      const ts = Date.parse(g.date.replace(/\./g, '-'));
+      return !isNaN(ts) && ts >= cutoff;
+    }).length;
+  }
+
+  const activeLabel = activeRange
+    ? (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; label: string }[]).find(o => o.value === activeRange)?.label ?? activeRange
+    : null;
+
+  const closePopup = () => { _dateRangePopupOpen = false; redraw(); };
+
+  return h('div.openings__date-range-row', [
+    // Backdrop to dismiss popup on click-outside.
+    _dateRangePopupOpen ? h('div.openings__date-popup-backdrop', {
+      on: { click: closePopup },
+    }) : null,
+    h('div.openings__date-range-btn-wrap', [
+      // Main trigger button.
+      h('button.openings__date-range-btn', {
+        class: { active: !!activeRange },
+        on: { click: () => { _dateRangePopupOpen = !_dateRangePopupOpen; redraw(); } },
+      }, activeRange
+        ? [activeLabel, ` (${countInRange((SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === activeRange)?.days ?? 0)})`]
+        : [spanLabel ? `All (${totalCount}) · ${spanLabel}` : `All (${totalCount})`],
+      ),
+      // Inline × to clear active range.
+      activeRange ? h('button.openings__date-range-clear', {
+        attrs: { title: 'Clear date filter' },
+        on: { click: () => { setSessionDateRange(null, redraw); _dateRangePopupOpen = false; redraw(); } },
+      }, '\u00d7') : null,
+      // Dropdown popup.
+      _dateRangePopupOpen ? h('div.openings__date-range-popup', SESSION_DATE_RANGE_OPTIONS.map(opt =>
+        h('button.openings__date-range-option', {
+          class: { active: activeRange === opt.value },
+          on: { click: () => { setSessionDateRange(opt.value, redraw); _dateRangePopupOpen = false; redraw(); } },
+        }, [
+          h('span', opt.label),
+          h('span.openings__date-range-count', `${countInRange(opt.days)}`),
+        ]),
+      )) : null,
+    ]),
+  ]);
+}
+
+/**
+ * Filter badges shown at the top of each tool panel when speed or date filters are active.
+ * Each badge has an × to clear that individual filter and trigger a tree rebuild.
+ */
+function renderFilterBadge(redraw: () => void): VNode | null {
+  const range = sessionDateRange();
+  const speeds = speedFilter();
+  if (!range && speeds.size === 0) return null;
+
+  const badges: VNode[] = [];
+
+  if (speeds.size > 0) {
+    const speedLabels = SPEED_OPTIONS
+      .filter(o => speeds.has(o.value))
+      .map(o => o.label)
+      .join(', ');
+    badges.push(h('span.openings__filter-badge', [
+      speedLabels,
+      h('button.openings__filter-badge-clear', {
+        attrs: { title: 'Clear speed filter' },
+        on: { click: () => { setSpeedFilter(new Set(), redraw); redraw(); } },
+      }, '\u00d7'),
+    ]));
+  }
+
+  if (range) {
+    const rangeLabel = (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; label: string }[]).find(o => o.value === range)?.label ?? range;
+    badges.push(h('span.openings__filter-badge', [
+      rangeLabel,
+      h('button.openings__filter-badge-clear', {
+        attrs: { title: 'Clear date filter' },
+        on: { click: () => { setSessionDateRange(null, redraw); redraw(); } },
+      }, '\u00d7'),
+    ]));
+  }
+
+  return h('div.openings__filter-badge-row', badges);
 }
 
 // --- Deviation scan panel ---
@@ -2595,6 +2896,7 @@ function renderPlayedLinesPanel(node: OpeningTreeNode, redraw: () => void): VNod
         ),
     // Speed filter chips — below the moves, above the move-nav bar
     renderSpeedFilter(redraw),
+    renderDateRangeFilter(redraw),
   ]);
 }
 
