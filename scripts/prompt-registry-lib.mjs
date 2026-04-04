@@ -20,7 +20,7 @@ export const LOCK_PATH = `${PROMPTS_DIR}/prompt-registry.lock`;
 
 const VALID_QUEUE_STATES = new Set(['not-queued', 'queued-pending', 'queued-started', 'queued-run']);
 const VALID_REVIEW_OUTCOMES = new Set(['pending', 'passed', 'passed with notes', 'issues found', 'needs rework', 'issues resolved']);
-const VALID_STATUS = new Set(['reserved', 'created', 'reviewed']);
+const VALID_STATUS = new Set(['reserved', 'created', 'reviewed', 'superseded', 'skipped']);
 const VALID_PRIORITIES = new Set(['critical', 'high', 'normal', 'low']);
 const VALID_CATEGORIES = new Set(['bugfix', 'typecheck', 'wiring', 'feature', 'refactor', 'research', 'manager', 'polish']);
 const VALID_REVIEWERS = new Set(['Codex', 'Claude', 'User', 'Unknown']);
@@ -126,6 +126,9 @@ export function formatBatchPromptIds(ids) {
 }
 
 export function promptFileBody(root, prompt) {
+  if (isSupersededPrompt(prompt)) {
+    return String(prompt.archivedPromptBody ?? '').replace(/\s+$/, '');
+  }
   if (!prompt?.promptFile) throw new Error(`Prompt ${prompt?.id ?? 'unknown'} has no prompt file`);
   const path = resolve(root, prompt.promptFile);
   return readFileSync(path, 'utf8').replace(/\s+$/, '');
@@ -137,6 +140,86 @@ export function safePromptFileBody(root, prompt) {
   } catch {
     return '(prompt body not created yet)';
   }
+}
+
+export function isSupersededPrompt(prompt) {
+  return prompt?.status === 'superseded' || prompt?.retiredReferenceOnly === true;
+}
+
+export function isSkippedPrompt(prompt) {
+  return prompt?.status === 'skipped';
+}
+
+export function isEditablePrompt(prompt) {
+  return !!prompt && !isSupersededPrompt(prompt) && !isSkippedPrompt(prompt) && prompt.status === 'created' && prompt.queueState === 'queued-pending';
+}
+
+export function isSkippablePrompt(prompt) {
+  return !!prompt && !isSupersededPrompt(prompt) && !isSkippedPrompt(prompt) && prompt.status === 'created' && prompt.queueState === 'queued-pending';
+}
+
+export function activeDashboardPrompts(registry) {
+  return registry.prompts.filter(prompt => !isSupersededPrompt(prompt) && !prompt.hiddenFromDashboard);
+}
+
+export function supersededPromptVersions(registry, promptId) {
+  return registry.prompts
+    .filter(prompt => isSupersededPrompt(prompt) && prompt.supersededFromPromptId === promptId)
+    .sort((a, b) => String(a.supersededAt || a.createdAt || '').localeCompare(String(b.supersededAt || b.createdAt || '')));
+}
+
+export function normalizePromptBodyText(body) {
+  return String(body ?? '').replace(/\r\n/g, '\n').replace(/\s+$/, '');
+}
+
+export function writePromptBodyFile(root, prompt, body) {
+  if (!prompt?.promptFile) throw new Error(`Prompt ${prompt?.id ?? 'unknown'} has no prompt file.`);
+  writeFileSync(resolve(root, prompt.promptFile), normalizePromptBodyText(body) + '\n');
+}
+
+export function extractRegistryOwnedBodyMetadata(body) {
+  const labels = new Set([
+    'Prompt ID',
+    'Task ID',
+    'Parent Prompt ID',
+    'Source Document',
+    'Source Step',
+    'Execution Target',
+  ]);
+  const meta = new Map();
+  for (const rawLine of normalizePromptBodyText(body).split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const match = line.match(/^([^:]+):\s*(.*)$/);
+    if (!match) continue;
+    const label = match[1].trim();
+    if (!labels.has(label)) continue;
+    meta.set(label, match[2]);
+  }
+  return meta;
+}
+
+export function compareRegistryOwnedBodyMetadata(currentBody, nextBody) {
+  const currentMeta = extractRegistryOwnedBodyMetadata(currentBody);
+  const nextMeta = extractRegistryOwnedBodyMetadata(nextBody);
+  const findings = [];
+  const labels = new Set([...currentMeta.keys(), ...nextMeta.keys()]);
+  for (const label of labels) {
+    const current = currentMeta.get(label) ?? '';
+    const next = nextMeta.get(label) ?? '';
+    if (current !== next) {
+      findings.push(`${label} changed from "${current}" to "${next}"`);
+    }
+  }
+  return findings;
+}
+
+export function nextSupersededPromptId(registry, activePromptId) {
+  const prefix = `RETIRED-PROMPT-DONOTRUN-REFERENCE-ONLY-${activePromptId}`;
+  const used = new Set(registry.prompts.map(prompt => prompt.id));
+  let version = 1;
+  while (used.has(`${prefix}-V${version}`)) version += 1;
+  return `${prefix}-V${version}`;
 }
 
 export function validatePromptBodyText(body, { id } = {}) {
@@ -188,6 +271,16 @@ export function ensureNotReserved(prompt, actionLabel) {
     throw new Error(`Prompt ${prompt.id} is a released reservation and cannot be used for ${actionLabel}.`);
   }
   throw new Error(`Prompt ${prompt.id} is still reserved and must be finalized before ${actionLabel}.`);
+}
+
+export function ensureActivePrompt(prompt, actionLabel) {
+  ensureNotReserved(prompt, actionLabel);
+  if (isSupersededPrompt(prompt)) {
+    throw new Error(`Prompt ${prompt.id} is a retired superseded reference and cannot be used for ${actionLabel}.`);
+  }
+  if (isSkippedPrompt(prompt)) {
+    throw new Error(`Prompt ${prompt.id} was skipped and cannot be used for ${actionLabel}.`);
+  }
 }
 
 function isIsoDateTime(value) {
@@ -320,7 +413,14 @@ export function validateRegistry(root = process.cwd()) {
     if (!VALID_QUEUE_STATES.has(prompt.queueState)) findings.push(`Prompt ${prompt.id} has invalid queueState: ${prompt.queueState}`);
     if (!VALID_REVIEW_OUTCOMES.has(prompt.reviewOutcome)) findings.push(`Prompt ${prompt.id} has invalid reviewOutcome: ${prompt.reviewOutcome}`);
     if (!VALID_STATUS.has(prompt.status)) findings.push(`Prompt ${prompt.id} has invalid status: ${prompt.status}`);
-    if (prompt.status === 'reserved') {
+    if (isSupersededPrompt(prompt)) {
+      if (prompt.queueState !== 'not-queued') findings.push(`Superseded prompt ${prompt.id} must use queueState not-queued`);
+      if (!prompt.archivedPromptBody) findings.push(`Superseded prompt ${prompt.id} is missing archivedPromptBody`);
+      if (!prompt.hiddenFromDashboard) findings.push(`Superseded prompt ${prompt.id} must be hidden from the main dashboard list`);
+      if (!prompt.supersededFromPromptId) findings.push(`Superseded prompt ${prompt.id} missing supersededFromPromptId`);
+      if (!prompt.supersededAt || !isIsoDateTime(prompt.supersededAt)) findings.push(`Superseded prompt ${prompt.id} has invalid supersededAt: ${prompt.supersededAt}`);
+      if (prompt.promptFile) findings.push(`Superseded prompt ${prompt.id} must not keep a promptFile`);
+    } else if (prompt.status === 'reserved') {
       if (prompt.queueState !== 'not-queued') findings.push(`Reserved prompt ${prompt.id} must use queueState not-queued`);
       if (prompt.reviewOutcome !== 'pending') findings.push(`Reserved prompt ${prompt.id} must keep reviewOutcome pending`);
       if (prompt.startedAt) findings.push(`Reserved prompt ${prompt.id} must not have startedAt`);
@@ -332,11 +432,18 @@ export function validateRegistry(root = process.cwd()) {
       if (prompt.reservationReleasedAt && !isIsoDateTime(prompt.reservationReleasedAt)) {
         findings.push(`Prompt ${prompt.id} has invalid reservationReleasedAt: ${prompt.reservationReleasedAt}`);
       }
+    } else if (isSkippedPrompt(prompt)) {
+      if (prompt.queueState !== 'not-queued') findings.push(`Skipped prompt ${prompt.id} must use queueState not-queued`);
+      if (!prompt.skippedAt || !isIsoDateTime(prompt.skippedAt)) findings.push(`Skipped prompt ${prompt.id} has invalid skippedAt: ${prompt.skippedAt}`);
+      if (prompt.startedAt) findings.push(`Skipped prompt ${prompt.id} must not have startedAt`);
+      if (prompt.completedAt) findings.push(`Skipped prompt ${prompt.id} must not have completedAt`);
+      if (prompt.reviewedAt) findings.push(`Skipped prompt ${prompt.id} must not have reviewedAt`);
     } else {
       if (!prompt.promptFile) findings.push(`Prompt ${prompt.id} missing promptFile`);
       else if (!existsSync(resolve(root, prompt.promptFile))) findings.push(`Prompt ${prompt.id} prompt file missing: ${prompt.promptFile}`);
     }
     if (prompt.createdAt && !isIsoDateTime(prompt.createdAt)) findings.push(`Prompt ${prompt.id} has invalid createdAt: ${prompt.createdAt}`);
+    if (prompt.lastEditedAt && !isIsoDateTime(prompt.lastEditedAt)) findings.push(`Prompt ${prompt.id} has invalid lastEditedAt: ${prompt.lastEditedAt}`);
     if (prompt.startedAt && !isIsoDateTime(prompt.startedAt)) findings.push(`Prompt ${prompt.id} has invalid startedAt: ${prompt.startedAt}`);
     if (prompt.completedAt && !isIsoDateTime(prompt.completedAt)) findings.push(`Prompt ${prompt.id} has invalid completedAt: ${prompt.completedAt}`);
     if (prompt.reviewedAt && !isIsoDateTime(prompt.reviewedAt)) findings.push(`Prompt ${prompt.id} has invalid reviewedAt: ${prompt.reviewedAt}`);
@@ -347,7 +454,7 @@ export function validateRegistry(root = process.cwd()) {
     if (prompt.sprintId && typeof prompt.sprintId !== 'string') findings.push(`Prompt ${prompt.id} has invalid sprintId`);
     if (prompt.sprintPhaseId && typeof prompt.sprintPhaseId !== 'string') findings.push(`Prompt ${prompt.id} has invalid sprintPhaseId`);
     if (prompt.sprintTaskId && typeof prompt.sprintTaskId !== 'string') findings.push(`Prompt ${prompt.id} has invalid sprintTaskId`);
-    if (prompt.queueState === 'not-queued' && prompt.status !== 'reviewed' && prompt.status !== 'reserved' && prompt.kind !== 'manager') {
+    if (prompt.queueState === 'not-queued' && prompt.status !== 'reviewed' && prompt.status !== 'reserved' && prompt.status !== 'skipped' && !isSupersededPrompt(prompt) && prompt.kind !== 'manager') {
       findings.push(`Prompt ${prompt.id} is not queued but is not reviewed`);
     }
     if (prompt.reviewOutcome === 'pending' && prompt.status === 'reviewed') {
@@ -363,6 +470,12 @@ export function validateRegistry(root = process.cwd()) {
   }
 
   for (const prompt of registry.prompts) {
+    if (isSupersededPrompt(prompt)) {
+      if (prompt.supersededFromPromptId && !promptById.has(prompt.supersededFromPromptId)) {
+        findings.push(`Superseded prompt ${prompt.id} references missing active prompt ${prompt.supersededFromPromptId}`);
+      }
+      continue;
+    }
     if (prompt.parentPromptId && prompt.parentPromptId !== 'none' && !promptById.has(prompt.parentPromptId)) {
       findings.push(`Prompt ${prompt.id} references missing parentPromptId ${prompt.parentPromptId}`);
     }
@@ -380,7 +493,7 @@ export function validateRegistry(root = process.cwd()) {
 
 export function renderQueue(root = process.cwd(), registryArg = null) {
   const { registry } = registryArg ?? readRegistry(root);
-  const prompts = registry.prompts.filter(p => p.queueState !== 'not-queued');
+  const prompts = activeDashboardPrompts(registry).filter(p => p.queueState !== 'not-queued');
   const lines = [
     '# Claude Prompt Queue',
     '',
@@ -415,6 +528,7 @@ export function renderQueue(root = process.cwd(), registryArg = null) {
 
 export function renderLog(root = process.cwd(), registryArg = null) {
   const { registry } = registryArg ?? readRegistry(root);
+  const activePrompts = activeDashboardPrompts(registry);
   const lines = [
     '# Claude Prompt Log',
     '',
@@ -426,14 +540,14 @@ export function renderLog(root = process.cwd(), registryArg = null) {
     '',
   ];
 
-  for (const prompt of registry.prompts) {
+  for (const prompt of activePrompts) {
     const mark = prompt.status === 'reviewed' ? 'x' : ' ';
     lines.push(`- [${mark}] ${prompt.id} - ${prompt.title}`);
   }
 
   lines.push('', '## Detailed Log', '');
 
-  for (const prompt of registry.prompts) {
+  for (const prompt of activePrompts) {
     const reviewedMark = prompt.status === 'reviewed' ? 'x' : ' ';
     lines.push(`## ${prompt.id} - ${prompt.title}`, '', '```');
     lines.push(`- [${reviewedMark}] Reviewed`);
@@ -448,6 +562,7 @@ export function renderLog(root = process.cwd(), registryArg = null) {
     lines.push(`  - Created by: ${prompt.createdBy ? `\`${prompt.createdBy}\`` : 'unknown'}`);
     lines.push(`  - Created at: ${prompt.createdAt ? `\`${prompt.createdAt}\`` : 'unknown'}`);
     lines.push(`  - Started at: ${prompt.startedAt ? `\`${prompt.startedAt}\`` : 'not started'}`);
+    lines.push(`  - Skipped at: ${prompt.skippedAt ? `\`${prompt.skippedAt}\`` : 'not skipped'}`);
     if (prompt.reservationReleasedAt) lines.push(`  - Reservation released at: \`${prompt.reservationReleasedAt}\``);
     lines.push(`  - Claude used: ${prompt.claudeUsed ? 'yes' : 'no'}`);
     lines.push(`  - Review outcome: ${prompt.reviewOutcome}`);
@@ -456,6 +571,7 @@ export function renderLog(root = process.cwd(), registryArg = null) {
     lines.push(`  - Reviewed by: ${prompt.reviewedBy ? `\`${prompt.reviewedBy}\`` : 'unknown'}`);
     lines.push(`  - Review method: ${prompt.reviewMethod ? `\`${prompt.reviewMethod}\`` : 'unknown'}`);
     lines.push(`  - Review scope: ${prompt.reviewScope || 'none'}`);
+    lines.push(`  - Skip reason: ${prompt.skipReason || 'none'}`);
     if (prompt.fixesPromptId) lines.push(`  - Fixes prompt: \`${prompt.fixesPromptId}\` (this prompt resolves issues found in that review)`);
     if (prompt.fixedByPromptId) lines.push(`  - Fixed by prompt: \`${prompt.fixedByPromptId}\` (issues from this review were resolved by that prompt)`);
     if (prompt.fixPromptSuggestion) {
@@ -465,6 +581,7 @@ export function renderLog(root = process.cwd(), registryArg = null) {
       lines.push(`    \`\`\``);
     }
     if (prompt.executionTarget) lines.push(`  - Execution target: \`${prompt.executionTarget}\``);
+    if (prompt.lastEditedAt) lines.push(`  - Last edited at: \`${prompt.lastEditedAt}\``);
     if (prompt.sprintId) lines.push(`  - Sprint ID: \`${prompt.sprintId}\``);
     if (prompt.sprintPhaseId) lines.push(`  - Sprint phase ID: \`${prompt.sprintPhaseId}\``);
     if (prompt.sprintTaskId) lines.push(`  - Sprint task ID: \`${prompt.sprintTaskId}\``);
@@ -474,6 +591,13 @@ export function renderLog(root = process.cwd(), registryArg = null) {
       lines.push(`  - Manual checklist:`);
       for (const item of prompt.manualChecklist) lines.push(`    ${item}`);
     }
+    const archivedVersions = supersededPromptVersions(registry, prompt.id);
+    if (archivedVersions.length) {
+      lines.push(`  - Superseded archived versions:`);
+      for (const archived of archivedVersions) {
+        lines.push(`    - \`${archived.id}\` archived at \`${archived.supersededAt}\``);
+      }
+    }
     lines.push('```', '');
   }
 
@@ -482,6 +606,7 @@ export function renderLog(root = process.cwd(), registryArg = null) {
 
 export function renderHistory(root = process.cwd(), registryArg = null) {
   const { registry } = registryArg ?? readRegistry(root);
+  const activePrompts = activeDashboardPrompts(registry);
   const lines = [
     '# Claude Prompt History',
     '',
@@ -493,8 +618,14 @@ export function renderHistory(root = process.cwd(), registryArg = null) {
     '',
   ];
 
-  for (const prompt of registry.prompts) {
-    const headingStatus = prompt.status === 'reviewed' ? 'Reviewed' : prompt.status === 'reserved' ? 'Reserved' : 'Created';
+  for (const prompt of activePrompts) {
+    const headingStatus = prompt.status === 'reviewed'
+      ? 'Reviewed'
+      : prompt.status === 'reserved'
+        ? 'Reserved'
+        : prompt.status === 'skipped'
+          ? 'Skipped'
+          : 'Created';
     lines.push(`## ${prompt.id} — ${headingStatus}`, '');
     lines.push(`- Task: ${prompt.task}`);
     lines.push(`- Task ID: \`${prompt.taskId}\``);
@@ -504,6 +635,7 @@ export function renderHistory(root = process.cwd(), registryArg = null) {
     lines.push(`- Created by: ${prompt.createdBy ? `\`${prompt.createdBy}\`` : 'unknown'}`);
     lines.push(`- Created at: ${prompt.createdAt ? `\`${prompt.createdAt}\`` : 'unknown'}`);
     lines.push(`- Started at: ${prompt.startedAt ? `\`${prompt.startedAt}\`` : 'not started'}`);
+    if (prompt.skippedAt) lines.push(`- Skipped at: \`${prompt.skippedAt}\``);
     if (prompt.reservationReleasedAt) lines.push(`- Reservation released at: \`${prompt.reservationReleasedAt}\``);
     lines.push(`- Status: ${prompt.status}`);
     lines.push(`- Review outcome: ${prompt.reviewOutcome}`);
@@ -519,9 +651,24 @@ export function renderHistory(root = process.cwd(), registryArg = null) {
     lines.push(`- Sprint task ID: ${prompt.sprintTaskId ? `\`${prompt.sprintTaskId}\`` : 'none'}`);
     lines.push(`- Queue state: ${prompt.queueState}`);
     lines.push(`- Prompt file: ${prompt.promptFile ? `\`${prompt.promptFile}\`` : 'not created yet'}`);
+    lines.push(`- Last edited at: ${prompt.lastEditedAt ? `\`${prompt.lastEditedAt}\`` : 'not edited'}`);
     lines.push(`- Notes: ${prompt.notes || 'none'}`, '', '```');
     lines.push(safePromptFileBody(root, prompt));
     lines.push('```', '');
+
+    const archivedVersions = supersededPromptVersions(registry, prompt.id);
+    if (archivedVersions.length) {
+      lines.push('### Superseded archived versions', '');
+      for (const archived of archivedVersions) {
+        lines.push(`#### ${archived.id}`, '');
+        lines.push(`- Status: superseded`);
+        lines.push(`- Archived at: \`${archived.supersededAt}\``);
+        lines.push(`- Notes: ${archived.notes || 'Reference only. Do not run.'}`, '', '```');
+        lines.push(safePromptFileBody(root, archived));
+        lines.push('```', '');
+      }
+    }
+    lines.push('');
   }
 
   return lines.join('\n').replace(/\n+$/, '') + '\n';

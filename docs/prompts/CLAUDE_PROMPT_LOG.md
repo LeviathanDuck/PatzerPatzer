@@ -823,6 +823,49 @@ Use this file to track Claude Code prompts from creation through review.
 - [ ] CCP-729 - Manager: LFYM View-Solution Follow-Up Fixes
 - [ ] CCP-730 - Fix Pre-existing TypeScript Strict Errors in retroView and Openings
 - [ ] CCP-731 - Overlay LFYM win-icon on Next button
+- [ ] CCP-732 - Fix LFYM eval-vs-engine-best box never populates
+- [ ] CCP-733 - Audit LFYM wrong-position engine arrows diagnostic logging
+- [ ] CCP-734 - Remove redundant retro-feedback eval-diff span
+- [ ] CCP-735 - Style Try Another Move as retro-save button
+- [ ] CCP-736 - Reposition LFYM win-icon to top-right of content panel
+- [ ] CCP-736-F1 - Fix win-icon still overlapping Next button
+- [ ] CCP-737 - Fix vs-Engine-Best eval accuracy in LFYM dual eval boxes
+- [ ] CCP-738 - Fix CCP-737: vs Move Played should show real diff not checkmark when exact best is played
+- [ ] CCP-739 - Return win-icon to inline flow next to feedback message
+- [ ] CCP-740 - Severity-modulated feedback module
+- [ ] CCP-741 - Feedback lookbook HTML dashboard
+- [ ] CCP-742 - Wire severity feedback into LFYM
+- [ ] CCP-743 - Severity feedback system manager
+- [ ] CCP-744 - Fix win-icon top-right positioning using content panel as anchor
+- [ ] CCP-745 - Adaptive height compression for retro feedback box
+- [ ] CCP-746 - Expanded eval box grades
+- [ ] CCP-747 - Add Mistake Detection to action menu and Lichess default marker to severity slider
+- [ ] CCP-748 - Feedback test PGN seed game
+- [ ] CCP-749 - Reserved CCP-749
+- [ ] CCP-750 - Reserved CCP-750
+- [ ] CCP-751 - Fix missing eval box grade colors in LFYM feedback states
+- [ ] CCP-752 - Add LFYM feedback icons to the lookbook
+- [ ] CCP-753 - Mistake count feedback gradient
+- [ ] CCP-754 - Wire mistake count gradient into LFYM
+- [ ] CCP-755 - General UI lookbook page
+- [ ] CCP-756 - Action menu: Mistakes subheading + inline Mistake Detection sub-panel
+- [ ] CCP-757 - Add pagination to prompt dashboard (200 per page)
+- [ ] CCP-758 - Merge lookbooks into single Patzer Lookbook
+- [ ] CCP-759 - Detail line generator and LFYM wiring
+- [ ] CCP-760 - Complete harsh tone text variants
+- [ ] CCP-761 - Wire harsh tone toggle into LFYM
+- [ ] CCP-762 - Escalating harsh tone levels
+- [ ] CCP-763 - Wire harsh level selector into LFYM
+- [ ] CCP-764 - Move harsh toggle to settings menu
+- [ ] CCP-765 - Harsh tone escalation manager
+- [ ] CCP-766 - Review LFYM Hotfix Cluster
+- [ ] CCP-767 - Review Study Sprint Follow-Up Cluster
+- [ ] CCP-768 - Review LFYM Navigation/Orientation Cluster
+- [ ] CCP-769 - Review LFYM/Openings Follow-Up Cluster
+- [ ] CCP-770 - Review LFYM Navigation/Orientation Cluster
+- [ ] CCP-771 - Review Feedback/Lookbook Cluster
+- [ ] CCP-772 - Review Harsh Tone Cluster
+- [ ] CCP-773 - Review All Current Completed Unreviewed Prompts Batch 2
 
 ## Detailed Log
 
@@ -26132,6 +26175,1133 @@ Use this file to track Claude Code prompts from creation through review.
   - Task: Reposition the green checkmark in the LFYM feedback box to overlay the top 25% of the Next button, centered, with a large drop shadow
   - Created by: `Codex`
   - Created at: `2026-04-04T01:28:12.589Z`
+  - Started at: `2026-04-04T01:39:15.178Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T01:42:54.612Z`
+  - Manual checklist:
+    - [ ] Green check overlaid on top of Next button, centered
+    - [ ] Drop shadow visible against blue background
+    - [ ] Next button text not obscured
+    - [ ] Instruction text layout intact
+    - [ ] Looks correct on mobile
+    - [ ] npm run build passes
+    - [ ] No console errors in win/view feedback state
+```
+
+## CCP-732 - Fix LFYM eval-vs-engine-best box never populates
+
+```
+- [ ] Reviewed
+  - ID: `CCP-732`
+  - Status: `created`
+  - Task ID: `CCP-732`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: LFYM eval box fix
+  - Created by: `Codex`
+  - Created at: `2026-04-04T01:31:45.529Z`
+  - Started at: `2026-04-04T01:43:08.860Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T01:44:59.111Z`
+  - Manual checklist:
+    - [ ] Wrong move: vs-Engine-Best box populates after brief delay
+    - [ ] Correct move: both boxes render, vs-Engine-Best shows checkmark
+    - [ ] vs-Move-Played box still works correctly
+    - [ ] No new console errors or TypeScript errors
+```
+
+## CCP-733 - Audit LFYM wrong-position engine arrows diagnostic logging
+
+```
+- [ ] Reviewed
+  - ID: `CCP-733`
+  - Status: `created`
+  - Task ID: `CCP-733`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: LFYM wrong-arrow audit
+  - Created by: `Codex`
+  - Created at: `2026-04-04T01:38:06.615Z`
+  - Started at: `2026-04-04T01:45:14.104Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T01:46:03.427Z`
+  - Manual checklist:
+    - [ ] [arrow-diag] logs appear when engine arrows draw in LFYM
+    - [ ] [eval-diag] logs appear when pendingEval deferred
+    - [ ] [bestmove-diag] logs appear when stale bestmove discarded
+    - [ ] No behavioral regression in arrow display
+    - [ ] All new logs marked with TEMP DIAG comment
+```
+
+## CCP-734 - Remove redundant retro-feedback eval-diff span
+
+```
+- [ ] Reviewed
+  - ID: `CCP-734`
+  - Status: `created`
+  - Task ID: `CCP-734`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/KNOWN_ISSUES.md`
+  - Source step: ``
+  - Task: LFYM eval-diff span removal
+  - Created by: `Codex`
+  - Created at: `2026-04-04T01:38:14.291Z`
+  - Started at: `2026-04-04T01:42:56.224Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T01:44:08.459Z`
+  - Manual checklist:
+    - [ ] redundant eval-diff span no longer renders in LFYM feedback
+    - [ ] eval comparison boxes unaffected
+    - [ ] no retro-feedback__eval-diff element in DOM after wrong move
+    - [ ] no layout regression in feedback panel
+    - [ ] no dead CSS remaining
+```
+
+## CCP-735 - Style Try Another Move as retro-save button
+
+```
+- [ ] Reviewed
+  - ID: `CCP-735`
+  - Status: `created`
+  - Task ID: `CCP-735`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `user request 2026-04-03`
+  - Source step: ``
+  - Task: Change the Try Another Move link in LFYM to a styled button matching Save to Library, placed directly below it
+  - Created by: `Codex`
+  - Created at: `2026-04-04T01:38:18.733Z`
+  - Started at: `2026-04-04T01:45:47.079Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T01:46:31.371Z`
+  - Manual checklist:
+    - [ ] Try another move rendered as retro-save__btn button
+    - [ ] Appears below Save to Library in all three feedback states
+    - [ ] Click handler logic unchanged
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-736 - Reposition LFYM win-icon to top-right of content panel
+
+```
+- [ ] Reviewed
+  - ID: `CCP-736`
+  - Status: `created`
+  - Task ID: `CCP-736`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `user request 2026-04-04`
+  - Source step: ``
+  - Task: Move the green check from overlaying the Next button to the top-right corner of the left content panel
+  - Created by: `Codex`
+  - Created at: `2026-04-04T01:53:24.152Z`
+  - Started at: `2026-04-04T01:53:50.007Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T01:54:08.761Z`
+  - Manual checklist:
+    - [ ] Icon in top-right of content panel
+    - [ ] Does not overlap Next button
+    - [ ] No layout shift
+    - [ ] npm run build passes
+```
+
+## CCP-736-F1 - Fix win-icon still overlapping Next button
+
+```
+- [ ] Reviewed
+  - ID: `CCP-736-F1`
+  - Status: `created`
+  - Task ID: `CCP-736`
+  - Parent prompt ID: `CCP-736`
+  - Batch prompt IDs: none
+  - Source document: `CCP-736 regression`
+  - Source step: ``
+  - Task: Remove translateX(50%) from retro-icon--win which was pushing the icon back into the Next button
+  - Created by: `Codex`
+  - Created at: `2026-04-04T01:55:54.889Z`
+  - Started at: `2026-04-04T01:57:03.111Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T01:57:43.734Z`
+  - Manual checklist:
+    - [ ] Icon no longer overlaps Next button
+    - [ ] npm run build passes
+```
+
+## CCP-737 - Fix vs-Engine-Best eval accuracy in LFYM dual eval boxes
+
+```
+- [ ] Reviewed
+  - ID: `CCP-737`
+  - Status: `created`
+  - Task ID: `CCP-737`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-737.md`
+  - Source step: ``
+  - Task: Add isExactBest flag to SolvingMoveSnapshot and short-circuit dual eval boxes to show checkmark when exact best move is played
+  - Created by: `Codex`
+  - Created at: `2026-04-04T02:05:08.418Z`
+  - Started at: `2026-04-04T02:09:22.865Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:10:58.292Z`
+  - Manual checklist:
+    - [ ] Exact best move shows checkmark in both boxes
+    - [ ] Wrong move shows meaningful negative diff in vs Engine Best
+    - [ ] vs Move Played unaffected
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-738 - Fix CCP-737: vs Move Played should show real diff not checkmark when exact best is played
+
+```
+- [ ] Reviewed
+  - ID: `CCP-738`
+  - Status: `created`
+  - Task ID: `CCP-738`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-738.md`
+  - Source step: ``
+  - Task: Remove early-return short-circuit for vs Move Played; only vs Engine Best shows checkmark when isExactBest is true
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T02:15:57.540Z`
+  - Started at: `2026-04-04T02:16:52.095Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:17:30.255Z`
+  - Manual checklist:
+    - [ ] Exact best: vs Engine Best shows ✓, vs Move Played shows real diff
+    - [ ] Wrong move: both boxes unaffected
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-739 - Return win-icon to inline flow next to feedback message
+
+```
+- [ ] Reviewed
+  - ID: `CCP-739`
+  - Status: `created`
+  - Task ID: `CCP-739`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-739.md`
+  - Source step: ``
+  - Task: Remove position: absolute from .retro-icon--win so it flows as a normal flex sibling like the fail and offtrack icons
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T02:21:13.845Z`
+  - Started at: `2026-04-04T02:22:16.442Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:22:55.844Z`
+  - Manual checklist:
+    - [ ] Win icon inline next to feedback text
+    - [ ] No overlap with Next button
+    - [ ] No layout shift
+    - [ ] Fail and offtrack states unaffected
+    - [ ] npm run build passes
+```
+
+## CCP-740 - Severity-modulated feedback module
+
+```
+- [ ] Reviewed
+  - ID: `CCP-740`
+  - Status: `created`
+  - Task ID: `CCP-740`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Create src/feedback/severity.ts with severity x reason lookup, color palette, glyphs, and standard/harsh tone strings
+  - Created by: `Claude`
+  - Created at: `2026-04-04T02:31:14.399Z`
+  - Started at: `2026-04-04T02:37:45.621Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:40:27.935Z`
+  - Manual checklist:
+    - [x] src/feedback/severity.ts exists and compiles
+    - [x] classifySeverity returns correct tier for each threshold boundary
+    - [x] getSeverityFeedback returns different text for different severity tiers
+    - [x] Both standard and harsh tones have complete coverage
+    - [x] SEVERITY_TIERS is ordered best-to-catastrophic
+    - [x] tree/types.ts still exports LEARNABLE_REASONS unchanged
+    - [x] No UI files were modified
+```
+
+## CCP-741 - Feedback lookbook HTML dashboard
+
+```
+- [ ] Reviewed
+  - ID: `CCP-741`
+  - Status: `created`
+  - Task ID: `CCP-741`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Create scripts/generate-feedback-lookbook.mjs and docs/feedback-lookbook.html visualizing the full severity feedback system with Patzer dark theme styling
+  - Created by: `Claude`
+  - Created at: `2026-04-04T02:31:18.680Z`
+  - Started at: `2026-04-04T02:40:36.364Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:42:18.235Z`
+  - Manual checklist:
+    - [x] generate-feedback-lookbook.mjs script exists
+    - [x] npm run lookbook:generate runs without errors
+    - [x] docs/feedback-lookbook.html is generated
+    - [x] Color scale strip shows all 9 tiers
+    - [x] Tier reference table is complete with swatches
+    - [x] Existing game review labels section present
+    - [x] Dual eval box grades section present
+    - [x] Standard tone matrix is complete (5 reasons x 5 tiers)
+    - [x] Harsh tone matrix is complete
+    - [x] Tone toggle works
+    - [x] Special classifications displayed
+    - [x] Glyph reference table present
+    - [x] Dark theme matches Patzer styling
+    - [x] package.json has lookbook:generate script
+```
+
+## CCP-742 - Wire severity feedback into LFYM
+
+```
+- [ ] Reviewed
+  - ID: `CCP-742`
+  - Status: `created`
+  - Task ID: `CCP-742`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Replace static LEARNABLE_REASONS summaries in retroView.ts with severity-modulated feedback from getSeverityFeedback
+  - Created by: `Claude`
+  - Created at: `2026-04-04T02:31:20.458Z`
+  - Started at: `2026-04-04T02:42:27.307Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:43:47.578Z`
+  - Manual checklist:
+    - [x] retroView.ts imports from severity module
+    - [x] Reason note text varies by candidate loss value
+    - [x] Blunder-level candidates show blunder-tier language
+    - [x] Inaccuracy-level candidates show inaccuracy-tier language
+    - [x] Reason label is colored with tier color
+    - [x] Win state shows positive feedback matching exact/near-best
+    - [x] Standard tone is used (no harsh mode)
+    - [x] No other files modified besides retroView.ts
+```
+
+## CCP-743 - Severity feedback system manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-743`
+  - Status: `created`
+  - Task ID: `CCP-743`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-740`, `CCP-741`, `CCP-742`
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Execute CCP-740, CCP-741, CCP-742 in order to build the severity feedback module, lookbook, and LFYM integration
+  - Created by: `Claude`
+  - Created at: `2026-04-04T02:31:28.071Z`
+  - Started at: `2026-04-04T02:37:07.313Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:43:55.107Z`
+  - Manual checklist:
+    - [x] CCP-740 completed — severity module exists and compiles
+    - [x] CCP-741 completed — lookbook generates and displays
+    - [x] CCP-742 completed — LFYM shows severity-modulated feedback
+    - [x] Children run in documented order
+    - [x] Final report lists child-by-child outcomes
+```
+
+## CCP-744 - Fix win-icon top-right positioning using content panel as anchor
+
+```
+- [ ] Reviewed
+  - ID: `CCP-744`
+  - Status: `created`
+  - Task ID: `CCP-744`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-744.md`
+  - Source step: ``
+  - Task: Add position: relative to .retro-half--top so win-icon absolute positioning is anchored to content panel boundary, not outer container
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T02:33:43.723Z`
+  - Started at: `2026-04-04T02:34:05.080Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:34:25.922Z`
+  - Manual checklist:
+    - [ ] Win icon in top-right of content panel
+    - [ ] No overlap with Next button
+    - [ ] No layout shift
+    - [ ] npm run build passes
+```
+
+## CCP-745 - Adaptive height compression for retro feedback box
+
+```
+- [ ] Reviewed
+  - ID: `CCP-745`
+  - Status: `created`
+  - Task ID: `CCP-745`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-745.md`
+  - Source step: ``
+  - Task: Use clamp()+vh for smooth spacing compression and two max-height breakpoints to progressively shrink then absolute-position the Next button as viewport height decreases
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T02:55:31.795Z`
+  - Started at: `2026-04-04T02:56:01.212Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T02:56:43.213Z`
+  - Manual checklist:
+    - [ ] Full height: no change
+    - [ ] ~500px: Next narrows to arrow only
+    - [ ] ~350px: Next is absolute mini button bottom-right
+    - [ ] Content panel fills vacated space
+    - [ ] npm run build passes
+```
+
+## CCP-746 - Expanded eval box grades
+
+```
+- [ ] Reviewed
+  - ID: `CCP-746`
+  - Status: `created`
+  - Task ID: `CCP-746`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Replace 4-grade eval box system with 10-grade system matching severity color palette, including purple checkmate grade
+  - Created by: `Claude`
+  - Created at: `2026-04-04T03:02:13.107Z`
+  - Started at: `2026-04-04T03:07:33.408Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T03:09:46.779Z`
+  - Manual checklist:
+    - [x] EvalBoxGrade type and data added to severity.ts
+    - [x] classifyEvalBoxGrade function works correctly
+    - [x] retroView.ts uses new grading logic
+    - [x] vs Engine Best shows graduated colors
+    - [x] Checkmate grade shows purple #KO!
+    - [x] vs Move Played shows graduated colors
+    - [x] Old CSS modifier classes removed from main.scss
+    - [x] Structural eval box CSS preserved
+    - [x] TypeScript compiles clean
+    - [x] Build succeeds
+    - [x] Lookbook generates and shows updated grades
+```
+
+## CCP-747 - Add Mistake Detection to action menu and Lichess default marker to severity slider
+
+```
+- [ ] Reviewed
+  - ID: `CCP-747`
+  - Status: `created`
+  - Task ID: `CCP-747`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-747.md`
+  - Source step: ``
+  - Task: Export openRetroModal from header, wire it into action menu Tools section, add missing default-mark to severity slider
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T03:09:07.657Z`
+  - Started at: `2026-04-04T03:09:37.380Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T03:10:17.042Z`
+  - Manual checklist:
+    - [ ] Mistake Detection button in action menu Tools
+    - [ ] Opens modal, closes action menu
+    - [ ] Top-nav entry unaffected
+    - [ ] Lichess default marker on severity slider at 37.5%
+    - [ ] npm run build passes
+    - [ ] npx tsc --noEmit passes
+```
+
+## CCP-748 - Feedback test PGN seed game
+
+```
+- [ ] Reviewed
+  - ID: `CCP-748`
+  - Status: `created`
+  - Task ID: `CCP-748`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Add temporary seed game to IDB on empty load for testing severity feedback gradient end-to-end
+  - Created by: `Claude`
+  - Created at: `2026-04-04T03:15:26.145Z`
+  - Started at: `2026-04-04T03:17:33.573Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T03:18:14.757Z`
+  - Manual checklist:
+    - [x] FEEDBACK_TEST_PGN constant added to main.ts
+    - [x] Empty-IDB branch seeds the test game
+    - [x] Game appears in games list on fresh load
+    - [x] Game displays on analysis board with white orientation
+    - [x] Game has 30 moves ending 0-1
+    - [x] Review button works on the seeded game
+    - [x] LFYM produces multiple learnable moments after review
+    - [x] Temporary comment marks the seed code for removal
+```
+
+## CCP-749 - Reserved CCP-749
+
+```
+- [ ] Reviewed
+  - ID: `CCP-749`
+  - Status: `reserved`
+  - Task ID: `CCP-749`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `reserved`
+  - Source step: `reserved`
+  - Task: Reserved prompt slot
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T03:22:01.218Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Reservation released at: `2026-04-04T04:15:06.351Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-750 - Reserved CCP-750
+
+```
+- [ ] Reviewed
+  - ID: `CCP-750`
+  - Status: `reserved`
+  - Task ID: `CCP-750`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `reserved`
+  - Source step: `reserved`
+  - Task: Reserved prompt slot
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T03:22:05.758Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Reservation released at: `2026-04-04T04:15:08.062Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-751 - Fix missing eval box grade colors in LFYM feedback states
+
+```
+- [ ] Reviewed
+  - ID: `CCP-751`
+  - Status: `created`
+  - Task ID: `CCP-751`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-751.md`
+  - Source step: ``
+  - Task: Add CSS rules for retro-eval-box grade modifier classes (best/near/ok/bad) — classes were applied but no rules existed
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T03:22:13.358Z`
+  - Started at: `2026-04-04T03:23:31.317Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T03:23:45.376Z`
+  - Manual checklist:
+    - [ ] Fail state boxes colored
+    - [ ] Win state boxes colored
+    - [ ] View state boxes colored
+    - [ ] npm run build passes
+```
+
+## CCP-752 - Add LFYM feedback icons to the lookbook
+
+```
+- [ ] Reviewed
+  - ID: `CCP-752`
+  - Status: `created`
+  - Task ID: `CCP-752`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `docs/prompts/items/CCP-752.md`
+  - Source step: ``
+  - Task: Add section I to feedback-lookbook generator covering the win checkmark, fail X, and offtrack ! icons with colors and states
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T03:22:18.263Z`
+  - Started at: `2026-04-04T03:23:53.445Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T03:24:29.182Z`
+  - Manual checklist:
+    - [ ] LFYM Icons section present in lookbook
+    - [ ] All three icons shown with correct colors and states
+    - [ ] Nav link works
+    - [ ] lookbook:generate succeeds
+```
+
+## CCP-753 - Mistake count feedback gradient
+
+```
+- [ ] Reviewed
+  - ID: `CCP-753`
+  - Status: `created`
+  - Task ID: `CCP-753`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Add mistake-count-based messaging gradient to severity module and lookbook
+  - Created by: `Claude`
+  - Created at: `2026-04-04T03:47:10.298Z`
+  - Started at: `2026-04-04T03:48:54.601Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T03:51:46.096Z`
+  - Manual checklist:
+    - [x] MistakeCountTier type added to severity.ts
+    - [x] MISTAKE_COUNT_TIERS array with 7 tiers
+    - [x] classifyMistakeCount function works correctly
+    - [x] Both standard and harsh messages complete
+    - [x] Lookbook F4 section added with color strip
+    - [x] Lookbook shows LFYM panel previews at each tier
+    - [x] Tone toggle works for mistake count section
+    - [x] Session-end panels shown
+    - [x] All text fields editable
+    - [x] TypeScript compiles clean
+```
+
+## CCP-754 - Wire mistake count gradient into LFYM
+
+```
+- [ ] Reviewed
+  - ID: `CCP-754`
+  - Status: `created`
+  - Task ID: `CCP-754`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Wire classifyMistakeCount into retroView.ts for session intro, end messages, and progress tint
+  - Created by: `Claude`
+  - Created at: `2026-04-04T03:47:12.065Z`
+  - Started at: `2026-04-04T03:51:51.552Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T03:52:36.338Z`
+  - Manual checklist:
+    - [x] classifyMistakeCount imported in retroView.ts
+    - [x] Intro message shown on first find state
+    - [x] Intro message varies by mistake count
+    - [x] Session-end messages use tier-appropriate text
+    - [x] End messages colored with tier color
+    - [x] Progress counter tinted with tier color
+    - [x] Intro only on first puzzle (solved === 0)
+    - [x] TypeScript compiles clean
+    - [x] Build succeeds
+```
+
+## CCP-755 - General UI lookbook page
+
+```
+- [ ] Reviewed
+  - ID: `CCP-755`
+  - Status: `created`
+  - Task ID: `CCP-755`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Create docs/ui-lookbook.html generated from live source files showing all UI elements
+  - Created by: `Claude`
+  - Created at: `2026-04-04T04:08:49.207Z`
+  - Started at: `2026-04-04T04:09:13.976Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T04:14:33.743Z`
+  - Manual checklist:
+    - [x] generate-ui-lookbook.mjs script exists
+    - [x] npm run ui-lookbook:generate runs without errors
+    - [x] docs/ui-lookbook.html is generated
+    - [x] Colors extracted from live source files
+    - [x] All major UI sections present
+    - [x] Dark theme matches Patzer styling
+    - [x] package.json has ui-lookbook:generate script
+    - [x] FEEDBACK_STYLE_GUIDE.md updated
+```
+
+## CCP-756 - Action menu: Mistakes subheading + inline Mistake Detection sub-panel
+
+```
+- [ ] Reviewed
+  - ID: `CCP-756`
+  - Status: `created`
+  - Task ID: `CCP-756`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `User session conversation 2026-04-03`
+  - Source step: ``
+  - Task: Add Mistakes h2 grouping, fix text cut-off, render Mistake Detection settings inline as sub-panel with Back button
+  - Created by: `Unknown`
+  - Created at: `2026-04-04T04:12:25.921Z`
+  - Started at: `2026-04-04T04:16:11.975Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T04:18:59.806Z`
+  - Manual checklist:
+    - [ ] Mistakes subheading present in action menu grouping LFYM and Mistake Detection
+    - [ ] Mistake Detection text no longer cut off
+    - [ ] Clicking Mistake Detection opens inline sub-panel (no modal popup)
+    - [ ] Sub-panel shows all detection settings (severity slider, mate distance, families, reset)
+    - [ ] Back button returns to main menu
+    - [ ] Closing action menu resets sub-view to null
+    - [ ] npm run build passes
+```
+
+## CCP-757 - Add pagination to prompt dashboard (200 per page)
+
+```
+- [ ] Reviewed
+  - ID: `CCP-757`
+  - Status: `created`
+  - Task ID: `CCP-757`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `scripts/generate-prompt-dashboard.mjs`
+  - Source step: ``
+  - Task: Dashboard pagination
+  - Created by: `Codex`
+  - Created at: `2026-04-04T04:19:04.563Z`
+  - Started at: `2026-04-04T04:20:18.214Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T04:21:52.185Z`
+  - Manual checklist:
+    - [ ] Prompts render in pages of 200
+    - [ ] Search and filters reset to page 1 and show correct results across all data
+    - [ ] Count label shows pagination info when paginated
+    - [ ] No pagination controls when filtered set fits one page
+    - [ ] Prev/Next and page number buttons work correctly
+```
+
+## CCP-758 - Merge lookbooks into single Patzer Lookbook
+
+```
+- [ ] Reviewed
+  - ID: `CCP-758`
+  - Status: `created`
+  - Task ID: `CCP-758`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Merge feedback and UI lookbooks into docs/patzer-lookbook.html with tab navigation
+  - Created by: `Claude`
+  - Created at: `2026-04-04T04:19:10.320Z`
+  - Started at: `2026-04-04T04:19:36.385Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T04:22:24.494Z`
+  - Manual checklist:
+    - [x] Single generate-patzer-lookbook.mjs script
+    - [x] docs/patzer-lookbook.html generated
+    - [x] Tab navigation between Feedback and General UI
+    - [x] All feedback sections present
+    - [x] All UI sections present
+    - [x] Old files removed
+    - [x] package.json updated
+    - [x] FEEDBACK_STYLE_GUIDE.md updated
+```
+
+## CCP-759 - Detail line generator and LFYM wiring
+
+```
+- [ ] Reviewed
+  - ID: `CCP-759`
+  - Status: `created`
+  - Task ID: `CCP-759`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Build buildDetailLine function and wire into renderReasonNote in retroView.ts
+  - Created by: `Claude`
+  - Created at: `2026-04-04T15:24:50.890Z`
+  - Started at: `2026-04-04T15:27:26.471Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T15:30:12.552Z`
+  - Manual checklist:
+    - [x] buildDetailLine function added to severity.ts
+    - [x] DetailLineInput interface defined
+    - [x] retroView.ts calls buildDetailLine in renderReasonNote
+    - [x] Detail line renders between label and summary
+    - [x] Detail line references playedMoveSan and bestMoveSan
+    - [x] Pawn values shown when evalDiff available
+    - [x] Graceful fallback when evalDiff is null
+    - [x] Missed-mate shows generic text (mate distance not on candidate yet)
+    - [x] CSS styling added for retro-reason__detail
+    - [x] TypeScript compiles clean
+    - [x] Build succeeds
+```
+
+## CCP-760 - Complete harsh tone text variants
+
+```
+- [ ] Reviewed
+  - ID: `CCP-760`
+  - Status: `created`
+  - Task ID: `CCP-760`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Add LFYM_MESSAGES with harsh variants for all UI strings, add tone to buildDetailLine
+  - Created by: `Claude`
+  - Created at: `2026-04-04T15:24:52.606Z`
+  - Started at: `2026-04-04T15:30:20.578Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T15:32:12.959Z`
+  - Manual checklist:
+    - [x] LfymStateMessages interface added
+    - [x] LFYM_MESSAGES exported with both tones
+    - [x] All 17 keys have standard and harsh variants
+    - [x] buildDetailLine accepts tone parameter
+    - [x] Harsh detail lines are blunt and direct
+    - [x] Lookbook shows harsh LFYM panels
+    - [x] TypeScript compiles clean
+    - [x] No retroView.ts changes
+```
+
+## CCP-761 - Wire harsh tone toggle into LFYM
+
+```
+- [ ] Reviewed
+  - ID: `CCP-761`
+  - Status: `created`
+  - Task ID: `CCP-761`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Add tone toggle to LFYM panel, wire all text through feedbackTone preference
+  - Created by: `Claude`
+  - Created at: `2026-04-04T15:24:54.222Z`
+  - Started at: `2026-04-04T15:32:19.568Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+  - Completed at: `2026-04-04T15:36:33.464Z`
+  - Manual checklist:
+    - [x] feedbackTone added to retroConfig
+    - [x] Tone toggle renders in LFYM title bar
+    - [x] Toggle persists to localStorage
+    - [x] All win/fail/find state text uses LFYM_MESSAGES[tone]
+    - [x] Reason notes use tone parameter
+    - [x] Detail lines use tone parameter
+    - [x] Mistake count messages use correct tone variant
+    - [x] Action labels switch with tone
+    - [x] Off-track text switches with tone
+    - [x] Vindication text switches with tone
+    - [x] Redraw fires on toggle change
+    - [x] TypeScript compiles clean
+    - [x] Build succeeds
+```
+
+## CCP-762 - Escalating harsh tone levels
+
+```
+- [ ] Reviewed
+  - ID: `CCP-762`
+  - Status: `created`
+  - Task ID: `CCP-762`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Expand FeedbackTone to 4 levels with brutal+unhinged text for all user-facing strings
+  - Created by: `Claude`
+  - Created at: `2026-04-04T15:36:49.845Z`
   - Started at: not started
   - Skipped at: not skipped
   - Claude used: no
@@ -26143,4 +27313,302 @@ Use this file to track Claude Code prompts from creation through review.
   - Review scope: none
   - Skip reason: none
   - Execution target: `Claude Code`
+```
+
+## CCP-763 - Wire harsh level selector into LFYM
+
+```
+- [ ] Reviewed
+  - ID: `CCP-763`
+  - Status: `created`
+  - Task ID: `CCP-763`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Replace boolean toggle with 4-position selector in Mistake Detection modal
+  - Created by: `Claude`
+  - Created at: `2026-04-04T15:36:51.432Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-764 - Move harsh toggle to settings menu
+
+```
+- [ ] Reviewed
+  - ID: `CCP-764`
+  - Status: `created`
+  - Task ID: `CCP-764`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Move tone toggle from LFYM title bar to Mistake Detection modal
+  - Created by: `Claude`
+  - Created at: `2026-04-04T15:40:17.642Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-765 - Harsh tone escalation manager
+
+```
+- [ ] Reviewed
+  - ID: `CCP-765`
+  - Status: `created`
+  - Task ID: `CCP-765`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-764`, `CCP-762`, `CCP-763`
+  - Source document: `conversation`
+  - Source step: ``
+  - Task: Execute CCP-764, CCP-762, CCP-763 in order
+  - Created by: `Claude`
+  - Created at: `2026-04-04T15:49:28.466Z`
+  - Started at: `2026-04-04T15:50:15.781Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-766 - Review LFYM Hotfix Cluster
+
+```
+- [ ] Reviewed
+  - ID: `CCP-766`
+  - Status: `created`
+  - Task ID: `CCP-766`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-682`, `CCP-683`, `CCP-685`, `CCP-680-F1`, `CCP-680-F2`, `CCP-680-F3`, `CCP-680-F4`, `CCP-680-F5`, `CCP-680-F6`, `CCP-680-F7`, `CCP-680-F8`, `CCP-687`, `CCP-688`, `CCP-689`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: `LFYM hotfix subgroup of grouped review campaign`
+  - Task: Review LFYM hotfix cluster prompts in exact order
+  - Created by: `Codex`
+  - Created at: `2026-04-04T17:40:32.314Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Codex`
+```
+
+## CCP-767 - Review Study Sprint Follow-Up Cluster
+
+```
+- [ ] Reviewed
+  - ID: `CCP-767`
+  - Status: `created`
+  - Task ID: `CCP-767`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-690`, `CCP-691`, `CCP-692`, `CCP-693`, `CCP-694`, `CCP-695`, `CCP-696`, `CCP-697`, `CCP-698`, `CCP-699`, `CCP-702`, `CCP-700`, `CCP-701`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: `Study sprint follow-up subgroup of grouped review campaign`
+  - Task: Review study sprint follow-up cluster prompts in exact order
+  - Created by: `Codex`
+  - Created at: `2026-04-04T17:40:39.045Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Codex`
+```
+
+## CCP-768 - Review LFYM Navigation/Orientation Cluster
+
+```
+- [ ] Reviewed
+  - ID: `CCP-768`
+  - Status: `created`
+  - Task ID: `CCP-768`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-720`, `CCP-721`, `CCP-721-F1`, `CCP-721-F2`, `CCP-725`, `CCP-726`, `CCP-727`, `CCP-728`, `CCP-726-F1`, `CCP-730`, `CCP-731`, `CCP-732`, `CCP-733`, `CCP-734`, `CCP-735`, `CCP-736`, `CCP-736-F1`, `CCP-737`, `CCP-738`, `CCP-739`, `CCP-715-F1`, `CCP-715-F2`, `CCP-729`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: `LFYM navigation/orientation subgroup of grouped review campaign`
+  - Task: Review LFYM navigation/orientation cluster prompts in exact order
+  - Created by: `Codex`
+  - Created at: `2026-04-04T17:40:39.080Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Codex`
+```
+
+## CCP-769 - Review LFYM/Openings Follow-Up Cluster
+
+```
+- [ ] Reviewed
+  - ID: `CCP-769`
+  - Status: `created`
+  - Task ID: `CCP-769`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-703`, `CCP-704`, `CCP-705`, `CCP-710`, `CCP-711`, `CCP-712`, `CCP-713`, `CCP-713-F1`, `CCP-714`, `CCP-715`, `CCP-716`, `CCP-717`, `CCP-718`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: `LFYM/openings follow-up subgroup of grouped review campaign`
+  - Task: Review LFYM/openings follow-up cluster prompts in exact order
+  - Created by: `Codex`
+  - Created at: `2026-04-04T17:40:39.096Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Codex`
+```
+
+## CCP-770 - Review LFYM Navigation/Orientation Cluster
+
+```
+- [ ] Reviewed
+  - ID: `CCP-770`
+  - Status: `reserved`
+  - Task ID: `CCP-770`
+  - Parent prompt ID: none
+  - Batch prompt IDs: none
+  - Source document: `reserved`
+  - Source step: `reserved`
+  - Task: Reserved prompt slot
+  - Created by: `Codex`
+  - Created at: `2026-04-04T17:40:47.833Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Reservation released at: `2026-04-04T17:44:13.347Z`
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Claude Code`
+```
+
+## CCP-771 - Review Feedback/Lookbook Cluster
+
+```
+- [ ] Reviewed
+  - ID: `CCP-771`
+  - Status: `created`
+  - Task ID: `CCP-771`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-740`, `CCP-741`, `CCP-742`, `CCP-744`, `CCP-745`, `CCP-746`, `CCP-747`, `CCP-748`, `CCP-751`, `CCP-752`, `CCP-753`, `CCP-754`, `CCP-755`, `CCP-756`, `CCP-757`, `CCP-758`, `CCP-759`, `CCP-743`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: `Feedback/lookbook subgroup of grouped review campaign`
+  - Task: Review feedback/lookbook cluster prompts in exact order
+  - Created by: `Codex`
+  - Created at: `2026-04-04T17:40:52.832Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Codex`
+```
+
+## CCP-772 - Review Harsh Tone Cluster
+
+```
+- [ ] Reviewed
+  - ID: `CCP-772`
+  - Status: `created`
+  - Task ID: `CCP-772`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-760`, `CCP-761`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: `Harsh tone subgroup of grouped review campaign`
+  - Task: Review harsh tone cluster prompts in exact order
+  - Created by: `Codex`
+  - Created at: `2026-04-04T17:40:58.648Z`
+  - Started at: not started
+  - Skipped at: not skipped
+  - Claude used: no
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Codex`
+```
+
+## CCP-773 - Review All Current Completed Unreviewed Prompts Batch 2
+
+```
+- [ ] Reviewed
+  - ID: `CCP-773`
+  - Status: `created`
+  - Task ID: `CCP-773`
+  - Parent prompt ID: none
+  - Batch prompt IDs: `CCP-766`, `CCP-767`, `CCP-769`, `CCP-768`, `CCP-771`, `CCP-772`
+  - Source document: `docs/prompts/prompt-registry.json`
+  - Source step: `Top-level grouped review manager for current completed-unreviewed prompts`
+  - Task: Review all current completed unreviewed prompts through grouped managers
+  - Created by: `Codex`
+  - Created at: `2026-04-04T17:41:02.318Z`
+  - Started at: `2026-04-04T17:45:01.793Z`
+  - Skipped at: not skipped
+  - Claude used: yes
+  - Review outcome: pending
+  - Review issues: none
+  - Reviewed at: not reviewed
+  - Reviewed by: unknown
+  - Review method: unknown
+  - Review scope: none
+  - Skip reason: none
+  - Execution target: `Codex`
 ```

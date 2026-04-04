@@ -19,6 +19,11 @@
     "prompts:migrate": "node scripts/migrate-prompt-registry.mjs && npm run prompts:generate",
     "audit:prompts": "node scripts/audit-prompt-tracking.mjs",
     "audit:sprints": "node scripts/audit-sprint-tracking.mjs",
+    "sprint:recompute": "node scripts/sprint-recompute.mjs",
+    "sprint:audit:complete": "node scripts/sprint-audit-complete.mjs",
+    "sprint:panel-note:set": "node scripts/sprint-panel-note.mjs",
+    "sprint:panel-note:clear": "node scripts/sprint-panel-note.mjs --clear",
+    "sprint:seed": "node scripts/sprint-seed.mjs",
     "prompts:dashboard": "node scripts/generate-prompt-dashboard.mjs",
     "prompt:reserve": "node scripts/prompt-reserve.mjs",
     "prompt:reserve-followup": "node scripts/prompt-reserve-followup.mjs",
@@ -27,12 +32,15 @@
     "prompt:reservations": "node scripts/prompt-reservations.mjs",
     "prompt:release": "node scripts/prompt-release.mjs",
     "prompt:start": "node scripts/prompt-start.mjs",
+    "prompt:skip": "node scripts/prompt-skip.mjs",
     "prompt:complete": "node scripts/prompt-complete.mjs",
     "prompt:review": "node scripts/prompt-review.mjs",
     "prompt:campaign:status": "node scripts/prompt-review-campaign-status.mjs",
     "sprint:create": "node scripts/sprint-create.mjs",
     "sprint:backfill": "node scripts/sprint-backfill.mjs",
-    "sprint:status": "node scripts/sprint-status.mjs"
+    "sprint:status": "node scripts/sprint-status.mjs",
+    "generate:master-games": "node scripts/generate-master-games.mjs",
+    "lookbook:generate": "npx tsx scripts/generate-patzer-lookbook.mjs"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.0",

@@ -261,7 +261,7 @@ export class PuzzleRoundCtrl {
   firstWrongPly: number | undefined;
   /** Whether an attempt record has already been persisted for this round. */
   private attemptRecorded: boolean;
-  /** The color the solver plays. Opposite of who moves first at startFen. */
+  /** The color the solver plays. */
   pov: 'white' | 'black';
   /** Lichess-style mode: 'play' on first attempt, 'try' after wrong move, 'view' after solve/fail+give up. */
   mode: PuzzleMode;
@@ -428,11 +428,15 @@ export class PuzzleRoundCtrl {
     this.analysisMode = false;
 
     // Determine solver's color.
-    // startFen has the opponent to move (they play the trigger move).
-    // The solver plays the opposite color.
+    // Imported Lichess puzzles include a trigger move, so startFen is the
+    // pre-trigger position and the solver is opposite the side to move.
+    // User-library puzzles start directly from the solver-to-move position,
+    // so the solver matches the side to move when no trigger exists.
     const setup = parseFen(definition.startFen);
     this.pov = setup.isOk
-      ? (setup.value.turn === 'white' ? 'black' : 'white')
+      ? definition.triggerMove
+        ? (setup.value.turn === 'white' ? 'black' : 'white')
+        : setup.value.turn
       : 'white'; // fallback
 
     // Build initial tree: root node at startFen, plus trigger move if present.
@@ -1852,6 +1856,9 @@ export function initPuzzlePage(view: PuzzleView, puzzleId?: string): void {
   // The perf is available immediately via getCurrentUserPerf() (returns the
   // cached default until the async load completes).
   loadUserPerfFromStorage().catch(e => console.warn('[puzzle] loadUserPerfFromStorage failed', e));
+  syncRatedLadder()
+    .then(() => loadUserPerfFromStorage())
+    .catch(e => console.warn('[puzzle] syncRatedLadder failed', e));
 }
 
 export function getPuzzlePageState(): PuzzlePageState {

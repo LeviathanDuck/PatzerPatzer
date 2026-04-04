@@ -24,7 +24,7 @@ if (filter) {
 }
 
 if (needsAttentionOnly) {
-  list = list.filter(sprint => ['active', 'implementation-partial', 'needs-review', 'blocked'].includes(sprint.status));
+  list = list.filter(sprint => ['Needs Prompts', 'Ready to Start', 'In Progress', 'Completed Needs Full Review', 'Completed: With Issues'].includes(sprint.currentStatus));
 }
 
 if (list.length === 0) {
@@ -35,7 +35,7 @@ if (list.length === 0) {
 for (const sprint of list) {
   console.log(`\n${sprint.id} — ${sprint.title}`);
   console.log(`${'─'.repeat(`${sprint.id} — ${sprint.title}`.length)}`);
-  console.log(`Status: ${sprint.status}`);
+  console.log(`Status: ${sprint.currentStatus}`);
   console.log(`Tasks: ${sprint.totalTasks} | Plan coverage: ${sprint.planCoveragePct}% | Execution: ${sprint.executionPct}% | Implementation: ${sprint.implementationPct}%`);
   console.log(`Linked prompts: ${sprint.promptsLinkedCount} | Unreviewed prompts: ${sprint.promptsUnreviewedCount} | Audits: ${(sprint.auditRefs || []).length} | Next steps: ${(sprint.recommendedNextSteps || []).length}`);
   if (sprint.dependencySprintIds?.length) console.log(`Depends on: ${sprint.dependencySprintIds.join(', ')}`);

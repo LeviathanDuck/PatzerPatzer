@@ -24,7 +24,7 @@
 // Then runs prompts:refresh to regenerate all docs and dashboard.
 
 import { execSync } from 'node:child_process';
-import { ensureNotReserved, mutateRegistryLocked, requirePrompt } from './prompt-registry-lib.mjs';
+import { ensureActivePrompt, mutateRegistryLocked, requirePrompt } from './prompt-registry-lib.mjs';
 
 const root = process.cwd();
 const args = process.argv.slice(2);
@@ -47,12 +47,12 @@ const fixesId = getFlag('--fixes');
 try {
   const result = await mutateRegistryLocked(root, registry => {
     const prompt = requirePrompt(registry, id);
-    ensureNotReserved(prompt, 'prompt:complete');
+    ensureActivePrompt(prompt, 'prompt:complete');
 
     let fixesTarget = null;
     if (fixesId) {
       fixesTarget = requirePrompt(registry, fixesId);
-      ensureNotReserved(fixesTarget, 'prompt:complete --fixes');
+      ensureActivePrompt(fixesTarget, 'prompt:complete --fixes');
     }
 
     const now = new Date().toISOString();
@@ -108,6 +108,13 @@ try {
     if (checklistRaw) console.log(`  Manual checklist: ${result.checklistCount} items`);
     if (fixesId && result.fixesResolved) console.log(`  ${fixesId} → reviewOutcome updated to 'issues resolved' (fixed by ${id})`);
     if (fixesId) console.log(`  Linked: ${id} fixes ${fixesId}`);
+  }
+
+  console.log('Running sprint:recompute...');
+  try {
+    execSync('npm run sprint:recompute', { cwd: root, stdio: 'inherit' });
+  } catch {
+    console.log('[prompt:complete] sprint:recompute reported issues (may be pre-existing).');
   }
 
   console.log('Running prompts:refresh...');

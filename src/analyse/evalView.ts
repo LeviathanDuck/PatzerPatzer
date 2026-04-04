@@ -255,17 +255,88 @@ function findWorstMovePath(
 }
 
 export function renderPostGameSummaryPanel(
-  _analysisComplete: boolean,
-  _evalCache:        EvalCache,
-  _mainline:         TreeNode[],
-  _whiteName:        string,
-  _blackName:        string,
-  _userColor:        'white' | 'black' | null | undefined,
-  _navigate:         (path: string) => void,
-  _redraw:           () => void,
+  analysisComplete: boolean,
+  evalCache:        EvalCache,
+  mainline:         TreeNode[],
+  whiteName:        string,
+  blackName:        string,
+  userColor:        'white' | 'black' | null | undefined,
+  navigate:         (path: string) => void,
+  redraw:           () => void,
 ): VNode {
-  // Temporarily hidden — panel will be redesigned with more useful content.
+  // Hidden — panel not ready to ship. Re-enable by removing this early return.
   return h('div');
+  if (!analysisComplete) return h('div');
+
+  const summary = computeAnalysisSummary(mainline, evalCache);
+  if (!summary) return h('div');
+
+  const open = getPostGamePanelOpen();
+
+  // Opening line: first 8 half-moves formatted as "1. e4 e5 2. Nf3 Nc6 …"
+  const openingParts: string[] = [];
+  for (const node of mainline.slice(1, 9)) {
+    const san = node.san;
+    if (!san) break;
+    if (node.ply % 2 === 1) openingParts.push(`${Math.ceil(node.ply / 2)}. ${san}`);
+    else openingParts.push(san!);
+  }
+  const openingText = openingParts.join(' ');
+
+  // Worst move for user's color (or the side with the worst single blunder overall)
+  const worst = findWorstMovePath(mainline, evalCache, userColor ?? undefined);
+  const summaryData = summary!;
+
+  // Missed moments: all labeled moves for user's color (or total if no user color)
+  const uSummary = userColor === 'black' ? summaryData.black : summaryData.white;
+  const missedCount = uSummary.blunders + uSummary.mistakes + uSummary.inaccuracies;
+
+  function playerCol(name: string, data: PlayerSummary, color: 'white' | 'black'): VNode {
+    const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : '—';
+    const parts: string[] = [];
+    if (data.blunders     > 0) parts.push(`${data.blunders} blunder${data.blunders !== 1 ? 's' : ''}`);
+    if (data.mistakes     > 0) parts.push(`${data.mistakes} mistake${data.mistakes !== 1 ? 's' : ''}`);
+    if (data.inaccuracies > 0) parts.push(`${data.inaccuracies} inaccurac${data.inaccuracies !== 1 ? 'ies' : 'y'}`);
+    return h('div.post-game-panel__player', [
+      h('div.post-game-panel__player-name', [
+        h('span.summary__color-icon', { class: { 'summary__color-icon--white': color === 'white', 'summary__color-icon--black': color === 'black' } }),
+        name,
+      ]),
+      h('div.post-game-panel__player-acc', accText),
+      h('div.post-game-panel__player-breakdown', parts.length > 0 ? parts.join(', ') : 'No mistakes'),
+    ]);
+  }
+
+  const body: (VNode | null)[] = [
+    h('div.post-game-panel__players', [
+      playerCol(whiteName, summaryData.white, 'white'),
+      playerCol(blackName, summaryData.black, 'black'),
+    ]),
+    openingText ? h('div.post-game-panel__opening', `Opening: ${openingText}`) : null,
+    worst
+      ? h('div.post-game-panel__worst', [
+          'Worst: Move ',
+          h('a.post-game-panel__worst-link', {
+            attrs: { href: '#' },
+            on: { click: (e: MouseEvent) => { e.preventDefault(); navigate(worst!.path); } },
+          }, String(Math.ceil(worst!.ply / 2))),
+          ` lost ${Math.round(worst!.loss * 100)}% win chance`,
+        ])
+      : null,
+    missedCount > 0
+      ? h('div.post-game-panel__missed', `Learn from your mistakes (${missedCount} moment${missedCount !== 1 ? 's' : ''})`)
+      : null,
+  ];
+
+  return h('div.post-game-panel', [
+    h('div.post-game-panel__header', {
+      on: { click: () => { setPostGamePanelOpen(!open); redraw(); } },
+    }, [
+      h('span.post-game-panel__title', 'Game Summary'),
+      h('span.post-game-panel__toggle', open ? '▲' : '▼'),
+    ]),
+    open ? h('div.post-game-panel__body', body) : null,
+  ]);
 }
 
 // --- Eval bar ---

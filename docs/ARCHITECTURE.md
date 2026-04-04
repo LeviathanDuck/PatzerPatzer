@@ -139,6 +139,25 @@ Engine behavior is split into:
 This is a real subsystem now, but the engine still runs on the main thread and some correctness
 and lifecycle issues remain.
 
+### Learn From Your Mistakes engine policy
+
+Patzer intentionally diverges from Lichess on engine policy during Learn From Your Mistakes.
+
+Lichess remains the main reference for:
+- retrospection flow
+- solve-state ownership
+- feedback timing
+- controller boundaries
+
+Patzer-specific LFYM policy:
+- LFYM should have background engine support while solving even if the public engine toggle is off
+- LFYM solve feedback should prioritize the active solving variation over normal live-analysis drift
+- foreground review/batch analysis should not own the engine target while LFYM is waiting to judge a played move
+- LFYM may eventually use broader solve-time engine coverage than Lichess exposes, but that is a Patzer product decision rather than a parity requirement
+
+This distinction matters: Lichess is still the architectural reference for retrospection behavior,
+but Patzer is not trying to copy Lichess's exact visible engine policy in LFYM.
+
 ### `src/games/`
 
 The Games tab renderers and metadata helpers live here, but the actual game library state is still
@@ -235,6 +254,10 @@ The largest remaining divergences are structural rather than behavioral:
 - review and restore coordination still lives partly in `main.ts`
 - puzzle product and analysis-side candidate extraction still coexist as two partially overlapping systems
 - board ownership is improved but not yet formalized enough to call complete
+
+There is also one deliberate behavioral divergence worth keeping explicit:
+
+- LFYM engine ownership in Patzer is intended to be stronger than Lichess parity alone; solve mode should be able to force background ceval support and keep the engine focused on the active solving path even when the public engine state would normally allow review/live analysis to behave differently
 
 ---
 

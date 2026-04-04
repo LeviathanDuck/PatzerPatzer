@@ -2057,6 +2057,16 @@ function buildArrowShapes() {
   const retroHidden = ctrl2.retro !== void 0 && !ctrl2.retro.guidanceRevealed();
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
+      console.log(
+        "[arrow-diag] drawing engine arrow \u2014 evalNodePath:",
+        evalNodePath,
+        "| ctrl.path:",
+        ctrl2.path,
+        "| match:",
+        evalNodePath === ctrl2.path,
+        "| best:",
+        currentEval.best
+      );
       const uci = currentEval.best;
       shapes.push(buildArrowShape(uci, "paleBlue"));
       const labelShape = buildArrowLabelShape(uci, currentEval);
@@ -2405,6 +2415,14 @@ function parseEngineLine(line) {
       _redraw();
     } else {
       if (!_isBatchActive() && !_evalFenOverride && evalNodePath !== _getCtrl().path) {
+        console.log(
+          "[bestmove-diag] stale bestmove discarded \u2014 evalNodePath:",
+          evalNodePath,
+          "| ctrl.path:",
+          _getCtrl().path,
+          "| pendingEval:",
+          pendingEval
+        );
         pendingLines = [];
         if (pendingEval) evalCurrentPosition();
         else if (threatMode) evalThreatPosition();
@@ -2560,6 +2578,14 @@ function evalCurrentPosition() {
       pendingStopCount++;
       protocol.stop();
     }
+    console.log(
+      "[eval-diag] pendingEval set \u2014 engineSearchActive, deferring. evalNodePath:",
+      evalNodePath,
+      "| ctrl.path:",
+      ctrl2.path,
+      "| pendingEval was:",
+      pendingEval
+    );
     pendingEval = true;
     _redraw();
     return;
@@ -13024,254 +13050,1033 @@ function renderAnalysisControls(extraButtons) {
   ]);
 }
 
-// src/analyse/analysisControls.ts
-var _actionMenuOpen = false;
-function toggleActionMenu() {
-  _actionMenuOpen = !_actionMenuOpen;
+// src/import/filters.ts
+function storedInt3(key, def, min, max) {
+  const v = parseInt(localStorage.getItem(key) ?? "", 10);
+  return !isNaN(v) && v >= min && v <= max ? v : def;
 }
-function closeActionMenu() {
-  _actionMenuOpen = false;
+var importFilters = {
+  rated: true,
+  speeds: /* @__PURE__ */ new Set(),
+  // empty = all speeds
+  dateRange: "1month",
+  customFrom: "",
+  customTo: "",
+  autoReview: localStorage.getItem("patzer.autoReview") === "true",
+  autoReviewConfirmed: localStorage.getItem("patzer.autoReviewConfirmed") === "true",
+  autoReviewDepth: storedInt3("patzer.autoReviewDepth", 12, 2, 18)
+};
+function setAutoReview(v) {
+  importFilters.autoReview = v;
+  localStorage.setItem("patzer.autoReview", String(v));
 }
-var _deps = null;
-function initAnalysisControls(deps) {
-  _deps = deps;
+function setAutoReviewConfirmed(v) {
+  importFilters.autoReviewConfirmed = v;
+  localStorage.setItem("patzer.autoReviewConfirmed", String(v));
 }
-var ICON_JUMP_FIRST = "\uE035";
-var ICON_PREV = "\uE027";
-var ICON_NEXT = "\uE026";
-var ICON_JUMP_LAST = "\uE034";
-var ICON_HAMBURGER = "\uE039";
-var ICON_BOOK = "\uE03B";
-function renderExplorerEntry() {
-  const deps = _deps;
-  const ctrl2 = deps.getCtrl();
-  if (ctrl2.retro) return null;
-  const active = deps.explorerEnabled();
-  return h("button.fbt", {
-    class: { active },
-    attrs: { "data-icon": ICON_BOOK, title: "Opening explorer" },
-    on: { click: () => {
-      deps.onToggleExplorer();
-      deps.redraw();
-    } }
-  });
+function setAutoReviewDepth(v) {
+  importFilters.autoReviewDepth = v;
+  localStorage.setItem("patzer.autoReviewDepth", String(v));
 }
-function renderMoveNavBar(leftNodes, nav) {
-  let canPrev, canNext, first2, prev2, next2, last2;
-  let explorerBtn = null;
-  let rightZone;
-  if (nav) {
-    ({ canPrev, canNext, first: first2, prev: prev2, next: next2, last: last2 } = nav);
-    if (nav.onBook !== void 0) {
-      explorerBtn = h("button.fbt", {
-        class: { active: !!nav.bookActive },
-        attrs: { "data-icon": ICON_BOOK, title: "Opening explorer" },
-        on: { click: nav.onBook }
-      });
-    }
-    rightZone = h("div.move-nav-bar__right", nav.rightSlot ? [nav.rightSlot] : []);
-  } else {
-    const deps = _deps;
-    const ctrl2 = deps.getCtrl();
-    canPrev = ctrl2.path !== "";
-    canNext = !!ctrl2.node.children[0];
-    first2 = deps.first;
-    prev2 = deps.prev;
-    next2 = deps.next;
-    last2 = deps.last;
-    explorerBtn = renderExplorerEntry();
-    rightZone = h("div.move-nav-bar__right", [
-      h("button.fbt", {
-        class: { active: _actionMenuOpen },
-        attrs: { "data-icon": ICON_HAMBURGER, title: "Analysis menu" },
-        on: { click: () => {
-          toggleActionMenu();
-          deps.redraw();
-        } }
-      })
-    ]);
+var SPEED_OPTIONS = [
+  { value: "bullet", label: "Bullet", icon: "\uE032" },
+  // licon.Bullet
+  { value: "blitz", label: "Blitz", icon: "\uE008" },
+  // licon.FlameBlitz
+  { value: "rapid", label: "Rapid", icon: "\uE002" }
+  // licon.Rabbit
+];
+var DATE_RANGE_OPTIONS = [
+  { value: "24h", label: "24h" },
+  { value: "1week", label: "1 wk" },
+  { value: "1month", label: "1 mo" },
+  { value: "3months", label: "3 mo" },
+  { value: "1year", label: "1 yr" },
+  { value: "all", label: "All" },
+  { value: "custom", label: "Custom" }
+];
+function filterGamesByDate(games) {
+  if (importFilters.dateRange === "all") return games;
+  if (importFilters.dateRange === "custom") {
+    return games.filter((g) => {
+      const d = g.date?.slice(0, 10);
+      if (!d) return true;
+      if (importFilters.customFrom && d < importFilters.customFrom) return false;
+      if (importFilters.customTo && d > importFilters.customTo) return false;
+      return true;
+    });
   }
-  return h("div.move-nav-bar", [
-    h("div.move-nav-bar__left", leftNodes.filter((n) => n !== null)),
-    ...explorerBtn ? [explorerBtn] : [],
-    h("div.move-nav-bar__middle", [
-      h("div.jumps", [
-        h("button.fbt", {
-          attrs: { "data-icon": ICON_JUMP_FIRST, disabled: !canPrev, title: "First move" },
-          on: { click: first2 }
-        }),
-        h("button.fbt", {
-          attrs: { "data-icon": ICON_PREV, disabled: !canPrev, title: "Previous move" },
-          on: { click: prev2 }
-        }),
-        h("button.fbt", {
-          attrs: { "data-icon": ICON_NEXT, disabled: !canNext, title: "Next move" },
-          on: { click: next2 }
-        }),
-        h("button.fbt", {
-          attrs: { "data-icon": ICON_JUMP_LAST, disabled: !canNext, title: "Last move" },
-          on: { click: last2 }
-        })
-      ])
-    ]),
-    rightZone
-  ]);
-}
-var ICON_FLIP = "\uE020";
-var ICON_RETRO = "\uE05C";
-function renderActionMenu() {
-  if (!_actionMenuOpen) return null;
-  const deps = _deps;
-  const ctrl2 = deps.getCtrl();
-  const close = () => {
-    closeActionMenu();
-    deps.redraw();
-  };
-  const hasRetro = !!ctrl2.retro;
-  const canLFYM = analysisComplete && !batchAnalyzing;
-  return h("div.action-menu", [
-    h("button.action-menu__close-btn", {
-      attrs: { title: "Close menu" },
-      on: { click: close }
-    }, "\xD7"),
-    // Tools section — mirrors lichess-org/lila: actionMenu.ts Tools group
-    h("h2", "Tools"),
-    h("div.action-menu__tools", [
-      // Save game to Study Library (CCP-525)
-      h("button", {
-        attrs: { title: "Save this game to Study Library" },
-        on: { click: () => {
-          deps.onSaveToLibrary();
-          close();
-        } }
-      }, "Save game to Library"),
-      // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
-      h("button", {
-        attrs: { "data-icon": ICON_FLIP, title: "Flip board (hotkey: f)" },
-        on: { click: () => {
-          deps.onFlipBoard();
-          close();
-        } }
-      }, "Flip board"),
-      // Learn From Your Mistakes — mirrors lichess-org/lila: actionMenu.ts canRetro → toggleRetro()
-      h("button", {
-        class: { active: hasRetro },
-        attrs: {
-          "data-icon": ICON_RETRO,
-          title: canLFYM ? hasRetro ? "Exit mistakes review" : "Review your mistakes" : "Analyze the game first",
-          disabled: !canLFYM
-        },
-        on: { click: () => {
-          if (canLFYM) {
-            deps.onToggleRetro();
-            close();
-          }
-        } }
-      }, hasRetro ? "Close Mistakes" : "Learn From Your Mistakes")
-    ]),
-    // Display section — analysis-local display toggles.
-    // Arrow display settings moved here from engine gear (CCP-246).
-    // showBoardReviewGlyphs, showReviewLabels: primary ownership now here (removed from gear).
-    // reviewDotsUserOnly moved here from global header menu (CCP-244).
-    h("h2", "Display"),
-    h("div.action-menu__display", [
-      renderToggleRow("am-board-glyphs", "Move markers on board", showBoardReviewGlyphs, (v) => {
-        setShowBoardReviewGlyphs(v);
-        syncArrow();
-        deps.redraw();
-      }),
-      renderToggleRow("am-move-labels", "Move labels", showReviewLabels, (v) => {
-        setShowReviewLabels(v);
-        deps.redraw();
-      }),
-      // Review dots user-only — moved from global header menu (CCP-244).
-      // Storage owner (reviewDotsUserOnly / setReviewDotsUserOnly in src/board/cosmetics.ts) unchanged.
-      renderToggleRow("am-review-dots", "Review dots: my moves only", reviewDotsUserOnly, (v) => {
-        setReviewDotsUserOnly(v);
-        deps.redraw();
-      }),
-      // Arrow display settings — moved from engine gear (CCP-246).
-      // Storage owners in engine/ctrl.ts unchanged.
-      renderToggleRow("am-engine-arrows", "Engine arrows", showEngineArrows, (v) => {
-        setShowEngineArrows(v);
-        syncArrow();
-        deps.redraw();
-      }),
-      renderToggleRow("am-all-lines", "All lines", arrowAllLines, (v) => {
-        setArrowAllLines(v);
-        syncArrow();
-        deps.redraw();
-      }),
-      renderToggleRow("am-played-arrow", "Played move arrow", showPlayedArrow, (v) => {
-        setShowPlayedArrow(v);
-        syncArrow();
-        deps.redraw();
-      }),
-      renderToggleRow("am-arrow-labels", "Arrow labels", showArrowLabels, (v) => {
-        setShowArrowLabels(v);
-        syncArrow();
-        deps.redraw();
-      }),
-      h("div.action-menu__slider-row", [
-        h("label", { attrs: { for: "action-menu-label-size" } }, "Label size"),
-        h("input#action-menu-label-size", {
-          attrs: { type: "range", min: 6, max: 18, step: 1, value: arrowLabelSize },
-          on: { input: (e) => {
-            setArrowLabelSize(parseInt(e.target.value));
-            syncArrow();
-            deps.redraw();
-          } }
-        }),
-        h("span.action-menu__val", `${arrowLabelSize}px`)
-      ])
-    ])
-  ]);
+  const now = /* @__PURE__ */ new Date();
+  let cutoff;
+  switch (importFilters.dateRange) {
+    case "24h":
+      cutoff = new Date(now.getTime() - 864e5);
+      break;
+    case "1week":
+      cutoff = new Date(now.getTime() - 7 * 864e5);
+      break;
+    case "1month":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 1);
+      break;
+    case "3months":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 3);
+      break;
+    case "1year":
+      cutoff = new Date(now);
+      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      break;
+    default:
+      return games;
+  }
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
 }
 
-// src/router.ts
-var routes = [
-  { pattern: ["analysis", ":id"], name: "analysis-game" },
-  { pattern: ["analysis"], name: "analysis" },
-  { pattern: ["opponents"], name: "opponents" },
-  { pattern: ["openings"], name: "opponents" },
-  { pattern: ["stats"], name: "stats" },
-  { pattern: ["games"], name: "games" },
-  { pattern: ["puzzles", ":id"], name: "puzzle-round" },
-  { pattern: ["puzzles"], name: "puzzles" },
-  { pattern: ["study", ":id"], name: "study-detail" },
-  { pattern: ["study"], name: "study" },
-  { pattern: ["admin"], name: "admin" },
-  { pattern: [], name: "analysis" }
-];
-function parse(hash2) {
-  const path = hash2.replace(/^#\/?/, "");
-  const parts = path ? path.split("/") : [];
-  for (const { pattern, name } of routes) {
-    if (pattern.length !== parts.length) continue;
-    const params = {};
-    let matched = true;
-    for (let i = 0; i < pattern.length; i++) {
-      const seg = pattern[i];
-      if (!seg) {
-        matched = false;
-        break;
+// src/import/types.ts
+var gameIdCounter = 0;
+function nextGameId() {
+  return `game-${++gameIdCounter}`;
+}
+function restoreGameIdCounter(max) {
+  if (max > gameIdCounter) gameIdCounter = max;
+}
+function parsePgnHeader(pgn, tag) {
+  return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
+}
+function parseRating(s) {
+  if (typeof s === "number") return s > 0 ? s : void 0;
+  if (!s) return void 0;
+  const n = parseInt(s, 10);
+  return isNaN(n) || n <= 0 ? void 0 : n;
+}
+function timeClassFromTimeControl(tc) {
+  if (!tc || tc === "-") return void 0;
+  const secs = parseInt(tc, 10);
+  if (isNaN(secs)) return void 0;
+  if (secs < 30) return "ultrabullet";
+  if (secs < 180) return "bullet";
+  if (secs < 480) return "blitz";
+  if (secs < 1500) return "rapid";
+  return "classical";
+}
+
+// src/import/chesscom.ts
+var CHESSCOM_BASE = "https://api.chess.com/pub/player";
+function archiveCutoffMonth() {
+  const range = importFilters.dateRange;
+  if (range === "all") return null;
+  if (range === "custom") {
+    return importFilters.customFrom ? importFilters.customFrom.slice(0, 7) : null;
+  }
+  const now = /* @__PURE__ */ new Date();
+  let cutoff;
+  switch (range) {
+    case "24h":
+      cutoff = new Date(now.getTime() - 864e5);
+      break;
+    case "1week":
+      cutoff = new Date(now.getTime() - 7 * 864e5);
+      break;
+    case "1month":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 1);
+      break;
+    case "3months":
+      cutoff = new Date(now);
+      cutoff.setMonth(cutoff.getMonth() - 3);
+      break;
+    case "1year":
+      cutoff = new Date(now);
+      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      break;
+    default:
+      return null;
+  }
+  return cutoff.toISOString().slice(0, 7);
+}
+var chesscom = {
+  username: "LeviathanDuck",
+  loading: false,
+  error: null,
+  /** Live count of games parsed so far during an active import. */
+  gameCount: 0
+};
+function normalizeChesscomResult(whiteResult, blackResult) {
+  if (whiteResult === "win") return "1-0";
+  if (blackResult === "win") return "0-1";
+  return "1/2-1/2";
+}
+async function fetchChesscomGames(username, rated, speeds, onProgress) {
+  const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
+  if (!archivesRes.ok) {
+    throw new Error(archivesRes.status === 404 ? "Chess.com: user not found" : `Chess.com API error ${archivesRes.status}`);
+  }
+  const archivesData = await archivesRes.json();
+  const archives = archivesData.archives ?? [];
+  if (archives.length === 0) return [];
+  const cutoffMonth = archiveCutoffMonth();
+  const relevantArchives = cutoffMonth === null ? archives : archives.filter((url) => {
+    const parts = url.split("/");
+    const year = parts[parts.length - 2];
+    const month = parts[parts.length - 1];
+    if (!year || !month) return false;
+    return `${year}-${month.padStart(2, "0")}` >= cutoffMonth;
+  });
+  if (relevantArchives.length === 0) return [];
+  const archiveResponses = await Promise.all(relevantArchives.map((url) => fetch(url)));
+  const rawGames = [];
+  for (const res of archiveResponses) {
+    if (!res.ok) throw new Error(`Chess.com API error ${res.status}`);
+    const data = await res.json();
+    rawGames.push(...data.games ?? []);
+  }
+  const result = [];
+  for (let i = rawGames.length - 1; i >= 0; i--) {
+    const raw = rawGames[i];
+    if (raw.rules !== "chess" || raw.time_class === "daily") continue;
+    if (rated && !raw.rated) continue;
+    if (speeds.size > 0 && !speeds.has(raw.time_class)) continue;
+    const pgn = raw.pgn ?? "";
+    if (!pgn) continue;
+    try {
+      pgnToTree(pgn);
+    } catch {
+      continue;
+    }
+    const white = raw.white?.username;
+    const black = raw.black?.username;
+    const date = parsePgnHeader(pgn, "Date")?.replace(/\./g, "-");
+    const timeClass = raw.time_class;
+    let opening = parsePgnHeader(pgn, "Opening");
+    let eco = parsePgnHeader(pgn, "ECO");
+    if (!opening || !eco) {
+      const classified = classifyOpening(pgn);
+      if (classified) {
+        if (!opening) opening = classified.name;
+        if (!eco) eco = classified.eco;
       }
-      if (seg.startsWith(":")) {
-        params[seg.slice(1)] = parts[i];
-      } else if (seg !== parts[i]) {
-        matched = false;
+    }
+    const whiteRating = parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, "WhiteElo"));
+    const blackRating = parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, "BlackElo"));
+    result.push({
+      id: nextGameId(),
+      pgn,
+      result: normalizeChesscomResult(raw.white?.result ?? "", raw.black?.result ?? ""),
+      source: "chesscom",
+      importedUsername: username.toLowerCase(),
+      ...white ? { white } : {},
+      ...black ? { black } : {},
+      ...date ? { date } : {},
+      ...timeClass ? { timeClass } : {},
+      ...opening ? { opening } : {},
+      ...eco ? { eco } : {},
+      ...whiteRating !== void 0 ? { whiteRating } : {},
+      ...blackRating !== void 0 ? { blackRating } : {}
+    });
+    onProgress?.(result.length);
+  }
+  return result;
+}
+async function importChesscom(callbacks) {
+  const name = chesscom.username.trim();
+  if (!name || chesscom.loading) return;
+  chesscom.loading = true;
+  chesscom.error = null;
+  chesscom.gameCount = 0;
+  callbacks.redraw();
+  try {
+    const games = filterGamesByDate(await fetchChesscomGames(
+      name,
+      importFilters.rated,
+      importFilters.speeds,
+      (partial) => {
+        chesscom.gameCount = partial;
+        callbacks.redraw();
+      }
+    ));
+    chesscom.gameCount = games.length;
+    if (games.length === 0) {
+      chesscom.error = "No games found matching current filters.";
+    } else {
+      callbacks.addGames(games, games[0]);
+    }
+  } catch (err) {
+    chesscom.error = err instanceof Error ? err.message : "Import failed.";
+  } finally {
+    chesscom.loading = false;
+    callbacks.redraw();
+  }
+}
+
+// src/import/lichess.ts
+var lichess = {
+  username: "Leviathan_Duck",
+  loading: false,
+  error: null,
+  /** Count of games parsed so far during an active import. */
+  gameCount: 0
+};
+async function fetchLichessGames(username, rated, speeds, onProgress) {
+  const params = new URLSearchParams({ max: "300" });
+  if (rated) params.set("rated", "true");
+  if (speeds.size > 0) params.set("perfType", [...speeds].join(","));
+  params.set("clocks", "true");
+  const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
+  const res = await fetch(url, { headers: { "Accept": "application/x-chess-pgn" } });
+  if (!res.ok) {
+    throw new Error(res.status === 404 ? "Lichess: user not found" : `Lichess API error ${res.status}`);
+  }
+  const text = await res.text();
+  if (!text.trim()) return [];
+  const gameTexts = text.trim().split(/\n\n(?=\[Event )/).filter((s) => s.trim());
+  const result = [];
+  for (const pgn of gameTexts) {
+    try {
+      pgnToTree(pgn);
+    } catch {
+      continue;
+    }
+    const date = (parsePgnHeader(pgn, "UTCDate") ?? parsePgnHeader(pgn, "Date"))?.replace(/\./g, "-");
+    const white = parsePgnHeader(pgn, "White");
+    const black = parsePgnHeader(pgn, "Black");
+    const resultLabel = parsePgnHeader(pgn, "Result");
+    const timeClass = timeClassFromTimeControl(parsePgnHeader(pgn, "TimeControl"));
+    let opening = parsePgnHeader(pgn, "Opening");
+    let eco = parsePgnHeader(pgn, "ECO");
+    if (!opening || !eco) {
+      const classified = classifyOpening(pgn);
+      if (classified) {
+        if (!opening) opening = classified.name;
+        if (!eco) eco = classified.eco;
+      }
+    }
+    const whiteRating = parseRating(parsePgnHeader(pgn, "WhiteElo"));
+    const blackRating = parseRating(parsePgnHeader(pgn, "BlackElo"));
+    result.push({
+      id: nextGameId(),
+      pgn,
+      source: "lichess",
+      importedUsername: username.toLowerCase(),
+      ...white ? { white } : {},
+      ...black ? { black } : {},
+      ...resultLabel ? { result: resultLabel } : {},
+      ...date ? { date } : {},
+      ...timeClass ? { timeClass } : {},
+      ...opening ? { opening } : {},
+      ...eco ? { eco } : {},
+      ...whiteRating !== void 0 ? { whiteRating } : {},
+      ...blackRating !== void 0 ? { blackRating } : {}
+    });
+    onProgress?.(result.length);
+  }
+  return result;
+}
+async function importLichess(callbacks) {
+  const name = lichess.username.trim();
+  if (!name || lichess.loading) return;
+  lichess.loading = true;
+  lichess.error = null;
+  lichess.gameCount = 0;
+  callbacks.redraw();
+  try {
+    const games = filterGamesByDate(await fetchLichessGames(
+      name,
+      importFilters.rated,
+      importFilters.speeds,
+      (partial) => {
+        lichess.gameCount = partial;
+        callbacks.redraw();
+      }
+    ));
+    lichess.gameCount = games.length;
+    if (games.length === 0) {
+      lichess.error = "No games found matching current filters.";
+    } else {
+      callbacks.addGames(games, games[0]);
+    }
+  } catch (err) {
+    lichess.error = err instanceof Error ? err.message : "Import failed.";
+  } finally {
+    lichess.loading = false;
+    callbacks.redraw();
+  }
+}
+
+// src/import/pgn.ts
+var pgnState = {
+  input: "",
+  error: null,
+  key: 0
+  // incremented on successful import to reset the textarea via Snabbdom key
+};
+function importPgn(callbacks) {
+  const raw = pgnState.input.trim();
+  if (!raw) return;
+  try {
+    pgnToTree(raw);
+    const white = parsePgnHeader(raw, "White");
+    const black = parsePgnHeader(raw, "Black");
+    const result = parsePgnHeader(raw, "Result");
+    const date = parsePgnHeader(raw, "Date")?.replace(/\./g, "-");
+    const timeClass = timeClassFromTimeControl(parsePgnHeader(raw, "TimeControl"));
+    let opening = parsePgnHeader(raw, "Opening");
+    let eco = parsePgnHeader(raw, "ECO");
+    if (!opening || !eco) {
+      const classified = classifyOpening(raw);
+      if (classified) {
+        if (!opening) opening = classified.name;
+        if (!eco) eco = classified.eco;
+      }
+    }
+    const whiteRating = parseRating(parsePgnHeader(raw, "WhiteElo"));
+    const blackRating = parseRating(parsePgnHeader(raw, "BlackElo"));
+    const game = {
+      id: nextGameId(),
+      pgn: raw,
+      ...white ? { white } : {},
+      ...black ? { black } : {},
+      ...result ? { result } : {},
+      ...date ? { date } : {},
+      ...timeClass ? { timeClass } : {},
+      ...opening ? { opening } : {},
+      ...eco ? { eco } : {},
+      ...whiteRating !== void 0 ? { whiteRating } : {},
+      ...blackRating !== void 0 ? { blackRating } : {}
+      // importedUsername not set: PGN paste has no reliable importing-user identity
+    };
+    pgnState.error = null;
+    pgnState.input = "";
+    pgnState.key++;
+    callbacks.addGames([game], game);
+  } catch (_) {
+    pgnState.error = "Invalid PGN \u2014 could not parse.";
+    callbacks.redraw();
+  }
+}
+
+// src/engine/reviewQueue.ts
+var reviewProtocol = new StockfishProtocol({ threads: 1, hash: 32 });
+var reviewEngineReady = false;
+var reviewEngineInitStarted = false;
+var queue = [];
+var activeIndex = -1;
+var queuePaused = false;
+var reviewCurrentEval = {};
+var reviewNodePath = "";
+var reviewNodePly = 0;
+var reviewParentPath = "";
+var reviewSearchActive = false;
+var reviewPendingStopCount = 0;
+var reviewItemQueue = [];
+var reviewItemIndex = 0;
+var reviewActiveDepth = reviewDepth;
+var _analyzedGameIds2 = /* @__PURE__ */ new Set();
+var _missedTacticGameIds2 = /* @__PURE__ */ new Set();
+var _analyzedGameAccuracy2 = /* @__PURE__ */ new Map();
+var _getUserColor2 = () => null;
+var _redraw7 = () => {
+};
+function initReviewQueue(deps) {
+  _analyzedGameIds2 = deps.analyzedGameIds;
+  _missedTacticGameIds2 = deps.missedTacticGameIds;
+  _analyzedGameAccuracy2 = deps.analyzedGameAccuracy;
+  _getUserColor2 = deps.getUserColor;
+  _redraw7 = deps.redraw;
+  onMissedMomentConfigChange(recomputeMissedTactics);
+}
+function recomputeMissedTactics() {
+  for (const entry of queue) {
+    if (entry.status !== "complete") continue;
+    const userColor = _getUserColor2(entry.game);
+    const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
+    setMissedMoments(entry.game.id, moments);
+    if (moments.length > 0) {
+      _missedTacticGameIds2.add(entry.game.id);
+    } else {
+      _missedTacticGameIds2.delete(entry.game.id);
+    }
+  }
+  _redraw7();
+}
+async function initReviewEngine(baseUrl) {
+  if (reviewEngineInitStarted) return;
+  reviewEngineInitStarted = true;
+  reviewProtocol.onMessage((line) => {
+    if (line.trim() === "readyok") {
+      reviewEngineReady = true;
+      console.log("[review-engine] ready");
+      const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
+      if (entry && entry.status === "analyzing" && reviewItemQueue.length > 0) {
+        sendNextItem();
+      }
+      return;
+    }
+    parseReviewLine(line);
+  });
+  await reviewProtocol.init(baseUrl);
+}
+function parseReviewLine(line) {
+  const parts = line.trim().split(/\s+/);
+  if (parts[0] === "info") {
+    let isMate = false;
+    let score;
+    let best;
+    let pvMoves = [];
+    let pvIndex = 1;
+    for (let i = 1; i < parts.length; i++) {
+      if (parts[i] === "multipv") {
+        const next2 = parts[i + 1];
+        if (next2 === void 0) break;
+        pvIndex = parseInt(next2, 10);
+        i++;
+      } else if (parts[i] === "score") {
+        const scoreType = parts[i + 1];
+        const scoreValue = parts[i + 2];
+        if (scoreType === void 0 || scoreValue === void 0) break;
+        isMate = scoreType === "mate";
+        score = parseInt(scoreValue, 10);
+        i += 2;
+        if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
+      } else if (parts[i] === "pv") {
+        pvMoves = parts.slice(i + 1);
+        best = pvMoves[0];
         break;
       }
     }
-    if (matched) return { name, params };
+    if (pvIndex === 1 && score !== void 0) {
+      const s = reviewNodePly % 2 === 1 ? -score : score;
+      if (isMate) {
+        reviewCurrentEval.mate = s;
+        delete reviewCurrentEval.cp;
+      } else {
+        reviewCurrentEval.cp = s;
+        delete reviewCurrentEval.mate;
+      }
+    }
+    if (pvIndex === 1 && best) {
+      reviewCurrentEval.best = best;
+      reviewCurrentEval.moves = pvMoves;
+    }
+  } else if (parts[0] === "bestmove") {
+    if (reviewPendingStopCount > 0) {
+      reviewPendingStopCount--;
+      reviewCurrentEval = {};
+      return;
+    }
+    reviewSearchActive = false;
+    if (parts[1] && parts[1] !== "(none)") {
+      reviewCurrentEval.best = parts[1];
+    }
+    onReviewBestmove();
   }
-  return { name: "analysis", params: {} };
 }
-function current() {
-  return parse(window.location.hash);
+function onReviewBestmove() {
+  const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
+  if (!entry) return;
+  const stored = { ...reviewCurrentEval };
+  const nodePath = reviewNodePath;
+  const nodePly = reviewNodePly;
+  const parentPath = reviewParentPath;
+  if (stored.cp !== void 0 || stored.mate !== void 0) {
+    const parentEval = entry.cache.get(parentPath);
+    if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
+      stored.delta = stored.cp - parentEval.cp;
+    }
+    if (parentEval) {
+      const nodeWc = evalWinChances(stored);
+      const parentWc = evalWinChances(parentEval);
+      if (nodeWc !== void 0 && parentWc !== void 0) {
+        const whiteToMove = nodePly % 2 === 1;
+        const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
+        const moverParentWc = whiteToMove ? parentWc : -parentWc;
+        stored.loss = (moverParentWc - moverNodeWc) / 2;
+      }
+    }
+    entry.cache.set(nodePath, stored);
+  }
+  entry.done++;
+  reviewItemIndex++;
+  reviewCurrentEval = {};
+  void saveAnalysisToIdb(
+    "partial",
+    entry.game.id,
+    buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
+    reviewActiveDepth
+  );
+  _redraw7();
+  if (reviewItemIndex < reviewItemQueue.length) {
+    sendNextItem();
+  } else {
+    finishEntry(entry);
+  }
 }
-function onChange2(fn) {
-  window.addEventListener("hashchange", () => fn(current()));
+function sendNextItem() {
+  const item = reviewItemQueue[reviewItemIndex];
+  if (!item) return;
+  reviewCurrentEval = {};
+  reviewNodePath = item.nodePath;
+  reviewNodePly = item.nodePly;
+  reviewParentPath = item.parentPath;
+  reviewSearchActive = true;
+  console.log(
+    "[review-batch]",
+    reviewItemIndex + 1,
+    "/",
+    reviewItemQueue.length,
+    "nodeId:",
+    item.nodeId,
+    "path:",
+    item.nodePath,
+    "ply:",
+    item.nodePly
+  );
+  reviewProtocol.setPosition(item.fen);
+  reviewProtocol.go(reviewActiveDepth);
+}
+function finishEntry(entry) {
+  entry.status = "complete";
+  const userColor = _getUserColor2(entry.game);
+  _analyzedGameIds2.add(entry.game.id);
+  const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
+  setMissedMoments(entry.game.id, moments);
+  if (moments.length > 0) _missedTacticGameIds2.add(entry.game.id);
+  const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
+  if (summary) {
+    _analyzedGameAccuracy2.set(entry.game.id, {
+      white: summary.white.accuracy,
+      black: summary.black.accuracy
+    });
+  }
+  void saveAnalysisToIdb(
+    "complete",
+    entry.game.id,
+    buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
+    reviewActiveDepth
+  );
+  console.log("[review-engine] game complete:", entry.game.id);
+  _redraw7();
+  advanceQueue();
+}
+async function startEntryBatch(entry) {
+  const items = [];
+  let path = "";
+  let prevPath = "";
+  for (let i = 0; i < entry.ctrl.mainline.length; i++) {
+    const node = entry.ctrl.mainline[i];
+    prevPath = path;
+    if (i > 0) path += node.id;
+    if (!entry.cache.has(path)) {
+      items.push({
+        nodeId: node.id,
+        nodePly: node.ply,
+        nodePath: path,
+        parentPath: prevPath,
+        fen: node.fen
+      });
+    }
+  }
+  entry.total = entry.ctrl.mainline.length > 1 ? entry.ctrl.mainline.length - 1 : 0;
+  if (items.length === 0) {
+    finishEntry(entry);
+    return;
+  }
+  reviewItemQueue = items;
+  reviewItemIndex = 0;
+  reviewCurrentEval = {};
+  reviewActiveDepth = entry.depth;
+  if (!reviewEngineReady) {
+    return;
+  }
+  sendNextItem();
+}
+function advanceQueue() {
+  if (queuePaused) return;
+  const nextIndex = queue.findIndex((e) => e.status === "pending");
+  if (nextIndex < 0) {
+    activeIndex = -1;
+    _redraw7();
+    return;
+  }
+  activeIndex = nextIndex;
+  const entry = queue[activeIndex];
+  entry.status = "analyzing";
+  void startEntryBatch(entry);
+}
+function enqueueBulkReview(games, depth) {
+  const entryDepth = depth ?? reviewDepth;
+  console.log("[reviewQueue] enqueueBulkReview called \u2014 games:", games.map((g) => g.id), "queue len:", queue.length, "activeIndex:", activeIndex, "engineInitStarted:", reviewEngineInitStarted, "depth:", entryDepth);
+  for (const game of games) {
+    console.log("[reviewQueue]  game", game.id, "\u2014 alreadyAnalyzed:", _analyzedGameIds2.has(game.id), "alreadyQueued:", queue.some((e) => e.game.id === game.id));
+    if (_analyzedGameIds2.has(game.id)) continue;
+    if (queue.some((e) => e.game.id === game.id)) continue;
+    const ctrl2 = new AnalyseCtrl(pgnToTree(game.pgn));
+    const total = ctrl2.mainline.length > 1 ? ctrl2.mainline.length - 1 : 0;
+    queue.push({
+      game,
+      ctrl: ctrl2,
+      cache: /* @__PURE__ */ new Map(),
+      done: 0,
+      total,
+      status: "pending",
+      depth: entryDepth
+    });
+  }
+  if (!reviewEngineInitStarted) {
+    void initReviewEngine("/stockfish-web");
+  }
+  if (activeIndex < 0) {
+    advanceQueue();
+  }
+}
+function enqueueAtFront(games) {
+  const newEntries = [];
+  for (const game of games) {
+    if (_analyzedGameIds2.has(game.id)) continue;
+    if (queue.some((e) => e.game.id === game.id)) continue;
+    const ctrl2 = new AnalyseCtrl(pgnToTree(game.pgn));
+    const total = ctrl2.mainline.length > 1 ? ctrl2.mainline.length - 1 : 0;
+    newEntries.push({
+      game,
+      ctrl: ctrl2,
+      cache: /* @__PURE__ */ new Map(),
+      done: 0,
+      total,
+      status: "pending",
+      depth: reviewDepth
+    });
+  }
+  if (newEntries.length === 0) return;
+  const insertAt = activeIndex >= 0 ? activeIndex + 1 : 0;
+  queue.splice(insertAt, 0, ...newEntries);
+  if (!reviewEngineInitStarted) {
+    void initReviewEngine("/stockfish-web");
+  }
+  if (activeIndex < 0) {
+    advanceQueue();
+  }
+}
+function isBulkRunning() {
+  if (queuePaused) return false;
+  return queue.some((e) => e.status === "pending" || e.status === "analyzing");
+}
+function isBulkPaused() {
+  return queuePaused && queue.some((e) => e.status === "pending" || e.status === "analyzing");
+}
+function cancelBulkReview() {
+  if (reviewSearchActive) {
+    reviewPendingStopCount++;
+    reviewProtocol.stop();
+    reviewSearchActive = false;
+  }
+  queue = [];
+  activeIndex = -1;
+  queuePaused = false;
+  _redraw7();
+}
+function pauseBulkReview() {
+  if (!isBulkRunning()) return;
+  queuePaused = true;
+  if (reviewSearchActive) {
+    reviewPendingStopCount++;
+    reviewProtocol.stop();
+    reviewSearchActive = false;
+  }
+  _redraw7();
+}
+function resumeBulkReview() {
+  if (!queuePaused) return;
+  queuePaused = false;
+  const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
+  if (entry && entry.status === "analyzing" && reviewItemIndex < reviewItemQueue.length) {
+    sendNextItem();
+  } else {
+    advanceQueue();
+  }
+  _redraw7();
+}
+function getReviewProgress(gameId) {
+  const entry = queue.find((e) => e.game.id === gameId);
+  if (!entry) return void 0;
+  if (entry.status === "complete") return 100;
+  if (entry.total === 0) return void 0;
+  return Math.round(entry.done / entry.total * 100);
+}
+function getQueueSummary() {
+  const total = queue.length;
+  const done = queue.filter((e) => e.status === "complete").length;
+  const running = isBulkRunning();
+  return { total, done, running };
+}
+function getAutoReview() {
+  return importFilters.autoReview;
+}
+
+// src/analyse/retroConfig.ts
+var RETRO_CONFIG_DEFAULTS = {
+  minLossThreshold: 0.1,
+  missedMateDistance: 3,
+  collapseEnabled: false,
+  collapseWcFloor: 0.65,
+  collapseDropMin: 0.15,
+  defensiveEnabled: false,
+  defensiveWcCeiling: 0.35,
+  defensiveSalvageMin: 0.15,
+  punishEnabled: false,
+  punishOpponentSwingMin: 0.15,
+  punishExploitDropMin: 0.1,
+  feedbackTone: "standard"
+};
+var RETRO_CONFIG_LS_KEY = "retroConfig";
+function loadFromStorage() {
+  try {
+    const stored = localStorage.getItem(RETRO_CONFIG_LS_KEY);
+    if (stored === null) return { ...RETRO_CONFIG_DEFAULTS };
+    const p = JSON.parse(stored);
+    return {
+      minLossThreshold: typeof p.minLossThreshold === "number" && p.minLossThreshold >= 0.01 && p.minLossThreshold <= 0.25 ? p.minLossThreshold : RETRO_CONFIG_DEFAULTS.minLossThreshold,
+      missedMateDistance: typeof p.missedMateDistance === "number" && p.missedMateDistance >= 0 ? Math.floor(p.missedMateDistance) : RETRO_CONFIG_DEFAULTS.missedMateDistance,
+      collapseEnabled: typeof p.collapseEnabled === "boolean" ? p.collapseEnabled : RETRO_CONFIG_DEFAULTS.collapseEnabled,
+      collapseWcFloor: typeof p.collapseWcFloor === "number" && p.collapseWcFloor >= 0 && p.collapseWcFloor <= 1 ? p.collapseWcFloor : RETRO_CONFIG_DEFAULTS.collapseWcFloor,
+      collapseDropMin: typeof p.collapseDropMin === "number" && p.collapseDropMin >= 0 ? p.collapseDropMin : RETRO_CONFIG_DEFAULTS.collapseDropMin,
+      defensiveEnabled: typeof p.defensiveEnabled === "boolean" ? p.defensiveEnabled : RETRO_CONFIG_DEFAULTS.defensiveEnabled,
+      defensiveWcCeiling: typeof p.defensiveWcCeiling === "number" && p.defensiveWcCeiling >= 0 && p.defensiveWcCeiling <= 1 ? p.defensiveWcCeiling : RETRO_CONFIG_DEFAULTS.defensiveWcCeiling,
+      defensiveSalvageMin: typeof p.defensiveSalvageMin === "number" && p.defensiveSalvageMin >= 0 ? p.defensiveSalvageMin : RETRO_CONFIG_DEFAULTS.defensiveSalvageMin,
+      punishEnabled: typeof p.punishEnabled === "boolean" ? p.punishEnabled : RETRO_CONFIG_DEFAULTS.punishEnabled,
+      punishOpponentSwingMin: typeof p.punishOpponentSwingMin === "number" && p.punishOpponentSwingMin >= 0 ? p.punishOpponentSwingMin : RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin,
+      punishExploitDropMin: typeof p.punishExploitDropMin === "number" && p.punishExploitDropMin >= 0 ? p.punishExploitDropMin : RETRO_CONFIG_DEFAULTS.punishExploitDropMin,
+      feedbackTone: p.feedbackTone === "standard" || p.feedbackTone === "harsh" ? p.feedbackTone : RETRO_CONFIG_DEFAULTS.feedbackTone
+    };
+  } catch {
+    return { ...RETRO_CONFIG_DEFAULTS };
+  }
+}
+var retroConfig = loadFromStorage();
+var _changeCallbacks = [];
+function onRetroConfigChange(cb) {
+  _changeCallbacks.push(cb);
+}
+function setRetroConfig(patch2) {
+  Object.assign(retroConfig, patch2);
+  localStorage.setItem(RETRO_CONFIG_LS_KEY, JSON.stringify(retroConfig));
+  _changeCallbacks.forEach((cb) => cb());
+}
+
+// src/sync/client.ts
+var LAST_SYNC_KEY = "lastSyncedAt";
+function getLastSyncedAt() {
+  return localStorage.getItem(LAST_SYNC_KEY);
+}
+function setLastSyncedAt() {
+  localStorage.setItem(LAST_SYNC_KEY, (/* @__PURE__ */ new Date()).toISOString());
+}
+async function apiGet(path) {
+  const res = await fetch(path, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`GET ${path}: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+async function apiPost(path, body) {
+  const opts = {
+    method: "POST",
+    credentials: "same-origin",
+    headers: body !== void 0 ? { "Content-Type": "application/json" } : {}
+  };
+  if (body !== void 0) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  if (!res.ok) throw new Error(`POST ${path}: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+async function checkAuth() {
+  try {
+    return await apiGet("/api/auth/status");
+  } catch {
+    return { authenticated: false, username: null };
+  }
+}
+async function logout() {
+  try {
+    await apiPost("/api/auth/logout");
+  } catch {
+  }
+}
+function openIdb(name, version) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(name, version);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function readAllFromStore(db, storeName) {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) return resolve([]);
+    const tx = db.transaction(storeName, "readonly");
+    const store = tx.objectStore(storeName);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function readFromStoreSince(db, storeName, since) {
+  if (since === void 0) return readAllFromStore(db, storeName);
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) return resolve([]);
+    const results = [];
+    const tx = db.transaction(storeName, "readonly");
+    const store = tx.objectStore(storeName);
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(results);
+        return;
+      }
+      const record = cursor.value;
+      if (typeof record.updatedAt === "number" && record.updatedAt > since) {
+        results.push(record);
+      }
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+function writeToStore(db, storeName, records, keyPath) {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) return resolve();
+    const tx = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
+    for (const record of records) {
+      if (keyPath) {
+        store.put(record);
+      } else {
+        store.add(record);
+      }
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function pushToServer() {
+  try {
+    const counts = {};
+    const lastSync = getLastSyncedAt();
+    const since = lastSync ? new Date(lastSync).getTime() : void 0;
+    const mainDb = await openIdb(DB_NAME, DB_VERSION);
+    let games = await readFromStoreSince(mainDb, "games", since);
+    if (games.length === 0 && since === void 0) {
+      games = await readAllFromStore(mainDb, "game-library");
+    }
+    if (games.length > 0) {
+      await apiPost("/api/sync/games", { games });
+      counts.games = games.length;
+    }
+    const analysis = await readFromStoreSince(mainDb, "analysis-library", since);
+    if (analysis.length > 0) {
+      await apiPost("/api/sync/analysis", { analysis });
+      counts.analysis = analysis.length;
+    }
+    mainDb.close();
+    const puzzleDb = await openIdb("patzer-puzzle-v1", 2);
+    const definitions = await readFromStoreSince(puzzleDb, "definitions", since);
+    const attempts = await readFromStoreSince(puzzleDb, "attempts", since);
+    const meta = await readFromStoreSince(puzzleDb, "user-meta", since);
+    if (definitions.length > 0 || attempts.length > 0 || meta.length > 0) {
+      await apiPost("/api/sync/puzzles", { definitions, attempts, meta });
+      counts.definitions = definitions.length;
+      counts.attempts = attempts.length;
+      counts.meta = meta.length;
+    }
+    puzzleDb.close();
+    setLastSyncedAt();
+    return { success: true, counts };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Push failed" };
+  }
+}
+function getLocalMaxAttemptCompletedAt(db) {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains("attempts")) {
+      resolve(0);
+      return;
+    }
+    const req = db.transaction("attempts", "readonly").objectStore("attempts").index("completedAt").openCursor(null, "prev");
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(0);
+        return;
+      }
+      const attempt = cursor.value;
+      resolve(typeof attempt.completedAt === "number" ? attempt.completedAt : 0);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+async function pullFromServer() {
+  try {
+    const counts = {};
+    const lastSync = getLastSyncedAt();
+    const sinceParam = lastSync ? `?since=${new Date(lastSync).getTime()}` : "";
+    const gamesResult = await apiGet(`/api/sync/games${sinceParam}`);
+    if (gamesResult.games.length > 0) {
+      const mainDb = await openIdb(DB_NAME, DB_VERSION);
+      await writeToStore(mainDb, "games", gamesResult.games, "id");
+      mainDb.close();
+      counts.games = gamesResult.games.length;
+    }
+    const analysisResult = await apiGet(`/api/sync/analysis${sinceParam}`);
+    if (analysisResult.analysis.length > 0) {
+      const mainDb = await openIdb(DB_NAME, DB_VERSION);
+      await writeToStore(mainDb, "analysis-library", analysisResult.analysis, "gameId");
+      mainDb.close();
+      counts.analysis = analysisResult.analysis.length;
+    }
+    const puzzleResult = await apiGet(`/api/sync/puzzles${sinceParam}`);
+    const puzzleDb = await openIdb("patzer-puzzle-v1", 2);
+    if (puzzleResult.definitions.length > 0) {
+      await writeToStore(puzzleDb, "definitions", puzzleResult.definitions, "id");
+      counts.definitions = puzzleResult.definitions.length;
+    }
+    if (puzzleResult.meta.length > 0) {
+      await writeToStore(puzzleDb, "user-meta", puzzleResult.meta, "puzzleId");
+      counts.meta = puzzleResult.meta.length;
+    }
+    if (puzzleResult.attempts.length > 0) {
+      const localMax = await getLocalMaxAttemptCompletedAt(puzzleDb);
+      const newAttempts = puzzleResult.attempts.filter((a) => typeof a.completedAt === "number" && a.completedAt > localMax);
+      if (newAttempts.length > 0) {
+        await writeToStore(puzzleDb, "attempts", newAttempts);
+        counts.attempts = newAttempts.length;
+      }
+    }
+    puzzleDb.close();
+    setLastSyncedAt();
+    return { success: true, counts };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Pull failed" };
+  }
+}
+async function getLocalDataCounts() {
+  try {
+    const mainDb = await openIdb(DB_NAME, DB_VERSION);
+    const games = await readAllFromStore(mainDb, "games");
+    const analysis = await readAllFromStore(mainDb, "analysis-library");
+    mainDb.close();
+    const puzzleDb = await openIdb("patzer-puzzle-v1", 2);
+    const defs = await readAllFromStore(puzzleDb, "definitions");
+    const attempts = await readAllFromStore(puzzleDb, "attempts");
+    const meta = await readAllFromStore(puzzleDb, "user-meta");
+    puzzleDb.close();
+    return {
+      games: games.length,
+      analysis: analysis.length,
+      puzzleDefinitions: defs.length,
+      puzzleAttempts: attempts.length,
+      puzzleMeta: meta.length
+    };
+  } catch {
+    return { games: 0, analysis: 0, puzzleDefinitions: 0, puzzleAttempts: 0, puzzleMeta: 0 };
+  }
 }
 
 // src/puzzles/types.ts
@@ -13958,6 +14763,1168 @@ async function findRatedPuzzleInShards(targetRating, windowHalf, excludeIds) {
     return def;
   }
   return null;
+}
+
+// src/header/index.ts
+var importPlatform = "chesscom";
+var showImportPanel = false;
+var showGlobalMenu = false;
+var showBoardSettings = false;
+var showDetectionModal = false;
+var showRetroModal = false;
+var showReviewMenu = false;
+var showMobileNav = false;
+var headerAuthUser = null;
+var headerAuthChecked = false;
+function ensureHeaderAuth(redraw2) {
+  if (headerAuthChecked) return;
+  headerAuthChecked = true;
+  checkAuth().then(({ username }) => {
+    headerAuthUser = username;
+    redraw2();
+    if (username) syncRatedLadder().catch(() => {
+    });
+  });
+}
+function renderUserArea(redraw2) {
+  if (headerAuthUser) return null;
+  return h("a.header__login", {
+    attrs: { href: "/api/lichess/connect", title: "Login with Lichess" }
+  }, "Login");
+}
+function activeSection(route) {
+  switch (route.name) {
+    case "analysis":
+    case "analysis-game":
+      return "analysis";
+    case "puzzles":
+    case "puzzle-round":
+      return "puzzles";
+    case "opponents":
+      return "opponents";
+    case "stats":
+      return "stats";
+    case "games":
+      return "games";
+    case "study":
+    case "study-detail":
+      return "study";
+    default:
+      return "";
+  }
+}
+var navLinks = [
+  { label: "Analysis", href: "#/analysis", section: "analysis" },
+  { label: "Puzzles", href: "#/puzzles", section: "puzzles" },
+  { label: "Games", href: "#/games", section: "games" },
+  { label: "Opponents", href: "#/opponents", section: "opponents" },
+  { label: "Stats", href: "#/stats", section: "stats" },
+  { label: "Study", href: "#/study", section: "study" }
+];
+function renderNav(route) {
+  const active = activeSection(route);
+  return h("nav.header__nav", navLinks.map(
+    ({ label, href, section }) => h("a", { attrs: { href }, class: { active: active === section } }, label)
+  ));
+}
+var REVIEW_DEPTHS = [12, 14, 16, 18, 20];
+var AUTO_REVIEW_DEPTHS = [
+  { depth: 2, label: "1\xD7" },
+  { depth: 4, label: "4\xD7" },
+  { depth: 6, label: "9\xD7" },
+  { depth: 8, label: "25\xD7" },
+  { depth: 10, label: "60\xD7" },
+  { depth: 12, label: "150\xD7" },
+  { depth: 14, label: "400\xD7" },
+  { depth: 16, label: "1000\xD7" },
+  { depth: 18, label: "2500\xD7" }
+];
+function renderAutoReviewDepthPills(currentDepth, onSelect) {
+  return AUTO_REVIEW_DEPTHS.map(
+    ({ depth, label }) => h("button.review-menu__pill", {
+      class: { active: currentDepth === depth },
+      attrs: { title: `Depth ${depth} \u2014 ~${label} relative cost` },
+      on: { click: () => onSelect(depth) }
+    }, String(depth))
+  );
+}
+function renderReviewMenu(redraw2) {
+  const running = isBulkRunning();
+  const paused = isBulkPaused();
+  const active = running || paused;
+  if (!active) return null;
+  const summary = getQueueSummary();
+  const auto = getAutoReview();
+  return h("div.review-menu", [
+    h("button.review-menu__trigger", {
+      class: { active: showReviewMenu || active },
+      attrs: { title: "Bulk Review settings" },
+      on: { click: () => {
+        showReviewMenu = !showReviewMenu;
+        redraw2();
+      } }
+    }, summary ? `Reviewing ${summary.done}/${summary.total}` : "Reviewing\u2026"),
+    showReviewMenu ? h("div.review-menu__backdrop", {
+      on: { click: () => {
+        showReviewMenu = false;
+        redraw2();
+      } }
+    }) : null,
+    showReviewMenu ? h("div.review-menu__dropdown", [
+      // Queue status + controls
+      h("div.review-menu__section", [
+        h("div.review-menu__label", summary ? `${summary.done} of ${summary.total} game${summary.total === 1 ? "" : "s"} analyzed` : "Reviewing\u2026"),
+        h("div.review-menu__row", [
+          paused ? h("button.review-menu__btn", {
+            on: { click: () => {
+              resumeBulkReview();
+              redraw2();
+            } }
+          }, "Resume") : h("button.review-menu__btn", {
+            on: { click: () => {
+              pauseBulkReview();
+              redraw2();
+            } }
+          }, "Pause"),
+          h("button.review-menu__btn.--cancel", {
+            on: { click: () => {
+              cancelBulkReview();
+              redraw2();
+            } }
+          }, "Cancel")
+        ])
+      ]),
+      h("div.review-menu__section", [
+        h("div.review-menu__label", `Depth: ${reviewDepth}`),
+        h("div.review-menu__row", REVIEW_DEPTHS.map(
+          (d) => h("button.review-menu__pill", {
+            class: { active: reviewDepth === d },
+            on: { click: () => {
+              setReviewDepth(d);
+              redraw2();
+            } }
+          }, String(d))
+        ))
+      ]),
+      renderToggleRow("review-auto", "Auto-review on import", auto, (v) => {
+        localStorage.setItem("patzer.autoReview", String(v));
+        redraw2();
+      })
+    ]) : null
+  ]);
+}
+function closeGlobalMenu(redraw2) {
+  showGlobalMenu = false;
+  showBoardSettings = false;
+  redraw2();
+}
+var DETECTION_SLIDERS = [
+  {
+    key: "swingThreshold",
+    label: "Swing Threshold",
+    description: "Minimum win-chance drop required to flag a tactical mistake. Lower = more sensitive; flags smaller errors. 0.05 is the Lichess inaccuracy floor \u2014 any real mistake will be caught.",
+    min: 0.01,
+    max: 0.3,
+    step: 0.01,
+    format: (v) => v.toFixed(2),
+    lichessDefault: 0.05
+  },
+  {
+    key: "missedMateMaxN",
+    label: "Missed Mate in N",
+    description: "Flag a move when a forced checkmate in N moves or fewer was on the board but not played. Lichess flags missed mates in 3 or fewer. Set to 0 to disable this category entirely.",
+    min: 0,
+    max: 10,
+    step: 1,
+    format: (v) => v === 0 ? "off" : `in ${v}`,
+    lichessDefault: 3
+  },
+  {
+    key: "collapseWcFloor",
+    label: "Near-Win Floor",
+    description: "How dominant the mover must be (win chances %) before a near-win collapse can be flagged. 55% \u2248 +50\u2013100 centipawns advantage. Raise this to only flag collapses from clearly winning positions.",
+    min: 0.5,
+    max: 0.95,
+    step: 0.05,
+    format: (v) => `${Math.round(v * 100)}%`
+  },
+  {
+    key: "collapseDropMin",
+    label: "Collapse Drop",
+    description: "Minimum win-chance loss to flag a near-win collapse. Intentionally lower than the swing threshold \u2014 throwing away a won game is significant even when the raw drop is modest.",
+    min: 0.02,
+    max: 0.2,
+    step: 0.01,
+    format: (v) => v.toFixed(2)
+  },
+  {
+    key: "maxPly",
+    label: "Max Ply",
+    description: "Stop flagging tactical mistakes after this many half-moves (plies). Ply 60 = move 30. Set to 0 to check the entire game including the endgame. Lichess analysis covers up to ply 60.",
+    min: 0,
+    max: 120,
+    step: 10,
+    format: (v) => v === 0 ? "all" : `ply ${v} (move ${v / 2})`,
+    lichessDefault: 60
+  }
+];
+function renderDetectionModal(redraw2) {
+  const cfg = missedMomentConfig;
+  const rows = DETECTION_SLIDERS.map((s) => {
+    const value = cfg[s.key];
+    const markerPct = s.lichessDefault !== void 0 ? (s.lichessDefault - s.min) / (s.max - s.min) * 100 : null;
+    return h("div.detection-modal__row", [
+      h("div.detection-modal__row-header", [
+        h("span.detection-modal__label", s.label),
+        h("span.detection-modal__value", s.format(value))
+      ]),
+      h("p.detection-modal__desc", s.description),
+      h("div.detection-modal__slider-wrap", [
+        h("input", {
+          attrs: { type: "range", min: s.min, max: s.max, step: s.step, value },
+          on: {
+            input: (e) => {
+              const raw = parseFloat(e.target.value);
+              setMissedMomentConfig({ [s.key]: s.step >= 1 ? Math.round(raw) : raw });
+              redraw2();
+            }
+          }
+        }),
+        markerPct !== null ? h("span.detection-modal__default-mark", {
+          attrs: {
+            style: `left: ${markerPct}%`,
+            title: `Lichess default: ${s.format(s.lichessDefault)}`
+          }
+        }) : null
+      ])
+    ]);
+  });
+  return h("div.detection-modal", [
+    h("div.detection-modal__backdrop", {
+      on: { click: () => {
+        showDetectionModal = false;
+        redraw2();
+      } }
+    }),
+    h("div.detection-modal__card", [
+      h("div.detection-modal__header", [
+        h("h2", "Detection Settings"),
+        h("button.detection-modal__close", {
+          attrs: { title: "Close" },
+          on: { click: () => {
+            showDetectionModal = false;
+            redraw2();
+          } }
+        }, "\u2715")
+      ]),
+      h("div.detection-modal__body", rows)
+    ])
+  ]);
+}
+function renderRetroConfigBody(redraw2) {
+  const cfg = retroConfig;
+  const isDefault = cfg.minLossThreshold === RETRO_CONFIG_DEFAULTS.minLossThreshold && cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance && cfg.collapseEnabled === RETRO_CONFIG_DEFAULTS.collapseEnabled && cfg.collapseWcFloor === RETRO_CONFIG_DEFAULTS.collapseWcFloor && cfg.collapseDropMin === RETRO_CONFIG_DEFAULTS.collapseDropMin && cfg.defensiveEnabled === RETRO_CONFIG_DEFAULTS.defensiveEnabled && cfg.defensiveWcCeiling === RETRO_CONFIG_DEFAULTS.defensiveWcCeiling && cfg.defensiveSalvageMin === RETRO_CONFIG_DEFAULTS.defensiveSalvageMin && cfg.punishEnabled === RETRO_CONFIG_DEFAULTS.punishEnabled && cfg.punishOpponentSwingMin === RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin && cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin;
+  return [
+    // minLossThreshold — continuous 1–25% slider
+    h("div.detection-modal__row", [
+      h("div.detection-modal__row-header", [
+        h("span.detection-modal__label", "Minimum Severity"),
+        h("span.detection-modal__value", `loss \u2265 ${Math.round(cfg.minLossThreshold * 100)}%`)
+      ]),
+      h(
+        "p.detection-modal__desc",
+        "Minimum win-chance loss to include a move as a candidate. Drag left for more candidates, right for fewer. Lichess parity: 5%. Patzer default: 10%."
+      ),
+      h("div.detection-modal__severity-slider", [
+        h("input.severity-range", {
+          attrs: {
+            type: "range",
+            min: 1,
+            max: 25,
+            step: 1,
+            value: Math.round(cfg.minLossThreshold * 100)
+          },
+          on: {
+            input: (e) => {
+              const pct = parseInt(e.target.value, 10);
+              setRetroConfig({ minLossThreshold: pct / 100 });
+              redraw2();
+            }
+          }
+        }),
+        h("span.severity-divider--inaccuracy", { attrs: { title: "Inaccuracy: loss \u2265 5%" } }),
+        h("span.severity-divider--mistake", { attrs: { title: "Lichess default / Mistake: loss \u2265 10%" } }),
+        h("span.severity-divider--blunder", { attrs: { title: "Blunder: loss \u2265 15%" } }),
+        h("span.detection-modal__default-mark", {
+          attrs: { style: "left: 37.5%", title: "Lichess default: loss \u2265 10%" }
+        }),
+        h("div.detection-modal__severity-ticks", [
+          h("span", "1%"),
+          h("span", "Inaccuracy"),
+          h("span", "Mistake"),
+          h("span", "Blunder"),
+          h("span", "25%")
+        ])
+      ])
+    ]),
+    // missedMateDistance — slider
+    h("div.detection-modal__row", [
+      h("div.detection-modal__row-header", [
+        h("span.detection-modal__label", "Missed Mate in N"),
+        h(
+          "span.detection-modal__value",
+          cfg.missedMateDistance === 0 ? "off" : `in ${cfg.missedMateDistance}`
+        )
+      ]),
+      h(
+        "p.detection-modal__desc",
+        "Flag a move when a forced mate of this distance (or shorter) was available but not played. Lichess default: mate in 3. Set to 0 to disable this category entirely."
+      ),
+      h("div.detection-modal__slider-wrap", [
+        h("input", {
+          attrs: { type: "range", min: 0, max: 10, step: 1, value: cfg.missedMateDistance },
+          on: {
+            input: (e) => {
+              setRetroConfig({ missedMateDistance: parseInt(e.target.value, 10) });
+              redraw2();
+            }
+          }
+        }),
+        // Lichess default marker at position 3 (30% of 0–10 range)
+        h("span.detection-modal__default-mark", {
+          attrs: { style: "left: 30%", title: "Lichess default: in 3" }
+        })
+      ])
+    ]),
+    // ── Collapse (blown win) family ──────────────────────────────────
+    h("div.detection-modal__row", [
+      h("div.detection-modal__row-header", [
+        h("span.detection-modal__label", "Blown Wins")
+      ]),
+      h(
+        "p.detection-modal__desc",
+        "Flag positions where you were clearly winning but squandered the advantage. Reuses the same thresholds as the engine's collapse detection."
+      ),
+      renderToggleRow("detection-collapse", "Enabled", cfg.collapseEnabled, (v) => {
+        setRetroConfig({ collapseEnabled: v });
+        redraw2();
+      }),
+      ...cfg.collapseEnabled ? [
+        h("div.detection-modal__row-header", [
+          h("span.detection-modal__label", "Win Chance Floor"),
+          h("span.detection-modal__value", cfg.collapseWcFloor.toFixed(2))
+        ]),
+        h("div.detection-modal__slider-wrap", [
+          h("input", {
+            attrs: { type: "range", min: 0.5, max: 0.95, step: 0.05, value: cfg.collapseWcFloor },
+            on: { input: (e) => {
+              setRetroConfig({ collapseWcFloor: parseFloat(e.target.value) });
+              redraw2();
+            } }
+          })
+        ]),
+        h("div.detection-modal__row-header", [
+          h("span.detection-modal__label", "Minimum Drop"),
+          h("span.detection-modal__value", cfg.collapseDropMin.toFixed(2))
+        ]),
+        h("div.detection-modal__slider-wrap", [
+          h("input", {
+            attrs: { type: "range", min: 0.02, max: 0.3, step: 0.01, value: cfg.collapseDropMin },
+            on: { input: (e) => {
+              setRetroConfig({ collapseDropMin: parseFloat(e.target.value) });
+              redraw2();
+            } }
+          })
+        ])
+      ] : []
+    ]),
+    // ── Defensive resource family ────────────────────────────────────
+    h("div.detection-modal__row", [
+      h("div.detection-modal__row-header", [
+        h("span.detection-modal__label", "Missed Defenses")
+      ]),
+      h(
+        "p.detection-modal__desc",
+        "Flag positions where you were losing but had a significantly better defensive move available."
+      ),
+      renderToggleRow("detection-defensive", "Enabled", cfg.defensiveEnabled, (v) => {
+        setRetroConfig({ defensiveEnabled: v });
+        redraw2();
+      }),
+      ...cfg.defensiveEnabled ? [
+        h("div.detection-modal__row-header", [
+          h("span.detection-modal__label", "Position Ceiling"),
+          h("span.detection-modal__value", cfg.defensiveWcCeiling.toFixed(2))
+        ]),
+        h("div.detection-modal__slider-wrap", [
+          h("input", {
+            attrs: { type: "range", min: 0.1, max: 0.5, step: 0.05, value: cfg.defensiveWcCeiling },
+            on: { input: (e) => {
+              setRetroConfig({ defensiveWcCeiling: parseFloat(e.target.value) });
+              redraw2();
+            } }
+          })
+        ]),
+        h("div.detection-modal__row-header", [
+          h("span.detection-modal__label", "Salvage Gap"),
+          h("span.detection-modal__value", cfg.defensiveSalvageMin.toFixed(2))
+        ]),
+        h("div.detection-modal__slider-wrap", [
+          h("input", {
+            attrs: { type: "range", min: 0.05, max: 0.3, step: 0.01, value: cfg.defensiveSalvageMin },
+            on: { input: (e) => {
+              setRetroConfig({ defensiveSalvageMin: parseFloat(e.target.value) });
+              redraw2();
+            } }
+          })
+        ])
+      ] : []
+    ]),
+    // ── Punish-the-blunder family ────────────────────────────────────
+    h("div.detection-modal__row", [
+      h("div.detection-modal__row-header", [
+        h("span.detection-modal__label", "Missed Punishments")
+      ]),
+      h(
+        "p.detection-modal__desc",
+        "Flag positions where the opponent blundered but you failed to exploit the mistake."
+      ),
+      renderToggleRow("detection-punish", "Enabled", cfg.punishEnabled, (v) => {
+        setRetroConfig({ punishEnabled: v });
+        redraw2();
+      }),
+      ...cfg.punishEnabled ? [
+        h("div.detection-modal__row-header", [
+          h("span.detection-modal__label", "Opponent Swing"),
+          h("span.detection-modal__value", cfg.punishOpponentSwingMin.toFixed(2))
+        ]),
+        h("div.detection-modal__slider-wrap", [
+          h("input", {
+            attrs: { type: "range", min: 0.05, max: 0.3, step: 0.01, value: cfg.punishOpponentSwingMin },
+            on: { input: (e) => {
+              setRetroConfig({ punishOpponentSwingMin: parseFloat(e.target.value) });
+              redraw2();
+            } }
+          })
+        ]),
+        h("div.detection-modal__row-header", [
+          h("span.detection-modal__label", "Exploit Drop"),
+          h("span.detection-modal__value", cfg.punishExploitDropMin.toFixed(2))
+        ]),
+        h("div.detection-modal__slider-wrap", [
+          h("input", {
+            attrs: { type: "range", min: 0.02, max: 0.2, step: 0.01, value: cfg.punishExploitDropMin },
+            on: { input: (e) => {
+              setRetroConfig({ punishExploitDropMin: parseFloat(e.target.value) });
+              redraw2();
+            } }
+          })
+        ])
+      ] : []
+    ]),
+    // Reset row
+    !isDefault ? h("div.detection-modal__row", [
+      h("button", {
+        class: { "detection-modal__close": true },
+        on: { click: () => {
+          setRetroConfig({ ...RETRO_CONFIG_DEFAULTS });
+          redraw2();
+        } }
+      }, "Reset to defaults")
+    ]) : null
+  ].filter((n) => n !== null);
+}
+function renderRetroModal(redraw2) {
+  return h("div.detection-modal", [
+    h("div.detection-modal__backdrop", {
+      on: { click: () => {
+        showRetroModal = false;
+        redraw2();
+      } }
+    }),
+    h("div.detection-modal__card", [
+      h("div.detection-modal__header", [
+        h("h2", "Mistake Detection"),
+        h("button.detection-modal__close", {
+          attrs: { title: "Close" },
+          on: { click: () => {
+            showRetroModal = false;
+            redraw2();
+          } }
+        }, "\u2715")
+      ]),
+      h("div.detection-modal__body", renderRetroConfigBody(redraw2))
+    ])
+  ]);
+}
+function renderGlobalMenu(deps) {
+  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
+  const hasGame = selectedGameId2 !== null;
+  return h("div.global-menu", [
+    h("button.global-menu__trigger", {
+      class: { active: showGlobalMenu },
+      attrs: { title: "Settings" },
+      on: { click: () => {
+        showGlobalMenu = !showGlobalMenu;
+        showBoardSettings = false;
+        redraw2();
+      } }
+    }, "\u2699"),
+    showGlobalMenu ? h("div.global-menu__backdrop", {
+      on: { click: () => closeGlobalMenu(redraw2) }
+    }) : null,
+    showGlobalMenu ? h("div.global-menu__dropdown", {
+      class: { "board-open": showBoardSettings }
+    }, [
+      h("button.global-menu__item", {
+        on: { click: () => {
+          closeGlobalMenu(redraw2);
+          void resetAllData2();
+        } }
+      }, "Clear Local Data"),
+      // Navigate to the analysis board to review the currently loaded game.
+      // Disabled when no game is selected — nothing to review.
+      h("button.global-menu__item", {
+        attrs: { disabled: !hasGame, title: hasGame ? "Review current game on analysis board" : "Select a game first" },
+        on: { click: () => {
+          if (!hasGame) return;
+          closeGlobalMenu(redraw2);
+          window.location.hash = "#/analysis";
+        } }
+      }, "Game Review"),
+      // 'Flip Board' removed — now in analysis action menu (CCP-247).
+      // It is analysis-board-local; use the hamburger menu on the analysis board.
+      h("button.global-menu__item", {
+        on: { click: () => {
+          closeGlobalMenu(redraw2);
+          downloadPgn2(true);
+        } }
+      }, "Export PGN (Annotated)"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          closeGlobalMenu(redraw2);
+          downloadPgn2(false);
+        } }
+      }, "Export PGN (Plain)"),
+      h(
+        "div.global-menu__item.global-menu__item--toggle",
+        renderToggleRow("board-wheel-nav", "Board Wheel Navigation", boardWheelNavEnabled, (v) => {
+          setBoardWheelNavEnabled(v);
+          redraw2();
+        })
+      ),
+      // 'Review Dots: User Only' moved to analysis action menu (CCP-244).
+      // It is analysis-board-local and belongs in the analysis menu, not the global header.
+      h(
+        "div.global-menu__item.global-menu__item--toggle",
+        renderToggleRow("board-sounds", "Board Sounds", boardSoundEnabled, (v) => {
+          setBoardSoundEnabled(v);
+          redraw2();
+        })
+      ),
+      h("div.global-menu__item.global-menu__item--slider", [
+        h("span", `Volume: ${Math.round(soundVolume * 100)}%`),
+        h("input", {
+          attrs: { type: "range", min: 0, max: 1, step: 0.05, value: soundVolume },
+          on: {
+            input: (e) => {
+              setSoundVolume(parseFloat(e.target.value));
+              redraw2();
+            }
+          }
+        })
+      ]),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          showDetectionModal = true;
+          showGlobalMenu = false;
+          redraw2();
+        } }
+      }, "Detection Settings\u2026"),
+      h("button.global-menu__item", {
+        on: { click: () => {
+          showRetroModal = true;
+          showGlobalMenu = false;
+          redraw2();
+        } }
+      }, "Mistake Detection\u2026"),
+      headerAuthUser ? h("button.global-menu__item.global-menu__item--logout", {
+        on: { click: () => {
+          logout().then(() => {
+            headerAuthUser = null;
+            closeGlobalMenu(redraw2);
+          });
+        } }
+      }, "Logout") : null,
+      h("div.global-menu__item.global-menu__item--has-sub", {
+        on: { click: () => {
+          showBoardSettings = !showBoardSettings;
+          redraw2();
+        } }
+      }, [
+        h("span", "Board Settings"),
+        h("span.global-menu__arrow", showBoardSettings ? "\u25BE" : "\u203A")
+      ]),
+      showBoardSettings ? renderBoardSettings(redraw2) : null
+    ]) : null
+  ]);
+}
+function renderMobileNav(route, redraw2) {
+  const active = activeSection(route);
+  return h("div.header__mobile-nav", [
+    h("button.header__hamburger", {
+      class: { active: showMobileNav },
+      attrs: { title: "Menu", "aria-label": "Menu" },
+      on: { click: () => {
+        showMobileNav = !showMobileNav;
+        redraw2();
+      } }
+    }, "\u2630"),
+    showMobileNav ? h("div.header__mobile-backdrop", {
+      on: { click: () => {
+        showMobileNav = false;
+        redraw2();
+      } }
+    }) : null,
+    showMobileNav ? h("div.header__mobile-dropdown", navLinks.map(
+      ({ label, href, section }) => h("a.header__mobile-link", {
+        attrs: { href },
+        class: { active: active === section },
+        on: { click: () => {
+          showMobileNav = false;
+          redraw2();
+        } }
+      }, label)
+    )) : null
+  ]);
+}
+function renderHeader(deps) {
+  const {
+    route,
+    importedGames: importedGames3,
+    selectedGameId: selectedGameId2,
+    analyzedGameIds: analyzedGameIds2,
+    missedTacticGameIds: missedTacticGameIds2,
+    importCallbacks: importCallbacks2,
+    onSelectGame,
+    renderGameRow,
+    gameSourceUrl: gameSourceUrl2,
+    resetAllData: resetAllData2,
+    redraw: redraw2
+  } = deps;
+  ensureHeaderAuth(redraw2);
+  const loading = importPlatform === "chesscom" ? chesscom.loading : lichess.loading;
+  const error = importPlatform === "chesscom" ? chesscom.error : lichess.error;
+  const username = importPlatform === "chesscom" ? chesscom.username : lichess.username;
+  const doImport = () => importPlatform === "chesscom" ? void importChesscom(importCallbacks2) : void importLichess(importCallbacks2);
+  const hasActiveFilters = importFilters.speeds.size > 0 || importFilters.dateRange !== "1month" || !importFilters.rated;
+  const panel = showImportPanel ? h("div.header__panel", [
+    h("div.header__panel-section", [
+      h("div.header__panel-label", "Platform"),
+      h("div.header__panel-row", [
+        h("button.header__pill", {
+          class: { active: importPlatform === "chesscom" },
+          on: { click: () => {
+            importPlatform = "chesscom";
+            redraw2();
+          } }
+        }, "Chess.com"),
+        h("button.header__pill", {
+          class: { active: importPlatform === "lichess" },
+          on: { click: () => {
+            importPlatform = "lichess";
+            redraw2();
+          } }
+        }, "Lichess")
+      ])
+    ]),
+    h("div.header__panel-divider"),
+    h("div.header__panel-section", [
+      h("div.header__panel-label", "Time control"),
+      h("div.header__panel-row", [
+        h("button.header__pill", {
+          class: { active: importFilters.speeds.size === 0 },
+          on: { click: () => {
+            importFilters.speeds = /* @__PURE__ */ new Set();
+            redraw2();
+          } }
+        }, "All"),
+        ...SPEED_OPTIONS.map(
+          ({ value, label, icon }) => h("button.header__pill", {
+            class: { active: importFilters.speeds.has(value) },
+            attrs: { "data-icon": icon },
+            on: { click: () => {
+              const s = new Set(importFilters.speeds);
+              s.has(value) ? s.delete(value) : s.add(value);
+              importFilters.speeds = s;
+              redraw2();
+            } }
+          }, label)
+        )
+      ]),
+      h("div.header__panel-label.--mt", "Period"),
+      h("div.header__panel-row", [
+        ...DATE_RANGE_OPTIONS.map(
+          ({ value, label }) => h("button.header__pill", {
+            class: { active: importFilters.dateRange === value },
+            on: { click: () => {
+              importFilters.dateRange = value;
+              redraw2();
+            } }
+          }, label)
+        )
+      ]),
+      importFilters.dateRange === "custom" ? h("div.header__panel-row.--mt", [
+        h("span.header__panel-hint", "From"),
+        h("input.header__date-input", {
+          attrs: { type: "date", value: importFilters.customFrom },
+          on: { change: (e) => {
+            importFilters.customFrom = e.target.value;
+            redraw2();
+          } }
+        }),
+        h("span.header__panel-hint", "To"),
+        h("input.header__date-input", {
+          attrs: { type: "date", value: importFilters.customTo },
+          on: { change: (e) => {
+            importFilters.customTo = e.target.value;
+            redraw2();
+          } }
+        })
+      ]) : null,
+      h("div.header__panel-row.--mt", [
+        h("label.header__panel-check", [
+          h("input", {
+            attrs: { type: "checkbox", checked: importFilters.rated },
+            on: { change: (e) => {
+              importFilters.rated = e.target.checked;
+              redraw2();
+            } }
+          }),
+          "Rated only"
+        ])
+      ]),
+      h(
+        "div.header__panel-row.--mt",
+        renderToggleRow("import-auto-review", "Auto-review after import", importFilters.autoReview, (v) => {
+          setAutoReview(v);
+          redraw2();
+        })
+      ),
+      importFilters.autoReview ? h("div.header__panel-section.--nested", [
+        h(
+          "div.header__panel-row",
+          renderToggleRow("import-auto-review-confirm", "Are you sure?", importFilters.autoReviewConfirmed, (v) => {
+            setAutoReviewConfirmed(v);
+            redraw2();
+          })
+        ),
+        h(
+          "p.header__panel-hint.header__panel-warn",
+          "Large imports may take a long time to review. Each game runs through the engine at the configured review depth."
+        ),
+        importFilters.autoReviewConfirmed ? h("div.review-menu__section", [
+          h("div.review-menu__label", `Auto-review depth: ${importFilters.autoReviewDepth}`),
+          h("div.review-menu__row", renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => {
+            setAutoReviewDepth(d);
+            redraw2();
+          }))
+        ]) : null
+      ]) : null
+    ]),
+    h("div.header__panel-divider"),
+    h("div.header__panel-section", [
+      h("div.header__panel-label", "Paste PGN"),
+      h("textarea.header__pgn-input", {
+        key: pgnState.key,
+        attrs: { placeholder: "Paste a PGN here\u2026", rows: 3, spellcheck: false },
+        on: { input: (e) => {
+          pgnState.input = e.target.value;
+        } }
+      }),
+      h("div.header__panel-row", [
+        h("button.header__panel-btn", {
+          on: { click: () => {
+            importPgn(importCallbacks2);
+            if (!pgnState.error) {
+              showImportPanel = false;
+            }
+            redraw2();
+          } }
+        }, "Import PGN"),
+        pgnState.error ? h("span.header__panel-error", pgnState.error) : null
+      ])
+    ]),
+    importedGames3.length > 0 ? h("div.header__panel-section", [
+      h("div.header__panel-label", `${importedGames3.length} game${importedGames3.length === 1 ? "" : "s"} imported`),
+      h("div.header__games-list", importedGames3.map((game) => {
+        const isAnalyzed = analyzedGameIds2.has(game.id);
+        const hasMissedTactic = missedTacticGameIds2.has(game.id);
+        const srcUrl = gameSourceUrl2(game);
+        return h("div.header__game-item", [
+          h("button.header__game-row", {
+            class: { active: game.id === selectedGameId2 },
+            on: { click: () => {
+              onSelectGame(game.id, game.pgn);
+              showImportPanel = false;
+              redraw2();
+            } }
+          }, renderGameRow(game, isAnalyzed, hasMissedTactic)),
+          srcUrl ? h("a.game-ext-link", {
+            attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" },
+            on: { click: (e) => e.stopPropagation() }
+          }) : null
+        ]);
+      }))
+    ]) : null
+  ]) : null;
+  const backdrop = showImportPanel ? h("div.header__backdrop", {
+    on: { click: () => {
+      showImportPanel = false;
+      redraw2();
+    } }
+  }) : null;
+  return h("header.header", [
+    h("a.header__brand", { attrs: { href: "#/" } }, "Patzer Pro"),
+    renderMobileNav(route, redraw2),
+    h("div.header__search", { key: "header-search" }, [
+      h("div.header__bar", [
+        h("button.header__platform-toggle", {
+          attrs: { title: importPlatform === "chesscom" ? "Switch to Lichess" : "Switch to Chess.com" },
+          on: { click: () => {
+            importPlatform = importPlatform === "chesscom" ? "lichess" : "chesscom";
+            redraw2();
+          } }
+        }, importPlatform === "chesscom" ? "Chess.com" : "Lichess"),
+        h("input.header__input", {
+          key: `input-${importPlatform}`,
+          attrs: {
+            type: "search",
+            placeholder: importPlatform === "chesscom" ? "Chess.com username" : "Lichess username",
+            value: username,
+            disabled: loading,
+            autocomplete: "off",
+            spellcheck: false
+          },
+          on: {
+            input: (e) => {
+              const v = e.target.value;
+              if (importPlatform === "chesscom") chesscom.username = v;
+              else lichess.username = v;
+            },
+            keydown: (e) => {
+              if (e.key === "Enter" && username.trim() && !loading) doImport();
+            }
+          }
+        }),
+        h("button.header__import", {
+          attrs: { disabled: loading || !username.trim() },
+          on: { click: doImport }
+        }, loading ? `Importing\u2026${(importPlatform === "chesscom" ? chesscom.gameCount : lichess.gameCount) > 0 ? ` (${importPlatform === "chesscom" ? chesscom.gameCount : lichess.gameCount})` : ""}` : "Import"),
+        importedGames3.length > 0 && !error ? h(
+          "span.header__count",
+          { on: { click: () => {
+            showImportPanel = !showImportPanel;
+            redraw2();
+          } } },
+          `${importedGames3.length} games`
+        ) : null,
+        error ? h("span.header__error", { attrs: { title: error } }, "\u26A0") : null,
+        h("button.header__toggle", {
+          class: { active: showImportPanel, "header__toggle--filtered": hasActiveFilters && !showImportPanel },
+          attrs: { title: "Filters & games" },
+          on: { click: () => {
+            showImportPanel = !showImportPanel;
+            redraw2();
+          } }
+        }, showImportPanel ? "\u25B4" : "\u25BE")
+      ]),
+      panel,
+      backdrop
+    ]),
+    renderNav(route),
+    renderReviewMenu(redraw2),
+    renderUserArea(redraw2),
+    renderGlobalMenu(deps),
+    showDetectionModal ? renderDetectionModal(redraw2) : null,
+    showRetroModal ? renderRetroModal(redraw2) : null
+  ]);
+}
+
+// src/analyse/analysisControls.ts
+var _actionMenuOpen = false;
+var _actionMenuSubView = null;
+function toggleActionMenu() {
+  _actionMenuOpen = !_actionMenuOpen;
+}
+function closeActionMenu() {
+  _actionMenuOpen = false;
+  _actionMenuSubView = null;
+}
+var _deps = null;
+function initAnalysisControls(deps) {
+  _deps = deps;
+}
+var ICON_JUMP_FIRST = "\uE035";
+var ICON_PREV = "\uE027";
+var ICON_NEXT = "\uE026";
+var ICON_JUMP_LAST = "\uE034";
+var ICON_HAMBURGER = "\uE039";
+var ICON_BOOK = "\uE03B";
+function renderExplorerEntry() {
+  const deps = _deps;
+  const ctrl2 = deps.getCtrl();
+  if (ctrl2.retro) return null;
+  const active = deps.explorerEnabled();
+  return h("button.fbt", {
+    class: { active },
+    attrs: { "data-icon": ICON_BOOK, title: "Opening explorer" },
+    on: { click: () => {
+      deps.onToggleExplorer();
+      deps.redraw();
+    } }
+  });
+}
+function renderMoveNavBar(leftNodes, nav) {
+  let canPrev, canNext, first2, prev2, next2, last2;
+  let explorerBtn = null;
+  let rightZone;
+  if (nav) {
+    ({ canPrev, canNext, first: first2, prev: prev2, next: next2, last: last2 } = nav);
+    if (nav.onBook !== void 0) {
+      explorerBtn = h("button.fbt", {
+        class: { active: !!nav.bookActive },
+        attrs: { "data-icon": ICON_BOOK, title: "Opening explorer" },
+        on: { click: nav.onBook }
+      });
+    }
+    rightZone = h("div.move-nav-bar__right", nav.rightSlot ? [nav.rightSlot] : []);
+  } else {
+    const deps = _deps;
+    const ctrl2 = deps.getCtrl();
+    canPrev = ctrl2.path !== "";
+    canNext = !!ctrl2.node.children[0];
+    first2 = deps.first;
+    prev2 = deps.prev;
+    next2 = deps.next;
+    last2 = deps.last;
+    explorerBtn = renderExplorerEntry();
+    rightZone = h("div.move-nav-bar__right", [
+      h("button.fbt", {
+        class: { active: _actionMenuOpen },
+        attrs: { "data-icon": ICON_HAMBURGER, title: "Analysis menu" },
+        on: { click: () => {
+          toggleActionMenu();
+          deps.redraw();
+        } }
+      })
+    ]);
+  }
+  return h("div.move-nav-bar", [
+    h("div.move-nav-bar__left", leftNodes.filter((n) => n !== null)),
+    ...explorerBtn ? [explorerBtn] : [],
+    h("div.move-nav-bar__middle", [
+      h("div.jumps", [
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_JUMP_FIRST, disabled: !canPrev, title: "First move" },
+          on: { click: first2 }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_PREV, disabled: !canPrev, title: "Previous move" },
+          on: { click: prev2 }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_NEXT, disabled: !canNext, title: "Next move" },
+          on: { click: next2 }
+        }),
+        h("button.fbt", {
+          attrs: { "data-icon": ICON_JUMP_LAST, disabled: !canNext, title: "Last move" },
+          on: { click: last2 }
+        })
+      ])
+    ]),
+    rightZone
+  ]);
+}
+var ICON_FLIP = "\uE020";
+var ICON_RETRO = "\uE05C";
+function renderActionMenu() {
+  if (!_actionMenuOpen) return null;
+  const deps = _deps;
+  const ctrl2 = deps.getCtrl();
+  const close = () => {
+    closeActionMenu();
+    deps.redraw();
+  };
+  const hasRetro = !!ctrl2.retro;
+  const canLFYM = analysisComplete && !batchAnalyzing;
+  if (_actionMenuSubView === "mistake-detection") {
+    return h("div.action-menu", [
+      h("button.action-menu__back-btn", {
+        on: { click: () => {
+          _actionMenuSubView = null;
+          deps.redraw();
+        } }
+      }, "\u2190 Back"),
+      h("h2", "Mistake Detection"),
+      h("div.action-menu__subpanel", renderRetroConfigBody(deps.redraw))
+    ]);
+  }
+  return h("div.action-menu", [
+    h("button.action-menu__close-btn", {
+      attrs: { title: "Close menu" },
+      on: { click: close }
+    }, "\xD7"),
+    // Tools section — mirrors lichess-org/lila: actionMenu.ts Tools group
+    h("h2", "Tools"),
+    h("div.action-menu__tools", [
+      // Save game to Study Library (CCP-525)
+      h("button", {
+        attrs: { title: "Save this game to Study Library" },
+        on: { click: () => {
+          deps.onSaveToLibrary();
+          close();
+        } }
+      }, "Save game to Library"),
+      // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
+      h("button", {
+        attrs: { "data-icon": ICON_FLIP, title: "Flip board (hotkey: f)" },
+        on: { click: () => {
+          deps.onFlipBoard();
+          close();
+        } }
+      }, "Flip board")
+    ]),
+    // Mistakes section — LFYM and detection settings (CCP-756)
+    h("h2", "Mistakes"),
+    h("div.action-menu__tools", [
+      // Learn From Your Mistakes — mirrors lichess-org/lila: actionMenu.ts canRetro → toggleRetro()
+      h("button", {
+        class: { active: hasRetro },
+        attrs: {
+          "data-icon": ICON_RETRO,
+          title: canLFYM ? hasRetro ? "Exit mistakes review" : "Review your mistakes" : "Analyze the game first",
+          disabled: !canLFYM
+        },
+        on: { click: () => {
+          if (canLFYM) {
+            deps.onToggleRetro();
+            close();
+          }
+        } }
+      }, hasRetro ? "Close Mistakes" : "Learn From Your Mistakes"),
+      // Mistake Detection — opens inline sub-panel (CCP-756)
+      h("button", {
+        attrs: { title: "Configure mistake detection thresholds" },
+        on: { click: () => {
+          _actionMenuSubView = "mistake-detection";
+          deps.redraw();
+        } }
+      }, "Mistake Detection")
+    ]),
+    // Display section — analysis-local display toggles.
+    // Arrow display settings moved here from engine gear (CCP-246).
+    // showBoardReviewGlyphs, showReviewLabels: primary ownership now here (removed from gear).
+    // reviewDotsUserOnly moved here from global header menu (CCP-244).
+    h("h2", "Display"),
+    h("div.action-menu__display", [
+      renderToggleRow("am-board-glyphs", "Move markers on board", showBoardReviewGlyphs, (v) => {
+        setShowBoardReviewGlyphs(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      renderToggleRow("am-move-labels", "Move labels", showReviewLabels, (v) => {
+        setShowReviewLabels(v);
+        deps.redraw();
+      }),
+      // Review dots user-only — moved from global header menu (CCP-244).
+      // Storage owner (reviewDotsUserOnly / setReviewDotsUserOnly in src/board/cosmetics.ts) unchanged.
+      renderToggleRow("am-review-dots", "Review dots: my moves only", reviewDotsUserOnly, (v) => {
+        setReviewDotsUserOnly(v);
+        deps.redraw();
+      }),
+      // Arrow display settings — moved from engine gear (CCP-246).
+      // Storage owners in engine/ctrl.ts unchanged.
+      renderToggleRow("am-engine-arrows", "Engine arrows", showEngineArrows, (v) => {
+        setShowEngineArrows(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      renderToggleRow("am-all-lines", "All lines", arrowAllLines, (v) => {
+        setArrowAllLines(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      renderToggleRow("am-played-arrow", "Played move arrow", showPlayedArrow, (v) => {
+        setShowPlayedArrow(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      renderToggleRow("am-arrow-labels", "Arrow labels", showArrowLabels, (v) => {
+        setShowArrowLabels(v);
+        syncArrow();
+        deps.redraw();
+      }),
+      h("div.action-menu__slider-row", [
+        h("label", { attrs: { for: "action-menu-label-size" } }, "Label size"),
+        h("input#action-menu-label-size", {
+          attrs: { type: "range", min: 6, max: 18, step: 1, value: arrowLabelSize },
+          on: { input: (e) => {
+            setArrowLabelSize(parseInt(e.target.value));
+            syncArrow();
+            deps.redraw();
+          } }
+        }),
+        h("span.action-menu__val", `${arrowLabelSize}px`)
+      ])
+    ])
+  ]);
+}
+
+// src/router.ts
+var routes = [
+  { pattern: ["analysis", ":id"], name: "analysis-game" },
+  { pattern: ["analysis"], name: "analysis" },
+  { pattern: ["opponents"], name: "opponents" },
+  { pattern: ["openings"], name: "opponents" },
+  { pattern: ["stats"], name: "stats" },
+  { pattern: ["games"], name: "games" },
+  { pattern: ["puzzles", ":id"], name: "puzzle-round" },
+  { pattern: ["puzzles"], name: "puzzles" },
+  { pattern: ["study", ":id"], name: "study-detail" },
+  { pattern: ["study"], name: "study" },
+  { pattern: ["admin"], name: "admin" },
+  { pattern: [], name: "analysis" }
+];
+function parse(hash2) {
+  const path = hash2.replace(/^#\/?/, "");
+  const parts = path ? path.split("/") : [];
+  for (const { pattern, name } of routes) {
+    if (pattern.length !== parts.length) continue;
+    const params = {};
+    let matched = true;
+    for (let i = 0; i < pattern.length; i++) {
+      const seg = pattern[i];
+      if (!seg) {
+        matched = false;
+        break;
+      }
+      if (seg.startsWith(":")) {
+        params[seg.slice(1)] = parts[i];
+      } else if (seg !== parts[i]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return { name, params };
+  }
+  return { name: "analysis", params: {} };
+}
+function current() {
+  return parse(window.location.hash);
+}
+function onChange2(fn) {
+  window.addEventListener("hashchange", () => fn(current()));
 }
 
 // src/puzzles/ctrl.ts
@@ -16084,7 +18051,7 @@ var _flip = () => {
 };
 var _completeMove = () => {
 };
-var _redraw7 = () => {
+var _redraw8 = () => {
 };
 function bindKeyboardHandlers(deps) {
   _getCtrl6 = deps.getCtrl;
@@ -16095,29 +18062,29 @@ function bindKeyboardHandlers(deps) {
   _last = deps.last;
   _flip = deps.flip;
   _completeMove = deps.completeMove;
-  _redraw7 = deps.redraw;
+  _redraw8 = deps.redraw;
   document.addEventListener("keydown", (e) => {
     const tag = e.target.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
     if (current().name === "puzzle-round" && getActiveRoundCtrl()) {
       if (e.key === "ArrowLeft") {
         e.preventDefault();
-        puzzlePrev(_redraw7);
+        puzzlePrev(_redraw8);
         return;
       }
       if (e.key === "ArrowRight") {
         e.preventDefault();
-        puzzleNext(_redraw7);
+        puzzleNext(_redraw8);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        puzzleFirst(_redraw7);
+        puzzleFirst(_redraw8);
         return;
       }
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        puzzleLast(_redraw7);
+        puzzleLast(_redraw8);
         return;
       }
       return;
@@ -16126,49 +18093,49 @@ function bindKeyboardHandlers(deps) {
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         previousBranch();
-        _redraw7();
+        _redraw8();
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         nextBranch();
-        _redraw7();
+        _redraw8();
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         nextSibling2();
-        _redraw7();
+        _redraw8();
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         prevSibling();
-        _redraw7();
+        _redraw8();
       }
       return;
     }
     if (e.key === "ArrowRight") {
       _next();
-      _redraw7();
+      _redraw8();
     } else if (e.key === "ArrowLeft") {
       _prev();
-      _redraw7();
+      _redraw8();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       _first();
-      _redraw7();
+      _redraw8();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       _last();
-      _redraw7();
+      _redraw8();
     } else if (e.key === "f" || e.key === "F") _flip();
     else if (e.key === "x" || e.key === "X") toggleThreatMode();
     else if (e.key === "l" || e.key === "L") toggleEngine();
     else if (e.key === "a" || e.key === "A") {
       setShowEngineArrows(!showEngineArrows);
       syncArrow();
-      _redraw7();
+      _redraw8();
     } else if (e.key === " ") {
       e.preventDefault();
       playBestMove();
     } else if (e.key === "?") {
       showKeyboardHelp = !showKeyboardHelp;
-      _redraw7();
+      _redraw8();
     }
   });
 }
@@ -16243,7 +18210,7 @@ function renderKeyboardHelp() {
   return h("div.keyboard-help", {
     on: { click: () => {
       showKeyboardHelp = false;
-      _redraw7();
+      _redraw8();
     } }
   }, [
     h("div.keyboard-help__box", { on: { click: (e) => e.stopPropagation() } }, [
@@ -16266,722 +18233,11 @@ function renderKeyboardHelp() {
       h("button.keyboard-help__close", {
         on: { click: () => {
           showKeyboardHelp = false;
-          _redraw7();
+          _redraw8();
         } }
       }, "\u2715")
     ])
   ]);
-}
-
-// src/import/types.ts
-var gameIdCounter = 0;
-function nextGameId() {
-  return `game-${++gameIdCounter}`;
-}
-function restoreGameIdCounter(max) {
-  if (max > gameIdCounter) gameIdCounter = max;
-}
-function parsePgnHeader(pgn, tag) {
-  return pgn.match(new RegExp(`\\[${tag}\\s+"([^"]*)"\\]`))?.[1];
-}
-function parseRating(s) {
-  if (typeof s === "number") return s > 0 ? s : void 0;
-  if (!s) return void 0;
-  const n = parseInt(s, 10);
-  return isNaN(n) || n <= 0 ? void 0 : n;
-}
-function timeClassFromTimeControl(tc) {
-  if (!tc || tc === "-") return void 0;
-  const secs = parseInt(tc, 10);
-  if (isNaN(secs)) return void 0;
-  if (secs < 30) return "ultrabullet";
-  if (secs < 180) return "bullet";
-  if (secs < 480) return "blitz";
-  if (secs < 1500) return "rapid";
-  return "classical";
-}
-
-// src/import/filters.ts
-function storedInt3(key, def, min, max) {
-  const v = parseInt(localStorage.getItem(key) ?? "", 10);
-  return !isNaN(v) && v >= min && v <= max ? v : def;
-}
-var importFilters = {
-  rated: true,
-  speeds: /* @__PURE__ */ new Set(),
-  // empty = all speeds
-  dateRange: "1month",
-  customFrom: "",
-  customTo: "",
-  autoReview: localStorage.getItem("patzer.autoReview") === "true",
-  autoReviewConfirmed: localStorage.getItem("patzer.autoReviewConfirmed") === "true",
-  autoReviewDepth: storedInt3("patzer.autoReviewDepth", 12, 2, 18)
-};
-function setAutoReview(v) {
-  importFilters.autoReview = v;
-  localStorage.setItem("patzer.autoReview", String(v));
-}
-function setAutoReviewConfirmed(v) {
-  importFilters.autoReviewConfirmed = v;
-  localStorage.setItem("patzer.autoReviewConfirmed", String(v));
-}
-function setAutoReviewDepth(v) {
-  importFilters.autoReviewDepth = v;
-  localStorage.setItem("patzer.autoReviewDepth", String(v));
-}
-var SPEED_OPTIONS = [
-  { value: "bullet", label: "Bullet", icon: "\uE032" },
-  // licon.Bullet
-  { value: "blitz", label: "Blitz", icon: "\uE008" },
-  // licon.FlameBlitz
-  { value: "rapid", label: "Rapid", icon: "\uE002" }
-  // licon.Rabbit
-];
-var DATE_RANGE_OPTIONS = [
-  { value: "24h", label: "24h" },
-  { value: "1week", label: "1 wk" },
-  { value: "1month", label: "1 mo" },
-  { value: "3months", label: "3 mo" },
-  { value: "1year", label: "1 yr" },
-  { value: "all", label: "All" },
-  { value: "custom", label: "Custom" }
-];
-function filterGamesByDate(games) {
-  if (importFilters.dateRange === "all") return games;
-  if (importFilters.dateRange === "custom") {
-    return games.filter((g) => {
-      const d = g.date?.slice(0, 10);
-      if (!d) return true;
-      if (importFilters.customFrom && d < importFilters.customFrom) return false;
-      if (importFilters.customTo && d > importFilters.customTo) return false;
-      return true;
-    });
-  }
-  const now = /* @__PURE__ */ new Date();
-  let cutoff;
-  switch (importFilters.dateRange) {
-    case "24h":
-      cutoff = new Date(now.getTime() - 864e5);
-      break;
-    case "1week":
-      cutoff = new Date(now.getTime() - 7 * 864e5);
-      break;
-    case "1month":
-      cutoff = new Date(now);
-      cutoff.setMonth(cutoff.getMonth() - 1);
-      break;
-    case "3months":
-      cutoff = new Date(now);
-      cutoff.setMonth(cutoff.getMonth() - 3);
-      break;
-    case "1year":
-      cutoff = new Date(now);
-      cutoff.setFullYear(cutoff.getFullYear() - 1);
-      break;
-    default:
-      return games;
-  }
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
-  return games.filter((g) => !g.date || g.date.slice(0, 10) >= cutoffStr);
-}
-
-// src/import/chesscom.ts
-var CHESSCOM_BASE = "https://api.chess.com/pub/player";
-function archiveCutoffMonth() {
-  const range = importFilters.dateRange;
-  if (range === "all") return null;
-  if (range === "custom") {
-    return importFilters.customFrom ? importFilters.customFrom.slice(0, 7) : null;
-  }
-  const now = /* @__PURE__ */ new Date();
-  let cutoff;
-  switch (range) {
-    case "24h":
-      cutoff = new Date(now.getTime() - 864e5);
-      break;
-    case "1week":
-      cutoff = new Date(now.getTime() - 7 * 864e5);
-      break;
-    case "1month":
-      cutoff = new Date(now);
-      cutoff.setMonth(cutoff.getMonth() - 1);
-      break;
-    case "3months":
-      cutoff = new Date(now);
-      cutoff.setMonth(cutoff.getMonth() - 3);
-      break;
-    case "1year":
-      cutoff = new Date(now);
-      cutoff.setFullYear(cutoff.getFullYear() - 1);
-      break;
-    default:
-      return null;
-  }
-  return cutoff.toISOString().slice(0, 7);
-}
-var chesscom = {
-  username: "LeviathanDuck",
-  loading: false,
-  error: null,
-  /** Live count of games parsed so far during an active import. */
-  gameCount: 0
-};
-function normalizeChesscomResult(whiteResult, blackResult) {
-  if (whiteResult === "win") return "1-0";
-  if (blackResult === "win") return "0-1";
-  return "1/2-1/2";
-}
-async function fetchChesscomGames(username, rated, speeds, onProgress) {
-  const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
-  if (!archivesRes.ok) {
-    throw new Error(archivesRes.status === 404 ? "Chess.com: user not found" : `Chess.com API error ${archivesRes.status}`);
-  }
-  const archivesData = await archivesRes.json();
-  const archives = archivesData.archives ?? [];
-  if (archives.length === 0) return [];
-  const cutoffMonth = archiveCutoffMonth();
-  const relevantArchives = cutoffMonth === null ? archives : archives.filter((url) => {
-    const parts = url.split("/");
-    const year = parts[parts.length - 2];
-    const month = parts[parts.length - 1];
-    if (!year || !month) return false;
-    return `${year}-${month.padStart(2, "0")}` >= cutoffMonth;
-  });
-  if (relevantArchives.length === 0) return [];
-  const archiveResponses = await Promise.all(relevantArchives.map((url) => fetch(url)));
-  const rawGames = [];
-  for (const res of archiveResponses) {
-    if (!res.ok) throw new Error(`Chess.com API error ${res.status}`);
-    const data = await res.json();
-    rawGames.push(...data.games ?? []);
-  }
-  const result = [];
-  for (let i = rawGames.length - 1; i >= 0; i--) {
-    const raw = rawGames[i];
-    if (raw.rules !== "chess" || raw.time_class === "daily") continue;
-    if (rated && !raw.rated) continue;
-    if (speeds.size > 0 && !speeds.has(raw.time_class)) continue;
-    const pgn = raw.pgn ?? "";
-    if (!pgn) continue;
-    try {
-      pgnToTree(pgn);
-    } catch {
-      continue;
-    }
-    const white = raw.white?.username;
-    const black = raw.black?.username;
-    const date = parsePgnHeader(pgn, "Date")?.replace(/\./g, "-");
-    const timeClass = raw.time_class;
-    let opening = parsePgnHeader(pgn, "Opening");
-    let eco = parsePgnHeader(pgn, "ECO");
-    if (!opening || !eco) {
-      const classified = classifyOpening(pgn);
-      if (classified) {
-        if (!opening) opening = classified.name;
-        if (!eco) eco = classified.eco;
-      }
-    }
-    const whiteRating = parseRating(raw.white?.rating) ?? parseRating(parsePgnHeader(pgn, "WhiteElo"));
-    const blackRating = parseRating(raw.black?.rating) ?? parseRating(parsePgnHeader(pgn, "BlackElo"));
-    result.push({
-      id: nextGameId(),
-      pgn,
-      result: normalizeChesscomResult(raw.white?.result ?? "", raw.black?.result ?? ""),
-      source: "chesscom",
-      importedUsername: username.toLowerCase(),
-      ...white ? { white } : {},
-      ...black ? { black } : {},
-      ...date ? { date } : {},
-      ...timeClass ? { timeClass } : {},
-      ...opening ? { opening } : {},
-      ...eco ? { eco } : {},
-      ...whiteRating !== void 0 ? { whiteRating } : {},
-      ...blackRating !== void 0 ? { blackRating } : {}
-    });
-    onProgress?.(result.length);
-  }
-  return result;
-}
-async function importChesscom(callbacks) {
-  const name = chesscom.username.trim();
-  if (!name || chesscom.loading) return;
-  chesscom.loading = true;
-  chesscom.error = null;
-  chesscom.gameCount = 0;
-  callbacks.redraw();
-  try {
-    const games = filterGamesByDate(await fetchChesscomGames(
-      name,
-      importFilters.rated,
-      importFilters.speeds,
-      (partial) => {
-        chesscom.gameCount = partial;
-        callbacks.redraw();
-      }
-    ));
-    chesscom.gameCount = games.length;
-    if (games.length === 0) {
-      chesscom.error = "No games found matching current filters.";
-    } else {
-      callbacks.addGames(games, games[0]);
-    }
-  } catch (err) {
-    chesscom.error = err instanceof Error ? err.message : "Import failed.";
-  } finally {
-    chesscom.loading = false;
-    callbacks.redraw();
-  }
-}
-
-// src/import/lichess.ts
-var lichess = {
-  username: "Leviathan_Duck",
-  loading: false,
-  error: null,
-  /** Count of games parsed so far during an active import. */
-  gameCount: 0
-};
-async function fetchLichessGames(username, rated, speeds, onProgress) {
-  const params = new URLSearchParams({ max: "300" });
-  if (rated) params.set("rated", "true");
-  if (speeds.size > 0) params.set("perfType", [...speeds].join(","));
-  params.set("clocks", "true");
-  const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
-  const res = await fetch(url, { headers: { "Accept": "application/x-chess-pgn" } });
-  if (!res.ok) {
-    throw new Error(res.status === 404 ? "Lichess: user not found" : `Lichess API error ${res.status}`);
-  }
-  const text = await res.text();
-  if (!text.trim()) return [];
-  const gameTexts = text.trim().split(/\n\n(?=\[Event )/).filter((s) => s.trim());
-  const result = [];
-  for (const pgn of gameTexts) {
-    try {
-      pgnToTree(pgn);
-    } catch {
-      continue;
-    }
-    const date = (parsePgnHeader(pgn, "UTCDate") ?? parsePgnHeader(pgn, "Date"))?.replace(/\./g, "-");
-    const white = parsePgnHeader(pgn, "White");
-    const black = parsePgnHeader(pgn, "Black");
-    const resultLabel = parsePgnHeader(pgn, "Result");
-    const timeClass = timeClassFromTimeControl(parsePgnHeader(pgn, "TimeControl"));
-    let opening = parsePgnHeader(pgn, "Opening");
-    let eco = parsePgnHeader(pgn, "ECO");
-    if (!opening || !eco) {
-      const classified = classifyOpening(pgn);
-      if (classified) {
-        if (!opening) opening = classified.name;
-        if (!eco) eco = classified.eco;
-      }
-    }
-    const whiteRating = parseRating(parsePgnHeader(pgn, "WhiteElo"));
-    const blackRating = parseRating(parsePgnHeader(pgn, "BlackElo"));
-    result.push({
-      id: nextGameId(),
-      pgn,
-      source: "lichess",
-      importedUsername: username.toLowerCase(),
-      ...white ? { white } : {},
-      ...black ? { black } : {},
-      ...resultLabel ? { result: resultLabel } : {},
-      ...date ? { date } : {},
-      ...timeClass ? { timeClass } : {},
-      ...opening ? { opening } : {},
-      ...eco ? { eco } : {},
-      ...whiteRating !== void 0 ? { whiteRating } : {},
-      ...blackRating !== void 0 ? { blackRating } : {}
-    });
-    onProgress?.(result.length);
-  }
-  return result;
-}
-async function importLichess(callbacks) {
-  const name = lichess.username.trim();
-  if (!name || lichess.loading) return;
-  lichess.loading = true;
-  lichess.error = null;
-  lichess.gameCount = 0;
-  callbacks.redraw();
-  try {
-    const games = filterGamesByDate(await fetchLichessGames(
-      name,
-      importFilters.rated,
-      importFilters.speeds,
-      (partial) => {
-        lichess.gameCount = partial;
-        callbacks.redraw();
-      }
-    ));
-    lichess.gameCount = games.length;
-    if (games.length === 0) {
-      lichess.error = "No games found matching current filters.";
-    } else {
-      callbacks.addGames(games, games[0]);
-    }
-  } catch (err) {
-    lichess.error = err instanceof Error ? err.message : "Import failed.";
-  } finally {
-    lichess.loading = false;
-    callbacks.redraw();
-  }
-}
-
-// src/engine/reviewQueue.ts
-var reviewProtocol = new StockfishProtocol({ threads: 1, hash: 32 });
-var reviewEngineReady = false;
-var reviewEngineInitStarted = false;
-var queue = [];
-var activeIndex = -1;
-var queuePaused = false;
-var reviewCurrentEval = {};
-var reviewNodePath = "";
-var reviewNodePly = 0;
-var reviewParentPath = "";
-var reviewSearchActive = false;
-var reviewPendingStopCount = 0;
-var reviewItemQueue = [];
-var reviewItemIndex = 0;
-var reviewActiveDepth = reviewDepth;
-var _analyzedGameIds2 = /* @__PURE__ */ new Set();
-var _missedTacticGameIds2 = /* @__PURE__ */ new Set();
-var _analyzedGameAccuracy2 = /* @__PURE__ */ new Map();
-var _getUserColor2 = () => null;
-var _redraw8 = () => {
-};
-function initReviewQueue(deps) {
-  _analyzedGameIds2 = deps.analyzedGameIds;
-  _missedTacticGameIds2 = deps.missedTacticGameIds;
-  _analyzedGameAccuracy2 = deps.analyzedGameAccuracy;
-  _getUserColor2 = deps.getUserColor;
-  _redraw8 = deps.redraw;
-  onMissedMomentConfigChange(recomputeMissedTactics);
-}
-function recomputeMissedTactics() {
-  for (const entry of queue) {
-    if (entry.status !== "complete") continue;
-    const userColor = _getUserColor2(entry.game);
-    const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
-    setMissedMoments(entry.game.id, moments);
-    if (moments.length > 0) {
-      _missedTacticGameIds2.add(entry.game.id);
-    } else {
-      _missedTacticGameIds2.delete(entry.game.id);
-    }
-  }
-  _redraw8();
-}
-async function initReviewEngine(baseUrl) {
-  if (reviewEngineInitStarted) return;
-  reviewEngineInitStarted = true;
-  reviewProtocol.onMessage((line) => {
-    if (line.trim() === "readyok") {
-      reviewEngineReady = true;
-      console.log("[review-engine] ready");
-      const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
-      if (entry && entry.status === "analyzing" && reviewItemQueue.length > 0) {
-        sendNextItem();
-      }
-      return;
-    }
-    parseReviewLine(line);
-  });
-  await reviewProtocol.init(baseUrl);
-}
-function parseReviewLine(line) {
-  const parts = line.trim().split(/\s+/);
-  if (parts[0] === "info") {
-    let isMate = false;
-    let score;
-    let best;
-    let pvMoves = [];
-    let pvIndex = 1;
-    for (let i = 1; i < parts.length; i++) {
-      if (parts[i] === "multipv") {
-        const next2 = parts[i + 1];
-        if (next2 === void 0) break;
-        pvIndex = parseInt(next2, 10);
-        i++;
-      } else if (parts[i] === "score") {
-        const scoreType = parts[i + 1];
-        const scoreValue = parts[i + 2];
-        if (scoreType === void 0 || scoreValue === void 0) break;
-        isMate = scoreType === "mate";
-        score = parseInt(scoreValue, 10);
-        i += 2;
-        if (parts[i + 1] === "lowerbound" || parts[i + 1] === "upperbound") i++;
-      } else if (parts[i] === "pv") {
-        pvMoves = parts.slice(i + 1);
-        best = pvMoves[0];
-        break;
-      }
-    }
-    if (pvIndex === 1 && score !== void 0) {
-      const s = reviewNodePly % 2 === 1 ? -score : score;
-      if (isMate) {
-        reviewCurrentEval.mate = s;
-        delete reviewCurrentEval.cp;
-      } else {
-        reviewCurrentEval.cp = s;
-        delete reviewCurrentEval.mate;
-      }
-    }
-    if (pvIndex === 1 && best) {
-      reviewCurrentEval.best = best;
-      reviewCurrentEval.moves = pvMoves;
-    }
-  } else if (parts[0] === "bestmove") {
-    if (reviewPendingStopCount > 0) {
-      reviewPendingStopCount--;
-      reviewCurrentEval = {};
-      return;
-    }
-    reviewSearchActive = false;
-    if (parts[1] && parts[1] !== "(none)") {
-      reviewCurrentEval.best = parts[1];
-    }
-    onReviewBestmove();
-  }
-}
-function onReviewBestmove() {
-  const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
-  if (!entry) return;
-  const stored = { ...reviewCurrentEval };
-  const nodePath = reviewNodePath;
-  const nodePly = reviewNodePly;
-  const parentPath = reviewParentPath;
-  if (stored.cp !== void 0 || stored.mate !== void 0) {
-    const parentEval = entry.cache.get(parentPath);
-    if (parentEval?.cp !== void 0 && stored.cp !== void 0) {
-      stored.delta = stored.cp - parentEval.cp;
-    }
-    if (parentEval) {
-      const nodeWc = evalWinChances(stored);
-      const parentWc = evalWinChances(parentEval);
-      if (nodeWc !== void 0 && parentWc !== void 0) {
-        const whiteToMove = nodePly % 2 === 1;
-        const moverNodeWc = whiteToMove ? nodeWc : -nodeWc;
-        const moverParentWc = whiteToMove ? parentWc : -parentWc;
-        stored.loss = (moverParentWc - moverNodeWc) / 2;
-      }
-    }
-    entry.cache.set(nodePath, stored);
-  }
-  entry.done++;
-  reviewItemIndex++;
-  reviewCurrentEval = {};
-  void saveAnalysisToIdb(
-    "partial",
-    entry.game.id,
-    buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
-    reviewActiveDepth
-  );
-  _redraw8();
-  if (reviewItemIndex < reviewItemQueue.length) {
-    sendNextItem();
-  } else {
-    finishEntry(entry);
-  }
-}
-function sendNextItem() {
-  const item = reviewItemQueue[reviewItemIndex];
-  if (!item) return;
-  reviewCurrentEval = {};
-  reviewNodePath = item.nodePath;
-  reviewNodePly = item.nodePly;
-  reviewParentPath = item.parentPath;
-  reviewSearchActive = true;
-  console.log(
-    "[review-batch]",
-    reviewItemIndex + 1,
-    "/",
-    reviewItemQueue.length,
-    "nodeId:",
-    item.nodeId,
-    "path:",
-    item.nodePath,
-    "ply:",
-    item.nodePly
-  );
-  reviewProtocol.setPosition(item.fen);
-  reviewProtocol.go(reviewActiveDepth);
-}
-function finishEntry(entry) {
-  entry.status = "complete";
-  const userColor = _getUserColor2(entry.game);
-  _analyzedGameIds2.add(entry.game.id);
-  const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
-  setMissedMoments(entry.game.id, moments);
-  if (moments.length > 0) _missedTacticGameIds2.add(entry.game.id);
-  const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
-  if (summary) {
-    _analyzedGameAccuracy2.set(entry.game.id, {
-      white: summary.white.accuracy,
-      black: summary.black.accuracy
-    });
-  }
-  void saveAnalysisToIdb(
-    "complete",
-    entry.game.id,
-    buildAnalysisNodes(entry.ctrl.mainline, (p) => entry.cache.get(p)),
-    reviewActiveDepth
-  );
-  console.log("[review-engine] game complete:", entry.game.id);
-  _redraw8();
-  advanceQueue();
-}
-async function startEntryBatch(entry) {
-  const items = [];
-  let path = "";
-  let prevPath = "";
-  for (let i = 0; i < entry.ctrl.mainline.length; i++) {
-    const node = entry.ctrl.mainline[i];
-    prevPath = path;
-    if (i > 0) path += node.id;
-    if (!entry.cache.has(path)) {
-      items.push({
-        nodeId: node.id,
-        nodePly: node.ply,
-        nodePath: path,
-        parentPath: prevPath,
-        fen: node.fen
-      });
-    }
-  }
-  entry.total = entry.ctrl.mainline.length > 1 ? entry.ctrl.mainline.length - 1 : 0;
-  if (items.length === 0) {
-    finishEntry(entry);
-    return;
-  }
-  reviewItemQueue = items;
-  reviewItemIndex = 0;
-  reviewCurrentEval = {};
-  reviewActiveDepth = entry.depth;
-  if (!reviewEngineReady) {
-    return;
-  }
-  sendNextItem();
-}
-function advanceQueue() {
-  if (queuePaused) return;
-  const nextIndex = queue.findIndex((e) => e.status === "pending");
-  if (nextIndex < 0) {
-    activeIndex = -1;
-    _redraw8();
-    return;
-  }
-  activeIndex = nextIndex;
-  const entry = queue[activeIndex];
-  entry.status = "analyzing";
-  void startEntryBatch(entry);
-}
-function enqueueBulkReview(games, depth) {
-  const entryDepth = depth ?? reviewDepth;
-  console.log("[reviewQueue] enqueueBulkReview called \u2014 games:", games.map((g) => g.id), "queue len:", queue.length, "activeIndex:", activeIndex, "engineInitStarted:", reviewEngineInitStarted, "depth:", entryDepth);
-  for (const game of games) {
-    console.log("[reviewQueue]  game", game.id, "\u2014 alreadyAnalyzed:", _analyzedGameIds2.has(game.id), "alreadyQueued:", queue.some((e) => e.game.id === game.id));
-    if (_analyzedGameIds2.has(game.id)) continue;
-    if (queue.some((e) => e.game.id === game.id)) continue;
-    const ctrl2 = new AnalyseCtrl(pgnToTree(game.pgn));
-    const total = ctrl2.mainline.length > 1 ? ctrl2.mainline.length - 1 : 0;
-    queue.push({
-      game,
-      ctrl: ctrl2,
-      cache: /* @__PURE__ */ new Map(),
-      done: 0,
-      total,
-      status: "pending",
-      depth: entryDepth
-    });
-  }
-  if (!reviewEngineInitStarted) {
-    void initReviewEngine("/stockfish-web");
-  }
-  if (activeIndex < 0) {
-    advanceQueue();
-  }
-}
-function enqueueAtFront(games) {
-  const newEntries = [];
-  for (const game of games) {
-    if (_analyzedGameIds2.has(game.id)) continue;
-    if (queue.some((e) => e.game.id === game.id)) continue;
-    const ctrl2 = new AnalyseCtrl(pgnToTree(game.pgn));
-    const total = ctrl2.mainline.length > 1 ? ctrl2.mainline.length - 1 : 0;
-    newEntries.push({
-      game,
-      ctrl: ctrl2,
-      cache: /* @__PURE__ */ new Map(),
-      done: 0,
-      total,
-      status: "pending",
-      depth: reviewDepth
-    });
-  }
-  if (newEntries.length === 0) return;
-  const insertAt = activeIndex >= 0 ? activeIndex + 1 : 0;
-  queue.splice(insertAt, 0, ...newEntries);
-  if (!reviewEngineInitStarted) {
-    void initReviewEngine("/stockfish-web");
-  }
-  if (activeIndex < 0) {
-    advanceQueue();
-  }
-}
-function isBulkRunning() {
-  if (queuePaused) return false;
-  return queue.some((e) => e.status === "pending" || e.status === "analyzing");
-}
-function isBulkPaused() {
-  return queuePaused && queue.some((e) => e.status === "pending" || e.status === "analyzing");
-}
-function cancelBulkReview() {
-  if (reviewSearchActive) {
-    reviewPendingStopCount++;
-    reviewProtocol.stop();
-    reviewSearchActive = false;
-  }
-  queue = [];
-  activeIndex = -1;
-  queuePaused = false;
-  _redraw8();
-}
-function pauseBulkReview() {
-  if (!isBulkRunning()) return;
-  queuePaused = true;
-  if (reviewSearchActive) {
-    reviewPendingStopCount++;
-    reviewProtocol.stop();
-    reviewSearchActive = false;
-  }
-  _redraw8();
-}
-function resumeBulkReview() {
-  if (!queuePaused) return;
-  queuePaused = false;
-  const entry = activeIndex >= 0 ? queue[activeIndex] : void 0;
-  if (entry && entry.status === "analyzing" && reviewItemIndex < reviewItemQueue.length) {
-    sendNextItem();
-  } else {
-    advanceQueue();
-  }
-  _redraw8();
-}
-function getReviewProgress(gameId) {
-  const entry = queue.find((e) => e.game.id === gameId);
-  if (!entry) return void 0;
-  if (entry.status === "complete") return 100;
-  if (entry.total === 0) return void 0;
-  return Math.round(entry.done / entry.total * 100);
-}
-function getQueueSummary() {
-  const total = queue.length;
-  const done = queue.filter((e) => e.status === "complete").length;
-  const running = isBulkRunning();
-  return { total, done, running };
-}
-function getAutoReview() {
-  return importFilters.autoReview;
 }
 
 // src/games/view.ts
@@ -23072,222 +24328,6 @@ function renderPuzzleRound(redraw2) {
   ]);
 }
 
-// src/sync/client.ts
-var LAST_SYNC_KEY = "lastSyncedAt";
-function getLastSyncedAt() {
-  return localStorage.getItem(LAST_SYNC_KEY);
-}
-function setLastSyncedAt() {
-  localStorage.setItem(LAST_SYNC_KEY, (/* @__PURE__ */ new Date()).toISOString());
-}
-async function apiGet(path) {
-  const res = await fetch(path, { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`GET ${path}: ${res.status} ${res.statusText}`);
-  return res.json();
-}
-async function apiPost(path, body) {
-  const opts = {
-    method: "POST",
-    credentials: "same-origin",
-    headers: body !== void 0 ? { "Content-Type": "application/json" } : {}
-  };
-  if (body !== void 0) opts.body = JSON.stringify(body);
-  const res = await fetch(path, opts);
-  if (!res.ok) throw new Error(`POST ${path}: ${res.status} ${res.statusText}`);
-  return res.json();
-}
-async function checkAuth() {
-  try {
-    return await apiGet("/api/auth/status");
-  } catch {
-    return { authenticated: false, username: null };
-  }
-}
-async function logout() {
-  try {
-    await apiPost("/api/auth/logout");
-  } catch {
-  }
-}
-function openIdb(name, version) {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(name, version);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-function readAllFromStore(db, storeName) {
-  return new Promise((resolve, reject) => {
-    if (!db.objectStoreNames.contains(storeName)) return resolve([]);
-    const tx = db.transaction(storeName, "readonly");
-    const store = tx.objectStore(storeName);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-function readFromStoreSince(db, storeName, since) {
-  if (since === void 0) return readAllFromStore(db, storeName);
-  return new Promise((resolve, reject) => {
-    if (!db.objectStoreNames.contains(storeName)) return resolve([]);
-    const results = [];
-    const tx = db.transaction(storeName, "readonly");
-    const store = tx.objectStore(storeName);
-    const req = store.openCursor();
-    req.onsuccess = () => {
-      const cursor = req.result;
-      if (!cursor) {
-        resolve(results);
-        return;
-      }
-      const record = cursor.value;
-      if (typeof record.updatedAt === "number" && record.updatedAt > since) {
-        results.push(record);
-      }
-      cursor.continue();
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-function writeToStore(db, storeName, records, keyPath) {
-  return new Promise((resolve, reject) => {
-    if (!db.objectStoreNames.contains(storeName)) return resolve();
-    const tx = db.transaction(storeName, "readwrite");
-    const store = tx.objectStore(storeName);
-    for (const record of records) {
-      if (keyPath) {
-        store.put(record);
-      } else {
-        store.add(record);
-      }
-    }
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-async function pushToServer() {
-  try {
-    const counts = {};
-    const lastSync = getLastSyncedAt();
-    const since = lastSync ? new Date(lastSync).getTime() : void 0;
-    const mainDb = await openIdb(DB_NAME, DB_VERSION);
-    let games = await readFromStoreSince(mainDb, "games", since);
-    if (games.length === 0 && since === void 0) {
-      games = await readAllFromStore(mainDb, "game-library");
-    }
-    if (games.length > 0) {
-      await apiPost("/api/sync/games", { games });
-      counts.games = games.length;
-    }
-    const analysis = await readFromStoreSince(mainDb, "analysis-library", since);
-    if (analysis.length > 0) {
-      await apiPost("/api/sync/analysis", { analysis });
-      counts.analysis = analysis.length;
-    }
-    mainDb.close();
-    const puzzleDb = await openIdb("patzer-puzzle-v1", 2);
-    const definitions = await readFromStoreSince(puzzleDb, "definitions", since);
-    const attempts = await readFromStoreSince(puzzleDb, "attempts", since);
-    const meta = await readFromStoreSince(puzzleDb, "user-meta", since);
-    if (definitions.length > 0 || attempts.length > 0 || meta.length > 0) {
-      await apiPost("/api/sync/puzzles", { definitions, attempts, meta });
-      counts.definitions = definitions.length;
-      counts.attempts = attempts.length;
-      counts.meta = meta.length;
-    }
-    puzzleDb.close();
-    setLastSyncedAt();
-    return { success: true, counts };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : "Push failed" };
-  }
-}
-function getLocalMaxAttemptCompletedAt(db) {
-  return new Promise((resolve, reject) => {
-    if (!db.objectStoreNames.contains("attempts")) {
-      resolve(0);
-      return;
-    }
-    const req = db.transaction("attempts", "readonly").objectStore("attempts").index("completedAt").openCursor(null, "prev");
-    req.onsuccess = () => {
-      const cursor = req.result;
-      if (!cursor) {
-        resolve(0);
-        return;
-      }
-      const attempt = cursor.value;
-      resolve(typeof attempt.completedAt === "number" ? attempt.completedAt : 0);
-    };
-    req.onerror = () => reject(req.error);
-  });
-}
-async function pullFromServer() {
-  try {
-    const counts = {};
-    const lastSync = getLastSyncedAt();
-    const sinceParam = lastSync ? `?since=${new Date(lastSync).getTime()}` : "";
-    const gamesResult = await apiGet(`/api/sync/games${sinceParam}`);
-    if (gamesResult.games.length > 0) {
-      const mainDb = await openIdb(DB_NAME, DB_VERSION);
-      await writeToStore(mainDb, "games", gamesResult.games, "id");
-      mainDb.close();
-      counts.games = gamesResult.games.length;
-    }
-    const analysisResult = await apiGet(`/api/sync/analysis${sinceParam}`);
-    if (analysisResult.analysis.length > 0) {
-      const mainDb = await openIdb(DB_NAME, DB_VERSION);
-      await writeToStore(mainDb, "analysis-library", analysisResult.analysis, "gameId");
-      mainDb.close();
-      counts.analysis = analysisResult.analysis.length;
-    }
-    const puzzleResult = await apiGet(`/api/sync/puzzles${sinceParam}`);
-    const puzzleDb = await openIdb("patzer-puzzle-v1", 2);
-    if (puzzleResult.definitions.length > 0) {
-      await writeToStore(puzzleDb, "definitions", puzzleResult.definitions, "id");
-      counts.definitions = puzzleResult.definitions.length;
-    }
-    if (puzzleResult.meta.length > 0) {
-      await writeToStore(puzzleDb, "user-meta", puzzleResult.meta, "puzzleId");
-      counts.meta = puzzleResult.meta.length;
-    }
-    if (puzzleResult.attempts.length > 0) {
-      const localMax = await getLocalMaxAttemptCompletedAt(puzzleDb);
-      const newAttempts = puzzleResult.attempts.filter((a) => typeof a.completedAt === "number" && a.completedAt > localMax);
-      if (newAttempts.length > 0) {
-        await writeToStore(puzzleDb, "attempts", newAttempts);
-        counts.attempts = newAttempts.length;
-      }
-    }
-    puzzleDb.close();
-    setLastSyncedAt();
-    return { success: true, counts };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : "Pull failed" };
-  }
-}
-async function getLocalDataCounts() {
-  try {
-    const mainDb = await openIdb(DB_NAME, DB_VERSION);
-    const games = await readAllFromStore(mainDb, "games");
-    const analysis = await readAllFromStore(mainDb, "analysis-library");
-    mainDb.close();
-    const puzzleDb = await openIdb("patzer-puzzle-v1", 2);
-    const defs = await readAllFromStore(puzzleDb, "definitions");
-    const attempts = await readAllFromStore(puzzleDb, "attempts");
-    const meta = await readAllFromStore(puzzleDb, "user-meta");
-    puzzleDb.close();
-    return {
-      games: games.length,
-      analysis: analysis.length,
-      puzzleDefinitions: defs.length,
-      puzzleAttempts: attempts.length,
-      puzzleMeta: meta.length
-    };
-  } catch {
-    return { games: 0, analysis: 0, puzzleDefinitions: 0, puzzleAttempts: 0, puzzleMeta: 0 };
-  }
-}
-
 // src/admin/view.ts
 var authState = "unknown";
 var authUser = null;
@@ -23404,986 +24444,6 @@ function doPull(redraw2) {
 function formatCounts(counts) {
   if (!counts) return "no data";
   return Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(", ");
-}
-
-// src/import/pgn.ts
-var pgnState = {
-  input: "",
-  error: null,
-  key: 0
-  // incremented on successful import to reset the textarea via Snabbdom key
-};
-function importPgn(callbacks) {
-  const raw = pgnState.input.trim();
-  if (!raw) return;
-  try {
-    pgnToTree(raw);
-    const white = parsePgnHeader(raw, "White");
-    const black = parsePgnHeader(raw, "Black");
-    const result = parsePgnHeader(raw, "Result");
-    const date = parsePgnHeader(raw, "Date")?.replace(/\./g, "-");
-    const timeClass = timeClassFromTimeControl(parsePgnHeader(raw, "TimeControl"));
-    let opening = parsePgnHeader(raw, "Opening");
-    let eco = parsePgnHeader(raw, "ECO");
-    if (!opening || !eco) {
-      const classified = classifyOpening(raw);
-      if (classified) {
-        if (!opening) opening = classified.name;
-        if (!eco) eco = classified.eco;
-      }
-    }
-    const whiteRating = parseRating(parsePgnHeader(raw, "WhiteElo"));
-    const blackRating = parseRating(parsePgnHeader(raw, "BlackElo"));
-    const game = {
-      id: nextGameId(),
-      pgn: raw,
-      ...white ? { white } : {},
-      ...black ? { black } : {},
-      ...result ? { result } : {},
-      ...date ? { date } : {},
-      ...timeClass ? { timeClass } : {},
-      ...opening ? { opening } : {},
-      ...eco ? { eco } : {},
-      ...whiteRating !== void 0 ? { whiteRating } : {},
-      ...blackRating !== void 0 ? { blackRating } : {}
-      // importedUsername not set: PGN paste has no reliable importing-user identity
-    };
-    pgnState.error = null;
-    pgnState.input = "";
-    pgnState.key++;
-    callbacks.addGames([game], game);
-  } catch (_) {
-    pgnState.error = "Invalid PGN \u2014 could not parse.";
-    callbacks.redraw();
-  }
-}
-
-// src/analyse/retroConfig.ts
-var RETRO_CONFIG_DEFAULTS = {
-  minLossThreshold: 0.1,
-  missedMateDistance: 3,
-  collapseEnabled: false,
-  collapseWcFloor: 0.65,
-  collapseDropMin: 0.15,
-  defensiveEnabled: false,
-  defensiveWcCeiling: 0.35,
-  defensiveSalvageMin: 0.15,
-  punishEnabled: false,
-  punishOpponentSwingMin: 0.15,
-  punishExploitDropMin: 0.1
-};
-var RETRO_CONFIG_LS_KEY = "retroConfig";
-function loadFromStorage() {
-  try {
-    const stored = localStorage.getItem(RETRO_CONFIG_LS_KEY);
-    if (stored === null) return { ...RETRO_CONFIG_DEFAULTS };
-    const p = JSON.parse(stored);
-    return {
-      minLossThreshold: typeof p.minLossThreshold === "number" && p.minLossThreshold >= 0.01 && p.minLossThreshold <= 0.25 ? p.minLossThreshold : RETRO_CONFIG_DEFAULTS.minLossThreshold,
-      missedMateDistance: typeof p.missedMateDistance === "number" && p.missedMateDistance >= 0 ? Math.floor(p.missedMateDistance) : RETRO_CONFIG_DEFAULTS.missedMateDistance,
-      collapseEnabled: typeof p.collapseEnabled === "boolean" ? p.collapseEnabled : RETRO_CONFIG_DEFAULTS.collapseEnabled,
-      collapseWcFloor: typeof p.collapseWcFloor === "number" && p.collapseWcFloor >= 0 && p.collapseWcFloor <= 1 ? p.collapseWcFloor : RETRO_CONFIG_DEFAULTS.collapseWcFloor,
-      collapseDropMin: typeof p.collapseDropMin === "number" && p.collapseDropMin >= 0 ? p.collapseDropMin : RETRO_CONFIG_DEFAULTS.collapseDropMin,
-      defensiveEnabled: typeof p.defensiveEnabled === "boolean" ? p.defensiveEnabled : RETRO_CONFIG_DEFAULTS.defensiveEnabled,
-      defensiveWcCeiling: typeof p.defensiveWcCeiling === "number" && p.defensiveWcCeiling >= 0 && p.defensiveWcCeiling <= 1 ? p.defensiveWcCeiling : RETRO_CONFIG_DEFAULTS.defensiveWcCeiling,
-      defensiveSalvageMin: typeof p.defensiveSalvageMin === "number" && p.defensiveSalvageMin >= 0 ? p.defensiveSalvageMin : RETRO_CONFIG_DEFAULTS.defensiveSalvageMin,
-      punishEnabled: typeof p.punishEnabled === "boolean" ? p.punishEnabled : RETRO_CONFIG_DEFAULTS.punishEnabled,
-      punishOpponentSwingMin: typeof p.punishOpponentSwingMin === "number" && p.punishOpponentSwingMin >= 0 ? p.punishOpponentSwingMin : RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin,
-      punishExploitDropMin: typeof p.punishExploitDropMin === "number" && p.punishExploitDropMin >= 0 ? p.punishExploitDropMin : RETRO_CONFIG_DEFAULTS.punishExploitDropMin
-    };
-  } catch {
-    return { ...RETRO_CONFIG_DEFAULTS };
-  }
-}
-var retroConfig = loadFromStorage();
-var _changeCallbacks = [];
-function onRetroConfigChange(cb) {
-  _changeCallbacks.push(cb);
-}
-function setRetroConfig(patch2) {
-  Object.assign(retroConfig, patch2);
-  localStorage.setItem(RETRO_CONFIG_LS_KEY, JSON.stringify(retroConfig));
-  _changeCallbacks.forEach((cb) => cb());
-}
-
-// src/header/index.ts
-var importPlatform = "chesscom";
-var showImportPanel = false;
-var showGlobalMenu = false;
-var showBoardSettings = false;
-var showDetectionModal = false;
-var showRetroModal = false;
-var showReviewMenu = false;
-var showMobileNav = false;
-var headerAuthUser = null;
-var headerAuthChecked = false;
-function ensureHeaderAuth(redraw2) {
-  if (headerAuthChecked) return;
-  headerAuthChecked = true;
-  checkAuth().then(({ username }) => {
-    headerAuthUser = username;
-    redraw2();
-    if (username) syncRatedLadder().catch(() => {
-    });
-  });
-}
-function renderUserArea(redraw2) {
-  if (headerAuthUser) return null;
-  return h("a.header__login", {
-    attrs: { href: "/api/lichess/connect", title: "Login with Lichess" }
-  }, "Login");
-}
-function activeSection(route) {
-  switch (route.name) {
-    case "analysis":
-    case "analysis-game":
-      return "analysis";
-    case "puzzles":
-    case "puzzle-round":
-      return "puzzles";
-    case "opponents":
-      return "opponents";
-    case "stats":
-      return "stats";
-    case "games":
-      return "games";
-    case "study":
-    case "study-detail":
-      return "study";
-    default:
-      return "";
-  }
-}
-var navLinks = [
-  { label: "Analysis", href: "#/analysis", section: "analysis" },
-  { label: "Puzzles", href: "#/puzzles", section: "puzzles" },
-  { label: "Games", href: "#/games", section: "games" },
-  { label: "Opponents", href: "#/opponents", section: "opponents" },
-  { label: "Stats", href: "#/stats", section: "stats" },
-  { label: "Study", href: "#/study", section: "study" }
-];
-function renderNav(route) {
-  const active = activeSection(route);
-  return h("nav.header__nav", navLinks.map(
-    ({ label, href, section }) => h("a", { attrs: { href }, class: { active: active === section } }, label)
-  ));
-}
-var REVIEW_DEPTHS = [12, 14, 16, 18, 20];
-var AUTO_REVIEW_DEPTHS = [
-  { depth: 2, label: "1\xD7" },
-  { depth: 4, label: "4\xD7" },
-  { depth: 6, label: "9\xD7" },
-  { depth: 8, label: "25\xD7" },
-  { depth: 10, label: "60\xD7" },
-  { depth: 12, label: "150\xD7" },
-  { depth: 14, label: "400\xD7" },
-  { depth: 16, label: "1000\xD7" },
-  { depth: 18, label: "2500\xD7" }
-];
-function renderAutoReviewDepthPills(currentDepth, onSelect) {
-  return AUTO_REVIEW_DEPTHS.map(
-    ({ depth, label }) => h("button.review-menu__pill", {
-      class: { active: currentDepth === depth },
-      attrs: { title: `Depth ${depth} \u2014 ~${label} relative cost` },
-      on: { click: () => onSelect(depth) }
-    }, String(depth))
-  );
-}
-function renderReviewMenu(redraw2) {
-  const running = isBulkRunning();
-  const paused = isBulkPaused();
-  const active = running || paused;
-  if (!active) return null;
-  const summary = getQueueSummary();
-  const auto = getAutoReview();
-  return h("div.review-menu", [
-    h("button.review-menu__trigger", {
-      class: { active: showReviewMenu || active },
-      attrs: { title: "Bulk Review settings" },
-      on: { click: () => {
-        showReviewMenu = !showReviewMenu;
-        redraw2();
-      } }
-    }, summary ? `Reviewing ${summary.done}/${summary.total}` : "Reviewing\u2026"),
-    showReviewMenu ? h("div.review-menu__backdrop", {
-      on: { click: () => {
-        showReviewMenu = false;
-        redraw2();
-      } }
-    }) : null,
-    showReviewMenu ? h("div.review-menu__dropdown", [
-      // Queue status + controls
-      h("div.review-menu__section", [
-        h("div.review-menu__label", summary ? `${summary.done} of ${summary.total} game${summary.total === 1 ? "" : "s"} analyzed` : "Reviewing\u2026"),
-        h("div.review-menu__row", [
-          paused ? h("button.review-menu__btn", {
-            on: { click: () => {
-              resumeBulkReview();
-              redraw2();
-            } }
-          }, "Resume") : h("button.review-menu__btn", {
-            on: { click: () => {
-              pauseBulkReview();
-              redraw2();
-            } }
-          }, "Pause"),
-          h("button.review-menu__btn.--cancel", {
-            on: { click: () => {
-              cancelBulkReview();
-              redraw2();
-            } }
-          }, "Cancel")
-        ])
-      ]),
-      h("div.review-menu__section", [
-        h("div.review-menu__label", `Depth: ${reviewDepth}`),
-        h("div.review-menu__row", REVIEW_DEPTHS.map(
-          (d) => h("button.review-menu__pill", {
-            class: { active: reviewDepth === d },
-            on: { click: () => {
-              setReviewDepth(d);
-              redraw2();
-            } }
-          }, String(d))
-        ))
-      ]),
-      renderToggleRow("review-auto", "Auto-review on import", auto, (v) => {
-        localStorage.setItem("patzer.autoReview", String(v));
-        redraw2();
-      })
-    ]) : null
-  ]);
-}
-function closeGlobalMenu(redraw2) {
-  showGlobalMenu = false;
-  showBoardSettings = false;
-  redraw2();
-}
-var DETECTION_SLIDERS = [
-  {
-    key: "swingThreshold",
-    label: "Swing Threshold",
-    description: "Minimum win-chance drop required to flag a tactical mistake. Lower = more sensitive; flags smaller errors. 0.05 is the Lichess inaccuracy floor \u2014 any real mistake will be caught.",
-    min: 0.01,
-    max: 0.3,
-    step: 0.01,
-    format: (v) => v.toFixed(2),
-    lichessDefault: 0.05
-  },
-  {
-    key: "missedMateMaxN",
-    label: "Missed Mate in N",
-    description: "Flag a move when a forced checkmate in N moves or fewer was on the board but not played. Lichess flags missed mates in 3 or fewer. Set to 0 to disable this category entirely.",
-    min: 0,
-    max: 10,
-    step: 1,
-    format: (v) => v === 0 ? "off" : `in ${v}`,
-    lichessDefault: 3
-  },
-  {
-    key: "collapseWcFloor",
-    label: "Near-Win Floor",
-    description: "How dominant the mover must be (win chances %) before a near-win collapse can be flagged. 55% \u2248 +50\u2013100 centipawns advantage. Raise this to only flag collapses from clearly winning positions.",
-    min: 0.5,
-    max: 0.95,
-    step: 0.05,
-    format: (v) => `${Math.round(v * 100)}%`
-  },
-  {
-    key: "collapseDropMin",
-    label: "Collapse Drop",
-    description: "Minimum win-chance loss to flag a near-win collapse. Intentionally lower than the swing threshold \u2014 throwing away a won game is significant even when the raw drop is modest.",
-    min: 0.02,
-    max: 0.2,
-    step: 0.01,
-    format: (v) => v.toFixed(2)
-  },
-  {
-    key: "maxPly",
-    label: "Max Ply",
-    description: "Stop flagging tactical mistakes after this many half-moves (plies). Ply 60 = move 30. Set to 0 to check the entire game including the endgame. Lichess analysis covers up to ply 60.",
-    min: 0,
-    max: 120,
-    step: 10,
-    format: (v) => v === 0 ? "all" : `ply ${v} (move ${v / 2})`,
-    lichessDefault: 60
-  }
-];
-function renderDetectionModal(redraw2) {
-  const cfg = missedMomentConfig;
-  const rows = DETECTION_SLIDERS.map((s) => {
-    const value = cfg[s.key];
-    const markerPct = s.lichessDefault !== void 0 ? (s.lichessDefault - s.min) / (s.max - s.min) * 100 : null;
-    return h("div.detection-modal__row", [
-      h("div.detection-modal__row-header", [
-        h("span.detection-modal__label", s.label),
-        h("span.detection-modal__value", s.format(value))
-      ]),
-      h("p.detection-modal__desc", s.description),
-      h("div.detection-modal__slider-wrap", [
-        h("input", {
-          attrs: { type: "range", min: s.min, max: s.max, step: s.step, value },
-          on: {
-            input: (e) => {
-              const raw = parseFloat(e.target.value);
-              setMissedMomentConfig({ [s.key]: s.step >= 1 ? Math.round(raw) : raw });
-              redraw2();
-            }
-          }
-        }),
-        markerPct !== null ? h("span.detection-modal__default-mark", {
-          attrs: {
-            style: `left: ${markerPct}%`,
-            title: `Lichess default: ${s.format(s.lichessDefault)}`
-          }
-        }) : null
-      ])
-    ]);
-  });
-  return h("div.detection-modal", [
-    h("div.detection-modal__backdrop", {
-      on: { click: () => {
-        showDetectionModal = false;
-        redraw2();
-      } }
-    }),
-    h("div.detection-modal__card", [
-      h("div.detection-modal__header", [
-        h("h2", "Detection Settings"),
-        h("button.detection-modal__close", {
-          attrs: { title: "Close" },
-          on: { click: () => {
-            showDetectionModal = false;
-            redraw2();
-          } }
-        }, "\u2715")
-      ]),
-      h("div.detection-modal__body", rows)
-    ])
-  ]);
-}
-function renderRetroModal(redraw2) {
-  const cfg = retroConfig;
-  const isDefault = cfg.minLossThreshold === RETRO_CONFIG_DEFAULTS.minLossThreshold && cfg.missedMateDistance === RETRO_CONFIG_DEFAULTS.missedMateDistance && cfg.collapseEnabled === RETRO_CONFIG_DEFAULTS.collapseEnabled && cfg.collapseWcFloor === RETRO_CONFIG_DEFAULTS.collapseWcFloor && cfg.collapseDropMin === RETRO_CONFIG_DEFAULTS.collapseDropMin && cfg.defensiveEnabled === RETRO_CONFIG_DEFAULTS.defensiveEnabled && cfg.defensiveWcCeiling === RETRO_CONFIG_DEFAULTS.defensiveWcCeiling && cfg.defensiveSalvageMin === RETRO_CONFIG_DEFAULTS.defensiveSalvageMin && cfg.punishEnabled === RETRO_CONFIG_DEFAULTS.punishEnabled && cfg.punishOpponentSwingMin === RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin && cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin;
-  return h("div.detection-modal", [
-    h("div.detection-modal__backdrop", {
-      on: { click: () => {
-        showRetroModal = false;
-        redraw2();
-      } }
-    }),
-    h("div.detection-modal__card", [
-      h("div.detection-modal__header", [
-        h("h2", "Mistake Detection"),
-        h("button.detection-modal__close", {
-          attrs: { title: "Close" },
-          on: { click: () => {
-            showRetroModal = false;
-            redraw2();
-          } }
-        }, "\u2715")
-      ]),
-      h("div.detection-modal__body", [
-        // minLossThreshold — continuous 1–25% slider
-        h("div.detection-modal__row", [
-          h("div.detection-modal__row-header", [
-            h("span.detection-modal__label", "Minimum Severity"),
-            h("span.detection-modal__value", `loss \u2265 ${Math.round(cfg.minLossThreshold * 100)}%`)
-          ]),
-          h(
-            "p.detection-modal__desc",
-            "Minimum win-chance loss to include a move as a candidate. Drag left for more candidates, right for fewer. Lichess parity: 5%. Patzer default: 10%."
-          ),
-          h("div.detection-modal__severity-slider", [
-            h("input.severity-range", {
-              attrs: {
-                type: "range",
-                min: 1,
-                max: 25,
-                step: 1,
-                value: Math.round(cfg.minLossThreshold * 100)
-              },
-              on: {
-                input: (e) => {
-                  const pct = parseInt(e.target.value, 10);
-                  setRetroConfig({ minLossThreshold: pct / 100 });
-                  redraw2();
-                }
-              }
-            }),
-            h("span.severity-divider--inaccuracy", { attrs: { title: "Inaccuracy: loss \u2265 5%" } }),
-            h("span.severity-divider--mistake", { attrs: { title: "Lichess default / Mistake: loss \u2265 10%" } }),
-            h("span.severity-divider--blunder", { attrs: { title: "Blunder: loss \u2265 15%" } }),
-            h("div.detection-modal__severity-ticks", [
-              h("span", "1%"),
-              h("span", "Inaccuracy"),
-              h("span", "Mistake"),
-              h("span", "Blunder"),
-              h("span", "25%")
-            ])
-          ])
-        ]),
-        // missedMateDistance — slider
-        h("div.detection-modal__row", [
-          h("div.detection-modal__row-header", [
-            h("span.detection-modal__label", "Missed Mate in N"),
-            h(
-              "span.detection-modal__value",
-              cfg.missedMateDistance === 0 ? "off" : `in ${cfg.missedMateDistance}`
-            )
-          ]),
-          h(
-            "p.detection-modal__desc",
-            "Flag a move when a forced mate of this distance (or shorter) was available but not played. Lichess default: mate in 3. Set to 0 to disable this category entirely."
-          ),
-          h("div.detection-modal__slider-wrap", [
-            h("input", {
-              attrs: { type: "range", min: 0, max: 10, step: 1, value: cfg.missedMateDistance },
-              on: {
-                input: (e) => {
-                  setRetroConfig({ missedMateDistance: parseInt(e.target.value, 10) });
-                  redraw2();
-                }
-              }
-            }),
-            // Lichess default marker at position 3 (30% of 0–10 range)
-            h("span.detection-modal__default-mark", {
-              attrs: { style: "left: 30%", title: "Lichess default: in 3" }
-            })
-          ])
-        ]),
-        // ── Collapse (blown win) family ──────────────────────────────────
-        h("div.detection-modal__row", [
-          h("div.detection-modal__row-header", [
-            h("span.detection-modal__label", "Blown Wins")
-          ]),
-          h(
-            "p.detection-modal__desc",
-            "Flag positions where you were clearly winning but squandered the advantage. Reuses the same thresholds as the engine's collapse detection."
-          ),
-          renderToggleRow("detection-collapse", "Enabled", cfg.collapseEnabled, (v) => {
-            setRetroConfig({ collapseEnabled: v });
-            redraw2();
-          }),
-          ...cfg.collapseEnabled ? [
-            h("div.detection-modal__row-header", [
-              h("span.detection-modal__label", "Win Chance Floor"),
-              h("span.detection-modal__value", cfg.collapseWcFloor.toFixed(2))
-            ]),
-            h("div.detection-modal__slider-wrap", [
-              h("input", {
-                attrs: { type: "range", min: 0.5, max: 0.95, step: 0.05, value: cfg.collapseWcFloor },
-                on: { input: (e) => {
-                  setRetroConfig({ collapseWcFloor: parseFloat(e.target.value) });
-                  redraw2();
-                } }
-              })
-            ]),
-            h("div.detection-modal__row-header", [
-              h("span.detection-modal__label", "Minimum Drop"),
-              h("span.detection-modal__value", cfg.collapseDropMin.toFixed(2))
-            ]),
-            h("div.detection-modal__slider-wrap", [
-              h("input", {
-                attrs: { type: "range", min: 0.02, max: 0.3, step: 0.01, value: cfg.collapseDropMin },
-                on: { input: (e) => {
-                  setRetroConfig({ collapseDropMin: parseFloat(e.target.value) });
-                  redraw2();
-                } }
-              })
-            ])
-          ] : []
-        ]),
-        // ── Defensive resource family ────────────────────────────────────
-        h("div.detection-modal__row", [
-          h("div.detection-modal__row-header", [
-            h("span.detection-modal__label", "Missed Defenses")
-          ]),
-          h(
-            "p.detection-modal__desc",
-            "Flag positions where you were losing but had a significantly better defensive move available."
-          ),
-          renderToggleRow("detection-defensive", "Enabled", cfg.defensiveEnabled, (v) => {
-            setRetroConfig({ defensiveEnabled: v });
-            redraw2();
-          }),
-          ...cfg.defensiveEnabled ? [
-            h("div.detection-modal__row-header", [
-              h("span.detection-modal__label", "Position Ceiling"),
-              h("span.detection-modal__value", cfg.defensiveWcCeiling.toFixed(2))
-            ]),
-            h("div.detection-modal__slider-wrap", [
-              h("input", {
-                attrs: { type: "range", min: 0.1, max: 0.5, step: 0.05, value: cfg.defensiveWcCeiling },
-                on: { input: (e) => {
-                  setRetroConfig({ defensiveWcCeiling: parseFloat(e.target.value) });
-                  redraw2();
-                } }
-              })
-            ]),
-            h("div.detection-modal__row-header", [
-              h("span.detection-modal__label", "Salvage Gap"),
-              h("span.detection-modal__value", cfg.defensiveSalvageMin.toFixed(2))
-            ]),
-            h("div.detection-modal__slider-wrap", [
-              h("input", {
-                attrs: { type: "range", min: 0.05, max: 0.3, step: 0.01, value: cfg.defensiveSalvageMin },
-                on: { input: (e) => {
-                  setRetroConfig({ defensiveSalvageMin: parseFloat(e.target.value) });
-                  redraw2();
-                } }
-              })
-            ])
-          ] : []
-        ]),
-        // ── Punish-the-blunder family ────────────────────────────────────
-        h("div.detection-modal__row", [
-          h("div.detection-modal__row-header", [
-            h("span.detection-modal__label", "Missed Punishments")
-          ]),
-          h(
-            "p.detection-modal__desc",
-            "Flag positions where the opponent blundered but you failed to exploit the mistake."
-          ),
-          renderToggleRow("detection-punish", "Enabled", cfg.punishEnabled, (v) => {
-            setRetroConfig({ punishEnabled: v });
-            redraw2();
-          }),
-          ...cfg.punishEnabled ? [
-            h("div.detection-modal__row-header", [
-              h("span.detection-modal__label", "Opponent Swing"),
-              h("span.detection-modal__value", cfg.punishOpponentSwingMin.toFixed(2))
-            ]),
-            h("div.detection-modal__slider-wrap", [
-              h("input", {
-                attrs: { type: "range", min: 0.05, max: 0.3, step: 0.01, value: cfg.punishOpponentSwingMin },
-                on: { input: (e) => {
-                  setRetroConfig({ punishOpponentSwingMin: parseFloat(e.target.value) });
-                  redraw2();
-                } }
-              })
-            ]),
-            h("div.detection-modal__row-header", [
-              h("span.detection-modal__label", "Exploit Drop"),
-              h("span.detection-modal__value", cfg.punishExploitDropMin.toFixed(2))
-            ]),
-            h("div.detection-modal__slider-wrap", [
-              h("input", {
-                attrs: { type: "range", min: 0.02, max: 0.2, step: 0.01, value: cfg.punishExploitDropMin },
-                on: { input: (e) => {
-                  setRetroConfig({ punishExploitDropMin: parseFloat(e.target.value) });
-                  redraw2();
-                } }
-              })
-            ])
-          ] : []
-        ]),
-        // Reset row
-        !isDefault ? h("div.detection-modal__row", [
-          h("button", {
-            class: { "detection-modal__close": true },
-            on: { click: () => {
-              setRetroConfig({ ...RETRO_CONFIG_DEFAULTS });
-              redraw2();
-            } }
-          }, "Reset to defaults")
-        ]) : null
-      ])
-    ])
-  ]);
-}
-function renderGlobalMenu(deps) {
-  const { downloadPgn: downloadPgn2, resetAllData: resetAllData2, selectedGameId: selectedGameId2, redraw: redraw2 } = deps;
-  const hasGame = selectedGameId2 !== null;
-  return h("div.global-menu", [
-    h("button.global-menu__trigger", {
-      class: { active: showGlobalMenu },
-      attrs: { title: "Settings" },
-      on: { click: () => {
-        showGlobalMenu = !showGlobalMenu;
-        showBoardSettings = false;
-        redraw2();
-      } }
-    }, "\u2699"),
-    showGlobalMenu ? h("div.global-menu__backdrop", {
-      on: { click: () => closeGlobalMenu(redraw2) }
-    }) : null,
-    showGlobalMenu ? h("div.global-menu__dropdown", {
-      class: { "board-open": showBoardSettings }
-    }, [
-      h("button.global-menu__item", {
-        on: { click: () => {
-          closeGlobalMenu(redraw2);
-          void resetAllData2();
-        } }
-      }, "Clear Local Data"),
-      // Navigate to the analysis board to review the currently loaded game.
-      // Disabled when no game is selected — nothing to review.
-      h("button.global-menu__item", {
-        attrs: { disabled: !hasGame, title: hasGame ? "Review current game on analysis board" : "Select a game first" },
-        on: { click: () => {
-          if (!hasGame) return;
-          closeGlobalMenu(redraw2);
-          window.location.hash = "#/analysis";
-        } }
-      }, "Game Review"),
-      // 'Flip Board' removed — now in analysis action menu (CCP-247).
-      // It is analysis-board-local; use the hamburger menu on the analysis board.
-      h("button.global-menu__item", {
-        on: { click: () => {
-          closeGlobalMenu(redraw2);
-          downloadPgn2(true);
-        } }
-      }, "Export PGN (Annotated)"),
-      h("button.global-menu__item", {
-        on: { click: () => {
-          closeGlobalMenu(redraw2);
-          downloadPgn2(false);
-        } }
-      }, "Export PGN (Plain)"),
-      h(
-        "div.global-menu__item.global-menu__item--toggle",
-        renderToggleRow("board-wheel-nav", "Board Wheel Navigation", boardWheelNavEnabled, (v) => {
-          setBoardWheelNavEnabled(v);
-          redraw2();
-        })
-      ),
-      // 'Review Dots: User Only' moved to analysis action menu (CCP-244).
-      // It is analysis-board-local and belongs in the analysis menu, not the global header.
-      h(
-        "div.global-menu__item.global-menu__item--toggle",
-        renderToggleRow("board-sounds", "Board Sounds", boardSoundEnabled, (v) => {
-          setBoardSoundEnabled(v);
-          redraw2();
-        })
-      ),
-      h("div.global-menu__item.global-menu__item--slider", [
-        h("span", `Volume: ${Math.round(soundVolume * 100)}%`),
-        h("input", {
-          attrs: { type: "range", min: 0, max: 1, step: 0.05, value: soundVolume },
-          on: {
-            input: (e) => {
-              setSoundVolume(parseFloat(e.target.value));
-              redraw2();
-            }
-          }
-        })
-      ]),
-      h("button.global-menu__item", {
-        on: { click: () => {
-          showDetectionModal = true;
-          showGlobalMenu = false;
-          redraw2();
-        } }
-      }, "Detection Settings\u2026"),
-      h("button.global-menu__item", {
-        on: { click: () => {
-          showRetroModal = true;
-          showGlobalMenu = false;
-          redraw2();
-        } }
-      }, "Mistake Detection\u2026"),
-      headerAuthUser ? h("button.global-menu__item.global-menu__item--logout", {
-        on: { click: () => {
-          logout().then(() => {
-            headerAuthUser = null;
-            closeGlobalMenu(redraw2);
-          });
-        } }
-      }, "Logout") : null,
-      h("div.global-menu__item.global-menu__item--has-sub", {
-        on: { click: () => {
-          showBoardSettings = !showBoardSettings;
-          redraw2();
-        } }
-      }, [
-        h("span", "Board Settings"),
-        h("span.global-menu__arrow", showBoardSettings ? "\u25BE" : "\u203A")
-      ]),
-      showBoardSettings ? renderBoardSettings(redraw2) : null
-    ]) : null
-  ]);
-}
-function renderMobileNav(route, redraw2) {
-  const active = activeSection(route);
-  return h("div.header__mobile-nav", [
-    h("button.header__hamburger", {
-      class: { active: showMobileNav },
-      attrs: { title: "Menu", "aria-label": "Menu" },
-      on: { click: () => {
-        showMobileNav = !showMobileNav;
-        redraw2();
-      } }
-    }, "\u2630"),
-    showMobileNav ? h("div.header__mobile-backdrop", {
-      on: { click: () => {
-        showMobileNav = false;
-        redraw2();
-      } }
-    }) : null,
-    showMobileNav ? h("div.header__mobile-dropdown", navLinks.map(
-      ({ label, href, section }) => h("a.header__mobile-link", {
-        attrs: { href },
-        class: { active: active === section },
-        on: { click: () => {
-          showMobileNav = false;
-          redraw2();
-        } }
-      }, label)
-    )) : null
-  ]);
-}
-function renderHeader(deps) {
-  const {
-    route,
-    importedGames: importedGames3,
-    selectedGameId: selectedGameId2,
-    analyzedGameIds: analyzedGameIds2,
-    missedTacticGameIds: missedTacticGameIds2,
-    importCallbacks: importCallbacks2,
-    onSelectGame,
-    renderGameRow,
-    gameSourceUrl: gameSourceUrl2,
-    resetAllData: resetAllData2,
-    redraw: redraw2
-  } = deps;
-  ensureHeaderAuth(redraw2);
-  const loading = importPlatform === "chesscom" ? chesscom.loading : lichess.loading;
-  const error = importPlatform === "chesscom" ? chesscom.error : lichess.error;
-  const username = importPlatform === "chesscom" ? chesscom.username : lichess.username;
-  const doImport = () => importPlatform === "chesscom" ? void importChesscom(importCallbacks2) : void importLichess(importCallbacks2);
-  const hasActiveFilters = importFilters.speeds.size > 0 || importFilters.dateRange !== "1month" || !importFilters.rated;
-  const panel = showImportPanel ? h("div.header__panel", [
-    h("div.header__panel-section", [
-      h("div.header__panel-label", "Platform"),
-      h("div.header__panel-row", [
-        h("button.header__pill", {
-          class: { active: importPlatform === "chesscom" },
-          on: { click: () => {
-            importPlatform = "chesscom";
-            redraw2();
-          } }
-        }, "Chess.com"),
-        h("button.header__pill", {
-          class: { active: importPlatform === "lichess" },
-          on: { click: () => {
-            importPlatform = "lichess";
-            redraw2();
-          } }
-        }, "Lichess")
-      ])
-    ]),
-    h("div.header__panel-divider"),
-    h("div.header__panel-section", [
-      h("div.header__panel-label", "Time control"),
-      h("div.header__panel-row", [
-        h("button.header__pill", {
-          class: { active: importFilters.speeds.size === 0 },
-          on: { click: () => {
-            importFilters.speeds = /* @__PURE__ */ new Set();
-            redraw2();
-          } }
-        }, "All"),
-        ...SPEED_OPTIONS.map(
-          ({ value, label, icon }) => h("button.header__pill", {
-            class: { active: importFilters.speeds.has(value) },
-            attrs: { "data-icon": icon },
-            on: { click: () => {
-              const s = new Set(importFilters.speeds);
-              s.has(value) ? s.delete(value) : s.add(value);
-              importFilters.speeds = s;
-              redraw2();
-            } }
-          }, label)
-        )
-      ]),
-      h("div.header__panel-label.--mt", "Period"),
-      h("div.header__panel-row", [
-        ...DATE_RANGE_OPTIONS.map(
-          ({ value, label }) => h("button.header__pill", {
-            class: { active: importFilters.dateRange === value },
-            on: { click: () => {
-              importFilters.dateRange = value;
-              redraw2();
-            } }
-          }, label)
-        )
-      ]),
-      importFilters.dateRange === "custom" ? h("div.header__panel-row.--mt", [
-        h("span.header__panel-hint", "From"),
-        h("input.header__date-input", {
-          attrs: { type: "date", value: importFilters.customFrom },
-          on: { change: (e) => {
-            importFilters.customFrom = e.target.value;
-            redraw2();
-          } }
-        }),
-        h("span.header__panel-hint", "To"),
-        h("input.header__date-input", {
-          attrs: { type: "date", value: importFilters.customTo },
-          on: { change: (e) => {
-            importFilters.customTo = e.target.value;
-            redraw2();
-          } }
-        })
-      ]) : null,
-      h("div.header__panel-row.--mt", [
-        h("label.header__panel-check", [
-          h("input", {
-            attrs: { type: "checkbox", checked: importFilters.rated },
-            on: { change: (e) => {
-              importFilters.rated = e.target.checked;
-              redraw2();
-            } }
-          }),
-          "Rated only"
-        ])
-      ]),
-      h(
-        "div.header__panel-row.--mt",
-        renderToggleRow("import-auto-review", "Auto-review after import", importFilters.autoReview, (v) => {
-          setAutoReview(v);
-          redraw2();
-        })
-      ),
-      importFilters.autoReview ? h("div.header__panel-section.--nested", [
-        h(
-          "div.header__panel-row",
-          renderToggleRow("import-auto-review-confirm", "Are you sure?", importFilters.autoReviewConfirmed, (v) => {
-            setAutoReviewConfirmed(v);
-            redraw2();
-          })
-        ),
-        h(
-          "p.header__panel-hint.header__panel-warn",
-          "Large imports may take a long time to review. Each game runs through the engine at the configured review depth."
-        ),
-        importFilters.autoReviewConfirmed ? h("div.review-menu__section", [
-          h("div.review-menu__label", `Auto-review depth: ${importFilters.autoReviewDepth}`),
-          h("div.review-menu__row", renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => {
-            setAutoReviewDepth(d);
-            redraw2();
-          }))
-        ]) : null
-      ]) : null
-    ]),
-    h("div.header__panel-divider"),
-    h("div.header__panel-section", [
-      h("div.header__panel-label", "Paste PGN"),
-      h("textarea.header__pgn-input", {
-        key: pgnState.key,
-        attrs: { placeholder: "Paste a PGN here\u2026", rows: 3, spellcheck: false },
-        on: { input: (e) => {
-          pgnState.input = e.target.value;
-        } }
-      }),
-      h("div.header__panel-row", [
-        h("button.header__panel-btn", {
-          on: { click: () => {
-            importPgn(importCallbacks2);
-            if (!pgnState.error) {
-              showImportPanel = false;
-            }
-            redraw2();
-          } }
-        }, "Import PGN"),
-        pgnState.error ? h("span.header__panel-error", pgnState.error) : null
-      ])
-    ]),
-    importedGames3.length > 0 ? h("div.header__panel-section", [
-      h("div.header__panel-label", `${importedGames3.length} game${importedGames3.length === 1 ? "" : "s"} imported`),
-      h("div.header__games-list", importedGames3.map((game) => {
-        const isAnalyzed = analyzedGameIds2.has(game.id);
-        const hasMissedTactic = missedTacticGameIds2.has(game.id);
-        const srcUrl = gameSourceUrl2(game);
-        return h("div.header__game-item", [
-          h("button.header__game-row", {
-            class: { active: game.id === selectedGameId2 },
-            on: { click: () => {
-              onSelectGame(game.id, game.pgn);
-              showImportPanel = false;
-              redraw2();
-            } }
-          }, renderGameRow(game, isAnalyzed, hasMissedTactic)),
-          srcUrl ? h("a.game-ext-link", {
-            attrs: { href: srcUrl, target: "_blank", rel: "noopener", title: "View on source platform" },
-            on: { click: (e) => e.stopPropagation() }
-          }) : null
-        ]);
-      }))
-    ]) : null
-  ]) : null;
-  const backdrop = showImportPanel ? h("div.header__backdrop", {
-    on: { click: () => {
-      showImportPanel = false;
-      redraw2();
-    } }
-  }) : null;
-  return h("header.header", [
-    h("a.header__brand", { attrs: { href: "#/" } }, "Patzer Pro"),
-    renderMobileNav(route, redraw2),
-    h("div.header__search", { key: "header-search" }, [
-      h("div.header__bar", [
-        h("button.header__platform-toggle", {
-          attrs: { title: importPlatform === "chesscom" ? "Switch to Lichess" : "Switch to Chess.com" },
-          on: { click: () => {
-            importPlatform = importPlatform === "chesscom" ? "lichess" : "chesscom";
-            redraw2();
-          } }
-        }, importPlatform === "chesscom" ? "Chess.com" : "Lichess"),
-        h("input.header__input", {
-          key: `input-${importPlatform}`,
-          attrs: {
-            type: "search",
-            placeholder: importPlatform === "chesscom" ? "Chess.com username" : "Lichess username",
-            value: username,
-            disabled: loading,
-            autocomplete: "off",
-            spellcheck: false
-          },
-          on: {
-            input: (e) => {
-              const v = e.target.value;
-              if (importPlatform === "chesscom") chesscom.username = v;
-              else lichess.username = v;
-            },
-            keydown: (e) => {
-              if (e.key === "Enter" && username.trim() && !loading) doImport();
-            }
-          }
-        }),
-        h("button.header__import", {
-          attrs: { disabled: loading || !username.trim() },
-          on: { click: doImport }
-        }, loading ? `Importing\u2026${(importPlatform === "chesscom" ? chesscom.gameCount : lichess.gameCount) > 0 ? ` (${importPlatform === "chesscom" ? chesscom.gameCount : lichess.gameCount})` : ""}` : "Import"),
-        importedGames3.length > 0 && !error ? h(
-          "span.header__count",
-          { on: { click: () => {
-            showImportPanel = !showImportPanel;
-            redraw2();
-          } } },
-          `${importedGames3.length} games`
-        ) : null,
-        error ? h("span.header__error", { attrs: { title: error } }, "\u26A0") : null,
-        h("button.header__toggle", {
-          class: { active: showImportPanel, "header__toggle--filtered": hasActiveFilters && !showImportPanel },
-          attrs: { title: "Filters & games" },
-          on: { click: () => {
-            showImportPanel = !showImportPanel;
-            redraw2();
-          } }
-        }, showImportPanel ? "\u25B4" : "\u25BE")
-      ]),
-      panel,
-      backdrop
-    ]),
-    renderNav(route),
-    renderReviewMenu(redraw2),
-    renderUserArea(redraw2),
-    renderGlobalMenu(deps),
-    showDetectionModal ? renderDetectionModal(redraw2) : null,
-    showRetroModal ? renderRetroModal(redraw2) : null
-  ]);
 }
 
 // src/stats/weakness.ts
@@ -30252,7 +30312,10 @@ function makeRetroCtrl(candidates, userColor = null, getNodeEval = () => void 0,
       gameMoveUci: prev2?.gameMoveUci ?? candidate.playedMove,
       gameMoveCp: prev2?.gameMoveCp ?? gameEval?.cp,
       gameMoveMate: prev2?.gameMoveMate ?? gameEval?.mate,
-      playerColor: prev2?.playerColor ?? candidate.playerColor
+      playerColor: prev2?.playerColor ?? candidate.playerColor,
+      parentPath: prev2?.parentPath ?? candidate.parentPath,
+      solvingPath: prev2?.solvingPath ?? "",
+      isExactBest: prev2?.isExactBest ?? false
     };
   }
   const isPlySolved = (ply) => solvedPlies.includes(ply);
@@ -30496,7 +30559,10 @@ function initRetroMoveHandler(getCtrl) {
       gameMoveUci: cand.playedMove,
       gameMoveCp: gameMoveEval?.cp,
       gameMoveMate: gameMoveEval?.mate,
-      playerColor: cand.playerColor
+      playerColor: cand.playerColor,
+      parentPath: cand.parentPath,
+      solvingPath: ctrl2.path,
+      isExactBest
     });
     if (retro.feedback() === "win") return;
     const liveOrBatchBest = retro.liveBestMove() ?? cand.bestMove;
@@ -30525,6 +30591,370 @@ function initRetroMoveHandler(getCtrl) {
   };
 }
 
+// src/feedback/severity.ts
+var SEVERITY_TIERS = [
+  { id: "best", label: "Best Move", color: "#26a641", glyph: "!", lossFloor: 0, lossCeiling: 0 },
+  { id: "excellent", label: "Excellent", color: "#57ab5a", glyph: "!", lossFloor: 0, lossCeiling: 0.02 },
+  { id: "good", label: "Good", color: "#7bc67e", glyph: null, lossFloor: 0.02, lossCeiling: 0.04 },
+  { id: "playable", label: "Playable", color: "#8bb8a8", glyph: null, lossFloor: 0.04, lossCeiling: 0.05 },
+  { id: "inaccuracy", label: "Inaccuracy", color: "#56b4e9", glyph: "?!", lossFloor: 0.05, lossCeiling: 0.1 },
+  { id: "mistake", label: "Mistake", color: "#e69d00", glyph: "?", lossFloor: 0.1, lossCeiling: 0.15 },
+  { id: "serious", label: "Serious Mistake", color: "#e06c4e", glyph: "?", lossFloor: 0.15, lossCeiling: 0.2 },
+  { id: "blunder", label: "Blunder", color: "#db3031", glyph: "??", lossFloor: 0.2, lossCeiling: 0.3 },
+  { id: "catastrophic", label: "Catastrophic Blunder", color: "#8b1a1a", glyph: "??", lossFloor: 0.3, lossCeiling: Infinity }
+];
+var _tierMetaMap = /* @__PURE__ */ Object.create(null);
+for (const t of SEVERITY_TIERS) _tierMetaMap[t.id] = t;
+function getTierMeta(tier) {
+  return _tierMetaMap[tier];
+}
+function classifySeverity(loss, isExactBest) {
+  if (isExactBest && loss === 0) return "best";
+  if (loss <= 0.02) return "excellent";
+  if (loss <= 0.04) return "good";
+  if (loss <= 0.05) return "playable";
+  if (loss <= 0.1) return "inaccuracy";
+  if (loss <= 0.15) return "mistake";
+  if (loss <= 0.2) return "serious";
+  if (loss <= 0.3) return "blunder";
+  return "catastrophic";
+}
+var POSITIVE_TIERS = ["best", "excellent", "good", "playable"];
+var NEGATIVE_TIERS = ["inaccuracy", "mistake", "serious", "blunder", "catastrophic"];
+var standardPositive = {
+  best: { label: "Best move!", summary: "This is the engine's top choice." },
+  excellent: { label: "Excellent move.", summary: "Virtually indistinguishable from the engine's top pick." },
+  good: { label: "Good move.", summary: "A small edge was left on the table, but this is a perfectly reasonable choice." },
+  playable: { label: "Reasonable move.", summary: "Not the strongest continuation, but a playable choice." }
+};
+var standardNegative = {
+  "swing": {
+    inaccuracy: { label: "Inaccuracy.", summary: "A slightly stronger continuation was available." },
+    mistake: { label: "Mistake.", summary: "The move played gave up a meaningful part of your advantage." },
+    serious: { label: "Serious mistake.", summary: "A much stronger move was available \u2014 this significantly weakened your position." },
+    blunder: { label: "Blunder.", summary: "This move threw away a major advantage. The position has fundamentally changed." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "The position went from clearly favorable to lost in a single move." }
+  },
+  "missed-mate": {
+    inaccuracy: { label: "Inaccuracy.", summary: "A forced checkmate sequence was available but a slower path was chosen." },
+    mistake: { label: "Mistake.", summary: "A forced checkmate was available. The chosen move lets the opponent fight on." },
+    serious: { label: "Serious mistake.", summary: "A forced checkmate was on the board and was missed entirely." },
+    blunder: { label: "Blunder.", summary: "Checkmate was right there. This move lets the opponent escape." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "Checkmate in one was available and was not played." }
+  },
+  "collapse": {
+    inaccuracy: { label: "Inaccuracy.", summary: "A clearly winning position was slightly weakened." },
+    mistake: { label: "Mistake.", summary: "A clearly winning position was damaged \u2014 the advantage has shrunk significantly." },
+    serious: { label: "Serious mistake.", summary: "A won game was thrown into doubt. The opponent is back in it." },
+    blunder: { label: "Blunder.", summary: "A completely winning position was squandered." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "A completely won position was thrown away. The game may now be lost." }
+  },
+  "defensive": {
+    inaccuracy: { label: "Inaccuracy.", summary: "A slightly more resilient defensive move was available." },
+    mistake: { label: "Mistake.", summary: "A defensive resource was available that would have kept the game alive." },
+    serious: { label: "Serious mistake.", summary: "A critical saving move was missed. The position is now much harder to hold." },
+    blunder: { label: "Blunder.", summary: "A saving move existed that could have turned the game around \u2014 it was missed." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "The one move that could have saved the game was not played." }
+  },
+  "punish": {
+    inaccuracy: { label: "Inaccuracy.", summary: "The opponent's error went partially unpunished \u2014 a stronger reply was available." },
+    mistake: { label: "Mistake.", summary: "The opponent made a clear error and it was not fully exploited." },
+    serious: { label: "Serious mistake.", summary: "The opponent handed you a significant advantage and it was not seized." },
+    blunder: { label: "Blunder.", summary: "The opponent's blunder went completely unpunished." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "The opponent handed you a decisive advantage and it slipped through your fingers." }
+  }
+};
+var harshPositive = {
+  best: { label: "Best move.", summary: "Even a broken clock is right twice a day." },
+  excellent: { label: "Fine.", summary: "Not the best, but close enough that I'll let it slide." },
+  good: { label: "Adequate.", summary: "You left a little on the table. The engine noticed." },
+  playable: { label: "Passable.", summary: "The engine would not have played this." }
+};
+var harshNegative = {
+  "swing": {
+    inaccuracy: { label: "Inaccuracy.", summary: "There was a better move. You did not find it." },
+    mistake: { label: "Mistake.", summary: "You had something good and you let it go." },
+    serious: { label: "Serious mistake.", summary: "The engine is embarrassed on your behalf." },
+    blunder: { label: "Blunder.", summary: "You just donated material to charity." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "This move should come with a trigger warning." }
+  },
+  "missed-mate": {
+    inaccuracy: { label: "Inaccuracy.", summary: "You found a checkmate. Just not the fastest one." },
+    mistake: { label: "Mistake.", summary: "Checkmate was right there. You looked the other way." },
+    serious: { label: "Serious mistake.", summary: "The checkmate was gift-wrapped and you returned it." },
+    blunder: { label: "Blunder.", summary: "Mate was on the board. You chose suffering instead." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "Mate in one. You missed mate in one." }
+  },
+  "collapse": {
+    inaccuracy: { label: "Inaccuracy.", summary: "You were winning. Emphasis on \u201Cwere.\u201D" },
+    mistake: { label: "Mistake.", summary: "Your advantage just filed for divorce." },
+    serious: { label: "Serious mistake.", summary: "Congratulations, you've made this a game again." },
+    blunder: { label: "Blunder.", summary: "You snatched defeat from the jaws of victory." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "The engine would like to speak with your manager." }
+  },
+  "defensive": {
+    inaccuracy: { label: "Inaccuracy.", summary: "There was a tougher defense. You chose the easy way out." },
+    mistake: { label: "Mistake.", summary: "You could have made your opponent work for it. You didn't." },
+    serious: { label: "Serious mistake.", summary: "The life raft was right there. You swam past it." },
+    blunder: { label: "Blunder.", summary: "There was one way to survive. This was not it." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "You resigned three moves early \u2014 you just don't know it yet." }
+  },
+  "punish": {
+    inaccuracy: { label: "Inaccuracy.", summary: "Your opponent blundered and you barely noticed." },
+    mistake: { label: "Mistake.", summary: "Free material was on the table. You left it there." },
+    serious: { label: "Serious mistake.", summary: "Your opponent handed you the game and you handed it back." },
+    blunder: { label: "Blunder.", summary: "Your opponent played the worst move on the board and you matched them." },
+    catastrophic: { label: "Catastrophic blunder.", summary: "They blundered. You blundered harder. Impressive." }
+  }
+};
+function buildMatrix(positive, negative) {
+  const reasonCodes = ["swing", "missed-mate", "collapse", "defensive", "punish"];
+  const result = {};
+  for (const rc of reasonCodes) {
+    const entries = {};
+    for (const tier of POSITIVE_TIERS) {
+      entries[tier] = positive[tier];
+    }
+    for (const tier of NEGATIVE_TIERS) {
+      entries[tier] = negative[rc][tier];
+    }
+    result[rc] = entries;
+  }
+  return result;
+}
+var ALL_FEEDBACK = {
+  standard: buildMatrix(standardPositive, standardNegative),
+  harsh: buildMatrix(harshPositive, harshNegative)
+};
+function getSeverityFeedback(reasonCode, loss, isExactBest, tone = "standard") {
+  const tierId = classifySeverity(loss, isExactBest);
+  const tier = getTierMeta(tierId);
+  const text = ALL_FEEDBACK[tone][reasonCode][tierId];
+  return { tier, label: text.label, summary: text.summary };
+}
+var EVAL_BOX_GRADES = [
+  { id: "checkmate", label: "Checkmate!", color: "#a855f7", lossFloor: 0, lossCeiling: 0 },
+  { id: "exact", label: "Exact match", color: "#26a641", lossFloor: 0, lossCeiling: 0 },
+  { id: "near-perfect", label: "Near perfect", color: "#57ab5a", lossFloor: 0, lossCeiling: 0.02 },
+  { id: "close", label: "Close", color: "#7bc67e", lossFloor: 0.02, lossCeiling: 0.04 },
+  { id: "acceptable", label: "Acceptable", color: "#8bb8a8", lossFloor: 0.04, lossCeiling: 0.05 },
+  { id: "off-target", label: "Off target", color: "#56b4e9", lossFloor: 0.05, lossCeiling: 0.1 },
+  { id: "wide-miss", label: "Wide miss", color: "#e69d00", lossFloor: 0.1, lossCeiling: 0.15 },
+  { id: "far-off", label: "Far off", color: "#e06c4e", lossFloor: 0.15, lossCeiling: 0.2 },
+  { id: "way-off", label: "Way off", color: "#db3031", lossFloor: 0.2, lossCeiling: 0.3 },
+  { id: "wrong", label: "Completely wrong", color: "#8b1a1a", lossFloor: 0.3, lossCeiling: Infinity }
+];
+var _evalGradeMap = /* @__PURE__ */ Object.create(null);
+for (const g of EVAL_BOX_GRADES) _evalGradeMap[g.id] = g;
+function getEvalBoxGradeMeta(grade) {
+  return _evalGradeMap[grade];
+}
+function classifyEvalBoxGrade(loss, isExactBest, isMate) {
+  if (isMate && isExactBest) return "checkmate";
+  if (isExactBest && loss === 0) return "exact";
+  if (loss <= 0.02) return "near-perfect";
+  if (loss <= 0.04) return "close";
+  if (loss <= 0.05) return "acceptable";
+  if (loss <= 0.1) return "off-target";
+  if (loss <= 0.15) return "wide-miss";
+  if (loss <= 0.2) return "far-off";
+  if (loss <= 0.3) return "way-off";
+  return "wrong";
+}
+function buildDetailLine(input, tone = "standard") {
+  const { reasonCode, tier, playedMoveSan, bestMoveSan, evalDiffFormatted, mateDistance } = input;
+  const played = playedMoveSan;
+  const best = bestMoveSan;
+  const diff2 = evalDiffFormatted;
+  if (tone === "harsh") return _buildDetailLineHarsh(played, best, diff2, mateDistance, reasonCode, tier);
+  switch (reasonCode) {
+    case "swing":
+      if (tier === "inaccuracy" || tier === "playable")
+        return "The engine found a slightly stronger continuation.";
+      if (diff2)
+        return `${played} was played instead of ${best}. The evaluation swung by roughly ${diff2} pawns.`;
+      return `${played} was played instead of ${best}.`;
+    case "missed-mate":
+      if (mateDistance !== null)
+        return `Forced checkmate in ${mateDistance} was available via ${best}. ${played} was played instead.`;
+      return `A forced checkmate sequence was available via ${best}. ${played} was played instead.`;
+    case "collapse":
+      if (tier === "inaccuracy")
+        return `A winning position was slightly weakened by ${played}. ${best} held the edge.`;
+      if (diff2)
+        return `${played} cost roughly ${diff2} pawns in a winning position. ${best} maintained the advantage.`;
+      return `A winning position collapsed with ${played}. ${best} maintained the advantage.`;
+    case "defensive":
+      if (tier === "inaccuracy")
+        return `${best} was a tougher defensive try than ${played}.`;
+      return `${best} was a more resilient defense. ${played} was played instead.`;
+    case "punish":
+      if (tier === "inaccuracy")
+        return `The opponent's previous move was slightly inaccurate. ${best} would have exploited it more precisely.`;
+      return `The opponent's previous move was an error. ${best} would have exploited it. ${played} was played instead.`;
+    default:
+      return `${played} was played instead of ${best}.`;
+  }
+}
+function _buildDetailLineHarsh(played, best, diff2, mateDistance, reasonCode, tier) {
+  switch (reasonCode) {
+    case "swing":
+      if (tier === "inaccuracy" || tier === "playable")
+        return "There was a better move. You didn't find it.";
+      if (diff2)
+        return `${played} instead of ${best}. That cost you roughly ${diff2} pawns.`;
+      return `${played} instead of ${best}.`;
+    case "missed-mate":
+      if (mateDistance !== null)
+        return `Mate in ${mateDistance} via ${best}. You played ${played}.`;
+      return `Mate was available via ${best}. You played ${played}.`;
+    case "collapse":
+      if (diff2)
+        return `${played} threw away a won game. ${best} was right there. Cost: ${diff2} pawns.`;
+      return `${played} threw away a won game. ${best} was right there.`;
+    case "defensive":
+      return `${best} would have saved you. ${played} didn't.`;
+    case "punish":
+      return `Your opponent blundered. ${best} would have punished it. You played ${played}.`;
+    default:
+      return `${played} instead of ${best}.`;
+  }
+}
+var LFYM_MESSAGES = {
+  standard: {
+    winExact: "Good move!",
+    winNearBest: "Good enough!",
+    failBetter: "Better, but not the best move available.",
+    failWorse: "That move is even worse.",
+    failDefault: "You can do better.",
+    findPrompt: "Find a better move for {color}",
+    findPlayed: "{move} was played",
+    viewSolution: "Solution",
+    viewBestWas: "Best was",
+    offTrackMessage: "You browsed away",
+    offTrackResume: "Resume learning",
+    viewTheSolution: "View the solution",
+    skipThisMove: "Skip this move",
+    tryAnotherMove: "Try another move",
+    saveToLibrary: "Save to Library",
+    doItAgain: "Do it again",
+    sessionTitle: "Learn from your mistakes",
+    vindicated: "Actually upon deeper review, you did play the best move during the game."
+  },
+  harsh: {
+    winExact: "Well, you got one right.",
+    winNearBest: "Close enough. I'll allow it.",
+    failBetter: "Getting warmer. Still wrong.",
+    failWorse: "Somehow you made it worse.",
+    failDefault: "Try harder.",
+    findPrompt: "Find a better move for {color}. It's not hard.",
+    findPlayed: "{move} was played. Let's fix that.",
+    viewSolution: "Here's what you should have played.",
+    viewBestWas: "The answer was",
+    offTrackMessage: "Focus.",
+    offTrackResume: "Get back to work.",
+    viewTheSolution: "Just show me the answer",
+    skipThisMove: "Give up on this one",
+    tryAnotherMove: "Try again.",
+    saveToLibrary: "Save this embarrassment",
+    doItAgain: "Suffer through it again",
+    sessionTitle: "Learn from your mistakes",
+    vindicated: "Fine. You were right this time. Don't let it go to your head."
+  }
+};
+var MISTAKE_COUNT_TIERS = [
+  {
+    tier: "clean",
+    color: "#26a641",
+    countFloor: 0,
+    countCeiling: 0,
+    sessionTitle: "Learn from your mistakes",
+    sessionIntro: "",
+    sessionEnd: "No mistakes found. Well played.",
+    sessionTitleHarsh: "Learn from your mistakes",
+    sessionIntroHarsh: "",
+    sessionEndHarsh: "No mistakes found. Suspiciously clean."
+  },
+  {
+    tier: "minor",
+    color: "#57ab5a",
+    countFloor: 1,
+    countCeiling: 2,
+    sessionTitle: "Learn from your mistakes",
+    sessionIntro: "A couple of moments to revisit.",
+    sessionEnd: "Done. Only a few things to tighten up.",
+    sessionTitleHarsh: "Learn from your mistakes",
+    sessionIntroHarsh: "Two moments. You'll survive.",
+    sessionEndHarsh: "That wasn't too painful."
+  },
+  {
+    tier: "notable",
+    color: "#56b4e9",
+    countFloor: 3,
+    countCeiling: 4,
+    sessionTitle: "Learn from your mistakes",
+    sessionIntro: "A few key moments to work through.",
+    sessionEnd: "Done reviewing. Some clear areas to improve.",
+    sessionTitleHarsh: "Learn from your mistakes",
+    sessionIntroHarsh: "A few things went wrong. Let's see how wrong.",
+    sessionEndHarsh: "Done. You've got homework."
+  },
+  {
+    tier: "concerning",
+    color: "#e69d00",
+    countFloor: 5,
+    countCeiling: 7,
+    sessionTitle: "Learn from your mistakes",
+    sessionIntro: "Several moments need your attention.",
+    sessionEnd: "Done. There were quite a few missed opportunities here.",
+    sessionTitleHarsh: "Learn from your mistakes",
+    sessionIntroHarsh: "This is going to take a while.",
+    sessionEndHarsh: "Done. The engine would like a word."
+  },
+  {
+    tier: "rough",
+    color: "#e06c4e",
+    countFloor: 8,
+    countCeiling: 10,
+    sessionTitle: "Learn from your mistakes",
+    sessionIntro: "This game had a lot of room for improvement.",
+    sessionEnd: "Done reviewing. This was a tough game \u2014 lots to learn from.",
+    sessionTitleHarsh: "Learn from your mistakes",
+    sessionIntroHarsh: "This game was not your finest work.",
+    sessionEndHarsh: "Done. That was hard to watch."
+  },
+  {
+    tier: "brutal",
+    color: "#db3031",
+    countFloor: 11,
+    countCeiling: 15,
+    sessionTitle: "Learn from your mistakes",
+    sessionIntro: "This game needs serious work. Let's go.",
+    sessionEnd: "Done. That was a difficult watch. Plenty of material to drill.",
+    sessionTitleHarsh: "Learn from your mistakes",
+    sessionIntroHarsh: "I hope you're sitting down.",
+    sessionEndHarsh: "Done. We don't need to talk about it."
+  },
+  {
+    tier: "disaster",
+    color: "#8b1a1a",
+    countFloor: 16,
+    countCeiling: Infinity,
+    sessionTitle: "Learn from your mistakes",
+    sessionIntro: "There's a lot to unpack here. Buckle up.",
+    sessionEnd: "Done. That was rough \u2014 but every one of these is a chance to improve.",
+    sessionTitleHarsh: "Learn from your mistakes",
+    sessionIntroHarsh: "What happened here?",
+    sessionEndHarsh: "Done. Let's never speak of this game again."
+  }
+];
+function classifyMistakeCount(count) {
+  for (const tier of MISTAKE_COUNT_TIERS) {
+    if (count >= tier.countFloor && count <= tier.countCeiling) return tier;
+  }
+  return MISTAKE_COUNT_TIERS[MISTAKE_COUNT_TIERS.length - 1];
+}
+
 // src/analyse/retroView.ts
 function renderRetroEntry(deps) {
   const { retro, analysisComplete: analysisComplete2, batchAnalyzing: batchAnalyzing2, onToggle } = deps;
@@ -30542,15 +30972,6 @@ var MAX_DEPTH3 = 18;
 function renderEvalProgress(depth) {
   const pct = depth ? Math.min(100, Math.max(0, 100 * (depth - MIN_DEPTH) / (MAX_DEPTH3 - MIN_DEPTH))) : 0;
   return h("div.retro-progress", h("div", { attrs: { style: `width: ${pct}%` } }));
-}
-function renderEvalDiff(diff2) {
-  if (!diff2) return null;
-  if (diff2.cpDiff !== null ? diff2.cpDiff <= 0 : diff2.wcDiff <= 0) return null;
-  return h("span.retro-feedback__eval-diff", diff2.formatted);
-}
-function renderGameMoveEvalDiff(cand) {
-  if (!cand) return null;
-  return renderEvalDiff(cand.evalDiff);
 }
 function computeDualEvalComparison(a, b, color) {
   if (a.cp !== void 0 && b.cp !== void 0) {
@@ -30575,22 +30996,31 @@ function formatDualEvalDiff(diff2) {
   const normalized = Object.is(rounded, -0) ? 0 : rounded;
   return normalized.toFixed(1);
 }
-function renderEvalBox(grade, label, display) {
-  return h("div.retro-eval-box", { class: { [`retro-eval-box--${grade}`]: true } }, [
+function renderEvalBox(color, label, display) {
+  return h("div.retro-eval-box", {
+    style: {
+      borderColor: color + "66",
+      // ~40% opacity
+      background: color + "1a"
+      // ~10% opacity
+    }
+  }, [
     h("span.retro-eval-box__label", label),
-    h("span.retro-eval-box__value", display)
+    h("span.retro-eval-box__value", { style: { color } }, display)
   ]);
 }
 function renderDualEvalBoxes(retro) {
   const snapshot = retro.getSolvingMoveSnapshot();
   if (!snapshot) return null;
+  const liveSolving = snapshot.solvingPath ? evalCache.get(snapshot.solvingPath) : void 0;
+  const liveEngBest = snapshot.parentPath ? evalCache.get(snapshot.parentPath) : void 0;
   const solvingEval = {
-    ...snapshot.solvingMoveCp !== void 0 && { cp: snapshot.solvingMoveCp },
-    ...snapshot.solvingMoveMate !== void 0 && { mate: snapshot.solvingMoveMate }
+    ...snapshot.solvingMoveCp !== void 0 ? { cp: snapshot.solvingMoveCp } : liveSolving?.cp !== void 0 ? { cp: liveSolving.cp } : {},
+    ...snapshot.solvingMoveMate !== void 0 ? { mate: snapshot.solvingMoveMate } : liveSolving?.mate !== void 0 ? { mate: liveSolving.mate } : {}
   };
   const engineBestEval = {
-    ...snapshot.engineBestCp !== void 0 && { cp: snapshot.engineBestCp },
-    ...snapshot.engineBestMate !== void 0 && { mate: snapshot.engineBestMate }
+    ...snapshot.engineBestCp !== void 0 ? { cp: snapshot.engineBestCp } : liveEngBest?.cp !== void 0 ? { cp: liveEngBest.cp } : {},
+    ...snapshot.engineBestMate !== void 0 ? { mate: snapshot.engineBestMate } : liveEngBest?.mate !== void 0 ? { mate: liveEngBest.mate } : {}
   };
   const gameMoveEval = {
     ...snapshot.gameMoveCp !== void 0 && { cp: snapshot.gameMoveCp },
@@ -30598,55 +31028,47 @@ function renderDualEvalBoxes(retro) {
   };
   const vsBestDiff = computeDualEvalComparison(solvingEval, engineBestEval, snapshot.playerColor);
   const vsGameDiff = computeDualEvalComparison(solvingEval, gameMoveEval, snapshot.playerColor);
-  let vsBestGrade;
+  const solvingWc = evalWinChances(solvingEval);
+  const engineBestWc = evalWinChances(engineBestEval);
+  const gameMoveWc = evalWinChances(gameMoveEval);
+  let vsBestColor;
   let vsBestDisplay;
-  if (vsBestDiff === null) {
-    vsBestGrade = "bad";
+  if (snapshot.isExactBest) {
+    const isMate = snapshot.engineBestMate !== void 0;
+    const grade = classifyEvalBoxGrade(0, true, isMate);
+    const meta = getEvalBoxGradeMeta(grade);
+    vsBestColor = meta.color;
+    vsBestDisplay = isMate ? "#KO!" : "\u2713";
+  } else if (vsBestDiff === null || solvingWc === void 0 || engineBestWc === void 0) {
+    vsBestColor = getEvalBoxGradeMeta("wrong").color;
     vsBestDisplay = "\u2014";
-  } else if (Math.abs(vsBestDiff.diff) < 5e-3) {
-    vsBestGrade = "best";
-    vsBestDisplay = "\u2713";
-  } else if (vsBestDiff.kind === "cp" && vsBestDiff.diff > -0.5 && vsBestDiff.diff < 0) {
-    vsBestGrade = "near";
-    vsBestDisplay = formatDualEvalDiff(vsBestDiff);
-  } else if (vsGameDiff !== null && vsGameDiff.diff > 0) {
-    vsBestGrade = "ok";
-    vsBestDisplay = formatDualEvalDiff(vsBestDiff);
   } else {
-    vsBestGrade = "bad";
+    const moverSolving = snapshot.playerColor === "white" ? solvingWc : -solvingWc;
+    const moverBest = snapshot.playerColor === "white" ? engineBestWc : -engineBestWc;
+    const loss = Math.max(0, (moverBest - moverSolving) / 2);
+    const grade = classifyEvalBoxGrade(loss, false, false);
+    const meta = getEvalBoxGradeMeta(grade);
+    vsBestColor = meta.color;
     vsBestDisplay = formatDualEvalDiff(vsBestDiff);
   }
-  let vsGameGrade;
+  let vsGameColor;
   let vsGameDisplay;
-  if (vsGameDiff === null) {
-    vsGameGrade = "bad";
+  if (vsGameDiff === null || solvingWc === void 0 || gameMoveWc === void 0) {
+    vsGameColor = getEvalBoxGradeMeta("wrong").color;
     vsGameDisplay = "\u2014";
-  } else if (vsGameDiff.diff > 5e-3) {
-    const formatted = formatDualEvalDiff(vsGameDiff);
-    if (formatted === "0.0" || formatted === "0%") {
-      vsGameGrade = "near";
-      vsGameDisplay = formatted;
-    } else {
-      vsGameGrade = "ok";
-      vsGameDisplay = `+${formatted}`;
-    }
-  } else if (vsGameDiff.diff > -5e-3) {
-    const formatted = formatDualEvalDiff(vsGameDiff);
-    vsGameGrade = "near";
-    vsGameDisplay = formatted;
   } else {
+    const moverSolving = snapshot.playerColor === "white" ? solvingWc : -solvingWc;
+    const moverGame = snapshot.playerColor === "white" ? gameMoveWc : -gameMoveWc;
+    const loss = Math.max(0, (moverGame - moverSolving) / 2);
+    const grade = classifyEvalBoxGrade(loss, false, false);
+    const meta = getEvalBoxGradeMeta(grade);
+    vsGameColor = meta.color;
     const formatted = formatDualEvalDiff(vsGameDiff);
-    if (formatted === "0.0" || formatted === "0%") {
-      vsGameGrade = "near";
-      vsGameDisplay = formatted;
-    } else {
-      vsGameGrade = "bad";
-      vsGameDisplay = formatted;
-    }
+    vsGameDisplay = vsGameDiff.diff > 5e-3 && formatted !== "0.0" && formatted !== "0%" ? `+${formatted}` : formatted;
   }
   return h("div.retro-eval-boxes", [
-    renderEvalBox(vsBestGrade, "vs Engine Best", vsBestDisplay),
-    renderEvalBox(vsGameGrade, "vs Move Played", vsGameDisplay)
+    renderEvalBox(vsBestColor, "vs Engine Best", vsBestDisplay),
+    renderEvalBox(vsGameColor, "vs Move Played", vsGameDisplay)
   ]);
 }
 function renderSkipOrView(retro, navigate2, redraw2) {
@@ -30664,7 +31086,7 @@ function renderSkipOrView(retro, navigate2, redraw2) {
           redraw2();
         }
       } }
-    }, "View the solution"),
+    }, LFYM_MESSAGES[retroConfig.feedbackTone].viewTheSolution),
     h("a", {
       on: { click: () => {
         retro.skip();
@@ -30673,7 +31095,7 @@ function renderSkipOrView(retro, navigate2, redraw2) {
         if (next2) navigate2(next2.parentPath);
         else redraw2();
       } }
-    }, "Skip this move")
+    }, LFYM_MESSAGES[retroConfig.feedbackTone].skipThisMove)
   ]);
 }
 function renderContinue(retro, navigate2, redraw2) {
@@ -30690,11 +31112,28 @@ function renderContinue(retro, navigate2, redraw2) {
     "Next"
   ]);
 }
-function renderReasonNote(cand) {
+function renderReasonNote(cand, isExactBest = false, bestMoveSan = "") {
   if (!cand) return null;
+  const tone = retroConfig.feedbackTone;
+  const fb = getSeverityFeedback(cand.reason.code, cand.loss, isExactBest, tone);
+  const detailLine = buildDetailLine({
+    reasonCode: cand.reason.code,
+    tier: fb.tier.id,
+    playedMoveSan: cand.playedMoveSan,
+    bestMoveSan: bestMoveSan || cand.bestMove,
+    evalDiffFormatted: cand.evalDiff?.formatted ?? null,
+    mateDistance: cand.isMissedMate && cand.reason.code === "missed-mate" ? null : null
+  }, tone);
   return h("div.retro-reason", [
-    h("span.retro-reason__label", `Chosen because: ${cand.reason.label}`),
-    h("span.retro-reason__summary", cand.reason.summary)
+    h(
+      "span.retro-reason__label",
+      { style: { color: fb.tier.color } },
+      `Chosen because: ${fb.label}`
+    ),
+    h("span.retro-reason__detail", {
+      style: { borderColor: fb.tier.color + "40", color: fb.tier.color }
+    }, detailLine),
+    h("span.retro-reason__summary", fb.summary)
   ]);
 }
 var _savedPaths = /* @__PURE__ */ new Set();
@@ -30727,7 +31166,7 @@ function renderSaveToLibrary(cand, retro, redraw2) {
         }
       });
     } }
-  }, "Save to Library"));
+  }, LFYM_MESSAGES[retroConfig.feedbackTone].saveToLibrary));
 }
 var _bulkSaveState = "idle";
 var _bulkSaveCount = 0;
@@ -30820,6 +31259,10 @@ function renderRetroStrip(deps) {
   const feedback = retro.feedback();
   const cand = retro.current();
   const [solved, total] = retro.completion();
+  const countFeedback = classifyMistakeCount(total);
+  const candBestSan = cand ? uciToSan2(cand.fenBefore, cand.bestMove) : "";
+  const tone = retroConfig.feedbackTone;
+  const msg = LFYM_MESSAGES[tone];
   const progressText = `${Math.min(solved + 1, total)} / ${total}`;
   let feedbackContent;
   if (!cand) {
@@ -30827,14 +31270,14 @@ function renderRetroStrip(deps) {
       h("div.retro-player", [
         h("div.retro-king", "\u265A"),
         h("div.retro-instruction", [
-          h("em", total === 0 ? "No mistakes found." : "Done reviewing mistakes."),
+          h("em", { style: { color: countFeedback.color } }, tone === "harsh" ? countFeedback.sessionEndHarsh : countFeedback.sessionEnd),
           h("div.retro-choices", [
             total > 0 && h("a", { on: { click: () => {
               retro.reset();
               const f = retro.current();
               if (f) navigate2(f.parentPath);
               else redraw2();
-            } } }, "Do it again")
+            } } }, msg.doItAgain)
           ].filter(Boolean)),
           total > 0 ? renderBulkSaveToLibrary(retro, redraw2) : null
         ].filter(Boolean))
@@ -30845,20 +31288,19 @@ function renderRetroStrip(deps) {
     feedbackContent = [
       h("div.retro-player", [
         h("div.retro-instruction", [
-          h("strong", [
-            h("move", cand.playedMoveSan),
-            " was played"
-          ]),
-          h("em", `Find a better move for ${color}`),
+          h("strong", msg.findPlayed.replace("{move}", cand.playedMoveSan)),
+          h("em", msg.findPrompt.replace("{color}", color)),
+          solved === 0 && countFeedback.sessionIntro ? h(
+            "em.retro-session-intro",
+            { style: { color: countFeedback.color, fontSize: "0.85em" } },
+            tone === "harsh" ? countFeedback.sessionIntroHarsh : countFeedback.sessionIntro
+          ) : null,
           renderSkipOrView(retro, navigate2, redraw2)
         ])
       ]),
       retro.isVindicated() ? h("div.retro-vindication", [
         h("div.retro-vindication__icon", "\u2713"),
-        h(
-          "p.retro-vindication__msg",
-          "Actually upon deeper review, you did play the best move during the game."
-        ),
+        h("p.retro-vindication__msg", msg.vindicated),
         renderContinue(retro, navigate2, redraw2)
       ]) : null
     ].filter(Boolean);
@@ -30867,7 +31309,7 @@ function renderRetroStrip(deps) {
       h("div.retro-player", [
         h("div.retro-icon.retro-icon--off", "!"),
         h("div.retro-instruction", [
-          h("strong", "You browsed away"),
+          h("strong", msg.offTrackMessage),
           h("div.retro-choices.retro-choices--off", [
             h("a", {
               on: { click: () => {
@@ -30875,7 +31317,7 @@ function renderRetroStrip(deps) {
                 if (c) navigate2(c.parentPath);
                 else redraw2();
               } }
-            }, "Resume learning")
+            }, msg.offTrackResume)
           ])
         ])
       ])
@@ -30885,28 +31327,27 @@ function renderRetroStrip(deps) {
     const color = cand.playerColor === "white" ? "White" : "Black";
     let strongText;
     if (fk === "better") {
-      strongText = "Better, but not the best move available.";
+      strongText = msg.failBetter;
     } else if (fk === "worse") {
-      strongText = "That move is even worse.";
+      strongText = msg.failWorse;
     } else {
-      strongText = "You can do better.";
+      strongText = msg.failDefault;
     }
     feedbackContent = [
       h("div.retro-player", [
         h("div.retro-icon.retro-icon--fail", "\u2717"),
         h("div.retro-instruction", [
           h("strong", strongText),
-          renderGameMoveEvalDiff(cand),
           renderDualEvalBoxes(retro),
           renderSkipOrView(retro, navigate2, redraw2),
           renderSaveToLibrary(cand, retro, redraw2),
-          h("a", { on: { click: () => {
+          h("div.retro-save", h("button.retro-save__btn", { on: { click: () => {
             retro.resetForRetry();
             resetRetroVisibleEngineUi();
             if (cand) navigate2(cand.parentPath);
             syncArrow();
             redraw2();
-          } } }, "Try another move")
+          } } }, msg.tryAnotherMove))
         ])
       ])
     ];
@@ -30925,25 +31366,24 @@ function renderRetroStrip(deps) {
     ];
   } else if (feedback === "win") {
     const wk = retro.winKind();
-    const msg = wk === "near-best" ? "Good enough!" : "Good move!";
+    const winMsg = wk === "near-best" ? msg.winNearBest : msg.winExact;
     feedbackContent = [
       h(
         "div.retro-half.retro-half--top",
         h("div.retro-player", [
           h("div.retro-icon.retro-icon--win", "\u2713"),
           h("div.retro-instruction", [
-            h("strong", msg),
-            renderGameMoveEvalDiff(cand),
+            h("strong", winMsg),
             renderDualEvalBoxes(retro),
-            renderReasonNote(cand),
+            renderReasonNote(cand, wk === "exact", candBestSan),
             renderSaveToLibrary(cand, retro, redraw2),
-            h("a", { on: { click: () => {
+            h("div.retro-save", h("button.retro-save__btn", { on: { click: () => {
               retro.resetForRetry();
               resetRetroVisibleEngineUi();
               if (cand) navigate2(cand.parentPath);
               syncArrow();
               redraw2();
-            } } }, "Try another move")
+            } } }, msg.tryAnotherMove))
           ])
         ])
       ),
@@ -30957,19 +31397,18 @@ function renderRetroStrip(deps) {
         h("div.retro-player", [
           h("div.retro-icon.retro-icon--win", "\u2713"),
           h("div.retro-instruction", [
-            h("strong", "Solution"),
-            h("em", ["Best was ", h("strong", bestSan)]),
-            renderGameMoveEvalDiff(cand),
+            h("strong", msg.viewSolution),
+            h("em", [msg.viewBestWas + " ", h("strong", bestSan)]),
             renderDualEvalBoxes(retro),
-            renderReasonNote(cand),
+            renderReasonNote(cand, false, candBestSan),
             renderSaveToLibrary(cand, retro, redraw2),
-            h("a", { on: { click: () => {
+            h("div.retro-save", h("button.retro-save__btn", { on: { click: () => {
               retro.resetForRetry();
               resetRetroVisibleEngineUi();
               if (cand) navigate2(cand.parentPath);
               syncArrow();
               redraw2();
-            } } }, "Try another move")
+            } } }, msg.tryAnotherMove))
           ])
         ])
       ),
@@ -30979,8 +31418,19 @@ function renderRetroStrip(deps) {
   return h("div.retro-box.training-box", [
     // Title bar — mirrors lichess-org/lila: retroView.ts div.title
     h("div.retro-box__title", [
-      h("span", "Learn from your mistakes"),
-      h("span.retro-box__progress", progressText),
+      h("span", msg.sessionTitle),
+      h("span.retro-box__progress", { style: { color: countFeedback.color } }, progressText),
+      h("label.retro-tone-toggle", { attrs: { title: tone === "harsh" ? "Harsh mode ON" : "Harsh mode" } }, [
+        h("input", {
+          attrs: { type: "checkbox", checked: tone === "harsh" },
+          on: { change: (e) => {
+            const checked = e.target.checked;
+            setRetroConfig({ feedbackTone: checked ? "harsh" : "standard" });
+            redraw2();
+          } }
+        }),
+        h("span.retro-tone-toggle__track")
+      ]),
       h("button.retro-box__close", { on: { click: onClose }, attrs: { title: "Close" } }, "\u2715")
     ]),
     // Feedback area — mirrors lichess-org/lila: retroView.ts div.feedback.{state}
@@ -34009,6 +34459,23 @@ var importCallbacks = {
   }
 };
 var SAMPLE_PGN = "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7";
+var FEEDBACK_TEST_PGN = `[Event "Feedback Test Game"]
+[Site "PatzerPro Testing"]
+[Date "2026.04.04"]
+[White "TestPlayer"]
+[Black "Stockfish"]
+[Result "0-1"]
+[WhiteElo "1200"]
+[BlackElo "2800"]
+[TimeControl "600+0"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 Nf6 5. c3 d6
+6. O-O Bg4 7. h3 Bh5 8. b4 Bb6 9. a4 a6 10. Nbd2 O-O
+11. d4 exd4 12. cxd4 Bxf3 13. Nxf3 d5 14. e5 Ne4 15. Bd3 f5
+16. Ng5 Nxg5 17. Bxg5 Qd7 18. f4 Nxe5 19. Re1 Nxd3 20. Re7 Qd8
+21. Rxb7 Bxd4+ 22. Kh1 Nf2+ 23. Kg1 Nxh3+ 24. Kh1 Qxg5 25. Qf3 Nf2+
+26. Kg1 Nd1+ 27. Rb1 Qe3+ 28. Kh2 Qxf4+ 29. Kg1 Ne3 30. Rf1 Rab8
+0-1`;
 var importedGames2 = [];
 var selectedGameId = null;
 var selectedGamePgn = null;
@@ -35014,6 +35481,26 @@ void loadPuzzlesFromIdb().then((puzzles) => {
 void loadGamesFromIdb().then((stored) => {
   gamesLibraryLoaded = true;
   if (!stored || stored.games.length === 0) {
+    const seedGame = {
+      id: "game-feedback-test",
+      pgn: FEEDBACK_TEST_PGN,
+      white: "TestPlayer",
+      black: "Stockfish",
+      result: "0-1",
+      date: "2026.04.04",
+      timeClass: "rapid",
+      whiteRating: 1200,
+      blackRating: 2800,
+      importedAt: Date.now()
+    };
+    importedGames2 = [seedGame];
+    selectedGameId = seedGame.id;
+    selectedGamePgn = seedGame.pgn;
+    void saveGamesToIdb([seedGame]);
+    ctrl = new AnalyseCtrl(pgnToTree(seedGame.pgn));
+    clearEvalCache();
+    resetCurrentEval();
+    setOrientation("white");
     redraw();
     return;
   }

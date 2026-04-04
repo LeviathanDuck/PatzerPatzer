@@ -3,14 +3,16 @@
 Date: 2026-03-29
 Status: core implemented, shard integration has known issues (audited 2026-03-30)
 
-### Phase Status (as of 2026-03-30)
+### Phase Snapshot (as of 2026-03-30)
 
-| Phase | Status | Notes |
-|---|---|---|
-| Shard loader integration | **Done** | Typecheck issues fixed (CCP-461) |
-| Auto-advance stream | **Done** | Rated stream with auto-next in ctrl.ts |
-| Gap-fixing for shard loader | **Done** | `findRatedPuzzleInShards` guards fixed |
-| Stream UI polish | **Done** | Rating delta, difficulty selector |
+- Shard loader integration: **Done**
+  Typecheck issues fixed (CCP-461)
+- Auto-advance stream: **Done**
+  Rated stream with auto-next in ctrl.ts
+- Gap-fixing for shard loader: **Done**
+  `findRatedPuzzleInShards` guards fixed
+- Stream UI polish: **Done**
+  Rating delta, difficulty selector
 
 This sprint adds a Lichess-style rated puzzle stream entry point to the left sidebar of the puzzle
 page. When the user clicks "Start Rated", the app automatically selects puzzles near the user's
@@ -47,6 +49,28 @@ rating window and import it into IDB on the fly.
 | 2 | CCP-312 | CCP-313, CCP-314 | Shard loader integration + gap fix |
 | 3 | CCP-315 | CCP-316, CCP-317, CCP-318 | Controller + UI wiring |
 | 4 | CCP-319 | CCP-320, CCP-321 | Styles + integration review |
+
+## Phase 1 — Research And Shard Loader Integration
+
+- CCP-309 — Audit Lichess puzzle stream selection source
+- CCP-310 — Audit selectNextRatedPuzzle IDB-only gap
+- CCP-311 — Write rated stream implementation map
+- CCP-313 — Add `findRatedPuzzleFromShards` to `puzzleDb`
+- CCP-314 — Wire shard fallback into `selectNextRatedPuzzle`
+
+## Phase 2 — Controller Auto-Advance Flow
+
+- CCP-316 — Add `startRatedSession` and stream state to controller
+- CCP-318 — Wire auto-advance on rated round completion
+
+## Phase 3 — Rated Stream Entry UI
+
+- CCP-317 — Add rated stream left-panel entry card to puzzle view
+
+## Phase 4 — Styles And Integration Validation
+
+- CCP-320 — Add SCSS for rated stream left-panel entry
+- CCP-321 — Rated stream sprint integration review
 
 ## Files in Scope
 

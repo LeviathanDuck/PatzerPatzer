@@ -9,16 +9,13 @@
 
 export interface RetroConfig {
   /**
-   * Minimum move classification to include as a candidate.
-   * Controls the win-chance loss floor for candidate selection.
-   *   'inaccuracy' — loss >= 0.05  (Lichess parity: |povDiff| > 0.1 un-halved)
-   *   'mistake'    — loss >= 0.10  (default; current Patzer behavior)
-   *   'blunder'    — loss >= 0.15  (strictest; only large blunders)
+   * Minimum win-chance loss to include a move as a candidate. Range [0.01, 0.25].
+   * Stored as a fraction (0.10 = 10%). Default: 0.10 (Patzer default / Mistake threshold).
+   * Lichess parity (inaccuracy floor): 0.05. Blunder threshold: 0.15.
    *
-   * Thresholds mirror src/engine/winchances.ts LOSS_THRESHOLDS and
-   * lichess-org/lila: ui/analyse/src/nodeFinder.ts evalSwings.
+   * Mirrors lichess-org/lila: ui/analyse/src/nodeFinder.ts evalSwings loss floor.
    */
-  minClassification: 'inaccuracy' | 'mistake' | 'blunder';
+  minLossThreshold: number;
 
   /**
    * Maximum forced-mate distance for the missed-mate special case.
@@ -60,12 +57,16 @@ export interface RetroConfig {
   punishOpponentSwingMin: number;
   /** Minimum win-chance loss in the user's reply (failure to exploit). */
   punishExploitDropMin: number;
+
+  // ── Feedback tone ───────────────────────────────────────────────────────
+  /** Controls the tone of all user-facing feedback text. 'standard' or 'harsh'. */
+  feedbackTone: 'standard' | 'harsh';
 }
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
 // Values that reproduce today's buildRetroCandidates behavior exactly.
 export const RETRO_CONFIG_DEFAULTS: Readonly<RetroConfig> = {
-  minClassification:      'mistake',
+  minLossThreshold:       0.10,
   missedMateDistance:      3,
   collapseEnabled:        false,
   collapseWcFloor:        0.65,
@@ -76,12 +77,11 @@ export const RETRO_CONFIG_DEFAULTS: Readonly<RetroConfig> = {
   punishEnabled:          false,
   punishOpponentSwingMin: 0.15,
   punishExploitDropMin:   0.10,
+  feedbackTone:           'standard',
 };
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 const RETRO_CONFIG_LS_KEY = 'retroConfig';
-
-const VALID_CLASSIFICATIONS = new Set<string>(['inaccuracy', 'mistake', 'blunder']);
 
 function loadFromStorage(): RetroConfig {
   try {
@@ -89,9 +89,11 @@ function loadFromStorage(): RetroConfig {
     if (stored === null) return { ...RETRO_CONFIG_DEFAULTS };
     const p = JSON.parse(stored) as Partial<RetroConfig>;
     return {
-      minClassification: VALID_CLASSIFICATIONS.has(p.minClassification as string)
-        ? (p.minClassification as RetroConfig['minClassification'])
-        : RETRO_CONFIG_DEFAULTS.minClassification,
+      minLossThreshold:
+        typeof p.minLossThreshold === 'number' &&
+        p.minLossThreshold >= 0.01 && p.minLossThreshold <= 0.25
+          ? p.minLossThreshold
+          : RETRO_CONFIG_DEFAULTS.minLossThreshold,
       missedMateDistance:
         typeof p.missedMateDistance === 'number' && p.missedMateDistance >= 0
           ? Math.floor(p.missedMateDistance)
@@ -120,6 +122,9 @@ function loadFromStorage(): RetroConfig {
       punishExploitDropMin:
         typeof p.punishExploitDropMin === 'number' && p.punishExploitDropMin >= 0
           ? p.punishExploitDropMin : RETRO_CONFIG_DEFAULTS.punishExploitDropMin,
+      feedbackTone:
+        p.feedbackTone === 'standard' || p.feedbackTone === 'harsh'
+          ? p.feedbackTone : RETRO_CONFIG_DEFAULTS.feedbackTone,
     };
   } catch {
     return { ...RETRO_CONFIG_DEFAULTS };

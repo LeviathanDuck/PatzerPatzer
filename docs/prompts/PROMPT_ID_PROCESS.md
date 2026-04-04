@@ -12,6 +12,26 @@ Agents must not compute the next prompt id by reading the registry directly.
 
 All prompt ids must be allocated through the reservation commands.
 
+## Output Truncation Rule (CRITICAL)
+
+Never pipe reservation or lifecycle commands through `head`, `tail`, or any output limiter:
+
+```sh
+# WRONG
+npm run prompt:reserve -- --title "..." | head -5
+
+# CORRECT
+npm run prompt:reserve -- --title "..."
+```
+
+Why: these commands end by running `prompts:refresh` as a subprocess. Piping through `head`
+sends SIGPIPE which kills the node process before `prompts:refresh` completes. The registry
+write happens early and succeeds, but the dashboard HTML is never regenerated — leaving the
+dashboard showing stale state with no error message.
+
+If the output was truncated and the reserved ID is unknown, run `npm run prompt:reservations`
+to find it. Do not re-run the reserve command.
+
 ## Root Prompt IDs
 
 Reserve a root id with:

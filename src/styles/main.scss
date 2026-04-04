@@ -820,29 +820,99 @@ main {
     width: 100%;
   }
 
-  // Classification pill row — used by the Mistake Detection modal.
-  &__pills {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
+  // Severity gradient slider — replaces pill buttons for minClassification.
+  // 3-step slider (0=inaccuracy, 1=mistake, 2=blunder) with a green→amber→red track.
+  &__severity-slider {
+    position: relative;
+    padding-bottom: 26px; // room for tick labels below
 
-    button {
-      padding: 5px 14px;
-      border-radius: 20px;
-      border: 1px solid #484848;
-      background: #252525;
-      color: #bbb;
-      font-size: 0.85rem;
+    .severity-range {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: linear-gradient(to right, #4caf50, #f0a500, #e53935);
+      border-radius: 3px;
+      outline: none;
       cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
 
-      &:hover { background: #333; border-color: #666; color: #fff; }
-
-      &.active {
-        background: #2a4a7a;
-        border-color: #5a9de0;
-        color: #e8f4ff;
+      &::-webkit-slider-runnable-track {
+        height: 6px;
+        background: linear-gradient(to right, #4caf50, #f0a500, #e53935);
+        border-radius: 3px;
       }
+
+      &::-moz-range-track {
+        height: 6px;
+        background: linear-gradient(to right, #4caf50, #f0a500, #e53935);
+        border-radius: 3px;
+        border: none;
+      }
+
+      &::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        margin-top: -6px;
+        border-radius: 50%;
+        background: #e8e8e8;
+        border: 2px solid #555;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+        transition: border-color 0.15s;
+
+        &:hover { border-color: #aaa; }
+      }
+
+      &::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #e8e8e8;
+        border: 2px solid #555;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+      }
+    }
+  }
+
+  // Classification boundary markers on the continuous severity slider.
+  // Positions are (threshold - 1) / (25 - 1) * 100 within the 1–25 range:
+  //   Inaccuracy  5%  → (5-1)/24*100 ≈ 16.7%
+  //   Mistake    10%  → (10-1)/24*100 ≈ 37.5%  (also Lichess default)
+  //   Blunder    15%  → (15-1)/24*100 ≈ 58.3%
+  .severity-divider--inaccuracy,
+  .severity-divider--mistake,
+  .severity-divider--blunder {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.55);
+    transform: translateX(-50%);
+    pointer-events: none;
+    border-radius: 1px;
+  }
+
+  .severity-divider--inaccuracy { left: 16.7%; }
+  // Mistake is also the Lichess default — slightly brighter
+  .severity-divider--mistake    { left: 37.5%; background: rgba(255, 255, 255, 0.85); }
+  .severity-divider--blunder    { left: 58.3%; }
+
+  // Tick labels below the severity slider.
+  &__severity-ticks {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+
+    span {
+      font-size: 0.72rem;
+      color: #777;
     }
   }
 
@@ -1394,6 +1464,75 @@ body.resizing {
     min-width: 3ch;
     text-align: right;
   }
+
+  // Back button for sub-panel navigation (CCP-756)
+  &__back-btn {
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 0.85em;
+    cursor: pointer;
+    padding: 2px 0 6px;
+    text-align: left;
+    &:hover { color: #ccc; }
+  }
+
+  // Scrollable container for inline sub-panel content (CCP-756)
+  &__subpanel {
+    overflow-y: auto;
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 0 2px;
+
+    // Reuse detection-modal row styles in inline context
+    .detection-modal__row {
+      border-bottom: 1px solid #222;
+      padding: 8px 0;
+      &:last-child { border-bottom: none; }
+    }
+
+    .detection-modal__row-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .detection-modal__label {
+      font-size: 0.85em;
+      color: #ccc;
+    }
+
+    .detection-modal__value {
+      font-size: 0.8em;
+      color: #888;
+    }
+
+    .detection-modal__desc {
+      font-size: 0.75em;
+      color: #666;
+      margin: 0 0 6px;
+      line-height: 1.4;
+    }
+
+    .detection-modal__slider-wrap,
+    .detection-modal__severity-slider {
+      position: relative;
+      padding-bottom: 4px;
+    }
+
+    input[type='range'] {
+      width: 100%;
+      accent-color: #3893e8;
+    }
+
+    .settings-toggle-row {
+      padding: 4px 0;
+      font-size: 0.85em;
+    }
+  }
 }
 
 // Move list scroll container inside tools.
@@ -1423,10 +1562,11 @@ body.resizing {
 .retro-box {
   display: flex;
   flex-direction: column;
-  flex: 1.5 1 0;
+  flex: 0 0 50%;
   border-top: 1px solid #333;
   background: #1e1e1e;
   min-height: 0;
+  overflow: hidden;
 
   // Title bar
   .retro-box__title {
@@ -1447,6 +1587,36 @@ body.resizing {
     font-size: 0.95em;
   }
 
+  .retro-tone-toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    input { display: none; }
+    &__track {
+      width: 28px;
+      height: 16px;
+      border-radius: 8px;
+      background: #444;
+      position: relative;
+      transition: background 0.2s;
+      &::after {
+        content: '';
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        top: 2px;
+        left: 2px;
+        background: #ccc;
+        transition: transform 0.2s, background 0.2s;
+      }
+    }
+    input:checked + &__track {
+      background: #e06c4e;
+      &::after { transform: translateX(12px); background: #fff; }
+    }
+  }
+
   .retro-box__close {
     background: none;
     border: none;
@@ -1464,7 +1634,8 @@ body.resizing {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    min-height: 100px;
+    min-height: clamp(50px, 10vh, 120px);
+    overflow-y: auto;
 
     // win/view use a split row layout on wider viewports
     &.win,
@@ -1506,7 +1677,13 @@ body.resizing {
     flex-shrink: 0;
     margin-inline-end: 10px;
 
-    &.retro-icon--win  { color: #759900; }
+    &.retro-icon--win {
+      color: #759900;
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      z-index: 1;
+    }
     &.retro-icon--fail { color: #dc322f; }
     &.retro-icon--off  { color: #e0a030; }
   }
@@ -1517,6 +1694,7 @@ body.resizing {
     display: flex;
     flex-direction: column;
     flex: 1;
+    min-width: 0; // prevent horizontal overflow in flex row context (.retro-player)
 
     strong {
       font-weight: normal;
@@ -1528,7 +1706,7 @@ body.resizing {
       font-style: normal;
       font-size: 0.88em;
       color: #aaa;
-      margin-top: 2px;
+      margin-top: clamp(0px, 0.3vh, 2px);
     }
   }
 
@@ -1537,7 +1715,7 @@ body.resizing {
   .retro-choices {
     display: flex;
     justify-content: space-between;
-    margin-top: 8px;
+    margin-top: clamp(2px, 0.8vh, 8px);
     line-height: 1.6em;
     font-size: 0.85em;
 
@@ -1554,7 +1732,7 @@ body.resizing {
 
   // Eval progress bar — mirrors lichess-org/lila: _training.scss .progress
   .retro-progress {
-    margin-top: 6px;
+    margin-top: clamp(1px, 0.6vh, 6px);
     width: 100%;
     height: 4px;
     background: #2a2a2a;
@@ -1577,13 +1755,14 @@ body.resizing {
     &.retro-half--top {
       flex-direction: column;
       justify-content: center;
+      position: relative;
     }
   }
 
   // Blue "▶ Next" continue button — mirrors lichess-org/lila: _retro.scss .continue
   .retro-continue {
     display: flex;
-    flex: 1 1 50%;
+    flex: 0 1 30%;
     align-items: center;
     justify-content: center;
     background: rgba(56, 147, 232, 0.85);
@@ -1611,6 +1790,173 @@ body.resizing {
     font-size: 0.82em;
 
     a {
+      color: #888;
+      cursor: pointer;
+      &:hover { color: #aaa; }
+    }
+  }
+
+  .retro-vindication {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-left: 3px solid #759900;
+    background: rgba(117, 153, 0, 0.1);
+    border-radius: 0 4px 4px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    &__icon {
+      font-size: 1.2rem;
+      color: #759900;
+    }
+
+    &__msg {
+      margin: 0;
+      font-size: 0.82rem;
+      color: #aaa;
+      line-height: 1.5;
+    }
+  }
+
+  .retro-eval-boxes {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .retro-eval-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+
+    &__label {
+      font-size: 0.78rem;
+      color: #888;
+    }
+
+    &__value {
+      font-size: 0.85rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      min-width: 2.5em;
+      text-align: right;
+    }
+
+    &.retro-eval-box--best {
+      border-color: rgba(117, 153, 0, 0.45);
+      background: rgba(117, 153, 0, 0.08);
+      .retro-eval-box__value { color: #759900; }
+    }
+    &.retro-eval-box--near {
+      border-color: rgba(240, 165, 0, 0.45);
+      background: rgba(240, 165, 0, 0.08);
+      .retro-eval-box__value { color: #f0a500; }
+    }
+    &.retro-eval-box--ok {
+      border-color: rgba(122, 173, 223, 0.45);
+      background: rgba(122, 173, 223, 0.08);
+      .retro-eval-box__value { color: #7aaddf; }
+    }
+    &.retro-eval-box--bad {
+      border-color: rgba(220, 50, 47, 0.45);
+      background: rgba(220, 50, 47, 0.08);
+      .retro-eval-box__value { color: #dc322f; }
+    }
+  }
+
+  .retro-reason {
+    margin-top: 10px;
+    padding: 7px 10px;
+    border-left: 3px solid #3a5a8a;
+    background: rgba(56, 100, 160, 0.1);
+    border-radius: 0 4px 4px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .retro-reason__label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #7aaddf;
+  }
+
+  .retro-reason__detail {
+    font-size: 0.82rem;
+    line-height: 1.4;
+    margin-top: 4px;
+    padding-left: 8px;
+    border-left: 2px solid;
+    border-radius: 0 3px 3px 0;
+  }
+
+  .retro-reason__summary {
+    font-size: 0.78rem;
+    color: #888;
+    line-height: 1.4;
+    margin-top: 4px;
+    font-style: italic;
+  }
+
+
+  .retro-save {
+    margin-top: 10px;
+  }
+
+  .retro-save__btn {
+    font-size: 0.8rem;
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid #3a5a8a;
+    background: transparent;
+    color: #7aaddf;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+
+    &:hover {
+      background: rgba(56, 100, 160, 0.2);
+      color: #a8ccee;
+    }
+  }
+
+  .retro-save__done {
+    font-size: 0.8rem;
+    color: #666;
+  }
+
+  .retro-save__confirm {
+    font-size: 0.8rem;
+    color: #759900;
+    font-weight: 600;
+  }
+
+  // "Show engine" link floats over the bottom-right corner instead of taking up
+  // its own row, so the terminal-state action button can stay flush to the edge.
+  .retro-feedback {
+    position: relative;
+  }
+
+  .retro-engine-reveal {
+    position: absolute;
+    right: 10px;
+    bottom: 8px;
+    text-align: right;
+    padding: 0;
+    border-top: none;
+    font-size: 0.82em;
+    z-index: 1;
+
+    a {
+      display: inline-block;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: rgba(30, 30, 30, 0.88);
       color: #888;
       cursor: pointer;
       &:hover { color: #aaa; }
@@ -2035,7 +2381,7 @@ body.resizing {
 
     // Smaller min-height — less whitespace on short phone viewports
     .retro-feedback {
-      min-height: 76px;
+      min-height: 88px;
     }
 
     // Slightly smaller heading to fit single-column width comfortably
@@ -2049,7 +2395,48 @@ body.resizing {
       font-size: 1.05em;
     }
   }
+}
 
+// Retro box height-adaptive compression — viewport-height breakpoints
+// Phase 1 (~500px): narrow Next button, hide "Next" label, leave only ▶ arrow.
+// font-size: 0 on the button collapses the bare "Next" text node; the icon
+// restores its own size so the arrow stays visible.
+@media (max-height: 520px) {
+  .retro-box {
+    .retro-player { margin: 0 6px; }
+    .retro-continue {
+      flex: 0 1 18%;
+      font-size: 0;
+      gap: 0;
+      padding: 0 8px;
+      min-height: 52px;
+      .retro-continue__icon { font-size: 1.5em; }
+    }
+  }
+}
+
+// Phase 2 (~350px): Next button becomes a small absolute blue box in bottom-right.
+// Leaves the flex row so the content panel expands to fill the vacated width.
+// .retro-feedback already has position: relative as its positioning context.
+@media (max-height: 380px) {
+  .retro-box {
+    .retro-box__title { line-height: 1.6em; }
+    .retro-feedback { min-height: 40px; }
+    .retro-continue {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      flex: none;
+      width: auto;
+      min-height: 32px;
+      padding: 6px 10px;
+      font-size: 0;
+      .retro-continue__icon { font-size: 1.1em; }
+    }
+  }
+}
+
+@media (max-width: 800px) {
   .analyse__underboard {
     gap: 8px;
     padding-top: 0;
@@ -2893,6 +3280,31 @@ body[data-board='newspaper'] cg-board::before {
     transition: background 0.1s, color 0.1s;
 
     &:hover { background: #2a4a2a; color: #8fc; }
+  }
+
+  // Split queue buttons shown in place of Review when a bulk queue is active
+  &__row-queue-split {
+    flex-shrink: 0;
+    display: flex;
+    border: 1px solid #2a5a2a;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  &__row-queue-btn {
+    flex: 1;
+    padding: 2px 6px;
+    background: #1e3a1e;
+    color: #6a9;
+    border: none;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover { background: #2a4a2a; color: #8fc; }
+
+    &.--top { border-right: 1px solid #2a5a2a; }
   }
 
   // Per-row review progress / queued / accuracy state
@@ -3953,6 +4365,30 @@ body[data-board='newspaper'] cg-board::before {
     transition: background 0.1s, color 0.1s;
 
     &:hover { background: #222; color: #ccc; border-color: #555; }
+  }
+
+  // Split queue buttons shown in place of Review when a bulk queue is active
+  &__review-split {
+    display: inline-flex;
+    border: 1px solid #333;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  &__review-queue-btn {
+    flex: 1;
+    padding: 2px 7px;
+    background: #1a1a1a;
+    color: #888;
+    border: none;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover { background: #222; color: #ccc; }
+
+    &.--top { border-right: 1px solid #333; }
   }
 
   // ── Empty state ─────────────────────────────────────────────────────────
@@ -7390,13 +7826,14 @@ body[data-board='newspaper'] cg-board::before {
 }
 
 .openings__cancel-import-btn {
-  padding: 6px 14px;
+  padding: 3px 10px;
   background: #803030;
   color: #fff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  margin-top: 12px;
+  font-size: 0.75em;
+  flex-shrink: 0;
   &:hover { background: #993838; }
 }
 
@@ -7516,7 +7953,7 @@ body[data-board='newspaper'] cg-board::before {
 }
 
 .openings__tool-rail-label {
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -8443,6 +8880,9 @@ body[data-board='newspaper'] cg-board::before {
   padding: 6px 8px;
   background: #1a2520;
   border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .openings__tree-build-bar {
@@ -8460,9 +8900,21 @@ body[data-board='newspaper'] cg-board::before {
   transition: width 0.15s ease-out;
 }
 
+.openings__tree-build-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .openings__tree-build-label {
   font-size: 0.75em;
   color: #8a8;
+}
+
+.openings__fetch-label {
+  font-size: 0.75rem;
+  color: #888;
+  font-style: italic;
 }
 
 // --- Played lines panel ---
@@ -8674,6 +9126,157 @@ body[data-board='newspaper'] cg-board::before {
   .active & {
     background: #1e1e1e;
     color: #666;
+  }
+}
+
+// --- Date range filter row ---
+.openings__date-range-row {
+  position: relative;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #1e1e1e;
+}
+
+.openings__date-range-btn-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.openings__date-range-btn {
+  flex: 1;
+  padding: 5px 8px;
+  background: #2a2a2a;
+  color: #b0b0b0;
+  border: 1px solid #404040;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-align: left;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+
+  &:hover {
+    background: #313131;
+    color: #c8c8c8;
+    border-color: #505050;
+  }
+
+  &.active {
+    background: #2a2a2a;
+    color: #b0b0b0;
+    border-color: #404040;
+  }
+}
+
+.openings__date-range-clear {
+  flex-shrink: 0;
+  padding: 4px 7px;
+  background: #1a1a1a;
+  color: #555;
+  border: 1px solid #252525;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+
+  &:hover {
+    background: #282828;
+    color: #aaa;
+    border-color: #404040;
+  }
+}
+
+.openings__date-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.openings__date-range-popup {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 51;
+  min-width: 160px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.openings__date-range-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  color: #aaa;
+  border: none;
+  cursor: pointer;
+  font-size: 0.78rem;
+  gap: 8px;
+  text-align: left;
+
+  &:hover {
+    background: #2a2a2a;
+    color: #ddd;
+  }
+
+  &.active {
+    color: #e0e0e0;
+    background: #2e2e2e;
+  }
+}
+
+.openings__date-range-count {
+  font-size: 0.7rem;
+  color: #555;
+  font-weight: 700;
+  background: #1a1a1a;
+  border-radius: 3px;
+  padding: 1px 4px;
+
+  .active & {
+    color: #777;
+  }
+}
+
+// --- Active filter badge ---
+.openings__filter-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 4px 0 6px;
+}
+
+.openings__filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  background: #2a2a2a;
+  color: #b0b0b0;
+  border: 1px solid #404040;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.openings__filter-badge-clear {
+  padding: 0 3px;
+  background: transparent;
+  color: #666;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+
+  &:hover {
+    color: #c8c8c8;
   }
 }
 
@@ -9296,7 +9899,10 @@ table.explorer-games {
     grid-template-columns: 1fr;
   }
   .openings__board-wrap {
-    max-width: 400px;
+    // Limit board to 40% of viewport height so the session panel (row 3) is
+    // accessible without scrolling on short viewports (landscape mobile, etc.).
+    // The board is square (padding-bottom: 100%), so capping width caps height.
+    max-width: min(400px, 40vh);
     margin: 0 auto;
   }
   .openings__collections {
@@ -9689,8 +10295,10 @@ table.explorer-games {
   background: #1e1e1e;
   border-radius: 6px;
   border: 1px solid #333;
+  cursor: grab;
 
   &:hover { border-color: #555; }
+  &:active { cursor: grabbing; }
 
   &__fav {
     background: transparent;
@@ -10623,5 +11231,315 @@ move.bookmarked {
     font-size: 0.78rem;
     &:hover { background: #3a3a3a; }
     &--danger:hover { background: #4a1a1a; color: #f88; }
+  }
+}
+
+// --- Study library two-column layout (CCP-694) ---
+
+.study-library-layout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.study-library-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.study-sidebar {
+  flex-shrink: 0;
+  width: 160px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid #2a2a2a;
+  }
+
+  &__title {
+    flex: 1;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  &__toggle {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 0 2px;
+    font-size: 1rem;
+    line-height: 1;
+    &:hover { color: #aaa; }
+  }
+
+  &__folders {
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    gap: 2px;
+  }
+
+  &__folder {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 5px 8px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:hover { background: #1e1e1e; color: #ddd; }
+    &.active { background: #1a2a3a; color: #4a90d9; }
+    &.drag-over { background: #1a3a2a; border: 1px dashed #4a9d6f; color: #4a9d6f; }
+  }
+
+  &__folder-row {
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+    &:hover .study-sidebar__folder-actions { opacity: 1; }
+  }
+
+  &__folder-row .study-sidebar__folder {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__folder-rename {
+    flex: 1;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #ddd;
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-size: 0.83rem;
+    width: 100%;
+  }
+
+  &__folder-actions {
+    display: flex;
+    gap: 1px;
+    opacity: 0;
+    transition: opacity 0.1s;
+    flex-shrink: 0;
+  }
+
+  &__folder-action {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 0.75rem;
+    border-radius: 3px;
+    &:hover { color: #aaa; background: #2a2a2a; }
+    &--danger:hover { color: #f88; }
+  }
+
+  &__new-folder {
+    width: 100%;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #ddd;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 0.83rem;
+    margin-top: 2px;
+  }
+
+  &__new-folder-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 5px 8px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: #556;
+    cursor: pointer;
+    font-size: 0.8rem;
+    margin-top: 4px;
+    &:hover { color: #4a90d9; background: #1a1a1a; }
+  }
+}
+
+// --- Study view mode toggle and grid (CCP-698) ---
+
+.study-view-toggle {
+  display: flex;
+  gap: 2px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+
+  &__btn {
+    padding: 4px 8px;
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 1rem;
+    &:hover { background: #1e1e1e; color: #aaa; }
+    &.active { background: #2a2a2a; color: #ddd; }
+  }
+}
+
+.study-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.study-card {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.1s;
+
+  &:hover { border-color: #555; }
+  &--selected { border-color: #4a90d9; background: #141e2a; }
+
+  &__board {
+    width: 100%;
+    padding-top: 100%;  // square aspect ratio
+    position: relative;
+
+    .cg-wrap {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100% !important;
+      height: 100% !important;
+    }
+  }
+
+  &__body {
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  &__title {
+    font-size: 0.82rem;
+    color: #ddd;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    &:hover { color: #4a90d9; }
+  }
+
+  &__meta {
+    font-size: 0.72rem;
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__sep { margin: 0 3px; }
+
+  &__fav {
+    font-size: 0.75rem;
+    color: #f0c040;
+    margin-top: 1px;
+  }
+}
+
+// --- Study multi-select and bulk action bar (CCP-697) ---
+
+.study-row {
+  &--selected {
+    border-color: #4a90d9 !important;
+    background: #141e2a !important;
+  }
+
+  &__checkbox {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    accent-color: #4a90d9;
+    cursor: pointer;
+    margin-top: 2px;
+  }
+}
+
+.study-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #1a2a3a;
+  border: 1px solid #3a6090;
+  border-radius: 5px;
+  flex-wrap: wrap;
+
+  &__count { font-size: 0.85rem; color: #8af; font-weight: 600; }
+
+  &__btn {
+    padding: 3px 10px;
+    border: 1px solid #444;
+    border-radius: 4px;
+    background: #1e1e1e;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 0.82rem;
+    &:hover { background: #2a2a2a; }
+    &--danger { border-color: #6a2a2a; color: #f88;
+      &:hover { background: #3a1a1a; }
+    }
+  }
+
+  &__folder-wrap { position: relative; }
+
+  &__folder-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 10;
+    background: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 120px;
+  }
+
+  &__folder-item {
+    padding: 4px 8px;
+    background: none;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 0.82rem;
+    text-align: left;
+    border-radius: 3px;
+    &:hover { background: #2a2a2a; }
   }
 }

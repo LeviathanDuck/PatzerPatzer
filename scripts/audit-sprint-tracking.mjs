@@ -18,8 +18,8 @@ if (dashboardText && !dashboardText.includes('Sprints')) findings.push('Generate
 
 const data = buildSprintDashboardData(root);
 const totalTasks = registry.tasks.length;
-const active = data.sprints.filter(sprint => ['active', 'implementation-partial', 'needs-review', 'blocked'].includes(sprint.status)).length;
-const completed = data.sprints.filter(sprint => ['completed', 'completed-with-issues', 'archived'].includes(sprint.status)).length;
+const active = data.sprints.filter(sprint => ['Needs Prompts', 'Ready to Start', 'In Progress'].includes(sprint.currentStatus)).length;
+const completed = data.sprints.filter(sprint => ['Completed Needs Full Review', 'Completed: With Issues', 'Completed: Reviews Passed'].includes(sprint.currentStatus)).length;
 
 console.log('Sprint tracking audit');
 console.log(`- sprint ids: ${registry.sprints.length}`);

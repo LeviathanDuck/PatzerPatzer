@@ -11,6 +11,7 @@ import { computeAnalysisSummary } from '../analyse/evalView';
 import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
 import { pgnToTree } from '../tree/pgn';
 import { reviewDepth } from './batch';
+import { importFilters } from '../import/filters';
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
 
@@ -31,6 +32,7 @@ export interface ReviewQueueEntry {
   done:   number;
   total:  number;
   status: 'pending' | 'analyzing' | 'complete' | 'error';
+  depth:  number;
 }
 
 interface ReviewBatchItem {
@@ -58,6 +60,8 @@ let reviewSearchActive     = false;
 let reviewPendingStopCount = 0;
 let reviewItemQueue:       ReviewBatchItem[] = [];
 let reviewItemIndex        = 0;
+// Depth used for the currently-analyzing entry — set from entry.depth in startEntryBatch.
+let reviewActiveDepth      = reviewDepth;
 
 // --- Injected deps (set via initReviewQueue) ---
 
@@ -226,7 +230,7 @@ function onReviewBestmove(): void {
     'partial',
     entry.game.id,
     buildAnalysisNodes(entry.ctrl.mainline, p => entry.cache.get(p)),
-    reviewDepth,
+    reviewActiveDepth,
   );
   _redraw();
 
@@ -253,7 +257,7 @@ function sendNextItem(): void {
     'nodeId:', item.nodeId, 'path:', item.nodePath, 'ply:', item.nodePly);
 
   reviewProtocol.setPosition(item.fen);
-  reviewProtocol.go(reviewDepth);
+  reviewProtocol.go(reviewActiveDepth);
 }
 
 // --- Finish a single game ---
@@ -278,7 +282,7 @@ function finishEntry(entry: ReviewQueueEntry): void {
     'complete',
     entry.game.id,
     buildAnalysisNodes(entry.ctrl.mainline, p => entry.cache.get(p)),
-    reviewDepth,
+    reviewActiveDepth,
   );
 
   console.log('[review-engine] game complete:', entry.game.id);
@@ -315,9 +319,10 @@ async function startEntryBatch(entry: ReviewQueueEntry): Promise<void> {
     return;
   }
 
-  reviewItemQueue = items;
-  reviewItemIndex = 0;
+  reviewItemQueue   = items;
+  reviewItemIndex   = 0;
   reviewCurrentEval = {};
+  reviewActiveDepth = entry.depth;
 
   // Ensure engine is ready before sending first position.
   if (!reviewEngineReady) {
@@ -348,8 +353,9 @@ function advanceQueue(): void {
 
 // --- Public API ---
 
-export function enqueueBulkReview(games: ImportedGame[]): void {
-  console.log('[reviewQueue] enqueueBulkReview called — games:', games.map(g => g.id), 'queue len:', queue.length, 'activeIndex:', activeIndex, 'engineInitStarted:', reviewEngineInitStarted);
+export function enqueueBulkReview(games: ImportedGame[], depth?: number): void {
+  const entryDepth = depth ?? reviewDepth;
+  console.log('[reviewQueue] enqueueBulkReview called — games:', games.map(g => g.id), 'queue len:', queue.length, 'activeIndex:', activeIndex, 'engineInitStarted:', reviewEngineInitStarted, 'depth:', entryDepth);
   for (const game of games) {
     // Skip already analyzed or already queued games.
     console.log('[reviewQueue]  game', game.id, '— alreadyAnalyzed:', _analyzedGameIds.has(game.id), 'alreadyQueued:', queue.some(e => e.game.id === game.id));
@@ -365,6 +371,7 @@ export function enqueueBulkReview(games: ImportedGame[]): void {
       done:   0,
       total,
       status: 'pending',
+      depth:  entryDepth,
     });
   }
 
@@ -374,6 +381,45 @@ export function enqueueBulkReview(games: ImportedGame[]): void {
   }
 
   // Start processing if nothing is running.
+  if (activeIndex < 0) {
+    advanceQueue();
+  }
+}
+
+/**
+ * Add games to the front of the pending queue so they are reviewed next,
+ * immediately after any currently-analyzing entry finishes.
+ * Games already analyzed or already in the queue are silently skipped.
+ */
+export function enqueueAtFront(games: ImportedGame[]): void {
+  const newEntries: ReviewQueueEntry[] = [];
+  for (const game of games) {
+    if (_analyzedGameIds.has(game.id)) continue;
+    if (queue.some(e => e.game.id === game.id)) continue;
+
+    const ctrl  = new AnalyseCtrl(pgnToTree(game.pgn));
+    const total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
+    newEntries.push({
+      game,
+      ctrl,
+      cache:  new Map<string, PositionEval>(),
+      done:   0,
+      total,
+      status: 'pending',
+      depth:  reviewDepth,
+    });
+  }
+
+  if (newEntries.length === 0) return;
+
+  // Insert immediately after the active entry so these are next in line.
+  const insertAt = activeIndex >= 0 ? activeIndex + 1 : 0;
+  queue.splice(insertAt, 0, ...newEntries);
+
+  if (!reviewEngineInitStarted) {
+    void initReviewEngine('/stockfish-web');
+  }
+
   if (activeIndex < 0) {
     advanceQueue();
   }
@@ -440,5 +486,5 @@ export function getQueueSummary(): { total: number; done: number; running: boole
 }
 
 export function getAutoReview(): boolean {
-  return localStorage.getItem('patzer.autoReview') === 'true';
+  return importFilters.autoReview;
 }

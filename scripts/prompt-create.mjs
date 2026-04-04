@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { mutateRegistryLocked, requirePrompt, validatePromptBodyText } from './prompt-registry-lib.mjs';
-import { readSprintRegistry } from './sprint-registry-lib.mjs';
+import { mutateSprintRegistryLocked, readSprintRegistry } from './sprint-registry-lib.mjs';
 
 const root = process.cwd();
 const args = process.argv.slice(2);
@@ -86,6 +86,36 @@ if (sprintId || sprintPhaseId || sprintTaskId) {
   }
 }
 
+const sprintSourceDoc = sourceDocument.startsWith('docs/mini-sprints/');
+if (sprintSourceDoc && (!sprintId || !sprintPhaseId || !sprintTaskId)) {
+  console.error('Sprint-linked prompt creation requires --sprint-id, --sprint-phase-id, and --sprint-task-id.');
+  process.exit(1);
+}
+
+if ((sprintId || sprintPhaseId || sprintTaskId) && (!sprintId || !sprintPhaseId || !sprintTaskId)) {
+  console.error('If any sprint linkage flag is provided, all of --sprint-id, --sprint-phase-id, and --sprint-task-id are required.');
+  process.exit(1);
+}
+
+if (sprintId && sprintPhaseId && sprintTaskId) {
+  const { registry: sprintRegistry } = readSprintRegistry(root);
+  const sprint = sprintRegistry.sprints.find(entry => entry.id === sprintId);
+  const phase = sprintRegistry.phases.find(entry => entry.id === sprintPhaseId);
+  const task = sprintRegistry.tasks.find(entry => entry.id === sprintTaskId);
+  if (!sprint || !phase || !task) {
+    console.error('Sprint linkage references unknown sprint, phase, or task.');
+    process.exit(1);
+  }
+  if (phase.sprintId !== sprint.id || task.sprintId !== sprint.id || task.phaseId !== phase.id) {
+    console.error('Sprint linkage fields do not point to the same sprint/phase/task chain.');
+    process.exit(1);
+  }
+  if (sprint.sourceDocument !== sourceDocument) {
+    console.error(`Sprint-linked prompt source document must match sprint source document: ${sprint.sourceDocument}`);
+    process.exit(1);
+  }
+}
+
 try {
   await mutateRegistryLocked(root, registry => {
     const prompt = requirePrompt(registry, id);
@@ -133,6 +163,17 @@ try {
     prompt.sprintPhaseId = sprintPhaseId;
     prompt.sprintTaskId = sprintTaskId;
   });
+
+  if (sprintId && sprintPhaseId && sprintTaskId) {
+    await mutateSprintRegistryLocked(root, sprintRegistry => {
+      const task = sprintRegistry.tasks.find(entry => entry.id === sprintTaskId);
+      const sprint = sprintRegistry.sprints.find(entry => entry.id === sprintId);
+      if (!task || !sprint) throw new Error(`Failed to link ${id} back to sprint registry task ${sprintTaskId}.`);
+      task.linkedPromptIds = [...new Set([...(task.linkedPromptIds || []), id])];
+      sprint.unassignedPromptIds = (sprint.unassignedPromptIds || []).filter(promptId => promptId !== id);
+      sprint.updatedAt = new Date().toISOString();
+    });
+  }
 
   console.log(`${id} → created`);
   console.log('Running prompts:refresh...');

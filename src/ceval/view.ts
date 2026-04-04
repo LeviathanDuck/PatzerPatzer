@@ -62,10 +62,24 @@ export function initCevalView(deps: {
 // --- Module state ---
 
 let showEngineSettings = false;
+let retroVisibleEngineEnabled = false;
 let pvBoard: { fen: string; uci: string } | null = null;
 let pvBoardPos: { x: number; y: number } = { x: 0, y: 0 };
 const PV_BOARD_SIZE = 384;
 const PV_BOARD_OFFSET = 16;
+
+export function isRetroVisibleEngineEnabled(): boolean {
+  return retroVisibleEngineEnabled;
+}
+
+export function resetRetroVisibleEngineUi(): void {
+  retroVisibleEngineEnabled = false;
+  showEngineSettings = false;
+}
+
+export function setRetroVisibleEngineEnabled(v: boolean): void {
+  retroVisibleEngineEnabled = v;
+}
 
 // --- renderCeval ---
 
@@ -75,16 +89,23 @@ const PV_BOARD_OFFSET = 16;
  * Layout: div.ceval flex row: .cmn-toggle | pearl | div.engine | button.settings-gear
  * CSS reference: ui/lib/css/ceval/_ctrl.scss
  */
-export function renderCeval(): VNode {
-  const hasEval  = currentEval.cp !== undefined || currentEval.mate !== undefined;
-  const pearlStr = engineEnabled
+export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolving?: boolean }): VNode {
+  const retroHiddenByDefault = opts?.retroHiddenByDefault === true;
+  // retroSolving: user is in the LFYM attempt phase (feedback === 'find' | 'fail').
+  // Pearl is blanked regardless of engine toggle state — showing the eval value
+  // during the attempt spoils the puzzle by revealing the position's objective score.
+  // Mirrors lichess-org/lila: showCevalPvs: !ctrl.retro?.isSolving() pattern.
+  const retroSolving = opts?.retroSolving === true;
+  const visibleEngineEnabled = retroHiddenByDefault ? retroVisibleEngineEnabled : engineEnabled;
+  const hasEval  = visibleEngineEnabled && !retroSolving && (currentEval.cp !== undefined || currentEval.mate !== undefined);
+  const pearlStr = visibleEngineEnabled && !retroSolving && engineEnabled
     ? (hasEval ? formatScore(currentEval) : (engineReady ? '…' : ''))
     : '';
 
   const engineLabel = protocol.engineName ?? 'Stockfish 18';
-  const statusText  = !engineEnabled
+  const statusText  = !visibleEngineEnabled
     ? 'Local analysis'
-    : !engineReady
+    : !engineEnabled || !engineReady
       ? 'Loading…'
       : batchAnalyzing
         ? `Reviewing ${batchDone}/${batchQueue.length}…`
@@ -93,10 +114,10 @@ export function renderCeval(): VNode {
   // Thin bar along the top of the ceval panel.
   // Progress bar along the top: fills left-to-right while searching, stays solid at 100% when done.
   // Width tracks whichever of depth-fraction or time-fraction is further along.
-  const evalDone = engineEnabled && engineReady &&
+  const evalDone = visibleEngineEnabled && engineEnabled && engineReady &&
     !isEngineSearching() && currentEval.depth !== undefined;
   const progressPct = evalDone ? 100 : Math.round(getSearchProgress() * 100);
-  const progressBar = engineEnabled && engineReady
+  const progressBar = visibleEngineEnabled && engineEnabled && engineReady
     ? h('div.ceval__progress', [
         h('div.ceval__progress-fill', {
           class: { 'ceval__progress-fill--done': evalDone },
@@ -105,14 +126,32 @@ export function renderCeval(): VNode {
       ])
     : null;
 
-  return h('div.ceval', { class: { enabled: engineEnabled } }, [
+  return h('div.ceval', { class: { enabled: visibleEngineEnabled } }, [
     progressBar,
     // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
     h('button.cmn-toggle', {
-      class: { active: engineEnabled },
+      class: { active: visibleEngineEnabled },
       attrs: { title: 'Toggle analysis engine (L)' },
-      on: { click: toggleEngine },
-    }, engineEnabled ? 'On' : 'Off'),
+      on: {
+        click: () => {
+          if (retroHiddenByDefault) {
+            retroVisibleEngineEnabled = !retroVisibleEngineEnabled;
+            if (retroVisibleEngineEnabled) {
+              if (!engineEnabled) toggleEngine();
+              _getCtrl().retro?.revealGuidance();
+              syncArrow();
+              evalCurrentPosition();
+            } else {
+              _getCtrl().retro?.hideGuidance();
+              syncArrow();
+            }
+            _redraw();
+            return;
+          }
+          toggleEngine();
+        },
+      },
+    }, visibleEngineEnabled ? 'On' : 'Off'),
 
     // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
     // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element

@@ -24,20 +24,30 @@ import {
 
 export type OpeningsPage = 'library' | 'loading' | 'session';
 
+/** Date range options for the session-level opening tree filter. */
+export const SESSION_DATE_RANGE_OPTIONS = [
+  { value: 'last-week',    label: 'Last Week',    days: 7   },
+  { value: 'last-month',   label: 'Last Month',   days: 30  },
+  { value: 'last-3months', label: 'Last 3 Months', days: 90 },
+  { value: 'last-6months', label: 'Last 6 Months', days: 180 },
+] as const;
+
 let _currentPage: OpeningsPage = 'library';
 let _collections: ResearchCollection[] = [];
 let _collectionsLoaded = false;
 
 // --- Import workflow state ---
-export type ImportStep = 'idle' | 'details' | 'importing' | 'done';
+export type ImportStep = 'idle' | 'details';
 
 let _importStep: ImportStep = 'idle';
+let _isFetching = false;
 let _importSource: ResearchSource = 'chesscom';
 let _importUsername = '';
 let _importColor: 'white' | 'black' | 'both' = 'both';
 let _importError: string | null = null;
 let _importProgress = 0;
 let _importAbort: AbortController | null = null;
+let _importMonth: string | null = null;
 let _lastCreatedCollection: ResearchCollection | null = null;
 
 // --- Import filter state (mirrors header import filters) ---
@@ -61,6 +71,10 @@ export function invalidateCollections(): void {
 /** Current openings page mode. */
 export function openingsPage(): OpeningsPage {
   return _currentPage;
+}
+
+export function setOpeningsPage(page: OpeningsPage): void {
+  _currentPage = page;
 }
 
 /** Whether saved collections have been loaded from IndexedDB. */
@@ -121,20 +135,27 @@ export function importMaxGames(): number { return _importMaxGames; }
 export function setImportMaxGames(v: number): void { _importMaxGames = v <= 0 ? Infinity : v; }
 export function importProgress(): number { return _importProgress; }
 export function setImportProgress(n: number): void { _importProgress = n; }
+export function importMonth(): string | null { return _importMonth; }
+export function setImportMonth(m: string | null): void { _importMonth = m; }
+export function isFetching(): boolean { return _isFetching; }
+export function setIsFetching(v: boolean): void { _isFetching = v; }
 export function importAbort(): AbortController | null { return _importAbort; }
 export function setImportAbort(ctrl: AbortController | null): void { _importAbort = ctrl; }
 export function lastCreatedCollection(): ResearchCollection | null { return _lastCreatedCollection; }
 export function setLastCreatedCollection(c: ResearchCollection | null): void { _lastCreatedCollection = c; }
 
-/** Cancel any in-progress import. */
+/** Cancel any in-progress import. Stops the fetch loop; any previously saved data is preserved. */
 export function cancelImport(): void {
   if (_importAbort) {
     _importAbort.abort();
     _importAbort = null;
   }
-  _importStep = 'details';
+  _isFetching = false;
+  _currentPage = 'library';
+  _importStep = 'idle';
   _importProgress = 0;
-  _importError = 'Import cancelled.';
+  _importMonth = null;
+  _importError = null;
 }
 
 /** Reset import workflow to idle. */
@@ -143,11 +164,13 @@ export function resetImport(): void {
     _importAbort.abort();
     _importAbort = null;
   }
+  _isFetching = false;
   _importStep = 'idle';
   _importUsername = '';
   _importColor = 'both';
   _importError = null;
   _importProgress = 0;
+  _importMonth = null;
   _lastCreatedCollection = null;
   _importSpeeds = new Set();
   _importDateRange = '1month';
@@ -183,12 +206,42 @@ let _boardOrientation: 'white' | 'black' = 'white';
 
 let _colorFilter: 'white' | 'black' | 'both' = 'white';
 let _speedFilter = new Set<string>(); // empty = all speeds
-let _recencyMode: 'recent' | 'all-time' = 'recent';
+let _recencyMode: 'recent' | 'all-time' = 'all-time';
+let _sessionDateRange: string | null = null;
+/** Games currently loaded into the tree (colour + speed + date filtered). */
+let _activeGames: ResearchGame[] = [];
 
 export function recencyMode(): 'recent' | 'all-time' { return _recencyMode; }
 export function setRecencyMode(mode: 'recent' | 'all-time'): void {
   _recencyMode = mode;
   _prepReportCache = null; // force Prep Report to recompute with new mode
+}
+
+/** Active session date range filter (null = all time). */
+export function sessionDateRange(): string | null { return _sessionDateRange; }
+
+/** Set the session date range filter and rebuild the tree. */
+export function setSessionDateRange(range: string | null, redraw: () => void): void {
+  _sessionDateRange = range;
+  setColorFilter(_colorFilter, redraw);
+}
+
+/** Games currently in the tree (colour + speed + date filtered). */
+export function activeGames(): readonly ResearchGame[] { return _activeGames; }
+
+function dateRangeCutoffMs(range: string): number {
+  const entry = (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === range);
+  return entry ? Date.now() - entry.days * 86_400_000 : 0;
+}
+
+function filterByDateRange(games: ResearchGame[], range: string | null): ResearchGame[] {
+  if (!range) return games;
+  const cutoff = dateRangeCutoffMs(range);
+  return games.filter(g => {
+    if (!g.date) return false;
+    const ts = Date.parse(g.date.replace(/\./g, '-'));
+    return !isNaN(ts) && ts >= cutoff;
+  });
 }
 
 // --- Deviation scan state ---
@@ -284,6 +337,8 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
   if (_speedFilter.size > 0) {
     games = games.filter(g => _speedFilter.has(g.timeClass ?? ''));
   }
+  games = filterByDateRange(games, _sessionDateRange);
+  _activeGames = games;
 
   // Clear the tree immediately so the view shows an empty state while building.
   const emptyBuilder = new OpeningTreeBuilder();
@@ -370,6 +425,8 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   if (_speedFilter.size > 0) {
     games = games.filter(g => _speedFilter.has(g.timeClass ?? ''));
   }
+  games = filterByDateRange(games, _sessionDateRange);
+  _activeGames = games;
 
   // Start background tree build
   _treeBuildProgress = 0;
@@ -528,7 +585,7 @@ let _summaryCache: CollectionSummary | null = null;
 export function getCollectionSummary(): CollectionSummary | null {
   if (!_activeCollection || _treeBuilding) return null;
   if (!_summaryCache) {
-    _summaryCache = computeCollectionSummary(_activeCollection.games, _activeCollection.target);
+    _summaryCache = computeCollectionSummary(_activeGames, _activeCollection.target);
   }
   return _summaryCache;
 }
@@ -566,7 +623,7 @@ export function getPrepReportViewModel(): PrepReportViewModel | null {
   if (!_activeCollection || _treeBuilding) return null;
   if (!_prepReportCache) {
     const summary = getCollectionSummary()!; // safe: checked above
-    const report  = computePrepReport(_activeCollection.games, _activeCollection.target, summary);
+    const report  = computePrepReport(_activeGames, _activeCollection.target, summary);
     // For line analysis, 'both' falls back to 'white' perspective as the base pass.
     // The Prep Report view can layer color-specific filtering on top if needed.
     const colorPerspective = _colorFilter === 'both' ? 'white' : _colorFilter;
@@ -593,7 +650,7 @@ export function getStyleViewModel(): StyleViewModel | null {
   if (!_styleCache) {
     const summary = getCollectionSummary()!; // safe: checked above
     _styleCache = computeStyleViewModel(
-      _activeCollection.games,
+      _activeGames,
       _openingTree,
       _activeCollection.target,
       summary,
@@ -708,6 +765,8 @@ export function closeSession(): void {
   _sessionPath = [];
   _sessionNode = null;
   _currentPage = 'library';
+  _sessionDateRange = null;
+  _activeGames = [];
   void clearSessionState();
 }
 

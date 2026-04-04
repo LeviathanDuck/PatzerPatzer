@@ -154,15 +154,38 @@ const importCallbacks = {
     selectedGameId = first.id;
     void saveGamesToIdb(importedGames);
     loadGame(first.pgn); // calls redraw
-    // Auto-review: queue all newly imported games for background engine review.
-    if (importFilters.autoReview && dedupedGames.length > 0) {
-      enqueueBulkReview(dedupedGames);
+    // Auto-review: queue newly imported games for background engine review.
+    // Requires both the primary toggle and the confirmation toggle to be enabled.
+    if (importFilters.autoReview && importFilters.autoReviewConfirmed && dedupedGames.length > 0) {
+      enqueueBulkReview(dedupedGames, importFilters.autoReviewDepth);
     }
   },
   redraw(): void { redraw(); },
 };
 
 const SAMPLE_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
+
+// TEMPORARY: feedback test seed — remove after testing
+// A deliberately crafted game where white plays a wide spectrum of move quality
+// (solid opening → inaccuracies → mistakes → blunders → collapses) so the full
+// severity feedback gradient can be tested end-to-end via game review + LFYM.
+const FEEDBACK_TEST_PGN = `[Event "Feedback Test Game"]
+[Site "PatzerPro Testing"]
+[Date "2026.04.04"]
+[White "TestPlayer"]
+[Black "Stockfish"]
+[Result "0-1"]
+[WhiteElo "1200"]
+[BlackElo "2800"]
+[TimeControl "600+0"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 Nf6 5. c3 d6
+6. O-O Bg4 7. h3 Bh5 8. b4 Bb6 9. a4 a6 10. Nbd2 O-O
+11. d4 exd4 12. cxd4 Bxf3 13. Nxf3 d5 14. e5 Ne4 15. Bd3 f5
+16. Ng5 Nxg5 17. Bxg5 Qd7 18. f4 Nxe5 19. Re1 Nxd3 20. Re7 Qd8
+21. Rxb7 Bxd4+ 22. Kh1 Nf2+ 23. Kg1 Nxh3+ 24. Kh1 Qxg5 25. Qf3 Nf2+
+26. Kg1 Nd1+ 27. Rb1 Qe3+ 28. Kh2 Qxf4+ 29. Kg1 Ne3 30. Rf1 Rab8
+0-1`;
 
 let importedGames: ImportedGame[] = [];
 let selectedGameId: string | null = null;
@@ -249,6 +272,7 @@ function renderContextMenu(): VNode | null {
         const path = contextMenuPath!;
         contextMenuPath = null; contextMenuPos = null;
         promoteAt(ctrl.root, path, false);
+        syncArrow();
         redraw();
       } },
     }, 'Promote variation') : null,
@@ -257,6 +281,7 @@ function renderContextMenu(): VNode | null {
         const path = contextMenuPath!;
         contextMenuPath = null; contextMenuPos = null;
         promoteAt(ctrl.root, path, true);
+        syncArrow();
         redraw();
       } },
     }, 'Make main line') : null,
@@ -455,14 +480,18 @@ function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user' }): voi
   resetCurrentEval();
   clearPuzzleCandidates();
   resetBatchState();
-  // Default orientation to the importing user's perspective when determinable.
-  // Leaves orientation unchanged if user side cannot be determined (PGN paste, unknown username).
+  // Default orientation to the importing user's perspective when determinable;
+  // fall back to 'white' so orientation always resets on game load.
   if (selectedGameId) {
     const loadedGame = importedGames.find(g => g.id === selectedGameId);
     if (loadedGame) {
       const userColor = getUserColor(loadedGame);
-      if (userColor) setOrientation(userColor);
+      setOrientation(userColor ?? 'white');
+    } else {
+      setOrientation('white');
     }
+  } else {
+    setOrientation('white');
   }
   syncBoardAndArrow();
   scheduleNavStateSave('');
@@ -691,6 +720,7 @@ function clearVariations(): void {
   } else {
     ctrl.setPath(ctrl.path); // refresh ctrl.mainline / nodeList after tree mutation
     syncBoard();
+    syncArrow();
     scheduleNavStateSave(ctrl.path);
     redraw();
   }
@@ -707,6 +737,7 @@ function deleteVariation(path: string): void {
     // Active node was inside the deleted variation — move up to its parent.
     navigate(pathInit(path));
   } else {
+    syncArrow();
     scheduleNavStateSave(ctrl.path);
     redraw();
   }
@@ -976,7 +1007,6 @@ function routeContent(route: Route): VNode {
             navigate,
             redraw,
             uciToSan,
-            onRevealGuidance:  () => { ctrl.retro?.revealGuidance(); syncArrow(); redraw(); },
             onClose:           toggleRetro,
             getEvalDepth:      () => currentEval.depth,
           }),
@@ -1476,7 +1506,31 @@ void loadPuzzlesFromIdb().then(puzzles => {
 // Mirrors the deferred-load pattern of lichess-org/lila: ui/analyse/src/idbTree.ts merge()
 void loadGamesFromIdb().then(stored => {
   gamesLibraryLoaded = true;
-  if (!stored || stored.games.length === 0) { redraw(); return; }
+  if (!stored || stored.games.length === 0) {
+    // TEMPORARY: feedback test seed — remove after testing
+    const seedGame: ImportedGame = {
+      id: 'game-feedback-test',
+      pgn: FEEDBACK_TEST_PGN,
+      white: 'TestPlayer',
+      black: 'Stockfish',
+      result: '0-1',
+      date: '2026.04.04',
+      timeClass: 'rapid',
+      whiteRating: 1200,
+      blackRating: 2800,
+      importedAt: Date.now(),
+    };
+    importedGames = [seedGame];
+    selectedGameId = seedGame.id;
+    selectedGamePgn = seedGame.pgn;
+    void saveGamesToIdb([seedGame]);
+    ctrl = new AnalyseCtrl(pgnToTree(seedGame.pgn));
+    clearEvalCache();
+    resetCurrentEval();
+    setOrientation('white');
+    redraw();
+    return;
+  }
   importedGames = stored.games;
   // Restore gameIdCounter so new imports don't collide with existing ids.
   const maxId = Math.max(...stored.games.map(g => parseInt(g.id.replace('game-', '')) || 0));
@@ -1494,6 +1548,8 @@ void loadGamesFromIdb().then(stored => {
   ctrl = new AnalyseCtrl(pgnToTree(toLoad.pgn));
   clearEvalCache();
   resetCurrentEval();
+  // Set orientation from the user's side before first paint; fall back to 'white'.
+  setOrientation(getUserColor(toLoad) ?? 'white');
   // Restore analysis path — ctrl.setPath is a no-op if the path is invalid for this tree
   if (stored.path) ctrl.setPath(stored.path);
   syncBoardAndArrow();

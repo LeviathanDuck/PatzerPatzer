@@ -8,7 +8,7 @@ import { h, type VNode } from 'snabbdom';
 import { parsePgnHeader, type ImportedGame } from '../import/types';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
-import { enqueueBulkReview, getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
+import { enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
 import { LOSS_THRESHOLDS } from '../engine/winchances';
 import { getMissedMoments, type MissedMoment } from '../engine/tactics';
 
@@ -533,14 +533,39 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                 ? (userAcc !== null && userAcc !== undefined
                     ? h('span.game-list__row-progress.--accuracy', `${Math.round(userAcc)}%`)
                     : null)
-                : h('button.game-list__row-review', {
-                    attrs: { title: 'Queue for background review' },
-                    on: { click: (e: MouseEvent) => {
-                      e.stopPropagation();
-                      enqueueBulkReview([game]);
-                      deps.redraw();
-                    }},
-                  }, 'Review');
+                : isBulkRunning()
+                  ? h('div.game-list__row-queue-split', [
+                      h('button.game-list__row-queue-btn.--top', {
+                        attrs: { title: 'Review next' },
+                        on: { click: (e: MouseEvent) => {
+                          e.stopPropagation();
+                          const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
+                            ? deps.importedGames.filter(g => selectedGameIds.has(g.id))
+                            : [game];
+                          enqueueAtFront(bulk);
+                          deps.redraw();
+                        }},
+                      }, '⬆'),
+                      h('button.game-list__row-queue-btn.--bottom', {
+                        attrs: { title: 'Add to queue' },
+                        on: { click: (e: MouseEvent) => {
+                          e.stopPropagation();
+                          const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
+                            ? deps.importedGames.filter(g => selectedGameIds.has(g.id))
+                            : [game];
+                          enqueueBulkReview(bulk);
+                          deps.redraw();
+                        }},
+                      }, '⬇'),
+                    ])
+                  : h('button.game-list__row-review', {
+                      attrs: { title: 'Queue for background review' },
+                      on: { click: (e: MouseEvent) => {
+                        e.stopPropagation();
+                        enqueueBulkReview([game]);
+                        deps.redraw();
+                      }},
+                    }, 'Review');
 
           return h('li', [
             h('button.game-list__row', {
@@ -769,10 +794,35 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                   h('span.games-view__analyzing-progress', { attrs: { title: 'Reviewing…' } }, `${reviewProgress}%`),
                 ])
               : h('td.games-view__review-cell', [
-                  h('button.games-view__review-btn', {
-                    on: { click: (e: Event) => { e.stopPropagation(); deps.reviewGame(game); } },
-                    attrs: { title: 'Load into Analysis and start review' },
-                  }, 'Review'),
+                  isBulkRunning()
+                    ? h('div.games-view__review-split', [
+                        h('button.games-view__review-queue-btn.--top', {
+                          attrs: { title: 'Review next' },
+                          on: { click: (e: Event) => {
+                            e.stopPropagation();
+                            const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
+                              ? games.filter(g => selectedGameIds.has(g.id))
+                              : [game];
+                            enqueueAtFront(bulk);
+                            deps.redraw();
+                          }},
+                        }, '⬆'),
+                        h('button.games-view__review-queue-btn.--bottom', {
+                          attrs: { title: 'Add to queue' },
+                          on: { click: (e: Event) => {
+                            e.stopPropagation();
+                            const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
+                              ? games.filter(g => selectedGameIds.has(g.id))
+                              : [game];
+                            enqueueBulkReview(bulk);
+                            deps.redraw();
+                          }},
+                        }, '⬇'),
+                      ])
+                    : h('button.games-view__review-btn', {
+                        on: { click: (e: Event) => { e.stopPropagation(); deps.reviewGame(game); } },
+                        attrs: { title: 'Load into Analysis and start review' },
+                      }, 'Review'),
                 ]);
 
             // Puzzle status: real data from savedPuzzles (persisted in IDB).

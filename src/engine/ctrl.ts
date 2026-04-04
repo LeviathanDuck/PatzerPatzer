@@ -82,6 +82,21 @@ export function setOnBatchBestmove(fn: () => void): void    { _onBatchBestmove =
 let _onLiveEvalImproved: (() => void) | null = null;
 export function setOnLiveEvalImproved(fn: (() => void) | null): void { _onLiveEvalImproved = fn; }
 
+// Richer callback fired after every live eval cache write — passes path + full eval.
+// Registered by main.ts to feed retro live engine tracking (CCP-633).
+let _onLiveEvalUpdated: ((path: string, eval_: PositionEval) => void) | null = null;
+export function setOnLiveEvalUpdated(fn: ((path: string, eval_: PositionEval) => void) | null): void {
+  _onLiveEvalUpdated = fn;
+}
+
+// Callback fired for primary live-analysis info lines before the final bestmove lands.
+// Registered by main.ts so LFYM can surface played-move feedback as soon as
+// the current-node eval is available, instead of waiting for cache promotion.
+let _onLiveEvalInfo: ((path: string, eval_: PositionEval) => void) | null = null;
+export function setOnLiveEvalInfo(fn: ((path: string, eval_: PositionEval) => void) | null): void {
+  _onLiveEvalInfo = fn;
+}
+
 // --- Engine state ---
 
 export const protocol = new StockfishProtocol();
@@ -274,6 +289,13 @@ export function buildArrowShapes(): DrawShape[] {
 
   if (engineEnabled && showEngineArrows && !retroHidden) {
     if (currentEval.best) {
+      // [TEMP DIAG — remove after CCP-733]
+      console.log(
+        '[arrow-diag] drawing engine arrow — evalNodePath:', evalNodePath,
+        '| ctrl.path:', ctrl.path,
+        '| match:', evalNodePath === ctrl.path,
+        '| best:', currentEval.best,
+      );
       const uci = currentEval.best;
       shapes.push(buildArrowShape(uci, 'paleBlue'));
       const labelShape = buildArrowLabelShape(uci, currentEval);
@@ -655,6 +677,7 @@ function parseEngineLine(line: string): void {
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if (depth !== undefined && !evalIsThreat) ev.depth = depth;
       if ((score !== undefined || best) && !_isBatchActive()) {
+        if (!evalIsThreat) _onLiveEvalInfo?.(evalNodePath, { ...currentEval });
         scheduleLiveEngineUiRefresh(!evalIsThreat);
       }
     } else if (!evalIsThreat && score !== undefined) {
@@ -713,6 +736,12 @@ function parseEngineLine(line: string): void {
       // or trigger UI redraws — but still advance a pending eval for the current position.
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
       if (!_isBatchActive() && !_evalFenOverride && evalNodePath !== _getCtrl().path) {
+        // [TEMP DIAG — remove after CCP-733]
+        console.log(
+          '[bestmove-diag] stale bestmove discarded — evalNodePath:', evalNodePath,
+          '| ctrl.path:', _getCtrl().path,
+          '| pendingEval:', pendingEval,
+        );
         pendingLines = [];
         if (pendingEval) evalCurrentPosition();
         else if (threatMode) evalThreatPosition();
@@ -752,6 +781,7 @@ function parseEngineLine(line: string): void {
             if (cached?.label && !stored.label) stored.label = cached.label;
             evalCache.set(nodePath, stored);
             _onLiveEvalImproved?.();
+            _onLiveEvalUpdated?.(nodePath, stored);
           }
         }
         syncArrowDebounced();
@@ -898,6 +928,12 @@ export function evalCurrentPosition(): void {
       pendingStopCount++;
       protocol.stop();
     }
+    // [TEMP DIAG — remove after CCP-733]
+    console.log(
+      '[eval-diag] pendingEval set — engineSearchActive, deferring. evalNodePath:', evalNodePath,
+      '| ctrl.path:', ctrl.path,
+      '| pendingEval was:', pendingEval,
+    );
     pendingEval = true;
     _redraw();
     return;

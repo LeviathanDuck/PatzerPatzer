@@ -30,6 +30,7 @@ The Study Library sits between the current Puzzle V1 product and the planned ORP
 | Analysis board → review → puzzle candidates | Library becomes the canonical save target for reviewed moments |
 | Puzzle V1 user-library definitions | Future: puzzle saves can optionally also create library entries |
 | Openings research → "Save line for practice" | Library entry + practice line in one action |
+| User-uploaded opening repertoire PGNs | Library becomes the canonical home for labeled opening-repertoire study items |
 | ORP (planned, not started) | ORP becomes a specialized view over library items with opening-sourced practice lines |
 | Stats dashboard (data ready, views needed) | Future: practice statistics feed into the stats surface |
 
@@ -60,6 +61,19 @@ what ORP needs. Once the drill engine exists:
 This means ORP implementation should wait for or build on top of the Study Library
 drill engine rather than creating a parallel system.
 
+### Additional repertoire role
+
+The Study Library should also support user-uploaded opening repertoire as a first-class content type.
+That means:
+
+- users can upload or paste PGNs of the opening lines they prefer to play
+- those imports become explicitly labeled opening-repertoire study items, not just generic PGNs
+- that repertoire data should later be reusable outside the Study Library itself
+
+Important distinction:
+- this is not only a future repetition-practice input
+- it is also the source of truth for user-owned repertoire that other surfaces can reference
+
 ---
 
 ## Feature Specification
@@ -75,6 +89,7 @@ drill engine rather than creating a parallel system.
 | Openings research | "Save line for practice" | PGN of the line + practice line auto-created |
 | Game analysis (post-review) | "Save to Library" | Full game PGN + analysis metadata |
 | PGN upload | Paste or file upload in library | One or more study items from PGN |
+| Repertoire upload | Paste or file upload PGNs of preferred opening lines | One or more labeled opening-repertoire study items |
 | Manual entry | Create from empty board | New study, user builds the tree |
 | Puzzle session (future) | "Save position" | Study from puzzle FEN + solution line |
 
@@ -533,6 +548,7 @@ and is not part of the Lichess study practice model.
 - Per-position text annotations in study detail view
 - Folder management (create, rename, delete, drag-to-organize)
 - PGN repertoire import (paste or upload a PGN file → create multiple study items)
+- Labeled opening-repertoire import (uploaded repertoire PGNs are identifiable as preferred lines, not just generic study items)
 - Difficulty detection (flag positions where users consistently fail)
 
 ### Phase 3: Advanced Features
@@ -544,6 +560,12 @@ and is not part of the Lichess study practice model.
 - Custom schedule intervals (user-configurable)
 - Practice statistics charts (accuracy over time, mastery progression)
 - Keyboard shortcuts for drill navigation
+- Cross-surface repertoire reference:
+  - on the analysis board and other relevant pages, the book button should eventually be able to show:
+    - masters games
+    - Lichess games
+    - the user's uploaded repertoire overlay
+  - from an analysed game position, the user should be able to bring up repertoire information and see what the suggested repertoire move would have been
 - Cross-tool auto-save integration:
   - Openings: "Save line for practice" creates study + practice line
   - Puzzles: "Save position" creates study from puzzle FEN

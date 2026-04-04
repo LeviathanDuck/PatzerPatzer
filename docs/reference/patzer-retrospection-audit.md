@@ -53,6 +53,9 @@ UX and board-mode baseline:
 - [docs/reference/lichess-retrospection-ux/ENTRY_POINTS_AND_LAYOUT.md](/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/ENTRY_POINTS_AND_LAYOUT.md)
 - [docs/reference/lichess-retrospection-ux/BOARD_INTERACTION_AND_STATE_EFFECTS.md](/Users/leftcoast/Development/PatzerPatzer/docs/reference/lichess-retrospection-ux/BOARD_INTERACTION_AND_STATE_EFFECTS.md)
 
+Related follow-up comparison audit:
+- [LFYM_MOMENT_SELECTION_AUDIT.md](/Users/leftcoast/Development/PatzerPatzer/docs/reference/LFYM_MOMENT_SELECTION_AUDIT.md)
+
 Important Lichess facts:
 - retrospection is an analysis-board mode, not just a strip and a button
 - candidate moments come from reviewed mainline swings plus missed-mate cases

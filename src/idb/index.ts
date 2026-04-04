@@ -159,7 +159,7 @@ export interface StoredGameRecord {
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
-export const DB_VERSION = 8;
+export const DB_VERSION = 9;
 
 let _idb: IDBDatabase | undefined;
 
@@ -211,6 +211,12 @@ function openGameDb(): Promise<IDBDatabase> {
         const attemptsStore = db.createObjectStore('drill-attempts', { autoIncrement: true });
         attemptsStore.createIndex('positionKey', 'positionKey', { unique: false });
         attemptsStore.createIndex('timestamp',   'timestamp',   { unique: false });
+      }
+      // v9: study folder hierarchy store
+      if (!db.objectStoreNames.contains('folders')) {
+        const foldersStore = db.createObjectStore('folders', { keyPath: 'id' });
+        foldersStore.createIndex('parentId',  'parentId',  { unique: false });
+        foldersStore.createIndex('createdAt', 'createdAt', { unique: false });
       }
     };
     req.onsuccess = () => { _idb = req.result; resolve(_idb); };
@@ -599,7 +605,7 @@ export async function backfillOpenings(): Promise<number> {
 export async function clearAllIdbData(): Promise<void> {
   try {
     const db = await openGameDb();
-    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts'], 'readwrite');
+    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders'], 'readwrite');
     tx.objectStore('game-library').clear();
     tx.objectStore('puzzle-library').clear();
     tx.objectStore('analysis-library').clear();
@@ -610,6 +616,7 @@ export async function clearAllIdbData(): Promise<void> {
     tx.objectStore('practice-lines').clear();
     tx.objectStore('position-progress').clear();
     tx.objectStore('drill-attempts').clear();
+    tx.objectStore('folders').clear();
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror    = () => reject(tx.error);

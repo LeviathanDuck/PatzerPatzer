@@ -118,8 +118,8 @@ export class ExplorerCtrl {
     const { db, speeds, ratings, modes, playerName, color } = this.config;
     const since = this.config.since() || undefined;
     const until = this.config.until() || undefined;
+    const withGames = true;
 
-    // topGames and recentGames require a Lichess OAuth token — disabled until auth is supported.
     if (db === 'masters') {
       return {
         db: 'masters',
@@ -127,8 +127,8 @@ export class ExplorerCtrl {
         variant: 'standard',
         ...(since && { since }),
         ...(until && { until }),
-        topGames: false,
-        recentGames: false,
+        topGames: withGames,
+        recentGames: withGames,
       };
     }
     if (db === 'lichess') {
@@ -140,8 +140,8 @@ export class ExplorerCtrl {
         ratings,
         ...(since && { since }),
         ...(until && { until }),
-        topGames: false,
-        recentGames: false,
+        topGames: withGames,
+        recentGames: withGames,
       };
     }
     // player DB
@@ -155,8 +155,8 @@ export class ExplorerCtrl {
       modes,
       ...(since && { since }),
       ...(until && { until }),
-      topGames: false,
-      recentGames: false,
+      topGames: withGames,
+      recentGames: withGames,
     };
   }
 

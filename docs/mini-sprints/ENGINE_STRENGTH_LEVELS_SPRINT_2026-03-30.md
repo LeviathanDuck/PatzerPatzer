@@ -41,7 +41,7 @@ This sprint builds shared infrastructure so any practice surface can request the
 | CCP | Prompt | Type | What | Files |
 |---|---|---|---|---|
 | CCP-565 | Manager | manager | Execute Phase 1 children | — |
-| CCP-566 | 1.1 | research | Audit SF18 WASM UCI options for strength limiting; read Lichess rateBot.ts | — |
+| CCP-566 | 1.1 | research | Audit SF18 WASM UCI options for strength limiting; read Lichess rateBot.ts. Durable artifact: [`STOCKFISH_18_WASM_STRENGTH_LIMITING_AUDIT.md`](../reference/STOCKFISH_18_WASM_STRENGTH_LIMITING_AUDIT.md) | — |
 | CCP-567 | 1.2 | feature | Define `EngineMode`, `EngineStrengthConfig`, `STRENGTH_LEVELS[1-8]` | `src/engine/types.ts` (new) |
 | CCP-568 | 1.3 | feature | Add `setPlayStrength(config)`, `setAnalysisMode()`, `goPlay(depth)` to StockfishProtocol | `src/ceval/protocol.ts` |
 | CCP-569 | 1.4 | feature | Build + typecheck validation | — |
@@ -53,7 +53,7 @@ This sprint builds shared infrastructure so any practice surface can request the
 | CCP | Prompt | Type | What | Files |
 |---|---|---|---|---|
 | CCP-571 | Manager | manager | Execute Phase 2 children | — |
-| CCP-572 | 2.1 | research | Trace engine lifecycle in ctrl.ts, identify safe mode-switch injection points | — |
+| CCP-572 | 2.1 | research | Trace engine lifecycle in ctrl.ts, identify safe mode-switch injection points. Durable artifact: [`ENGINE_LIFECYCLE_MODE_SWITCH_AUDIT.md`](../reference/ENGINE_LIFECYCLE_MODE_SWITCH_AUDIT.md) | — |
 | CCP-573 | 2.2 | feature | Add `engineMode`, `playStrengthConfig`, `enterPlayMode()`, `exitPlayMode()` to ctrl.ts; guard `evalCurrentPosition()` and `evalThreatPosition()` | `src/engine/ctrl.ts` |
 | CCP-574 | 2.3 | feature | Persist last-used strength level in localStorage (`patzer.playStrengthLevel`) | `src/engine/ctrl.ts` |
 | CCP-575 | 2.4 | feature | Build + typecheck + manual console validation | — |
@@ -65,7 +65,7 @@ This sprint builds shared infrastructure so any practice surface can request the
 | CCP | Prompt | Type | What | Files |
 |---|---|---|---|---|
 | CCP-577 | Manager | manager | Execute Phase 3 children | — |
-| CCP-578 | 3.1 | research | Design bestmove routing for play mode — callback slot in ctrl.ts vs dedicated listener | — |
+| CCP-578 | 3.1 | research | Design bestmove routing for play mode — callback slot in ctrl.ts vs dedicated listener. Durable artifact: [`PLAY_MODE_BESTMOVE_ROUTING_DESIGN.md`](../reference/PLAY_MODE_BESTMOVE_ROUTING_DESIGN.md) | — |
 | CCP-579 | 3.2 | feature | Implement `requestPlayMove()` and `cancelPlayMove()` with one-shot bestmove callback routing | `src/engine/playMove.ts` (new), `src/engine/ctrl.ts` |
 | CCP-580 | 3.3 | feature | Add `playMoveWithDelay()` — variable delay scaled by strength level + random jitter | `src/engine/playMove.ts` |
 | CCP-581 | 3.4 | feature | Build + typecheck + console integration test (call from devtools, verify move returned) | — |

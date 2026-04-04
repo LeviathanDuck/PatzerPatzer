@@ -4,15 +4,24 @@
 
 import { h, type VNode } from 'snabbdom';
 import {
-  studies, isLoaded,
+  studies, allStudies, isLoaded,
   sortKey, sortDir, filterFav, filterTag, filterSrc, searchQuery,
   setSortKey, setSortDir, setFilterFav, setFilterTag, setFilterSrc, setSearch,
-  studyTags, updateStudy, deleteStudy, importPgnToLibrary,
+  studyTags, studyFolders, updateStudy, deleteStudy, importPgnToLibrary,
   practiceLoaded, dueCount, dueCountForStudy,
   reviewSequences, learnSequences, loadPracticeData,
+  hasMore, isLoadingMore, loadNextPage,
+  folders, foldersLoaded, activeFolderName, sidebarCollapsed,
+  setActiveFolderName, toggleSidebar, loadFolders,
+  createFolder, renameFolder, removeFolderEntity, moveStudyToFolder,
+  selectedIds, isSelected, selectionCount, clearSelection,
+  handleStudyClick, bulkDeleteStudies, bulkAddToFolder, bulkSetFavorite,
+  viewMode, setViewMode,
+  seedSampleStudies, isSeeding,
   type StudySortKey,
 } from './studyCtrl';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
+import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { StudyItem } from './types';
 
 // --- Source label helpers ---
@@ -49,11 +58,42 @@ let _importStatus: string | null = null;
 
 // --- Row rendering ---
 
-function renderStudyRow(item: StudyItem, redraw: () => void): VNode {
+function renderStudyRow(item: StudyItem, idx: number, redraw: () => void): VNode {
   const isEditingTitle = _editingTitleId === item.id;
   const isEditingTag   = _editingTagId === item.id;
+  const selected       = isSelected(item.id);
 
-  return h('div.study-row', { key: item.id }, [
+  return h('div.study-row', {
+    key: item.id,
+    class: { 'study-row--selected': selected },
+    attrs: { draggable: 'true' },
+    on: {
+      click: (e: MouseEvent) => {
+        // Only trigger selection if clicking on row background (not on child buttons/inputs)
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a, input, textarea')) return;
+        handleStudyClick(item.id, idx, e);
+        redraw();
+      },
+      dragstart: (e: DragEvent) => {
+        _draggingStudyId = item.id;
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', item.id);
+        }
+      },
+      dragend: () => { _draggingStudyId = null; _dragOverFolderName = null; redraw(); },
+    },
+  }, [
+    // Selection checkbox
+    h('input.study-row__checkbox', {
+      attrs: { type: 'checkbox', checked: selected },
+      on: { click: (e: Event) => {
+        e.stopPropagation();
+        handleStudyClick(item.id, idx, e as unknown as MouseEvent);
+        redraw();
+      } },
+    }),
     // Favorite star
     h('button.study-row__fav', {
       class: { active: item.favorite },
@@ -235,6 +275,158 @@ function renderStudyRow(item: StudyItem, redraw: () => void): VNode {
   ]);
 }
 
+// --- Folder sidebar state (ephemeral) ---
+let _newFolderMode  = false;
+let _newFolderValue = '';
+let _renamingFolderId: string | null = null;
+let _renamingFolderValue = '';
+
+// --- Drag-and-drop state ---
+let _draggingStudyId: string | null   = null;
+let _dragOverFolderName: string | null = null;
+
+// DnD drop handlers for a folder drop target identified by name.
+function folderDropHandlers(folderName: string, redraw: () => void) {
+  return {
+    dragover: (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      if (_dragOverFolderName !== folderName) { _dragOverFolderName = folderName; redraw(); }
+    },
+    dragleave: () => {
+      if (_dragOverFolderName === folderName) { _dragOverFolderName = null; redraw(); }
+    },
+    drop: (e: DragEvent) => {
+      e.preventDefault();
+      const studyId = e.dataTransfer?.getData('text/plain') ?? _draggingStudyId;
+      _dragOverFolderName = null;
+      if (studyId) void moveStudyToFolder(studyId, folderName).then(redraw);
+    },
+  };
+}
+
+// --- Folder sidebar ---
+
+function renderFolderSidebar(redraw: () => void): VNode {
+  // Merge IDB-persisted folders with inline folder names from studies (backward compat).
+  const persistedNames = new Set(folders().map(f => f.name));
+  const inlineNames    = studyFolders().filter(n => !persistedNames.has(n));
+  // All known folder names in display order: persisted (sorted by name) + orphaned inline names
+  const allNames: string[] = [
+    ...folders().map(f => f.name).sort(),
+    ...inlineNames.sort(),
+  ];
+
+  return h('div.study-sidebar', [
+    h('div.study-sidebar__header', [
+      h('span.study-sidebar__title', 'Folders'),
+      h('button.study-sidebar__toggle', {
+        attrs: { title: sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar' },
+        on: { click: () => { toggleSidebar(); redraw(); } },
+      }, sidebarCollapsed() ? '›' : '‹'),
+    ]),
+    sidebarCollapsed() ? null : h('div.study-sidebar__folders', [
+      h('button.study-sidebar__folder', {
+        class: { active: activeFolderName() === null },
+        on: { click: () => { setActiveFolderName(null); redraw(); } },
+      }, 'All Studies'),
+
+      // Persisted folder entries (with rename + delete controls)
+      ...folders().map(folder => {
+        const isRenaming = _renamingFolderId === folder.id;
+        return h('div.study-sidebar__folder-row', { key: folder.id }, [
+          isRenaming
+            ? h('input.study-sidebar__folder-rename', {
+                attrs: { value: _renamingFolderValue },
+                hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
+                on: {
+                  input: (e: Event) => { _renamingFolderValue = (e.target as HTMLInputElement).value; },
+                  blur: () => {
+                    if (_renamingFolderValue.trim()) {
+                      void renameFolder(folder.id, _renamingFolderValue).then(redraw);
+                    }
+                    _renamingFolderId = null;
+                    redraw();
+                  },
+                  keydown: (e: KeyboardEvent) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    if (e.key === 'Escape') { _renamingFolderId = null; redraw(); }
+                  },
+                },
+              })
+            : h('button.study-sidebar__folder', {
+                class: {
+                  active:       activeFolderName() === folder.name,
+                  'drag-over':  _dragOverFolderName === folder.name,
+                },
+                on: {
+                  click: () => { setActiveFolderName(activeFolderName() === folder.name ? null : folder.name); redraw(); },
+                  ...folderDropHandlers(folder.name, redraw),
+                },
+              }, folder.name),
+          h('div.study-sidebar__folder-actions', [
+            h('button.study-sidebar__folder-action', {
+              attrs: { title: 'Rename folder' },
+              on: { click: (e: Event) => {
+                e.stopPropagation();
+                _renamingFolderId    = folder.id;
+                _renamingFolderValue = folder.name;
+                redraw();
+              } },
+            }, '✎'),
+            h('button.study-sidebar__folder-action.study-sidebar__folder-action--danger', {
+              attrs: { title: 'Delete folder' },
+              on: { click: (e: Event) => {
+                e.stopPropagation();
+                if (confirm(`Delete folder "${folder.name}"? Studies will not be deleted.`)) {
+                  void removeFolderEntity(folder.id).then(redraw);
+                }
+              } },
+            }, '×'),
+          ]),
+        ]);
+      }),
+
+      // Orphaned inline folder names (in studies but no entity)
+      ...inlineNames.map(name =>
+        h('button.study-sidebar__folder', {
+          key: `inline-${name}`,
+          class: { active: activeFolderName() === name, 'drag-over': _dragOverFolderName === name },
+          on: {
+            click: () => { setActiveFolderName(activeFolderName() === name ? null : name); redraw(); },
+            ...folderDropHandlers(name, redraw),
+          },
+        }, name)
+      ),
+
+      // New folder input or button
+      _newFolderMode
+        ? h('input.study-sidebar__new-folder', {
+            attrs: { placeholder: 'Folder name…', value: _newFolderValue },
+            hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
+            on: {
+              input:   (e: Event) => { _newFolderValue = (e.target as HTMLInputElement).value; },
+              blur:    () => {
+                if (_newFolderValue.trim()) {
+                  void createFolder(_newFolderValue).then(redraw);
+                }
+                _newFolderMode  = false;
+                _newFolderValue = '';
+                redraw();
+              },
+              keydown: (e: KeyboardEvent) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                if (e.key === 'Escape') { _newFolderMode = false; redraw(); }
+              },
+            },
+          })
+        : h('button.study-sidebar__new-folder-btn', {
+            on: { click: () => { _newFolderMode = true; _newFolderValue = ''; redraw(); } },
+          }, '+ New Folder'),
+    ]),
+  ]);
+}
+
 // --- Filter bar ---
 
 function renderFilterBar(redraw: () => void): VNode {
@@ -269,6 +461,118 @@ function renderFilterBar(redraw: () => void): VNode {
         on: { click: () => { setFilterTag(filterTag() === tag ? null : tag); redraw(); } },
       }, tag)
     ),
+  ]);
+}
+
+// --- Grid view ---
+
+const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+function extractFenFromPgn(pgn: string): string {
+  const m = pgn.match(/\[FEN\s+"([^"]+)"\]/i);
+  return m ? m[1]! : STARTING_FEN;
+}
+
+function renderStudyCard(item: StudyItem, idx: number, redraw: () => void): VNode {
+  const selected = isSelected(item.id);
+  const fen      = extractFenFromPgn(item.pgn);
+
+  return h('div.study-card', {
+    key: item.id,
+    class: { 'study-card--selected': selected },
+    on: {
+      click: (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a')) return;
+        handleStudyClick(item.id, idx, e);
+        redraw();
+      },
+    },
+  }, [
+    // Mini board thumbnail via Chessground static mount
+    h('div.study-card__board', {
+      hook: {
+        insert: (vn) => {
+          const el = vn.elm as HTMLElement;
+          makeChessground(el, {
+            fen,
+            viewOnly:    true,
+            coordinates: false,
+            animation:   { enabled: false },
+            highlight:   { lastMove: false, check: false },
+            movable:     { free: false },
+            draggable:   { enabled: false },
+            selectable:  { enabled: false },
+          });
+        },
+      },
+    }),
+    h('div.study-card__body', [
+      h('a.study-card__title', {
+        attrs: { href: `#/study/${item.id}` },
+        on:    { click: (e: Event) => e.stopPropagation() },
+      }, item.title),
+      h('div.study-card__meta', [
+        h('span', sourceLabel(item.source)),
+        h('span.study-card__sep', '·'),
+        h('span', formatDate(item.createdAt)),
+      ]),
+      item.favorite ? h('span.study-card__fav', '★') : null,
+    ]),
+  ]);
+}
+
+// --- Bulk action bar ---
+
+// State: bulk folder assignment dropdown
+let _bulkFolderMenuOpen = false;
+
+function renderBulkActionBar(redraw: () => void): VNode | null {
+  const count = selectionCount();
+  if (count === 0) return null;
+
+  const allFolderNames = [
+    ...folders().map(f => f.name),
+    ...studyFolders().filter(n => !folders().some(f => f.name === n)),
+  ].sort();
+
+  return h('div.study-bulk-bar', [
+    h('span.study-bulk-bar__count', `${count} selected`),
+    h('button.study-bulk-bar__btn', {
+      on: { click: () => {
+        void bulkSetFavorite(true).then(redraw);
+      } },
+    }, '★ Favorite'),
+    h('button.study-bulk-bar__btn', {
+      on: { click: () => {
+        void bulkSetFavorite(false).then(redraw);
+      } },
+    }, '☆ Unfavorite'),
+    allFolderNames.length > 0
+      ? h('div.study-bulk-bar__folder-wrap', [
+          h('button.study-bulk-bar__btn', {
+            on: { click: () => { _bulkFolderMenuOpen = !_bulkFolderMenuOpen; redraw(); } },
+          }, 'Add to folder ▾'),
+          _bulkFolderMenuOpen ? h('div.study-bulk-bar__folder-menu', allFolderNames.map(name =>
+            h('button.study-bulk-bar__folder-item', {
+              on: { click: () => {
+                _bulkFolderMenuOpen = false;
+                void bulkAddToFolder(name).then(redraw);
+              } },
+            }, name)
+          )) : null,
+        ])
+      : null,
+    h('button.study-bulk-bar__btn.study-bulk-bar__btn--danger', {
+      on: { click: () => {
+        if (confirm(`Delete ${count} selected stud${count === 1 ? 'y' : 'ies'}?`)) {
+          void bulkDeleteStudies().then(redraw);
+        }
+      } },
+    }, 'Delete'),
+    h('button.study-bulk-bar__btn', {
+      on: { click: () => { clearSelection(); redraw(); } },
+    }, 'Clear'),
   ]);
 }
 
@@ -375,12 +679,28 @@ export function renderStudyLibrary(redraw: () => void): VNode {
     ]);
   }
 
+  // Lazy-load folder data if not yet loaded.
+  if (!foldersLoaded()) loadFolders(redraw);
+
   const items = studies();
 
   return h('div.study-page', [
     h('div.study-page__header', [
       h('h1', 'Study Library'),
       h('div.study-page__header-actions', [
+        // View mode toggle
+        h('div.study-view-toggle', [
+          h('button.study-view-toggle__btn', {
+            class: { active: viewMode() === 'list' },
+            attrs: { title: 'List view' },
+            on: { click: () => { setViewMode('list'); redraw(); } },
+          }, '☰'),
+          h('button.study-view-toggle__btn', {
+            class: { active: viewMode() === 'grid' },
+            attrs: { title: 'Grid view' },
+            on: { click: () => { setViewMode('grid'); redraw(); } },
+          }, '⊞'),
+        ]),
         h('button.study-btn.study-btn--import', {
           on: { click: () => { _showImportModal = true; _importPgnText = ''; _importStatus = null; redraw(); } },
         }, 'Import PGN'),
@@ -390,15 +710,43 @@ export function renderStudyLibrary(redraw: () => void): VNode {
     // Practice dashboard banner (CCP-555).
     practiceLoaded() ? renderPracticeDashboard(redraw) : null,
 
-    renderFilterBar(redraw),
-    renderSortControls(redraw),
+    // Two-column layout: folder sidebar + main content area
+    h('div.study-library-layout', [
+      renderFolderSidebar(redraw),
 
-    items.length === 0
-      ? h('div.study-page__empty', [
-          h('p', 'No studies yet.'),
-          h('p', 'Right-click any move on the analysis board to save it here.'),
-        ])
-      : h('div.study-list', items.map(item => renderStudyRow(item, redraw))),
+      h('div.study-library-main', [
+        renderFilterBar(redraw),
+        renderSortControls(redraw),
+        renderBulkActionBar(redraw),
+
+        items.length === 0
+          ? h('div.study-page__empty', [
+              h('p', 'No studies yet.'),
+              h('p', 'Right-click any move on the analysis board to save it here.'),
+              allStudies().length === 0
+                ? isSeeding()
+                  ? h('p.study-page__seeding', 'Seeding sample studies…')
+                  : h('button.study-btn.study-btn--seed', {
+                      on: { click: () => { void seedSampleStudies(redraw); } },
+                    }, 'Seed sample studies')
+                : null,
+            ])
+          : viewMode() === 'grid'
+            ? h('div.study-grid', items.map((item, idx) => renderStudyCard(item, idx, redraw)))
+            : h('div.study-list', items.map((item, idx) => renderStudyRow(item, idx, redraw))),
+
+        // Pagination: Load more button (hidden when no more pages available)
+        hasMore()
+          ? h('div.study-list__load-more', [
+              isLoadingMore()
+                ? h('span.study-list__loading', 'Loading…')
+                : h('button.study-btn.study-btn--load-more', {
+                    on: { click: () => { loadNextPage(redraw); } },
+                  }, 'Load more'),
+            ])
+          : null,
+      ]),
+    ]),
 
     _showImportModal ? renderImportModal(redraw) : null,
   ]);

@@ -64,6 +64,28 @@ db.exec(`
     ts          TEXT NOT NULL,
     data        TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS puzzle_user_perf_by_user (
+    username    TEXT PRIMARY KEY,
+    data        TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS puzzle_rating_history_by_user (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT NOT NULL,
+    ts          INTEGER NOT NULL,
+    data        TEXT NOT NULL,
+    UNIQUE(username, ts)
+  );
+
+  CREATE TABLE IF NOT EXISTS puzzle_rated_attempts_by_user (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT NOT NULL,
+    puzzleId    TEXT NOT NULL,
+    completedAt INTEGER NOT NULL,
+    data        TEXT NOT NULL,
+    UNIQUE(username, puzzleId, completedAt)
+  );
 `);
 
 // ── Migrations ─────────────────────────────────────────────────────────────
@@ -91,6 +113,10 @@ export async function runMigrations() {
     CREATE INDEX IF NOT EXISTS idx_puzzle_definitions_updated_at ON puzzle_definitions(updated_at);
     CREATE INDEX IF NOT EXISTS idx_puzzle_attempts_updated_at   ON puzzle_attempts(updated_at);
     CREATE INDEX IF NOT EXISTS idx_puzzle_user_meta_updated_at  ON puzzle_user_meta(updated_at);
+    CREATE INDEX IF NOT EXISTS idx_puzzle_rating_history_by_user_username_ts
+      ON puzzle_rating_history_by_user(username, ts);
+    CREATE INDEX IF NOT EXISTS idx_puzzle_rated_attempts_by_user_username_completed_at
+      ON puzzle_rated_attempts_by_user(username, completedAt);
   `);
 }
 
@@ -127,10 +153,21 @@ const stmts = {
   getPerf:       db.prepare("SELECT data FROM puzzle_user_perf WHERE id = 'singleton'"),
   upsertPerf:    db.prepare(`INSERT INTO puzzle_user_perf (id, data) VALUES ('singleton', @data)
                              ON CONFLICT(id) DO UPDATE SET data=@data`),
+  getPerfByUser: db.prepare('SELECT data FROM puzzle_user_perf_by_user WHERE username = @username'),
+  upsertPerfByUser: db.prepare(`INSERT INTO puzzle_user_perf_by_user (username, data) VALUES (@username, @data)
+                                ON CONFLICT(username) DO UPDATE SET data=@data`),
 
   // Puzzle rating history
   getAllHistory:  db.prepare('SELECT * FROM puzzle_rating_history ORDER BY ts ASC'),
   insertHistory: db.prepare('INSERT INTO puzzle_rating_history (ts, data) VALUES (@ts, @data)'),
+  getAllHistoryByUser: db.prepare(
+    'SELECT * FROM puzzle_rating_history_by_user WHERE username = @username ORDER BY ts ASC',
+  ),
+
+  // User-scoped rated attempts
+  getAllRatedAttemptsByUser: db.prepare(
+    'SELECT * FROM puzzle_rated_attempts_by_user WHERE username = @username ORDER BY completedAt ASC',
+  ),
 };
 
 // ── Games ───────────────────────────────────────────────────────────────────
@@ -311,21 +348,26 @@ export async function getPuzzleUserMetaSince(since) {
   return db.prepare('SELECT * FROM puzzle_user_meta WHERE updated_at > ?').all(since).map(row => JSON.parse(row.data));
 }
 
-// ── Puzzle user perf (singleton) ────────────────────────────────────────────
+// ── Puzzle user perf (singleton + user-scoped v2) ──────────────────────────
 
-export async function getUserPuzzlePerf() {
-  const row = stmts.getPerf.get();
-  return row ? JSON.parse(row.data) : null;
+export async function getUserPuzzlePerf(username) {
+  const row = username ? stmts.getPerfByUser.get({ username }) : null;
+  if (row) return JSON.parse(row.data);
+  const legacy = stmts.getPerf.get();
+  return legacy ? JSON.parse(legacy.data) : null;
 }
 
 export async function upsertUserPuzzlePerf(perf) {
-  stmts.upsertPerf.run({ data: JSON.stringify(perf) });
+  if (!perf?.username) throw new Error('username required for user-scoped puzzle perf');
+  stmts.upsertPerfByUser.run({ username: perf.username, data: JSON.stringify(perf) });
   return { ok: true };
 }
 
 // ── Puzzle rating history ───────────────────────────────────────────────────
 
-export async function getUserPuzzleRatingHistory() {
+export async function getUserPuzzleRatingHistory(username) {
+  const rows = username ? stmts.getAllHistoryByUser.all({ username }) : [];
+  if (rows.length > 0) return rows.map(row => JSON.parse(row.data));
   return stmts.getAllHistory.all().map(row => JSON.parse(row.data));
 }
 
@@ -333,11 +375,38 @@ export async function insertUserPuzzleRatingHistoryBatch(entries) {
   const tx = db.transaction((items) => {
     for (let offset = 0; offset < items.length; offset += BATCH_SIZE) {
       const chunk = items.slice(offset, offset + BATCH_SIZE);
-      const placeholders = chunk.map(() => '(?, ?)').join(', ');
-      const sql = `INSERT INTO puzzle_rating_history (ts, data) VALUES ${placeholders}`;
+      const placeholders = chunk.map(() => '(?, ?, ?)').join(', ');
+      const sql = `INSERT OR IGNORE INTO puzzle_rating_history_by_user (username, ts, data) VALUES ${placeholders}`;
       const params = [];
       for (const e of chunk) {
-        params.push(e.ts || new Date().toISOString(), JSON.stringify(e));
+        params.push(
+          e.username,
+          e.timestampMs ?? e.timestamp_ms ?? e.timestamp ?? Date.now(),
+          JSON.stringify(e),
+        );
+      }
+      db.prepare(sql).run(...params);
+    }
+  });
+  tx(entries);
+  return { inserted: entries.length };
+}
+
+// ── User-scoped rated attempts ──────────────────────────────────────────────
+
+export async function getUserPuzzleRatedAttempts(username) {
+  return stmts.getAllRatedAttemptsByUser.all({ username }).map(row => JSON.parse(row.data));
+}
+
+export async function insertUserPuzzleRatedAttemptsBatch(entries) {
+  const tx = db.transaction((items) => {
+    for (let offset = 0; offset < items.length; offset += BATCH_SIZE) {
+      const chunk = items.slice(offset, offset + BATCH_SIZE);
+      const placeholders = chunk.map(() => '(?, ?, ?, ?)').join(', ');
+      const sql = `INSERT OR IGNORE INTO puzzle_rated_attempts_by_user (username, puzzleId, completedAt, data) VALUES ${placeholders}`;
+      const params = [];
+      for (const e of chunk) {
+        params.push(e.username, e.puzzleId, e.completedAt, JSON.stringify(e));
       }
       db.prepare(sql).run(...params);
     }

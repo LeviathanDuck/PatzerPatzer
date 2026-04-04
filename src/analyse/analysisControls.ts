@@ -6,6 +6,7 @@
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
 import type { AnalyseCtrl } from './ctrl';
+import { renderRetroConfigBody } from '../header/index';
 import {
   showBoardReviewGlyphs, setShowBoardReviewGlyphs,
   showReviewLabels, setShowReviewLabels,
@@ -23,6 +24,7 @@ import { analysisComplete, batchAnalyzing } from '../engine/batch';
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts actionMenu() reactive field.
 
 let _actionMenuOpen = false;
+let _actionMenuSubView: null | 'mistake-detection' = null;
 
 export function isActionMenuOpen(): boolean {
   return _actionMenuOpen;
@@ -34,6 +36,7 @@ export function toggleActionMenu(): void {
 
 export function closeActionMenu(): void {
   _actionMenuOpen = false;
+  _actionMenuSubView = null;
 }
 
 // --- Injected deps ---
@@ -203,6 +206,17 @@ export function renderActionMenu(): VNode | null {
   const hasRetro = !!ctrl.retro;
   const canLFYM  = analysisComplete && !batchAnalyzing;
 
+  // Sub-panel: inline Mistake Detection settings (CCP-756)
+  if (_actionMenuSubView === 'mistake-detection') {
+    return h('div.action-menu', [
+      h('button.action-menu__back-btn', {
+        on: { click: () => { _actionMenuSubView = null; deps.redraw(); } },
+      }, '\u2190 Back'),
+      h('h2', 'Mistake Detection'),
+      h('div.action-menu__subpanel', renderRetroConfigBody(deps.redraw)),
+    ]);
+  }
+
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
       attrs: { title: 'Close menu' },
@@ -223,7 +237,11 @@ export function renderActionMenu(): VNode | null {
         attrs: { 'data-icon': ICON_FLIP, title: 'Flip board (hotkey: f)' },
         on:    { click: () => { deps.onFlipBoard(); close(); } },
       }, 'Flip board'),
+    ]),
 
+    // Mistakes section — LFYM and detection settings (CCP-756)
+    h('h2', 'Mistakes'),
+    h('div.action-menu__tools', [
       // Learn From Your Mistakes — mirrors lichess-org/lila: actionMenu.ts canRetro → toggleRetro()
       h('button', {
         class:  { active: hasRetro },
@@ -236,6 +254,12 @@ export function renderActionMenu(): VNode | null {
         },
         on: { click: () => { if (canLFYM) { deps.onToggleRetro(); close(); } } },
       }, hasRetro ? 'Close Mistakes' : 'Learn From Your Mistakes'),
+
+      // Mistake Detection — opens inline sub-panel (CCP-756)
+      h('button', {
+        attrs: { title: 'Configure mistake detection thresholds' },
+        on: { click: () => { _actionMenuSubView = 'mistake-detection'; deps.redraw(); } },
+      }, 'Mistake Detection'),
     ]),
 
     // Display section — analysis-local display toggles.

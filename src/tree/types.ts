@@ -111,6 +111,8 @@ export interface LearnableReason {
 }
 
 // Canonical reason instances — one per code so they can be compared by reference.
+// For severity-modulated feedback (labels/summaries that vary by loss magnitude),
+// see src/feedback/severity.ts — getSeverityFeedback(reasonCode, loss, isExactBest).
 export const LEARNABLE_REASONS: Readonly<Record<LearnableReasonCode, LearnableReason>> = {
   'swing': {
     code:    'swing',

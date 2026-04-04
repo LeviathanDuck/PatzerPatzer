@@ -1,9 +1,17 @@
 import { readFileSync } from 'node:fs';
-import { generatedDocs, registryPaths, safePromptFileBody, validatePromptBodyText, validateRegistry } from './prompt-registry-lib.mjs';
+import {
+  activeDashboardPrompts,
+  generatedDocs,
+  registryPaths,
+  safePromptFileBody,
+  validatePromptBodyText,
+  validateRegistry,
+} from './prompt-registry-lib.mjs';
 
 const root = process.cwd();
 const { paths, registry, findings } = validateRegistry(root);
 const generated = generatedDocs(root);
+const activePrompts = activeDashboardPrompts(registry);
 
 const queueText = readFileSync(paths.queue, 'utf8');
 const logText = readFileSync(paths.log, 'utf8');
@@ -15,14 +23,15 @@ if (logText !== generated.log) findings.push(`Generated log doc does not match $
 if (historyText !== generated.history) findings.push(`Generated history doc does not match ${paths.history}`);
 if (!dashboardText.includes('Tracking Dashboard')) findings.push(`Generated dashboard doc looks invalid: ${paths.dashboard}`);
 
-const queueIndexIds = registry.prompts.filter(p => p.queueState !== 'not-queued').length;
-const logCheckedIds = registry.prompts.filter(p => p.status === 'reviewed').length;
-const logPendingIds = registry.prompts.filter(p => p.status !== 'reviewed').length;
-const startedIds = registry.prompts.filter(p => p.queueState === 'queued-started' || p.queueState === 'queued-run').length;
-const reservedIds = registry.prompts.filter(p => p.status === 'reserved' && !p.reservationReleasedAt).length;
+const queueIndexIds = activePrompts.filter(p => p.queueState !== 'not-queued').length;
+const logCheckedIds = activePrompts.filter(p => p.status === 'reviewed').length;
+const logPendingIds = activePrompts.filter(p => p.status !== 'reviewed').length;
+const startedIds = activePrompts.filter(p => p.queueState === 'queued-started' || p.queueState === 'queued-run').length;
+const reservedIds = activePrompts.filter(p => p.status === 'reserved' && !p.reservationReleasedAt).length;
 
 console.log('Prompt tracking audit');
 console.log(`- registry ids: ${registry.prompts.length}`);
+console.log(`- active ids: ${activePrompts.length}`);
 console.log(`- queue ids: ${queueIndexIds}`);
 console.log(`- started ids: ${startedIds}`);
 console.log(`- reviewed ids: ${logCheckedIds}`);
@@ -32,7 +41,7 @@ console.log(`- active reservations: ${reservedIds}`);
 // Stale prompt detection: started 24h+ ago without completion
 const STALE_MS = 24 * 60 * 60 * 1000;
 const now = Date.now();
-const stale = registry.prompts.filter(p =>
+const stale = activePrompts.filter(p =>
   p.queueState === 'queued-started' && !p.completedAt && p.startedAt &&
   now - new Date(p.startedAt).getTime() > STALE_MS
 );
@@ -46,7 +55,7 @@ if (stale.length > 0) {
 }
 
 // Completed but never reviewed — nudge
-const completedUnreviewed = registry.prompts.filter(p =>
+const completedUnreviewed = activePrompts.filter(p =>
   p.queueState === 'queued-run' && p.status !== 'reviewed'
 );
 if (completedUnreviewed.length > 0) {
@@ -58,7 +67,7 @@ if (completedUnreviewed.length > 0) {
   if (completedUnreviewed.length > 5) console.log(`  ... and ${completedUnreviewed.length - 5} more`);
 }
 
-const staleReservations = registry.prompts.filter(p =>
+const staleReservations = activePrompts.filter(p =>
   p.status === 'reserved' &&
   !p.reservationReleasedAt &&
   p.createdAt &&
@@ -74,7 +83,7 @@ if (staleReservations.length > 0) {
 }
 
 const activeBodyIssues = [];
-for (const prompt of registry.prompts.filter(p => p.status !== 'reviewed' && p.promptFile)) {
+for (const prompt of activePrompts.filter(p => p.status !== 'reviewed' && p.promptFile)) {
   const findingsForPrompt = validatePromptBodyText(safePromptFileBody(root, prompt), { id: prompt.id });
   if (findingsForPrompt.length) {
     activeBodyIssues.push({ id: prompt.id, findings: findingsForPrompt });

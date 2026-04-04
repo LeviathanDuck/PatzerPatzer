@@ -1,7 +1,8 @@
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { mutateSprintRegistryLocked, reserveNextSprintId } from './sprint-registry-lib.mjs';
+import { hasNormalizedSprintStructure, mutateSprintRegistryLocked, reserveNextSprintId } from './sprint-registry-lib.mjs';
+import { readFileSync } from 'node:fs';
 
 const root = process.cwd();
 const args = process.argv.slice(2);
@@ -15,10 +16,11 @@ const title = getFlag('--title');
 const sourceDocument = getFlag('--source-document');
 const status = getFlag('--status') || 'planned';
 const completionSummary = getFlag('--completion-summary') || '';
+const updateExisting = args.includes('--update-existing');
 const dependencySprintIds = (getFlag('--depends-on') || '').split(',').map(part => part.trim()).filter(Boolean);
 
 if (!title || !sourceDocument) {
-  console.error('Usage: npm run sprint:create -- --title "..." --source-document docs/mini-sprints/FOO.md [--status planned] [--depends-on SPR-001,SPR-002] [--completion-summary "..."]');
+  console.error('Usage: npm run sprint:create -- --title "..." --source-document docs/mini-sprints/FOO.md [--status planned] [--depends-on SPR-001,SPR-002] [--completion-summary "..."] [--update-existing]');
   process.exit(1);
 }
 
@@ -32,14 +34,24 @@ if (!existsSync(resolve(root, sourceDocument))) {
   process.exit(1);
 }
 
+const sprintDocText = readFileSync(resolve(root, sourceDocument), 'utf8');
+if (!hasNormalizedSprintStructure(sprintDocText)) {
+  console.error(`Sprint source document is not normalized to the current phase/task structure: ${sourceDocument}`);
+  process.exit(1);
+}
+
 try {
   const result = await mutateSprintRegistryLocked(root, registry => {
     const existing = registry.sprints.find(sprint => sprint.sourceDocument === sourceDocument);
     if (existing) {
+      if (!updateExisting) {
+        throw new Error(`Sprint already exists for ${sourceDocument} as ${existing.id}. Re-run with --update-existing to modify it.`);
+      }
       existing.title = title;
       existing.status = status;
       existing.updatedAt = new Date().toISOString();
       existing.dependencySprintIds = dependencySprintIds;
+      existing.normalizedStructure = true;
       if (completionSummary) existing.completionSummary = completionSummary;
       return { id: existing.id, updated: true };
     }
@@ -59,6 +71,7 @@ try {
       recommendedNextSteps: [],
       completionSummary,
       unassignedPromptIds: [],
+      normalizedStructure: true,
     });
     return { id, updated: false };
   });

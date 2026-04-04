@@ -4,16 +4,41 @@
 export type ImportSpeed     = 'bullet' | 'blitz' | 'rapid';
 export type ImportDateRange = '24h' | '1week' | '1month' | '3months' | '1year' | 'all' | 'custom';
 
+// Read an integer from localStorage, returning def when the key is absent,
+// unparseable, or out of [min, max].
+// Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts storedIntProp pattern.
+function storedInt(key: string, def: number, min: number, max: number): number {
+  const v = parseInt(localStorage.getItem(key) ?? '', 10);
+  return (!isNaN(v) && v >= min && v <= max) ? v : def;
+}
+
 // Mutable filter state — properties may be reassigned by the UI.
 // Default date range matches docs/reference/GameLibraryContext.jsx DEFAULT_FILTERS.
 export const importFilters = {
-  rated:      true,
-  speeds:     new Set<ImportSpeed>(), // empty = all speeds
-  dateRange:  '1month' as ImportDateRange,
-  customFrom: '',
-  customTo:   '',
-  autoReview: false,
+  rated:                true,
+  speeds:               new Set<ImportSpeed>(), // empty = all speeds
+  dateRange:            '1month' as ImportDateRange,
+  customFrom:           '',
+  customTo:             '',
+  autoReview:           localStorage.getItem('patzer.autoReview') === 'true',
+  autoReviewConfirmed:  localStorage.getItem('patzer.autoReviewConfirmed') === 'true',
+  autoReviewDepth:      storedInt('patzer.autoReviewDepth', 12, 2, 18),
 };
+
+export function setAutoReview(v: boolean): void {
+  importFilters.autoReview = v;
+  localStorage.setItem('patzer.autoReview', String(v));
+}
+
+export function setAutoReviewConfirmed(v: boolean): void {
+  importFilters.autoReviewConfirmed = v;
+  localStorage.setItem('patzer.autoReviewConfirmed', String(v));
+}
+
+export function setAutoReviewDepth(v: number): void {
+  importFilters.autoReviewDepth = v;
+  localStorage.setItem('patzer.autoReviewDepth', String(v));
+}
 
 // Icons adapted from lichess-org/lila: ui/lib/src/game/perfIcons.ts + ui/lib/src/licon.ts
 export const SPEED_OPTIONS: { value: ImportSpeed; label: string; icon: string }[] = [

@@ -6,7 +6,7 @@
 // Then runs prompts:refresh to regenerate all docs and dashboard.
 
 import { execSync } from 'node:child_process';
-import { ensureNotReserved, mutateRegistryLocked, requirePrompt } from './prompt-registry-lib.mjs';
+import { ensureActivePrompt, mutateRegistryLocked, requirePrompt } from './prompt-registry-lib.mjs';
 
 const root = process.cwd();
 const id = process.argv[2];
@@ -19,7 +19,7 @@ if (!id) {
 try {
   const result = await mutateRegistryLocked(root, registry => {
     const prompt = requirePrompt(registry, id);
-    ensureNotReserved(prompt, 'prompt:start');
+    ensureActivePrompt(prompt, 'prompt:start');
 
     if (prompt.queueState === 'queued-started') {
       return { alreadyStarted: true, startedAt: prompt.startedAt };

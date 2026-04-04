@@ -134,9 +134,9 @@ This is enough to make mobile testing realistic.
 
 ---
 
-## Sprint tasks
+## Phase 1 — Mobile Analysis Layout And Controls
 
-## Task 1 — Add a real mobile analysis layout mode
+### Task 1 — Add a real mobile analysis layout mode
 
 ### Diagnosis
 
@@ -175,7 +175,7 @@ Do not introduce `side` and extra layout areas yet unless Patzer actually render
 
 ---
 
-## Task 2 — Hide low-value chrome on mobile
+### Task 2 — Hide low-value chrome on mobile
 
 ### Diagnosis
 
@@ -205,7 +205,7 @@ This should be done in CSS first.
 
 ---
 
-## Task 3 — Move board navigation and Review into a mobile-friendly control block
+### Task 3 — Move board navigation and Review into a mobile-friendly control block
 
 ### Diagnosis
 
@@ -245,7 +245,7 @@ This does not need a Lichess-style engine-mode tab yet.
 
 ---
 
-## Task 4 — Make the tools column readable as a mobile stack
+### Task 4 — Make the tools column readable as a mobile stack
 
 ### Diagnosis
 
@@ -288,7 +288,7 @@ This is simpler than Lichess mobile ordering, but safe and usable.
 
 ---
 
-## Task 5 — Make underboard truly secondary on mobile
+### Task 5 — Make underboard truly secondary on mobile
 
 ### Diagnosis
 
@@ -318,7 +318,7 @@ Do not redesign the underboard in this sprint.
 
 ---
 
-## Task 6 — Add one minimal touch usability improvement
+### Task 6 — Add one minimal touch usability improvement
 
 ### Diagnosis
 
