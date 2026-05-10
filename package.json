@@ -2,6 +2,7 @@
   "dependencies": {
     "@lichess-org/chessground": "^10.1.0",
     "@lichess-org/stockfish-web": "^0.2.3",
+    "better-auth": "^1.6.10",
     "better-sqlite3": "^12.8.0",
     "chessops": "^0.15.0",
     "snabbdom": "^3.6.2",

@@ -26,6 +26,7 @@ import { reviewDepth, setReviewDepth } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
+import { requestPatzerMagicLink, type MagicLinkRequestResult } from '../auth/patzerAuthClient';
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
@@ -50,15 +51,22 @@ export function openRetroModal(redraw: () => void): void {
 // --- Auth state ---
 let headerAuthUser: string | null = null;
 let headerAuthIsAdmin = false;
+let headerAuthProvider: 'patzer' | 'lichess' | 'client-lichess' | null = null;
 let headerAuthChecked = false;
 let loginModalListenerAttached = false;
 let loginModalError = '';
+let loginModalSuccess = '';
+let loginModalPending = false;
+let loginEmail = '';
+let loginDevMagicLink: MagicLinkRequestResult['devMagicLink'] = null;
 
 function ensureLoginModalListener(redraw: () => void): void {
   if (loginModalListenerAttached) return;
   loginModalListenerAttached = true;
   window.addEventListener(LOGIN_MODAL_EVENT, () => {
     loginModalError = '';
+    loginModalSuccess = '';
+    loginDevMagicLink = null;
     showLoginModal = true;
     redraw();
   });
@@ -67,18 +75,19 @@ function ensureLoginModalListener(redraw: () => void): void {
 function ensureHeaderAuth(redraw: () => void): void {
   if (headerAuthChecked) return;
   headerAuthChecked = true;
-  checkAuth().then(({ username, isAdmin, source }) => {
-    headerAuthUser = username;
+  checkAuth().then(({ username, displayName, email, isAdmin, source, provider }) => {
+    headerAuthUser = displayName || email || username;
     headerAuthIsAdmin = isAdmin;
+    headerAuthProvider = provider ?? (source === 'client' ? 'client-lichess' : null);
     redraw();
-    if (username && source === 'server') syncRatedLadder().catch(() => {});
+    if (username && source === 'server' && provider === 'lichess') syncRatedLadder().catch(() => {});
   });
 }
 
 function renderUserArea(redraw: () => void): VNode | null {
   if (headerAuthUser) {
     return h('div.header__user', {
-      attrs: { title: headerAuthIsAdmin ? 'Lichess login: admin' : 'Lichess login' },
+      attrs: { title: headerAuthIsAdmin ? 'Patzer account: admin' : headerAuthProvider === 'patzer' ? 'Patzer account' : 'Lichess login' },
     }, [
       h('span.header__username', headerAuthUser),
       h('button.header__logout', {
@@ -87,6 +96,7 @@ function renderUserArea(redraw: () => void): VNode | null {
           logout().then(() => {
             headerAuthUser = null;
             headerAuthIsAdmin = false;
+            headerAuthProvider = null;
             redraw();
           });
         } },
@@ -94,9 +104,11 @@ function renderUserArea(redraw: () => void): VNode | null {
     ]);
   }
   return h('button.header__login', {
-    attrs: { type: 'button', title: 'Login with Lichess' },
+    attrs: { type: 'button', title: 'Account login' },
     on: { click: () => {
       loginModalError = '';
+      loginModalSuccess = '';
+      loginDevMagicLink = null;
       showLoginModal = true;
       redraw();
     } },
@@ -107,22 +119,71 @@ function renderLoginModal(redraw: () => void): VNode {
   const close = () => {
     showLoginModal = false;
     loginModalError = '';
+    loginModalSuccess = '';
+    loginDevMagicLink = null;
     redraw();
+  };
+  const requestMagicLink = () => {
+    loginModalError = '';
+    loginModalSuccess = '';
+    loginDevMagicLink = null;
+    loginModalPending = true;
+    redraw();
+    requestPatzerMagicLink(loginEmail).then(result => {
+      loginModalSuccess = 'Check your email for the Patzer sign-in link.';
+      loginDevMagicLink = result.devMagicLink ?? null;
+    }).catch(error => {
+      loginModalError = error instanceof Error ? error.message : 'Could not send magic link.';
+    }).finally(() => {
+      loginModalPending = false;
+      redraw();
+    });
   };
 
   return h('div.auth-modal', [
     h('div.auth-modal__backdrop', { on: { click: close } }),
     h('div.auth-modal__card', [
       h('div.auth-modal__header', [
-        h('h2', 'Login with Lichess'),
+        h('h2', 'Patzer Account'),
         h('button.auth-modal__close', {
           attrs: { type: 'button', title: 'Close' },
           on: { click: close },
         }, 'x'),
       ]),
       h('div.auth-modal__body', [
-        h('p', 'Patzer will open Lichess to verify your account, then return here.'),
+        h('p', 'Use an email magic link for a Patzer account. Lichess can still be used as a chess login option.'),
         h('p', 'Settings and cloud data are not saved yet.'),
+        h('form.auth-modal__form', {
+          on: { submit: event => {
+            event.preventDefault();
+            if (!loginModalPending) requestMagicLink();
+          } },
+        }, [
+          h('label.auth-modal__label', { attrs: { for: 'patzer-login-email' } }, 'Email'),
+          h('div.auth-modal__email-row', [
+            h('input.auth-modal__input', {
+              attrs: {
+                id: 'patzer-login-email',
+                type: 'email',
+                autocomplete: 'email',
+                placeholder: 'you@example.com',
+                disabled: loginModalPending,
+              },
+              props: { value: loginEmail },
+              on: { input: event => {
+                loginEmail = (event.target as HTMLInputElement).value;
+              } },
+            }),
+            h('button.auth-modal__primary', {
+              attrs: { type: 'submit', disabled: loginModalPending },
+            }, loginModalPending ? 'Sending...' : 'Send link'),
+          ]),
+        ]),
+        loginModalSuccess ? h('p.auth-modal__success', loginModalSuccess) : null,
+        loginDevMagicLink ? h('p.auth-modal__dev-link', [
+          'Local dev link: ',
+          h('a', { attrs: { href: loginDevMagicLink.url } }, 'open magic link'),
+        ]) : null,
         loginModalError ? h('p.auth-modal__error', loginModalError) : null,
       ]),
       h('div.auth-modal__actions', [
@@ -130,7 +191,7 @@ function renderLoginModal(redraw: () => void): VNode {
           attrs: { type: 'button' },
           on: { click: close },
         }, 'Cancel'),
-        h('button.auth-modal__primary', {
+        h('button.auth-modal__secondary', {
           attrs: { type: 'button' },
           on: { click: () => {
             login().catch(error => {

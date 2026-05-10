@@ -52,8 +52,12 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 export interface AuthStatus {
   authenticated: boolean;
   username:      string | null;
+  displayName?:  string | null;
+  email?:        string | null;
+  userId?:       string | null;
   isAdmin:       boolean;
   source:        'server' | 'client' | 'none';
+  provider?:     'patzer' | 'lichess' | null;
 }
 
 export async function checkAuth(): Promise<AuthStatus> {
@@ -66,8 +70,12 @@ export async function checkAuth(): Promise<AuthStatus> {
       return {
         authenticated: true,
         username:      status.username ?? null,
+        displayName:   status.displayName ?? status.username ?? null,
+        email:         status.email ?? null,
+        userId:        status.userId ?? null,
         isAdmin:       !!status.isAdmin,
         source:        'server',
+        provider:      status.provider ?? null,
       };
     }
   } catch {
