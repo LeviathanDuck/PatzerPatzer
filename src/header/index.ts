@@ -48,20 +48,38 @@ export function openRetroModal(redraw: () => void): void {
 
 // --- Auth state ---
 let headerAuthUser: string | null = null;
+let headerAuthIsAdmin = false;
 let headerAuthChecked = false;
 
 function ensureHeaderAuth(redraw: () => void): void {
   if (headerAuthChecked) return;
   headerAuthChecked = true;
-  checkAuth().then(({ username }) => {
+  checkAuth().then(({ username, isAdmin }) => {
     headerAuthUser = username;
+    headerAuthIsAdmin = isAdmin;
     redraw();
     if (username) syncRatedLadder().catch(() => {});
   });
 }
 
 function renderUserArea(redraw: () => void): VNode | null {
-  if (headerAuthUser) return null;
+  if (headerAuthUser) {
+    return h('div.header__user', {
+      attrs: { title: headerAuthIsAdmin ? 'Lichess login: admin' : 'Lichess login' },
+    }, [
+      h('span.header__username', headerAuthUser),
+      h('button.header__logout', {
+        attrs: { type: 'button', title: 'Logout' },
+        on: { click: () => {
+          logout().then(() => {
+            headerAuthUser = null;
+            headerAuthIsAdmin = false;
+            redraw();
+          });
+        } },
+      }, 'x'),
+    ]);
+  }
   return h('a.header__login', {
     attrs: { href: '/api/lichess/connect', title: 'Login with Lichess' },
   }, 'Login');
@@ -618,7 +636,11 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
 
       headerAuthUser ? h('button.global-menu__item.global-menu__item--logout', {
         on: { click: () => {
-          logout().then(() => { headerAuthUser = null; closeGlobalMenu(redraw); });
+          logout().then(() => {
+            headerAuthUser = null;
+            headerAuthIsAdmin = false;
+            closeGlobalMenu(redraw);
+          });
         }},
       }, 'Logout') : null,
 

@@ -39,11 +39,22 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
 
 // --- Auth check ---
 
-export async function checkAuth(): Promise<{ authenticated: boolean; username: string | null }> {
+export interface AuthStatus {
+  authenticated: boolean;
+  username:      string | null;
+  isAdmin:       boolean;
+}
+
+export async function checkAuth(): Promise<AuthStatus> {
   try {
-    return await apiGet<{ authenticated: boolean; username: string | null }>('/api/auth/status');
+    const status = await apiGet<Partial<AuthStatus>>('/api/auth/status');
+    return {
+      authenticated: !!status.authenticated,
+      username:      status.username ?? null,
+      isAdmin:       !!status.isAdmin,
+    };
   } catch {
-    return { authenticated: false, username: null };
+    return { authenticated: false, username: null, isAdmin: false };
   }
 }
 
