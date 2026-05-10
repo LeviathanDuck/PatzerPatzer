@@ -6,6 +6,16 @@
 
 const LAST_SYNC_KEY = 'lastSyncedAt';
 
+import {
+  clearClientAuth,
+  completeClientLoginIfPresent,
+  getClientAuthStatus,
+  startClientLogin,
+  type ClientAuthStatus,
+} from '../auth/lichessClient';
+
+export { LOGIN_MODAL_EVENT, requestLogin } from '../auth/lichessClient';
+
 // --- Last sync tracking ---
 
 export function getLastSyncedAt(): string | null {
@@ -43,28 +53,39 @@ export interface AuthStatus {
   authenticated: boolean;
   username:      string | null;
   isAdmin:       boolean;
+  source:        'server' | 'client' | 'none';
 }
 
 export async function checkAuth(): Promise<AuthStatus> {
+  const completedClientLogin = await completeClientLoginIfPresent();
+  if (completedClientLogin) return completedClientLogin;
+
   try {
     const status = await apiGet<Partial<AuthStatus>>('/api/auth/status');
-    return {
-      authenticated: !!status.authenticated,
-      username:      status.username ?? null,
-      isAdmin:       !!status.isAdmin,
-    };
+    if (status.authenticated) {
+      return {
+        authenticated: true,
+        username:      status.username ?? null,
+        isAdmin:       !!status.isAdmin,
+        source:        'server',
+      };
+    }
   } catch {
-    return { authenticated: false, username: null, isAdmin: false };
+    // Static deployments serve index.html for /api/*, so fall through to
+    // browser-side Lichess auth when the server auth API is unavailable.
   }
+
+  return getClientAuthStatus() satisfies ClientAuthStatus;
 }
 
-/** Redirect the browser to the Lichess OAuth consent page. */
-export function login(): void {
-  window.location.href = '/api/lichess/connect';
+/** Start browser-side Lichess OAuth. */
+export async function login(): Promise<void> {
+  await startClientLogin();
 }
 
 /** Clear the server-side session and the session cookie. */
 export async function logout(): Promise<void> {
+  clearClientAuth();
   try {
     await apiPost('/api/auth/logout');
   } catch { /* ignore — cookie cleared on server */ }

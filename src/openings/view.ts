@@ -73,6 +73,7 @@ import { detectTrapPatterns } from './traps';
 import { saveVariation } from './db';
 import type { SavedVariation } from './types';
 import { saveUciLinesToLibrary } from '../study/saveAction';
+import { requestLogin } from '../sync/client';
 
 let _openingsCg: CgApi | undefined;
 let _lastBoardFen: string = '';
@@ -3175,8 +3176,9 @@ function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VN
       h('div.openings__explorer-message', [
         h('strong', 'Lichess account required'),
         h('p.openings__explorer-explanation', 'The opening book requires a Lichess login.'),
-        h('a.openings__explorer-connect-btn', {
-          attrs: { href: '/api/lichess/connect' },
+        h('button.openings__explorer-connect-btn', {
+          attrs: { type: 'button' },
+          on: { click: requestLogin },
         }, 'Connect to Lichess'),
       ]),
     ]);

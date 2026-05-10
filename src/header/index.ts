@@ -25,7 +25,7 @@ import {
 import { reviewDepth, setReviewDepth } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
-import { checkAuth, logout } from '../sync/client';
+import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
@@ -38,6 +38,7 @@ let showGlobalMenu   = false;
 let showBoardSettings     = false;
 let showDetectionModal    = false;
 let showRetroModal        = false;
+let showLoginModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
 
@@ -50,15 +51,27 @@ export function openRetroModal(redraw: () => void): void {
 let headerAuthUser: string | null = null;
 let headerAuthIsAdmin = false;
 let headerAuthChecked = false;
+let loginModalListenerAttached = false;
+let loginModalError = '';
+
+function ensureLoginModalListener(redraw: () => void): void {
+  if (loginModalListenerAttached) return;
+  loginModalListenerAttached = true;
+  window.addEventListener(LOGIN_MODAL_EVENT, () => {
+    loginModalError = '';
+    showLoginModal = true;
+    redraw();
+  });
+}
 
 function ensureHeaderAuth(redraw: () => void): void {
   if (headerAuthChecked) return;
   headerAuthChecked = true;
-  checkAuth().then(({ username, isAdmin }) => {
+  checkAuth().then(({ username, isAdmin, source }) => {
     headerAuthUser = username;
     headerAuthIsAdmin = isAdmin;
     redraw();
-    if (username) syncRatedLadder().catch(() => {});
+    if (username && source === 'server') syncRatedLadder().catch(() => {});
   });
 }
 
@@ -80,9 +93,55 @@ function renderUserArea(redraw: () => void): VNode | null {
       }, 'x'),
     ]);
   }
-  return h('a.header__login', {
-    attrs: { href: '/api/lichess/connect', title: 'Login with Lichess' },
+  return h('button.header__login', {
+    attrs: { type: 'button', title: 'Login with Lichess' },
+    on: { click: () => {
+      loginModalError = '';
+      showLoginModal = true;
+      redraw();
+    } },
   }, 'Login');
+}
+
+function renderLoginModal(redraw: () => void): VNode {
+  const close = () => {
+    showLoginModal = false;
+    loginModalError = '';
+    redraw();
+  };
+
+  return h('div.auth-modal', [
+    h('div.auth-modal__backdrop', { on: { click: close } }),
+    h('div.auth-modal__card', [
+      h('div.auth-modal__header', [
+        h('h2', 'Login with Lichess'),
+        h('button.auth-modal__close', {
+          attrs: { type: 'button', title: 'Close' },
+          on: { click: close },
+        }, 'x'),
+      ]),
+      h('div.auth-modal__body', [
+        h('p', 'Patzer will open Lichess to verify your account, then return here.'),
+        h('p', 'Settings and cloud data are not saved yet.'),
+        loginModalError ? h('p.auth-modal__error', loginModalError) : null,
+      ]),
+      h('div.auth-modal__actions', [
+        h('button.auth-modal__secondary', {
+          attrs: { type: 'button' },
+          on: { click: close },
+        }, 'Cancel'),
+        h('button.auth-modal__primary', {
+          attrs: { type: 'button' },
+          on: { click: () => {
+            login().catch(error => {
+              loginModalError = error instanceof Error ? error.message : 'Could not start Lichess login.';
+              redraw();
+            });
+          } },
+        }, 'Continue with Lichess'),
+      ]),
+    ]),
+  ]);
 }
 
 export function setImportPlatform(p: ImportPlatform): void { importPlatform = p; }
@@ -695,6 +754,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
   } = deps;
 
   ensureHeaderAuth(redraw);
+  ensureLoginModalListener(redraw);
 
   const loading  = importPlatform === 'chesscom' ? chesscom.loading  : lichess.loading;
   const error    = importPlatform === 'chesscom' ? chesscom.error    : lichess.error;
@@ -913,6 +973,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
     renderReviewMenu(redraw),
     renderUserArea(redraw),
     renderGlobalMenu(deps),
+    showLoginModal     ? renderLoginModal(redraw)     : null,
     showDetectionModal ? renderDetectionModal(redraw) : null,
     showRetroModal     ? renderRetroModal(redraw)     : null,
   ]);
