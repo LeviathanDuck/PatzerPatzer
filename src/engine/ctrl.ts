@@ -161,8 +161,8 @@ export let analysisDepth   = storedInt('patzer.analysisDepth', 30, 18, 30);
 export let searchTime      = storedInt('patzer.searchTime', 10000, 1000, 60000);
 /** When true, engine searches until depth is reached regardless of searchTime. Default on. */
 export let searchUntilDepth = localStorage.getItem('patzer.searchUntilDepth') !== 'false';
-export let showEngineArrows = true;
-export let arrowAllLines    = true;
+export let showEngineArrows = localStorage.getItem('patzer.showEngineArrows') !== 'false';
+export let arrowAllLines    = localStorage.getItem('patzer.arrowAllLines') !== 'false';
 export let showPlayedArrow  = true;
 export let showArrowLabels  = localStorage.getItem('patzer.showArrowLabels') !== 'false';
 export let showReviewLabels = localStorage.getItem('patzer.showReviewLabels') !== 'false';
@@ -221,8 +221,8 @@ export function getSearchProgress(): number {
   return Math.min(1, Math.max(depthFraction, timeFraction));
 }
 export function clearPendingLines(): void         { pendingLines = []; }
-export function setShowEngineArrows(v: boolean): void { showEngineArrows = v; }
-export function setArrowAllLines(v: boolean): void    { arrowAllLines = v; }
+export function setShowEngineArrows(v: boolean): void { showEngineArrows = v; localStorage.setItem('patzer.showEngineArrows', String(v)); }
+export function setArrowAllLines(v: boolean): void    { arrowAllLines = v; localStorage.setItem('patzer.arrowAllLines', String(v)); }
 export function setShowPlayedArrow(v: boolean): void  { showPlayedArrow = v; }
 export function setShowArrowLabels(v: boolean): void  { showArrowLabels = v; localStorage.setItem('patzer.showArrowLabels', String(v)); }
 export function setShowReviewLabels(v: boolean): void { showReviewLabels = v; localStorage.setItem('patzer.showReviewLabels', String(v)); }
@@ -287,37 +287,7 @@ export function buildArrowShapes(): DrawShape[] {
   // when retro.hideComputerLine(node) is true for unsolved candidate plies.
   const retroHidden = ctrl.retro !== undefined && !ctrl.retro.guidanceRevealed();
 
-  if (engineEnabled && showEngineArrows && !retroHidden) {
-    if (currentEval.best) {
-
-      console.log(
-        '[arrow-diag] drawing engine arrow — evalNodePath:', evalNodePath,
-        '| ctrl.path:', ctrl.path,
-        '| match:', evalNodePath === ctrl.path,
-        '| best:', currentEval.best,
-      );
-      const uci = currentEval.best;
-      shapes.push(buildArrowShape(uci, 'paleBlue'));
-      const labelShape = buildArrowLabelShape(uci, currentEval);
-      if (labelShape) shapes.push(labelShape);
-    }
-    // Secondary PV lines — paleGrey with lineWidth scaled by win% diff
-    // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts compute()
-    if (arrowAllLines) {
-      const topWc = evalWinChances(currentEval) ?? 0;
-      for (const line of currentEval.lines ?? []) {
-        if (!line.best) continue;
-        const lineWc = evalWinChances(line) ?? 0;
-        const shift = Math.abs(topWc - lineWc) / 2;
-        if (shift >= 0.2) continue;
-        const lineWidth = Math.max(2, Math.round(12 - shift * 50));
-        const uci = line.best;
-        shapes.push(buildArrowShape(uci, 'paleGrey', { lineWidth }));
-        const labelShape = buildArrowLabelShape(uci, line);
-        if (labelShape) shapes.push(labelShape);
-      }
-    }
-  }
+  shapes.push(...buildEngineArrowShapes({ suppress: retroHidden, includeThreat: false }));
 
   if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
     const uci = threatEval.best;
@@ -362,6 +332,49 @@ export function buildArrowShapes(): DrawShape[] {
 
   const koOverlay = buildKoOverlayShape(ctrl.node.fen);
   if (koOverlay) shapes.push(koOverlay);
+
+  return shapes;
+}
+
+export function buildEngineArrowShapes(opts?: { suppress?: boolean; includeThreat?: boolean }): DrawShape[] {
+  const shapes: DrawShape[] = [];
+  const suppress = opts?.suppress === true;
+  const includeThreat = opts?.includeThreat !== false;
+
+  if (engineEnabled && showEngineArrows && !suppress) {
+    if (currentEval.best) {
+
+      console.log(
+        '[arrow-diag] drawing engine arrow — evalNodePath:', evalNodePath,
+        '| best:', currentEval.best,
+      );
+      const uci = currentEval.best;
+      shapes.push(buildArrowShape(uci, 'paleBlue'));
+      const labelShape = buildArrowLabelShape(uci, currentEval);
+      if (labelShape) shapes.push(labelShape);
+    }
+    // Secondary PV lines — paleGrey with lineWidth scaled by win% diff
+    // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts compute()
+    if (arrowAllLines) {
+      const topWc = evalWinChances(currentEval) ?? 0;
+      for (const line of currentEval.lines ?? []) {
+        if (!line.best) continue;
+        const lineWc = evalWinChances(line) ?? 0;
+        const shift = Math.abs(topWc - lineWc) / 2;
+        if (shift >= 0.2) continue;
+        const lineWidth = Math.max(2, Math.round(12 - shift * 50));
+        const uci = line.best;
+        shapes.push(buildArrowShape(uci, 'paleGrey', { lineWidth }));
+        const labelShape = buildArrowLabelShape(uci, line);
+        if (labelShape) shapes.push(labelShape);
+      }
+    }
+  }
+
+  if (includeThreat && engineEnabled && threatMode && threatEval.best && !suppress) {
+    const uci = threatEval.best;
+    shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'red' });
+  }
 
   return shapes;
 }

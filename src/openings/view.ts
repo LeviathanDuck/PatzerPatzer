@@ -53,9 +53,10 @@ import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } f
 import { renderMoveNavBar } from '../analyse/analysisControls';
 import {
   engineEnabled, evalCurrentPosition,
+  buildEngineArrowShapes,
   showEngineArrows, setShowEngineArrows,
+  arrowAllLines, setArrowAllLines,
   showArrowLabels, setShowArrowLabels,
-  syncArrow,
 } from '../engine/ctrl';
 import { playMoveWithDelay, cancelPlayMove } from '../engine/playMove';
 import { STRENGTH_LEVELS } from '../engine/types';
@@ -627,8 +628,9 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
 
     h('h2', 'Display'),
     h('div.action-menu__display', [
-      renderToggleRow('op-engine-arrows', 'Engine arrows', showEngineArrows, (v) => { setShowEngineArrows(v); syncArrow(); redraw(); }),
-      renderToggleRow('op-arrow-labels', 'Arrow labels', showArrowLabels, (v) => { setShowArrowLabels(v); syncArrow(); redraw(); }),
+      renderToggleRow('op-engine-arrows', 'Engine arrows', showEngineArrows, (v) => { setShowEngineArrows(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }),
+      renderToggleRow('op-engine-line-arrows', 'Engine line arrows', arrowAllLines, (v) => { setArrowAllLines(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }, !showEngineArrows),
+      renderToggleRow('op-arrow-labels', 'Arrow labels', showArrowLabels, (v) => { setShowArrowLabels(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }),
     ]),
   ]);
 }
@@ -1825,7 +1827,7 @@ function renderOpeningTreeTool(
       isFetching() ? renderFetchBar(redraw) : treeBuilding() ? renderTreeBuildBar() : null,
       // Engine section at the top of the panel, before position-context content.
       renderCeval(),
-      renderEngineSettings(),
+      renderEngineSettings({ showArrowSettings: true }),
       engineEnabled ? renderPvBox() : null,
       // Position context: played lines + sample games appear together for integrated browsing.
       node ? renderPlayedLinesPanel(node, redraw) : null,
@@ -2195,6 +2197,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         const dests = destsForFen(fen);
         _lastBoardFen = fen;
         setCevalFenOverride(fen);
+        if (engineEnabled) evalCurrentPosition();
         _openingsCg = makeChessground(vnode.elm as HTMLElement, {
           fen,
           orientation: boardOrientation(),
@@ -2214,6 +2217,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
               green:    { key: 'g',  color: '#15781B', opacity: 0.8,  lineWidth: 10 },
               red:      { key: 'r',  color: '#882020', opacity: 0.8,  lineWidth: 10 },
               blue:     { key: 'b',  color: '#003088', opacity: 0.8,  lineWidth: 10 },
+              paleBlue: { key: 'pb', color: '#003088', opacity: 0.65, lineWidth: 15 },
               yellow:   { key: 'y',  color: '#e6a520', opacity: 0.55, lineWidth: 8 },
               paleGrey: { key: 'pg', color: '#888888', opacity: 0.35, lineWidth: 6 },
               ...FREQ_BRUSHES,
@@ -2272,10 +2276,8 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
           },
         });
         bindBoardResizeHandle(vnode.elm as HTMLElement);
-        // Draw initial arrows for the starting position
-        if (node && _openingsCg) {
-          _openingsCg.setAutoShapes(buildFrequencyArrows(node));
-        }
+        // Draw initial arrows for the starting position.
+        syncOpeningsAutoShapes(node);
         // If a fetch is in progress and the animation hasn't started yet, start it
         // now that the board is mounted. The first renderFetchBar call happens in
         // the same patch cycle as this insert hook, so _openingsCg wasn't available
@@ -2285,10 +2287,8 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         }
       },
       postpatch: () => {
-        // Sync arrows on every redraw (tree may have updated from background build)
-        if (node && _openingsCg) {
-          _openingsCg.setAutoShapes(buildFrequencyArrows(node));
-        }
+        // Sync arrows on every redraw (tree or engine output may have updated).
+        syncOpeningsAutoShapes(node);
       },
       destroy: () => {
         _lastBoardFen = '';
@@ -2404,7 +2404,7 @@ function syncOpeningsBoard(_redraw: () => void): void {
     movable: { dests: destsForFen(fen), color: movableColor },
     ...(node.uci ? { lastMove: [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] } : {}),
   });
-  _openingsCg.setAutoShapes(buildFrequencyArrows(node));
+  syncOpeningsAutoShapes(node);
   // Update FEN override and re-evaluate if engine is on.
   setCevalFenOverride(fen);
   if (engineEnabled) evalCurrentPosition();
@@ -2481,6 +2481,23 @@ for (let i = 0; i < 8; i++) {
   // Pre-register 8 brushes with descending opacity: 0.85, 0.70, 0.55, ...
   const opacity = Math.max(0.15, 0.85 - i * 0.1);
   FREQ_BRUSHES[`freq${i}`] = { key: `f${i}`, color: '#15781B', opacity, lineWidth: 10 };
+}
+
+/**
+ * Openings board auto-shapes combine local frequency arrows with shared engine
+ * guidance. Engine arrows are appended last so they remain visible over the
+ * opening-tree frequency layer.
+ */
+function buildOpeningsAutoShapes(node: OpeningTreeNode | null): DrawShape[] {
+  return [
+    ...(node ? buildFrequencyArrows(node) : []),
+    ...buildEngineArrowShapes(),
+  ];
+}
+
+function syncOpeningsAutoShapes(node: OpeningTreeNode | null): void {
+  if (!_openingsCg) return;
+  _openingsCg.setAutoShapes(buildOpeningsAutoShapes(node));
 }
 
 /**

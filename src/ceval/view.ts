@@ -18,6 +18,8 @@ import {
   currentEval, resetCurrentEval,
   engineEnabled, engineReady,
   multiPv, setMultiPv,
+  showEngineArrows, setShowEngineArrows,
+  arrowAllLines, setArrowAllLines,
   analysisDepth, setAnalysisDepth,
   searchTime, setSearchTime,
   searchUntilDepth, setSearchUntilDepth,
@@ -433,9 +435,24 @@ export function renderPvBoard(): VNode | null {
  * Engine settings panel — Lines (MultiPV) and Depth sliders.
  * Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts renderCevalSettings
  */
-export function renderEngineSettings(): VNode | null {
+export function renderEngineSettings(opts?: { showArrowSettings?: boolean }): VNode | null {
   if (!showEngineSettings) return null;
+  const arrowSettings = opts?.showArrowSettings === true
+    ? [
+        renderToggleRow('ceval-engine-arrows', 'Engine arrows', showEngineArrows, (v) => {
+          setShowEngineArrows(v);
+          syncArrow();
+          _redraw();
+        }),
+        renderToggleRow('ceval-engine-line-arrows', 'Engine line arrows', arrowAllLines, (v) => {
+          setArrowAllLines(v);
+          syncArrow();
+          _redraw();
+        }, !showEngineArrows),
+      ]
+    : [];
   return h('div.ceval-settings', [
+    ...arrowSettings,
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-multipv' } }, 'Lines'),
       h('input#ceval-multipv', {
@@ -497,5 +514,4 @@ export function renderEngineSettings(): VNode | null {
     ]),
   ]);
 }
-
-
+// Review labels and board review glyphs remain in the analysis action menu.
