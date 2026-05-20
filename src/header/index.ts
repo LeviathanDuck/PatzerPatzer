@@ -26,7 +26,6 @@ import { reviewDepth, setReviewDepth } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
-import { requestPatzerMagicLink, type MagicLinkRequestResult } from '../auth/patzerAuthClient';
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
@@ -55,18 +54,12 @@ let headerAuthProvider: 'patzer' | 'lichess' | 'client-lichess' | null = null;
 let headerAuthChecked = false;
 let loginModalListenerAttached = false;
 let loginModalError = '';
-let loginModalSuccess = '';
-let loginModalPending = false;
-let loginEmail = '';
-let loginDevMagicLink: MagicLinkRequestResult['devMagicLink'] = null;
 
 function ensureLoginModalListener(redraw: () => void): void {
   if (loginModalListenerAttached) return;
   loginModalListenerAttached = true;
   window.addEventListener(LOGIN_MODAL_EVENT, () => {
     loginModalError = '';
-    loginModalSuccess = '';
-    loginDevMagicLink = null;
     showLoginModal = true;
     redraw();
   });
@@ -107,8 +100,6 @@ function renderUserArea(redraw: () => void): VNode | null {
     attrs: { type: 'button', title: 'Account login' },
     on: { click: () => {
       loginModalError = '';
-      loginModalSuccess = '';
-      loginDevMagicLink = null;
       showLoginModal = true;
       redraw();
     } },
@@ -119,25 +110,7 @@ function renderLoginModal(redraw: () => void): VNode {
   const close = () => {
     showLoginModal = false;
     loginModalError = '';
-    loginModalSuccess = '';
-    loginDevMagicLink = null;
     redraw();
-  };
-  const requestMagicLink = () => {
-    loginModalError = '';
-    loginModalSuccess = '';
-    loginDevMagicLink = null;
-    loginModalPending = true;
-    redraw();
-    requestPatzerMagicLink(loginEmail).then(result => {
-      loginModalSuccess = 'Check your email for the Patzer sign-in link.';
-      loginDevMagicLink = result.devMagicLink ?? null;
-    }).catch(error => {
-      loginModalError = error instanceof Error ? error.message : 'Could not send magic link.';
-    }).finally(() => {
-      loginModalPending = false;
-      redraw();
-    });
   };
 
   return h('div.auth-modal', [
@@ -151,39 +124,7 @@ function renderLoginModal(redraw: () => void): VNode {
         }, 'x'),
       ]),
       h('div.auth-modal__body', [
-        h('p', 'Use an email magic link for a Patzer account. Lichess can still be used as a chess login option.'),
-        h('p', 'Settings and cloud data are not saved yet.'),
-        h('form.auth-modal__form', {
-          on: { submit: event => {
-            event.preventDefault();
-            if (!loginModalPending) requestMagicLink();
-          } },
-        }, [
-          h('label.auth-modal__label', { attrs: { for: 'patzer-login-email' } }, 'Email'),
-          h('div.auth-modal__email-row', [
-            h('input.auth-modal__input', {
-              attrs: {
-                id: 'patzer-login-email',
-                type: 'email',
-                autocomplete: 'email',
-                placeholder: 'you@example.com',
-                disabled: loginModalPending,
-              },
-              props: { value: loginEmail },
-              on: { input: event => {
-                loginEmail = (event.target as HTMLInputElement).value;
-              } },
-            }),
-            h('button.auth-modal__primary', {
-              attrs: { type: 'submit', disabled: loginModalPending },
-            }, loginModalPending ? 'Sending...' : 'Send link'),
-          ]),
-        ]),
-        loginModalSuccess ? h('p.auth-modal__success', loginModalSuccess) : null,
-        loginDevMagicLink ? h('p.auth-modal__dev-link', [
-          'Local dev link: ',
-          h('a', { attrs: { href: loginDevMagicLink.url } }, 'open magic link'),
-        ]) : null,
+        h('p', 'Use Lichess as a chess login option. Admin beta database sync is handled separately on the Admin page with a sync token.'),
         loginModalError ? h('p.auth-modal__error', loginModalError) : null,
       ]),
       h('div.auth-modal__actions', [
