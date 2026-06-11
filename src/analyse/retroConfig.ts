@@ -59,8 +59,8 @@ export interface RetroConfig {
   punishExploitDropMin: number;
 
   // ── Feedback tone ───────────────────────────────────────────────────────
-  /** Controls the tone of all user-facing feedback text. 'standard' or 'harsh'. */
-  feedbackTone: 'standard' | 'harsh';
+  /** Controls the tone of all user-facing feedback text. */
+  feedbackTone: 'standard' | 'harsh' | 'brutal' | 'unhinged';
 }
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
@@ -123,7 +123,10 @@ function loadFromStorage(): RetroConfig {
         typeof p.punishExploitDropMin === 'number' && p.punishExploitDropMin >= 0
           ? p.punishExploitDropMin : RETRO_CONFIG_DEFAULTS.punishExploitDropMin,
       feedbackTone:
-        p.feedbackTone === 'standard' || p.feedbackTone === 'harsh'
+        p.feedbackTone === 'standard' ||
+        p.feedbackTone === 'harsh' ||
+        p.feedbackTone === 'brutal' ||
+        p.feedbackTone === 'unhinged'
           ? p.feedbackTone : RETRO_CONFIG_DEFAULTS.feedbackTone,
     };
   } catch {
@@ -135,10 +138,35 @@ function loadFromStorage(): RetroConfig {
 export const retroConfig: RetroConfig = loadFromStorage();
 
 // ── Change callbacks ──────────────────────────────────────────────────────────
-const _changeCallbacks: (() => void)[] = [];
+export interface RetroConfigChange {
+  patch: Partial<RetroConfig>;
+  affectsCandidateSelection: boolean;
+}
+
+const CANDIDATE_SELECTION_KEYS: readonly (keyof RetroConfig)[] = [
+  'minLossThreshold',
+  'missedMateDistance',
+  'collapseEnabled',
+  'collapseWcFloor',
+  'collapseDropMin',
+  'defensiveEnabled',
+  'defensiveWcCeiling',
+  'defensiveSalvageMin',
+  'punishEnabled',
+  'punishOpponentSwingMin',
+  'punishExploitDropMin',
+];
+
+const _changeCallbacks: ((change: RetroConfigChange) => void)[] = [];
+
+function patchAffectsCandidateSelection(patch: Partial<RetroConfig>): boolean {
+  return CANDIDATE_SELECTION_KEYS.some(key =>
+    Object.prototype.hasOwnProperty.call(patch, key) && patch[key] !== retroConfig[key],
+  );
+}
 
 /** Register a callback that fires whenever retroConfig is updated. */
-export function onRetroConfigChange(cb: () => void): void {
+export function onRetroConfigChange(cb: (change: RetroConfigChange) => void): void {
   _changeCallbacks.push(cb);
 }
 
@@ -147,9 +175,10 @@ export function onRetroConfigChange(cb: () => void): void {
  * Mirrors src/engine/tactics.ts setMissedMomentConfig pattern.
  */
 export function setRetroConfig(patch: Partial<RetroConfig>): void {
+  const affectsCandidateSelection = patchAffectsCandidateSelection(patch);
   Object.assign(retroConfig, patch);
   localStorage.setItem(RETRO_CONFIG_LS_KEY, JSON.stringify(retroConfig));
-  _changeCallbacks.forEach(cb => cb());
+  _changeCallbacks.forEach(cb => cb({ patch, affectsCandidateSelection }));
 }
 
 /** Reset to defaults, persist, and notify. */

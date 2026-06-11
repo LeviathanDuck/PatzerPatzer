@@ -19,7 +19,7 @@ export type SeverityTier =
   | 'blunder'
   | 'catastrophic';
 
-export type FeedbackTone = 'standard' | 'harsh';
+export type FeedbackTone = 'standard' | 'harsh' | 'brutal' | 'unhinged';
 
 export interface TierMeta {
   id: SeverityTier;
@@ -221,6 +221,104 @@ const harshNegative: Record<LearnableReasonCode, Record<string, FeedbackText>> =
 };
 
 // ---------------------------------------------------------------------------
+// Brutal tone
+// ---------------------------------------------------------------------------
+
+const brutalPositive: Record<string, FeedbackText> = {
+  best:      { label: 'Best move.',  summary: 'Broken clock. Twice a day.' },
+  excellent: { label: 'Acceptable.', summary: 'Acceptable. Barely.' },
+  good:      { label: 'Fine.',       summary: 'The engine is mildly less disappointed.' },
+  playable:  { label: 'Playable.',   summary: 'At least you did not make the position collapse.' },
+};
+
+const brutalNegative: Record<LearnableReasonCode, Record<string, FeedbackText>> = {
+  'swing': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'The engine found a better move almost instantly. You had the whole game.' },
+    mistake:      { label: 'Mistake.',              summary: 'That move hurt to watch.' },
+    serious:      { label: 'Serious mistake.',      summary: 'The engine needs a moment to compose itself.' },
+    blunder:      { label: 'Blunder.',              summary: 'Congratulations, you invented a new kind of bad.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'This belongs in a lesson called exactly what not to do.' },
+  },
+  'missed-mate': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'You had a cleaner forced mate and still chose the scenic route.' },
+    mistake:      { label: 'Mistake.',              summary: 'Mate was available. You let the opponent keep breathing.' },
+    serious:      { label: 'Serious mistake.',      summary: 'The mating net was sitting there and you stepped around it.' },
+    blunder:      { label: 'Blunder.',              summary: 'Mate was on the board. You declined the win.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'Mate in one was available. That is the whole sentence.' },
+  },
+  'collapse': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'A won position got worse for no good reason.' },
+    mistake:      { label: 'Mistake.',              summary: 'You had the position under control and then opened the door.' },
+    serious:      { label: 'Serious mistake.',      summary: 'A won game was dragged back into chaos.' },
+    blunder:      { label: 'Blunder.',              summary: 'You took a winning position and set it on fire.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'The win was yours. Then this move happened.' },
+  },
+  'defensive': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'There was a sturdier defense. You chose the flimsy one.' },
+    mistake:      { label: 'Mistake.',              summary: 'The defensive resource was visible. You walked past it.' },
+    serious:      { label: 'Serious mistake.',      summary: 'A critical saving move was available and you missed it.' },
+    blunder:      { label: 'Blunder.',              summary: 'There was a way to survive. This was the opposite.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'The one move that kept the game alive was not played.' },
+  },
+  'punish': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'Your opponent gave you a target and you barely grazed it.' },
+    mistake:      { label: 'Mistake.',              summary: 'Free advantage was on the board and you left it there.' },
+    serious:      { label: 'Serious mistake.',      summary: 'Your opponent handed you momentum and you handed it back.' },
+    blunder:      { label: 'Blunder.',              summary: 'The opponent blundered and you somehow made it unimpressive.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'They made a decisive error. You found a way not to care.' },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Unhinged tone
+// ---------------------------------------------------------------------------
+
+const unhingedPositive: Record<string, FeedbackText> = {
+  best:      { label: 'Best move.',  summary: 'A miracle. You actually found it.' },
+  excellent: { label: 'Excellent.',  summary: 'Fine, that was almost not terrible.' },
+  good:      { label: 'Good.',       summary: 'The engine grudgingly acknowledges your existence.' },
+  playable:  { label: 'Playable.',   summary: 'That move earned a participation trophy and nothing more.' },
+};
+
+const unhingedNegative: Record<LearnableReasonCode, Record<string, FeedbackText>> = {
+  'swing': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'There was a better move and it was not hiding.' },
+    mistake:      { label: 'Mistake.',              summary: 'Were you playing with your eyes closed, or is this just the plan?' },
+    serious:      { label: 'Serious mistake.',      summary: 'A random move generator could have made a stronger case.' },
+    blunder:      { label: 'Blunder.',              summary: 'This is the kind of move that makes engines question their purpose.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'Delete the notation. Bury the scoresheet. Pretend this never happened.' },
+  },
+  'missed-mate': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'You had forced mate and still chose bonus content.' },
+    mistake:      { label: 'Mistake.',              summary: 'Mate was right there and you waved politely as it left.' },
+    serious:      { label: 'Serious mistake.',      summary: 'The board screamed checkmate. You changed the subject.' },
+    blunder:      { label: 'Blunder.',              summary: 'Mate was available. You chose drama.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'Mate in one. I need to sit down.' },
+  },
+  'collapse': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'A clean win got smeared across the board.' },
+    mistake:      { label: 'Mistake.',              summary: 'You had control, then apparently got bored of it.' },
+    serious:      { label: 'Serious mistake.',      summary: 'This was winning until the move entered witness protection.' },
+    blunder:      { label: 'Blunder.',              summary: 'That advantage did not slip. It was shoved.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'A won position became a crime scene.' },
+  },
+  'defensive': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'A better defense existed and you ghosted it.' },
+    mistake:      { label: 'Mistake.',              summary: 'The saving idea was on the board. You chose the trap door.' },
+    serious:      { label: 'Serious mistake.',      summary: 'The position handed you one escape hatch and you boarded it up.' },
+    blunder:      { label: 'Blunder.',              summary: 'Survival was possible. This move filed the resignation letter early.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'The game offered mercy. You declined.' },
+  },
+  'punish': {
+    inaccuracy:   { label: 'Inaccuracy.',          summary: 'Your opponent blinked and you blinked harder.' },
+    mistake:      { label: 'Mistake.',              summary: 'They made a mistake. You responded like it was optional.' },
+    serious:      { label: 'Serious mistake.',      summary: 'The punishment was obvious enough to have its own spotlight.' },
+    blunder:      { label: 'Blunder.',              summary: 'They gave you the game and you asked for a receipt.' },
+    catastrophic: { label: 'Catastrophic blunder.', summary: 'The opponent collapsed and you somehow joined them on the floor.' },
+  },
+};
+
+// ---------------------------------------------------------------------------
 // ALL_FEEDBACK — complete matrix for dashboard/lookbook consumers
 // ---------------------------------------------------------------------------
 
@@ -246,8 +344,10 @@ function buildMatrix(
 }
 
 export const ALL_FEEDBACK: Readonly<Record<FeedbackTone, FeedbackMatrix>> = {
-  standard: buildMatrix(standardPositive, standardNegative),
-  harsh:    buildMatrix(harshPositive, harshNegative),
+  standard:  buildMatrix(standardPositive, standardNegative),
+  harsh:     buildMatrix(harshPositive, harshNegative),
+  brutal:    buildMatrix(brutalPositive, brutalNegative),
+  unhinged:  buildMatrix(unhingedPositive, unhingedNegative),
 };
 
 // ---------------------------------------------------------------------------
@@ -347,6 +447,8 @@ export function buildDetailLine(input: DetailLineInput, tone: FeedbackTone = 'st
   const diff = evalDiffFormatted;
 
   if (tone === 'harsh') return _buildDetailLineHarsh(played, best, diff, mateDistance, reasonCode, tier);
+  if (tone === 'brutal') return _buildDetailLineBrutal(played, best, diff, mateDistance, reasonCode, tier);
+  if (tone === 'unhinged') return _buildDetailLineUnhinged(played, best, diff, mateDistance, reasonCode, tier);
 
   switch (reasonCode) {
     case 'swing':
@@ -410,6 +512,72 @@ function _buildDetailLineHarsh(
 
     case 'punish':
       return `Your opponent blundered. ${best} would have punished it. You played ${played}.`;
+
+    default:
+      return `${played} instead of ${best}.`;
+  }
+}
+
+function _buildDetailLineBrutal(
+  played: string, best: string, diff: string | null, mateDistance: number | null,
+  reasonCode: LearnableReasonCode, tier: SeverityTier,
+): string {
+  switch (reasonCode) {
+    case 'swing':
+      if (tier === 'inaccuracy' || tier === 'playable')
+        return `${best} was better. ${played} was not the assignment.`;
+      if (diff)
+        return `${played} instead of ${best}. Really? That cost roughly ${diff} pawns.`;
+      return `${played} instead of ${best}. Really?`;
+
+    case 'missed-mate':
+      if (mateDistance !== null)
+        return `Mate in ${mateDistance} via ${best}. You played ${played}. That is brutal.`;
+      return `Mate was available via ${best}. You played ${played}.`;
+
+    case 'collapse':
+      if (diff)
+        return `${played} torched the win. ${best} was right there. Cost: ${diff} pawns.`;
+      return `${played} torched the win. ${best} was right there.`;
+
+    case 'defensive':
+      return `${best} was the survival move. ${played} chose pain.`;
+
+    case 'punish':
+      return `The opponent blundered. ${best} was the punishment. ${played} let them off.`;
+
+    default:
+      return `${played} instead of ${best}.`;
+  }
+}
+
+function _buildDetailLineUnhinged(
+  played: string, best: string, diff: string | null, mateDistance: number | null,
+  reasonCode: LearnableReasonCode, tier: SeverityTier,
+): string {
+  switch (reasonCode) {
+    case 'swing':
+      if (tier === 'inaccuracy' || tier === 'playable')
+        return `${best} was sitting there. You chose ${played}. Bold. Wrong, but bold.`;
+      if (diff)
+        return `${played}. You played ${played}. With ${best} on the board. Cost: ${diff} pawns.`;
+      return `${played}. You played ${played}. With ${best} on the board.`;
+
+    case 'missed-mate':
+      if (mateDistance !== null)
+        return `Mate in ${mateDistance}: ${best}. You played ${played}. I need a minute.`;
+      return `Mate was available via ${best}. You played ${played}. I need a minute.`;
+
+    case 'collapse':
+      if (diff)
+        return `${played} took a winning position and launched it into orbit. ${best} kept the win. Cost: ${diff} pawns.`;
+      return `${played} took a winning position and launched it into orbit. ${best} kept the win.`;
+
+    case 'defensive':
+      return `${best} was the escape hatch. ${played} sealed it shut.`;
+
+    case 'punish':
+      return `The opponent handed you a gift. ${best} opened it. ${played} set it down and walked away.`;
 
     default:
       return `${played} instead of ${best}.`;
@@ -482,6 +650,46 @@ export const LFYM_MESSAGES: Readonly<Record<FeedbackTone, LfymStateMessages>> = 
     sessionTitle:     'Learn from your mistakes',
     vindicated:       'Fine. You were right this time. Don\'t let it go to your head.',
   },
+  brutal: {
+    winExact:         'Finally.',
+    winNearBest:      'Acceptable. Moving on.',
+    failBetter:       'Warmer. Still wrong.',
+    failWorse:        'How is it worse?',
+    failDefault:      'No.',
+    findPrompt:       'Find a better move for {color}. The bar is low.',
+    findPlayed:       '{move} happened. We need to talk about it.',
+    viewSolution:     'Since you clearly need help.',
+    viewBestWas:      'Obviously the answer was',
+    offTrackMessage:  'Are you even paying attention?',
+    offTrackResume:   'Focus up.',
+    viewTheSolution:  'I give up. Show me.',
+    skipThisMove:     'Admit defeat.',
+    tryAnotherMove:   'Again.',
+    saveToLibrary:    'Archive this failure',
+    doItAgain:        'Run it back',
+    sessionTitle:     'Learn from your mistakes',
+    vindicated:       'You were right. I am as surprised as you are.',
+  },
+  unhinged: {
+    winExact:         'A miracle.',
+    winNearBest:      'Close enough. I will allow it. This time.',
+    failBetter:       'Is this a joke?',
+    failWorse:        'You found a worse move. Incredible.',
+    failDefault:      'Please tell me this is intentional.',
+    findPrompt:       'Find a better move for {color}. I am begging you.',
+    findPlayed:       '{move} was played. I need to lie down.',
+    viewSolution:     'Let me show you what a chess player would do.',
+    viewBestWas:      'Even Stockfish is laughing. The answer was',
+    offTrackMessage:  'Hello? We are in the middle of something.',
+    offTrackResume:   'Get back here.',
+    viewTheSolution:  'Fine, I will do it myself.',
+    skipThisMove:     'Concede this one. Some shame is appropriate.',
+    tryAnotherMove:   'For the love of Kasparov, try again.',
+    saveToLibrary:    'Preserve this crime scene',
+    doItAgain:        'Subject yourself to this again',
+    sessionTitle:     'Learn from your mistakes',
+    vindicated:       'You were right and I hate it.',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -506,6 +714,12 @@ export interface MistakeCountFeedback {
   sessionTitleHarsh: string;
   sessionIntroHarsh: string;
   sessionEndHarsh: string;
+  sessionTitleBrutal: string;
+  sessionIntroBrutal: string;
+  sessionEndBrutal: string;
+  sessionTitleUnhinged: string;
+  sessionIntroUnhinged: string;
+  sessionEndUnhinged: string;
   countFloor: number;
   countCeiling: number;
 }
@@ -519,6 +733,12 @@ export const MISTAKE_COUNT_TIERS: readonly MistakeCountFeedback[] = [
     sessionTitleHarsh: 'Learn from your mistakes',
     sessionIntroHarsh: '',
     sessionEndHarsh: 'No mistakes found. Suspiciously clean.',
+    sessionTitleBrutal: 'Learn from your mistakes',
+    sessionIntroBrutal: '',
+    sessionEndBrutal: 'No mistakes found. Fine. Credit where due.',
+    sessionTitleUnhinged: 'Learn from your mistakes',
+    sessionIntroUnhinged: '',
+    sessionEndUnhinged: 'No mistakes found. I have no notes and I dislike that.',
   },
   {
     tier: 'minor', color: '#57ab5a', countFloor: 1, countCeiling: 2,
@@ -528,6 +748,12 @@ export const MISTAKE_COUNT_TIERS: readonly MistakeCountFeedback[] = [
     sessionTitleHarsh: 'Learn from your mistakes',
     sessionIntroHarsh: 'Two moments. You\'ll survive.',
     sessionEndHarsh: 'That wasn\'t too painful.',
+    sessionTitleBrutal: 'Learn from your mistakes',
+    sessionIntroBrutal: 'A couple of moments. Try not to make them worse.',
+    sessionEndBrutal: 'Done. Minor damage, contained.',
+    sessionTitleUnhinged: 'Learn from your mistakes',
+    sessionIntroUnhinged: 'Only a couple. A tiny mess, but still a mess.',
+    sessionEndUnhinged: 'Done. Somehow the board survived.',
   },
   {
     tier: 'notable', color: '#56b4e9', countFloor: 3, countCeiling: 4,
@@ -537,6 +763,12 @@ export const MISTAKE_COUNT_TIERS: readonly MistakeCountFeedback[] = [
     sessionTitleHarsh: 'Learn from your mistakes',
     sessionIntroHarsh: 'A few things went wrong. Let\'s see how wrong.',
     sessionEndHarsh: 'Done. You\'ve got homework.',
+    sessionTitleBrutal: 'Learn from your mistakes',
+    sessionIntroBrutal: 'A few errors. Enough to make this annoying.',
+    sessionEndBrutal: 'Done. Go clean those up.',
+    sessionTitleUnhinged: 'Learn from your mistakes',
+    sessionIntroUnhinged: 'A few things exploded. Let us inspect the wreckage.',
+    sessionEndUnhinged: 'Done. That was a respectable little disaster.',
   },
   {
     tier: 'concerning', color: '#e69d00', countFloor: 5, countCeiling: 7,
@@ -546,6 +778,12 @@ export const MISTAKE_COUNT_TIERS: readonly MistakeCountFeedback[] = [
     sessionTitleHarsh: 'Learn from your mistakes',
     sessionIntroHarsh: 'This is going to take a while.',
     sessionEndHarsh: 'Done. The engine would like a word.',
+    sessionTitleBrutal: 'Learn from your mistakes',
+    sessionIntroBrutal: 'Several mistakes. Settle in.',
+    sessionEndBrutal: 'Done. The engine has filed a complaint.',
+    sessionTitleUnhinged: 'Learn from your mistakes',
+    sessionIntroUnhinged: 'Several fires are burning. Pick one.',
+    sessionEndUnhinged: 'Done. The position has requested distance.',
   },
   {
     tier: 'rough', color: '#e06c4e', countFloor: 8, countCeiling: 10,
@@ -555,6 +793,12 @@ export const MISTAKE_COUNT_TIERS: readonly MistakeCountFeedback[] = [
     sessionTitleHarsh: 'Learn from your mistakes',
     sessionIntroHarsh: 'This game was not your finest work.',
     sessionEndHarsh: 'Done. That was hard to watch.',
+    sessionTitleBrutal: 'Learn from your mistakes',
+    sessionIntroBrutal: 'This game was rough. We both know it.',
+    sessionEndBrutal: 'Done. That was hard to watch.',
+    sessionTitleUnhinged: 'Learn from your mistakes',
+    sessionIntroUnhinged: 'This game is making the eval bar dizzy.',
+    sessionEndUnhinged: 'Done. I need a quieter board.',
   },
   {
     tier: 'brutal', color: '#db3031', countFloor: 11, countCeiling: 15,
@@ -564,6 +808,12 @@ export const MISTAKE_COUNT_TIERS: readonly MistakeCountFeedback[] = [
     sessionTitleHarsh: 'Learn from your mistakes',
     sessionIntroHarsh: 'I hope you\'re sitting down.',
     sessionEndHarsh: 'Done. We don\'t need to talk about it.',
+    sessionTitleBrutal: 'Learn from your mistakes',
+    sessionIntroBrutal: 'This game needs serious work. Brace yourself.',
+    sessionEndBrutal: 'Done. We have evidence and it is not flattering.',
+    sessionTitleUnhinged: 'Learn from your mistakes',
+    sessionIntroUnhinged: 'This game is a tactical landfill.',
+    sessionEndUnhinged: 'Done. The board is pressing charges.',
   },
   {
     tier: 'disaster', color: '#8b1a1a', countFloor: 16, countCeiling: Infinity,
@@ -573,6 +823,12 @@ export const MISTAKE_COUNT_TIERS: readonly MistakeCountFeedback[] = [
     sessionTitleHarsh: 'Learn from your mistakes',
     sessionIntroHarsh: 'What happened here?',
     sessionEndHarsh: 'Done. Let\'s never speak of this game again.',
+    sessionTitleBrutal: 'Learn from your mistakes',
+    sessionIntroBrutal: 'I have seen car crashes more graceful than this game.',
+    sessionEndBrutal: 'Done. I need therapy after watching that.',
+    sessionTitleUnhinged: 'Learn from your mistakes',
+    sessionIntroUnhinged: 'This game is a war crime against chess.',
+    sessionEndUnhinged: 'Done. That game should be classified and never spoken of again.',
   },
 ] as const;
 
@@ -581,4 +837,22 @@ export function classifyMistakeCount(count: number): MistakeCountFeedback {
     if (count >= tier.countFloor && count <= tier.countCeiling) return tier;
   }
   return MISTAKE_COUNT_TIERS[MISTAKE_COUNT_TIERS.length - 1]!;
+}
+
+export function mistakeCountSessionIntro(feedback: MistakeCountFeedback, tone: FeedbackTone): string {
+  switch (tone) {
+    case 'harsh': return feedback.sessionIntroHarsh;
+    case 'brutal': return feedback.sessionIntroBrutal;
+    case 'unhinged': return feedback.sessionIntroUnhinged;
+    default: return feedback.sessionIntro;
+  }
+}
+
+export function mistakeCountSessionEnd(feedback: MistakeCountFeedback, tone: FeedbackTone): string {
+  switch (tone) {
+    case 'harsh': return feedback.sessionEndHarsh;
+    case 'brutal': return feedback.sessionEndBrutal;
+    case 'unhinged': return feedback.sessionEndUnhinged;
+    default: return feedback.sessionEnd;
+  }
 }

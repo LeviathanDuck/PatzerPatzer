@@ -6,6 +6,7 @@
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
 import type { AnalyseCtrl } from './ctrl';
+import type { RetroChoiceCountSummary } from './retroChoice';
 import { renderRetroConfigBody } from '../header/index';
 import {
   showBoardReviewGlyphs, setShowBoardReviewGlyphs,
@@ -57,6 +58,8 @@ interface AnalysisControlsDeps {
   explorerEnabled:  () => boolean;
 
   onSaveToLibrary:  () => void;
+  // LFYM settings count preview for the current analysis game.
+  getRetroConfigCountSummary?: () => RetroChoiceCountSummary | null;
 }
 
 let _deps: AnalysisControlsDeps | null = null;
@@ -203,7 +206,7 @@ export function renderActionMenu(): VNode | null {
   const deps     = _deps!;
   const ctrl     = deps.getCtrl();
   const close    = () => { closeActionMenu(); deps.redraw(); };
-  const hasRetro = !!ctrl.retro;
+  const hasRetro = !!ctrl.retro || !!ctrl.retroChoice;
   const canLFYM  = analysisComplete && !batchAnalyzing;
 
 
@@ -213,7 +216,10 @@ export function renderActionMenu(): VNode | null {
         on: { click: () => { _actionMenuSubView = null; deps.redraw(); } },
       }, '\u2190 Back'),
       h('h2', 'Mistake Detection'),
-      h('div.action-menu__subpanel', renderRetroConfigBody(deps.redraw)),
+      h('div.action-menu__subpanel', renderRetroConfigBody(deps.redraw, {
+        countSummary: deps.getRetroConfigCountSummary?.() ?? null,
+        idPrefix: 'analysis-retro-config',
+      })),
     ]);
   }
 

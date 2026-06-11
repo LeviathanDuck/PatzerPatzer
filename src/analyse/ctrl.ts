@@ -3,6 +3,7 @@
 
 import { mainlineNodeList, nodeAtPath, nodeListAt } from '../tree/ops';
 import type { TreeNode, TreePath } from '../tree/types';
+import type { RetroChoiceState } from './retroChoice';
 import type { RetroCtrl } from './retroCtrl';
 
 export class AnalyseCtrl {
@@ -20,6 +21,20 @@ export class AnalyseCtrl {
    * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts retro field.
    */
   retro?: RetroCtrl;
+
+  /**
+   * Pre-session Learn From Your Mistakes choice page state.
+   * Exists after the entry is clicked and before Begin creates RetroCtrl.
+   * This is not a board mode yet; board-mode behavior starts only when `retro`
+   * is set.
+   */
+  retroChoice?: RetroChoiceState;
+
+  /**
+   * Choice filters used to start the active LFYM session.
+   * Reapplied if candidate-selection settings rebuild the session mid-flow.
+   */
+  retroActiveSelection?: RetroChoiceState['selection'];
 
   constructor(root: TreeNode) {
     this.root = root;

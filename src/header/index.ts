@@ -25,6 +25,11 @@ import {
 import { reviewDepth, setReviewDepth } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
+import {
+  RETRO_CHOICE_SEVERITY_PRESETS,
+  type RetroChoiceCountSummary,
+} from '../analyse/retroChoice';
+import type { FeedbackTone } from '../feedback/severity';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
@@ -41,6 +46,13 @@ let showRetroModal        = false;
 let showLoginModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
+
+const FEEDBACK_TONE_OPTIONS: readonly { value: FeedbackTone; label: string; description: string }[] = [
+  { value: 'standard', label: 'Standard', description: 'Professional and encouraging' },
+  { value: 'harsh', label: 'Harsh', description: 'Direct and blunt' },
+  { value: 'brutal', label: 'Brutal', description: 'Genuinely mean' },
+  { value: 'unhinged', label: 'Unhinged', description: 'Absolutely savage' },
+];
 
 export function openRetroModal(redraw: () => void): void {
   showRetroModal = true;
@@ -407,9 +419,18 @@ function renderDetectionModal(redraw: () => void): VNode {
 // Controls retroConfig (Learn From Your Mistakes candidate-selection parameters).
 // Uses the same detection-modal card structure and CSS classes as renderDetectionModal.
 
+export interface RetroConfigBodyOptions {
+  countSummary?: RetroChoiceCountSummary | null;
+  idPrefix?: string;
+}
 
-export function renderRetroConfigBody(redraw: () => void): VNode[] {
+
+export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBodyOptions = {}): VNode[] {
   const cfg = retroConfig;
+  const selectedTone = FEEDBACK_TONE_OPTIONS.find(o => o.value === cfg.feedbackTone) ?? FEEDBACK_TONE_OPTIONS[0]!;
+  const countSummary = options.countSummary ?? null;
+  const idPrefix = options.idPrefix ?? 'retro-config';
+  const feedbackToneLabelId = `${idPrefix}-feedback-tone-label`;
   const isDefault =
     cfg.minLossThreshold      === RETRO_CONFIG_DEFAULTS.minLossThreshold &&
     cfg.missedMateDistance    === RETRO_CONFIG_DEFAULTS.missedMateDistance &&
@@ -421,9 +442,73 @@ export function renderRetroConfigBody(redraw: () => void): VNode[] {
     cfg.defensiveSalvageMin  === RETRO_CONFIG_DEFAULTS.defensiveSalvageMin &&
     cfg.punishEnabled        === RETRO_CONFIG_DEFAULTS.punishEnabled &&
     cfg.punishOpponentSwingMin === RETRO_CONFIG_DEFAULTS.punishOpponentSwingMin &&
-    cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin;
+    cfg.punishExploitDropMin === RETRO_CONFIG_DEFAULTS.punishExploitDropMin &&
+    cfg.feedbackTone         === RETRO_CONFIG_DEFAULTS.feedbackTone;
 
   return [
+    h('div.detection-modal__row', [
+      h('div.detection-modal__row-header', [
+        h('span.detection-modal__label', { attrs: { id: feedbackToneLabelId } }, 'Feedback Tone'),
+        h('span.detection-modal__value', selectedTone.label),
+      ]),
+      h('p.detection-modal__desc', `Switches all Learn From Your Mistakes feedback text. ${selectedTone.description}.`),
+      h('div.detection-modal__tone-segment', {
+        attrs: {
+          role: 'radiogroup',
+          'aria-labelledby': feedbackToneLabelId,
+        },
+      }, FEEDBACK_TONE_OPTIONS.map(option =>
+        h(`button.detection-modal__tone-option.detection-modal__tone-option--${option.value}`, {
+          class: { 'is-active': cfg.feedbackTone === option.value },
+          attrs: {
+            type: 'button',
+            role: 'radio',
+            title: option.description,
+            'aria-checked': cfg.feedbackTone === option.value ? 'true' : 'false',
+          },
+          on: { click: () => {
+            setRetroConfig({ feedbackTone: option.value });
+            redraw();
+          }},
+        }, [
+          h('span.detection-modal__tone-label', option.label),
+          h('span.detection-modal__tone-desc', option.description),
+        ]),
+      )),
+    ]),
+
+    h('div.detection-modal__row', [
+      h('div.detection-modal__row-header', [
+        h('span.detection-modal__label', 'Severity Presets'),
+        countSummary
+          ? h('span.detection-modal__value', `${countSummary.total} selected`)
+          : null,
+      ].filter(Boolean) as VNode[]),
+      h('p.detection-modal__desc',
+        'Use the same severity labels as the Learn From Your Mistakes choice page. Counts update for the current game as settings change.'),
+      h('div.detection-modal__preset-grid', RETRO_CHOICE_SEVERITY_PRESETS.map(preset => {
+        const active = cfg.minLossThreshold === preset.generationLossThreshold;
+        const count = countSummary?.presets.find(p => p.id === preset.id)?.count;
+        return h('button.detection-modal__preset-option', {
+          class: { 'is-active': active },
+          attrs: {
+            type: 'button',
+            title: `${preset.label}: ${preset.helper}`,
+          },
+          on: { click: () => {
+            setRetroConfig({ minLossThreshold: preset.generationLossThreshold });
+            redraw();
+          }},
+        }, [
+          h('span.detection-modal__preset-label', preset.label),
+          h('span.detection-modal__preset-helper', preset.helper),
+          count !== undefined
+            ? h('span.detection-modal__preset-count', `${count}`)
+            : null,
+        ].filter(Boolean) as VNode[]);
+      })),
+    ]),
+
     // minLossThreshold — continuous 1–25% slider
     h('div.detection-modal__row', [
       h('div.detection-modal__row-header', [
@@ -608,7 +693,7 @@ function renderRetroModal(redraw: () => void): VNode {
           on: { click: () => { showRetroModal = false; redraw(); } },
         }, '✕'),
       ]),
-      h('div.detection-modal__body', renderRetroConfigBody(redraw)),
+      h('div.detection-modal__body', renderRetroConfigBody(redraw, { idPrefix: 'global-retro-config' })),
     ]),
   ]);
 }

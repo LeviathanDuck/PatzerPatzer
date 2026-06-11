@@ -8,6 +8,17 @@
 import { h, type VNode } from 'snabbdom';
 import type { RetroCtrl, SolvingMoveSnapshot } from './retroCtrl';
 import type { RetroCandidate } from './retro';
+import {
+  RETRO_CHOICE_CATEGORIES,
+  RETRO_CHOICE_SEVERITY_PRESETS,
+  filterRetroCandidatesForChoice,
+  formatRetroChoiceLossPercent,
+  summarizeRetroChoiceCounts,
+  type RetroChoiceCategoryId,
+  type RetroChoiceSelection,
+  type RetroChoiceState,
+  type RetroChoiceSeverityPresetId,
+} from './retroChoice';
 import { playUciMove } from '../board/index';
 import { setRetroVisibleEngineEnabled, resetRetroVisibleEngineUi } from '../ceval/view';
 import { syncArrow, evalCache } from '../engine/ctrl';
@@ -16,15 +27,26 @@ import { retroCandidateToDefinition } from '../puzzles/adapters';
 import { savePuzzleDefinition, saveAttempt } from '../puzzles/puzzleDb';
 import type { PuzzleAttempt, FailureReason, SolveResult } from '../puzzles/types';
 import type { RetroOutcome } from './retroCtrl';
-import { getSeverityFeedback, classifyEvalBoxGrade, getEvalBoxGradeMeta, classifyMistakeCount, buildDetailLine, LFYM_MESSAGES } from '../feedback/severity';
+import {
+  getSeverityFeedback,
+  classifyEvalBoxGrade,
+  getEvalBoxGradeMeta,
+  classifyMistakeCount,
+  mistakeCountSessionIntro,
+  mistakeCountSessionEnd,
+  buildDetailLine,
+  LFYM_MESSAGES,
+} from '../feedback/severity';
 import type { FeedbackTone } from '../feedback/severity';
-import { retroConfig, setRetroConfig } from './retroConfig';
+import { retroConfig } from './retroConfig';
 
 // --- Entry button ---
 
 export interface RetroEntryDeps {
   /** Active retro session, or undefined when not in retro mode. */
   retro:            RetroCtrl | undefined;
+  /** True when the LFYM pre-session choice page is open. */
+  choiceOpen:       boolean;
   /** True when game review has completed and the Mistakes button should be enabled. */
   analysisComplete: boolean;
   /** True while batch review is in progress — keeps the button disabled. */
@@ -39,19 +61,127 @@ export interface RetroEntryDeps {
  * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroView.ts entry affordance.
  */
 export function renderRetroEntry(deps: RetroEntryDeps): VNode {
-  const { retro, analysisComplete, batchAnalyzing, onToggle } = deps;
+  const { retro, choiceOpen, analysisComplete, batchAnalyzing, onToggle } = deps;
+  const active = !!retro || choiceOpen;
   return h('button', {
-    class: { active: !!retro },
+    class: { active },
     attrs: {
       disabled: !analysisComplete || batchAnalyzing,
       title: retro
         ? 'Close mistake review'
+        : choiceOpen
+          ? 'Close mistake choices'
         : analysisComplete
           ? 'Review your mistakes from this game'
           : 'Complete game review first',
     },
     on: { click: onToggle },
-  }, retro ? 'Close' : 'Mistakes');
+  }, active ? 'Close' : 'Mistakes');
+}
+
+// --- Choice page ---
+
+export interface RetroChoicePageDeps {
+  choice:            RetroChoiceState | undefined;
+  onSelectionChange: (selection: RetroChoiceSelection) => void;
+  onBegin:           () => void;
+  onClose:           () => void;
+}
+
+function toggleChoiceCategory(
+  selection: RetroChoiceSelection,
+  categoryId: RetroChoiceCategoryId,
+): RetroChoiceSelection {
+  const selected = new Set(selection.categoryIds);
+  if (selected.has(categoryId)) selected.delete(categoryId);
+  else selected.add(categoryId);
+  return {
+    ...selection,
+    categoryIds: RETRO_CHOICE_CATEGORIES
+      .map(c => c.id)
+      .filter(id => selected.has(id)),
+  };
+}
+
+function setChoiceSeverity(
+  selection: RetroChoiceSelection,
+  severityPresetId: RetroChoiceSeverityPresetId,
+): RetroChoiceSelection {
+  return { ...selection, severityPresetId };
+}
+
+export function renderRetroChoicePage(deps: RetroChoicePageDeps): VNode | null {
+  const { choice, onSelectionChange, onBegin, onClose } = deps;
+  if (!choice) return null;
+
+  const summary = summarizeRetroChoiceCounts(choice.candidates, choice.selection);
+  const selectedCount = summary.total;
+  const selectedCategories = new Set(choice.selection.categoryIds);
+  const selectedPreset = choice.selection.severityPresetId;
+  const beginLabel = `Begin ${selectedCount} moment${selectedCount === 1 ? '' : 's'}`;
+
+  return h('div.retro-box.training-box.retro-choice', [
+    h('div.retro-box__title', [
+      h('span', 'Learn From Your Mistakes'),
+      h('span.retro-box__progress', `${choice.candidates.length} found`),
+      h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close' } }, '✕'),
+    ]),
+    h('div.retro-choice__body', [
+      h('div.retro-choice__section', [
+        h('div.retro-choice__section-title', 'Mistake categories'),
+        h('div.retro-choice__rows', RETRO_CHOICE_CATEGORIES.map(category => {
+          const rowCount = summary.categories.find(c => c.id === category.id)?.count ?? 0;
+          const checked = selectedCategories.has(category.id);
+          return h('label.retro-choice__row', {
+            class: { 'is-selected': checked },
+          }, [
+            h('input', {
+              attrs: { type: 'checkbox' },
+              props: { checked },
+              on: { change: () => onSelectionChange(toggleChoiceCategory(choice.selection, category.id)) },
+            }),
+            h('span.retro-choice__row-main', [
+              h('span.retro-choice__row-label', category.label),
+              h('span.retro-choice__row-desc', category.description),
+            ]),
+            h('span.retro-choice__count', String(rowCount)),
+          ]);
+        })),
+      ]),
+      h('div.retro-choice__section', [
+        h('div.retro-choice__section-title', 'Severity'),
+        h('div.retro-choice__severity', {
+          attrs: {
+            role: 'radiogroup',
+            'aria-label': 'Mistake severity',
+          },
+        }, RETRO_CHOICE_SEVERITY_PRESETS.map(preset => {
+          const presetCount = summary.presets.find(p => p.id === preset.id)?.count ?? 0;
+          const active = selectedPreset === preset.id;
+          return h('button.retro-choice__severity-option', {
+            class: { 'is-active': active },
+            attrs: {
+              type: 'button',
+              role: 'radio',
+              'aria-checked': active ? 'true' : 'false',
+            },
+            on: { click: () => onSelectionChange(setChoiceSeverity(choice.selection, preset.id)) },
+          }, [
+            h('span.retro-choice__severity-label', preset.label),
+            h('span.retro-choice__severity-helper', preset.helper),
+            h('span.retro-choice__severity-count', String(presetCount)),
+          ]);
+        })),
+      ]),
+      selectedCount === 0
+        ? h('div.retro-choice__empty', 'No moments match these choices.')
+        : null,
+      h('button.retro-choice__begin', {
+        attrs: { type: 'button', disabled: selectedCount === 0 },
+        on: { click: () => { if (filterRetroCandidatesForChoice(choice.candidates, choice.selection).length > 0) onBegin(); } },
+      }, beginLabel),
+    ].filter(Boolean) as VNode[]),
+  ]);
 }
 
 // --- Active-session feedback box ---
@@ -80,6 +210,40 @@ const MAX_DEPTH = 18;
 function renderEvalProgress(depth: number | undefined): VNode {
   const pct = depth ? Math.min(100, Math.max(0, (100 * (depth - MIN_DEPTH)) / (MAX_DEPTH - MIN_DEPTH))) : 0;
   return h('div.retro-progress', h('div', { attrs: { style: `width: ${pct}%` } }));
+}
+
+const RETRO_SEVERITY_BADGE_LABELS: Readonly<Record<RetroCandidate['classification'], string>> = {
+  inaccuracy: 'Inaccuracy',
+  mistake:    'Mistake',
+  blunder:    'Blunder',
+};
+
+const RETRO_SEVERITY_BADGE_COLORS: Readonly<Record<RetroCandidate['classification'], string>> = {
+  inaccuracy: '#56b4e9',
+  mistake:    '#e69d00',
+  blunder:    '#db3031',
+};
+
+function renderRetroSeverityBadge(cand: RetroCandidate): VNode {
+  const label = RETRO_SEVERITY_BADGE_LABELS[cand.classification];
+  const lossPercent = formatRetroChoiceLossPercent(cand.loss);
+  const color = RETRO_SEVERITY_BADGE_COLORS[cand.classification];
+  const isLossMeaningful = cand.loss > 0;
+  const text = cand.isMissedMate && !isLossMeaningful
+    ? `Missed mate - ${label}`
+    : `${label} - Lost ${lossPercent}`;
+  const ariaLabel = cand.isMissedMate && !isLossMeaningful
+    ? `Missed forced mate, ${label.toLowerCase()}`
+    : `${label}, lost ${lossPercent} win chance`;
+
+  return h('span.retro-box__severity', {
+    class: { [`retro-box__severity--${cand.classification}`]: true },
+    attrs: {
+      title:      text,
+      'aria-label': ariaLabel,
+      style:      `color: ${color}; border-color: ${color}; background-color: ${color}1a;`,
+    },
+  }, text);
 }
 
 
@@ -478,6 +642,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
   // Progress counter: "1 / 5" — mirrors Lichess title span
   // Show next-to-solve index (current + 1), capped at total.
   const progressText = `${Math.min(solved + 1, total)} / ${total}`;
+  const severityBadge = cand ? renderRetroSeverityBadge(cand) : null;
 
   // --- Feedback content, per state ---
   // Mirrors lichess-org/lila: retroView.ts feedback.{state}() functions
@@ -491,7 +656,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
       h('div.retro-player', [
         h('div.retro-king', '♚'),
         h('div.retro-instruction', [
-          h('em', { style: { color: countFeedback.color } }, tone === 'harsh' ? countFeedback.sessionEndHarsh : countFeedback.sessionEnd),
+          h('em', { style: { color: countFeedback.color } }, mistakeCountSessionEnd(countFeedback, tone)),
           h('div.retro-choices', [
             total > 0 && h('a', { on: { click: () => { retro.reset(); const f = retro.current(); if (f) navigate(f.parentPath); else redraw(); } } }, msg.doItAgain),
           ].filter(Boolean) as VNode[]),
@@ -508,9 +673,9 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
         h('div.retro-instruction', [
           h('strong', msg.findPlayed.replace('{move}', cand.playedMoveSan)),
           h('em', msg.findPrompt.replace('{color}', color)),
-          solved === 0 && countFeedback.sessionIntro
+          solved === 0 && mistakeCountSessionIntro(countFeedback, tone)
             ? h('em.retro-session-intro', { style: { color: countFeedback.color, fontSize: '0.85em' } },
-                tone === 'harsh' ? countFeedback.sessionIntroHarsh : countFeedback.sessionIntro)
+                mistakeCountSessionIntro(countFeedback, tone))
             : null,
           renderSkipOrView(retro, navigate, redraw),
         ]),
@@ -643,20 +808,12 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
   return h('div.retro-box.training-box', [
     // Title bar — mirrors lichess-org/lila: retroView.ts div.title
     h('div.retro-box__title', [
-      h('span', msg.sessionTitle),
-      h('span.retro-box__progress', { style: { color: countFeedback.color } }, progressText),
-      h('label.retro-tone-toggle', { attrs: { title: tone === 'harsh' ? 'Harsh mode ON' : 'Harsh mode' } }, [
-        h('input', {
-          attrs: { type: 'checkbox', checked: tone === 'harsh' },
-          on: { change: (e: Event) => {
-            const checked = (e.target as HTMLInputElement).checked;
-            setRetroConfig({ feedbackTone: checked ? 'harsh' : 'standard' });
-            redraw();
-          }},
-        }),
-        h('span.retro-tone-toggle__track'),
-      ]),
-      h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close' } }, '✕'),
+      h('span.retro-box__title-main', msg.sessionTitle),
+      h('div.retro-box__title-meta', [
+        severityBadge,
+        h('span.retro-box__progress', { style: { color: countFeedback.color } }, progressText),
+        h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close' } }, '✕'),
+      ].filter(Boolean) as VNode[]),
     ]),
     // Feedback area — mirrors lichess-org/lila: retroView.ts div.feedback.{state}
     h('div.retro-feedback.' + feedback, feedbackContent),
