@@ -4,6 +4,35 @@
 
 import { DB_NAME, DB_VERSION } from '../idb/index';
 import type { StudyItem, TrainableSequence, PositionProgress, DrillAttempt, StudyFolder } from './types';
+import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
+
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+function enqueueStudyPut(storeName: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt = Date.now()): void {
+  try {
+    enqueueRemoteSyncUpsert(storeName, itemKey, payload, updatedAt);
+  } catch (e) {
+    console.warn('[studyDb] Remote sync enqueue failed', e);
+  }
+}
+
+function enqueueStudyDelete(storeName: RemoteSyncStoreName, itemKey: string): void {
+  try {
+    enqueueRemoteSyncDelete(storeName, itemKey);
+  } catch (e) {
+    console.warn('[studyDb] Remote sync delete enqueue failed', e);
+  }
+}
+
+function drillAttemptSyncKey(attempt: DrillAttempt): string {
+  return `${attempt.positionKey}::${attempt.sequenceId}::${attempt.timestamp}`;
+}
 
 // Re-use the shared IDB connection so version negotiation happens once.
 // We open it ourselves here so study code doesn't pull in unrelated idb exports.
@@ -59,6 +88,8 @@ export async function saveStudy(item: StudyItem): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('studies', 'readwrite');
     tx.objectStore('studies').put(item);
+    await txDone(tx);
+    enqueueStudyPut('studies', item.id, item, item.updatedAt);
   } catch (e) {
     console.warn('[studyDb] saveStudy failed', e);
   }
@@ -138,6 +169,8 @@ export async function deleteStudy(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('studies', 'readwrite');
     tx.objectStore('studies').delete(id);
+    await txDone(tx);
+    enqueueStudyDelete('studies', id);
   } catch (e) {
     console.warn('[studyDb] deleteStudy failed', e);
   }
@@ -150,6 +183,8 @@ export async function savePracticeLine(seq: TrainableSequence): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('practice-lines', 'readwrite');
     tx.objectStore('practice-lines').put(seq);
+    await txDone(tx);
+    enqueueStudyPut('practice-lines', seq.id, seq, seq.updatedAt);
   } catch (e) {
     console.warn('[studyDb] savePracticeLine failed', e);
   }
@@ -197,6 +232,8 @@ export async function deletePracticeLine(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('practice-lines', 'readwrite');
     tx.objectStore('practice-lines').delete(id);
+    await txDone(tx);
+    enqueueStudyDelete('practice-lines', id);
   } catch (e) {
     console.warn('[studyDb] deletePracticeLine failed', e);
   }
@@ -209,6 +246,8 @@ export async function savePositionProgress(progress: PositionProgress): Promise<
     const db = await openDb();
     const tx = db.transaction('position-progress', 'readwrite');
     tx.objectStore('position-progress').put(progress);
+    await txDone(tx);
+    enqueueStudyPut('position-progress', progress.key, progress, progress.lastAttemptAt || Date.now());
   } catch (e) {
     console.warn('[studyDb] savePositionProgress failed', e);
   }
@@ -266,6 +305,8 @@ export async function saveDrillAttempt(attempt: DrillAttempt): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('drill-attempts', 'readwrite');
     tx.objectStore('drill-attempts').add(attempt);
+    await txDone(tx);
+    enqueueStudyPut('drill-attempts', drillAttemptSyncKey(attempt), attempt, attempt.timestamp);
   } catch (e) {
     console.warn('[studyDb] saveDrillAttempt failed', e);
   }
@@ -305,6 +346,8 @@ export async function saveFolder(folder: StudyFolder): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('folders', 'readwrite');
     tx.objectStore('folders').put(folder);
+    await txDone(tx);
+    enqueueStudyPut('folders', folder.id, folder, folder.updatedAt);
   } catch (e) {
     console.warn('[studyDb] saveFolder failed', e);
   }
@@ -343,6 +386,8 @@ export async function deleteFolder(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('folders', 'readwrite');
     tx.objectStore('folders').delete(id);
+    await txDone(tx);
+    enqueueStudyDelete('folders', id);
   } catch (e) {
     console.warn('[studyDb] deleteFolder failed', e);
   }

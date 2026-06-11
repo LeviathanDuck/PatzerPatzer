@@ -17,10 +17,11 @@ if (isset($_GET['store']) && $_GET['store'] !== '') {
 }
 
 $items = [];
+$latestUpdatedAt = 0;
 foreach ($stores as $store) {
     if ($since === null) {
         $stmt = $pdo->prepare(
-            'SELECT `store`, item_key, payload_json, updated_at_ms
+            'SELECT `store`, item_key, payload_json, updated_at_ms, deleted_at_ms
              FROM patzer_sync_items
              WHERE user_key = ? AND `store` = ?
              ORDER BY updated_at_ms ASC'
@@ -28,7 +29,7 @@ foreach ($stores as $store) {
         $stmt->execute([$config['user_key'], $store]);
     } else {
         $stmt = $pdo->prepare(
-            'SELECT `store`, item_key, payload_json, updated_at_ms
+            'SELECT `store`, item_key, payload_json, updated_at_ms, deleted_at_ms
              FROM patzer_sync_items
              WHERE user_key = ? AND `store` = ? AND updated_at_ms > ?
              ORDER BY updated_at_ms ASC'
@@ -37,16 +38,23 @@ foreach ($stores as $store) {
     }
 
     while ($row = $stmt->fetch()) {
-        $payload = json_decode((string) $row['payload_json'], true);
-        if ($payload === null && json_last_error() !== JSON_ERROR_NONE) continue;
+        $deleted = $row['deleted_at_ms'] !== null;
+        $payload = null;
+        if (!$deleted) {
+            $payload = json_decode((string) $row['payload_json'], true);
+            if ($payload === null && json_last_error() !== JSON_ERROR_NONE) continue;
+        }
+        $updatedAt = (int) $row['updated_at_ms'];
+        if ($updatedAt > $latestUpdatedAt) $latestUpdatedAt = $updatedAt;
         $items[] = [
             'store' => $row['store'],
             'itemKey' => $row['item_key'],
-            'updatedAt' => (int) $row['updated_at_ms'],
+            'updatedAt' => $updatedAt,
+            'deleted' => $deleted,
+            'operation' => $deleted ? 'delete' : 'upsert',
             'payload' => $payload,
         ];
     }
 }
 
-patzer_json(200, ['ok' => true, 'items' => $items]);
-
+patzer_json(200, ['ok' => true, 'items' => $items, 'latestUpdatedAt' => $latestUpdatedAt]);

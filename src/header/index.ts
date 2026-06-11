@@ -31,6 +31,15 @@ import {
 } from '../analyse/retroChoice';
 import type { FeedbackTone } from '../feedback/severity';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
+import {
+  clearRemoteSyncToken,
+  getRemoteSyncToken,
+  hasRemoteSyncToken,
+  logoutRemoteSync as stopAndClearRemoteSync,
+  setRemoteSyncToken,
+  startRemoteSyncAutoSync,
+  testRemoteSyncConnection,
+} from '../sync/remoteSync';
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
@@ -60,12 +69,144 @@ export function openRetroModal(redraw: () => void): void {
 }
 
 // --- Auth state ---
+const REMOTE_SYNC_TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
+const REMOTE_SYNC_TOKEN_EVENT = 'chesspatzer:remoteSync-token-changed';
+
 let headerAuthUser: string | null = null;
 let headerAuthIsAdmin = false;
 let headerAuthProvider: 'patzer' | 'lichess' | 'client-lichess' | null = null;
 let headerAuthChecked = false;
 let loginModalListenerAttached = false;
 let loginModalError = '';
+let remoteSyncActive = false;
+let remoteSyncChecked = false;
+let remoteSyncChecking = false;
+let remoteSyncTokenListenerAttached = false;
+let remoteSyncLoginInput = getRemoteSyncToken();
+let remoteSyncLoginBusy = false;
+let remoteSyncLoginError = '';
+
+function readPersistedRemoteSyncToken(): string {
+  return localStorage.getItem(REMOTE_SYNC_TOKEN_KEY) ?? '';
+}
+
+function hydrateRemoteSyncToken(): boolean {
+  const current = getRemoteSyncToken().trim();
+  if (current) return true;
+
+  const persisted = readPersistedRemoteSyncToken().trim();
+  if (!persisted) return false;
+
+  setRemoteSyncToken(persisted);
+  return true;
+}
+
+function rememberRemoteSyncToken(token: string): void {
+  const value = token.trim();
+  if (!value) {
+    clearRememberedRemoteSyncToken();
+    return;
+  }
+  setRemoteSyncToken(value);
+  localStorage.setItem(REMOTE_SYNC_TOKEN_KEY, value);
+  startRemoteSyncAutoSync();
+  window.dispatchEvent(new CustomEvent(REMOTE_SYNC_TOKEN_EVENT));
+}
+
+function clearRememberedRemoteSyncToken(): void {
+  stopAndClearRemoteSync();
+  localStorage.removeItem(REMOTE_SYNC_TOKEN_KEY);
+  window.dispatchEvent(new CustomEvent(REMOTE_SYNC_TOKEN_EVENT));
+}
+
+function ensureRemoteSyncTokenListener(redraw: () => void): void {
+  if (remoteSyncTokenListenerAttached) return;
+  remoteSyncTokenListenerAttached = true;
+
+  const resetFromStorage = () => {
+    remoteSyncChecked = false;
+    remoteSyncChecking = false;
+    remoteSyncActive = hydrateRemoteSyncToken();
+    remoteSyncLoginInput = getRemoteSyncToken();
+    ensureRemoteSyncAuth(redraw);
+    redraw();
+  };
+
+  window.addEventListener(REMOTE_SYNC_TOKEN_EVENT, resetFromStorage);
+  window.addEventListener('storage', event => {
+    if (event.key === REMOTE_SYNC_TOKEN_KEY) resetFromStorage();
+  });
+}
+
+function ensureRemoteSyncAuth(redraw: () => void): void {
+  if (remoteSyncChecked || remoteSyncChecking) return;
+  remoteSyncChecked = true;
+
+  if (!hydrateRemoteSyncToken()) {
+    remoteSyncActive = false;
+    return;
+  }
+
+  remoteSyncChecking = true;
+  remoteSyncActive = true;
+  startRemoteSyncAutoSync();
+  testRemoteSyncConnection().then(result => {
+    remoteSyncChecking = false;
+    remoteSyncActive = result.success;
+    if (!result.success) clearRememberedRemoteSyncToken();
+    redraw();
+  });
+}
+
+function restoreRemoteSyncToken(sessionToken: string, persistedToken: string | null): void {
+  const tokenToRestore = sessionToken.trim() || persistedToken?.trim() || '';
+  if (tokenToRestore) setRemoteSyncToken(tokenToRestore);
+  else clearRemoteSyncToken();
+
+  if (persistedToken !== null) localStorage.setItem(REMOTE_SYNC_TOKEN_KEY, persistedToken);
+  else localStorage.removeItem(REMOTE_SYNC_TOKEN_KEY);
+}
+
+function submitRemoteSyncLogin(redraw: () => void): void {
+  const token = remoteSyncLoginInput.trim();
+  if (!token || remoteSyncLoginBusy) return;
+
+  const previousSessionToken = getRemoteSyncToken();
+  const previousPersistedToken = localStorage.getItem(REMOTE_SYNC_TOKEN_KEY);
+  remoteSyncLoginBusy = true;
+  remoteSyncLoginError = '';
+  setRemoteSyncToken(token);
+  redraw();
+
+  testRemoteSyncConnection().then(result => {
+    remoteSyncLoginBusy = false;
+    if (result.success) {
+      rememberRemoteSyncToken(token);
+      remoteSyncActive = true;
+      remoteSyncChecked = true;
+      remoteSyncChecking = false;
+      showLoginModal = false;
+      remoteSyncLoginInput = '';
+      loginModalError = '';
+    } else {
+      restoreRemoteSyncToken(previousSessionToken, previousPersistedToken);
+      remoteSyncActive = hasRemoteSyncToken();
+      remoteSyncChecked = true;
+      remoteSyncLoginError = result.error || 'Invalid sync token.';
+    }
+    redraw();
+  });
+}
+
+function logoutRemoteSync(redraw: () => void): void {
+  clearRememberedRemoteSyncToken();
+  remoteSyncActive = false;
+  remoteSyncChecked = true;
+  remoteSyncChecking = false;
+  remoteSyncLoginInput = '';
+  remoteSyncLoginError = '';
+  redraw();
+}
 
 function ensureLoginModalListener(redraw: () => void): void {
   if (loginModalListenerAttached) return;
@@ -90,27 +231,22 @@ function ensureHeaderAuth(redraw: () => void): void {
 }
 
 function renderUserArea(redraw: () => void): VNode | null {
-  if (headerAuthUser) {
+  if (remoteSyncActive || (remoteSyncChecking && hasRemoteSyncToken())) {
     return h('div.header__user', {
-      attrs: { title: headerAuthIsAdmin ? 'Patzer account: admin' : headerAuthProvider === 'patzer' ? 'Patzer account' : 'Lichess login' },
+      attrs: { title: remoteSyncChecking ? 'Checking sync token' : 'Remote sync active' },
     }, [
-      h('span.header__username', headerAuthUser),
-      h('button.header__logout', {
-        attrs: { type: 'button', title: 'Logout' },
-        on: { click: () => {
-          logout().then(() => {
-            headerAuthUser = null;
-            headerAuthIsAdmin = false;
-            headerAuthProvider = null;
-            redraw();
-          });
-        } },
-      }, 'x'),
+      h('span.header__username', remoteSyncChecking ? 'Remote sync...' : 'Remote sync'),
+      h('button.header__logout.header__logout--text', {
+        attrs: { type: 'button', title: 'Logout from Remote sync' },
+        on: { click: () => logoutRemoteSync(redraw) },
+      }, 'Logout'),
     ]);
   }
   return h('button.header__login', {
-    attrs: { type: 'button', title: 'Account login' },
+    attrs: { type: 'button', title: 'Remote sync login' },
     on: { click: () => {
+      remoteSyncLoginInput = getRemoteSyncToken();
+      remoteSyncLoginError = '';
       loginModalError = '';
       showLoginModal = true;
       redraw();
@@ -129,14 +265,65 @@ function renderLoginModal(redraw: () => void): VNode {
     h('div.auth-modal__backdrop', { on: { click: close } }),
     h('div.auth-modal__card', [
       h('div.auth-modal__header', [
-        h('h2', 'Patzer Account'),
+        h('h2', 'RemoteSync Sync Login'),
         h('button.auth-modal__close', {
           attrs: { type: 'button', title: 'Close' },
           on: { click: close },
         }, 'x'),
       ]),
       h('div.auth-modal__body', [
-        h('p', 'Use Lichess as a chess login option. Admin beta database sync is handled separately on the Admin page with a sync token.'),
+        h('p', 'Enter the sync token to activate database sync for this browser.'),
+        h('div.auth-modal__form', [
+          h('label.auth-modal__label', { attrs: { for: 'remote-sync-token' } }, 'Sync token'),
+          h('input.auth-modal__input', {
+            attrs: {
+              id: 'remote-sync-token',
+              type: 'password',
+              autocomplete: 'off',
+              disabled: remoteSyncLoginBusy,
+              placeholder: 'Admin sync token',
+            },
+            props: { value: remoteSyncLoginInput },
+            on: {
+              input: (event: Event) => {
+                remoteSyncLoginInput = (event.target as HTMLInputElement).value;
+              },
+              keydown: (event: KeyboardEvent) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                submitRemoteSyncLogin(redraw);
+              },
+            },
+          }),
+        ]),
+        remoteSyncLoginError ? h('p.auth-modal__error', remoteSyncLoginError) : null,
+        h('div.auth-modal__secondary-block', [
+          h('h3', 'Chess identity'),
+          headerAuthUser
+            ? h('p', `Lichess connected as ${headerAuthUser}.`)
+            : h('p', 'Lichess login is only used as a chess identity option.'),
+          headerAuthUser
+            ? h('button.auth-modal__secondary', {
+                attrs: { type: 'button', disabled: remoteSyncLoginBusy },
+                on: { click: () => {
+                  logout().then(() => {
+                    headerAuthUser = null;
+                    headerAuthIsAdmin = false;
+                    headerAuthProvider = null;
+                    redraw();
+                  });
+                } },
+              }, 'Disconnect Lichess')
+            : h('button.auth-modal__secondary', {
+                attrs: { type: 'button', disabled: remoteSyncLoginBusy },
+                on: { click: () => {
+                  login().catch(error => {
+                    loginModalError = error instanceof Error ? error.message : 'Could not start Lichess login.';
+                    redraw();
+                  });
+                } },
+              }, 'Continue with Lichess'),
+        ]),
         loginModalError ? h('p.auth-modal__error', loginModalError) : null,
       ]),
       h('div.auth-modal__actions', [
@@ -144,15 +331,10 @@ function renderLoginModal(redraw: () => void): VNode {
           attrs: { type: 'button' },
           on: { click: close },
         }, 'Cancel'),
-        h('button.auth-modal__secondary', {
-          attrs: { type: 'button' },
-          on: { click: () => {
-            login().catch(error => {
-              loginModalError = error instanceof Error ? error.message : 'Could not start Lichess login.';
-              redraw();
-            });
-          } },
-        }, 'Continue with Lichess'),
+        h('button.auth-modal__primary', {
+          attrs: { type: 'button', disabled: remoteSyncLoginBusy || !remoteSyncLoginInput.trim() },
+          on: { click: () => submitRemoteSyncLogin(redraw) },
+        }, remoteSyncLoginBusy ? 'Checking...' : 'Login'),
       ]),
     ]),
   ]);
@@ -785,10 +967,11 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
           logout().then(() => {
             headerAuthUser = null;
             headerAuthIsAdmin = false;
+            headerAuthProvider = null;
             closeGlobalMenu(redraw);
           });
         }},
-      }, 'Logout') : null,
+      }, 'Disconnect Lichess') : null,
 
       h('div.global-menu__item.global-menu__item--has-sub', {
         on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },
@@ -842,6 +1025,8 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
   ensureHeaderAuth(redraw);
   ensureLoginModalListener(redraw);
+  ensureRemoteSyncTokenListener(redraw);
+  ensureRemoteSyncAuth(redraw);
 
   const loading  = importPlatform === 'chesscom' ? chesscom.loading  : lichess.loading;
   const error    = importPlatform === 'chesscom' ? chesscom.error    : lichess.error;

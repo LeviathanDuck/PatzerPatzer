@@ -8,6 +8,27 @@ import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import type { RetroOutcome } from '../analyse/retroCtrl';
 import type { GameSummary } from '../stats/types';
 import { classifyOpening } from '../openings/eco';
+import type { RemoteSyncStoreName } from '../sync/remoteSync';
+
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+function enqueueMainDbPut(storeName: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt = Date.now()): void {
+  void import('../sync/remoteSync')
+    .then(({ enqueueRemoteSyncUpsert }) => enqueueRemoteSyncUpsert(storeName, itemKey, payload, updatedAt))
+    .catch(e => console.warn('[idb] Remote sync enqueue failed', e));
+}
+
+function enqueueMainDbDelete(storeName: RemoteSyncStoreName, itemKey: string): void {
+  void import('../sync/remoteSync')
+    .then(({ enqueueRemoteSyncDelete }) => enqueueRemoteSyncDelete(storeName, itemKey))
+    .catch(e => console.warn('[idb] Remote sync delete enqueue failed', e));
+}
 
 // --- Stored schemas ---
 
@@ -256,18 +277,24 @@ function importedGameToRecord(game: ImportedGame): StoredGameRecord {
 export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
   try {
     const db = await openGameDb();
+    const records = games.map(importedGameToRecord);
     // Write individual records to the new per-game store.
     const gamesTx = db.transaction('games', 'readwrite');
     const gamesStore = gamesTx.objectStore('games');
-    for (const game of games) {
-      gamesStore.put(importedGameToRecord(game));
-    }
+    for (const record of records) gamesStore.put(record);
+    await txDone(gamesTx);
+
     // Also write legacy array record for backward compatibility during transition.
     const legacyTx = db.transaction('game-library', 'readwrite');
     legacyTx.objectStore('game-library').put(
       { games } satisfies StoredGameLibrary,
       'imported-games',
     );
+    await txDone(legacyTx);
+
+    for (const record of records) {
+      enqueueMainDbPut('games', record.id, record, record.updatedAt);
+    }
   } catch (e) {
     console.warn('[idb] save failed', e);
   }
@@ -280,8 +307,11 @@ export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
 export async function saveGameToIdb(game: ImportedGame): Promise<void> {
   try {
     const db = await openGameDb();
+    const record = importedGameToRecord(game);
     const tx = db.transaction('games', 'readwrite');
-    tx.objectStore('games').put(importedGameToRecord(game));
+    tx.objectStore('games').put(record);
+    await txDone(tx);
+    enqueueMainDbPut('games', record.id, record, record.updatedAt);
   } catch (e) {
     console.warn('[idb] single-game save failed', e);
   }
@@ -295,6 +325,7 @@ export async function saveNavStateToIdb(selectedId: string | null, path: string)
       { selectedId, path } satisfies StoredGameNavState,
       'imported-nav',
     );
+    await txDone(tx);
   } catch (e) {
     console.warn('[idb] nav-state save failed', e);
   }
@@ -440,6 +471,8 @@ export async function saveAnalysisToIdb(
     };
     const tx = db.transaction('analysis-library', 'readwrite');
     tx.objectStore('analysis-library').put(record, gameId);
+    await txDone(tx);
+    enqueueMainDbPut('analysis', gameId, record, record.updatedAt);
   } catch (e) {
     console.warn('[idb] analysis save failed', e);
   }
@@ -465,6 +498,8 @@ export async function clearAnalysisFromIdb(gameId: string): Promise<void> {
     const db = await openGameDb();
     const tx = db.transaction('analysis-library', 'readwrite');
     tx.objectStore('analysis-library').delete(gameId);
+    await txDone(tx);
+    enqueueMainDbDelete('analysis', gameId);
   } catch (e) {
     console.warn('[idb] analysis clear failed', e);
   }
@@ -478,6 +513,8 @@ export async function saveRetroResult(result: RetroSessionResult): Promise<void>
     const db = await openGameDb();
     const tx = db.transaction('retro-results', 'readwrite');
     tx.objectStore('retro-results').put(result, result.gameId);
+    await txDone(tx);
+    enqueueMainDbPut('retro-results', result.gameId, result, result.savedAt);
   } catch (e) {
     console.warn('[idb] retro-result save failed', e);
   }
@@ -521,6 +558,9 @@ export async function saveGameSummary(summary: GameSummary): Promise<void> {
     const db = await openGameDb();
     const tx = db.transaction('game-summaries', 'readwrite');
     tx.objectStore('game-summaries').put(summary, summary.gameId);
+    await txDone(tx);
+    const analyzedAt = Date.parse(summary.analyzedAt);
+    enqueueMainDbPut('game-summaries', summary.gameId, summary, Number.isNaN(analyzedAt) ? Date.now() : analyzedAt);
   } catch (e) {
     console.warn('[idb] game-summary save failed', e);
   }
@@ -566,6 +606,7 @@ export async function listGameSummaries(): Promise<GameSummary[]> {
 export async function backfillOpenings(): Promise<number> {
   try {
     const db = await openGameDb();
+    const updatedRecords: StoredGameRecord[] = [];
     const records = await new Promise<StoredGameRecord[]>((resolve, reject) => {
       const req = db.transaction('games', 'readonly').objectStore('games').getAll();
       req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
@@ -581,13 +622,18 @@ export async function backfillOpenings(): Promise<number> {
       if (!classified) continue;
       if (record.opening === null) record.opening = classified.name;
       if (record.eco === null) record.eco = classified.eco;
+      record.updatedAt = Date.now();
       store.put(record);
+      updatedRecords.push(record);
       count++;
     }
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror    = () => reject(tx.error);
     });
+    for (const record of updatedRecords) {
+      enqueueMainDbPut('games', record.id, record, record.updatedAt);
+    }
     if (count > 0) console.log(`[idb] Backfilled opening data for ${count} game(s)`);
     return count;
   } catch (e) {
@@ -633,6 +679,8 @@ async function savePuzzlesToIdb(): Promise<void> {
     const db = await openGameDb();
     const tx = db.transaction('puzzle-library', 'readwrite');
     tx.objectStore('puzzle-library').put(savedPuzzles, 'saved-puzzles');
+    await txDone(tx);
+    enqueueMainDbPut('saved-review-puzzles', 'saved-puzzles', savedPuzzles, Date.now());
   } catch (e) {
     console.warn('[idb] puzzle save failed', e);
   }

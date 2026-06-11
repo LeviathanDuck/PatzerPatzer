@@ -6,6 +6,34 @@
  */
 
 import type { ResearchCollection, OpeningsTool, SavedVariation } from './types';
+import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
+
+const DB_NAME = 'patzer-openings';
+const DB_VERSION = 3;
+
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+function enqueueOpeningsPut(storeName: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt = Date.now()): void {
+  try {
+    enqueueRemoteSyncUpsert(storeName, itemKey, payload, updatedAt);
+  } catch (e) {
+    console.warn('[openings-db] Remote sync enqueue failed', e);
+  }
+}
+
+function enqueueOpeningsDelete(storeName: RemoteSyncStoreName, itemKey: string): void {
+  try {
+    enqueueRemoteSyncDelete(storeName, itemKey);
+  } catch (e) {
+    console.warn('[openings-db] Remote sync delete enqueue failed', e);
+  }
+}
 
 /** Persisted session resume state. */
 export interface StoredOpeningsSession {
@@ -29,7 +57,7 @@ let _db: IDBDatabase | undefined;
 function openDb(): Promise<IDBDatabase> {
   if (_db) return Promise.resolve(_db);
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('patzer-openings', 3);
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
       const db = (e.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains('collections')) {
@@ -53,6 +81,8 @@ export async function saveCollection(collection: ResearchCollection): Promise<vo
     const db = await openDb();
     const tx = db.transaction('collections', 'readwrite');
     tx.objectStore('collections').put(collection);
+    await txDone(tx);
+    enqueueOpeningsPut('opening-collections', collection.id, collection, collection.updatedAt);
   } catch (e) {
     console.warn('[openings-db] save failed', e);
   }
@@ -80,6 +110,8 @@ export async function deleteCollection(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('collections', 'readwrite');
     tx.objectStore('collections').delete(id);
+    await txDone(tx);
+    enqueueOpeningsDelete('opening-collections', id);
   } catch (e) {
     console.warn('[openings-db] delete failed', e);
   }
@@ -88,10 +120,18 @@ export async function deleteCollection(id: string): Promise<void> {
 /** Clear all openings research data. */
 export async function clearAllOpeningsData(): Promise<void> {
   try {
+    const collections = await loadCollections();
+    const session = await loadSessionState();
+    const variations = await loadVariations();
     const db = await openDb();
-    const tx = db.transaction(['collections', 'session'], 'readwrite');
+    const tx = db.transaction(['collections', 'session', 'training-variations'], 'readwrite');
     tx.objectStore('collections').clear();
     tx.objectStore('session').clear();
+    tx.objectStore('training-variations').clear();
+    await txDone(tx);
+    for (const collection of collections) enqueueOpeningsDelete('opening-collections', collection.id);
+    if (session) enqueueOpeningsDelete('opening-session', 'current');
+    for (const variation of variations) enqueueOpeningsDelete('opening-training-variations', variation.id);
   } catch (e) {
     console.warn('[openings-db] clear failed', e);
   }
@@ -103,6 +143,8 @@ export async function saveSessionState(state: StoredOpeningsSession): Promise<vo
     const db = await openDb();
     const tx = db.transaction('session', 'readwrite');
     tx.objectStore('session').put(state, 'current');
+    await txDone(tx);
+    enqueueOpeningsPut('opening-session', 'current', state, state.savedAt);
   } catch (e) {
     console.warn('[openings-db] session save failed', e);
   }
@@ -130,6 +172,8 @@ export async function clearSessionState(): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('session', 'readwrite');
     tx.objectStore('session').delete('current');
+    await txDone(tx);
+    enqueueOpeningsDelete('opening-session', 'current');
   } catch (e) {
     console.warn('[openings-db] session clear failed', e);
   }
@@ -145,6 +189,8 @@ export async function saveVariation(variation: SavedVariation): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('training-variations', 'readwrite');
     tx.objectStore('training-variations').put(variation);
+    await txDone(tx);
+    enqueueOpeningsPut('opening-training-variations', variation.id, variation, Date.now());
   } catch (e) {
     console.warn('[openings-db] variation save failed', e);
   }
@@ -172,6 +218,8 @@ export async function deleteVariation(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('training-variations', 'readwrite');
     tx.objectStore('training-variations').delete(id);
+    await txDone(tx);
+    enqueueOpeningsDelete('opening-training-variations', id);
   } catch (e) {
     console.warn('[openings-db] variation delete failed', e);
   }

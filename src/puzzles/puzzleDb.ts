@@ -24,6 +24,39 @@ import type {
 import { DEFAULT_USER_PUZZLE_PERF } from './types';
 import { loadManifest, loadFilteredShard, findMatchingShards } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
+import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
+
+function txDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+function enqueuePuzzlePut(storeName: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt = Date.now()): void {
+  try {
+    enqueueRemoteSyncUpsert(storeName, itemKey, payload, updatedAt);
+  } catch (e) {
+    console.warn('[puzzleDb] Remote sync enqueue failed', e);
+  }
+}
+
+function enqueuePuzzleDelete(storeName: RemoteSyncStoreName, itemKey: string): void {
+  try {
+    enqueueRemoteSyncDelete(storeName, itemKey);
+  } catch (e) {
+    console.warn('[puzzleDb] Remote sync delete enqueue failed', e);
+  }
+}
+
+function puzzleAttemptSyncKey(attempt: Pick<PuzzleAttempt, 'puzzleId' | 'startedAt' | 'completedAt'>): string {
+  return `${attempt.puzzleId}::${attempt.startedAt}::${attempt.completedAt}`;
+}
+
+function ratingHistorySyncKey(entry: PuzzleRatingHistoryEntry): string {
+  return `${entry.timestamp}::${entry.rating}::${entry.deviation}`;
+}
 
 // --- DB connection ---
 
@@ -108,6 +141,8 @@ export async function savePuzzleDefinition(def: PuzzleDefinition): Promise<void>
     const db = await openPuzzleDb();
     const tx = db.transaction(STORE_DEFINITIONS, 'readwrite');
     tx.objectStore(STORE_DEFINITIONS).put(def);
+    await txDone(tx);
+    enqueuePuzzlePut('puzzle-definitions', def.id, def, def.updatedAt ?? Date.now());
   } catch (e) {
     console.warn('[puzzleDb] definition save failed', e);
   }
@@ -222,6 +257,8 @@ export async function deletePuzzleDefinition(id: string): Promise<void> {
     const db = await openPuzzleDb();
     const tx = db.transaction(STORE_DEFINITIONS, 'readwrite');
     tx.objectStore(STORE_DEFINITIONS).delete(id);
+    await txDone(tx);
+    enqueuePuzzleDelete('puzzle-definitions', id);
   } catch (e) {
     console.warn('[puzzleDb] definition delete failed', e);
   }
@@ -235,6 +272,8 @@ export async function saveAttempt(attempt: PuzzleAttempt): Promise<void> {
     const db = await openPuzzleDb();
     const tx = db.transaction(STORE_ATTEMPTS, 'readwrite');
     tx.objectStore(STORE_ATTEMPTS).add(attempt);
+    await txDone(tx);
+    enqueuePuzzlePut('puzzle-attempts', puzzleAttemptSyncKey(attempt), attempt, attempt.updatedAt ?? Date.now());
   } catch (e) {
     console.warn('[puzzleDb] attempt save failed', e);
   }
@@ -252,7 +291,8 @@ async function pruneOldAttempts(puzzleId: string, keep: number): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_ATTEMPTS, 'readwrite');
       const store = tx.objectStore(STORE_ATTEMPTS);
-      const entries: Array<{ key: IDBValidKey; completedAt: number }> = [];
+      const entries: Array<{ key: IDBValidKey; completedAt: number; attempt: PuzzleAttempt }> = [];
+      const deletedAttempts: PuzzleAttempt[] = [];
       const req = store.index('puzzleId').openCursor(IDBKeyRange.only(puzzleId));
       req.onsuccess = () => {
         const cursor = req.result as IDBCursorWithValue | null;
@@ -263,19 +303,28 @@ async function pruneOldAttempts(puzzleId: string, keep: number): Promise<void> {
             const toDelete = entries.slice(0, entries.length - keep);
             for (const entry of toDelete) {
               store.delete(entry.key);
+              deletedAttempts.push(entry.attempt);
             }
           }
-          resolve();
           return;
         }
+        const attempt = cursor.value as PuzzleAttempt;
         entries.push({
           key: cursor.primaryKey,
-          completedAt: (cursor.value as PuzzleAttempt).completedAt,
+          completedAt: attempt.completedAt,
+          attempt,
         });
         cursor.continue();
       };
       req.onerror = () => reject(req.error);
-      tx.onerror   = () => reject(tx.error);
+      tx.oncomplete = () => {
+        for (const attempt of deletedAttempts) {
+          enqueuePuzzleDelete('puzzle-attempts', puzzleAttemptSyncKey(attempt));
+        }
+        resolve();
+      };
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
   } catch (e) {
     console.warn('[puzzleDb] pruneOldAttempts failed', e);
@@ -338,6 +387,8 @@ export async function saveMeta(meta: PuzzleUserMeta): Promise<void> {
     const db = await openPuzzleDb();
     const tx = db.transaction(STORE_USER_META, 'readwrite');
     tx.objectStore(STORE_USER_META).put(meta);
+    await txDone(tx);
+    enqueuePuzzlePut('puzzle-user-meta', meta.puzzleId, meta, Date.now());
   } catch (e) {
     console.warn('[puzzleDb] meta save failed', e);
   }
@@ -392,6 +443,8 @@ export async function saveUserPuzzlePerf(perf: UserPuzzlePerf): Promise<void> {
     const db = await openPuzzleDb();
     const tx = db.transaction(STORE_USER_PERF, 'readwrite');
     tx.objectStore(STORE_USER_PERF).put(perf, USER_PERF_KEY);
+    await txDone(tx);
+    enqueuePuzzlePut('puzzle-user-perf', USER_PERF_KEY, perf, perf.latest ?? Date.now());
   } catch (e) {
     console.warn('[puzzleDb] saveUserPuzzlePerf failed', e);
   }
@@ -407,6 +460,8 @@ export async function appendRatingHistory(entry: PuzzleRatingHistoryEntry): Prom
     const db = await openPuzzleDb();
     const tx = db.transaction(STORE_RATING_HISTORY, 'readwrite');
     tx.objectStore(STORE_RATING_HISTORY).add(entry);
+    await txDone(tx);
+    enqueuePuzzlePut('puzzle-rating-history', ratingHistorySyncKey(entry), entry, entry.timestamp);
   } catch (e) {
     console.warn('[puzzleDb] appendRatingHistory failed', e);
   }
