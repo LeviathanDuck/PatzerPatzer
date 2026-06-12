@@ -90,6 +90,24 @@ function renderMissedBadge(gameId: string, hasMissedTactic: boolean): VNode | nu
   return h('span.grl__missed-indicators', badges);
 }
 
+function importedAccountColor(game: ImportedGame): 'white' | 'black' | null {
+  const username = game.importedUsername?.trim().toLowerCase();
+  if (!username) return null;
+  if (game.white?.trim().toLowerCase() === username) return 'white';
+  if (game.black?.trim().toLowerCase() === username) return 'black';
+  return null;
+}
+
+function importedAccountLabel(game: ImportedGame): string | null {
+  const username = game.importedUsername?.trim();
+  if (!username) return null;
+  const color = importedAccountColor(game);
+  const rating = color === 'white' ? game.whiteRating
+    : color === 'black' ? game.blackRating
+    : undefined;
+  return rating !== undefined ? `${username} (${rating})` : username;
+}
+
 export function renderCompactGameRow(
   game: ImportedGame,
   isAnalyzed: boolean,
@@ -112,6 +130,7 @@ export function renderCompactGameRow(
   };
   const tcIcon = game.timeClass ? (tcIconMap[game.timeClass] ?? null) : null;
   const isNewImport = isRecentlyImported(game);
+  const accountLabel = importedAccountLabel(game);
 
   const resultCls = result === 'win'  ? 'grl__result--win'
     : result === 'loss' ? 'grl__result--loss'
@@ -129,6 +148,7 @@ export function renderCompactGameRow(
   return [
     h('span.grl__result.' + resultCls, '●'),
     h('span.grl__opponent', [oppLabel, oppChip, oppAccNode]),
+    accountLabel ? h('span.grl__account', accountLabel) : null,
     date ? h('span.grl__date', date) : null,
     tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, ...(game.timeClass ? { title: game.timeClass } : {}) } }) : null,
     (isNewImport || isAnalyzed || hasMissedTactic) ? h('span.grl__badges', [
@@ -927,6 +947,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         renderSortTh('Result',   'result',    redraw),
         renderSortTh('Opponent', 'opponent',  redraw),
         h('th.games-view__rating-th', 'Rating'),
+        h('th.games-view__account-th', 'Account'),
         renderSortTh('Date',     'date',      redraw),
         renderSortTh('Time',     'timeClass', redraw),
         h('th', 'Opening'),
@@ -946,6 +967,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const isAnalyzed = deps.analyzedGameIds.has(game.id);
             const hasMissed  = deps.missedTacticGameIds.has(game.id);
             const isNewImport = isRecentlyImported(game);
+            const accountLabel = importedAccountLabel(game);
 
             // User accuracy: read from analyzedGameAccuracy map (populated at analysis-complete time).
             const accEntry  = deps.analyzedGameAccuracy.get(game.id);
@@ -1048,6 +1070,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                 isNewImport ? h('span.games-view__new-import', { attrs: { title: 'Newly imported' } }, 'NEW') : null,
               ]),
               ratingCell,
+              h('td.games-view__account', accountLabel ?? ''),
               h('td.games-view__date', date),
               h('td.games-view__tc', [
                 tcIcon
@@ -1064,7 +1087,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
               }) : null),
             ]);
           })
-        : [h('tr', h('td', { attrs: { colspan: '9' } }, h('div.games-view__empty', 'No games match current filters.')))]
+        : [h('tr', h('td', { attrs: { colspan: '10' } }, h('div.games-view__empty', 'No games match current filters.')))]
       ),
     ]),
   ]);
