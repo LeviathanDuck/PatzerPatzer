@@ -287,6 +287,7 @@ function renderLoginModal(redraw: () => void): VNode {
             on: {
               input: (event: Event) => {
                 remoteSyncLoginInput = (event.target as HTMLInputElement).value;
+                redraw();
               },
               keydown: (event: KeyboardEvent) => {
                 if (event.key !== 'Enter') return;
