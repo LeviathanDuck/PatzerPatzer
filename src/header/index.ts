@@ -43,7 +43,7 @@ import {
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
-import { accountId, getAccount, type AccountCategory } from '../accounts';
+import { accountId, getAccount, listAccounts, type AccountCategory } from '../accounts';
 
 // --- Module-level header state ---
 type ImportPlatform = 'chesscom' | 'lichess';
@@ -67,26 +67,34 @@ const CATEGORY_OPTIONS: readonly { value: AccountCategory; label: string }[] = [
 // belongs to. Used to re-sync the selection only when the username or
 // platform actually changes, so manual pill clicks are never overridden.
 let categorySyncKey: string | null = null;
+let categoryManualKey: string | null = null;
 
-
-
-
-
-function syncImportCategory(redraw: () => void): void {
+function currentImportAccountKey(): string {
   const name = (importPlatform === 'chesscom' ? chesscom.username : lichess.username).trim();
-  const key = name ? accountId(importPlatform, name) : '';
+  return name ? accountId(importPlatform, name) : '';
+}
+
+/**
+ * Pre-select the saved category when the typed username is registered.
+ * For new usernames, default the first personal account to Mine and later
+ * accounts to Opponent.
+ */
+function syncImportCategory(redraw: () => void): void {
+  const key = currentImportAccountKey();
   if (key === categorySyncKey) return;
   categorySyncKey = key;
+  categoryManualKey = null;
   if (importFilters.importCategory !== null) {
     importFilters.importCategory = null;
     redraw();
   }
   if (!key) return;
-  void getAccount(key).then(account => {
+  void Promise.all([getAccount(key), listAccounts()]).then(([account, accounts]) => {
     // Drop stale lookups (username changed while resolving) and never clobber
-    // a manual pill click — a manual choice makes the selection non-null.
-    if (key !== categorySyncKey || !account || importFilters.importCategory !== null) return;
-    importFilters.importCategory = account.category;
+    // a manual pill click for the same username/platform.
+    if (key !== categorySyncKey || categoryManualKey === key) return;
+    importFilters.importCategory = account?.category ??
+      (accounts.some(a => a.category === 'mine') ? 'opponent' : 'mine');
     redraw();
   }).catch(e => console.warn('[header] category lookup failed', e));
 }
@@ -1108,7 +1116,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__panel-row', CATEGORY_OPTIONS.map(({ value, label }) =>
         h('button.header__pill', {
           class: { active: importFilters.importCategory === value },
-          on: { click: () => { importFilters.importCategory = value; redraw(); } },
+          on: { click: () => { importFilters.importCategory = value; categoryManualKey = currentImportAccountKey(); redraw(); } },
         }, label),
       )),
       importFilters.importCategory === null

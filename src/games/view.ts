@@ -193,10 +193,18 @@ let gameListFilterResults: Set<'win' | 'loss' | 'draw'> = new Set();
 let gameListFilterSpeeds:  Set<string>                   = new Set();
 
 // Account lens shared by both game list views: whose games are shown.
-// 'mine' = all mine-category accounts plus uncategorized PGN-paste games;
-// 'all' = everything; otherwise a specific registry account id.
+// "My accounts" = all mine-category accounts plus uncategorized PGN-paste games.
 // A lens rather than a filter — any registered account is selectable here.
-let accountLens: string = 'mine';
+type AccountFilterState =
+  | { mode: 'all' }
+  | { mode: 'custom'; includeMine: boolean; accountIds: string[] };
+type CustomAccountFilterState = Extract<AccountFilterState, { mode: 'custom' }>;
+
+const ACCOUNT_FILTER_STORAGE_KEY = 'patzer.games.accountFilter.v1';
+const DEFAULT_ACCOUNT_FILTER: CustomAccountFilterState = { mode: 'custom', includeMine: true, accountIds: [] };
+
+let accountFilterState: AccountFilterState = loadAccountFilterState();
+let accountFilterMenuOpen = false;
 
 // Multi-select state shared across both game list views.
 // Tracks the set of selected game IDs and the last-clicked game for shift-range selection.
@@ -210,6 +218,67 @@ let selectModeActive = false;
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function loadAccountFilterState(): AccountFilterState {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_FILTER_STORAGE_KEY);
+    if (!raw) return DEFAULT_ACCOUNT_FILTER;
+    const parsed = JSON.parse(raw) as Partial<AccountFilterState>;
+    if (parsed.mode === 'all') return { mode: 'all' };
+    if (parsed.mode === 'custom') {
+      return {
+        mode: 'custom',
+        includeMine: parsed.includeMine === true,
+        accountIds: Array.isArray(parsed.accountIds)
+          ? parsed.accountIds.filter((id): id is string => typeof id === 'string')
+          : [],
+      };
+    }
+  } catch {
+    // Ignore invalid older localStorage payloads and restore the safe default.
+  }
+  return DEFAULT_ACCOUNT_FILTER;
+}
+
+function saveAccountFilterState(): void {
+  try {
+    localStorage.setItem(ACCOUNT_FILTER_STORAGE_KEY, JSON.stringify(accountFilterState));
+  } catch {
+    // Non-critical: filtering still works for the current session.
+  }
+}
+
+function normalizeAccountFilter(accounts: ChessAccount[]): void {
+  if (accountFilterState.mode === 'all') return;
+  const validIds = new Set(accounts.map(a => a.id));
+  const uniqueIds = [...new Set(accountFilterState.accountIds)].filter(id => validIds.has(id));
+  const includeMine = accountFilterState.includeMine || uniqueIds.length === 0;
+  if (includeMine !== accountFilterState.includeMine || uniqueIds.length !== accountFilterState.accountIds.length) {
+    accountFilterState = { mode: 'custom', includeMine, accountIds: uniqueIds };
+    saveAccountFilterState();
+  }
+}
+
+function customAccountFilter(accounts: ChessAccount[]): CustomAccountFilterState {
+  normalizeAccountFilter(accounts);
+  return accountFilterState.mode === 'custom' ? accountFilterState : DEFAULT_ACCOUNT_FILTER;
+}
+
+function applyAccountFilterState(next: AccountFilterState, deps: GamesViewDeps): void {
+  accountFilterState = next.mode === 'all'
+    ? { mode: 'all' }
+    : {
+        mode: 'custom',
+        includeMine: next.includeMine || next.accountIds.length === 0,
+        accountIds: [...new Set(next.accountIds)],
+      };
+  saveAccountFilterState();
+  gamesPage = 0;
+  // Selections must not survive a lens change: hidden-but-selected games
+  // would silently leak into the next bulk-review action.
+  selectedGameIds = new Set();
+  deps.redraw();
+}
 
 function toggleGamesSort(field: GamesSortField, redraw: () => void): void {
   if (gamesSortField === field) {
@@ -255,35 +324,98 @@ function gameTacticsSeverities(gameId: string, hasMissedTactic: boolean): Set<st
 
 /** Games visible under the current account lens. */
 function accountLensGames(deps: GamesViewDeps): ImportedGame[] {
-  if (accountLens === 'all') return deps.importedGames;
-  if (accountLens === 'mine') {
-    const mineIds = new Set(deps.accounts.filter(a => a.category === 'mine').map(a => a.id));
-    return deps.importedGames.filter(g => g.accountId === undefined || mineIds.has(g.accountId));
-  }
-  return deps.importedGames.filter(g => g.accountId === accountLens);
+  normalizeAccountFilter(deps.accounts);
+  if (accountFilterState.mode === 'all') return deps.importedGames;
+  const custom = customAccountFilter(deps.accounts);
+  const mineIds = new Set(deps.accounts.filter(a => a.category === 'mine').map(a => a.id));
+  const accountIds = new Set(custom.accountIds);
+  return deps.importedGames.filter(g => {
+    if (g.accountId === undefined) return custom.includeMine;
+    return accountIds.has(g.accountId) || (custom.includeMine && mineIds.has(g.accountId));
+  });
 }
 
-/** Account lens switcher; mirrors the puzzle-list filter select pattern. */
+function accountLabel(account: ChessAccount): string {
+  return `${account.displayName} (${account.platform === 'chesscom' ? 'Chess.com' : 'Lichess'} · ${account.category})`;
+}
+
+function accountFilterButtonLabel(accounts: ChessAccount[]): string {
+  normalizeAccountFilter(accounts);
+  if (accountFilterState.mode === 'all') return 'Accounts: All accounts';
+  const custom = customAccountFilter(accounts);
+  const byId = new Map(accounts.map(a => [a.id, a]));
+  const labels: string[] = [];
+  if (custom.includeMine) labels.push('My accounts');
+  for (const id of custom.accountIds) {
+    const account = byId.get(id);
+    if (account) labels.push(account.displayName);
+  }
+  if (labels.length === 0) return 'Accounts: My accounts';
+  if (labels.length <= 2) return `Accounts: ${labels.join(' + ')}`;
+  return `Accounts: ${labels.length} selected`;
+}
+
+/** Account lens switcher shared by the compact and full games lists. */
 function renderAccountLensSelect(deps: GamesViewDeps): VNode {
-  return h('select.games-view__account-select', {
-    attrs: { title: 'Choose whose games to show' },
-    on: {
-      change: (e: Event) => {
-        accountLens = (e.target as HTMLSelectElement).value;
-        gamesPage = 0;
-        // Selections must not survive a lens change: hidden-but-selected games
-        // would silently leak into the next bulk-review action.
-        selectedGameIds = new Set();
-        deps.redraw();
+  normalizeAccountFilter(deps.accounts);
+  const custom: CustomAccountFilterState = accountFilterState.mode === 'custom'
+    ? customAccountFilter(deps.accounts)
+    : { mode: 'custom', includeMine: false, accountIds: [] };
+  const selectedIds = new Set(custom.accountIds);
+  const toggleAccount = (id: string): void => {
+    const nextIds = new Set(custom.accountIds);
+    nextIds.has(id) ? nextIds.delete(id) : nextIds.add(id);
+    applyAccountFilterState({ mode: 'custom', includeMine: custom.includeMine, accountIds: [...nextIds] }, deps);
+  };
+
+  return h('div.games-view__account-filter', [
+    h('button.games-view__account-trigger', {
+      class: { active: accountFilterMenuOpen },
+      attrs: {
+        type: 'button',
+        title: 'Choose whose games to show',
+        'aria-haspopup': 'true',
+        'aria-expanded': String(accountFilterMenuOpen),
       },
-    },
-  }, [
-    h('option', { attrs: { value: 'mine', selected: accountLens === 'mine' } }, 'My accounts'),
-    h('option', { attrs: { value: 'all',  selected: accountLens === 'all'  } }, 'All accounts'),
-    ...deps.accounts.map(a =>
-      h('option', { attrs: { value: a.id, selected: accountLens === a.id } },
-        `${a.displayName} (${a.platform === 'chesscom' ? 'Chess.com' : 'Lichess'} · ${a.category})`),
-    ),
+      on: { click: () => { accountFilterMenuOpen = !accountFilterMenuOpen; deps.redraw(); } },
+    }, accountFilterButtonLabel(deps.accounts)),
+    accountFilterMenuOpen ? h('button.games-view__account-backdrop', {
+      attrs: { type: 'button', 'aria-label': 'Close account filter' },
+      on: { click: () => { accountFilterMenuOpen = false; deps.redraw(); } },
+    }) : null,
+    accountFilterMenuOpen ? h('div.games-view__account-menu', [
+      h('button.games-view__account-option', {
+        class: { active: accountFilterState.mode === 'all' },
+        attrs: { type: 'button' },
+        on: { click: () => applyAccountFilterState({ mode: 'all' }, deps) },
+      }, [
+        h('span.games-view__account-check', accountFilterState.mode === 'all' ? '✓' : ''),
+        h('span', 'All accounts'),
+      ]),
+      h('button.games-view__account-option', {
+        class: { active: accountFilterState.mode === 'custom' && custom.includeMine },
+        attrs: { type: 'button' },
+        on: { click: () => applyAccountFilterState({
+          mode: 'custom',
+          includeMine: !custom.includeMine,
+          accountIds: custom.accountIds,
+        }, deps) },
+      }, [
+        h('span.games-view__account-check', accountFilterState.mode === 'custom' && custom.includeMine ? '✓' : ''),
+        h('span', 'My accounts'),
+      ]),
+      deps.accounts.length > 0 ? h('div.games-view__account-menu-sep') : null,
+      ...deps.accounts.map(account =>
+        h('button.games-view__account-option', {
+          class: { active: accountFilterState.mode === 'custom' && selectedIds.has(account.id) },
+          attrs: { type: 'button' },
+          on: { click: () => toggleAccount(account.id) },
+        }, [
+          h('span.games-view__account-check', accountFilterState.mode === 'custom' && selectedIds.has(account.id) ? '✓' : ''),
+          h('span', accountLabel(account)),
+        ]),
+      ),
+    ]) : null,
   ]);
 }
 
