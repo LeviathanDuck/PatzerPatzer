@@ -18,6 +18,7 @@ if (isset($_GET['store']) && $_GET['store'] !== '') {
 
 $items = [];
 $latestUpdatedAt = 0;
+$skippedMalformedJson = 0;
 foreach ($stores as $store) {
     if ($since === null) {
         $stmt = $pdo->prepare(
@@ -42,7 +43,10 @@ foreach ($stores as $store) {
         $payload = null;
         if (!$deleted) {
             $payload = json_decode((string) $row['payload_json'], true);
-            if ($payload === null && json_last_error() !== JSON_ERROR_NONE) continue;
+            if ($payload === null && json_last_error() !== JSON_ERROR_NONE) {
+                $skippedMalformedJson++;
+                continue;
+            }
         }
         $updatedAt = (int) $row['updated_at_ms'];
         if ($updatedAt > $latestUpdatedAt) $latestUpdatedAt = $updatedAt;
@@ -57,4 +61,9 @@ foreach ($stores as $store) {
     }
 }
 
-patzer_json(200, ['ok' => true, 'items' => $items, 'latestUpdatedAt' => $latestUpdatedAt]);
+patzer_json(200, [
+    'ok' => true,
+    'items' => $items,
+    'latestUpdatedAt' => $latestUpdatedAt,
+    'skippedMalformedJson' => $skippedMalformedJson,
+]);

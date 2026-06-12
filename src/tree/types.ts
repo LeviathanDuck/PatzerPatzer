@@ -51,7 +51,12 @@ export interface Glyph {
   symbol: string; // e.g. "??"
 }
 
-export type Clock = number; // milliseconds remaining
+export type Clock = number; // centiseconds, matching Lichess Clock values
+
+export interface TimeControl {
+  initial: Clock;
+  increment: Clock;
+}
 
 export interface Shape {
   orig: string;   // square key e.g. "e2"
@@ -70,6 +75,8 @@ export interface TreeNodeBase {
   glyphs?: Glyph[];
   comments?: TreeComment[];
   clock?: Clock;
+  moveTime?: Clock;
+  timeControl?: TimeControl;
   shapes?: Shape[];
   forceVariation?: boolean;
 }

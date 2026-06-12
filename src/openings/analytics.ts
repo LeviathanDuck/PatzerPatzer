@@ -159,21 +159,20 @@ export function computePrepReport(
 ): PrepReportData {
   const base = summary ?? computeCollectionSummary(games, target);
   const lowerTarget = target.toLowerCase();
-  const ecoMap = new Map<string, { eco: string; opening: string; wdl: OpponentWDL }>();
+  const openingMap = new Map<string, { eco: string; opening: string; wdl: OpponentWDL }>();
 
   for (const g of games) {
     const isWhite = (g.white?.toLowerCase() ?? '') === lowerTarget;
     const isBlack = (g.black?.toLowerCase() ?? '') === lowerTarget;
     if (!isWhite && !isBlack) continue;
-    const eco     = g.eco ?? '';
-    const opening = g.opening ?? eco;
-    if (eco) {
-      if (!ecoMap.has(eco)) ecoMap.set(eco, { eco, opening, wdl: emptyWDL() });
-      accumulateResult(ecoMap.get(eco)!.wdl, g.result, isWhite);
+    const opening = g.opening?.trim();
+    if (opening) {
+      if (!openingMap.has(opening)) openingMap.set(opening, { eco: '', opening, wdl: emptyWDL() });
+      accumulateResult(openingMap.get(opening)!.wdl, g.result, isWhite);
     }
   }
 
-  const topEcos: EcoFrequency[] = Array.from(ecoMap.values())
+  const topEcos: EcoFrequency[] = Array.from(openingMap.values())
     .sort((a, b) => b.wdl.total - a.wdl.total)
     .slice(0, 10)
     .map(e => ({ eco: e.eco, opening: e.opening, count: e.wdl.total, wdl: e.wdl }));
@@ -377,34 +376,35 @@ export function computeFormData(games: ResearchGame[], target: string): FormData
   const lowerTarget = target.toLowerCase();
   const now = Date.now();
   const MS_PER_DAY = 86_400_000;
-  const last30  = { wdl: emptyWDL(), ecoMap: new Map<string, number>(), datedGameCount: 0 };
-  const last90  = { wdl: emptyWDL(), ecoMap: new Map<string, number>(), datedGameCount: 0 };
-  const baseline = { wdl: emptyWDL(), ecoMap: new Map<string, number>(), datedGameCount: 0 };
+  const last30  = { wdl: emptyWDL(), openingMap: new Map<string, number>(), datedGameCount: 0 };
+  const last90  = { wdl: emptyWDL(), openingMap: new Map<string, number>(), datedGameCount: 0 };
+  const baseline = { wdl: emptyWDL(), openingMap: new Map<string, number>(), datedGameCount: 0 };
 
   for (const g of games) {
     const isWhite = (g.white?.toLowerCase() ?? '') === lowerTarget;
     const isBlack = (g.black?.toLowerCase() ?? '') === lowerTarget;
     if (!isWhite && !isBlack) continue;
+    const opening = g.opening?.trim();
     accumulateResult(baseline.wdl, g.result, isWhite);
-    if (g.eco) baseline.ecoMap.set(g.eco, (baseline.ecoMap.get(g.eco) ?? 0) + 1);
+    if (opening) baseline.openingMap.set(opening, (baseline.openingMap.get(opening) ?? 0) + 1);
     if (!g.date) continue;
     const ageMs = now - new Date(g.date.slice(0, 10)).getTime();
     baseline.datedGameCount++;
     if (ageMs <= 90 * MS_PER_DAY) {
       accumulateResult(last90.wdl, g.result, isWhite);
       last90.datedGameCount++;
-      if (g.eco) last90.ecoMap.set(g.eco, (last90.ecoMap.get(g.eco) ?? 0) + 1);
+      if (opening) last90.openingMap.set(opening, (last90.openingMap.get(opening) ?? 0) + 1);
     }
     if (ageMs <= 30 * MS_PER_DAY) {
       accumulateResult(last30.wdl, g.result, isWhite);
       last30.datedGameCount++;
-      if (g.eco) last30.ecoMap.set(g.eco, (last30.ecoMap.get(g.eco) ?? 0) + 1);
+      if (opening) last30.openingMap.set(opening, (last30.openingMap.get(opening) ?? 0) + 1);
     }
   }
 
-  const topEco = (m: Map<string, number>): string | null => {
+  const topOpening = (m: Map<string, number>): string | null => {
     let best: [string, number] | null = null;
-    for (const [eco, n] of m) if (!best || n > best[1]) best = [eco, n];
+    for (const [opening, n] of m) if (!best || n > best[1]) best = [opening, n];
     return best?.[0] ?? null;
   };
 
@@ -417,9 +417,9 @@ export function computeFormData(games: ResearchGame[], target: string): FormData
   }
 
   return {
-    last30:   { wdl: last30.wdl, topEco: topEco(last30.ecoMap), datedGameCount: last30.datedGameCount },
-    last90:   { wdl: last90.wdl, topEco: topEco(last90.ecoMap), datedGameCount: last90.datedGameCount },
-    baseline: { wdl: baseline.wdl, topEco: topEco(baseline.ecoMap), datedGameCount: baseline.datedGameCount },
+    last30:   { wdl: last30.wdl, topEco: topOpening(last30.openingMap), datedGameCount: last30.datedGameCount },
+    last90:   { wdl: last90.wdl, topEco: topOpening(last90.openingMap), datedGameCount: last90.datedGameCount },
+    baseline: { wdl: baseline.wdl, topEco: topOpening(baseline.openingMap), datedGameCount: baseline.datedGameCount },
     recentTrend,
   };
 }

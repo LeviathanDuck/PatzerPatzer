@@ -299,8 +299,8 @@ function buildImportOpeningRows(summaries: ReturnType<typeof filteredSummaries>)
   const colorGames  = { White: 0, Black: 0 };
 
   for (const g of games) {
-    if (!g.result || (!g.opening && !g.eco)) continue;
-    const name = g.opening || g.eco || 'Unknown';
+    if (!g.result || !g.opening) continue;
+    const name = g.opening;
     const username = (g.importedUsername ?? '').toLowerCase();
     let color: 'White' | 'Black' | null = null;
     if (username && g.white && g.white.toLowerCase() === username) color = 'White';
@@ -394,7 +394,7 @@ interface OpeningRow {
 function buildOpeningRows(summaries: GameSummary[], globalAvgAccuracy: number): OpeningRow[] {
   const byOpening = new Map<string, GameSummary[]>();
   for (const s of summaries) {
-    const key = s.opening || s.eco || 'Unknown';
+    const key = s.opening || 'Unknown';
     const group = byOpening.get(key) ?? [];
     group.push(s);
     byOpening.set(key, group);

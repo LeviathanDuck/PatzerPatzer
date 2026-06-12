@@ -8,7 +8,7 @@ import { AnalyseCtrl } from '../analyse/ctrl';
 import { evalWinChances } from './winchances';
 import { hasMissedMoments, detectMissedMoments, onMissedMomentConfigChange, getMissedMoments, setMissedMoments, clearMissedMoments, type MissedMoment } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
-import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
+import { buildAnalysisNodes, buildReviewEngineMetadata, saveAnalysisToIdb, type ReviewEngineMetadata } from '../idb/index';
 import { pgnToTree } from '../tree/pgn';
 import { reviewDepth } from './batch';
 import { importFilters } from '../import/filters';
@@ -70,6 +70,7 @@ let _missedTacticGameIds:  Set<string>                                          
 let _analyzedGameAccuracy: Map<string, { white: number | null; black: number | null }> = new Map();
 let _getUserColor:         (game: ImportedGame) => 'white' | 'black' | null            = () => null;
 let _redraw:               () => void                                                   = () => {};
+let _setReviewEngineMetadata: (gameId: string, metadata: ReviewEngineMetadata) => void  = () => {};
 
 
 export function initReviewQueue(deps: {
@@ -78,12 +79,14 @@ export function initReviewQueue(deps: {
   analyzedGameAccuracy: Map<string, { white: number | null; black: number | null }>;
   getUserColor:         (game: ImportedGame) => 'white' | 'black' | null;
   redraw:               () => void;
+  setReviewEngineMetadata?: (gameId: string, metadata: ReviewEngineMetadata) => void;
 }): void {
   _analyzedGameIds      = deps.analyzedGameIds;
   _missedTacticGameIds  = deps.missedTacticGameIds;
   _analyzedGameAccuracy = deps.analyzedGameAccuracy;
   _getUserColor         = deps.getUserColor;
   _redraw               = deps.redraw;
+  _setReviewEngineMetadata = deps.setReviewEngineMetadata ?? (() => {});
 
   // Re-run missed-moment detection for all completed queue entries whenever
   // the detection config is changed via the Detection Settings menu.
@@ -278,11 +281,15 @@ function finishEntry(entry: ReviewQueueEntry): void {
     });
   }
 
+  const reviewEngine = buildReviewEngineMetadata(reviewProtocol.engineName, reviewActiveDepth);
+  _setReviewEngineMetadata(entry.game.id, reviewEngine);
+
   void saveAnalysisToIdb(
     'complete',
     entry.game.id,
     buildAnalysisNodes(entry.ctrl.mainline, p => entry.cache.get(p)),
     reviewActiveDepth,
+    reviewEngine,
   );
 
   console.log('[review-engine] game complete:', entry.game.id);

@@ -1614,7 +1614,6 @@ let _puzzleMenuOpen = false;
 
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
-const PUZZLE_ICON_HAMBURGER = '\ue039'; // licon.Hamburger
 const PUZZLE_ICON_FLIP      = '\ue020'; // licon.ChasingArrows — flip board
 
 /**
@@ -1689,11 +1688,9 @@ function renderPuzzleRoundNavBar(rc: PuzzleRoundCtrl, redraw: () => void): VNode
       if (explorerCtrl.enabled) explorerCtrl.setNode(rc.treeNode.fen, redraw);
       redraw();
     },
-    rightSlot: h('button.fbt', {
-      class: { active: _puzzleMenuOpen },
-      attrs: { 'data-icon': PUZZLE_ICON_HAMBURGER, title: 'Puzzle menu' },
-      on:    { click: () => { _puzzleMenuOpen = !_puzzleMenuOpen; redraw(); } },
-    }),
+    menuTitle: 'Puzzle menu',
+    menuOpen:  _puzzleMenuOpen,
+    onMenu:    () => { _puzzleMenuOpen = !_puzzleMenuOpen; redraw(); },
   });
 }
 
@@ -1714,7 +1711,6 @@ function previewNavigate(rc: PuzzleRoundCtrl, path: string, redraw: () => void):
 
 let _libraryMenuOpen = false;
 
-const LIBRARY_ICON_HAMBURGER = '\ue039'; // licon.Hamburger
 const LIBRARY_ICON_FLIP      = '\ue020'; // licon.ChasingArrows — flip board
 
 /**
@@ -1800,11 +1796,9 @@ function renderLibraryPreviewPanel(redraw: () => void): VNode | null {
         if (explorerCtrl.enabled) explorerCtrl.setNode(rc.treeNode.fen, redraw);
         redraw();
       },
-      rightSlot: h('button.fbt', {
-        class: { active: _libraryMenuOpen },
-        attrs: { 'data-icon': LIBRARY_ICON_HAMBURGER, title: 'Preview menu' },
-        on:    { click: () => { _libraryMenuOpen = !_libraryMenuOpen; redraw(); } },
-      }),
+      menuTitle: 'Preview menu',
+      menuOpen:  _libraryMenuOpen,
+      onMenu:    () => { _libraryMenuOpen = !_libraryMenuOpen; redraw(); },
     }),
   ]);
 }

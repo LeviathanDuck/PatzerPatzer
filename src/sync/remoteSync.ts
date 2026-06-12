@@ -7,6 +7,13 @@
 
 import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION, upgradeGameDbSchema } from '../idb/index';
 import type { SyncResult } from './client';
+import {
+  migrateRemoteSyncItem,
+  type RemoteSyncItem,
+  type RemoteSyncOperation,
+  type RemoteSyncStoreName,
+} from './remoteSyncMigrations';
+import { isSettingsRemoteApplySuppressed, withSettingsRemoteApplySuppressed } from './settingsSuppression';
 
 const API_BASE = '/api/patzer-sync';
 const PUZZLE_DB_NAME = 'patzer-puzzle-v1';
@@ -14,34 +21,18 @@ const PUZZLE_DB_VERSION = 3;
 const TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
 const LAST_SYNC_KEY = 'chesspatzer.remoteSync.lastSyncedAt';
 const OUTBOX_KEY = 'chesspatzer.remoteSync.outbox';
+const DEVICE_TAG_KEY = 'chesspatzer.remoteSync.deviceTag';
+const SYNC_LOG_KEY = 'chesspatzer.remoteSync.syncLog';
+export const REMOTE_SYNC_LOG_EVENT = 'chesspatzer:remoteSync-sync-log-changed';
+const RELOAD_ON_SETTINGS_PULL_KEY = 'chesspatzer.remoteSync.settingsReloadedAt';
 const SETTING_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.settingUpdatedAt.';
 const ITEM_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.itemUpdatedAt.';
 const PUSH_BATCH_SIZE = 100;
 const FLUSH_DEBOUNCE_MS = 250;
 const FLUSH_INTERVAL_MS = 15_000;
+const SYNC_LOG_LIMIT = 80;
 
-export type RemoteSyncStoreName =
-  | 'games'
-  | 'analysis'
-  | 'game-summaries'
-  | 'retro-results'
-  | 'saved-review-puzzles'
-  | 'studies'
-  | 'practice-lines'
-  | 'position-progress'
-  | 'drill-attempts'
-  | 'folders'
-  | 'puzzle-definitions'
-  | 'puzzle-attempts'
-  | 'puzzle-user-meta'
-  | 'puzzle-user-perf'
-  | 'puzzle-rating-history'
-  | 'opening-collections'
-  | 'opening-session'
-  | 'opening-training-variations'
-  | 'settings';
-
-export type RemoteSyncOperation = 'upsert' | 'delete';
+export type { RemoteSyncItem, RemoteSyncOperation, RemoteSyncStoreName };
 export type RemoteStoreName = RemoteSyncStoreName;
 
 export interface RemoteSyncPersistenceOperation {
@@ -53,20 +44,39 @@ export interface RemoteSyncPersistenceOperation {
   payload?:  unknown;
 }
 
-export interface RemoteSyncItem {
-  store:     RemoteSyncStoreName;
-  itemKey:   string;
-  updatedAt: number;
-  payload?:  unknown;
-  deleted?:  boolean;
-  operation?: RemoteSyncOperation;
+export type RemoteSyncLogAction =
+  | 'login'
+  | 'logout'
+  | 'test'
+  | 'push'
+  | 'pull'
+  | 'flush'
+  | 'token'
+  | 'system';
+
+export type RemoteSyncLogStatus = 'success' | 'error' | 'info';
+
+export interface RemoteSyncLogEntry {
+  id: string;
+  at: number;
+  action: RemoteSyncLogAction;
+  status: RemoteSyncLogStatus;
+  message: string;
+  deviceTag: string;
+  counts?: Record<string, number>;
 }
 
 interface PullResponse {
   ok?: boolean;
-  items?: RemoteSyncItem[];
+  items?: unknown[];
   latestUpdatedAt?: number;
+  skippedMalformedJson?: number;
   error?: string;
+}
+
+interface OutboxSnapshot {
+  valid: RemoteSyncItem[];
+  preservedInvalid: unknown[];
 }
 
 interface StatusStoreSummary {
@@ -116,6 +126,113 @@ function stringField(record: unknown, field: string): string | undefined {
 function numberField(record: unknown, field: string): number {
   const value = objectValue(record)?.[field];
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function createLogId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function defaultDeviceTag(): string {
+  return `Device ${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
+
+function isCounts(value: unknown): value is Record<string, number> {
+  return !!value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && Object.values(value as Record<string, unknown>).every(v => typeof v === 'number' && Number.isFinite(v));
+}
+
+function normalizeLogEntry(value: unknown): RemoteSyncLogEntry | null {
+  const entry = objectValue(value);
+  if (!entry) return null;
+  if (typeof entry.id !== 'string' || !entry.id.trim()) return null;
+  if (typeof entry.at !== 'number' || !Number.isFinite(entry.at)) return null;
+  if (typeof entry.action !== 'string') return null;
+  if (entry.status !== 'success' && entry.status !== 'error' && entry.status !== 'info') return null;
+  if (typeof entry.message !== 'string') return null;
+  if (typeof entry.deviceTag !== 'string') return null;
+  const counts = isCounts(entry.counts) ? entry.counts : undefined;
+  return {
+    id: entry.id,
+    at: entry.at,
+    action: entry.action as RemoteSyncLogAction,
+    status: entry.status,
+    message: entry.message,
+    deviceTag: entry.deviceTag,
+    ...(counts ? { counts } : {}),
+  };
+}
+
+function emitSyncLogChanged(): void {
+  window.dispatchEvent(new CustomEvent(REMOTE_SYNC_LOG_EVENT));
+}
+
+export function getRemoteSyncDeviceTag(): string {
+  const stored = localStorage.getItem(DEVICE_TAG_KEY)?.trim();
+  if (stored) return stored;
+  const tag = defaultDeviceTag();
+  localStorage.setItem(DEVICE_TAG_KEY, tag);
+  return tag;
+}
+
+export function setRemoteSyncDeviceTag(tag: string): string {
+  const value = tag.trim() || defaultDeviceTag();
+  try {
+    localStorage.setItem(DEVICE_TAG_KEY, value);
+    emitSyncLogChanged();
+  } catch {
+    // Device labels are convenience metadata and must never block sync.
+  }
+  return value;
+}
+
+export function getRemoteSyncLog(): RemoteSyncLogEntry[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SYNC_LOG_KEY) ?? '[]') as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(normalizeLogEntry)
+      .filter((entry): entry is RemoteSyncLogEntry => entry !== null)
+      .sort((a, b) => b.at - a.at)
+      .slice(0, SYNC_LOG_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+export function clearRemoteSyncLog(): void {
+  try {
+    localStorage.removeItem(SYNC_LOG_KEY);
+    emitSyncLogChanged();
+  } catch {
+    // Local log cleanup is best-effort.
+  }
+}
+
+export function recordRemoteSyncLog(
+  action: RemoteSyncLogAction,
+  status: RemoteSyncLogStatus,
+  message: string,
+  counts?: Record<string, number>,
+): RemoteSyncLogEntry {
+  const entry: RemoteSyncLogEntry = {
+    id: createLogId(),
+    at: Date.now(),
+    action,
+    status,
+    message,
+    deviceTag: getRemoteSyncDeviceTag(),
+    ...(counts ? { counts } : {}),
+  };
+  try {
+    const next = [entry, ...getRemoteSyncLog()].slice(0, SYNC_LOG_LIMIT);
+    localStorage.setItem(SYNC_LOG_KEY, JSON.stringify(next));
+    emitSyncLogChanged();
+  } catch {
+    // The audit trail is local-only evidence. It must not change sync outcomes.
+  }
+  return entry;
 }
 
 function isoTimeField(record: unknown, field: string): number {
@@ -338,11 +455,6 @@ const IDB_SPECS_BY_STORE = new Map<RemoteSyncStoreName, IdbStoreSpec>(
   IDB_STORE_SPECS.map(spec => [spec.store, spec]),
 );
 
-const ALLOWED_STORES = new Set<RemoteSyncStoreName>([
-  ...IDB_STORE_SPECS.map(spec => spec.store),
-  'settings',
-]);
-
 const SETTINGS_KEYS = new Set([
   'patzer.autoReview',
   'patzer.autoReviewConfirmed',
@@ -361,6 +473,7 @@ const SETTINGS_KEYS = new Set([
   'patzer.playStrengthLevel',
   'patzer.postGameSummaryOpen',
   'patzer.evalGraphHeightPct',
+  'missedMomentConfig',
   'retroConfig',
   'boardWheelNavEnabled',
   'reviewDotsUserOnly',
@@ -369,9 +482,8 @@ const SETTINGS_KEYS = new Set([
   'pieceSet',
   'boardSoundEnabled',
   'boardSoundVolume',
-  'puzzleSession',
-  'puzzleSessionQueue',
   'puzzleAutoNext',
+  'patzer.games.accountFilter.v1',
   'analyse.explorer.enabled',
   'explorer.db2.standard',
   'explorer.speed',
@@ -664,14 +776,18 @@ function applySettingItem(item: RemoteSyncItem): 'applied' | 'skipped' {
   if (!isAllowedSettingKey(item.itemKey)) return 'skipped';
   if (item.updatedAt < settingUpdatedAt(item.itemKey)) return 'skipped';
   if (isDeletedItem(item)) {
-    localStorage.removeItem(item.itemKey);
-    setSettingUpdatedAt(item.itemKey, item.updatedAt);
+    withSettingsRemoteApplySuppressed(() => {
+      localStorage.removeItem(item.itemKey);
+      setSettingUpdatedAt(item.itemKey, item.updatedAt);
+    });
     return 'applied';
   }
   const value = payloadSettingValue(item.payload, item.itemKey);
   if (value === undefined) return 'skipped';
-  localStorage.setItem(item.itemKey, value);
-  setSettingUpdatedAt(item.itemKey, item.updatedAt);
+  withSettingsRemoteApplySuppressed(() => {
+    localStorage.setItem(item.itemKey, value);
+    setSettingUpdatedAt(item.itemKey, item.updatedAt);
+  });
   return 'applied';
 }
 
@@ -685,7 +801,7 @@ function installSettingsObserver(): void {
 
   proto.setItem = function setItem(key: string, value: string): void {
     originalSetItem.call(this, key, value);
-    if (applyingRemoteSync || this !== localStorage || !isAllowedSettingKey(key)) return;
+    if (applyingRemoteSync || isSettingsRemoteApplySuppressed() || this !== localStorage || !isAllowedSettingKey(key)) return;
     const updatedAt = Date.now();
     originalSetItem.call(this, settingUpdatedAtKey(key), String(updatedAt));
     enqueueRemoteSyncUpsert('settings', key, { key, value }, updatedAt);
@@ -693,7 +809,7 @@ function installSettingsObserver(): void {
 
   proto.removeItem = function removeItem(key: string): void {
     originalRemoveItem.call(this, key);
-    if (applyingRemoteSync || this !== localStorage || !isAllowedSettingKey(key)) return;
+    if (applyingRemoteSync || isSettingsRemoteApplySuppressed() || this !== localStorage || !isAllowedSettingKey(key)) return;
     const updatedAt = Date.now();
     originalSetItem.call(this, settingUpdatedAtKey(key), String(updatedAt));
     enqueueRemoteSyncDelete('settings', key, updatedAt);
@@ -765,6 +881,7 @@ export function stopRemoteSyncAutoSync(): void {
 export function logoutRemoteSync(): void {
   clearRemoteSyncToken();
   stopRemoteSyncAutoSync();
+  recordRemoteSyncLog('logout', 'info', 'Token session cleared for this browser.');
 }
 
 export function clearRemoteSyncLocalSyncState(): void {
@@ -835,42 +952,58 @@ function isDeletedItem(item: Pick<RemoteSyncItem, 'deleted' | 'operation'>): boo
   return item.deleted === true || item.operation === 'delete';
 }
 
-function normalizeSyncItem(item: Partial<RemoteSyncItem>): RemoteSyncItem | null {
-  if (!item.store || !ALLOWED_STORES.has(item.store)) return null;
-  if (typeof item.itemKey !== 'string' || item.itemKey.trim() === '') return null;
-  const updatedAt = typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt)
-    ? Math.max(0, Math.floor(item.updatedAt))
-    : Date.now();
-  const deleted = item.deleted === true || item.operation === 'delete';
-  if (!deleted && item.payload === undefined) return null;
-  return {
-    store: item.store,
-    itemKey: item.itemKey,
-    updatedAt,
-    ...(deleted ? { deleted: true, operation: 'delete' as const } : { payload: item.payload, operation: 'upsert' as const }),
-  };
+function normalizeSyncItem(
+  item: unknown,
+  options: { logInvalid?: boolean; requireUpdatedAt?: boolean; logAction?: RemoteSyncLogAction } = {},
+): RemoteSyncItem | null {
+  const migrated = migrateRemoteSyncItem(item, {
+    ...(options.requireUpdatedAt !== undefined ? { requireUpdatedAt: options.requireUpdatedAt } : {}),
+  });
+  if (migrated.ok) return migrated.item;
+
+  if (options.logInvalid) {
+    const target = [migrated.store, migrated.itemKey].filter(Boolean).join('/') || 'unknown item';
+    recordRemoteSyncLog(options.logAction ?? 'pull', 'error', `Skipped ${target}: ${migrated.reason}`);
+  }
+  return null;
+}
+
+function readOutboxSnapshot(options: { logInvalid?: boolean } = {}): OutboxSnapshot {
+  try {
+    const raw = localStorage.getItem(OUTBOX_KEY);
+    if (!raw) return { valid: [], preservedInvalid: [] };
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { valid: [], preservedInvalid: [] };
+    const snapshot: OutboxSnapshot = { valid: [], preservedInvalid: [] };
+    for (const item of parsed) {
+      const normalized = normalizeSyncItem(item, {
+        ...(options.logInvalid !== undefined ? { logInvalid: options.logInvalid } : {}),
+        logAction: 'system',
+      });
+      if (normalized) snapshot.valid.push(normalized);
+      else snapshot.preservedInvalid.push(item);
+    }
+    return snapshot;
+  } catch {
+    return { valid: [], preservedInvalid: [] };
+  }
 }
 
 function readOutbox(): RemoteSyncItem[] {
-  try {
-    const raw = localStorage.getItem(OUTBOX_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map(item => normalizeSyncItem(item as Partial<RemoteSyncItem>))
-      .filter((item): item is RemoteSyncItem => item !== null);
-  } catch {
-    return [];
-  }
+  return readOutboxSnapshot().valid;
 }
 
-function writeOutbox(items: RemoteSyncItem[]): void {
-  if (items.length === 0) {
+function writeOutboxSnapshot(items: RemoteSyncItem[], preservedInvalid: unknown[] = []): void {
+  const next = [...preservedInvalid, ...items];
+  if (next.length === 0) {
     localStorage.removeItem(OUTBOX_KEY);
     return;
   }
-  localStorage.setItem(OUTBOX_KEY, JSON.stringify(items));
+  localStorage.setItem(OUTBOX_KEY, JSON.stringify(next));
+}
+
+function writeOutbox(items: RemoteSyncItem[]): void {
+  writeOutboxSnapshot(items);
 }
 
 function mergeOutboxItem(outbox: RemoteSyncItem[], item: RemoteSyncItem): RemoteSyncItem[] {
@@ -888,7 +1021,8 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   const normalized = normalizeSyncItem(item);
   if (!normalized) throw new Error('Invalid Remote sync item.');
   rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
-  writeOutbox(mergeOutboxItem(readOutbox(), normalized));
+  const snapshot = readOutboxSnapshot({ logInvalid: true });
+  writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
   scheduleRemoteSyncFlush();
 }
 
@@ -934,7 +1068,8 @@ export function enqueueRemoteSyncDelete(
 }
 
 export function getRemoteSyncOutboxCount(): number {
-  return readOutbox().length;
+  const snapshot = readOutboxSnapshot();
+  return snapshot.valid.length + snapshot.preservedInvalid.length;
 }
 
 export async function queueAndFlushRemoteSyncUpsert(
@@ -991,8 +1126,26 @@ function mergeCounts(target: Record<string, number>, source: Record<string, numb
   }
 }
 
+function reloadAfterSettingsPullIfNeeded(counts: Record<string, number>, latestUpdatedAt: number): boolean {
+  if ((counts.settings ?? 0) + (counts['settings:deleted'] ?? 0) === 0 || latestUpdatedAt <= 0) return false;
+  const marker = String(latestUpdatedAt);
+  if (sessionStorage.getItem(RELOAD_ON_SETTINGS_PULL_KEY) === marker) return false;
+  sessionStorage.setItem(RELOAD_ON_SETTINGS_PULL_KEY, marker);
+  window.location.reload();
+  return true;
+}
+
 function maxItemUpdatedAt(items: RemoteSyncItem[]): number {
   return maxTimestamp(...items.map(item => item.updatedAt));
+}
+
+function maxRawItemUpdatedAt(items: unknown[]): number {
+  return maxTimestamp(
+    ...items.flatMap(item => {
+      const normalized = normalizeSyncItem(item, { requireUpdatedAt: true });
+      return normalized ? [normalized.updatedAt] : [];
+    }),
+  );
 }
 
 async function pushItems(items: RemoteSyncItem[]): Promise<Record<string, number>> {
@@ -1078,7 +1231,7 @@ async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted'
 }
 
 export async function applyRemoteSyncItems(
-  items: RemoteSyncItem[],
+  items: unknown[],
   options: { generation?: number } = {},
 ): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
@@ -1089,18 +1242,24 @@ export async function applyRemoteSyncItems(
         counts.cancelled = (counts.cancelled ?? 0) + 1;
         break;
       }
-      const item = normalizeSyncItem(raw);
+      const item = normalizeSyncItem(raw, { logInvalid: true, requireUpdatedAt: true });
       if (!item) {
         counts.skipped = (counts.skipped ?? 0) + 1;
         continue;
       }
 
-      const result = item.store === 'settings'
-        ? applySettingItem(item)
-        : await applyIdbItem(item);
-      if (result === 'applied') counts[item.store] = (counts[item.store] ?? 0) + 1;
-      else if (result === 'deleted') counts[`${item.store}:deleted`] = (counts[`${item.store}:deleted`] ?? 0) + 1;
-      else counts.skipped = (counts.skipped ?? 0) + 1;
+      try {
+        const result = item.store === 'settings'
+          ? applySettingItem(item)
+          : await applyIdbItem(item);
+        if (result === 'applied') counts[item.store] = (counts[item.store] ?? 0) + 1;
+        else if (result === 'deleted') counts[`${item.store}:deleted`] = (counts[`${item.store}:deleted`] ?? 0) + 1;
+        else counts.skipped = (counts.skipped ?? 0) + 1;
+      } catch (error) {
+        counts.skipped = (counts.skipped ?? 0) + 1;
+        const message = error instanceof Error ? error.message : 'Could not apply sync item.';
+        recordRemoteSyncLog('pull', 'error', `Skipped ${item.store}/${item.itemKey}: ${message}`);
+      }
     }
   } finally {
     applyingRemoteSync = false;
@@ -1114,7 +1273,7 @@ export async function validateRemoteSyncToken(token: string): Promise<SyncResult
     if (!value) return { success: false, error: 'Enter the admin sync token first.' };
     const status = await remoteSyncFetch<StatusResponse>('status.php', {}, value);
     if (!status.ok) return { success: false, error: status.error || 'Remote sync status failed.' };
-    return {
+    const result = {
       success: true,
       counts: {
         items: status.items ?? 0,
@@ -1122,8 +1281,12 @@ export async function validateRemoteSyncToken(token: string): Promise<SyncResult
         latestUpdatedAt: status.latestUpdatedAt ?? 0,
       },
     };
+    recordRemoteSyncLog('token', 'success', 'Token verified.', result.counts);
+    return result;
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Remote sync status failed.' };
+    const message = error instanceof Error ? error.message : 'Remote sync status failed.';
+    recordRemoteSyncLog('token', 'error', message);
+    return { success: false, error: message };
   }
 }
 
@@ -1137,7 +1300,7 @@ export async function testRemoteSyncConnection(): Promise<SyncResult> {
   try {
     const status = await remoteSyncFetch<StatusResponse>('status.php');
     if (!status.ok) return { success: false, error: status.error || 'Remote sync status failed.' };
-    return {
+    const result = {
       success: true,
       counts: {
         items: status.items ?? 0,
@@ -1145,24 +1308,37 @@ export async function testRemoteSyncConnection(): Promise<SyncResult> {
         latestUpdatedAt: status.latestUpdatedAt ?? 0,
       },
     };
+    recordRemoteSyncLog('test', 'success', 'Connection test passed.', result.counts);
+    return result;
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Remote sync status failed.' };
+    const message = error instanceof Error ? error.message : 'Remote sync status failed.';
+    recordRemoteSyncLog('test', 'error', message);
+    return { success: false, error: message };
   }
 }
 
 export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
-  const outbox = readOutbox();
+  const snapshot = readOutboxSnapshot({ logInvalid: true });
+  const outbox = snapshot.valid;
   if (outbox.length === 0) return { success: true, counts: {} };
-  if (!hasRemoteSyncToken()) return { success: false, error: 'Enter the admin sync token first.', counts: { queued: outbox.length } };
+  if (!hasRemoteSyncToken()) {
+    const counts = { queued: outbox.length };
+    recordRemoteSyncLog('flush', 'error', 'Enter the admin sync token first.', counts);
+    return { success: false, error: 'Enter the admin sync token first.', counts };
+  }
 
   try {
     const counts = await pushItems(outbox);
-    writeOutbox([]);
+    writeOutboxSnapshot([], snapshot.preservedInvalid);
     setRemoteSyncLastSyncedAt(maxItemUpdatedAt(outbox));
+    recordRemoteSyncLog('flush', 'success', 'Queued changes flushed.', counts);
     return { success: true, counts };
   } catch (error) {
-    writeOutbox(outbox);
-    return { success: false, error: error instanceof Error ? error.message : 'Remote sync flush failed.', counts: { queued: outbox.length } };
+    writeOutboxSnapshot(outbox, snapshot.preservedInvalid);
+    const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
+    const counts = { queued: outbox.length };
+    recordRemoteSyncLog('flush', 'error', message, counts);
+    return { success: false, error: message, counts };
   }
 }
 
@@ -1174,9 +1350,12 @@ export async function pushToRemoteSync(): Promise<SyncResult> {
     const items = await readLocalRemoteSyncItems();
     const counts = await pushItems(items);
     setRemoteSyncLastSyncedAt(maxItemUpdatedAt(items));
+    recordRemoteSyncLog('push', 'success', 'Local cache pushed to database.', counts);
     return { success: true, counts };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Remote sync push failed.' };
+    const message = error instanceof Error ? error.message : 'Remote sync push failed.';
+    recordRemoteSyncLog('push', 'error', message);
+    return { success: false, error: message };
   }
 }
 
@@ -1191,9 +1370,14 @@ export async function pullFromRemoteSync(options: { since?: number | null; flush
 
     const items = result.items ?? [];
     const counts = await applyRemoteSyncItems(items, { generation });
+    if ((result.skippedMalformedJson ?? 0) > 0) {
+      counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
+      recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
+    }
     if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts };
-    const latestUpdatedAt = result.latestUpdatedAt ?? maxItemUpdatedAt(items);
+    const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
     if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
+    if (reloadAfterSettingsPullIfNeeded(counts, latestUpdatedAt)) return { success: true, counts };
 
     if (options.flushAfter) {
       const flush = await flushRemoteSyncOutbox();
@@ -1207,9 +1391,12 @@ export async function pullFromRemoteSync(options: { since?: number | null; flush
       mergeCounts(counts, flush.counts);
     }
 
+    recordRemoteSyncLog('pull', 'success', 'Database changes pulled into local cache.', counts);
     return { success: true, counts };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Remote sync pull failed.' };
+    const message = error instanceof Error ? error.message : 'Remote sync pull failed.';
+    recordRemoteSyncLog('pull', 'error', message);
+    return { success: false, error: message };
   }
 }
 

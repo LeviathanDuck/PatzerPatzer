@@ -27,7 +27,7 @@ import {
 import { evalWinChances } from './winchances';
 import { hasMissedMoments, detectMissedMoments, setMissedMoments } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
-import { buildAnalysisNodes, saveAnalysisToIdb, saveGameSummary } from '../idb/index';
+import { buildAnalysisNodes, buildReviewEngineMetadata, saveAnalysisToIdb, saveGameSummary, type ReviewEngineMetadata } from '../idb/index';
 import { extractGameSummary } from '../stats/extract';
 import { invalidateSummariesCache } from '../stats/ctrl';
 import type { AnalyseCtrl } from '../analyse/ctrl';
@@ -56,6 +56,7 @@ let _analyzedGameAccuracy: Map<string, { white: number | null; black: number | n
 let _getUserColor: (game: ImportedGame) => 'white' | 'black' | null;
 let _redraw: () => void = () => {};
 let _onBatchComplete: (() => void) | null = null;
+let _setReviewEngineMetadata: (gameId: string, metadata: ReviewEngineMetadata) => void = () => {};
 
 function isRetroSessionActive(): boolean {
   try {
@@ -75,6 +76,7 @@ export function initBatch(deps: {
   getUserColor:         (game: ImportedGame) => 'white' | 'black' | null;
   redraw:               () => void;
   onBatchComplete?:     () => void;
+  setReviewEngineMetadata?: (gameId: string, metadata: ReviewEngineMetadata) => void;
 }): void {
   _getCtrl              = deps.getCtrl;
   _getSelectedGameId    = deps.getSelectedGameId;
@@ -85,6 +87,7 @@ export function initBatch(deps: {
   _getUserColor         = deps.getUserColor;
   _redraw               = deps.redraw;
   _onBatchComplete      = deps.onBatchComplete ?? null;
+  _setReviewEngineMetadata = deps.setReviewEngineMetadata ?? (() => {});
 
   // Register with ctrl.ts to avoid circular import.
   setIsBatchActive(() => batchAnalyzing);
@@ -244,7 +247,11 @@ export function advanceBatch(): void {
         invalidateSummariesCache();
       }
     }
-    if (gameId) void saveAnalysisToIdb('complete', gameId, buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)), reviewDepth);
+    if (gameId) {
+      const reviewEngine = buildReviewEngineMetadata(protocol.engineName, reviewDepth);
+      _setReviewEngineMetadata(gameId, reviewEngine);
+      void saveAnalysisToIdb('complete', gameId, buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)), reviewDepth, reviewEngine);
+    }
     // Re-evaluate current node interactively after batch (batch always uses MultiPV=1)
     evalCache.delete(_getCtrl().path);
     resetCurrentEval();
@@ -278,6 +285,14 @@ export function startBatchAnalysis(): void {
   batchState       = queue.length > 0 ? 'analyzing' : 'complete';
   analysisRunning  = queue.length > 0;
   analysisComplete = queue.length === 0;
+  if (queue.length === 0) {
+    const gameId = _getSelectedGameId();
+    if (gameId) {
+      const reviewEngine = buildReviewEngineMetadata(protocol.engineName, reviewDepth);
+      _setReviewEngineMetadata(gameId, reviewEngine);
+      void saveAnalysisToIdb('complete', gameId, buildAnalysisNodes(ctrl.mainline, p => evalCache.get(p)), reviewDepth, reviewEngine);
+    }
+  }
   syncArrow();
   _redraw();
 

@@ -16,6 +16,9 @@ import { h, type VNode } from 'snabbdom';
 import type { Key } from '@lichess-org/chessground/types';
 import { renderMoveList } from '../analyse/moveList';
 import { formatScore } from '../analyse/evalView';
+import { renderMoveNavBar } from '../analyse/analysisControls';
+import type { MoveNavOverride } from '../analyse/analysisControls';
+import { renderToggleRow } from '../ui';
 import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView';
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
 import {
@@ -116,6 +119,13 @@ export function syncStudyBoard(redraw?: () => void): void {
 
 
 
+let _studyMenuOpen = false;
+
+// Flip icon codepoint — Adapted from lichess-org/lila: ui/lib/src/licon.ts
+const ICON_FLIP = ''; // licon.ChasingArrows — flip board
+
+
+
 let _studyEngineOn = false;
 
 export function studyEngineOn(): boolean { return _studyEngineOn; }
@@ -210,35 +220,60 @@ function renderStudyBoard(): VNode {
   });
 }
 
-// --- Move nav bar ---
-function renderStudyNavBar(redraw: () => void): VNode {
-  return h('div.study-nav-bar', [
-    h('button.study-nav-btn', {
-      attrs: { title: 'First move' },
-      on:   { click: () => { navigateFirst(redraw); syncStudyBoard(redraw); } },
-    }, '|←'),
-    h('button.study-nav-btn', {
-      attrs: { title: 'Previous move' },
-      on:   { click: () => { navigatePrev(redraw); syncStudyBoard(redraw); } },
-    }, '←'),
-    h('button.study-nav-btn', {
-      attrs: { title: 'Next move' },
-      on:   { click: () => { navigateNext(redraw); syncStudyBoard(redraw); } },
-    }, '→'),
-    h('button.study-nav-btn', {
-      attrs: { title: 'Last move' },
-      on:   { click: () => { navigateLast(redraw); syncStudyBoard(redraw); } },
-    }, '→|'),
-    h('button.study-nav-btn', {
-      attrs: { title: 'Flip board' },
-      on:   { click: () => flipStudyBoard(redraw) },
-    }, '⇅'),
-    h('button.study-nav-btn', {
-      class: { 'study-nav-btn--active': _studyEngineOn },
-      attrs: { title: _studyEngineOn ? 'Stop engine' : 'Start engine' },
-      on:   { click: () => toggleStudyEngine(redraw) },
-    }, '⚙'),
+
+
+
+
+function renderStudyActionMenu(redraw: () => void): VNode | null {
+  if (!_studyMenuOpen) return null;
+  const close = () => { _studyMenuOpen = false; redraw(); };
+
+  return h('div.action-menu', [
+    h('button.action-menu__close-btn', {
+      attrs: { title: 'Close menu' },
+      on:    { click: close },
+    }, '×'),
+
+    h('h2', 'Tools'),
+    h('div.action-menu__tools', [
+      // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
+      h('button', {
+        attrs: { 'data-icon': ICON_FLIP, title: 'Flip board' },
+        on: { click: () => { flipStudyBoard(redraw); close(); } },
+      }, 'Flip board'),
+    ]),
+
+    h('h2', 'Display'),
+    h('div.action-menu__display', [
+      renderToggleRow(
+        'study-engine',
+        'Engine',
+        _studyEngineOn,
+        (v) => { if (v) startStudyEngine(redraw); else stopStudyEngine(redraw); },
+      ),
+    ]),
   ]);
+}
+
+
+
+
+function renderStudyNavBar(redraw: () => void): VNode {
+  const canPrev = detailPath() !== '';
+  const canNext = (detailNode()?.children.length ?? 0) > 0;
+  const override: MoveNavOverride = {
+    canPrev,
+    canNext,
+    first:     () => { navigateFirst(redraw); syncStudyBoard(redraw); },
+    prev:      () => { navigatePrev(redraw); syncStudyBoard(redraw); },
+    next:      () => { navigateNext(redraw); syncStudyBoard(redraw); },
+    last:      () => { navigateLast(redraw); syncStudyBoard(redraw); },
+    // No onBook: study view has no explorer plumbing, so the book button is intentionally omitted.
+    menuTitle: 'Study menu',
+    menuOpen:  _studyMenuOpen,
+    onMenu:    () => { _studyMenuOpen = !_studyMenuOpen; redraw(); },
+  };
+  return renderMoveNavBar([], override);
 }
 
 
@@ -681,6 +716,9 @@ export function renderStudyDetail(id: string, redraw: () => void): VNode {
 
       // Tools column: move list + annotation panel
       h('div.study-detail__tools-col', [
+        // Study action menu overlay — must be first child so position:absolute covers the column.
+        // Mirrors the pattern in openings/view.ts renderOpeningsActionMenu placement.
+        renderStudyActionMenu(redraw),
         // Bookmark filter toggle
         h('div.study-tools-bar', [
           h('button.study-btn', {

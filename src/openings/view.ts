@@ -101,7 +101,6 @@ let _dateRangePopupOpen = false;
 
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
-const ICON_HAMBURGER  = '\ue039'; // licon.Hamburger
 const ICON_FLIP       = '\ue020'; // licon.ChasingArrows — flip board
 
 /** Render the openings page (library or session). */
@@ -1112,14 +1111,13 @@ function renderPrepReportTool(redraw: () => void): VNode {
             h('span.openings__pr-sample', `n=${summary.overall.total}`),
           ]),
         ]),
-        // Top ECOs
+        // Top openings
         report.topEcos.length > 0 ? h('div.openings__pr-ecos', [
           h('div.openings__pr-section-title', 'Top Openings'),
           ...report.topEcos.slice(0, 5).map(eco =>
             h('div.openings__pr-eco-row', {
               class: { 'openings__pr-unreliable': !isStatReliable(eco.count) },
             }, [
-              h('span.openings__pr-eco-code', eco.eco),
               h('span.openings__pr-eco-name', eco.opening),
               h('span.openings__pr-eco-count', `${eco.count}g`),
               h('span.openings__pr-eco-pct', `${Math.round(eco.count / total * 100)}%`),
@@ -1655,8 +1653,8 @@ function renderStyleBehavioral(vm: StyleViewModel): VNode | null {
 
   // Opening variety (top3EcoPct) is already shown as a style axis bar — omitted here to avoid duplication.
 
-  // --- ECO switching — recent vs all-time ---
-  // If the recent topEco differs from the baseline topEco, they may have switched lines.
+  // --- Opening switching — recent vs all-time ---
+  // If the recent top opening differs from the baseline top opening, they may have switched lines.
   const recentEco   = form.last90.topEco;
   const baselineEco = form.baseline.topEco;
   if (recentEco && baselineEco && recentEco !== baselineEco && form.last90.datedGameCount >= 5) {
@@ -2229,11 +2227,9 @@ function renderOpeningsMoveList(
         if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw);
         redraw();
       },
-      rightSlot: h('button.fbt', {
-        class: { active: _openingsMenuOpen },
-        attrs: { 'data-icon': ICON_HAMBURGER, title: 'Opponents menu' },
-        on:    { click: () => { _openingsMenuOpen = !_openingsMenuOpen; redraw(); } },
-      }),
+      menuTitle: 'Opponents menu',
+      menuOpen:  _openingsMenuOpen,
+      onMenu:    () => { _openingsMenuOpen = !_openingsMenuOpen; redraw(); },
     }),
   ]);
 }
@@ -3435,7 +3431,7 @@ function renderExplorerPanel(node: OpeningTreeNode | null, redraw: () => void): 
     const content = hasContent
       ? h('div.openings__explorer-data', [
           data.opening
-            ? h('div.openings__explorer-opening', `${data.opening.eco} ${data.opening.name}`)
+            ? h('div.openings__explorer-opening', data.opening.name)
             : null,
           renderExplorerMovesTable(data, node.fen, redraw),
           renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
@@ -3697,7 +3693,7 @@ function renderAnalysisExplorerPanel(
     const hasContent = data.moves.length > 0 || (data.topGames?.length ?? 0) > 0 || (data.recentGames?.length ?? 0) > 0;
     const content = hasContent
       ? h('div.openings__explorer-data', [
-          data.opening ? h('div.openings__explorer-opening', `${data.opening.eco} ${data.opening.name}`) : null,
+          data.opening ? h('div.openings__explorer-opening', data.opening.name) : null,
           renderExplorerMovesTable(data, fen, redraw, onMoveClick, cg),
           renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
           renderExplorerGamesTable('Recent games', data.recentGames ?? [], isMasters),

@@ -196,7 +196,7 @@ export function extractGameSummary(
     missedMomentCount:   missedMoments.length,
     worstLoss,
     worstLossPly,
-    opening:             game.opening ?? game.eco ?? '',
+    opening:             game.opening ?? '',
     eco:                 game.eco ?? '',
     hadWinningPosition,
     converted:           hadWinningPosition && playerWon,

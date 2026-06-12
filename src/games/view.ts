@@ -131,6 +131,7 @@ export function renderCompactGameRow(
   const tcIcon = game.timeClass ? (tcIconMap[game.timeClass] ?? null) : null;
   const isNewImport = isRecentlyImported(game);
   const accountLabel = importedAccountLabel(game);
+  const openingLabel = game.opening?.trim() || null;
 
   const resultCls = result === 'win'  ? 'grl__result--win'
     : result === 'loss' ? 'grl__result--loss'
@@ -148,6 +149,7 @@ export function renderCompactGameRow(
   return [
     h('span.grl__result.' + resultCls, '●'),
     h('span.grl__opponent', [oppLabel, oppChip, oppAccNode]),
+    openingLabel ? h('span.grl__opening', { attrs: { title: openingLabel } }, openingLabel) : null,
     accountLabel ? h('span.grl__account', accountLabel) : null,
     date ? h('span.grl__date', date) : null,
     tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, ...(game.timeClass ? { title: game.timeClass } : {}) } }) : null,
@@ -199,7 +201,7 @@ let gamesFilterColor:    '' | 'white' | 'black' = '';
 // Tactics severity filter: '!' inaccuracy+, '!!' mistake+, '!!!' blunder, 'M?!' missed mate
 // Multi-select OR: show games matching any selected severity.
 let gamesFilterTactics:  Set<string>            = new Set();
-// Opening name / ECO code substring filter (case-insensitive).
+// Opening name substring filter (case-insensitive).
 let gamesFilterOpening = '';
 let gamesSortField: GamesSortField = 'date';
 let gamesSortDir:   'asc' | 'desc' = 'desc';
@@ -480,9 +482,7 @@ function filteredGames(deps: GamesViewDeps): ImportedGame[] {
 
   if (gamesFilterOpening.trim()) {
     const q = gamesFilterOpening.trim().toLowerCase();
-    list = list.filter(g =>
-      g.opening?.toLowerCase().includes(q) || g.eco?.toLowerCase().includes(q)
-    );
+    list = list.filter(g => g.opening?.toLowerCase().includes(q));
   }
 
   // Sort
@@ -602,7 +602,8 @@ export function renderGameList(deps: GamesViewDeps): VNode {
   let visible: ImportedGame[] = q
     ? lensGames.filter(g => {
         const opp = opponentName(g, deps.getUserColor)?.toLowerCase() ?? '';
-        return opp.includes(q);
+        const opening = g.opening?.toLowerCase() ?? '';
+        return opp.includes(q) || opening.includes(q);
       })
     : [...lensGames];
 
@@ -649,7 +650,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
   const toolbar = h('div.game-list__toolbar', [
     renderAccountLensSelect(deps),
     h('input.games-view__search', {
-      attrs: { type: 'search', placeholder: 'Search opponent…', value: gameListSearch },
+      attrs: { type: 'search', placeholder: 'Search opponent/opening...', value: gameListSearch },
       on: { input: (e: Event) => { gameListSearch = (e.target as HTMLInputElement).value; deps.redraw(); } },
     }),
     h('div.game-list__filter-pills', [
@@ -876,7 +877,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     h('div.games-view__filter-group', [
       h('span.games-view__filter-label', 'Opening'),
       h('input.games-view__search', {
-        attrs: { type: 'search', placeholder: 'Name or ECO…', value: gamesFilterOpening },
+        attrs: { type: 'search', placeholder: 'Name...', value: gamesFilterOpening },
         on: { input: (e: Event) => { gamesFilterOpening = (e.target as HTMLInputElement).value; gamesPage = 0; redraw(); } },
       }),
     ]),
@@ -962,7 +963,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const date    = game.date ? game.date.slice(0, 10) : '–';
             const tc      = game.timeClass ?? '–';
             const tcIcon  = game.timeClass ? SPEED_ICONS[game.timeClass] : undefined;
-            const opening = game.opening ? (game.eco ? `${game.eco} ${game.opening}` : game.opening) : '–';
+            const opening = game.opening?.trim() || '–';
             const srcUrl  = deps.gameSourceUrl(game);
             const isAnalyzed = deps.analyzedGameIds.has(game.id);
             const hasMissed  = deps.missedTacticGameIds.has(game.id);

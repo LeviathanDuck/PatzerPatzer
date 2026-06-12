@@ -218,6 +218,29 @@ export interface SyncResult {
   counts?: Record<string, number>;
 }
 
+export interface AccountSettingSyncItem {
+  key: string;
+  value: string;
+  updatedAt: number;
+  deleted?: boolean;
+}
+
+export async function pullAccountSettings(since?: number): Promise<AccountSettingSyncItem[]> {
+  const query = since !== undefined ? `?since=${encodeURIComponent(String(since))}` : '';
+  const result = await apiGet<{ settings?: AccountSettingSyncItem[] }>(`/api/sync/settings${query}`);
+  return Array.isArray(result.settings) ? result.settings : [];
+}
+
+export async function pushAccountSettings(settings: AccountSettingSyncItem[]): Promise<SyncResult> {
+  try {
+    if (settings.length === 0) return { success: true, counts: {} };
+    const result = await apiPost<{ ok?: boolean; count?: number }>('/api/sync/settings', { settings });
+    return { success: result.ok !== false, counts: { settings: result.count ?? settings.length } };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Settings sync failed' };
+  }
+}
+
 export async function pushToServer(): Promise<SyncResult> {
   try {
     const counts: Record<string, number> = {};

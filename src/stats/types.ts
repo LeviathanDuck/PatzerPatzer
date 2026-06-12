@@ -21,8 +21,8 @@ export interface GameSummary {
   missedMomentCount:   number;
   worstLoss:           number;    // magnitude of worst single-move win-chance loss
   worstLossPly:        number;    // ply of the worst-loss move
-  opening:             string;    // opening name or ECO description
-  eco:                 string;    // ECO code (e.g. "B12")
+  opening:             string;    // human-readable opening name for UI grouping
+  eco:                 string;    // internal ECO code metadata (e.g. "B12")
   hadWinningPosition:  boolean;   // win-chance > 0.7 sustained 3+ moves
   converted:           boolean;   // had winning position AND won
   hadLosingPosition:   boolean;   // win-chance < 0.3 sustained 3+ moves

@@ -129,10 +129,10 @@ function detectOpeningWeakness(summaries: GameSummary[]): DiagnosedWeakness | nu
   if (summaries.length < 10) return null;
   const globalAvgAccuracy = mean(summaries.map(s => s.accuracy));
 
-  // Group by opening name (use eco if opening is absent)
+  // Group by human-readable opening name only; ECO codes are internal metadata.
   const byOpening = new Map<string, GameSummary[]>();
   for (const s of summaries) {
-    const key = s.opening || s.eco || 'Unknown opening';
+    const key = s.opening || 'Unknown opening';
     const group = byOpening.get(key) ?? [];
     group.push(s);
     byOpening.set(key, group);

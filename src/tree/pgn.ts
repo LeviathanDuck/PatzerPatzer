@@ -9,7 +9,7 @@ import type { ChildNode, PgnNodeData } from 'chessops/pgn';
 import { parseComment, parsePgn, startingPosition } from 'chessops/pgn';
 import { makeSanAndPlay, parseSan } from 'chessops/san';
 
-import type { Glyph, TreeNode } from './types';
+import type { Glyph, TimeControl, TreeNode } from './types';
 
 // Standard NAG (Numeric Annotation Glyph) → Glyph mapping.
 // Adapted from lichess-org/lila: modules/tree/src/main/TreeBuilder.scala glyphs()
@@ -21,6 +21,19 @@ const NAG_GLYPHS: Record<number, Glyph> = {
   5:  { id: 5, name: 'Speculative move', symbol: '!?' },
   6:  { id: 6, name: 'Dubious move',     symbol: '?!' },
 };
+
+function parseTimeControl(value: string | undefined): TimeControl | undefined {
+  if (!value || value === '-' || value.includes(':')) return undefined;
+  const match = value.match(/^(\d+)(?:\+(\d+))?$/);
+  if (!match) return undefined;
+  const initialSeconds = Number(match[1]);
+  const incrementSeconds = match[2] !== undefined ? Number(match[2]) : 0;
+  if (!Number.isFinite(initialSeconds) || !Number.isFinite(incrementSeconds)) return undefined;
+  return {
+    initial: Math.round(initialSeconds * 100),
+    increment: Math.round(incrementSeconds * 100),
+  };
+}
 
 /**
  * Recursively build a TreeNode from a PGN child node.
@@ -48,14 +61,18 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
     .map(n => NAG_GLYPHS[n])
     .filter((g): g is Glyph => g !== undefined);
 
-  // Parse comments: extract %clk clock time and strip annotation tags from display text.
+  // Parse comments: extract %clk/%emt clock metadata and strip annotation tags from display text.
   // Adapted from lichess-org/lila: ui/analyse/src/pgnImport.ts readNode
   let clockCentis: number | undefined;
+  let moveTimeCentis: number | undefined;
   const comments = (pgnNode.data.comments ?? []).map((raw, i) => {
     const parsed = parseComment(raw);
     if (parsed.clock !== undefined && clockCentis === undefined) {
       // chessops returns seconds; store as centiseconds to match Lichess Clock type
       clockCentis = Math.round(parsed.clock * 100);
+    }
+    if (parsed.emt !== undefined && moveTimeCentis === undefined) {
+      moveTimeCentis = Math.round(parsed.emt * 100);
     }
     return { id: String(i), by: 'pgn' as const, text: parsed.text };
   }).filter(c => c.text.trim().length > 0);
@@ -70,6 +87,7 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
     ...(glyphs.length              ? { glyphs }              : {}),
     ...(comments.length            ? { comments }            : {}),
     ...(clockCentis !== undefined  ? { clock: clockCentis }  : {}),
+    ...(moveTimeCentis !== undefined ? { moveTime: moveTimeCentis } : {}),
   };
 }
 
@@ -86,6 +104,7 @@ export function pgnToTree(pgn: string): TreeNode {
   const startFen = makeFen(startPos.toSetup());
   const setup = startPos.toSetup();
   const initialPly = (setup.fullmoves - 1) * 2 + (startPos.turn === 'white' ? 0 : 1);
+  const timeControl = parseTimeControl(game.headers.get('TimeControl'));
 
   // Each top-level child gets a fresh clone of the starting position
   const children = game.moves.children
@@ -97,5 +116,6 @@ export function pgnToTree(pgn: string): TreeNode {
     ply: initialPly,
     fen: startFen,
     children,
+    ...(timeControl ? { timeControl } : {}),
   };
 }

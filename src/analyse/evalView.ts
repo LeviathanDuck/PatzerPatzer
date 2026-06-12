@@ -4,6 +4,7 @@
 import { h, type VNode } from 'snabbdom';
 import { classifyLoss, evalWinChances, type MoveLabel } from '../engine/winchances';
 import type { TreeNode } from '../tree/types';
+import type { ReviewEngineMetadata } from '../idb/index';
 
 // Local structural type for evalCache entries — matches PositionEval shape.
 // Using a structural type keeps this module free of the PositionEval declaration
@@ -421,6 +422,7 @@ export function renderEvalGraph(
   userColor:   'white' | 'black' | null,
   userOnly:    boolean,
   bg?:         boolean,
+  reviewEngine?: ReviewEngineMetadata,
 ): VNode {
   const n = mainline.length - 1; // non-root move count
   const renderedGraphHeight = Math.round((GRAPH_H * graphHeightPct) / 100);
@@ -668,6 +670,10 @@ export function renderEvalGraph(
     ]);
   }
 
+  const reviewEngineLabel = reviewEngine
+    ? `${reviewEngine.engineName} · ${reviewEngine.strengthLabel} · depth ${reviewEngine.reviewDepth}`
+    : null;
+
   return h('div.eval-graph', {
     on: {
       mouseleave: (e: MouseEvent) => hideHover((e.currentTarget as Element).querySelector('svg')),
@@ -682,6 +688,7 @@ export function renderEvalGraph(
       height: renderedGraphHeight,
       preserveAspectRatio: 'none',
     } }, svgNodes),
+    ...(reviewEngineLabel ? [h('div.eval-graph__review-engine', reviewEngineLabel)] : []),
     h('div.eval-graph__resize-handle', {
       attrs: {
         title: 'Drag to resize eval graph',

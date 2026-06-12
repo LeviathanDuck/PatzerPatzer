@@ -53,6 +53,15 @@ export const ANALYSIS_VERSION = 2; // path-keyed nodes (was node.id-keyed in v1)
 
 export type AnalysisStatus = 'idle' | 'partial' | 'complete';
 
+export interface ReviewEngineMetadata {
+  engineName:       string;
+  engineModel:      string;
+  strengthLabel:    'full strength';
+  uciLimitStrength: false;
+  reviewDepth:      number;
+  capturedAt:       string;
+}
+
 export interface StoredNodeEntry {
   nodeId: string;
   path:   string;
@@ -79,12 +88,24 @@ export interface StoredAnalysis {
   gameId:          string;
   analysisVersion: number;
   analysisDepth:   number;
+  reviewEngine?:   ReviewEngineMetadata;
   status:          AnalysisStatus;
   updatedAt:       number; // Date.now()
   nodes:           Record<string, StoredNodeEntry>; // keyed by path
 }
 
 // --- Analysis serialization ---
+
+export function buildReviewEngineMetadata(engineName: string | undefined, reviewDepth: number): ReviewEngineMetadata {
+  return {
+    engineName:       engineName?.trim() || 'Stockfish 18 smallnet',
+    engineModel:      'sf_18_smallnet',
+    strengthLabel:    'full strength',
+    uciLimitStrength: false,
+    reviewDepth,
+    capturedAt:       new Date().toISOString(),
+  };
+}
 
 /**
  * Serialize the mainline eval cache into the StoredNodeEntry map used by saveAnalysisToIdb.
@@ -547,13 +568,19 @@ export async function saveAnalysisToIdb(
   gameId: string,
   nodes:  Record<string, StoredNodeEntry>,
   depth:  number,
+  reviewEngine?: ReviewEngineMetadata,
 ): Promise<void> {
   try {
+    const existingReviewEngine = reviewEngine === undefined
+      ? (await loadAnalysisFromIdb(gameId))?.reviewEngine
+      : undefined;
+    const storedReviewEngine = reviewEngine ?? existingReviewEngine;
     const db = await openGameDb();
     const record: StoredAnalysis = {
       gameId,
       analysisVersion: ANALYSIS_VERSION,
       analysisDepth:   depth,
+      ...(storedReviewEngine !== undefined ? { reviewEngine: storedReviewEngine } : {}),
       status,
       updatedAt:       Date.now(),
       nodes,

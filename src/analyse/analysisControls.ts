@@ -54,9 +54,6 @@ interface AnalysisControlsDeps {
   onFlipBoard:      () => void;
   onToggleRetro:    () => void;
 
-  onToggleExplorer: () => void;
-  explorerEnabled:  () => boolean;
-
   onSaveToLibrary:  () => void;
   // LFYM settings count preview for the current analysis game.
   getRetroConfigCountSummary?: () => RetroChoiceCountSummary | null;
@@ -87,72 +84,61 @@ const ICON_BOOK       = '\ue03b'; // licon.Book — opening explorer
 
 
 
-export function renderExplorerEntry(): VNode | null {
-  const deps    = _deps!;
-  const ctrl    = deps.getCtrl();
-  if (ctrl.retro) return null;
-  const active  = deps.explorerEnabled();
-  return h('button.fbt', {
-    class: { active },
-    attrs: { 'data-icon': ICON_BOOK, title: 'Opening explorer' },
-    on:    { click: () => { deps.onToggleExplorer(); deps.redraw(); } },
-  });
-}
-
-
-
-
-
 
 
 
 
 export interface MoveNavOverride {
-  canPrev:      boolean;
-  canNext:      boolean;
-  first:        () => void;
-  prev:         () => void;
-  next:         () => void;
-  last:         () => void;
+  canPrev?:     boolean;
+  canNext?:     boolean;
+  first?:       () => void;
+  prev?:        () => void;
+  next?:        () => void;
+  last?:        () => void;
   bookActive?:  boolean;
   onBook?:      () => void;
-  rightSlot?:   VNode | null;
+  menuTitle?:   string;
+  menuOpen?:    boolean;
+  onMenu?:      () => void;
 }
 
 export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOverride): VNode {
-  let canPrev: boolean, canNext: boolean, first: () => void, prev: () => void, next: () => void, last: () => void;
-  let explorerBtn: VNode | null = null;
-  let rightZone: VNode;
+  // Navigation fields: use override when provided, fall back to analysis deps.
+  // _deps may be null in non-analysis contexts (puzzle, openings) — only access when needed.
+  const deps = _deps;
+  const ctrl = deps?.getCtrl();
+  const canPrev = nav?.canPrev ?? (ctrl ? ctrl.path !== '' : false);
+  const canNext = nav?.canNext ?? (ctrl ? !!ctrl.node.children[0] : false);
+  const first   = nav?.first   ?? deps?.first   ?? (() => {});
+  const prev    = nav?.prev    ?? deps?.prev    ?? (() => {});
+  const next    = nav?.next    ?? deps?.next    ?? (() => {});
+  const last    = nav?.last    ?? deps?.last    ?? (() => {});
 
-  if (nav) {
-    ({ canPrev, canNext, first, prev, next, last } = nav);
-    if (nav.onBook !== undefined) {
-      explorerBtn = h('button.fbt', {
+  // Book button — single construction path for all contexts.
+  // Present only when onBook is supplied; omitting it hides the button (analysis retro-mode gate).
+  // Mirrors lichess-org/lila: ui/analyse/src/view/controls.ts opening-explorer action
+  const explorerBtn: VNode | null = nav?.onBook !== undefined
+    ? h('button.fbt', {
         class: { active: !!nav.bookActive },
         attrs: { 'data-icon': ICON_BOOK, title: 'Opening explorer' },
         on:    { click: nav.onBook },
-      });
-    }
-    rightZone = h('div.move-nav-bar__right', nav.rightSlot ? [nav.rightSlot] : []);
-  } else {
-    // Analysis context — use injected deps and render explorer + hamburger slots.
-    const deps = _deps!;
-    const ctrl = deps.getCtrl();
-    canPrev = ctrl.path !== '';
-    canNext = !!ctrl.node.children[0];
-    first   = deps.first;
-    prev    = deps.prev;
-    next    = deps.next;
-    last    = deps.last;
-    explorerBtn = renderExplorerEntry();
-    rightZone = h('div.move-nav-bar__right', [
-      h('button.fbt', {
-        class: { active: _actionMenuOpen },
-        attrs: { 'data-icon': ICON_HAMBURGER, title: 'Analysis menu' },
-        on:    { click: () => { toggleActionMenu(); deps.redraw(); } },
-      }),
-    ]);
-  }
+      })
+    : null;
+
+  // Right zone: hamburger from override when provided, otherwise analysis hamburger.
+  const rightZone: VNode = (nav?.menuTitle !== undefined && nav?.onMenu !== undefined)
+    ? h('div.move-nav-bar__right', [h('button.fbt', {
+        class: { active: !!nav.menuOpen },
+        attrs: { 'data-icon': ICON_HAMBURGER, title: nav.menuTitle },
+        on:    { click: nav.onMenu },
+      })])
+    : h('div.move-nav-bar__right', [
+        h('button.fbt', {
+          class: { active: _actionMenuOpen },
+          attrs: { 'data-icon': ICON_HAMBURGER, title: 'Analysis menu' },
+          on:    { click: () => { toggleActionMenu(); deps?.redraw(); } },
+        }),
+      ]);
 
   return h('div.move-nav-bar', [
     h('div.move-nav-bar__left', leftNodes.filter((n): n is VNode => n !== null)),

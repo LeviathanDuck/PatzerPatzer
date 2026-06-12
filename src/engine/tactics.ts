@@ -52,13 +52,44 @@ export interface MissedMomentConfig {
   maxPly: number;
 }
 
-export const missedMomentConfig: MissedMomentConfig = {
+const MISSED_MOMENT_CONFIG_LS_KEY = 'missedMomentConfig';
+
+const MISSED_MOMENT_CONFIG_DEFAULTS: MissedMomentConfig = {
   swingThreshold:  0.15,   // Lichess blunder floor — flags ~2+ pawn swings in typical positions
   missedMateMaxN:  3,      // Lichess default: mate in 1–3
   collapseWcFloor: 0.65,   // mover had > 65% win chances (~+250 cp) before collapse
   collapseDropMin: 0.15,   // consistent with swingThreshold — requires a blunder-sized drop
   maxPly:          80,     // up to move 40
 };
+
+function loadMissedMomentConfig(): MissedMomentConfig {
+  try {
+    const stored = localStorage.getItem(MISSED_MOMENT_CONFIG_LS_KEY);
+    if (!stored) return { ...MISSED_MOMENT_CONFIG_DEFAULTS };
+    const parsed = JSON.parse(stored) as Partial<MissedMomentConfig>;
+    return {
+      swingThreshold: typeof parsed.swingThreshold === 'number' && parsed.swingThreshold >= 0.01 && parsed.swingThreshold <= 0.30
+        ? parsed.swingThreshold
+        : MISSED_MOMENT_CONFIG_DEFAULTS.swingThreshold,
+      missedMateMaxN: typeof parsed.missedMateMaxN === 'number' && parsed.missedMateMaxN >= 0 && parsed.missedMateMaxN <= 10
+        ? Math.floor(parsed.missedMateMaxN)
+        : MISSED_MOMENT_CONFIG_DEFAULTS.missedMateMaxN,
+      collapseWcFloor: typeof parsed.collapseWcFloor === 'number' && parsed.collapseWcFloor >= 0 && parsed.collapseWcFloor <= 1
+        ? parsed.collapseWcFloor
+        : MISSED_MOMENT_CONFIG_DEFAULTS.collapseWcFloor,
+      collapseDropMin: typeof parsed.collapseDropMin === 'number' && parsed.collapseDropMin >= 0 && parsed.collapseDropMin <= 0.30
+        ? parsed.collapseDropMin
+        : MISSED_MOMENT_CONFIG_DEFAULTS.collapseDropMin,
+      maxPly: typeof parsed.maxPly === 'number' && parsed.maxPly >= 0 && parsed.maxPly <= 120
+        ? Math.floor(parsed.maxPly)
+        : MISSED_MOMENT_CONFIG_DEFAULTS.maxPly,
+    };
+  } catch {
+    return { ...MISSED_MOMENT_CONFIG_DEFAULTS };
+  }
+}
+
+export const missedMomentConfig: MissedMomentConfig = loadMissedMomentConfig();
 
 const _configChangeCallbacks: (() => void)[] = [];
 
@@ -69,6 +100,7 @@ export function onMissedMomentConfigChange(cb: () => void): void {
 
 export function setMissedMomentConfig(patch: Partial<MissedMomentConfig>): void {
   Object.assign(missedMomentConfig, patch);
+  localStorage.setItem(MISSED_MOMENT_CONFIG_LS_KEY, JSON.stringify(missedMomentConfig));
   _configChangeCallbacks.forEach(cb => cb());
 }
 

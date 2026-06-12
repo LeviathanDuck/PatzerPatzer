@@ -18,7 +18,7 @@ import { boardZoom, applyBoardZoom, saveBoardZoom } from './cosmetics';
 import { syncArrow } from '../engine/ctrl';
 import type { ImportedGame } from '../import/types';
 import { addNode } from '../tree/ops';
-import type { TreeNode } from '../tree/types';
+import type { Clock, TreeNode } from '../tree/types';
 
 // --- Injected deps ---
 
@@ -422,27 +422,54 @@ function formatClock(centis: number): string {
   return hh > 0 ? `${hh}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+const colorWhoMoved = (node: TreeNode): 'white' | 'black' => node.ply % 2 === 1 ? 'white' : 'black';
+
+interface StripClockInfo {
+  remaining: Clock | undefined;
+  moveTime: Clock | undefined;
+  active: boolean;
+}
+
+function deriveMoveTime(nodes: TreeNode[], color: 'white' | 'black', currentClock: Clock | undefined): Clock | undefined {
+  if (currentClock === undefined) return undefined;
+  const ctrl = _getCtrl();
+  const previousSameColor = [...nodes.slice(0, -1)]
+    .reverse()
+    .find(node => colorWhoMoved(node) === color && node.clock !== undefined);
+  const previousClock = previousSameColor?.clock ?? ctrl.root.timeControl?.initial;
+  const increment = ctrl.root.timeControl?.increment;
+  if (previousClock === undefined || increment === undefined) return undefined;
+  const moveTime = previousClock + increment - currentClock;
+  return moveTime >= 0 ? moveTime : undefined;
+}
+
 /**
- * Walk the nodeList to find the most recent clock for each color.
- * node.clock stores the time remaining AFTER the move at that node.
- * White moves are at odd plies, black moves at even plies (ply 1 = white's first).
- * Adapted from lichess-org/lila: ui/analyse/src/view/clocks.ts renderClocks
+ * Uses the selected node plus its parent clock, matching Lichess renderClocks().
+ * node.clock stores time remaining after the move at that node.
  */
-function getClocksAtPath(): { white: number | undefined; black: number | undefined } {
-  const nodes = _getCtrl().nodeList;
-  let white: number | undefined;
-  let black: number | undefined;
-  // Walk from most recent backwards so we get the closest available clock
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i];
-    if (!n) continue;
-    if (n.clock === undefined) continue;
-    // ply 1 = white moved, ply 2 = black moved, etc.
-    if (n.ply % 2 === 1 && white === undefined) white = n.clock;
-    if (n.ply % 2 === 0 && n.ply > 0 && black === undefined) black = n.clock;
-    if (white !== undefined && black !== undefined) break;
-  }
-  return { white, black };
+function getClockInfoAtPath(): { white: StripClockInfo; black: StripClockInfo } {
+  const ctrl = _getCtrl();
+  const nodes = ctrl.nodeList;
+  const node = ctrl.node;
+  const parentClock = nodes.length > 1 ? nodes[nodes.length - 2]?.clock : undefined;
+  const isWhiteTurn = node.ply % 2 === 0;
+  const selectedMoveColor = node.uci ? colorWhoMoved(node) : undefined;
+  const selectedMoveTime = selectedMoveColor
+    ? node.moveTime ?? deriveMoveTime(nodes, selectedMoveColor, node.clock)
+    : undefined;
+
+  return {
+    white: {
+      remaining: isWhiteTurn ? parentClock : node.clock,
+      moveTime: selectedMoveColor === 'white' ? selectedMoveTime : undefined,
+      active: isWhiteTurn,
+    },
+    black: {
+      remaining: isWhiteTurn ? node.clock : parentClock,
+      moveTime: selectedMoveColor === 'black' ? selectedMoveTime : undefined,
+      active: !isWhiteTurn,
+    },
+  };
 }
 
 // Adapted from lichess-org/lila: ui/analyse/src/view/components.ts renderPlayerStrips
@@ -461,7 +488,7 @@ export function renderPlayerStrips(): [VNode, VNode] {
 
   const diff   = getMaterialDiff(ctrl.node.fen);
   const score  = getMaterialScore(diff);
-  const clocks = getClocksAtPath();
+  const clocks = getClockInfoAtPath();
 
   const strip = (color: 'white' | 'black'): VNode => {
     const name     = color === 'white' ? whiteName : blackName;
@@ -469,7 +496,7 @@ export function renderPlayerStrips(): [VNode, VNode] {
     const winner   = (color === 'white' && result === '1-0') || (color === 'black' && result === '0-1');
     const loser    = (color === 'white' && result === '0-1') || (color === 'black' && result === '1-0');
     const matScore = color === 'white' ? score : -score;
-    const centis   = color === 'white' ? clocks.white : clocks.black;
+    const clock    = color === 'white' ? clocks.white : clocks.black;
     return h('div.analyse__player_strip', [
       h('div.player-strip__identity', {
         class: {
@@ -482,7 +509,13 @@ export function renderPlayerStrips(): [VNode, VNode] {
         h('span.player-strip__name', rating !== undefined ? `${name} (${rating})` : name),
       ]),
       renderMaterialPieces(diff, color, matScore > 0 ? matScore : 0),
-      centis !== undefined ? h('div.analyse__clock', formatClock(centis)) : null,
+      clock.remaining !== undefined ? h('div.analyse__clock', {
+        class: { active: clock.active },
+      }, [
+        clock.moveTime !== undefined ? h('span.analyse__move-time', formatClock(clock.moveTime)) : null,
+        clock.moveTime !== undefined ? h('span.analyse__clock-separator', '·') : null,
+        h('span.analyse__remaining-time', formatClock(clock.remaining)),
+      ]) : null,
     ]);
   };
 

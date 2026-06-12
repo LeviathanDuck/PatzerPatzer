@@ -31,6 +31,7 @@ import {
 } from '../analyse/retroChoice';
 import type { FeedbackTone } from '../feedback/severity';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
+import { startAccountSettingsSync, stopAccountSettingsSync } from '../sync/settings';
 import {
   clearRemoteSyncToken,
   getRemoteSyncToken,
@@ -129,7 +130,7 @@ let remoteSyncActive = false;
 let remoteSyncChecked = false;
 let remoteSyncChecking = false;
 let remoteSyncTokenListenerAttached = false;
-let remoteSyncLoginInput = getRemoteSyncToken();
+let remoteSyncLoginInput = '';
 let remoteSyncLoginBusy = false;
 let remoteSyncLoginError = '';
 
@@ -174,7 +175,7 @@ function ensureRemoteSyncTokenListener(redraw: () => void): void {
     remoteSyncChecked = false;
     remoteSyncChecking = false;
     remoteSyncActive = hydrateRemoteSyncToken();
-    remoteSyncLoginInput = getRemoteSyncToken();
+    remoteSyncLoginInput = '';
     ensureRemoteSyncAuth(redraw);
     redraw();
   };
@@ -268,11 +269,14 @@ function ensureLoginModalListener(redraw: () => void): void {
 function ensureHeaderAuth(redraw: () => void): void {
   if (headerAuthChecked) return;
   headerAuthChecked = true;
-  checkAuth().then(({ username, displayName, email, isAdmin, source, provider }) => {
+  checkAuth().then((auth) => {
+    const { username, displayName, email, isAdmin, source, provider } = auth;
     headerAuthUser = displayName || email || username;
     headerAuthIsAdmin = isAdmin;
     headerAuthProvider = provider ?? (source === 'client' ? 'client-lichess' : null);
     redraw();
+    if (provider === 'patzer') startAccountSettingsSync(auth).then(redraw).catch(() => {});
+    else stopAccountSettingsSync();
     if (username && source === 'server' && provider === 'lichess') syncRatedLadder().catch(() => {});
   });
 }
@@ -280,19 +284,18 @@ function ensureHeaderAuth(redraw: () => void): void {
 function renderUserArea(redraw: () => void): VNode | null {
   if (remoteSyncActive || (remoteSyncChecking && hasRemoteSyncToken())) {
     return h('div.header__user', {
-      attrs: { title: remoteSyncChecking ? 'Checking sync token' : 'Remote sync active' },
+      attrs: { title: remoteSyncChecking ? 'Checking sync token' : 'Sync active' },
     }, [
-      h('span.header__username', remoteSyncChecking ? 'Remote sync...' : 'Remote sync'),
       h('button.header__logout.header__logout--text', {
-        attrs: { type: 'button', title: 'Logout from Remote sync' },
+        attrs: { type: 'button', title: 'Logout' },
         on: { click: () => logoutRemoteSync(redraw) },
       }, 'Logout'),
     ]);
   }
   return h('button.header__login', {
-    attrs: { type: 'button', title: 'Remote sync login' },
+    attrs: { type: 'button', title: 'Login' },
     on: { click: () => {
-      remoteSyncLoginInput = getRemoteSyncToken();
+      remoteSyncLoginInput = '';
       remoteSyncLoginError = '';
       loginModalError = '';
       showLoginModal = true;
@@ -354,10 +357,11 @@ function renderLoginModal(redraw: () => void): VNode {
             ? h('button.auth-modal__secondary', {
                 attrs: { type: 'button', disabled: remoteSyncLoginBusy },
                 on: { click: () => {
-                  logout().then(() => {
-                    headerAuthUser = null;
-                    headerAuthIsAdmin = false;
-                    headerAuthProvider = null;
+	                  logout().then(() => {
+	                    stopAccountSettingsSync();
+	                    headerAuthUser = null;
+	                    headerAuthIsAdmin = false;
+	                    headerAuthProvider = null;
                     redraw();
                   });
                 } },
@@ -520,7 +524,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       ]),
 
       renderToggleRow('review-auto', 'Auto-review on import', auto, (v) => {
-        localStorage.setItem('patzer.autoReview', String(v));
+        setAutoReview(v);
         redraw();
       }),
 
@@ -931,6 +935,7 @@ function renderRetroModal(redraw: () => void): VNode {
 function renderGlobalMenu(deps: HeaderDeps): VNode {
   const { downloadPgn, resetAllData, selectedGameId, redraw } = deps;
   const hasGame = selectedGameId !== null;
+  const hasVerifiedSyncSession = remoteSyncActive || (remoteSyncChecking && hasRemoteSyncToken());
   return h('div.global-menu', [
     h('button.global-menu__trigger', {
       class: { active: showGlobalMenu },
@@ -1010,12 +1015,20 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         on: { click: () => { showRetroModal = true; showGlobalMenu = false; redraw(); } },
       }, 'Mistake Detection…'),
 
+      hasVerifiedSyncSession ? h('button.global-menu__item', {
+        on: { click: () => {
+          closeGlobalMenu(redraw);
+          window.location.hash = '#/sync';
+        } },
+      }, 'Sync Dashboard') : null,
+
       headerAuthUser ? h('button.global-menu__item.global-menu__item--logout', {
         on: { click: () => {
-          logout().then(() => {
-            headerAuthUser = null;
-            headerAuthIsAdmin = false;
-            headerAuthProvider = null;
+	          logout().then(() => {
+	            stopAccountSettingsSync();
+	            headerAuthUser = null;
+	            headerAuthIsAdmin = false;
+	            headerAuthProvider = null;
             closeGlobalMenu(redraw);
           });
         }},
