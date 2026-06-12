@@ -5,10 +5,12 @@
 
 
 
-import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION } from '../idb/index';
+import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION, upgradeGameDbSchema } from '../idb/index';
 import type { SyncResult } from './client';
 
 const API_BASE = '/api/patzer-sync';
+const PUZZLE_DB_NAME = 'patzer-puzzle-v1';
+const PUZZLE_DB_VERSION = 3;
 const TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
 const LAST_SYNC_KEY = 'chesspatzer.remoteSync.lastSyncedAt';
 const OUTBOX_KEY = 'chesspatzer.remoteSync.outbox';
@@ -255,8 +257,8 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
   },
   {
     store: 'puzzle-definitions',
-    dbName: 'patzer-puzzle-v1',
-    dbVersion: 2,
+    dbName: PUZZLE_DB_NAME,
+    dbVersion: PUZZLE_DB_VERSION,
     objectStore: 'definitions',
     keyMode: 'keyPath',
     keyForRecord: record => stringField(record, 'id'),
@@ -264,8 +266,8 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
   },
   {
     store: 'puzzle-attempts',
-    dbName: 'patzer-puzzle-v1',
-    dbVersion: 2,
+    dbName: PUZZLE_DB_NAME,
+    dbVersion: PUZZLE_DB_VERSION,
     objectStore: 'attempts',
     keyMode: 'scan',
     keyForRecord: attemptKey,
@@ -273,8 +275,8 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
   },
   {
     store: 'puzzle-user-meta',
-    dbName: 'patzer-puzzle-v1',
-    dbVersion: 2,
+    dbName: PUZZLE_DB_NAME,
+    dbVersion: PUZZLE_DB_VERSION,
     objectStore: 'user-meta',
     keyMode: 'keyPath',
     keyForRecord: record => stringField(record, 'puzzleId'),
@@ -282,8 +284,8 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
   },
   {
     store: 'puzzle-user-perf',
-    dbName: 'patzer-puzzle-v1',
-    dbVersion: 2,
+    dbName: PUZZLE_DB_NAME,
+    dbVersion: PUZZLE_DB_VERSION,
     objectStore: 'user-perf',
     keyMode: 'explicit',
     keyForRecord: singletonKey('puzzle'),
@@ -291,8 +293,8 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
   },
   {
     store: 'puzzle-rating-history',
-    dbName: 'patzer-puzzle-v1',
-    dbVersion: 2,
+    dbName: PUZZLE_DB_NAME,
+    dbVersion: PUZZLE_DB_VERSION,
     objectStore: 'rating-history',
     keyMode: 'scan',
     keyForRecord: record => {
@@ -455,43 +457,6 @@ function ensureStore(
   return tx.objectStore(name);
 }
 
-function upgradeMainDb(db: IDBDatabase, event: IDBVersionChangeEvent): void {
-  ensureStore(db, event, 'game-library');
-  ensureStore(db, event, 'puzzle-library');
-  ensureStore(db, event, 'analysis-library');
-  ensureStore(db, event, 'retro-results');
-  ensureStore(db, event, 'game-summaries');
-
-  const games = ensureStore(db, event, 'games', { keyPath: 'id' });
-  ensureIndex(games, 'date', 'date', { unique: false });
-  ensureIndex(games, 'importedUsername', 'importedUsername', { unique: false });
-  ensureIndex(games, 'source', 'source', { unique: false });
-  ensureIndex(games, 'timeClass', 'timeClass', { unique: false });
-  ensureIndex(games, 'eco', 'eco', { unique: false });
-  ensureIndex(games, 'opening', 'opening', { unique: false });
-
-  const studies = ensureStore(db, event, 'studies', { keyPath: 'id' });
-  ensureIndex(studies, 'createdAt', 'createdAt', { unique: false });
-  ensureIndex(studies, 'updatedAt', 'updatedAt', { unique: false });
-  ensureIndex(studies, 'source', 'source', { unique: false });
-  ensureIndex(studies, 'favorite', 'favorite', { unique: false });
-
-  const practice = ensureStore(db, event, 'practice-lines', { keyPath: 'id' });
-  ensureIndex(practice, 'studyItemId', 'studyItemId', { unique: false });
-  ensureIndex(practice, 'status', 'status', { unique: false });
-
-  const progress = ensureStore(db, event, 'position-progress', { keyPath: 'key' });
-  ensureIndex(progress, 'nextDueAt', 'nextDueAt', { unique: false });
-
-  const attempts = ensureStore(db, event, 'drill-attempts', { autoIncrement: true });
-  ensureIndex(attempts, 'positionKey', 'positionKey', { unique: false });
-  ensureIndex(attempts, 'timestamp', 'timestamp', { unique: false });
-
-  const folders = ensureStore(db, event, 'folders', { keyPath: 'id' });
-  ensureIndex(folders, 'parentId', 'parentId', { unique: false });
-  ensureIndex(folders, 'createdAt', 'createdAt', { unique: false });
-}
-
 function upgradePuzzleDb(db: IDBDatabase, event: IDBVersionChangeEvent): void {
   const definitions = ensureStore(db, event, 'definitions', { keyPath: 'id' });
   ensureIndex(definitions, 'sourceKind', 'sourceKind', { unique: false });
@@ -515,8 +480,8 @@ function upgradeOpeningsDb(db: IDBDatabase, event: IDBVersionChangeEvent): void 
 }
 
 function upgradeForDb(name: string): ((db: IDBDatabase, event: IDBVersionChangeEvent) => void) | undefined {
-  if (name === MAIN_DB_NAME) return upgradeMainDb;
-  if (name === 'patzer-puzzle-v1') return upgradePuzzleDb;
+  if (name === MAIN_DB_NAME) return upgradeGameDbSchema;
+  if (name === PUZZLE_DB_NAME) return upgradePuzzleDb;
   if (name === 'patzer-openings') return upgradeOpeningsDb;
   return undefined;
 }

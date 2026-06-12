@@ -1,8 +1,9 @@
 // IndexedDB persistence layer.
-// DB name: 'patzer-pro', version 3, three object stores.
+// DB name: 'patzer-pro' — see DB_VERSION and openGameDb() for the current schema.
 // Mirrors the pattern of lichess-org/lila: ui/analyse/src/idbTree.ts
 
 import type { ImportedGame } from '../import/types';
+import type { ChessAccount } from '../accounts';
 import type { PuzzleCandidate, TreeNode } from '../tree/types';
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import type { RetroOutcome } from '../analyse/retroCtrl';
@@ -173,6 +174,7 @@ export interface StoredGameRecord {
   whiteRating:      number | null;
   blackRating:      number | null;
   importedUsername: string | null;
+  accountId:        string | null;
   importedAt:       number;
   updatedAt:        number;
 }
@@ -180,9 +182,78 @@ export interface StoredGameRecord {
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
-export const DB_VERSION = 9;
+export const DB_VERSION = 12;
 
 let _idb: IDBDatabase | undefined;
+
+function ensureIndex(
+  store: IDBObjectStore,
+  name: string,
+  keyPath: string | string[],
+  options?: IDBIndexParameters,
+): void {
+  if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options);
+}
+
+function ensureStore(
+  db: IDBDatabase,
+  event: IDBVersionChangeEvent,
+  name: string,
+  options?: IDBObjectStoreParameters,
+): IDBObjectStore {
+  if (!db.objectStoreNames.contains(name)) return db.createObjectStore(name, options);
+  const tx = (event.target as IDBOpenDBRequest).transaction;
+  if (!tx) throw new Error(`IndexedDB upgrade transaction missing for ${name}.`);
+  return tx.objectStore(name);
+}
+
+export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEvent): void {
+  ensureStore(db, event, 'game-library');
+  ensureStore(db, event, 'puzzle-library');
+  ensureStore(db, event, 'analysis-library');
+  ensureStore(db, event, 'retro-results');
+  ensureStore(db, event, 'game-summaries');
+
+  // Per-game store: each game is an individual record keyed by game id.
+  // Indexes support filtered queries without loading all games into memory.
+  // Adapted from lichess-org/lila: ui/lib/src/objectStorage.ts cursor patterns.
+  const gamesStore = ensureStore(db, event, 'games', { keyPath: 'id' });
+  ensureIndex(gamesStore, 'date',             'date',             { unique: false });
+  ensureIndex(gamesStore, 'importedUsername', 'importedUsername', { unique: false });
+  ensureIndex(gamesStore, 'source',           'source',           { unique: false });
+  ensureIndex(gamesStore, 'timeClass',        'timeClass',        { unique: false });
+  ensureIndex(gamesStore, 'eco',              'eco',              { unique: false });
+  ensureIndex(gamesStore, 'opening',          'opening',          { unique: false });
+  ensureIndex(gamesStore, 'accountId',        'accountId',        { unique: false });
+
+
+  const studiesStore = ensureStore(db, event, 'studies', { keyPath: 'id' });
+  ensureIndex(studiesStore, 'createdAt', 'createdAt', { unique: false });
+  ensureIndex(studiesStore, 'updatedAt', 'updatedAt', { unique: false });
+  ensureIndex(studiesStore, 'source',    'source',    { unique: false });
+  ensureIndex(studiesStore, 'favorite',  'favorite',  { unique: false });
+
+  const practiceStore = ensureStore(db, event, 'practice-lines', { keyPath: 'id' });
+  ensureIndex(practiceStore, 'studyItemId', 'studyItemId', { unique: false });
+  ensureIndex(practiceStore, 'status',      'status',      { unique: false });
+
+  const progressStore = ensureStore(db, event, 'position-progress', { keyPath: 'key' });
+  ensureIndex(progressStore, 'nextDueAt', 'nextDueAt', { unique: false });
+
+  const attemptsStore = ensureStore(db, event, 'drill-attempts', { autoIncrement: true });
+  ensureIndex(attemptsStore, 'positionKey', 'positionKey', { unique: false });
+  ensureIndex(attemptsStore, 'timestamp',   'timestamp',   { unique: false });
+
+  // v9: study folder hierarchy store
+  const foldersStore = ensureStore(db, event, 'folders', { keyPath: 'id' });
+  ensureIndex(foldersStore, 'parentId',  'parentId',  { unique: false });
+  ensureIndex(foldersStore, 'createdAt', 'createdAt', { unique: false });
+
+
+  const accountsStore = ensureStore(db, event, 'accounts', { keyPath: 'id' });
+  ensureIndex(accountsStore, 'category', 'category', { unique: false });
+  ensureIndex(accountsStore, 'platform', 'platform', { unique: false });
+}
 
 function openGameDb(): Promise<IDBDatabase> {
   if (_idb) return Promise.resolve(_idb);
@@ -190,55 +261,7 @@ function openGameDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
       const db = (e.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('game-library'))     db.createObjectStore('game-library');
-      if (!db.objectStoreNames.contains('puzzle-library'))   db.createObjectStore('puzzle-library');
-      if (!db.objectStoreNames.contains('analysis-library')) db.createObjectStore('analysis-library');
-      if (!db.objectStoreNames.contains('retro-results'))    db.createObjectStore('retro-results');
-      if (!db.objectStoreNames.contains('game-summaries'))   db.createObjectStore('game-summaries');
-      // Per-game store: each game is an individual record keyed by game id.
-      // Indexes support filtered queries without loading all games into memory.
-      // Adapted from lichess-org/lila: ui/lib/src/objectStorage.ts cursor patterns.
-      if (!db.objectStoreNames.contains('games')) {
-        const gamesStore = db.createObjectStore('games', { keyPath: 'id' });
-        gamesStore.createIndex('date',             'date',             { unique: false });
-        gamesStore.createIndex('importedUsername', 'importedUsername', { unique: false });
-        gamesStore.createIndex('source',           'source',           { unique: false });
-        gamesStore.createIndex('timeClass',        'timeClass',        { unique: false });
-      }
-      // v8: eco and opening indexes for opening-based filtering
-      if (e.oldVersion < 8 && db.objectStoreNames.contains('games')) {
-        const gamesStore = (e.target as IDBOpenDBRequest).transaction!.objectStore('games');
-        if (!gamesStore.indexNames.contains('eco'))     gamesStore.createIndex('eco',     'eco',     { unique: false });
-        if (!gamesStore.indexNames.contains('opening')) gamesStore.createIndex('opening', 'opening', { unique: false });
-      }
-
-      if (!db.objectStoreNames.contains('studies')) {
-        const studiesStore = db.createObjectStore('studies', { keyPath: 'id' });
-        studiesStore.createIndex('createdAt', 'createdAt', { unique: false });
-        studiesStore.createIndex('updatedAt', 'updatedAt', { unique: false });
-        studiesStore.createIndex('source',    'source',    { unique: false });
-        studiesStore.createIndex('favorite',  'favorite',  { unique: false });
-      }
-      if (!db.objectStoreNames.contains('practice-lines')) {
-        const practiceStore = db.createObjectStore('practice-lines', { keyPath: 'id' });
-        practiceStore.createIndex('studyItemId', 'studyItemId', { unique: false });
-        practiceStore.createIndex('status',      'status',      { unique: false });
-      }
-      if (!db.objectStoreNames.contains('position-progress')) {
-        const progressStore = db.createObjectStore('position-progress', { keyPath: 'key' });
-        progressStore.createIndex('nextDueAt', 'nextDueAt', { unique: false });
-      }
-      if (!db.objectStoreNames.contains('drill-attempts')) {
-        const attemptsStore = db.createObjectStore('drill-attempts', { autoIncrement: true });
-        attemptsStore.createIndex('positionKey', 'positionKey', { unique: false });
-        attemptsStore.createIndex('timestamp',   'timestamp',   { unique: false });
-      }
-      // v9: study folder hierarchy store
-      if (!db.objectStoreNames.contains('folders')) {
-        const foldersStore = db.createObjectStore('folders', { keyPath: 'id' });
-        foldersStore.createIndex('parentId',  'parentId',  { unique: false });
-        foldersStore.createIndex('createdAt', 'createdAt', { unique: false });
-      }
+      upgradeGameDbSchema(db, e);
     };
     req.onsuccess = () => { _idb = req.result; resolve(_idb); };
     req.onerror   = () => reject(req.error);
@@ -263,6 +286,7 @@ function importedGameToRecord(game: ImportedGame): StoredGameRecord {
     whiteRating:      game.whiteRating      ?? null,
     blackRating:      game.blackRating      ?? null,
     importedUsername: game.importedUsername ?? null,
+    accountId:        game.accountId        ?? null,
     importedAt:       game.importedAt       ?? Date.now(),
     updatedAt:        Date.now(),
   };
@@ -345,6 +369,7 @@ function storedGameRecordToImportedGame(record: StoredGameRecord): ImportedGame 
   if (record.whiteRating      !== null) game.whiteRating      = record.whiteRating;
   if (record.blackRating      !== null) game.blackRating      = record.blackRating;
   if (record.importedUsername !== null) game.importedUsername = record.importedUsername;
+  if (record.accountId        !== null && record.accountId !== undefined) game.accountId = record.accountId;
   game.importedAt = record.importedAt;
   return game;
 }
@@ -431,6 +456,25 @@ export async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
 }
 
 /**
+ * Load all games belonging to one registry account, via the `accountId` index
+ * (no full-store scan). Used by the Opponents page shared-store read path.
+ */
+export async function loadGamesByAccountFromIdb(accountId: string): Promise<StoredGameRecord[]> {
+  try {
+    const db = await openGameDb();
+    return await new Promise((resolve, reject) => {
+      const req = db.transaction('games', 'readonly')
+        .objectStore('games').index('accountId').getAll(accountId);
+      req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[idb] account games load failed', e);
+    return [];
+  }
+}
+
+/**
  * Load the PGN for a single game by id from the per-game `games` store.
  * Returns undefined if the record does not exist (e.g. pre-migration session).
  */
@@ -448,6 +492,51 @@ export async function loadGamePgn(gameId: string): Promise<string | undefined> {
   } catch (e) {
     console.warn('[idb] loadGamePgn failed', e);
     return undefined;
+  }
+}
+
+// --- Chess account registry ---
+// Store plumbing only. The public API for account records is src/accounts;
+// other modules must import from there rather than calling these helpers.
+
+/**
+ * Persist an account record. Unlike the warn-and-continue game helpers, save
+ * errors propagate: import flows must not silently proceed believing an
+ * account was registered when the write failed.
+ */
+export async function saveAccountToIdb(account: ChessAccount): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('accounts', 'readwrite');
+  tx.objectStore('accounts').put(account);
+  await txDone(tx);
+}
+
+/**
+ * Read one account record. Errors propagate rather than mapping to undefined:
+ * registerAccount uses this lookup to decide create-vs-update, and a swallowed
+ * read error would silently rebuild an existing account and reset its
+ * addedAt/sync cursors. "Not found" and "read failed" must stay distinct.
+ */
+export async function getAccountFromIdb(id: string): Promise<ChessAccount | undefined> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('accounts', 'readonly').objectStore('accounts').get(id);
+    req.onsuccess = () => resolve(req.result as ChessAccount | undefined);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+export async function listAccountsFromIdb(): Promise<ChessAccount[]> {
+  try {
+    const db = await openGameDb();
+    return await new Promise((resolve, reject) => {
+      const req = db.transaction('accounts', 'readonly').objectStore('accounts').getAll();
+      req.onsuccess = () => resolve((req.result as ChessAccount[] | undefined) ?? []);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[idb] account list failed', e);
+    return [];
   }
 }
 
@@ -651,7 +740,7 @@ export async function backfillOpenings(): Promise<number> {
 export async function clearAllIdbData(): Promise<void> {
   try {
     const db = await openGameDb();
-    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders'], 'readwrite');
+    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts'], 'readwrite');
     tx.objectStore('game-library').clear();
     tx.objectStore('puzzle-library').clear();
     tx.objectStore('analysis-library').clear();
@@ -663,6 +752,7 @@ export async function clearAllIdbData(): Promise<void> {
     tx.objectStore('position-progress').clear();
     tx.objectStore('drill-attempts').clear();
     tx.objectStore('folders').clear();
+    tx.objectStore('accounts').clear();
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror    = () => reject(tx.error);

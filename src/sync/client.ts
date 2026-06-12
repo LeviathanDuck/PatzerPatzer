@@ -101,11 +101,60 @@ export async function logout(): Promise<void> {
 
 // --- IDB helpers (read all records from a store) ---
 
-import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION } from '../idb/index';
+import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION, upgradeGameDbSchema } from '../idb/index';
+
+const PUZZLE_DB_NAME = 'patzer-puzzle-v1';
+const PUZZLE_DB_VERSION = 3;
+
+function ensureIndex(
+  store: IDBObjectStore,
+  name: string,
+  keyPath: string | string[],
+  options?: IDBIndexParameters,
+): void {
+  if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options);
+}
+
+function ensureStore(
+  db: IDBDatabase,
+  event: IDBVersionChangeEvent,
+  name: string,
+  options?: IDBObjectStoreParameters,
+): IDBObjectStore {
+  if (!db.objectStoreNames.contains(name)) return db.createObjectStore(name, options);
+  const tx = (event.target as IDBOpenDBRequest).transaction;
+  if (!tx) throw new Error(`IndexedDB upgrade transaction missing for ${name}.`);
+  return tx.objectStore(name);
+}
+
+function upgradePuzzleDbSchema(db: IDBDatabase, event: IDBVersionChangeEvent): void {
+  const definitions = ensureStore(db, event, 'definitions', { keyPath: 'id' });
+  ensureIndex(definitions, 'sourceKind', 'sourceKind', { unique: false });
+  ensureIndex(definitions, 'createdAt', 'createdAt', { unique: false });
+
+  const attempts = ensureStore(db, event, 'attempts', { autoIncrement: true });
+  ensureIndex(attempts, 'puzzleId', 'puzzleId', { unique: false });
+  ensureIndex(attempts, 'completedAt', 'completedAt', { unique: false });
+
+  ensureStore(db, event, 'user-meta', { keyPath: 'puzzleId' });
+  ensureStore(db, event, 'user-perf');
+
+  const history = ensureStore(db, event, 'rating-history', { autoIncrement: true });
+  ensureIndex(history, 'timestamp', 'timestamp', { unique: false });
+}
+
+function upgradeForDb(name: string): ((db: IDBDatabase, event: IDBVersionChangeEvent) => void) | undefined {
+  if (name === MAIN_DB_NAME) return upgradeGameDbSchema;
+  if (name === PUZZLE_DB_NAME) return upgradePuzzleDbSchema;
+  return undefined;
+}
 
 function openIdb(name: string, version: number): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(name, version);
+    req.onupgradeneeded = event => {
+      upgradeForDb(name)?.(req.result, event);
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -197,7 +246,7 @@ export async function pushToServer(): Promise<SyncResult> {
     mainDb.close();
 
     // Push puzzle data from puzzle IDB
-    const puzzleDb = await openIdb('patzer-puzzle-v1', 2);
+    const puzzleDb = await openIdb(PUZZLE_DB_NAME, PUZZLE_DB_VERSION);
     const definitions = await readFromStoreSince(puzzleDb, 'definitions', since);
     const attempts = await readFromStoreSince(puzzleDb, 'attempts', since);
     const meta = await readFromStoreSince(puzzleDb, 'user-meta', since);
@@ -265,7 +314,7 @@ export async function pullFromServer(): Promise<SyncResult> {
 
     // Pull puzzles
     const puzzleResult = await apiGet<{ definitions: unknown[]; attempts: unknown[]; meta: unknown[] }>(`/api/sync/puzzles${sinceParam}`);
-    const puzzleDb = await openIdb('patzer-puzzle-v1', 2);
+    const puzzleDb = await openIdb(PUZZLE_DB_NAME, PUZZLE_DB_VERSION);
     if (puzzleResult.definitions.length > 0) {
       await writeToStore(puzzleDb, 'definitions', puzzleResult.definitions, 'id');
       counts.definitions = puzzleResult.definitions.length;
@@ -312,7 +361,7 @@ export async function getLocalDataCounts(): Promise<DataCounts> {
     const analysis = await readAllFromStore(mainDb, 'analysis-library');
     mainDb.close();
 
-    const puzzleDb = await openIdb('patzer-puzzle-v1', 2);
+    const puzzleDb = await openIdb(PUZZLE_DB_NAME, PUZZLE_DB_VERSION);
     const defs = await readAllFromStore(puzzleDb, 'definitions');
     const attempts = await readAllFromStore(puzzleDb, 'attempts');
     const meta = await readAllFromStore(puzzleDb, 'user-meta');

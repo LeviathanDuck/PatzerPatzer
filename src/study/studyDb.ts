@@ -2,7 +2,7 @@
 // Uses the shared 'patzer-pro' database opened by src/idb/index.ts.
 // Adapted from lichess-org/lila: ui/analyse/src/idbTree.ts cursor patterns.
 
-import { DB_NAME, DB_VERSION } from '../idb/index';
+import { DB_NAME, DB_VERSION, upgradeGameDbSchema } from '../idb/index';
 import type { StudyItem, TrainableSequence, PositionProgress, DrillAttempt, StudyFolder } from './types';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
 
@@ -43,38 +43,8 @@ function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
-      // Mirror the study-store creation from src/idb/index.ts so that a fresh
-      // #/study boot — which may open the shared DB before loadGamesFromIdb() runs —
-      // still creates the Phase 0 study stores during the upgrade.
-      // Adapted from lichess-org/lila: ui/analyse/src/idbTree.ts (shared-DB upgrade pattern).
       const db = (e.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('studies')) {
-        const studiesStore = db.createObjectStore('studies', { keyPath: 'id' });
-        studiesStore.createIndex('createdAt', 'createdAt', { unique: false });
-        studiesStore.createIndex('updatedAt', 'updatedAt', { unique: false });
-        studiesStore.createIndex('source',    'source',    { unique: false });
-        studiesStore.createIndex('favorite',  'favorite',  { unique: false });
-      }
-      if (!db.objectStoreNames.contains('practice-lines')) {
-        const practiceStore = db.createObjectStore('practice-lines', { keyPath: 'id' });
-        practiceStore.createIndex('studyItemId', 'studyItemId', { unique: false });
-        practiceStore.createIndex('status',      'status',      { unique: false });
-      }
-      if (!db.objectStoreNames.contains('position-progress')) {
-        const progressStore = db.createObjectStore('position-progress', { keyPath: 'key' });
-        progressStore.createIndex('nextDueAt', 'nextDueAt', { unique: false });
-      }
-      if (!db.objectStoreNames.contains('drill-attempts')) {
-        const attemptsStore = db.createObjectStore('drill-attempts', { autoIncrement: true });
-        attemptsStore.createIndex('positionKey', 'positionKey', { unique: false });
-        attemptsStore.createIndex('timestamp',   'timestamp',   { unique: false });
-      }
-      // v9: study folder hierarchy store
-      if (!db.objectStoreNames.contains('folders')) {
-        const foldersStore = db.createObjectStore('folders', { keyPath: 'id' });
-        foldersStore.createIndex('parentId',  'parentId',  { unique: false });
-        foldersStore.createIndex('createdAt', 'createdAt', { unique: false });
-      }
+      upgradeGameDbSchema(db, e);
     };
     req.onsuccess = () => { _db = req.result; resolve(_db); };
     req.onerror   = () => reject(req.error);

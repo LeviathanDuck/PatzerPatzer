@@ -14,18 +14,69 @@ import { pgnToTree } from '../tree/pgn';
 import { saveCollection } from './db';
 import { classifyOpening } from './eco';
 import {
-  importSource, importUsername, importColor,
+  importSource, importUsername, importColor, importCategory,
   importSpeeds, importDateRange, importCustomFrom, importCustomTo,
   importRated, importMaxGames,
   setImportStep, setImportError, setImportProgress, setImportMonth, setImportAbort,
-  setIsFetching, setOpeningsPage,
-  setLastCreatedCollection, addCollection, openCollection,
+  setIsFetching, setOpeningsPage, presetColorFilter,
+  setLastCreatedCollection, addCollection, openCollection, openAccountResearch,
 } from './ctrl';
 import type { ImportDateRange } from '../import/filters';
+
+import { registerAccount, recordAccountSync } from '../accounts';
+import { saveGamesToIdb } from '../idb';
+import type { ImportedGame } from '../import/types';
 
 let _researchIdCounter = 0;
 function nextResearchId(): string {
   return `research-${++_researchIdCounter}`;
+}
+
+// Platform game-id extraction for shared-store keys.
+// Mirrors lichessGameId in src/import/lichess.ts and chesscomGameId in
+// src/import/chesscom.ts (Link-header path; the raw API url is not retained
+// on ResearchGame records).
+function platformGameId(source: ResearchSource, pgn: string): string | undefined {
+  if (source === 'lichess') {
+    const site = parsePgnHeader(pgn, 'Site');
+    const match = site?.match(/lichess\.org\/([A-Za-z0-9]{8})(?:[A-Za-z0-9]{4})?(?![A-Za-z0-9])/);
+    return match?.[1];
+  }
+  if (source === 'chesscom') {
+    const link = parsePgnHeader(pgn, 'Link');
+    const match = link?.match(/\/game\/live\/(\d+)/);
+    return match?.[1];
+  }
+  return undefined;
+}
+
+/** Map a fetched ResearchGame to a shared-store ImportedGame record. */
+function researchGameToImportedGame(
+  g: ResearchGame, source: 'lichess' | 'chesscom', username: string, acctId: string, importedAt: number,
+): ImportedGame {
+  const pid = platformGameId(source, g.pgn);
+  // Deterministic composite fallback when no platform id parses, so the same
+  // game re-imported overwrites the same record instead of duplicating.
+  const id = pid
+    ? `${source}:${pid}`
+    : `${source}:${(g.white ?? '').toLowerCase()}:${(g.black ?? '').toLowerCase()}:${g.date ?? ''}:${g.result ?? ''}`;
+  return {
+    id,
+    pgn: g.pgn,
+    source,
+    importedUsername: username.toLowerCase(),
+    accountId: acctId,
+    importedAt,
+    ...(g.white       !== undefined ? { white: g.white }             : {}),
+    ...(g.black       !== undefined ? { black: g.black }             : {}),
+    ...(g.result      !== undefined ? { result: g.result }           : {}),
+    ...(g.date        !== undefined ? { date: g.date }               : {}),
+    ...(g.timeClass   !== undefined ? { timeClass: g.timeClass }     : {}),
+    ...(g.opening     !== undefined ? { opening: g.opening }         : {}),
+    ...(g.eco         !== undefined ? { eco: g.eco }                 : {}),
+    ...(g.whiteRating !== undefined ? { whiteRating: g.whiteRating } : {}),
+    ...(g.blackRating !== undefined ? { blackRating: g.blackRating } : {}),
+  };
 }
 
 function nextCollectionId(): string {
@@ -309,23 +360,26 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
       return;
     }
 
-    // Filter by color perspective if applicable
-    if (color !== 'both' && source !== 'pgn') {
-      const target = username.toLowerCase();
-      games = games.filter(g => {
-        const isWhite = g.white?.toLowerCase() === target;
-        const isBlack = g.black?.toLowerCase() === target;
-        return color === 'white' ? isWhite : isBlack;
-      });
-      if (games.length === 0) {
-        setIsFetching(false);
-        setOpeningsPage('library');
-        setImportStep('details');
-        setImportError(`No games found where ${username} plays as ${color}.`);
-        setImportAbort(null);
-        redraw();
-        return;
-      }
+
+
+
+
+
+
+    if (source !== 'pgn') {
+      const account = await registerAccount(source, username, importCategory());
+      const importedAt = Date.now();
+      const shared = games.map(g => researchGameToImportedGame(g, source, username, account.id, importedAt));
+      await saveGamesToIdb(shared);
+      await recordAccountSync(account.id, null, null);
+      if (abort.signal.aborted) return; // cancelled during writes — cancelImport cleaned up
+      presetColorFilter(color);
+      await openAccountResearch(account, redraw, abort.signal);
+      if (abort.signal.aborted) return;
+      setImportAbort(null);
+      setIsFetching(false);
+      redraw();
+      return;
     }
 
     // Build settings snapshot and provenance

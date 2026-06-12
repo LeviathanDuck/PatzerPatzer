@@ -19,8 +19,10 @@ import type { MasterGame } from '../showcase/masterGames';
 import { bindBoardResizeHandle } from '../board/index';
 import { renderMoveList } from '../analyse/moveList';
 import type { TreeNode } from '../tree/types';
+import type { ChessAccount } from '../accounts';
 import {
   collections, collectionsLoaded, loadSavedCollections,
+  registryAccounts, accountsLoaded, loadRegistryAccounts, openAccountResearch,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
   sessionDateRange, setSessionDateRange, SESSION_DATE_RANGE_OPTIONS,
@@ -28,6 +30,7 @@ import {
   removeCollection, renameCollection,
   treeBuilding, treeBuildProgress, treeBuildTotal,
   isFetching, importStep, importSource, importUsername, importColor, importError,
+  importCategory, setImportCategory,
   importProgress, importMonth, cancelImport,
   importSpeeds, setImportSpeeds, importDateRange, setImportDateRange,
   importCustomFrom, setImportCustomFrom, importCustomTo, setImportCustomTo,
@@ -123,7 +126,9 @@ function renderLibraryPage(redraw: () => void): VNode {
     ]);
   }
 
+  if (!accountsLoaded()) void loadRegistryAccounts(redraw);
   const saved = collections();
+  const accounts = registryAccounts();
   const step = importStep();
 
   return h('div.openings', [
@@ -137,10 +142,38 @@ function renderLibraryPage(redraw: () => void): VNode {
     ]),
     step !== 'idle'
       ? renderImportWorkflow(redraw)
-      : h('div.openings__body', saved.length === 0
+      : h('div.openings__body', saved.length === 0 && accounts.length === 0
           ? [renderEmptyState(redraw)]
-          : [renderCollectionList(saved, redraw)],
+          : [
+              accounts.length > 0 ? renderAccountsSection(accounts, redraw) : null,
+              saved.length > 0 ? renderCollectionList(saved, redraw) : null,
+            ],
         ),
+  ]);
+}
+
+
+
+
+
+function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => void): VNode {
+  const order = (c: string) => c === 'opponent' ? 0 : c === 'study' ? 1 : c === 'mine' ? 2 : 3;
+  const sorted = [...accounts].sort((a, b) =>
+    order(a.category) - order(b.category) || a.displayName.localeCompare(b.displayName));
+  return h('div.openings__accounts', [
+    h('p.openings__hint', 'Imported accounts — click to research from the shared game library.'),
+    h('div.openings__collections', sorted.map(account =>
+      h('div.openings__collection-row', {
+        key: `account:${account.id}`,
+        on: { click: () => void openAccountResearch(account, redraw) },
+      }, [
+        h('div.openings__card-top', [
+          h('span.openings__collection-name', account.displayName),
+          h('span.openings__hint',
+            `${account.platform === 'chesscom' ? 'Chess.com' : 'Lichess'} · ${account.category}`),
+        ]),
+      ]),
+    )),
   ]);
 }
 
@@ -149,7 +182,7 @@ function renderEmptyState(redraw: () => void): VNode {
     h('div.openings__empty-icon', '\u265E'),
     h('h2.openings__empty-title', 'Opponent Research'),
     h('p', 'Research your opponents\u2019 openings by importing their games.'),
-    h('p.openings__hint', 'Games are stored separately from your analysis library.'),
+    h('p.openings__hint', 'Accounts imported anywhere in Patzer Pro appear here automatically.'),
     h('button.openings__start-btn', {
       on: { click: () => { setImportStep('details'); redraw(); } },
     }, 'Start New Research'),
@@ -503,6 +536,24 @@ function renderDetailsStep(redraw: () => void): VNode {
       }, c.charAt(0).toUpperCase() + c.slice(1)),
     )),
   ]));
+
+
+  if (src !== 'pgn') {
+    sections.push(h('div.header__panel-divider'));
+    sections.push(h('div.header__panel-section', [
+      h('div.header__panel-label', 'Account category'),
+      h('div.header__panel-row', ([
+        { value: 'mine',     label: 'Mine'     },
+        { value: 'opponent', label: 'Opponent' },
+        { value: 'study',    label: 'Study'    },
+      ] as const).map(({ value, label }) =>
+        h('button.header__pill', {
+          class: { active: importCategory() === value },
+          on: { click: () => { setImportCategory(value); redraw(); } },
+        }, label),
+      )),
+    ]));
+  }
 
   if (src !== 'pgn') {
     // --- Time control ---

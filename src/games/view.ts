@@ -6,6 +6,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import { parsePgnHeader, type ImportedGame } from '../import/types';
+import type { ChessAccount } from '../accounts';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
 import { enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
@@ -144,6 +145,8 @@ export function renderCompactGameRow(
 
 export interface GamesViewDeps {
   importedGames:         ImportedGame[];
+  /** Registered chess accounts, for the account lens switcher. */
+  accounts:              ChessAccount[];
   selectedGameId:        string | null;
   analyzedGameIds:       Set<string>;
   missedTacticGameIds:   Set<string>;
@@ -188,6 +191,12 @@ let gamesPage = 0;
 let gameListSearch = '';
 let gameListFilterResults: Set<'win' | 'loss' | 'draw'> = new Set();
 let gameListFilterSpeeds:  Set<string>                   = new Set();
+
+// Account lens shared by both game list views: whose games are shown.
+// 'mine' = all mine-category accounts plus uncategorized PGN-paste games;
+// 'all' = everything; otherwise a specific registry account id.
+// A lens rather than a filter — any registered account is selectable here.
+let accountLens: string = 'mine';
 
 // Multi-select state shared across both game list views.
 // Tracks the set of selected game IDs and the last-clicked game for shift-range selection.
@@ -244,8 +253,44 @@ function gameTacticsSeverities(gameId: string, hasMissedTactic: boolean): Set<st
   return result;
 }
 
+/** Games visible under the current account lens. */
+function accountLensGames(deps: GamesViewDeps): ImportedGame[] {
+  if (accountLens === 'all') return deps.importedGames;
+  if (accountLens === 'mine') {
+    const mineIds = new Set(deps.accounts.filter(a => a.category === 'mine').map(a => a.id));
+    return deps.importedGames.filter(g => g.accountId === undefined || mineIds.has(g.accountId));
+  }
+  return deps.importedGames.filter(g => g.accountId === accountLens);
+}
+
+/** Account lens switcher; mirrors the puzzle-list filter select pattern. */
+function renderAccountLensSelect(deps: GamesViewDeps): VNode {
+  return h('select.games-view__account-select', {
+    attrs: { title: 'Choose whose games to show' },
+    on: {
+      change: (e: Event) => {
+        accountLens = (e.target as HTMLSelectElement).value;
+        gamesPage = 0;
+        // Selections must not survive a lens change: hidden-but-selected games
+        // would silently leak into the next bulk-review action.
+        selectedGameIds = new Set();
+        deps.redraw();
+      },
+    },
+  }, [
+    h('option', { attrs: { value: 'mine', selected: accountLens === 'mine' } }, 'My accounts'),
+    h('option', { attrs: { value: 'all',  selected: accountLens === 'all'  } }, 'All accounts'),
+    ...deps.accounts.map(a =>
+      h('option', { attrs: { value: a.id, selected: accountLens === a.id } },
+        `${a.displayName} (${a.platform === 'chesscom' ? 'Chess.com' : 'Lichess'} · ${a.category})`),
+    ),
+  ]);
+}
+
 function filteredGames(deps: GamesViewDeps): ImportedGame[] {
-  let list = [...deps.importedGames];
+  // Copy: this list is sorted in place below and the lens may return the
+  // shared importedGames array directly.
+  let list = [...accountLensGames(deps)];
 
   if (gamesFilterResults.size > 0) {
     list = list.filter(g => {
@@ -399,14 +444,15 @@ function handleGameRowClick(
 export function renderGameList(deps: GamesViewDeps): VNode {
   if (deps.importedGames.length === 0) return h('div');
 
-  // Apply filters: opponent search → result → time class
+  // Apply filters: account lens → opponent search → result → time class
+  const lensGames = accountLensGames(deps);
   const q = gameListSearch.trim().toLowerCase();
   let visible: ImportedGame[] = q
-    ? deps.importedGames.filter(g => {
+    ? lensGames.filter(g => {
         const opp = opponentName(g, deps.getUserColor)?.toLowerCase() ?? '';
         return opp.includes(q);
       })
-    : [...deps.importedGames];
+    : [...lensGames];
 
   if (gameListFilterResults.size > 0) {
     visible = visible.filter(g => {
@@ -422,8 +468,8 @@ export function renderGameList(deps: GamesViewDeps): VNode {
   const anyFilter = q.length > 0 || gameListFilterResults.size > 0 || gameListFilterSpeeds.size > 0;
 
   const countLabel = anyFilter
-    ? `${visible.length} of ${deps.importedGames.length} game${deps.importedGames.length === 1 ? '' : 's'}`
-    : `${deps.importedGames.length} imported game${deps.importedGames.length === 1 ? '' : 's'}`;
+    ? `${visible.length} of ${lensGames.length} game${lensGames.length === 1 ? '' : 's'}`
+    : `${lensGames.length} imported game${lensGames.length === 1 ? '' : 's'}`;
 
   const toggleResult = (r: 'win' | 'loss' | 'draw') => {
     const s = new Set(gameListFilterResults);
@@ -446,9 +492,10 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     deps.redraw();
   };
 
-  const listSelectedCount = [...selectedGameIds].filter(id => deps.importedGames.some(g => g.id === id)).length;
+  const listSelectedCount = [...selectedGameIds].filter(id => lensGames.some(g => g.id === id)).length;
 
   const toolbar = h('div.game-list__toolbar', [
+    renderAccountLensSelect(deps),
     h('input.games-view__search', {
       attrs: { type: 'search', placeholder: 'Search opponent…', value: gameListSearch },
       on: { input: (e: Event) => { gameListSearch = (e.target as HTMLInputElement).value; deps.redraw(); } },
@@ -484,7 +531,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       listSelectedCount > 1
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
-              const games = deps.importedGames.filter(g => selectedGameIds.has(g.id));
+              const games = lensGames.filter(g => selectedGameIds.has(g.id));
               selectedGameIds = new Set();
               selectModeActive = false;
               deps.reviewAllGames(games);
@@ -588,10 +635,17 @@ export function renderGameList(deps: GamesViewDeps): VNode {
 /** Full Games tab view: filter bar + sortable table. */
 export function renderGamesView(deps: GamesViewDeps): VNode {
   const games = filteredGames(deps);
+  const lensTotal = accountLensGames(deps).length;
   const { redraw } = deps;
 
   // Controls bar
   const filterBar = h('div.games-view__controls', [
+    // Account lens
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Account'),
+      renderAccountLensSelect(deps),
+    ]),
+
     // Result filter
     h('div.games-view__filter-group', [
       h('span.games-view__filter-label', 'Result'),
@@ -677,7 +731,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
 
     // Summary + clear + multi-select review
     h('div.games-view__filter-group.--right', [
-      h('span.games-view__summary', `${games.length} of ${deps.importedGames.length} game${deps.importedGames.length === 1 ? '' : 's'}`),
+      h('span.games-view__summary', `${games.length} of ${lensTotal} game${lensTotal === 1 ? '' : 's'}`),
       gamesFilterActive() ? h('button.games-view__clear', { on: { click: () => clearGamesFilters(redraw) } }, 'Clear filters') : null,
       selectedGameIds.size > 1
         ? h('button.games-view__review-all-btn', {
@@ -699,6 +753,18 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       h('div.games-view__empty', [
         h('p', 'No games imported yet.'),
         h('p.games-view__empty-hint', 'Use the search bar above to import from Chess.com or Lichess.'),
+      ]),
+    ]);
+  }
+
+  // Lens matched nothing while the library has games: say so instead of an
+  // empty table with no explanation.
+  if (games.length === 0 && !gamesFilterActive()) {
+    return h('div.games-view', [
+      filterBar,
+      h('div.games-view__empty', [
+        h('p', 'No games for this account yet.'),
+        h('p.games-view__empty-hint', 'Import this account from the search bar above, or switch the Account lens.'),
       ]),
     ]);
   }

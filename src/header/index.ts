@@ -43,6 +43,7 @@ import {
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
+import { accountId, getAccount, type AccountCategory } from '../accounts';
 
 // --- Module-level header state ---
 type ImportPlatform = 'chesscom' | 'lichess';
@@ -55,6 +56,44 @@ let showRetroModal        = false;
 let showLoginModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
+
+const CATEGORY_OPTIONS: readonly { value: AccountCategory; label: string }[] = [
+  { value: 'mine',     label: 'Mine'     },
+  { value: 'opponent', label: 'Opponent' },
+  { value: 'study',    label: 'Study'    },
+];
+
+// Registry key (`platform:username`) the current importCategory selection
+// belongs to. Used to re-sync the selection only when the username or
+// platform actually changes, so manual pill clicks are never overridden.
+let categorySyncKey: string | null = null;
+
+
+
+
+
+function syncImportCategory(redraw: () => void): void {
+  const name = (importPlatform === 'chesscom' ? chesscom.username : lichess.username).trim();
+  const key = name ? accountId(importPlatform, name) : '';
+  if (key === categorySyncKey) return;
+  categorySyncKey = key;
+  if (importFilters.importCategory !== null) {
+    importFilters.importCategory = null;
+    redraw();
+  }
+  if (!key) return;
+  void getAccount(key).then(account => {
+    // Drop stale lookups (username changed while resolving) and never clobber
+    // a manual pill click — a manual choice makes the selection non-null.
+    if (key !== categorySyncKey || !account || importFilters.importCategory !== null) return;
+    importFilters.importCategory = account.category;
+    redraw();
+  }).catch(e => console.warn('[header] category lookup failed', e));
+}
+
+// One-time boot sync for the pre-filled default username. Subsequent syncs run
+// from the input and platform-toggle handlers, never from the render path.
+let categorySyncInit = false;
 
 const FEEDBACK_TONE_OPTIONS: readonly { value: FeedbackTone; label: string; description: string }[] = [
   { value: 'standard', label: 'Standard', description: 'Professional and encouraging' },
@@ -1028,6 +1067,10 @@ export function renderHeader(deps: HeaderDeps): VNode {
   ensureLoginModalListener(redraw);
   ensureRemoteSyncTokenListener(redraw);
   ensureRemoteSyncAuth(redraw);
+  if (!categorySyncInit) {
+    categorySyncInit = true;
+    syncImportCategory(redraw);
+  }
 
   const loading  = importPlatform === 'chesscom' ? chesscom.loading  : lichess.loading;
   const error    = importPlatform === 'chesscom' ? chesscom.error    : lichess.error;
@@ -1049,13 +1092,29 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: importPlatform === 'chesscom' },
-          on: { click: () => { importPlatform = 'chesscom'; redraw(); } },
+          on: { click: () => { importPlatform = 'chesscom'; syncImportCategory(redraw); redraw(); } },
         }, 'Chess.com'),
         h('button.header__pill', {
           class: { active: importPlatform === 'lichess' },
-          on: { click: () => { importPlatform = 'lichess'; redraw(); } },
+          on: { click: () => { importPlatform = 'lichess'; syncImportCategory(redraw); redraw(); } },
         }, 'Lichess'),
       ]),
+    ]),
+
+    h('div.header__panel-divider'),
+
+    h('div.header__panel-section', [
+      h('div.header__panel-label', 'Account category'),
+      h('div.header__panel-row', CATEGORY_OPTIONS.map(({ value, label }) =>
+        h('button.header__pill', {
+          class: { active: importFilters.importCategory === value },
+          on: { click: () => { importFilters.importCategory = value; redraw(); } },
+        }, label),
+      )),
+      importFilters.importCategory === null
+        ? h('p.header__panel-hint',
+            'Required before importing. Mine = my own accounts · Opponent = players I prep against · Study = strong players I learn from.')
+        : null,
     ]),
 
     h('div.header__panel-divider'),
@@ -1189,7 +1248,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__bar', [
         h('button.header__platform-toggle', {
           attrs: { title: importPlatform === 'chesscom' ? 'Switch to Lichess' : 'Switch to Chess.com' },
-          on: { click: () => { importPlatform = importPlatform === 'chesscom' ? 'lichess' : 'chesscom'; redraw(); } },
+          on: { click: () => { importPlatform = importPlatform === 'chesscom' ? 'lichess' : 'chesscom'; syncImportCategory(redraw); redraw(); } },
         }, importPlatform === 'chesscom' ? 'Chess.com' : 'Lichess'),
 
         h('input.header__input', {
@@ -1207,15 +1266,31 @@ export function renderHeader(deps: HeaderDeps): VNode {
               const v = (e.target as HTMLInputElement).value;
               if (importPlatform === 'chesscom') chesscom.username = v;
               else lichess.username = v;
+              // Re-sync the category selection for the new username; redraws
+              // only when the selection actually changes.
+              syncImportCategory(redraw);
             },
             keydown: (e: KeyboardEvent) => {
-              if (e.key === 'Enter' && username.trim() && !loading) doImport();
+              if (e.key === 'Enter' && username.trim() && !loading) {
+                if (importFilters.importCategory === null) {
+                  // Surface the category pills instead of importing.
+                  showImportPanel = true;
+                  redraw();
+                } else {
+                  doImport();
+                }
+              }
             },
           },
         }),
 
         h('button.header__import', {
-          attrs: { disabled: loading || !username.trim() },
+          attrs: {
+            disabled: loading || !username.trim() || importFilters.importCategory === null,
+            ...(importFilters.importCategory === null && username.trim()
+              ? { title: 'Choose an account category (Mine / Opponent / Study) in the filters panel (▾) first' }
+              : {}),
+          },
           on: { click: doImport },
         }, loading
           ? `Importing…${(importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount) > 0

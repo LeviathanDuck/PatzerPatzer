@@ -1,6 +1,8 @@
 
 
 
+import type { AccountCategory } from '../accounts';
+
 export type ImportSpeed     = 'bullet' | 'blitz' | 'rapid';
 export type ImportDateRange = '24h' | '1week' | '1month' | '3months' | '1year' | 'all' | 'custom';
 
@@ -23,6 +25,9 @@ export const importFilters = {
   autoReview:           localStorage.getItem('patzer.autoReview') === 'true',
   autoReviewConfirmed:  localStorage.getItem('patzer.autoReviewConfirmed') === 'true',
   autoReviewDepth:      storedInt('patzer.autoReviewDepth', 12, 2, 18),
+
+
+  importCategory:       null as AccountCategory | null,
 };
 
 export function setAutoReview(v: boolean): void {

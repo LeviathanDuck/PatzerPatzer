@@ -16,6 +16,9 @@ export interface ImportedGame {
   blackRating?: number;
   // Username of the player who triggered the import (lowercased). Absent for PGN paste.
   importedUsername?: string;
+  // Registry account id (`${platform}:${lowercased username}`, see src/accounts).
+  // Absent for PGN-paste games until they are categorized.
+  accountId?: string;
   // Local timestamp for when this game was first added to the browser library.
   importedAt?: number;
 }

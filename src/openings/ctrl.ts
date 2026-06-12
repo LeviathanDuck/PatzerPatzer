@@ -12,6 +12,11 @@ import {
   type StoredOpeningsSession,
 } from './db';
 import { getPlayStrengthLevel, exitPlayMode } from '../engine/ctrl';
+
+
+
+import { listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
+import { loadGamesByAccountFromIdb } from '../idb';
 import { DEFAULT_STRENGTH_LEVEL } from '../engine/types';
 import { cancelPlayMove } from '../engine/playMove';
 import { OpeningTreeBuilder, nodeAtMoves, findSampleGames, type OpeningTreeNode } from './tree';
@@ -36,6 +41,70 @@ let _currentPage: OpeningsPage = 'library';
 let _collections: ResearchCollection[] = [];
 let _collectionsLoaded = false;
 
+
+let _accounts: ChessAccount[] = [];
+let _accountsLoaded = false;
+
+export function registryAccounts(): readonly ChessAccount[] { return _accounts; }
+export function accountsLoaded(): boolean { return _accountsLoaded; }
+
+export async function loadRegistryAccounts(redraw: () => void): Promise<void> {
+  if (_accountsLoaded) return;
+  // Optimistic flag: render-triggered calls must not stack parallel reads
+  // while the first lookup is still in flight.
+  _accountsLoaded = true;
+  _accounts = await listAccounts();
+  redraw();
+}
+
+/**
+ * Set the color filter state without rebuilding the active tree.
+ * For use immediately before opening a new session: openCollection reads
+ * _colorFilter for its initial build, so triggering setColorFilter's rebuild
+ * here would race a stale collection's build against the new session's.
+ */
+export function presetColorFilter(color: 'white' | 'black' | 'both'): void {
+  _colorFilter = color;
+  if (color === 'white') _boardOrientation = 'white';
+  else if (color === 'black') _boardOrientation = 'black';
+}
+
+/**
+ * Open a research session for a registered account, built from the shared
+ * game store. The session uses a transient collection (id `account:<id>`)
+ * that is never saved to the collections store. An aborted signal after the
+ * games load cancels the open (the user backed out while loading).
+ */
+export async function openAccountResearch(account: ChessAccount, redraw: () => void, signal?: AbortSignal): Promise<void> {
+  const records = await loadGamesByAccountFromIdb(account.id);
+  if (signal?.aborted) return;
+  const games: ResearchGame[] = records.map(r => ({
+    id: r.id,
+    pgn: r.pgn,
+    ...(r.white       !== null ? { white: r.white }             : {}),
+    ...(r.black       !== null ? { black: r.black }             : {}),
+    ...(r.result      !== null ? { result: r.result }           : {}),
+    ...(r.date        !== null ? { date: r.date }               : {}),
+    ...(r.timeClass   !== null ? { timeClass: r.timeClass }     : {}),
+    ...(r.opening     !== null ? { opening: r.opening }         : {}),
+    ...(r.eco         !== null ? { eco: r.eco }                 : {}),
+    ...(r.source      !== null ? { source: r.source }           : {}),
+    ...(r.whiteRating !== null ? { whiteRating: r.whiteRating } : {}),
+    ...(r.blackRating !== null ? { blackRating: r.blackRating } : {}),
+  }));
+  const collection: ResearchCollection = {
+    id: `account:${account.id}`,
+    name: account.displayName,
+    source: account.platform,
+    target: account.username,
+    perspective: 'both',
+    games,
+    createdAt: account.addedAt,
+    updatedAt: Date.now(),
+  };
+  openCollection(collection, redraw);
+}
+
 // --- Import workflow state ---
 export type ImportStep = 'idle' | 'details';
 
@@ -44,6 +113,9 @@ let _isFetching = false;
 let _importSource: ResearchSource = 'chesscom';
 let _importUsername = '';
 let _importColor: 'white' | 'black' | 'both' = 'both';
+
+
+let _importCategory: AccountCategory = 'opponent';
 let _importError: string | null = null;
 let _importProgress = 0;
 let _importAbort: AbortController | null = null;
@@ -66,6 +138,7 @@ export function initOpeningsPage(page: OpeningsPage = 'library'): void {
 /** Mark collections as stale so the next render reloads them from DB. */
 export function invalidateCollections(): void {
   _collectionsLoaded = false;
+  _accountsLoaded = false;
 }
 
 /** Current openings page mode. */
@@ -120,6 +193,8 @@ export function setImportStep(step: ImportStep): void { _importStep = step; }
 export function setImportSource(source: ResearchSource): void { _importSource = source; }
 export function setImportUsername(username: string): void { _importUsername = username; }
 export function setImportColor(color: 'white' | 'black' | 'both'): void { _importColor = color; }
+export function importCategory(): AccountCategory { return _importCategory; }
+export function setImportCategory(category: AccountCategory): void { _importCategory = category; }
 export function setImportError(err: string | null): void { _importError = err; }
 export function importSpeeds(): ReadonlySet<ImportSpeed> { return _importSpeeds; }
 export function setImportSpeeds(s: Set<ImportSpeed>): void { _importSpeeds = s; }
@@ -156,6 +231,7 @@ export function cancelImport(): void {
   _importProgress = 0;
   _importMonth = null;
   _importError = null;
+  _importCategory = 'opponent';
 }
 
 /** Reset import workflow to idle. */
@@ -168,6 +244,7 @@ export function resetImport(): void {
   _importStep = 'idle';
   _importUsername = '';
   _importColor = 'both';
+  _importCategory = 'opponent';
   _importError = null;
   _importProgress = 0;
   _importMonth = null;

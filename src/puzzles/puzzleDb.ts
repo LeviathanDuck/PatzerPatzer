@@ -60,8 +60,8 @@ function ratingHistorySyncKey(entry: PuzzleRatingHistoryEntry): string {
 
 // --- DB connection ---
 
-const DB_NAME = 'patzer-puzzle-v1';
-const DB_VERSION = 2;
+export const DB_NAME = 'patzer-puzzle-v1';
+export const DB_VERSION = 3;
 
 const STORE_DEFINITIONS    = 'definitions';
 const STORE_ATTEMPTS       = 'attempts';
