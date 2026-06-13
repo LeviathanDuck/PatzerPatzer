@@ -9,6 +9,8 @@ import { pgnState, importPgn } from '../import/pgn';
 import {
   importFilters, SPEED_OPTIONS, DATE_RANGE_OPTIONS,
   setAutoReview, setAutoReviewConfirmed, setAutoReviewDepth,
+  currentImportDateRangeConfig,
+  importSyncFilterKey,
   type ImportDateRange,
 } from '../import/filters';
 import {
@@ -44,7 +46,8 @@ import {
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
-import { accountId, getAccount, listAccounts, type AccountCategory } from '../accounts';
+import { accountId, getAccount, listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
+import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
 
 // --- Module-level header state ---
 type ImportPlatform = 'chesscom' | 'lichess';
@@ -57,6 +60,11 @@ let showRetroModal        = false;
 let showLoginModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
+let headerAccountMode: 'account' | 'new' = 'account';
+let selectedMineAccountId: string | null = null;
+let headerSyncRunning = false;
+let headerSyncMessage: string | null = null;
+let headerSyncError: string | null = null;
 
 const CATEGORY_OPTIONS: readonly { value: AccountCategory; label: string }[] = [
   { value: 'mine',     label: 'Mine'     },
@@ -398,16 +406,54 @@ export function getImportPlatform(): ImportPlatform         { return importPlatf
 export interface HeaderDeps {
   route:               Route;
   importedGames:       ImportedGame[];
+  accounts:            ChessAccount[];
   selectedGameId:      string | null;
   analyzedGameIds:     ReadonlySet<string>;
   missedTacticGameIds: ReadonlySet<string>;
   importCallbacks:     ImportCallbacks;
+  onSyncGames:         (games: ImportedGame[]) => { addedCount: number; queuedForReview: boolean };
+  refreshAccounts:     () => void;
   onSelectGame:        (id: string, pgn: string) => void;
   renderGameRow:       (game: ImportedGame, isAnalyzed: boolean, hasMissedTactic: boolean) => (VNode | null)[];
   gameSourceUrl:       (game: ImportedGame) => string | undefined;
   downloadPgn:         (annotated: boolean) => void;
   resetAllData:        () => void;
   redraw:              () => void;
+}
+
+function platformLabel(platform: ImportPlatform): string {
+  return platform === 'chesscom' ? 'Chess.com' : 'Lichess';
+}
+
+function mineAccounts(accounts: readonly ChessAccount[]): ChessAccount[] {
+  return accounts
+    .filter(account => account.category === 'mine')
+    .sort((a, b) => {
+      const bTime = b.lastSyncedAt ?? b.addedAt;
+      const aTime = a.lastSyncedAt ?? a.addedAt;
+      return bTime - aTime || a.displayName.localeCompare(b.displayName);
+    });
+}
+
+function syncSelectedMineAccount(accounts: readonly ChessAccount[]): ChessAccount | null {
+  const mines = mineAccounts(accounts);
+  if (mines.length === 0) {
+    selectedMineAccountId = null;
+    headerAccountMode = 'new';
+    return null;
+  }
+  if (headerAccountMode === 'new') return null;
+  const selected = mines.find(account => account.id === selectedMineAccountId) ?? mines[0]!;
+  selectedMineAccountId = selected.id;
+  importPlatform = selected.platform;
+  if (selected.platform === 'chesscom') chesscom.username = selected.displayName;
+  else lichess.username = selected.displayName;
+  return selected;
+}
+
+function formatSyncDate(timestamp: number | null): string {
+  if (timestamp === null) return 'No sync cursor yet';
+  return new Date(timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 // --- Nav ---
@@ -1069,6 +1115,210 @@ function renderMobileNav(route: Route, redraw: () => void): VNode {
   ]);
 }
 
+function renderHeaderAccountControl(
+  accounts: readonly ChessAccount[],
+  selectedAccount: ChessAccount | null,
+  loading: boolean,
+  submitImport: () => void,
+  redraw: () => void,
+): VNode {
+  const mines = mineAccounts(accounts);
+  if (mines.length === 0 || headerAccountMode === 'new') {
+    const username = importPlatform === 'chesscom' ? chesscom.username : lichess.username;
+    const input = h('input.header__input', {
+      key: `input-${importPlatform}`,
+      attrs: {
+        type: 'search',
+        placeholder: importPlatform === 'chesscom' ? 'Chess.com username' : 'Lichess username',
+        disabled: loading,
+        autocomplete: 'off',
+        spellcheck: false,
+      },
+      props: { value: username },
+      on: {
+        input: (e: Event) => {
+          const v = (e.target as HTMLInputElement).value;
+          if (importPlatform === 'chesscom') chesscom.username = v;
+          else lichess.username = v;
+          syncImportCategory(redraw);
+        },
+        keydown: (e: KeyboardEvent) => {
+          const currentUsername = importPlatform === 'chesscom' ? chesscom.username : lichess.username;
+          if (e.key !== 'Enter' || !currentUsername.trim() || loading) return;
+          if (importFilters.importCategory === null) {
+            showImportPanel = true;
+            redraw();
+          } else {
+            submitImport();
+          }
+        },
+      },
+    });
+
+    if (mines.length === 0) return input;
+    return h('div.header__account-entry', [
+      input,
+      h('button.header__account-back', {
+        attrs: { type: 'button', title: 'Choose an imported account', disabled: loading },
+        on: { click: () => {
+          headerAccountMode = 'account';
+          showImportPanel = false;
+          redraw();
+        }},
+      }, 'Accounts'),
+    ]);
+  }
+
+  return h('select.header__account-select', {
+    attrs: { title: 'Choose my account to sync', disabled: loading },
+    on: {
+      change: (event: Event) => {
+        const value = (event.target as HTMLSelectElement).value;
+        headerSyncMessage = null;
+        headerSyncError = null;
+        if (value === 'new') {
+          headerAccountMode = 'new';
+          showImportPanel = false;
+          syncImportCategory(redraw);
+          redraw();
+          return;
+        }
+        selectedMineAccountId = value;
+        const next = mines.find(account => account.id === value);
+        if (next) {
+          importPlatform = next.platform;
+          if (next.platform === 'chesscom') chesscom.username = next.displayName;
+          else lichess.username = next.displayName;
+          syncImportCategory(redraw);
+        }
+        redraw();
+      },
+    },
+  }, [
+    ...mines.map(account => h('option', {
+      attrs: { value: account.id, selected: selectedAccount?.id === account.id },
+    }, `${account.displayName} - ${platformLabel(account.platform)}`)),
+    h('option', { attrs: { value: 'new' } }, 'New user'),
+  ]);
+}
+
+function renderSyncMenu(
+  account: ChessAccount,
+  deps: HeaderDeps,
+): VNode {
+  const { redraw } = deps;
+  const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
+  const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
+  const needsFallback = account.newestGameTimestamp === null || filterMismatch;
+  const runSync = async (): Promise<void> => {
+    if (headerSyncRunning) return;
+    headerSyncRunning = true;
+    headerSyncMessage = null;
+    headerSyncError = null;
+    redraw();
+    try {
+      const result: AccountSyncResult = await syncAccountGames(account, {
+        rated: importFilters.rated,
+        speeds: importFilters.speeds,
+        onProgress: count => {
+          headerSyncMessage = `Fetched ${count} game${count === 1 ? '' : 's'}...`;
+          redraw();
+        },
+        ...(needsFallback ? { fallbackDateRange: currentImportDateRangeConfig() } : {}),
+      });
+      const syncOutcome = deps.onSyncGames(result.newGames);
+      deps.refreshAccounts();
+      if (result.addedCount === 0) {
+        headerSyncMessage = 'No new games to import';
+      } else if (syncOutcome.queuedForReview) {
+        headerSyncMessage = `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}; queued for review`;
+      } else {
+        headerSyncMessage = `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}`;
+      }
+    } catch (err) {
+      headerSyncError = err instanceof Error ? err.message : 'Sync failed.';
+    } finally {
+      headerSyncRunning = false;
+      redraw();
+    }
+  };
+
+  return h('div.header__panel', [
+    h('div.header__panel-section', [
+      h('div.header__panel-label', `Sync ${account.displayName}`),
+      h('p.header__panel-hint', account.newestGameTimestamp === null
+        ? 'No sync cursor yet'
+        : `Sync from newest imported game: ${formatSyncDate(account.newestGameTimestamp)}`),
+      filterMismatch ? h('p.header__panel-hint.header__panel-warn',
+        'Filter changed; Patzer will run a wider safety fetch and dedupe existing games.') : null,
+    ]),
+    h('div.header__panel-divider'),
+    h('div.header__panel-section', [
+      h('div.header__panel-label', 'Time control'),
+      h('div.header__panel-row', [
+        h('button.header__pill', {
+          class: { active: importFilters.speeds.size === 0 },
+          on: { click: () => { importFilters.speeds = new Set(); redraw(); } },
+        }, 'All'),
+        ...SPEED_OPTIONS.map(({ value, label, icon }) =>
+          h('button.header__pill', {
+            class: { active: importFilters.speeds.has(value) },
+            attrs: { 'data-icon': icon },
+            on: { click: () => {
+              const s = new Set(importFilters.speeds);
+              s.has(value) ? s.delete(value) : s.add(value);
+              importFilters.speeds = s;
+              redraw();
+            }},
+          }, label)
+        ),
+      ]),
+      ...(needsFallback ? [
+        h('div.header__panel-label.--mt', 'Period'),
+        h('div.header__panel-row', DATE_RANGE_OPTIONS.map(({ value, label }) =>
+          h('button.header__pill', {
+            class: { active: importFilters.dateRange === value },
+            on: { click: () => { importFilters.dateRange = value as ImportDateRange; redraw(); } },
+          }, label),
+        )),
+      ] : []),
+      h('div.header__panel-row.--mt', [
+        h('label.header__panel-check', [
+          h('input', {
+            attrs: { type: 'checkbox', checked: importFilters.rated },
+            on: { change: (e: Event) => { importFilters.rated = (e.target as HTMLInputElement).checked; redraw(); } },
+          }),
+          'Rated only',
+        ]),
+      ]),
+    ]),
+    h('div.header__panel-divider'),
+    h('div.header__panel-section', [
+      h('div.header__panel-row',
+        renderToggleRow('sync-auto-review', 'Auto-review after sync', importFilters.autoReview, (v) => { setAutoReview(v); redraw(); }),
+      ),
+      importFilters.autoReview ? h('div.header__panel-section.--nested', [
+        h('div.header__panel-row',
+          renderToggleRow('sync-auto-review-confirm', 'Are you sure?', importFilters.autoReviewConfirmed, (v) => { setAutoReviewConfirmed(v); redraw(); }),
+        ),
+        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
+          h('div.review-menu__label', `Auto-review depth: ${importFilters.autoReviewDepth}`),
+          h('div.review-menu__row', renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => { setAutoReviewDepth(d); redraw(); })),
+        ]) : null,
+      ]) : null,
+    ]),
+    h('div.header__panel-divider'),
+    h('div.header__panel-section', [
+      headerSyncError ? h('div.header__panel-error', headerSyncError) : null,
+      headerSyncMessage ? h('p.header__panel-hint', headerSyncMessage) : null,
+      h('button.header__panel-btn', {
+        attrs: { disabled: headerSyncRunning },
+        on: { click: () => { void runSync(); } },
+      }, headerSyncRunning ? 'Syncing...' : 'Sync games'),
+    ]),
+  ]);
+}
+
 // --- Main header ---
 
 /**
@@ -1096,17 +1346,28 @@ export function renderHeader(deps: HeaderDeps): VNode {
   const loading  = importPlatform === 'chesscom' ? chesscom.loading  : lichess.loading;
   const error    = importPlatform === 'chesscom' ? chesscom.error    : lichess.error;
   const username = importPlatform === 'chesscom' ? chesscom.username : lichess.username;
+  const selectedMineAccount = syncSelectedMineAccount(deps.accounts);
+  const accountModeActive = selectedMineAccount !== null && headerAccountMode === 'account';
 
   const doImport = () => importPlatform === 'chesscom'
     ? void importChesscom(importCallbacks)
     : void importLichess(importCallbacks);
+
+  const openSyncDashboard = (): void => {
+    headerSyncMessage = null;
+    headerSyncError = null;
+    showImportPanel = true;
+    redraw();
+  };
 
   const hasActiveFilters =
     importFilters.speeds.size > 0 ||
     importFilters.dateRange !== '1month' ||
     !importFilters.rated;
 
-  const panel = showImportPanel ? h('div.header__panel', [
+  const panel = showImportPanel && accountModeActive && selectedMineAccount !== null
+    ? renderSyncMenu(selectedMineAccount, deps)
+    : showImportPanel ? h('div.header__panel', [
 
     h('div.header__panel-section', [
       h('div.header__panel-label', 'Platform'),
@@ -1268,52 +1529,28 @@ export function renderHeader(deps: HeaderDeps): VNode {
     h('div.header__search', { key: 'header-search' }, [
       h('div.header__bar', [
         h('button.header__platform-toggle', {
-          attrs: { title: importPlatform === 'chesscom' ? 'Switch to Lichess' : 'Switch to Chess.com' },
+          attrs: {
+            title: accountModeActive ? platformLabel(importPlatform) : importPlatform === 'chesscom' ? 'Switch to Lichess' : 'Switch to Chess.com',
+            disabled: accountModeActive,
+          },
           on: { click: () => { importPlatform = importPlatform === 'chesscom' ? 'lichess' : 'chesscom'; syncImportCategory(redraw); redraw(); } },
         }, importPlatform === 'chesscom' ? 'Chess.com' : 'Lichess'),
 
-        h('input.header__input', {
-          key: `input-${importPlatform}`,
-          attrs: {
-            type: 'search',
-            placeholder: importPlatform === 'chesscom' ? 'Chess.com username' : 'Lichess username',
-            value: username,
-            disabled: loading,
-            autocomplete: 'off',
-            spellcheck: false,
-          },
-          on: {
-            input: (e: Event) => {
-              const v = (e.target as HTMLInputElement).value;
-              if (importPlatform === 'chesscom') chesscom.username = v;
-              else lichess.username = v;
-              // Re-sync the category selection for the new username; redraws
-              // only when the selection actually changes.
-              syncImportCategory(redraw);
-            },
-            keydown: (e: KeyboardEvent) => {
-              if (e.key === 'Enter' && username.trim() && !loading) {
-                if (importFilters.importCategory === null) {
-                  // Surface the category pills instead of importing.
-                  showImportPanel = true;
-                  redraw();
-                } else {
-                  doImport();
-                }
-              }
-            },
-          },
-        }),
+        renderHeaderAccountControl(deps.accounts, selectedMineAccount, loading || headerSyncRunning, doImport, redraw),
 
         h('button.header__import', {
           attrs: {
-            disabled: loading || !username.trim() || importFilters.importCategory === null,
-            ...(importFilters.importCategory === null && username.trim()
+            disabled: accountModeActive
+              ? headerSyncRunning
+              : loading || !username.trim() || importFilters.importCategory === null,
+            ...(!accountModeActive && importFilters.importCategory === null && username.trim()
               ? { title: 'Choose an account category (Mine / Opponent / Study) in the filters panel (▾) first' }
               : {}),
           },
-          on: { click: doImport },
-        }, loading
+          on: { click: accountModeActive ? openSyncDashboard : doImport },
+        }, accountModeActive
+          ? (headerSyncRunning ? 'Syncing...' : 'Sync')
+          : loading
           ? `Importing…${(importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount) > 0
               ? ` (${importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount})`
               : ''}`

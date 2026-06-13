@@ -14,6 +14,9 @@ import { LOSS_THRESHOLDS } from '../engine/winchances';
 import { getMissedMoments, type MissedMoment } from '../engine/tactics';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
+const GAME_LIST_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+type GameListPageSize = typeof GAME_LIST_PAGE_SIZE_OPTIONS[number];
+const GAME_LIST_PAGE_SIZE_STORAGE_KEY = 'patzer.games.underboardPageSize.v1';
 
 // ---------------------------------------------------------------------------
 // Game metadata helpers (moved from main.ts — Step 16)
@@ -21,6 +24,60 @@ const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 
 function isRecentlyImported(game: ImportedGame): boolean {
   return game.importedAt !== undefined && Date.now() - game.importedAt < NEW_IMPORT_WINDOW_MS;
+}
+
+function parsePgnTimestamp(pgn: string, dateTag: string, timeTag: string): number | null {
+  const date = parsePgnHeader(pgn, dateTag);
+  const time = parsePgnHeader(pgn, timeTag);
+  if (!date || !time) return null;
+  const ts = Date.parse(`${date.replace(/\./g, '-')}T${time}Z`);
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function parseGameDateOnly(date: string | undefined): number | null {
+  if (!date) return null;
+  const day = date.slice(0, 10);
+  const ts = Date.parse(`${day}T00:00:00Z`);
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function exactPlayedTimestamp(game: ImportedGame): number | null {
+  if (game.source === 'chesscom') {
+    return parsePgnTimestamp(game.pgn, 'EndDate', 'EndTime')
+      ?? parsePgnTimestamp(game.pgn, 'UTCDate', 'UTCTime');
+  }
+  return parsePgnTimestamp(game.pgn, 'UTCDate', 'UTCTime')
+    ?? parsePgnTimestamp(game.pgn, 'EndDate', 'EndTime');
+}
+
+function playedTimestamp(game: ImportedGame): number | null {
+  return exactPlayedTimestamp(game) ?? parseGameDateOnly(game.date);
+}
+
+function compareByPlayedDate(
+  a: ImportedGame,
+  b: ImportedGame,
+  direction: 'asc' | 'desc',
+): number {
+  const aPlayed = playedTimestamp(a);
+  const bPlayed = playedTimestamp(b);
+  const aHasPlayedDate = aPlayed !== null;
+  const bHasPlayedDate = bPlayed !== null;
+
+  // Undated games stay after dated games in both directions.
+  if (aHasPlayedDate !== bHasPlayedDate) return aHasPlayedDate ? -1 : 1;
+
+  if (aPlayed !== null && bPlayed !== null && aPlayed !== bPlayed) {
+    return direction === 'desc' ? bPlayed - aPlayed : aPlayed - bPlayed;
+  }
+
+  const aImported = a.importedAt ?? 0;
+  const bImported = b.importedAt ?? 0;
+  if (aImported !== bImported) {
+    return direction === 'desc' ? bImported - aImported : aImported - bImported;
+  }
+
+  return a.id.localeCompare(b.id);
 }
 
 /** Determine which side the importing user played in a given game. */
@@ -213,6 +270,9 @@ let gamesPage = 0;
 let gameListSearch = '';
 let gameListFilterResults: Set<'win' | 'loss' | 'draw'> = new Set();
 let gameListFilterSpeeds:  Set<string>                   = new Set();
+let gameListPage = 0;
+let gameListPageSize: GameListPageSize = loadGameListPageSize();
+let gameListAutoSelectedId: string | null = null;
 
 // Account lens shared by both game list views: whose games are shown.
 // "My accounts" = all mine-category accounts plus uncategorized PGN-paste games.
@@ -240,6 +300,31 @@ let selectModeActive = false;
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function loadGameListPageSize(): GameListPageSize {
+  try {
+    const raw = parseInt(localStorage.getItem(GAME_LIST_PAGE_SIZE_STORAGE_KEY) ?? '', 10);
+    if (GAME_LIST_PAGE_SIZE_OPTIONS.includes(raw as GameListPageSize)) return raw as GameListPageSize;
+  } catch {
+    // Non-critical: fall back to the compact-list default.
+  }
+  return 50;
+}
+
+function setGameListPageSize(size: GameListPageSize): void {
+  gameListPageSize = size;
+  resetGameListPage();
+  try {
+    localStorage.setItem(GAME_LIST_PAGE_SIZE_STORAGE_KEY, String(size));
+  } catch {
+    // Non-critical: setting still works for the current session.
+  }
+}
+
+function resetGameListPage(): void {
+  gameListPage = 0;
+  gameListAutoSelectedId = null;
+}
 
 function loadAccountFilterState(): AccountFilterState {
   try {
@@ -296,6 +381,7 @@ function applyAccountFilterState(next: AccountFilterState, deps: GamesViewDeps):
       };
   saveAccountFilterState();
   gamesPage = 0;
+  resetGameListPage();
   // Selections must not survive a lens change: hidden-but-selected games
   // would silently leak into the next bulk-review action.
   selectedGameIds = new Set();
@@ -489,7 +575,7 @@ function filteredGames(deps: GamesViewDeps): ImportedGame[] {
   list.sort((a, b) => {
     let cmp = 0;
     if (gamesSortField === 'date') {
-      cmp = (a.date ?? '').localeCompare(b.date ?? '');
+      cmp = compareByPlayedDate(a, b, gamesSortDir);
     } else if (gamesSortField === 'opponent') {
       cmp = (opponentName(a, deps.getUserColor) ?? '').localeCompare(opponentName(b, deps.getUserColor) ?? '');
     } else if (gamesSortField === 'timeClass') {
@@ -501,7 +587,7 @@ function filteredGames(deps: GamesViewDeps): ImportedGame[] {
       };
       cmp = ord(a) - ord(b);
     }
-    return gamesSortDir === 'desc' ? -cmp : cmp;
+    return gamesSortField === 'date' ? cmp : (gamesSortDir === 'desc' ? -cmp : cmp);
   });
 
   return list;
@@ -618,16 +704,41 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     visible = visible.filter(g => g.timeClass !== undefined && gameListFilterSpeeds.has(g.timeClass));
   }
 
+  visible.sort((a, b) => compareByPlayedDate(a, b, 'desc'));
+
   const anyFilter = q.length > 0 || gameListFilterResults.size > 0 || gameListFilterSpeeds.size > 0;
 
+  let totalPages = Math.max(1, Math.ceil(visible.length / gameListPageSize));
+  if (gameListPage >= totalPages) gameListPage = totalPages - 1;
+  if (gameListPage < 0) gameListPage = 0;
+
+  const selectedIndex = deps.selectedGameId
+    ? visible.findIndex(g => g.id === deps.selectedGameId)
+    : -1;
+  if (!deps.selectedGameId) {
+    gameListAutoSelectedId = null;
+  } else if (selectedIndex >= 0 && gameListAutoSelectedId !== deps.selectedGameId) {
+    gameListPage = Math.floor(selectedIndex / gameListPageSize);
+    gameListAutoSelectedId = deps.selectedGameId;
+  }
+
+  totalPages = Math.max(1, Math.ceil(visible.length / gameListPageSize));
+  if (gameListPage >= totalPages) gameListPage = totalPages - 1;
+  if (gameListPage < 0) gameListPage = 0;
+  const pageStart = gameListPage * gameListPageSize;
+  const pageEnd = Math.min(visible.length, pageStart + gameListPageSize);
+  const pageGames = visible.slice(pageStart, pageEnd);
+  const visibleRangeLabel = visible.length === 0 ? '0' : `${pageStart + 1}-${pageEnd}`;
+
   const countLabel = anyFilter
-    ? `${visible.length} of ${lensGames.length} game${lensGames.length === 1 ? '' : 's'}`
-    : `${lensGames.length} imported game${lensGames.length === 1 ? '' : 's'}`;
+    ? `${visibleRangeLabel} of ${visible.length} matching (${lensGames.length} total)`
+    : `${visibleRangeLabel} of ${lensGames.length} game${lensGames.length === 1 ? '' : 's'}`;
 
   const toggleResult = (r: 'win' | 'loss' | 'draw') => {
     const s = new Set(gameListFilterResults);
     s.has(r) ? s.delete(r) : s.add(r);
     gameListFilterResults = s;
+    resetGameListPage();
     deps.redraw();
   };
 
@@ -635,6 +746,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     const s = new Set(gameListFilterSpeeds);
     s.has(tc) ? s.delete(tc) : s.add(tc);
     gameListFilterSpeeds = s;
+    resetGameListPage();
     deps.redraw();
   };
 
@@ -642,6 +754,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     gameListSearch = '';
     gameListFilterResults = new Set();
     gameListFilterSpeeds = new Set();
+    resetGameListPage();
     deps.redraw();
   };
 
@@ -651,7 +764,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     renderAccountLensSelect(deps),
     h('input.games-view__search', {
       attrs: { type: 'search', placeholder: 'Search opponent/opening...', value: gameListSearch },
-      on: { input: (e: Event) => { gameListSearch = (e.target as HTMLInputElement).value; deps.redraw(); } },
+      on: { input: (e: Event) => { gameListSearch = (e.target as HTMLInputElement).value; resetGameListPage(); deps.redraw(); } },
     }),
     h('div.game-list__filter-pills', [
       ...(['win', 'loss', 'draw'] as const).map(r =>
@@ -693,9 +806,34 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           }, `Review ${listSelectedCount}`)
         : null,
     ]),
+    h('div.game-list__page-size', [
+      h('span.game-list__page-size-label', 'Show'),
+      ...GAME_LIST_PAGE_SIZE_OPTIONS.map(size =>
+        h('button.game-list__page-size-btn', {
+          class: { active: gameListPageSize === size },
+          attrs: {
+            type: 'button',
+            title: `Show ${size} games`,
+            'aria-pressed': String(gameListPageSize === size),
+          },
+          on: { click: () => { setGameListPageSize(size); deps.redraw(); } },
+        }, String(size)),
+      ),
+    ]),
   ]);
 
   const queueSummary = isBulkRunning() ? getQueueSummary() : null;
+  const paginationBar = totalPages > 1 ? h('div.game-list__pagination', [
+    h('button.games-view__page-btn', {
+      attrs: { type: 'button', disabled: gameListPage === 0 },
+      on: { click: () => { gameListPage--; gameListAutoSelectedId = deps.selectedGameId; deps.redraw(); } },
+    }, 'Prev'),
+    h('span.games-view__page-info', `Page ${gameListPage + 1} of ${totalPages}`),
+    h('button.games-view__page-btn', {
+      attrs: { type: 'button', disabled: gameListPage >= totalPages - 1 },
+      on: { click: () => { gameListPage++; gameListAutoSelectedId = deps.selectedGameId; deps.redraw(); } },
+    }, 'Next'),
+  ]) : null;
 
   return h('div.game-list', [
     h('div.game-list__header', countLabel),
@@ -705,7 +843,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       : null,
     visible.length === 0
       ? h('div.game-list__no-results', 'No games match.')
-      : h('ul', visible.map(game => {
+      : h('ul', pageGames.map(game => {
           const isAnalyzed      = deps.analyzedGameIds.has(game.id);
           const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
           const srcUrl          = deps.gameSourceUrl(game);
@@ -782,6 +920,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
             }) : null,
           ]);
         })),
+    paginationBar,
   ]);
 }
 

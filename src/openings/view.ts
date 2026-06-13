@@ -23,6 +23,7 @@ import type { ChessAccount } from '../accounts';
 import {
   collections, collectionsLoaded, loadSavedCollections,
   registryAccounts, accountsLoaded, loadRegistryAccounts, openAccountResearch,
+  refreshRegistryAccounts,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
   sessionDateRange, setSessionDateRange, SESSION_DATE_RANGE_OPTIONS,
@@ -45,7 +46,13 @@ import {
 } from './ctrl';
 import { planOpponentTurn } from './practice';
 import type { OpeningsTool } from './types';
-import { SPEED_OPTIONS, DATE_RANGE_OPTIONS, type ImportSpeed, type ImportDateRange } from '../import/filters';
+import {
+  SPEED_OPTIONS, DATE_RANGE_OPTIONS,
+  importFilters, setAutoReview, setAutoReviewConfirmed, setAutoReviewDepth,
+  currentImportDateRangeConfig, importSyncFilterKey,
+  type ImportSpeed, type ImportDateRange,
+} from '../import/filters';
+import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode } from './tree';
 import { executeResearchImport } from './import';
@@ -61,6 +68,7 @@ import {
   arrowAllLines, setArrowAllLines,
   showArrowLabels, setShowArrowLabels,
 } from '../engine/ctrl';
+import { enqueueBulkReview } from '../engine/reviewQueue';
 import { playMoveWithDelay, cancelPlayMove } from '../engine/playMove';
 import { STRENGTH_LEVELS } from '../engine/types';
 import { renderStrengthSelector } from '../engine/strengthView';
@@ -98,10 +106,38 @@ const ANIM_MOVE_MS = 300; // ms per move
 // Mirrors the analysis action-menu pattern in src/analyse/analysisControls.ts
 let _openingsMenuOpen = false;
 let _dateRangePopupOpen = false;
+let _accountSyncMenuId: string | null = null;
+let _accountSyncRunningId: string | null = null;
+const _accountSyncMessages = new Map<string, string>();
+const _accountSyncErrors = new Map<string, string>();
 
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
 const ICON_FLIP       = '\ue020'; // licon.ChasingArrows — flip board
+const ACCOUNT_SYNC_AUTO_REVIEW_DEPTHS = [2, 4, 6, 8, 10, 12, 14, 16, 18] as const;
+
+function platformLabel(platform: ChessAccount['platform']): string {
+  return platform === 'chesscom' ? 'Chess.com' : 'Lichess';
+}
+
+function formatSyncDate(timestamp: number | null): string {
+  if (timestamp === null) return 'No sync cursor yet';
+  return new Date(timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function renderAccountSyncDepthPills(redraw: () => void): VNode[] {
+  return ACCOUNT_SYNC_AUTO_REVIEW_DEPTHS.map(depth =>
+    h('button.review-menu__pill', {
+      class: { active: importFilters.autoReviewDepth === depth },
+      attrs: { type: 'button', title: `Depth ${depth}` },
+      on: { click: (event: Event) => {
+        event.stopPropagation();
+        setAutoReviewDepth(depth);
+        redraw();
+      }},
+    }, String(depth)),
+  );
+}
 
 /** Render the openings page (library or session). */
 export function renderOpeningsPage(redraw: () => void): VNode {
@@ -155,6 +191,175 @@ function renderLibraryPage(redraw: () => void): VNode {
 
 
 
+function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode {
+  const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
+  const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
+  const needsFallback = account.newestGameTimestamp === null || filterMismatch;
+  const running = _accountSyncRunningId === account.id;
+  const message = _accountSyncMessages.get(account.id);
+  const error = _accountSyncErrors.get(account.id);
+
+  const runSync = async (event: Event): Promise<void> => {
+    event.stopPropagation();
+    if (_accountSyncRunningId !== null) return;
+    _accountSyncRunningId = account.id;
+    _accountSyncMessages.delete(account.id);
+    _accountSyncErrors.delete(account.id);
+    redraw();
+    try {
+      const result: AccountSyncResult = await syncAccountGames(account, {
+        rated: importFilters.rated,
+        speeds: importFilters.speeds,
+        onProgress: count => {
+          _accountSyncMessages.set(account.id, `Fetched ${count} game${count === 1 ? '' : 's'}...`);
+          redraw();
+        },
+        ...(needsFallback ? { fallbackDateRange: currentImportDateRangeConfig() } : {}),
+      });
+      const refreshedAccounts = await refreshRegistryAccounts(redraw);
+      const refreshedAccount = refreshedAccounts.find(a => a.id === account.id) ?? account;
+      if (activeCollection()?.id === `account:${account.id}`) {
+        await openAccountResearch(refreshedAccount, redraw);
+      }
+      const queuedForReview = result.newGames.length > 0 &&
+        importFilters.autoReview &&
+        importFilters.autoReviewConfirmed;
+      if (queuedForReview) {
+        enqueueBulkReview(result.newGames, importFilters.autoReviewDepth);
+      }
+      _accountSyncMessages.set(account.id, result.addedCount === 0
+        ? 'No new games to import'
+        : `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}${queuedForReview ? '; queued for review' : ''}`);
+    } catch (err) {
+      _accountSyncErrors.set(account.id, err instanceof Error ? err.message : 'Sync failed.');
+    } finally {
+      _accountSyncRunningId = null;
+      redraw();
+    }
+  };
+
+  return h('div.openings__account-sync-menu', {
+    on: { click: (event: Event) => event.stopPropagation() },
+  }, [
+    h('div.header__panel-section', [
+      h('div.header__panel-label', 'Sync options'),
+      h('p.header__panel-hint', account.newestGameTimestamp === null
+        ? 'No sync cursor yet'
+        : `Sync from newest imported game: ${formatSyncDate(account.newestGameTimestamp)}`),
+      filterMismatch ? h('p.header__panel-hint.header__panel-warn',
+        'Filter changed; Patzer will run a wider safety fetch and dedupe existing games.') : null,
+    ]),
+    h('div.header__panel-divider'),
+    h('div.header__panel-section', [
+      h('div.header__panel-label', 'Time control'),
+      h('div.header__panel-row', [
+        h('button.header__pill', {
+          class: { active: importFilters.speeds.size === 0 },
+          attrs: { type: 'button' },
+          on: { click: (event: Event) => {
+            event.stopPropagation();
+            importFilters.speeds = new Set();
+            redraw();
+          }},
+        }, 'All'),
+        ...SPEED_OPTIONS.map(({ value, label, icon }) =>
+          h('button.header__pill', {
+            class: { active: importFilters.speeds.has(value) },
+            attrs: { type: 'button', 'data-icon': icon },
+            on: { click: (event: Event) => {
+              event.stopPropagation();
+              const speeds = new Set(importFilters.speeds);
+              speeds.has(value) ? speeds.delete(value) : speeds.add(value);
+              importFilters.speeds = speeds;
+              redraw();
+            }},
+          }, label),
+        ),
+      ]),
+      ...(needsFallback ? [
+        h('div.header__panel-label.--mt', 'Period'),
+        h('div.header__panel-row', DATE_RANGE_OPTIONS.map(({ value, label }) =>
+          h('button.header__pill', {
+            class: { active: importFilters.dateRange === value },
+            attrs: { type: 'button' },
+            on: { click: (event: Event) => {
+              event.stopPropagation();
+              importFilters.dateRange = value as ImportDateRange;
+              redraw();
+            }},
+          }, label),
+        )),
+        importFilters.dateRange === 'custom' ? h('div.header__panel-row.--mt', [
+          h('span.header__panel-hint', 'From'),
+          h('input.header__date-input', {
+            attrs: { type: 'date' },
+            props: { value: importFilters.customFrom },
+            on: { change: (event: Event) => {
+              event.stopPropagation();
+              importFilters.customFrom = (event.target as HTMLInputElement).value;
+              redraw();
+            }},
+          }),
+          h('span.header__panel-hint', 'To'),
+          h('input.header__date-input', {
+            attrs: { type: 'date' },
+            props: { value: importFilters.customTo },
+            on: { change: (event: Event) => {
+              event.stopPropagation();
+              importFilters.customTo = (event.target as HTMLInputElement).value;
+              redraw();
+            }},
+          }),
+        ]) : null,
+      ] : []),
+      h('div.header__panel-row.--mt', [
+        h('label.header__panel-check', [
+          h('input', {
+            attrs: { type: 'checkbox' },
+            props: { checked: importFilters.rated },
+            on: { change: (event: Event) => {
+              event.stopPropagation();
+              importFilters.rated = (event.target as HTMLInputElement).checked;
+              redraw();
+            }},
+          }),
+          'Rated only',
+        ]),
+      ]),
+    ]),
+    h('div.header__panel-divider'),
+    h('div.header__panel-section', [
+      h('div.header__panel-row',
+        renderToggleRow('opponent-sync-auto-review', 'Auto-review after sync', importFilters.autoReview, (value) => {
+          setAutoReview(value);
+          redraw();
+        }),
+      ),
+      importFilters.autoReview ? h('div.header__panel-section.--nested', [
+        h('div.header__panel-row',
+          renderToggleRow('opponent-sync-auto-review-confirm', 'Are you sure?', importFilters.autoReviewConfirmed, (value) => {
+            setAutoReviewConfirmed(value);
+            redraw();
+          }),
+        ),
+        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
+          h('div.review-menu__label', `Auto-review depth: ${importFilters.autoReviewDepth}`),
+          h('div.review-menu__row', renderAccountSyncDepthPills(redraw)),
+        ]) : null,
+      ]) : null,
+    ]),
+    h('div.header__panel-divider'),
+    h('div.header__panel-section', [
+      error ? h('div.header__panel-error', error) : null,
+      message ? h('p.header__panel-hint', message) : null,
+      h('button.header__panel-btn', {
+        attrs: { type: 'button', disabled: running || _accountSyncRunningId !== null },
+        on: { click: event => { void runSync(event); } },
+      }, running ? 'Syncing...' : 'Sync games'),
+    ]),
+  ]);
+}
+
 function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => void): VNode {
   const order = (c: string) => c === 'opponent' ? 0 : c === 'study' ? 1 : c === 'mine' ? 2 : 3;
   const sorted = [...accounts].sort((a, b) =>
@@ -168,9 +373,27 @@ function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => 
       }, [
         h('div.openings__card-top', [
           h('span.openings__collection-name', account.displayName),
-          h('span.openings__hint',
-            `${account.platform === 'chesscom' ? 'Chess.com' : 'Lichess'} · ${account.category}`),
+          h('div.openings__account-actions', [
+            h('span.openings__hint', `${platformLabel(account.platform)} · ${account.category}`),
+            account.category === 'opponent' || account.category === 'study'
+              ? h('button.openings__account-sync-btn', {
+                  attrs: { type: 'button', title: `Sync ${account.displayName}` },
+                  on: { click: (event: Event) => {
+                    event.stopPropagation();
+                    _accountSyncMenuId = _accountSyncMenuId === account.id ? null : account.id;
+                    redraw();
+                  }},
+                }, _accountSyncRunningId === account.id ? 'Syncing...' : 'Sync')
+              : null,
+          ]),
         ]),
+        _accountSyncMenuId === account.id ? renderAccountSyncMenu(account, redraw) : null,
+        _accountSyncMenuId !== account.id && _accountSyncMessages.has(account.id)
+          ? h('p.openings__account-sync-result', _accountSyncMessages.get(account.id))
+          : null,
+        _accountSyncMenuId !== account.id && _accountSyncErrors.has(account.id)
+          ? h('p.openings__account-sync-error', _accountSyncErrors.get(account.id))
+          : null,
       ]),
     )),
   ]);
@@ -1874,16 +2097,16 @@ function renderOpeningTreeTool(
       })(),
       renderColorToggle(collection?.target ?? '', redraw),
       isFetching() ? renderFetchBar(redraw) : treeBuilding() ? renderTreeBuildBar() : null,
-      // Engine section at the top of the panel, before position-context content.
+      // Engine section at the top of the panel, before move list and position-context content.
       renderCeval(),
       renderEngineSettings({ showArrowSettings: true }),
       engineEnabled ? renderPvBox() : null,
+      // Move list + nav bar directly under the engine block (mirrors analysis-board column order).
+      openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
       // Position context: played lines + sample games appear together for integrated browsing.
       node ? renderPlayedLinesPanel(node, redraw) : null,
       renderDeviationPanel(redraw),
       renderSampleGamesPanel(),
-      // Navigation and analysis controls below the position context.
-      openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
       renderExplorerToggle(node, redraw),
     ]),
   ];

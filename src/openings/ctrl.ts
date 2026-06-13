@@ -57,6 +57,13 @@ export async function loadRegistryAccounts(redraw: () => void): Promise<void> {
   redraw();
 }
 
+export async function refreshRegistryAccounts(redraw: () => void): Promise<readonly ChessAccount[]> {
+  _accounts = await listAccounts();
+  _accountsLoaded = true;
+  redraw();
+  return _accounts;
+}
+
 /**
  * Set the color filter state without rebuilding the active tree.
  * For use immediately before opening a new session: openCollection reads

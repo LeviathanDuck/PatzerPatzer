@@ -6,6 +6,12 @@ import type { AccountCategory } from '../accounts';
 export type ImportSpeed     = 'bullet' | 'blitz' | 'rapid';
 export type ImportDateRange = '24h' | '1week' | '1month' | '3months' | '1year' | 'all' | 'custom';
 
+export interface ImportDateRangeConfig {
+  dateRange: ImportDateRange;
+  customFrom: string;
+  customTo: string;
+}
+
 // Read an integer from localStorage, returning def when the key is absent,
 // unparseable, or out of [min, max].
 // Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts storedIntProp pattern.
@@ -63,32 +69,67 @@ export const DATE_RANGE_OPTIONS: { value: ImportDateRange; label: string }[] = [
   { value: 'custom',  label: 'Custom' },
 ];
 
+export function importRangeStartMsFor(config: ImportDateRangeConfig): number | null {
+  const range = config.dateRange;
+  if (range === 'all') return null;
+  if (range === 'custom') {
+    if (!config.customFrom) return null;
+    const ts = Date.parse(`${config.customFrom}T00:00:00Z`);
+    return Number.isNaN(ts) ? null : ts;
+  }
+  const now = new Date();
+  let cutoff: Date;
+  switch (range) {
+    case '24h':     cutoff = new Date(now.getTime() - 86_400_000);                        break;
+    case '1week':   cutoff = new Date(now.getTime() - 7 * 86_400_000);                    break;
+    case '1month':  cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 1);       break;
+    case '3months': cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 3);       break;
+    case '1year':   cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1); break;
+    default: return null;
+  }
+  return cutoff.getTime();
+}
+
+export function archiveCutoffMonthFor(config: ImportDateRangeConfig): string | null {
+  const rangeStart = importRangeStartMsFor(config);
+  if (rangeStart === null) return null;
+  return new Date(rangeStart).toISOString().slice(0, 7);
+}
+
+export function currentImportDateRangeConfig(): ImportDateRangeConfig {
+  return {
+    dateRange: importFilters.dateRange,
+    customFrom: importFilters.customFrom,
+    customTo: importFilters.customTo,
+  };
+}
+
+export function importSyncFilterKey(rated: boolean, speeds: ReadonlySet<ImportSpeed>): string {
+  return `${rated ? 'rated' : 'any'}|${[...speeds].sort().join(',')}`;
+}
+
 
 
 
 
 
 export function filterGamesByDate<T extends { date?: string }>(games: T[]): T[] {
-  if (importFilters.dateRange === 'all') return games;
-  if (importFilters.dateRange === 'custom') {
+  return filterGamesByDateRange(games, currentImportDateRangeConfig());
+}
+
+export function filterGamesByDateRange<T extends { date?: string }>(games: T[], config: ImportDateRangeConfig): T[] {
+  if (config.dateRange === 'all') return games;
+  if (config.dateRange === 'custom') {
     return games.filter(g => {
       const d = g.date?.slice(0, 10);
       if (!d) return true;
-      if (importFilters.customFrom && d < importFilters.customFrom) return false;
-      if (importFilters.customTo   && d > importFilters.customTo)   return false;
+      if (config.customFrom && d < config.customFrom) return false;
+      if (config.customTo   && d > config.customTo)   return false;
       return true;
     });
   }
-  const now = new Date();
-  let cutoff: Date;
-  switch (importFilters.dateRange) {
-    case '24h':     cutoff = new Date(now.getTime() - 86_400_000);          break;
-    case '1week':   cutoff = new Date(now.getTime() - 7 * 86_400_000);      break;
-    case '1month':  cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 1);          break;
-    case '3months': cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 3);          break;
-    case '1year':   cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1);    break;
-    default: return games;
-  }
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const rangeStart = importRangeStartMsFor(config);
+  if (rangeStart === null) return games;
+  const cutoffStr = new Date(rangeStart).toISOString().slice(0, 10);
   return games.filter(g => !g.date || g.date.slice(0, 10) >= cutoffStr);
 }

@@ -3,7 +3,14 @@
 // Returns multi-game PGN text when Accept: application/x-chess-pgn is sent.
 // Lichess uses UTCDate rather than Date in PGN headers.
 
-import { filterGamesByDate, importFilters, type ImportSpeed } from './filters';
+import {
+  currentImportDateRangeConfig,
+  filterGamesByDate,
+  importFilters,
+  importRangeStartMsFor,
+  importSyncFilterKey,
+  type ImportSpeed,
+} from './filters';
 import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating, timeClassFromTimeControl } from './types';
 import { accountId, getAccount, recordAccountSync, registerAccount } from '../accounts';
 import { pgnToTree } from '../tree/pgn';
@@ -35,7 +42,7 @@ function lichessGameId(pgn: string): string | undefined {
  * Parse a game's UTC start timestamp (epoch ms) from UTCDate + UTCTime PGN
  * headers. Returns undefined when either header is absent or unparseable.
  */
-function lichessGameTimestamp(pgn: string): number | undefined {
+export function lichessGameTimestamp(pgn: string): number | undefined {
   const date = parsePgnHeader(pgn, 'UTCDate'); // YYYY.MM.DD
   const time = parsePgnHeader(pgn, 'UTCTime'); // HH:MM:SS
   if (!date || !time) return undefined;
@@ -58,27 +65,6 @@ const LICHESS_MAX_GAMES = 300;
  * when unbounded ('all'). Mirrors the cutoff logic in filters.ts
  * filterGamesByDate(), like archiveCutoffMonth() does in the Chess.com adapter.
  */
-function importRangeStartMs(): number | null {
-  const range = importFilters.dateRange;
-  if (range === 'all') return null;
-  if (range === 'custom') {
-    if (!importFilters.customFrom) return null;
-    const ts = Date.parse(`${importFilters.customFrom}T00:00:00Z`);
-    return Number.isNaN(ts) ? null : ts;
-  }
-  const now = new Date();
-  let cutoff: Date;
-  switch (range) {
-    case '24h':     cutoff = new Date(now.getTime() - 86_400_000);                        break;
-    case '1week':   cutoff = new Date(now.getTime() - 7 * 86_400_000);                    break;
-    case '1month':  cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 1);       break;
-    case '3months': cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 3);       break;
-    case '1year':   cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1); break;
-    default: return null;
-  }
-  return cutoff.getTime();
-}
-
 export async function fetchLichessGames(
   username: string, rated: boolean, speeds: Set<ImportSpeed>,
   onProgress?: (count: number) => void,
@@ -167,10 +153,10 @@ export async function importLichess(callbacks: ImportCallbacks): Promise<void> {
     const account = await getAccount(acctId);
     const cursor = account?.newestGameTimestamp ?? null;
     const oldestCovered = account?.oldestGameTimestamp ?? null;
-    const rangeStart = importRangeStartMs();
+    const rangeStart = importRangeStartMsFor(currentImportDateRangeConfig());
     // Rated/speed filters shape what the API returns, so coverage recorded
     // under one filter combination must not suppress a broader fetch.
-    const filterKey = `${importFilters.rated ? 'rated' : 'any'}|${[...importFilters.speeds].sort().join(',')}`;
+    const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
     // Incremental sync: apply the cursor only when previous imports already
     // cover the requested range down to its start under the same filters.
     // Otherwise fetch the full requested range (ID dedupe absorbs overlap) so

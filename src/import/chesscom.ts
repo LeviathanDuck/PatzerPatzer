@@ -1,7 +1,14 @@
 
 
 
-import { filterGamesByDate, importFilters, type ImportDateRange, type ImportSpeed } from './filters';
+import {
+  archiveCutoffMonthFor,
+  currentImportDateRangeConfig,
+  filterGamesByDate,
+  importFilters,
+  importSyncFilterKey,
+  type ImportSpeed,
+} from './filters';
 import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating } from './types';
 import { accountId, getAccount, recordAccountSync, registerAccount } from '../accounts';
 import { pgnToTree } from '../tree/pgn';
@@ -14,26 +21,6 @@ const CHESSCOM_BASE = 'https://api.chess.com/pub/player';
  * or null when the filter is 'all' (fetch every archive month available).
  * Mirrors the cutoff logic in filters.ts filterGamesByDate().
  */
-function archiveCutoffMonth(): string | null {
-  const range: ImportDateRange = importFilters.dateRange;
-  if (range === 'all') return null;
-  if (range === 'custom') {
-    // customFrom is YYYY-MM-DD; take the YYYY-MM prefix as the archive cutoff.
-    return importFilters.customFrom ? importFilters.customFrom.slice(0, 7) : null;
-  }
-  const now = new Date();
-  let cutoff: Date;
-  switch (range) {
-    case '24h':     cutoff = new Date(now.getTime() - 86_400_000);                          break;
-    case '1week':   cutoff = new Date(now.getTime() - 7 * 86_400_000);                     break;
-    case '1month':  cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 1);         break;
-    case '3months': cutoff = new Date(now); cutoff.setMonth(cutoff.getMonth() - 3);         break;
-    case '1year':   cutoff = new Date(now); cutoff.setFullYear(cutoff.getFullYear() - 1);   break;
-    default: return null;
-  }
-  return cutoff.toISOString().slice(0, 7); // YYYY-MM
-}
-
 export const chesscom = {
   username: 'LeviathanDuck',
   loading:  false,
@@ -58,7 +45,7 @@ function chesscomGameId(raw: { url?: string }, pgn: string): string | undefined 
  * EndDate + EndTime and falling back to UTCDate + UTCTime. Returns undefined
  * when neither pair parses.
  */
-function chesscomGameTimestamp(pgn: string): number | undefined {
+export function chesscomGameTimestamp(pgn: string): number | undefined {
   const date = parsePgnHeader(pgn, 'EndDate') ?? parsePgnHeader(pgn, 'UTCDate'); // YYYY.MM.DD
   const time = parsePgnHeader(pgn, 'EndTime') ?? parsePgnHeader(pgn, 'UTCTime'); // HH:MM:SS
   if (!date || !time) return undefined;
@@ -76,6 +63,7 @@ export async function fetchChesscomGames(
   username: string, rated: boolean, speeds: Set<ImportSpeed>,
   onProgress?: (count: number) => void,
   sinceMonth?: string, // YYYY-MM sync cursor; only fetch this month and newer
+  cutoffMonth: string | null = archiveCutoffMonthFor(currentImportDateRangeConfig()),
 ): Promise<ImportedGame[]> {
   // 1. Fetch archive list (one URL per month the player has games)
   const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
@@ -93,7 +81,6 @@ export async function fetchChesscomGames(
   // fetch only months >= the later of the two. The cursor month itself is
   // refetched (a month is only partially imported mid-month); ID dedupe
   // absorbs the overlap.
-  const cutoffMonth = archiveCutoffMonth();
   const effectiveCutoff = [cutoffMonth, sinceMonth ?? null]
     .filter((m): m is string => m !== null)
     .sort()
@@ -190,12 +177,12 @@ export async function importChesscom(callbacks: ImportCallbacks): Promise<void> 
     const account = await getAccount(acctId);
     const cursor = account?.newestGameTimestamp ?? null;
     const oldestCovered = account?.oldestGameTimestamp ?? null;
-    const cutoffMonth = archiveCutoffMonth();
+    const cutoffMonth = archiveCutoffMonthFor(currentImportDateRangeConfig());
     const parsedRangeStart = cutoffMonth !== null ? Date.parse(`${cutoffMonth}-01T00:00:00Z`) : NaN;
     const rangeStart = Number.isNaN(parsedRangeStart) ? null : parsedRangeStart;
     // Rated/speed filters shape which games are kept, so coverage recorded
     // under one filter combination must not suppress a broader fetch.
-    const filterKey = `${importFilters.rated ? 'rated' : 'any'}|${[...importFilters.speeds].sort().join(',')}`;
+    const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
     // Incremental sync: skip archive months older than the cursor, but only
     // when previous imports already cover the requested range down to its
     // start under the same filters. Otherwise fetch the full requested range

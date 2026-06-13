@@ -245,13 +245,23 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
     ? h('div.analyse-review-controls__status', `Analyzing… ${batchDone} of ${batchQueue.length} moves`)
     : null;
 
+
+
+  const hintText = !batchAnalyzing && !analysisComplete && hasGame
+    ? h('span.analyse-review-controls__hint', 'Stockfish finds your mistakes and blunders')
+    : null;
+
   return h('div.analyse-review-controls', [
     h('div.analyse-review-controls__row', [
       h('button.btn-review', {
-        class: { 'btn-review--complete': analysisComplete },
+        class: {
+          'btn-review--complete': analysisComplete,
+          'btn-review--primary':  !batchAnalyzing && !analysisComplete && hasGame,
+        },
         attrs: { disabled: !hasGame, title: reviewTitle },
         on: { click: reviewClick },
       }, reviewLabel),
+      hintText,
       ...(extraButtons ?? []),
     ]),
     statusLine,
