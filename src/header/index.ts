@@ -439,7 +439,6 @@ function syncSelectedMineAccount(accounts: readonly ChessAccount[]): ChessAccoun
   const mines = mineAccounts(accounts);
   if (mines.length === 0) {
     selectedMineAccountId = null;
-    headerAccountMode = 'new';
     return null;
   }
   if (headerAccountMode === 'new') return null;

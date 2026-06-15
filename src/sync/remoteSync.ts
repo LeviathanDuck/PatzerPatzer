@@ -373,6 +373,20 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
     updatedAt: record => numberField(record, 'updatedAt'),
   },
   {
+    store: 'accounts',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'accounts',
+    keyMode: 'keyPath',
+    keyForRecord: record => stringField(record, 'id'),
+    updatedAt: record => maxTimestamp(
+      numberField(record, 'lastSyncedAt'),
+      numberField(record, 'addedAt'),
+      numberField(record, 'newestGameTimestamp'),
+      numberField(record, 'oldestGameTimestamp'),
+    ),
+  },
+  {
     store: 'puzzle-definitions',
     dbName: PUZZLE_DB_NAME,
     dbVersion: PUZZLE_DB_VERSION,

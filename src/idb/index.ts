@@ -530,6 +530,7 @@ export async function saveAccountToIdb(account: ChessAccount): Promise<void> {
   const tx = db.transaction('accounts', 'readwrite');
   tx.objectStore('accounts').put(account);
   await txDone(tx);
+  enqueueMainDbPut('accounts', account.id, account, Math.max(account.lastSyncedAt ?? 0, account.addedAt));
 }
 
 /**

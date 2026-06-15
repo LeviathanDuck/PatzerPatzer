@@ -17,6 +17,7 @@ export const REMOTE_SYNC_STORE_NAMES = [
   'position-progress',
   'drill-attempts',
   'folders',
+  'accounts',
   'puzzle-definitions',
   'puzzle-attempts',
   'puzzle-user-meta',
