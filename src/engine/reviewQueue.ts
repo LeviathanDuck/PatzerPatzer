@@ -4,16 +4,36 @@
 // Each game in the queue has its own AnalyseCtrl and eval cache.
 
 import { StockfishProtocol } from '../ceval/protocol';
+import { isEngineSearching } from './ctrl';
 import { AnalyseCtrl } from '../analyse/ctrl';
 import { evalWinChances } from './winchances';
 import { hasMissedMoments, detectMissedMoments, onMissedMomentConfigChange, getMissedMoments, setMissedMoments, clearMissedMoments, type MissedMoment } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
-import { buildAnalysisNodes, buildReviewEngineMetadata, saveAnalysisToIdb, type ReviewEngineMetadata } from '../idb/index';
+import {
+  buildAnalysisNodes, buildAnalysisNodeEntry, buildReviewEngineMetadata, saveAnalysisToIdb, type ReviewEngineMetadata,
+  saveReviewQueueManifest, clearReviewQueueManifestEntry, clearReviewQueueManifest,
+  loadReviewQueueManifest, loadAnalysisFromIdb, type StoredNodeEntry,
+} from '../idb/index';
 import { pgnToTree } from '../tree/pgn';
-import { reviewDepth } from './batch';
+import { reviewDepth, reviewMovetime } from './batch';
 import { importFilters } from '../import/filters';
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
+import type { TreeNode } from '../tree/types';
+
+
+
+
+
+
+
+
+
+const reviewDebugLogging = localStorage.getItem('patzer.reviewQueueDebug') === 'true';
+
+function reviewDebugLog(...args: unknown[]): void {
+  if (reviewDebugLogging) console.log(...args);
+}
 
 // --- Background engine instance ---
 // Initialized lazily on first enqueueBulkReview call.
@@ -22,13 +42,25 @@ import type { PositionEval } from './ctrl';
 export const reviewProtocol = new StockfishProtocol({ threads: 1, hash: 32 });
 let reviewEngineReady       = false;
 let reviewEngineInitStarted = false;
+let reviewEngineFailed      = false;
 
 // --- Types ---
 
 export interface ReviewQueueEntry {
   game:   ImportedGame;
-  ctrl:   AnalyseCtrl;
-  cache:  Map<string, PositionEval>;
+  // Nulled once `finishEntry` confirms the complete IDB write — see AP-7 (unbounded
+  // in-memory caches). A 'complete' entry's full move tree and eval cache are durably
+  // saved, so retaining them in memory for the rest of the session is wasted heap on
+  // long bulk runs. Lightweight fields below (status/done/total) are kept for the
+  // manifest and progress UI, which never touch ctrl/cache.
+  ctrl:   AnalyseCtrl | null;
+  cache:  Map<string, PositionEval> | null;
+
+
+
+
+
+  serializedNodes: Record<string, StoredNodeEntry> | null;
   done:   number;
   total:  number;
   status: 'pending' | 'analyzing' | 'complete' | 'error';
@@ -43,11 +75,433 @@ interface ReviewBatchItem {
   fen:        string;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const LEADER_STORAGE_KEY      = 'patzer-review-leader';
+const LEADER_CHANNEL_NAME     = 'patzer-review-queue';
+const LEADER_HEARTBEAT_MS     = 3_000;  // leader refreshes its token this often
+const LEADER_STALE_MS         = 9_000;  // 3 missed heartbeats = leader presumed dead
+const OBSERVER_POLL_MS        = 4_000;  // observer fallback refresh if broadcasts are missed
+
+const tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+let isCurrentLeader = false;
+let leaderHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let observerPollTimer:    ReturnType<typeof setInterval> | null = null;
+let leaderChannel: BroadcastChannel | null = null;
+
+interface LeaderToken { tabId: string; heartbeatAt: number }
+
+function readLeaderToken(): LeaderToken | null {
+  try {
+    const raw = localStorage.getItem(LEADER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LeaderToken;
+    if (typeof parsed.tabId !== 'string' || typeof parsed.heartbeatAt !== 'number') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeLeaderToken(): void {
+  try {
+    localStorage.setItem(LEADER_STORAGE_KEY, JSON.stringify({ tabId, heartbeatAt: Date.now() } satisfies LeaderToken));
+  } catch {
+    // localStorage unavailable (private mode quota, etc.) — leadership still
+    // works via BroadcastChannel alone for tabs open right now.
+  }
+}
+
+function clearLeaderTokenIfOwn(): void {
+  try {
+    const token = readLeaderToken();
+    if (token && token.tabId === tabId) localStorage.removeItem(LEADER_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** True when this tab is the elected leader and should drive the queue/engine. */
+export function isLeaderTab(): boolean {
+  return isCurrentLeader;
+}
+
+function becomeLeader(): void {
+  if (isCurrentLeader) return;
+  isCurrentLeader = true;
+  writeLeaderToken();
+  if (leaderHeartbeatTimer === null) {
+    leaderHeartbeatTimer = setInterval(writeLeaderToken, LEADER_HEARTBEAT_MS);
+  }
+  if (observerPollTimer !== null) {
+    clearInterval(observerPollTimer);
+    observerPollTimer = null;
+  }
+  leaderChannel?.postMessage({ type: 'leader-elected', tabId });
+  console.log('[review-queue] this tab is now the leader:', tabId);
+  // Pick up any work left pending by a previous leader (mid-session failover
+  // takeover). Skipped at app-bootstrap time (before the library has loaded
+  // — see initLeaderElection/`_libraryGames`); the bootstrap caller's own
+  // `resumeReviewQueueFromManifest(stored.games)` call handles that case
+  // once the real game list is known.
+  if (_libraryGames.length > 0) void takeOverAsLeader();
+}
+
+function resignLeadership(): void {
+  if (!isCurrentLeader) return;
+  isCurrentLeader = false;
+  if (leaderHeartbeatTimer !== null) {
+    clearInterval(leaderHeartbeatTimer);
+    leaderHeartbeatTimer = null;
+  }
+  clearLeaderTokenIfOwn();
+  leaderChannel?.postMessage({ type: 'leader-resigned', tabId });
+  startObserverPolling();
+}
+
+/** Claim leadership if no live leader exists (absent or heartbeat-stale token). */
+function tryClaimLeadership(): void {
+  if (isCurrentLeader) return;
+  const token = readLeaderToken();
+  const stale = !token || (Date.now() - token.heartbeatAt) > LEADER_STALE_MS;
+  if (stale) becomeLeader();
+}
+
+function startObserverPolling(): void {
+  if (observerPollTimer !== null) return;
+  observerPollTimer = setInterval(() => {
+    tryClaimLeadership();
+    if (!isCurrentLeader) {
+      void refreshObserverQueue();
+    }
+  }, OBSERVER_POLL_MS);
+}
+
+/** Rebuild the local read-only queue mirror from the manifest (observer tabs only). */
+async function refreshObserverQueue(): Promise<void> {
+  if (isCurrentLeader) return;
+  await mirrorQueueFromManifest();
+  _redraw();
+}
+
+/**
+ * Initialize cross-tab coordination. Safe to call multiple times; only the
+ * first call wires listeners. Must run before any enqueue/resume call so the
+ * very first tab claims leadership immediately instead of waiting a poll tick.
+ */
+function initLeaderElection(): void {
+  if (typeof window === 'undefined') {
+    // No browser globals (tests, SSR) — act as leader unconditionally so
+    // existing single-tab behavior is unaffected.
+    isCurrentLeader = true;
+    return;
+  }
+
+  if (typeof BroadcastChannel !== 'undefined') {
+    leaderChannel = new BroadcastChannel(LEADER_CHANNEL_NAME);
+    leaderChannel.onmessage = (ev: MessageEvent) => {
+      const msg = ev.data as { type: string; tabId?: string; gameId?: string };
+      if (msg.type === 'leader-resigned' || msg.type === 'leader-elected') {
+        if (msg.tabId !== tabId) {
+          // Another tab took over (or stepped down) — if we're not already
+          // contesting, just refresh the observer mirror; tryClaimLeadership
+          // on the next poll/heartbeat-stale check handles actual takeover.
+          if (!isCurrentLeader) void refreshObserverQueue();
+        }
+      } else if (msg.type === 'progress' || msg.type === 'manifest-changed') {
+        if (!isCurrentLeader) void refreshObserverQueue();
+      } else if (msg.type === 'wake') {
+        // An observer tab enqueued work — if we're the leader, make sure the
+        // queue is advancing; harmless no-op otherwise.
+        if (isCurrentLeader) advanceQueue();
+      } else if (msg.type === 'pause' && isCurrentLeader) {
+        pauseBulkReview();
+      } else if (msg.type === 'resume' && isCurrentLeader) {
+        resumeBulkReview();
+      } else if (msg.type === 'cancel' && isCurrentLeader) {
+        cancelBulkReview();
+      } else if (msg.type === 'reset-errored' && isCurrentLeader && msg.gameId) {
+        resetErroredGame(msg.gameId);
+      }
+    };
+  }
+
+  // Resign cleanly on tab close so another tab can take over immediately
+  // instead of waiting out the full heartbeat-stale window. visibilitychange
+  // is used elsewhere in this file (checkpoint flush) because it fires
+  // reliably across reload/close/backgrounding, unlike beforeunload.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && isCurrentLeader) resignLeadership();
+  });
+  window.addEventListener('pagehide', () => {
+    if (isCurrentLeader) resignLeadership();
+  });
+
+  tryClaimLeadership();
+  if (!isCurrentLeader) startObserverPolling();
+}
+
+/**
+ * Leader takeover entry point: rebuilds the queue from the manifest exactly
+ * like startup resume (T06), so a tab that wins leadership mid-run (failover)
+ * picks up in-progress games from where the manifest/analysis-library left
+ * off rather than restarting them. No-op if there is nothing to resume.
+ */
+async function takeOverAsLeader(): Promise<void> {
+  if (!isCurrentLeader) return;
+  if (queue.length > 0) {
+    // This tab already has live queue state (e.g. it enqueued games itself
+    // before winning an election) — just make sure it's progressing.
+    if (activeIndex < 0 && !reviewEngineFailed) advanceQueue();
+    return;
+  }
+  await resumeReviewQueueFromManifest(_libraryGames);
+}
+
+/** Rebuild a read-only mirror of `queue` from the manifest, for observer-tab display only. */
+async function mirrorQueueFromManifest(): Promise<void> {
+  const manifest = await loadReviewQueueManifest();
+  queue = manifest.map(record => {
+    const game = _libraryGames.find(g => g.id === record.gameId);
+    // Fallback placeholder when the library snapshot hasn't caught up yet —
+    // display-only fields (done/total/status) below never depend on `pgn`.
+    return {
+      game: game ?? { id: record.gameId, pgn: '' },
+      ctrl: null,
+      cache: null,
+      serializedNodes: null,
+      done:   record.done,
+      total:  record.total,
+      status: record.status,
+      depth:  record.depth,
+    };
+  });
+  activeIndex = queue.findIndex(e => e.status === 'analyzing');
+}
+
+// Library snapshot used by observer-mode manifest mirroring and by leader
+// takeover resume — kept current via `setLibraryGamesForReviewQueue` so
+// observer tabs (which never receive `resumeReviewQueueFromManifest`'s
+// `games` argument directly) can still resolve game metadata for display.
+let _libraryGames: ImportedGame[] = [];
+
+/** Keep the observer-mode game lookup current. Call whenever the library list changes. */
+export function setLibraryGamesForReviewQueue(games: ImportedGame[]): void {
+  _libraryGames = games;
+}
+
+
+
+
+
+
+
+
+
+function enqueueObserverManifestOnly(games: ImportedGame[], depth: number): void {
+  let added = false;
+  for (const game of games) {
+    if (_analyzedGameIds.has(game.id)) continue;
+    if (queue.some(e => e.game.id === game.id && e.status !== 'error')) continue;
+    added = true;
+    void saveReviewQueueManifest({
+      gameId: game.id,
+      status: 'pending',
+      depth,
+      done:   0,
+      total:  estimatePlyCountFromPgn(game.pgn),
+    });
+  }
+  if (added) leaderChannel?.postMessage({ type: 'manifest-changed', tabId });
+  leaderChannel?.postMessage({ type: 'wake', tabId });
+}
+
 // --- Queue state ---
 
 let queue:      ReviewQueueEntry[] = [];
 let activeIndex = -1;
 let queuePaused = false;
+
+// Above this many games in a single enqueue call, defer building each entry's
+// AnalyseCtrl/eval-cache until the game actually reaches the analyzing slot
+// (see ensureEntryBuilt/startEntryBatch) instead of building all of them up
+// front. Building `new AnalyseCtrl(pgnToTree(...))` for every game does a full
+// chess-legality walk of its PGN, so a large enqueue (e.g. 500 games) would
+// otherwise block on hundreds of tree builds before the first game can start.
+const LAZY_BUILD_THRESHOLD = 20;
+
+/**
+ * Cheap estimate of ply count (half-moves) from raw PGN text, without parsing
+ * chess legality or building a move tree. Used only as a placeholder `total`
+ * for not-yet-built entries above LAZY_BUILD_THRESHOLD; `startEntryBatch`
+ * overwrites `entry.total` with the exact count once the real ctrl is built.
+ */
+function estimatePlyCountFromPgn(pgn: string): number {
+  let body = pgn
+    .replace(/\[[^\]]*\]\s*/g, '')   // strip headers
+    .replace(/\{[^}]*\}/g, '')        // strip comments
+    .replace(/\([^()]*\)/g, '')       // strip (non-nested) variations — mainline only
+    .replace(/\d+\.(\.\.)?/g, '')     // strip move numbers ("12." / "12...")
+    .replace(/(1-0|0-1|1\/2-1\/2|\*)\s*$/, '') // strip trailing result token
+    .trim();
+  if (!body) return 0;
+  return body.split(/\s+/).filter(Boolean).length;
+}
+
+/** Build (or rebuild) `ctrl`/`cache` for an entry that was enqueued lazily. */
+function ensureEntryBuilt(entry: ReviewQueueEntry): void {
+  if (entry.ctrl && entry.cache) return;
+  entry.ctrl  = new AnalyseCtrl(pgnToTree(entry.game.pgn));
+  entry.cache = new Map<string, PositionEval>();
+  entry.serializedNodes = {};
+}
+
+/** Persist the lightweight manifest record for one queue entry (cheap, status/progress only). */
+function persistManifestEntry(entry: ReviewQueueEntry): void {
+  void saveReviewQueueManifest({
+    gameId: entry.game.id,
+    status: entry.status,
+    depth:  entry.depth,
+    done:   entry.done,
+    total:  entry.total,
+  });
+  // Tell observer tabs a manifest record changed so they refresh their mirror
+  // immediately instead of waiting for the fallback poll interval.
+  leaderChannel?.postMessage({ type: 'manifest-changed', tabId });
+}
+
+// --- Per-bestmove checkpoint throttle (CR-10: throttle engine-driven writes) ---
+// Mirrors the time-based throttle pattern in engine/ctrl.ts
+// (scheduleLiveEngineUiRefresh/flushLiveEngineUiRefresh), but also coalesces on a
+// position count so a fast-searching engine (shallow depth) doesn't write on every
+// single bestmove either. Both the partial analysis save and the manifest progress
+// write are coalesced together since they fire from the same per-bestmove call site.
+//
+// Crash-safety: a flush is forced (bypassing both the count and time gates) on
+// finishEntry, on pauseBulkReview, and on page visibilitychange→hidden, so the most
+// recently analyzed position is never more than one throttle window from durable.
+
+const CHECKPOINT_POSITION_INTERVAL = 5;     // flush at least every N analyzed positions
+const CHECKPOINT_MIN_INTERVAL_MS   = 2_000; // ...or at least every T ms, whichever comes first
+
+let checkpointTimer:           ReturnType<typeof setTimeout> | null = null;
+let checkpointLastFlushAt      = 0;
+let checkpointPositionsPending = 0;
+let checkpointPendingEntry:    ReviewQueueEntry | null = null;
+
+/** Write the partial analysis + manifest checkpoint for `entry` right now. */
+function flushReviewCheckpoint(): void {
+  if (checkpointTimer !== null) {
+    clearTimeout(checkpointTimer);
+    checkpointTimer = null;
+  }
+  checkpointPositionsPending = 0;
+  checkpointLastFlushAt      = Date.now();
+  const entry = checkpointPendingEntry;
+  checkpointPendingEntry = null;
+  if (!entry || !entry.ctrl || !entry.cache || !entry.serializedNodes) return;
+
+
+
+  void saveAnalysisToIdb(
+    'partial',
+    entry.game.id,
+    entry.serializedNodes,
+    reviewActiveDepth,
+  );
+  persistManifestEntry(entry);
+}
+
+/**
+ * Request a checkpoint write for `entry` after a bestmove. Coalesces rapid
+ * per-position calls: writes immediately once `CHECKPOINT_POSITION_INTERVAL`
+ * positions have accumulated or `CHECKPOINT_MIN_INTERVAL_MS` has elapsed since
+ * the last flush, otherwise schedules a trailing flush for whichever is sooner.
+ */
+function scheduleReviewCheckpoint(entry: ReviewQueueEntry): void {
+  checkpointPendingEntry = entry;
+  checkpointPositionsPending++;
+  const elapsed = Date.now() - checkpointLastFlushAt;
+  if (checkpointPositionsPending >= CHECKPOINT_POSITION_INTERVAL || elapsed >= CHECKPOINT_MIN_INTERVAL_MS) {
+    flushReviewCheckpoint();
+    return;
+  }
+  if (checkpointTimer !== null) return;
+  const wait = Math.max(0, CHECKPOINT_MIN_INTERVAL_MS - elapsed);
+  checkpointTimer = setTimeout(flushReviewCheckpoint, wait);
+}
+
+/** Drop any pending checkpoint without writing — used when an entry is abandoned (error/cancel). */
+function cancelReviewCheckpoint(): void {
+  if (checkpointTimer !== null) {
+    clearTimeout(checkpointTimer);
+    checkpointTimer = null;
+  }
+  checkpointPositionsPending = 0;
+  checkpointPendingEntry     = null;
+}
+
+// Crash-safety backstop: visibilitychange→hidden fires reliably on tab close, refresh,
+// and backgrounding (unlike beforeunload, which mobile browsers and some desktop flows
+// don't guarantee) — flush immediately so the latest analyzed positions survive a forced
+// reload. The flush itself is a single cheap IDB put of already-built data, so it lands
+// well within the time the page allows before teardown.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushReviewCheckpoint();
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+const THROUGHPUT_EMA_ALPHA = 0.2;
+
+let throughputLastTickAt:  number | null = null;
+let throughputPosPerSecEma: number | null = null;
+
+/** Record one completed position now, updating the rolling positions/sec EMA. */
+function recordThroughputSample(): void {
+  const now = Date.now();
+  if (throughputLastTickAt !== null) {
+    const deltaMs = now - throughputLastTickAt;
+    if (deltaMs > 0) {
+      const instantaneous = 1000 / deltaMs;
+      throughputPosPerSecEma = throughputPosPerSecEma === null
+        ? instantaneous
+        : THROUGHPUT_EMA_ALPHA * instantaneous + (1 - THROUGHPUT_EMA_ALPHA) * throughputPosPerSecEma;
+    }
+  }
+  throughputLastTickAt = now;
+}
+
+/** Reset the throughput estimate — called when the queue goes idle (pause/cancel/drain). */
+function resetThroughputSample(): void {
+  throughputLastTickAt   = null;
+  throughputPosPerSecEma = null;
+}
 
 // --- Per-position engine state ---
 // Mirrors the evalNodePath/currentEval/engineSearchActive pattern in engine/ctrl.ts.
@@ -57,11 +511,197 @@ let reviewNodePath         = '';
 let reviewNodePly          = 0;
 let reviewParentPath       = '';
 let reviewSearchActive     = false;
-let reviewPendingStopCount = 0;
 let reviewItemQueue:       ReviewBatchItem[] = [];
 let reviewItemIndex        = 0;
 // Depth used for the currently-analyzing entry — set from entry.depth in startEntryBatch.
 let reviewActiveDepth      = reviewDepth;
+
+// --- Stop/bestmove race hardening ---
+// Instead of a raw pending-stop counter (which can desync across rapid pause/resume/cancel
+// sequences), we use a monotonic generation token.  Every stop() call increments the
+// generation; sendNextItem() and watchdog-retry captures the generation at search start.
+// The bestmove handler discards any result whose captured generation doesn't match the
+// current generation, closing the window where a stale bestmove could be misattributed to
+// the next position and permanently swallow its result.
+//
+// A parallel `reviewInflightFen` string records the FEN of the active search so that both
+// info-accumulation and the bestmove handler can double-check position identity in logs.
+
+let reviewSearchGeneration      = 0;   // incremented on every stop() or new-search start
+let reviewSearchStartGeneration = 0;   // captured at sendNextItem() / watchdog-retry
+let reviewInflightFen           = '';  // FEN of the currently-active search
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const REVIEW_CONTENTION_CORE_THRESHOLD = 4;     // only defer on machines this size or smaller
+const REVIEW_DISPATCH_DEFER_MS         = 250;   // re-check interval while live engine is busy
+const REVIEW_DISPATCH_MAX_DEFERS       = 8;     // ~2s worst case, well under the watchdog window
+
+let reviewDispatchDeferTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+let reviewDispatchDeferCount = 0;
+
+/** True when dispatch should be briefly delayed to avoid oversubscribing a low-core machine. */
+function shouldDeferDispatch(): boolean {
+  const cores = navigator.hardwareConcurrency ?? 2;
+  if (cores > REVIEW_CONTENTION_CORE_THRESHOLD) return false;
+  if (reviewDispatchDeferCount >= REVIEW_DISPATCH_MAX_DEFERS) return false;
+  return isEngineSearching();
+}
+
+/** Cancel any pending deferred dispatch — called on pause/cancel so it can't fire afterward. */
+function clearDispatchDefer(): void {
+  if (reviewDispatchDeferTimer !== undefined) {
+    clearTimeout(reviewDispatchDeferTimer);
+    reviewDispatchDeferTimer = undefined;
+  }
+  reviewDispatchDeferCount = 0;
+}
+
+// --- Per-position watchdog ---
+// Prevents the queue from stalling forever if bestmove never arrives (e.g. engine crash/hang).
+// Detection is silence-based: a healthy fixed-depth search emits `info` lines continuously, so
+// we measure time since the last engine output for the active search rather than total search
+// time. This is independent of depth and hardware speed — a true hang (engine dies → no output)
+// is caught within WATCHDOG_SILENCE_MS no matter how slow the machine is, and a legitimately
+// long search is never killed because it keeps petting the timer. A generous absolute ceiling
+// is a backstop for the (very rare) "emits info forever but never returns bestmove" mode.
+// Armed in sendNextItem(), pet on each info line, cleared on bestmove, disarmed on pause/cancel.
+
+let reviewWatchdogTimer:         ReturnType<typeof setTimeout> | undefined = undefined; // silence timer
+let reviewWatchdogAbsoluteTimer: ReturnType<typeof setTimeout> | undefined = undefined; // hard backstop
+let reviewWatchdogRetries  = 0;          // retry count for the current position (bounded to 1)
+const WATCHDOG_SILENCE_MS  = 12_000;     // fire after this long with NO engine output for the active search
+const WATCHDOG_ABSOLUTE_MS = 240_000;    // hard per-position backstop, independent of output
+const WATCHDOG_MAX_RETRIES = 1;          // retry once, then skip
+
+function armWatchdog(): void {
+  clearWatchdog();
+  reviewWatchdogTimer         = setTimeout(onWatchdogExpiry, WATCHDOG_SILENCE_MS);
+  reviewWatchdogAbsoluteTimer = setTimeout(onWatchdogExpiry, WATCHDOG_ABSOLUTE_MS);
+}
+
+// Re-arm only the silence timer: any engine output for the active search proves it is alive.
+// Leaves the absolute backstop untouched.
+function petWatchdog(): void {
+  if (!reviewSearchActive) return;
+  if (reviewWatchdogTimer !== undefined) clearTimeout(reviewWatchdogTimer);
+  reviewWatchdogTimer = setTimeout(onWatchdogExpiry, WATCHDOG_SILENCE_MS);
+}
+
+function clearWatchdog(): void {
+  if (reviewWatchdogTimer !== undefined) {
+    clearTimeout(reviewWatchdogTimer);
+    reviewWatchdogTimer = undefined;
+  }
+  if (reviewWatchdogAbsoluteTimer !== undefined) {
+    clearTimeout(reviewWatchdogAbsoluteTimer);
+    reviewWatchdogAbsoluteTimer = undefined;
+  }
+}
+
+function markActiveEntryErrored(reason: string, error?: unknown): void {
+  clearWatchdog();
+  clearDispatchDefer();
+  reviewWatchdogRetries = 0;
+  reviewSearchActive = false;
+  reviewInflightFen = '';
+  reviewCurrentEval = {};
+  reviewItemQueue = [];
+  reviewItemIndex = 0;
+
+  const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+  if (error !== undefined) {
+    console.error('[review-engine] marking game errored:', reason, error);
+  } else {
+    console.error('[review-engine] marking game errored:', reason);
+  }
+
+  if (entry) {
+    entry.status = 'error';
+    persistManifestEntry(entry);
+  }
+
+  _redraw();
+  advanceQueue();
+}
+
+function onWatchdogExpiry(): void {
+  // Cancel whichever timer did not fire (silence vs absolute backstop).
+  clearWatchdog();
+  console.warn('[review-watchdog] no engine output within timeout — treating position as hung; retries used:', reviewWatchdogRetries);
+
+  if (reviewSearchActive) {
+    // Increment generation before stop() so any late bestmove from the timed-out search
+    // is recognised as stale when it arrives.
+    reviewSearchGeneration++;
+    reviewProtocol.stop();
+    reviewSearchActive = false;
+  }
+
+  if (reviewWatchdogRetries < WATCHDOG_MAX_RETRIES) {
+    // Retry once: re-issue the same position.
+    reviewWatchdogRetries++;
+    const item = reviewItemQueue[reviewItemIndex];
+    if (!item) {
+      advanceToNextItem();
+      return;
+    }
+    console.warn('[review-watchdog] retrying position', reviewItemIndex + 1, '/', reviewItemQueue.length);
+    reviewCurrentEval           = {};
+    reviewSearchActive          = true;
+    reviewInflightFen           = item.fen;
+    reviewSearchStartGeneration = reviewSearchGeneration;
+    reviewProtocol.setPosition(item.fen);
+    reviewProtocol.go(reviewActiveDepth, 1, reviewMovetime ?? undefined);
+    armWatchdog();
+  } else {
+    // Second expiry — mark the game as errored and advance past it.
+    console.error('[review-watchdog] position permanently timed out — marking game errored and skipping', reviewItemIndex + 1, '/', reviewItemQueue.length);
+    const errorEntry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+    if (errorEntry) {
+      errorEntry.status = 'error';
+      persistManifestEntry(errorEntry);
+    }
+    advanceToNextItem();
+  }
+}
+
+/** Advance past the current position (skip or finish) after a watchdog skip. */
+function advanceToNextItem(): void {
+  reviewWatchdogRetries = 0;
+  reviewCurrentEval = {};
+  reviewItemIndex++;
+  const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+  if (!entry) return;
+
+  // If the entry was marked errored (by the second watchdog expiry), skip to
+  // the next game in the queue rather than continuing its remaining positions.
+  if (entry.status === 'error') {
+    _redraw();
+    advanceQueue();
+    return;
+  }
+
+  if (reviewItemIndex < reviewItemQueue.length) {
+    sendNextItem();
+  } else {
+    finishEntry(entry);
+  }
+}
 
 // --- Injected deps (set via initReviewQueue) ---
 
@@ -93,29 +733,74 @@ export function initReviewQueue(deps: {
   // Only covers games reviewed in the current session — IDB-restored games
   // from previous sessions are not in the queue and keep their stored result.
   onMissedMomentConfigChange(recomputeMissedTactics);
+
+
+
+  initLeaderElection();
 }
 
 function recomputeMissedTactics(): void {
   // Only update entries that are in the current session's queue — IDB-restored
-  // games are not present and their flags are left untouched.
-  for (const entry of queue) {
-    if (entry.status !== 'complete') continue;
-    const userColor = _getUserColor(entry.game);
-    const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
-    setMissedMoments(entry.game.id, moments);
-    if (moments.length > 0) {
-      _missedTacticGameIds.add(entry.game.id);
-    } else {
-      _missedTacticGameIds.delete(entry.game.id);
+  // games (from a previous session, never re-queued) are not present and their
+  // flags are left untouched.
+  //
+  // Behavior change (T07 eviction): a 'complete' entry's `ctrl`/`cache` are nulled
+  // out shortly after completion (see ReviewQueueEntry), so they can no longer be
+  // read directly here. Each completed entry's mainline + eval cache is rehydrated
+  // from the durable `analysis-library` IDB record instead — the same record
+  // `finishEntry` just saved — rather than from the in-memory fields. Still-resident
+  // entries (not yet evicted, e.g. completed moments ago) are used directly to avoid
+  // an unnecessary IDB round trip.
+  void (async () => {
+    for (const entry of queue) {
+      if (entry.status !== 'complete') continue;
+      const userColor = _getUserColor(entry.game);
+      let mainline: TreeNode[];
+      let cache:    Map<string, PositionEval>;
+      if (entry.ctrl && entry.cache) {
+        mainline = entry.ctrl.mainline;
+        cache    = entry.cache;
+      } else {
+        // Evicted — rebuild the mainline from the game's PGN (same as
+        // resumeReviewQueueFromManifest) and rehydrate the eval cache from the
+        // durable analysis-library record `finishEntry` already saved.
+        const rebuiltCtrl = new AnalyseCtrl(pgnToTree(entry.game.pgn));
+        const stored = await loadAnalysisFromIdb(entry.game.id);
+        if (!stored) continue; // shouldn't happen post-completion, but guard defensively
+        const rebuiltCache = new Map<string, PositionEval>();
+        for (const node of Object.values(stored.nodes)) {
+          if (!node.path) continue; // pre-migration node.id-keyed record — skip
+          const ev: PositionEval = {};
+          if (node.cp    !== undefined) ev.cp    = node.cp;
+          if (node.mate  !== undefined) ev.mate  = node.mate;
+          if (node.best  !== undefined) ev.best  = node.best;
+          if (node.loss  !== undefined) ev.loss  = node.loss;
+          if (node.delta !== undefined) ev.delta = node.delta;
+          if (node.bestLine !== undefined) ev.moves = node.bestLine;
+          rebuiltCache.set(node.path, ev);
+        }
+        mainline = rebuiltCtrl.mainline;
+        cache    = rebuiltCache;
+      }
+      const moments = detectMissedMoments(mainline, cache, userColor);
+      setMissedMoments(entry.game.id, moments);
+      if (moments.length > 0) {
+        _missedTacticGameIds.add(entry.game.id);
+      } else {
+        _missedTacticGameIds.delete(entry.game.id);
+      }
     }
-  }
-  _redraw();
+    _redraw();
+  })();
 }
 
 
 // --- Background engine init ---
 
 export async function initReviewEngine(baseUrl: string): Promise<void> {
+
+
+  if (!isCurrentLeader) return;
   if (reviewEngineInitStarted) return;
   reviewEngineInitStarted = true;
 
@@ -133,7 +818,47 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     parseReviewLine(line);
   });
 
-  await reviewProtocol.init(baseUrl);
+  // Wire the protocol's onError signal into a module-level failure state.
+  // onError fires for corrupt NNUE data and other engine-level errors after init.
+  reviewProtocol.onEngineError = (msg: string) => {
+    console.error('[review-engine] engine error — marking failed:', msg);
+    reviewEngineFailed = true;
+    reviewEngineReady  = false;
+    _failAnalyzingEntries();
+    _redraw();
+  };
+
+  try {
+    await reviewProtocol.init(baseUrl);
+  } catch (err) {
+    // WASM alloc, SharedArrayBuffer COOP/COEP, or NNUE fetch failure.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[review-engine] init failed — engine unavailable:', msg);
+    reviewEngineFailed = true;
+    // Demote every entry still in `analyzing` so they don't appear stuck.
+    _failAnalyzingEntries();
+    _redraw();
+  }
+}
+
+/** Move any entries stuck in `analyzing` to `error` after an init failure. */
+function _failAnalyzingEntries(): void {
+  for (const entry of queue) {
+    if (entry.status === 'analyzing') {
+      entry.status = 'error';
+      persistManifestEntry(entry);
+    }
+  }
+}
+
+/** True when the review engine failed to initialise. */
+export function isReviewEngineFailed(): boolean {
+  return reviewEngineFailed;
+}
+
+/** True while the engine init is in progress but not yet ready or failed. */
+export function isReviewEngineInitializing(): boolean {
+  return reviewEngineInitStarted && !reviewEngineReady && !reviewEngineFailed;
 }
 
 // --- UCI line parser for the background engine ---
@@ -142,6 +867,8 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
 function parseReviewLine(line: string): void {
   const parts = line.trim().split(/\s+/);
   if (parts[0] === 'info') {
+    // Engine is alive and searching — reset the silence watchdog.
+    petWatchdog();
     let isMate = false;
     let score: number | undefined;
     let best:  string | undefined;
@@ -183,15 +910,24 @@ function parseReviewLine(line: string): void {
       reviewCurrentEval.moves = pvMoves;
     }
   } else if (parts[0] === 'bestmove') {
-    if (reviewPendingStopCount > 0) {
-      reviewPendingStopCount--;
+    clearWatchdog();
+    if (reviewSearchStartGeneration !== reviewSearchGeneration) {
+      // This bestmove belongs to a stopped/superseded search — discard it and reset
+      // eval state so the next legitimate result is not contaminated.
+      console.log('[review-engine] stale bestmove discarded (gen', reviewSearchStartGeneration,
+        '!== current', reviewSearchGeneration, 'fen', reviewInflightFen, ')');
       reviewCurrentEval = {};
+      reviewInflightFen = '';
       return;
     }
     reviewSearchActive = false;
-    if (parts[1] && parts[1] !== '(none)') {
-      reviewCurrentEval.best = parts[1];
+    reviewInflightFen  = '';
+    const bestmove = parts[1];
+    if (!bestmove || bestmove === '(none)') {
+      markActiveEntryErrored(`review engine returned invalid bestmove: ${line.trim()}`);
+      return;
     }
+    reviewCurrentEval.best = bestmove;
     onReviewBestmove();
   }
 }
@@ -199,16 +935,25 @@ function parseReviewLine(line: string): void {
 // --- Bestmove handler ---
 
 function onReviewBestmove(): void {
+  reviewWatchdogRetries = 0;
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (!entry) return;
+
+  // entry is the in-progress active entry here, never 'complete' — ctrl/cache
+  // have not been evicted yet.
+  const ctrl  = entry.ctrl!;
+  const cache = entry.cache!;
 
   const stored     = { ...reviewCurrentEval };
   const nodePath   = reviewNodePath;
   const nodePly    = reviewNodePly;
   const parentPath = reviewParentPath;
+  // Capture the just-analyzed item's identity before reviewItemIndex advances —
+  // needed to append a single StoredNodeEntry below without re-walking the mainline.
+  const item = reviewItemQueue[reviewItemIndex];
 
   if (stored.cp !== undefined || stored.mate !== undefined) {
-    const parentEval = entry.cache.get(parentPath);
+    const parentEval = cache.get(parentPath);
     if (parentEval?.cp !== undefined && stored.cp !== undefined) {
       stored.delta = stored.cp - parentEval.cp;
     }
@@ -222,19 +967,18 @@ function onReviewBestmove(): void {
         stored.loss = (moverParentWc - moverNodeWc) / 2;
       }
     }
-    entry.cache.set(nodePath, stored);
+    cache.set(nodePath, stored);
+    if (entry.serializedNodes && item) {
+      entry.serializedNodes[nodePath] = buildAnalysisNodeEntry(item.nodeId, nodePath, item.fen, stored);
+    }
   }
 
   entry.done++;
   reviewItemIndex++;
   reviewCurrentEval = {};
+  recordThroughputSample();
 
-  void saveAnalysisToIdb(
-    'partial',
-    entry.game.id,
-    buildAnalysisNodes(entry.ctrl.mainline, p => entry.cache.get(p)),
-    reviewActiveDepth,
-  );
+  scheduleReviewCheckpoint(entry);
   _redraw();
 
   if (reviewItemIndex < reviewItemQueue.length) {
@@ -250,17 +994,29 @@ function sendNextItem(): void {
   const item = reviewItemQueue[reviewItemIndex];
   if (!item) return;
 
-  reviewCurrentEval     = {};
-  reviewNodePath        = item.nodePath;
-  reviewNodePly         = item.nodePly;
-  reviewParentPath      = item.parentPath;
-  reviewSearchActive    = true;
+  if (shouldDeferDispatch()) {
+    reviewDispatchDeferCount++;
+    reviewDispatchDeferTimer = setTimeout(sendNextItem, REVIEW_DISPATCH_DEFER_MS);
+    return;
+  }
+  reviewDispatchDeferCount = 0;
 
-  console.log('[review-batch]', reviewItemIndex + 1, '/', reviewItemQueue.length,
-    'nodeId:', item.nodeId, 'path:', item.nodePath, 'ply:', item.nodePly);
+  reviewCurrentEval           = {};
+  reviewNodePath              = item.nodePath;
+  reviewNodePly               = item.nodePly;
+  reviewParentPath            = item.parentPath;
+  reviewSearchActive          = true;
+  // Capture the current generation so the bestmove handler can detect stale results
+  // even when a stop and an immediate re-send occur within the same tick.
+  reviewInflightFen           = item.fen;
+  reviewSearchStartGeneration = reviewSearchGeneration;
+
+  reviewDebugLog('[review-batch]', reviewItemIndex + 1, '/', reviewItemQueue.length,
+    'nodeId:', item.nodeId, 'path:', item.nodePath, 'ply:', item.nodePly, 'gen:', reviewSearchGeneration);
 
   reviewProtocol.setPosition(item.fen);
-  reviewProtocol.go(reviewActiveDepth);
+  reviewProtocol.go(reviewActiveDepth, 1, reviewMovetime ?? undefined);
+  armWatchdog();
 }
 
 // --- Finish a single game ---
@@ -268,12 +1024,22 @@ function sendNextItem(): void {
 function finishEntry(entry: ReviewQueueEntry): void {
   entry.status = 'complete';
 
+  // Drop any pending throttled partial checkpoint for this entry — the 'complete'
+  // write below immediately supersedes it, so flushing first would be wasted work
+  // and would needlessly delay the complete write.
+  if (checkpointPendingEntry === entry) cancelReviewCheckpoint();
+
+  // Entry is still resident at this point (only nulled below, after the IDB write
+  // resolves) — capture non-null local bindings for the synchronous work below.
+  const ctrl  = entry.ctrl!;
+  const cache = entry.cache!;
+
   const userColor = _getUserColor(entry.game);
   _analyzedGameIds.add(entry.game.id);
-  const moments = detectMissedMoments(entry.ctrl.mainline, entry.cache, userColor);
+  const moments = detectMissedMoments(ctrl.mainline, cache, userColor);
   setMissedMoments(entry.game.id, moments);
   if (moments.length > 0) _missedTacticGameIds.add(entry.game.id);
-  const summary = computeAnalysisSummary(entry.ctrl.mainline, entry.cache);
+  const summary = computeAnalysisSummary(ctrl.mainline, cache);
   if (summary) {
     _analyzedGameAccuracy.set(entry.game.id, {
       white: summary.white.accuracy,
@@ -287,12 +1053,27 @@ function finishEntry(entry: ReviewQueueEntry): void {
   void saveAnalysisToIdb(
     'complete',
     entry.game.id,
-    buildAnalysisNodes(entry.ctrl.mainline, p => entry.cache.get(p)),
+    buildAnalysisNodes(ctrl.mainline, p => cache.get(p)),
     reviewActiveDepth,
     reviewEngine,
-  );
+  ).then(() => {
+    // Results are now durably saved (and resumable per T05/T06), so the heavy
+    // per-entry AnalyseCtrl/eval-cache objects are no longer needed in memory —
+    // release them so long bulk runs (e.g. 200+ games) don't retain hundreds of
+    // full move trees (AP-7: unbounded in-memory caches). Only evict if the entry
+    // is still the same completed entry (defensive: a re-queue could in theory
+    // replace it, though resetErroredGame only targets 'error' entries today).
+    if (entry.status === 'complete') {
+      entry.ctrl  = null;
+      entry.cache = null;
+      entry.serializedNodes = null;
+    }
+  });
+  // Terminal state: the full analysis is now durably saved in analysis-library,
+  // so the lightweight queue manifest entry is no longer needed.
+  void clearReviewQueueManifestEntry(entry.game.id);
 
-  console.log('[review-engine] game complete:', entry.game.id);
+  reviewDebugLog('[review-engine] game complete:', entry.game.id);
   _redraw();
   advanceQueue();
 }
@@ -300,54 +1081,74 @@ function finishEntry(entry: ReviewQueueEntry): void {
 // --- Start analysis for a queue entry ---
 
 async function startEntryBatch(entry: ReviewQueueEntry): Promise<void> {
-  // Build the list of positions to analyze (skip root node at index 0).
-  const items: ReviewBatchItem[] = [];
-  let path     = '';
-  let prevPath = '';
-  for (let i = 0; i < entry.ctrl.mainline.length; i++) {
-    const node = entry.ctrl.mainline[i]!;
-    prevPath = path;
-    if (i > 0) path += node.id;
-    if (!entry.cache.has(path)) {
-      items.push({
-        nodeId:     node.id,
-        nodePly:    node.ply,
-        nodePath:   path,
-        parentPath: prevPath,
-        fen:        node.fen,
-      });
+  try {
+    // entry is always 'pending'/'analyzing' here, never 'complete' — ctrl/cache
+    // have not been evicted yet. Build them now if this entry was enqueued
+    // lazily (LAZY_BUILD_THRESHOLD) and hasn't entered the analyzing slot before.
+    ensureEntryBuilt(entry);
+    const ctrl  = entry.ctrl!;
+    const cache = entry.cache!;
+
+    // Build the list of positions to analyze (skip root node at index 0).
+    const items: ReviewBatchItem[] = [];
+    let path     = '';
+    let prevPath = '';
+    for (let i = 0; i < ctrl.mainline.length; i++) {
+      const node = ctrl.mainline[i]!;
+      prevPath = path;
+      if (i > 0) path += node.id;
+      if (!cache.has(path)) {
+        items.push({
+          nodeId:     node.id,
+          nodePly:    node.ply,
+          nodePath:   path,
+          parentPath: prevPath,
+          fen:        node.fen,
+        });
+      }
     }
+
+    entry.total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
+
+    if (items.length === 0) {
+      finishEntry(entry);
+      return;
+    }
+
+    reviewItemQueue   = items;
+    reviewItemIndex   = 0;
+    reviewCurrentEval = {};
+    reviewActiveDepth = entry.depth;
+
+    // Ensure engine is ready before sending first position.
+    if (!reviewEngineReady) {
+      // initReviewEngine readyok handler will call sendNextItem when ready.
+      return;
+    }
+
+    sendNextItem();
+  } catch (error) {
+    markActiveEntryErrored(`failed to start review batch for game ${entry.game.id}`, error);
   }
-
-  entry.total = entry.ctrl.mainline.length > 1 ? entry.ctrl.mainline.length - 1 : 0;
-
-  if (items.length === 0) {
-    finishEntry(entry);
-    return;
-  }
-
-  reviewItemQueue   = items;
-  reviewItemIndex   = 0;
-  reviewCurrentEval = {};
-  reviewActiveDepth = entry.depth;
-
-  // Ensure engine is ready before sending first position.
-  if (!reviewEngineReady) {
-    // initReviewEngine readyok handler will call sendNextItem when ready.
-    return;
-  }
-
-  sendNextItem();
 }
 
 // --- Queue advance ---
 
 function advanceQueue(): void {
   if (queuePaused) return;
+  // Observer tabs never drive the queue themselves — they only mirror
+  // progress. Wake the real leader instead (no-op if none is currently open;
+  // the manifest-persisted 'pending' entries will be picked up whenever a
+  // leader tab is open and polls/claims).
+  if (!isCurrentLeader) {
+    leaderChannel?.postMessage({ type: 'wake', tabId });
+    return;
+  }
 
   const nextIndex = queue.findIndex(e => e.status === 'pending');
   if (nextIndex < 0) {
     activeIndex = -1;
+    resetThroughputSample();
     _redraw();
     return;
   }
@@ -355,6 +1156,7 @@ function advanceQueue(): void {
   activeIndex = nextIndex;
   const entry = queue[activeIndex]!;
   entry.status = 'analyzing';
+  persistManifestEntry(entry);
   void startEntryBatch(entry);
 }
 
@@ -362,33 +1164,63 @@ function advanceQueue(): void {
 
 export function enqueueBulkReview(games: ImportedGame[], depth?: number): void {
   const entryDepth = depth ?? reviewDepth;
-  console.log('[reviewQueue] enqueueBulkReview called — games:', games.map(g => g.id), 'queue len:', queue.length, 'activeIndex:', activeIndex, 'engineInitStarted:', reviewEngineInitStarted, 'depth:', entryDepth);
+  if (!isCurrentLeader) {
+    // Observer tabs never build AnalyseCtrl/eval-cache trees for entries they
+    // will never analyze — write the lightweight manifest record only and
+    // wake whichever tab is the leader to pick the work up.
+    enqueueObserverManifestOnly(games, entryDepth);
+    return;
+  }
+  const lazy = games.length > LAZY_BUILD_THRESHOLD;
+  reviewDebugLog('[reviewQueue] enqueueBulkReview called — games:', games.map(g => g.id), 'queue len:', queue.length, 'activeIndex:', activeIndex, 'engineInitStarted:', reviewEngineInitStarted, 'depth:', entryDepth, 'lazy:', lazy);
   for (const game of games) {
-    // Skip already analyzed or already queued games.
-    console.log('[reviewQueue]  game', game.id, '— alreadyAnalyzed:', _analyzedGameIds.has(game.id), 'alreadyQueued:', queue.some(e => e.game.id === game.id));
+    // Skip already analyzed games.
+    reviewDebugLog('[reviewQueue]  game', game.id, '— alreadyAnalyzed:', _analyzedGameIds.has(game.id), 'alreadyQueued:', queue.some(e => e.game.id === game.id));
     if (_analyzedGameIds.has(game.id)) continue;
-    if (queue.some(e => e.game.id === game.id)) continue;
 
-    const ctrl  = new AnalyseCtrl(pgnToTree(game.pgn));
-    const total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
-    queue.push({
+    // Allow re-queuing errored games: remove the stale error entry first.
+    const existingIdx = queue.findIndex(e => e.game.id === game.id);
+    if (existingIdx >= 0) {
+      const existing = queue[existingIdx]!;
+      if (existing.status === 'error') {
+        queue.splice(existingIdx, 1);
+        if (activeIndex > existingIdx) activeIndex--;
+      } else {
+        // Already pending/analyzing/complete — skip.
+        continue;
+      }
+    }
+
+    // Above LAZY_BUILD_THRESHOLD, defer the AnalyseCtrl/eval-cache build until
+    // the game reaches the analyzing slot (see ensureEntryBuilt/startEntryBatch)
+    // so a large enqueue doesn't block on hundreds of tree builds up front.
+    // `total` is a cheap PGN-based estimate until then; startEntryBatch
+    // overwrites it with the exact mainline length once built.
+    const ctrl  = lazy ? null : new AnalyseCtrl(pgnToTree(game.pgn));
+    const total = ctrl
+      ? (ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0)
+      : estimatePlyCountFromPgn(game.pgn);
+    const entry: ReviewQueueEntry = {
       game,
       ctrl,
-      cache:  new Map<string, PositionEval>(),
+      cache:  lazy ? null : new Map<string, PositionEval>(),
+      serializedNodes: lazy ? null : {},
       done:   0,
       total,
       status: 'pending',
       depth:  entryDepth,
-    });
+    };
+    queue.push(entry);
+    persistManifestEntry(entry);
   }
 
-  // Init engine lazily on first enqueue.
-  if (!reviewEngineInitStarted) {
+  // Init engine lazily on first enqueue (skip if already failed).
+  if (!reviewEngineInitStarted && !reviewEngineFailed) {
     void initReviewEngine('/stockfish-web');
   }
 
-  // Start processing if nothing is running.
-  if (activeIndex < 0) {
+  // Start processing if nothing is running (skip if engine failed).
+  if (activeIndex < 0 && !reviewEngineFailed) {
     advanceQueue();
   }
 }
@@ -398,22 +1230,48 @@ export function enqueueBulkReview(games: ImportedGame[], depth?: number): void {
  * immediately after any currently-analyzing entry finishes.
  * Games already analyzed or already in the queue are silently skipped.
  */
-export function enqueueAtFront(games: ImportedGame[]): void {
+export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
+  const entryDepth = depth ?? reviewDepth;
+  if (!isCurrentLeader) {
+    // See enqueueBulkReview: observer tabs write the manifest only and let
+    // the leader build the real entries. Front-of-queue ordering is a
+    // leader-side scheduling concern, so these still land in the queue but
+    // are not guaranteed to jump ahead of entries the leader already has.
+    enqueueObserverManifestOnly(games, entryDepth);
+    return;
+  }
+  const lazy = games.length > LAZY_BUILD_THRESHOLD;
   const newEntries: ReviewQueueEntry[] = [];
   for (const game of games) {
     if (_analyzedGameIds.has(game.id)) continue;
-    if (queue.some(e => e.game.id === game.id)) continue;
 
-    const ctrl  = new AnalyseCtrl(pgnToTree(game.pgn));
-    const total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
+    // Allow re-queuing errored games from the front: remove the stale error entry first.
+    const existingIdx = queue.findIndex(e => e.game.id === game.id);
+    if (existingIdx >= 0) {
+      const existing = queue[existingIdx]!;
+      if (existing.status === 'error') {
+        queue.splice(existingIdx, 1);
+        if (activeIndex > existingIdx) activeIndex--;
+      } else {
+        // Already pending/analyzing/complete — skip.
+        continue;
+      }
+    }
+
+    // See enqueueBulkReview: defer ctrl/cache build above LAZY_BUILD_THRESHOLD.
+    const ctrl  = lazy ? null : new AnalyseCtrl(pgnToTree(game.pgn));
+    const total = ctrl
+      ? (ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0)
+      : estimatePlyCountFromPgn(game.pgn);
     newEntries.push({
       game,
       ctrl,
-      cache:  new Map<string, PositionEval>(),
+      cache:  lazy ? null : new Map<string, PositionEval>(),
+      serializedNodes: lazy ? null : {},
       done:   0,
       total,
       status: 'pending',
-      depth:  reviewDepth,
+      depth:  entryDepth,
     });
   }
 
@@ -422,14 +1280,120 @@ export function enqueueAtFront(games: ImportedGame[]): void {
   // Insert immediately after the active entry so these are next in line.
   const insertAt = activeIndex >= 0 ? activeIndex + 1 : 0;
   queue.splice(insertAt, 0, ...newEntries);
+  for (const entry of newEntries) persistManifestEntry(entry);
 
-  if (!reviewEngineInitStarted) {
+  if (!reviewEngineInitStarted && !reviewEngineFailed) {
     void initReviewEngine('/stockfish-web');
   }
 
-  if (activeIndex < 0) {
+  if (activeIndex < 0 && !reviewEngineFailed) {
     advanceQueue();
   }
+}
+
+/**
+ * Resume an interrupted bulk review run on app startup.
+ * Reads the T05 manifest (persisted on every enqueue/status transition), rebuilds a
+ * `ReviewQueueEntry` for each manifest record whose game still exists in the library,
+ * and rehydrates each entry's eval `cache` from any existing `analysis-library` partial
+ * record so already-analyzed positions are skipped (startEntryBatch only re-queues
+ * positions missing from `entry.cache`).
+ *
+ * - Manifest entries for games no longer in `games` (deleted between sessions) are dropped
+ *   and their stale manifest record is cleared.
+ * - Manifest entries whose game is already `complete` in analysis-library are dropped —
+ *   that game finished between the last manifest write and the crash/reload — and the
+ *   manifest record is cleared so it doesn't reappear on the next resume.
+ * - `error` entries are rebuilt in `error` state (consistent with resetErroredGame's manual
+ *   re-queue path) rather than auto-retried, so a previously-failing game doesn't silently
+ *   retry-loop on every reload.
+ * - Per-entry `depth` is read from the manifest, not the current global `reviewDepth`.
+ */
+export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Promise<void> {
+  setLibraryGamesForReviewQueue(games);
+  // Observer tabs must not rebuild full AnalyseCtrl/eval-cache trees (heavy,
+  // and pointless — they never analyze). Mirror the manifest for display only;
+  // if this tab later wins leadership, takeOverAsLeader() performs the real
+  // (heavy) resume at that point.
+  if (!isCurrentLeader) {
+    await mirrorQueueFromManifest();
+    _redraw();
+    return;
+  }
+
+  const manifest = await loadReviewQueueManifest();
+  if (manifest.length === 0) return;
+
+  const gamesById = new Map(games.map(g => [g.id, g]));
+  const rebuilt: ReviewQueueEntry[] = [];
+
+  for (const record of manifest) {
+    const game = gamesById.get(record.gameId);
+    if (!game) {
+      // Game deleted from the library between sessions — drop it out of the resumed queue.
+      void clearReviewQueueManifestEntry(record.gameId);
+      continue;
+    }
+
+    const stored = await loadAnalysisFromIdb(record.gameId);
+    if (stored?.status === 'complete') {
+      // Finished between the last manifest write and the interruption — nothing to resume.
+      _analyzedGameIds.add(record.gameId);
+      void clearReviewQueueManifestEntry(record.gameId);
+      continue;
+    }
+
+    const ctrl  = new AnalyseCtrl(pgnToTree(game.pgn));
+    const cache = new Map<string, PositionEval>();
+
+
+
+
+    const serializedNodes: Record<string, StoredNodeEntry> = stored ? { ...stored.nodes } : {};
+    // Rehydrate already-analyzed positions from the existing partial record (if any) so
+    // startEntryBatch's `!entry.cache.has(path)` skip logic resumes mid-game, not from ply 0.
+    if (stored) {
+      for (const entry of Object.values(stored.nodes)) {
+        if (!entry.path) continue; // pre-migration node.id-keyed record — skip
+        const ev: PositionEval = {};
+        if (entry.cp    !== undefined) ev.cp    = entry.cp;
+        if (entry.mate  !== undefined) ev.mate  = entry.mate;
+        if (entry.best  !== undefined) ev.best  = entry.best;
+        if (entry.loss  !== undefined) ev.loss  = entry.loss;
+        if (entry.delta !== undefined) ev.delta = entry.delta;
+        if (entry.bestLine !== undefined) ev.moves = entry.bestLine;
+        cache.set(entry.path, ev);
+      }
+    }
+
+    const total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
+    rebuilt.push({
+      game,
+      ctrl,
+      cache,
+      serializedNodes,
+      done:   cache.size,
+      total,
+      // analyzing entries resume as pending — the in-flight position was lost on reload,
+      // advanceQueue/startEntryBatch will pick the game back up from its cache.
+      status: record.status === 'analyzing' ? 'pending' : record.status,
+      depth:  record.depth,
+    });
+  }
+
+  if (rebuilt.length === 0) return;
+
+  queue = rebuilt;
+  activeIndex = -1;
+  for (const entry of rebuilt) persistManifestEntry(entry);
+
+  if (!reviewEngineInitStarted && !reviewEngineFailed) {
+    void initReviewEngine('/stockfish-web');
+  }
+  if (!reviewEngineFailed) {
+    advanceQueue();
+  }
+  _redraw();
 }
 
 export function isBulkRunning(): boolean {
@@ -442,29 +1406,65 @@ export function isBulkPaused(): boolean {
 }
 
 export function cancelBulkReview(): void {
+  // Observer tabs hold no engine/search state to tear down (their queue is a
+  // read-only manifest mirror) — wake the leader to perform the actual cancel
+  // instead of clearing the shared manifest out from under it.
+  if (!isCurrentLeader) {
+    leaderChannel?.postMessage({ type: 'cancel', tabId });
+    return;
+  }
+  clearWatchdog();
+  clearDispatchDefer();
+  reviewWatchdogRetries = 0;
   if (reviewSearchActive) {
-    reviewPendingStopCount++;
+    // Invalidate any in-flight search before stopping so a late bestmove is discarded.
+    reviewSearchGeneration++;
     reviewProtocol.stop();
     reviewSearchActive = false;
+    reviewInflightFen  = '';
   }
+  // The whole manifest is being cleared below, so drop rather than flush any
+  // pending checkpoint — writing it would just be immediately wiped out.
+  cancelReviewCheckpoint();
   queue       = [];
   activeIndex = -1;
   queuePaused = false;
+  resetThroughputSample();
+  void clearReviewQueueManifest();
   _redraw();
 }
 
 export function pauseBulkReview(): void {
+  if (!isCurrentLeader) {
+    leaderChannel?.postMessage({ type: 'pause', tabId });
+    return;
+  }
   if (!isBulkRunning()) return;
   queuePaused = true;
+  clearWatchdog();
+  clearDispatchDefer();
+  reviewWatchdogRetries = 0;
   if (reviewSearchActive) {
-    reviewPendingStopCount++;
+    // Invalidate any in-flight search before stopping so a late bestmove is discarded.
+    reviewSearchGeneration++;
     reviewProtocol.stop();
     reviewSearchActive = false;
+    reviewInflightFen  = '';
   }
+  // Force a checkpoint write now — the queue is going idle, so don't leave the
+  // most recently analyzed positions sitting in the throttle window unsaved.
+  flushReviewCheckpoint();
+  // The queue is idle until resumeBulkReview — the gap between this position
+  // and the next must not be counted as part of the rolling rate.
+  resetThroughputSample();
   _redraw();
 }
 
 export function resumeBulkReview(): void {
+  if (!isCurrentLeader) {
+    leaderChannel?.postMessage({ type: 'resume', tabId });
+    return;
+  }
   if (!queuePaused) return;
   queuePaused = false;
   // Resume the active entry if one was mid-analysis when paused.
@@ -485,13 +1485,82 @@ export function getReviewProgress(gameId: string): number | undefined {
   return Math.round((entry.done / entry.total) * 100);
 }
 
-export function getQueueSummary(): { total: number; done: number; running: boolean } {
+export interface QueueSummary {
+  total:   number;  // games in the current queue (any status)
+  done:    number;  // games with status 'complete'
+  running: boolean;
+
+
+
+
+
+
+  remainingPositions: number;
+  // Rolling EMA positions/sec, or null until at least two positions have
+  // completed in this session (no rate sample yet after a reload/resume).
+  positionsPerSecond: number | null;
+  // Estimated seconds to drain remainingPositions at the current rate, or
+  // null when there's no rate sample yet or nothing left to do.
+  etaSeconds: number | null;
+}
+
+export function getQueueSummary(): QueueSummary {
   const total   = queue.length;
   const done    = queue.filter(e => e.status === 'complete').length;
   const running = isBulkRunning();
-  return { total, done, running };
+
+  let remainingPositions = 0;
+  for (const entry of queue) {
+    if (entry.status === 'complete' || entry.status === 'error') continue;
+    remainingPositions += Math.max(0, entry.total - entry.done);
+  }
+
+  const positionsPerSecond = throughputPosPerSecEma;
+  const etaSeconds = positionsPerSecond && positionsPerSecond > 0 && remainingPositions > 0
+    ? remainingPositions / positionsPerSecond
+    : null;
+
+  return { total, done, running, remainingPositions, positionsPerSecond, etaSeconds };
+}
+
+/** Format an ETA in seconds as a short "Xm Ys" / "Xs" string for header/queue-status display. */
+export function formatEta(etaSeconds: number | null): string | null {
+  if (etaSeconds === null || !Number.isFinite(etaSeconds)) return null;
+  const totalSeconds = Math.max(0, Math.round(etaSeconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  if (minutes < 60) return `${minutes}m ${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return `${hours}h ${remMinutes}m`;
 }
 
 export function getAutoReview(): boolean {
   return importFilters.autoReview;
+}
+
+/** Returns true when a game in the current session queue is in the error state. */
+export function isGameErrored(gameId: string): boolean {
+  const entry = queue.find(e => e.game.id === gameId);
+  return entry?.status === 'error';
+}
+
+/**
+ * Remove a game from the queue so it can be re-queued cleanly.
+ * Only removes entries with `status === 'error'` — does not affect active or
+ * pending entries. Partial IDB results for the game are preserved.
+ */
+export function resetErroredGame(gameId: string): void {
+  if (!isCurrentLeader) {
+    leaderChannel?.postMessage({ type: 'reset-errored', tabId, gameId });
+    return;
+  }
+  const idx = queue.findIndex(e => e.game.id === gameId && e.status === 'error');
+  if (idx < 0) return;
+  queue.splice(idx, 1);
+  // If the active index pointed past the removed entry, adjust it.
+  if (activeIndex > idx) activeIndex--;
+  void clearReviewQueueManifestEntry(gameId);
+  _redraw();
 }

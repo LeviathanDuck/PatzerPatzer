@@ -107,16 +107,41 @@ export function buildReviewEngineMetadata(engineName: string | undefined, review
   };
 }
 
-/**
- * Serialize the mainline eval cache into the StoredNodeEntry map used by saveAnalysisToIdb.
- * Extracted from main.ts so that analysis serialization has a permanent home in the
- * persistence layer next to the types it produces.
- * Mirrors the self-contained serialization approach in
- * lichess-org/lila: ui/analyse/src/idbTree.ts IdbTree.serializeNode.
- */
+type PositionEvalLike = { cp?: number; mate?: number; best?: string; loss?: number; delta?: number; moves?: string[] };
+
+
+
+
+
+
+
+
+
+export function buildAnalysisNodeEntry(nodeId: string, path: string, fen: string, ev: PositionEvalLike): StoredNodeEntry {
+  const entry: StoredNodeEntry = { nodeId, path, fen };
+  if (ev.cp    !== undefined) entry.cp    = ev.cp;
+  if (ev.mate  !== undefined) entry.mate  = ev.mate;
+  if (ev.best  !== undefined) entry.best  = ev.best;
+  if (ev.loss  !== undefined) entry.loss  = ev.loss;
+  if (ev.delta !== undefined) entry.delta = ev.delta;
+  // Persist the primary PV line for retrospection answer reveal and near-best parity.
+  // Mirrors lichess-org/lila: retroCtrl.ts solution line from comp child moves array.
+  if (ev.moves !== undefined && ev.moves.length > 0) entry.bestLine = ev.moves;
+  const label = ev.loss !== undefined ? classifyLoss(ev.loss) : null;
+  if (label !== null) entry.label = label;
+  return entry;
+}
+
+
+
+
+
+
+
+
 export function buildAnalysisNodes(
   mainline: readonly TreeNode[],
-  getEval:  (path: string) => { cp?: number; mate?: number; best?: string; loss?: number; delta?: number; moves?: string[] } | undefined,
+  getEval:  (path: string) => PositionEvalLike | undefined,
 ): Record<string, StoredNodeEntry> {
   const nodes: Record<string, StoredNodeEntry> = {};
   let path = '';
@@ -124,20 +149,7 @@ export function buildAnalysisNodes(
     const node = mainline[i]!;
     path += node.id;
     const ev = getEval(path);
-    if (ev) {
-      const entry: StoredNodeEntry = { nodeId: node.id, path, fen: node.fen };
-      if (ev.cp    !== undefined) entry.cp    = ev.cp;
-      if (ev.mate  !== undefined) entry.mate  = ev.mate;
-      if (ev.best  !== undefined) entry.best  = ev.best;
-      if (ev.loss  !== undefined) entry.loss  = ev.loss;
-      if (ev.delta !== undefined) entry.delta = ev.delta;
-      // Persist the primary PV line for retrospection answer reveal and near-best parity.
-      // Mirrors lichess-org/lila: retroCtrl.ts solution line from comp child moves array.
-      if (ev.moves !== undefined && ev.moves.length > 0) entry.bestLine = ev.moves;
-      const label = ev.loss !== undefined ? classifyLoss(ev.loss) : null;
-      if (label !== null) entry.label = label;
-      nodes[path] = entry;
-    }
+    if (ev) nodes[path] = buildAnalysisNodeEntry(node.id, path, node.fen, ev);
   }
   return nodes;
 }
@@ -203,7 +215,7 @@ export interface StoredGameRecord {
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
-export const DB_VERSION = 12;
+export const DB_VERSION = 13;
 
 let _idb: IDBDatabase | undefined;
 
@@ -274,6 +286,10 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   const accountsStore = ensureStore(db, event, 'accounts', { keyPath: 'id' });
   ensureIndex(accountsStore, 'category', 'category', { unique: false });
   ensureIndex(accountsStore, 'platform', 'platform', { unique: false });
+
+
+
+  ensureStore(db, event, 'review-queue', { keyPath: 'gameId' });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
@@ -564,6 +580,14 @@ export async function listAccountsFromIdb(): Promise<ChessAccount[]> {
 
 // --- Analysis ---
 
+
+
+
+
+
+
+
+
 export async function saveAnalysisToIdb(
   status: AnalysisStatus,
   gameId: string,
@@ -572,7 +596,7 @@ export async function saveAnalysisToIdb(
   reviewEngine?: ReviewEngineMetadata,
 ): Promise<void> {
   try {
-    const existingReviewEngine = reviewEngine === undefined
+    const existingReviewEngine = reviewEngine === undefined && status === 'complete'
       ? (await loadAnalysisFromIdb(gameId))?.reviewEngine
       : undefined;
     const storedReviewEngine = reviewEngine ?? existingReviewEngine;
@@ -663,6 +687,67 @@ export async function listRetroResults(): Promise<RetroSessionResult[]> {
     });
   } catch (e) {
     console.warn('[idb] retro-result list failed', e);
+    return [];
+  }
+}
+
+// --- Background review queue manifest ---
+// Lightweight per-game status record persisted on enqueue and on each status
+// transition in engine/reviewQueue.ts, so a bulk review run survives a reload.
+// Deliberately excludes the full AnalyseCtrl/eval cache — those are rebuilt
+// from the game's PGN and re-analyzed on resume.
+
+export interface ReviewQueueManifestEntry {
+  gameId: string;
+  status: 'pending' | 'analyzing' | 'complete' | 'error';
+  depth:  number;
+  done:   number;
+  total:  number;
+}
+
+export async function saveReviewQueueManifest(entry: ReviewQueueManifestEntry): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('review-queue', 'readwrite');
+    tx.objectStore('review-queue').put(entry);
+    await txDone(tx);
+  } catch (e) {
+    console.warn('[idb] review-queue manifest save failed', e);
+  }
+}
+
+export async function clearReviewQueueManifestEntry(gameId: string): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('review-queue', 'readwrite');
+    tx.objectStore('review-queue').delete(gameId);
+    await txDone(tx);
+  } catch (e) {
+    console.warn('[idb] review-queue manifest clear failed', e);
+  }
+}
+
+export async function clearReviewQueueManifest(): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('review-queue', 'readwrite');
+    tx.objectStore('review-queue').clear();
+    await txDone(tx);
+  } catch (e) {
+    console.warn('[idb] review-queue manifest clear-all failed', e);
+  }
+}
+
+export async function loadReviewQueueManifest(): Promise<ReviewQueueManifestEntry[]> {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('review-queue', 'readonly').objectStore('review-queue').getAll();
+      req.onsuccess = () => resolve((req.result as ReviewQueueManifestEntry[] | undefined) ?? []);
+      req.onerror   = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[idb] review-queue manifest load failed', e);
     return [];
   }
 }
@@ -768,7 +853,7 @@ export async function backfillOpenings(): Promise<number> {
 export async function clearAllIdbData(): Promise<void> {
   try {
     const db = await openGameDb();
-    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts'], 'readwrite');
+    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts', 'review-queue'], 'readwrite');
     tx.objectStore('game-library').clear();
     tx.objectStore('puzzle-library').clear();
     tx.objectStore('analysis-library').clear();
@@ -781,6 +866,7 @@ export async function clearAllIdbData(): Promise<void> {
     tx.objectStore('drill-attempts').clear();
     tx.objectStore('folders').clear();
     tx.objectStore('accounts').clear();
+    tx.objectStore('review-queue').clear();
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror    = () => reject(tx.error);

@@ -8,7 +8,7 @@ import { lichess, importLichess } from '../import/lichess';
 import { pgnState, importPgn } from '../import/pgn';
 import {
   importFilters, SPEED_OPTIONS, DATE_RANGE_OPTIONS,
-  setAutoReview, setAutoReviewConfirmed, setAutoReviewDepth,
+  setAutoReview, setAutoReviewConfirmed, setAutoReviewDepth, setAutoReviewCap,
   currentImportDateRangeConfig,
   importSyncFilterKey,
   type ImportDateRange,
@@ -22,9 +22,10 @@ import { boardSoundEnabled, setBoardSoundEnabled, soundVolume, setSoundVolume } 
 import {
   isBulkRunning, isBulkPaused,
   pauseBulkReview, resumeBulkReview, cancelBulkReview,
-  getQueueSummary, getAutoReview,
+  getQueueSummary, getAutoReview, formatEta,
+  isReviewEngineFailed, isReviewEngineInitializing,
 } from '../engine/reviewQueue';
-import { reviewDepth, setReviewDepth } from '../engine/batch';
+import { reviewDepth, setReviewDepth, reviewMovetime, setReviewMovetime } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
 import {
@@ -494,6 +495,19 @@ function renderNav(route: Route): VNode {
 
 const REVIEW_DEPTHS = [12, 14, 16, 18, 20];
 
+
+
+
+
+
+const REVIEW_MOVETIME_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: 'Off'    },
+  { value: 200,  label: '0.2s'   },
+  { value: 500,  label: '0.5s'   },
+  { value: 1000, label: '1s'     },
+  { value: 2000, label: '2s'     },
+];
+
 // Auto-review depth options: range 2-18, step 2.
 // Multiplier labels approximate Stockfish exponential scaling (~2-3x per ply).
 const AUTO_REVIEW_DEPTHS: { depth: number; label: string }[] = [
@@ -518,20 +532,77 @@ function renderAutoReviewDepthPills(currentDepth: number, onSelect: (d: number) 
   );
 }
 
+// Above this many newly-imported/synced games, auto-review confirms before
+// enqueuing the whole batch (see maybeEnqueueAutoReview in main.ts).
+function renderAutoReviewCapInput(currentCap: number, onChange: (cap: number) => void): VNode {
+  return h('input.review-menu__cap-input', {
+    attrs: { type: 'number', min: 1, max: 1000, value: currentCap, title: 'Confirm before auto-reviewing more than this many games at once' },
+    on: {
+      change: (e: Event) => {
+        const v = parseInt((e.target as HTMLInputElement).value, 10);
+        if (!isNaN(v) && v >= 1 && v <= 1000) onChange(v);
+      },
+    },
+  });
+}
+
 function renderReviewMenu(redraw: () => void): VNode | null {
+  const engineFailed       = isReviewEngineFailed();
+  const engineInitializing = isReviewEngineInitializing();
   const running = isBulkRunning();
   const paused  = isBulkPaused();
   const active  = running || paused;
+
+  // Surface engine init failure as an explicit error state even when no game
+  // is actively running (so the queue never shows a perpetual spinner).
+  if (engineFailed) {
+    return h('div.review-menu', [
+      h('button.review-menu__trigger.review-menu__trigger--error', {
+        class: { active: showReviewMenu },
+        attrs: { title: 'Engine unavailable — review queue halted' },
+        on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
+      }, 'Engine error'),
+      showReviewMenu ? h('div.review-menu__backdrop', {
+        on: { click: () => { showReviewMenu = false; redraw(); } },
+      }) : null,
+      showReviewMenu ? h('div.review-menu__dropdown', [
+        h('div.review-menu__section', [
+          h('div.review-menu__label.review-menu__label--error',
+            'Review engine failed to initialise. SharedArrayBuffer or WASM may be unavailable in this browser context (requires COOP/COEP headers). Reload to retry.'),
+          h('div.review-menu__row', [
+            h('button.review-menu__btn.--cancel', {
+              on: { click: () => { cancelBulkReview(); showReviewMenu = false; redraw(); } },
+            }, 'Dismiss queue'),
+          ]),
+        ]),
+      ]) : null,
+    ]);
+  }
+
+  // Surface the "initializing" state so callers can distinguish it from
+  // "active" (which requires at least one pending/analyzing entry).
+  if (engineInitializing && !active) {
+    return h('div.review-menu', [
+      h('button.review-menu__trigger', {
+        class: { active: false },
+        attrs: { title: 'Review engine loading…', disabled: true },
+      }, 'Engine loading…'),
+    ]);
+  }
+
   if (!active) return null;
   const summary = getQueueSummary();
   const auto    = getAutoReview();
+  const eta     = summary ? formatEta(summary.etaSeconds) : null;
 
   return h('div.review-menu', [
     h('button.review-menu__trigger', {
       class: { active: showReviewMenu || active },
       attrs: { title: 'Bulk Review settings' },
       on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
-    }, summary ? `Reviewing ${summary.done}/${summary.total}` : 'Reviewing…'),
+    }, summary
+      ? `Reviewing ${summary.done}/${summary.total}${eta ? ` · ETA ${eta}` : ''}`
+      : 'Reviewing…'),
 
     showReviewMenu ? h('div.review-menu__backdrop', {
       on: { click: () => { showReviewMenu = false; redraw(); } },
@@ -544,6 +615,11 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         h('div.review-menu__label', summary
           ? `${summary.done} of ${summary.total} game${summary.total === 1 ? '' : 's'} analyzed`
           : 'Reviewing…'),
+        summary && summary.remainingPositions > 0
+          ? h('div.review-menu__label', eta
+              ? `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining · ETA ${eta}`
+              : `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining`)
+          : null,
         h('div.review-menu__row', [
           paused
             ? h('button.review-menu__btn', {
@@ -565,6 +641,18 @@ function renderReviewMenu(redraw: () => void): VNode | null {
             class: { active: reviewDepth === d },
             on: { click: () => { setReviewDepth(d); redraw(); } },
           }, String(d)),
+        )),
+      ]),
+
+      h('div.review-menu__section', [
+        h('div.review-menu__label', {
+          attrs: { title: 'Caps search time per position alongside depth, trading some accuracy for faster bulk review. Off (default) searches to depth only.' },
+        }, `Time budget: ${reviewMovetime === null ? 'Off (depth only)' : `${reviewMovetime}ms`}`),
+        h('div.review-menu__row', REVIEW_MOVETIME_OPTIONS.map(({ value, label }) =>
+          h('button.review-menu__pill', {
+            class: { active: reviewMovetime === value },
+            on: { click: () => { setReviewMovetime(value); redraw(); } },
+          }, label),
         )),
       ]),
 
@@ -1304,6 +1392,10 @@ function renderSyncMenu(
           h('div.review-menu__label', `Auto-review depth: ${importFilters.autoReviewDepth}`),
           h('div.review-menu__row', renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => { setAutoReviewDepth(d); redraw(); })),
         ]) : null,
+        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
+          h('div.review-menu__label', `Confirm before reviewing more than: ${importFilters.autoReviewCap} games`),
+          h('div.review-menu__row', renderAutoReviewCapInput(importFilters.autoReviewCap, (cap) => { setAutoReviewCap(cap); redraw(); })),
+        ]) : null,
       ]) : null,
     ]),
     h('div.header__panel-divider'),
@@ -1467,6 +1559,10 @@ export function renderHeader(deps: HeaderDeps): VNode {
         importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
           h('div.review-menu__label', `Auto-review depth: ${importFilters.autoReviewDepth}`),
           h('div.review-menu__row', renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => { setAutoReviewDepth(d); redraw(); })),
+        ]) : null,
+        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
+          h('div.review-menu__label', `Confirm before reviewing more than: ${importFilters.autoReviewCap} games`),
+          h('div.review-menu__row', renderAutoReviewCapInput(importFilters.autoReviewCap, (cap) => { setAutoReviewCap(cap); redraw(); })),
         ]) : null,
       ]) : null,
     ]),

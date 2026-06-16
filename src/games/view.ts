@@ -9,7 +9,7 @@ import { parsePgnHeader, type ImportedGame } from '../import/types';
 import type { ChessAccount } from '../accounts';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
-import { enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, getQueueSummary } from '../engine/reviewQueue';
+import { enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, getQueueSummary, isGameErrored, formatEta } from '../engine/reviewQueue';
 import { LOSS_THRESHOLDS } from '../engine/winchances';
 import { getMissedMoments, type MissedMoment } from '../engine/tactics';
 
@@ -839,7 +839,11 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     h('div.game-list__header', countLabel),
     toolbar,
     queueSummary
-      ? h('div.game-list__queue-status', `Reviewing ${queueSummary.done} / ${queueSummary.total} games…`)
+      ? h('div.game-list__queue-status', (() => {
+          const eta = formatEta(queueSummary.etaSeconds);
+          const base = `Reviewing ${queueSummary.done} / ${queueSummary.total} games…`;
+          return eta ? `${base} ETA ${eta}` : base;
+        })())
       : null,
     visible.length === 0
       ? h('div.game-list__no-results', 'No games match.')
@@ -848,8 +852,9 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
           const srcUrl          = deps.gameSourceUrl(game);
           const progress        = getReviewProgress(game.id);
-          const isAnalyzing     = progress !== undefined && progress < 100;
-          const isPending       = progress !== undefined && !isAnalyzing && !isAnalyzed;
+          const isErrored       = isGameErrored(game.id);
+          const isAnalyzing     = !isErrored && progress !== undefined && progress < 100;
+          const isPending       = !isErrored && progress !== undefined && !isAnalyzing && !isAnalyzed;
 
           // Accuracy for this game (available once analyzed).
           const rawAcc    = deps.analyzedGameAccuracy.get(game.id);
@@ -859,11 +864,21 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const accuracy  = rawAcc ? { user: userAcc, opp: oppAcc } : undefined;
 
           // Per-row review control:
+          // - error: show error indicator (game can be re-queued)
           // - analyzing: show live % progress
           // - pending in queue (not yet started): show "Queued"
           // - analyzed: show user accuracy % (or nothing if unavailable)
           // - not yet queued: show Review button
-          const reviewControl = isAnalyzing
+          const reviewControl = isErrored
+            ? h('button.game-list__row-progress.--error', {
+                attrs: { type: 'button', title: 'Review failed - retry background review' },
+                on: { click: (e: MouseEvent) => {
+                  e.stopPropagation();
+                  enqueueBulkReview([game]);
+                  deps.redraw();
+                }},
+              }, 'Retry')
+            : isAnalyzing
             ? h('span.game-list__row-progress', `${progress}%`)
             : isPending
               ? h('span.game-list__row-progress.--queued', 'Queued')
@@ -1141,13 +1156,25 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             }
 
             // Review status cell
-            const reviewProgress = !isAnalyzed ? getReviewProgress(game.id) : undefined;
-            const isAnalyzing    = reviewProgress !== undefined && reviewProgress < 100;
+            const reviewProgress  = !isAnalyzed ? getReviewProgress(game.id) : undefined;
+            const isReviewErrored = !isAnalyzed && isGameErrored(game.id);
+            const isAnalyzing     = !isReviewErrored && reviewProgress !== undefined && reviewProgress < 100;
             const reviewCell = isAnalyzed
               ? h('td.games-view__review-cell', [
                   h('span.games-view__reviewed', { attrs: { title: 'Reviewed' } }, '✓'),
                   renderMissedBadge(game.id, hasMissed),
                   accuracyText ? h('span.games-view__accuracy', { attrs: { title: 'Your accuracy' } }, accuracyText) : null,
+                ])
+              : isReviewErrored
+              ? h('td.games-view__review-cell', [
+                  h('button.games-view__review-error', {
+                    attrs: { type: 'button', title: 'Review failed - retry background review' },
+                    on: { click: (e: Event) => {
+                      e.stopPropagation();
+                      enqueueBulkReview([game]);
+                      deps.redraw();
+                    }},
+                  }, 'Retry'),
                 ])
               : isAnalyzing
               ? h('td.games-view__review-cell', [

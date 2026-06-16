@@ -55,6 +55,13 @@ export class StockfishProtocol {
   engineName: string | undefined;
 
   /**
+   * Optional callback invoked when the engine reports an internal error
+   * (e.g. corrupt NNUE data). Set by the queue layer to propagate failures
+   * into the module-level failed state instead of only logging to the console.
+   */
+  onEngineError: ((msg: string) => void) | undefined;
+
+  /**
    * Load Stockfish 18 (smallnet) from baseUrl and begin the UCI handshake.
    * baseUrl is the URL prefix where sf_18_smallnet.{js,wasm} and the NNUE
    * file are served (e.g. "/stockfish-web").
@@ -96,8 +103,10 @@ export class StockfishProtocol {
 
     // Error handler for corrupt NNUE data.
     // Mirrors lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts makeErrorHandler
+    // Promoted into a real failure signal: callers may set onEngineError to be notified.
     this.module.onError = (msg: string) => {
       console.error('[ceval] engine error:', msg);
+      this.onEngineError?.(msg);
     };
 
     // Fetch and load the NNUE evaluation network.

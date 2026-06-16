@@ -128,10 +128,40 @@ function storedInt(key: string, def: number, min: number, max: number): number {
 export let reviewDepth      = storedInt('patzer.reviewDepth', 16, 12, 20);
 export let pendingBatchOnReady = false;
 
+/**
+ * Optional per-position time budget (movetime, in ms) for the background bulk
+ * review queue. `null` (the default) means depth-only search, matching prior
+ * behavior exactly — the engine searches each position to `reviewDepth` with
+ * no time cap. When set, `StockfishProtocol.go(depth, multiPv, movetime)`
+ * stops a search early at whichever limit is hit first, trading some accuracy
+ * for throughput on large bulk-review runs.
+ */
+function storedReviewMovetime(): number | null {
+  const raw = localStorage.getItem('patzer.reviewMovetime');
+  if (raw === null) return null;
+  const v = parseInt(raw, 10);
+  return (!isNaN(v) && v >= REVIEW_MOVETIME_MIN && v <= REVIEW_MOVETIME_MAX) ? v : null;
+}
+
+export const REVIEW_MOVETIME_MIN = 50;
+export const REVIEW_MOVETIME_MAX = 5_000;
+
+export let reviewMovetime: number | null = storedReviewMovetime();
+
 
 // --- Setters (used by main.ts render code and loadGame) ---
 
 export function setReviewDepth(v: number): void      { reviewDepth = v; localStorage.setItem('patzer.reviewDepth', String(v)); }
+
+/** Set the per-position time budget. Pass `null` to return to depth-only mode (the default). */
+export function setReviewMovetime(v: number | null): void {
+  reviewMovetime = v;
+  if (v === null) {
+    localStorage.removeItem('patzer.reviewMovetime');
+  } else {
+    localStorage.setItem('patzer.reviewMovetime', String(v));
+  }
+}
 export function setBatchAnalyzing(v: boolean): void  { batchAnalyzing = v; }
 export function setBatchState(v: BatchState): void   { batchState = v; }
 export function setAnalysisRunning(v: boolean): void { analysisRunning = v; }

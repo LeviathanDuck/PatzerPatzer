@@ -31,6 +31,10 @@ export const importFilters = {
   autoReview:           localStorage.getItem('patzer.autoReview') === 'true',
   autoReviewConfirmed:  localStorage.getItem('patzer.autoReviewConfirmed') === 'true',
   autoReviewDepth:      storedInt('patzer.autoReviewDepth', 12, 2, 18),
+  // Above this many newly-imported games, auto-review must be confirmed before
+  // enqueuing the whole batch — guards against a large import silently starting
+  // a multi-hour background job.
+  autoReviewCap:        storedInt('patzer.autoReviewCap', 20, 1, 1000),
 
 
   importCategory:       null as AccountCategory | null,
@@ -49,6 +53,11 @@ export function setAutoReviewConfirmed(v: boolean): void {
 export function setAutoReviewDepth(v: number): void {
   importFilters.autoReviewDepth = v;
   localStorage.setItem('patzer.autoReviewDepth', String(v));
+}
+
+export function setAutoReviewCap(v: number): void {
+  importFilters.autoReviewCap = v;
+  localStorage.setItem('patzer.autoReviewCap', String(v));
 }
 
 // Icons adapted from lichess-org/lila: ui/lib/src/game/perfIcons.ts + ui/lib/src/licon.ts
