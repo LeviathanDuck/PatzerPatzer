@@ -22,7 +22,7 @@ import { boardSoundEnabled, setBoardSoundEnabled, soundVolume, setSoundVolume } 
 import {
   isBulkRunning, isBulkPaused,
   pauseBulkReview, resumeBulkReview, cancelBulkReview,
-  getQueueSummary, getAutoReview, formatEta,
+  getQueueSummary, getAutoReview, formatReviewDuration,
   isReviewEngineFailed, isReviewEngineInitializing,
 } from '../engine/reviewQueue';
 import { reviewDepth, setReviewDepth, reviewMovetime, setReviewMovetime } from '../engine/batch';
@@ -49,6 +49,9 @@ import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 import { accountId, getAccount, listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
 import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
+
+const HEADER_LOGO_SRC = '/images/patzer-pro-review-lens-logo-package/png/app-icons/patzerpro-app-icon-152.png';
+const PLATFORM_DISCLAIMER = 'Patzer Pro is not affiliated with or endorsed by Chess.com or Lichess.';
 
 // --- Module-level header state ---
 type ImportPlatform = 'chesscom' | 'lichess';
@@ -593,7 +596,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   if (!active) return null;
   const summary = getQueueSummary();
   const auto    = getAutoReview();
-  const eta     = summary ? formatEta(summary.etaSeconds) : null;
+  const elapsed = summary ? formatReviewDuration(summary.elapsedSeconds) : null;
 
   return h('div.review-menu', [
     h('button.review-menu__trigger', {
@@ -601,7 +604,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       attrs: { title: 'Bulk Review settings' },
       on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
     }, summary
-      ? `Reviewing ${summary.done}/${summary.total}${eta ? ` · ETA ${eta}` : ''}`
+      ? `Reviewing ${summary.done}/${summary.total}${elapsed ? ` · Elapsed ${elapsed}` : ''}`
       : 'Reviewing…'),
 
     showReviewMenu ? h('div.review-menu__backdrop', {
@@ -616,8 +619,8 @@ function renderReviewMenu(redraw: () => void): VNode | null {
           ? `${summary.done} of ${summary.total} game${summary.total === 1 ? '' : 's'} analyzed`
           : 'Reviewing…'),
         summary && summary.remainingPositions > 0
-          ? h('div.review-menu__label', eta
-              ? `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining · ETA ${eta}`
+          ? h('div.review-menu__label', elapsed
+              ? `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining · Elapsed ${elapsed}`
               : `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining`)
           : null,
         h('div.review-menu__row', [
@@ -1472,6 +1475,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
           on: { click: () => { importPlatform = 'lichess'; syncImportCategory(redraw); redraw(); } },
         }, 'Lichess'),
       ]),
+      h('p.header__panel-disclaimer', PLATFORM_DISCLAIMER),
     ]),
 
     h('div.header__panel-divider'),
@@ -1618,7 +1622,16 @@ export function renderHeader(deps: HeaderDeps): VNode {
   }) : null;
 
   return h('header.header', [
-    h('a.header__brand', { attrs: { href: '#/' } }, 'Patzer Pro'),
+    h('a.header__brand', { attrs: { href: '#/', 'aria-label': 'Patzer Pro home' } }, [
+      h('img.header__brand-logo', {
+        attrs: {
+          src: HEADER_LOGO_SRC,
+          alt: 'Patzer Pro',
+          width: '30',
+          height: '30',
+        },
+      }),
+    ]),
     renderMobileNav(route, redraw),
 
     h('div.header__search', { key: 'header-search' }, [

@@ -10,7 +10,7 @@ import { evalWinChances } from './winchances';
 import { hasMissedMoments, detectMissedMoments, onMissedMomentConfigChange, getMissedMoments, setMissedMoments, clearMissedMoments, type MissedMoment } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
 import {
-  buildAnalysisNodes, buildAnalysisNodeEntry, buildReviewEngineMetadata, saveAnalysisToIdb, type ReviewEngineMetadata,
+  buildAnalysisNodes, buildAnalysisNodeEntry, buildReviewEngineMetadata, saveAnalysisToIdb, saveAnalysisToIdbStrict, type ReviewEngineMetadata,
   saveReviewQueueManifest, clearReviewQueueManifestEntry, clearReviewQueueManifest,
   loadReviewQueueManifest, loadAnalysisFromIdb, type StoredNodeEntry,
 } from '../idb/index';
@@ -20,6 +20,8 @@ import { importFilters } from '../import/filters';
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
 import type { TreeNode } from '../tree/types';
+import { Chess } from 'chessops/chess';
+import { parseFen } from 'chessops/fen';
 
 
 
@@ -33,6 +35,13 @@ const reviewDebugLogging = localStorage.getItem('patzer.reviewQueueDebug') === '
 
 function reviewDebugLog(...args: unknown[]): void {
   if (reviewDebugLogging) console.log(...args);
+}
+
+function isTerminalReviewFen(fen: string): boolean {
+  const setup = parseFen(fen);
+  if (!setup.isOk) return false;
+  const position = Chess.fromSetup(setup.value);
+  return position.isOk ? position.value.isEnd() : false;
 }
 
 // --- Background engine instance ---
@@ -468,39 +477,14 @@ if (typeof document !== 'undefined') {
 
 
 
+let reviewBatchStartedAt:   number | null = null;
 
-
-
-
-
-
-
-
-
-const THROUGHPUT_EMA_ALPHA = 0.2;
-
-let throughputLastTickAt:  number | null = null;
-let throughputPosPerSecEma: number | null = null;
-
-/** Record one completed position now, updating the rolling positions/sec EMA. */
-function recordThroughputSample(): void {
-  const now = Date.now();
-  if (throughputLastTickAt !== null) {
-    const deltaMs = now - throughputLastTickAt;
-    if (deltaMs > 0) {
-      const instantaneous = 1000 / deltaMs;
-      throughputPosPerSecEma = throughputPosPerSecEma === null
-        ? instantaneous
-        : THROUGHPUT_EMA_ALPHA * instantaneous + (1 - THROUGHPUT_EMA_ALPHA) * throughputPosPerSecEma;
-    }
-  }
-  throughputLastTickAt = now;
+function ensureReviewBatchElapsedStarted(): void {
+  if (reviewBatchStartedAt === null) reviewBatchStartedAt = Date.now();
 }
 
-/** Reset the throughput estimate — called when the queue goes idle (pause/cancel/drain). */
-function resetThroughputSample(): void {
-  throughputLastTickAt   = null;
-  throughputPosPerSecEma = null;
+function resetReviewBatchElapsed(): void {
+  reviewBatchStartedAt = null;
 }
 
 // --- Per-position engine state ---
@@ -924,6 +908,15 @@ function parseReviewLine(line: string): void {
     reviewInflightFen  = '';
     const bestmove = parts[1];
     if (!bestmove || bestmove === '(none)') {
+      const activeItem = reviewItemQueue[reviewItemIndex];
+      if (activeItem && isTerminalReviewFen(activeItem.fen)) {
+        reviewDebugLog('[review-engine] terminal position returned no bestmove; advancing', {
+          fen: activeItem.fen,
+          nodePly: activeItem.nodePly,
+        });
+        onReviewBestmove();
+        return;
+      }
       markActiveEntryErrored(`review engine returned invalid bestmove: ${line.trim()}`);
       return;
     }
@@ -976,7 +969,6 @@ function onReviewBestmove(): void {
   entry.done++;
   reviewItemIndex++;
   reviewCurrentEval = {};
-  recordThroughputSample();
 
   scheduleReviewCheckpoint(entry);
   _redraw();
@@ -1022,60 +1014,69 @@ function sendNextItem(): void {
 // --- Finish a single game ---
 
 function finishEntry(entry: ReviewQueueEntry): void {
-  entry.status = 'complete';
+  void finishEntryAfterDurableSave(entry);
+}
 
-  // Drop any pending throttled partial checkpoint for this entry — the 'complete'
-  // write below immediately supersedes it, so flushing first would be wasted work
-  // and would needlessly delay the complete write.
-  if (checkpointPendingEntry === entry) cancelReviewCheckpoint();
+async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<void> {
+  try {
+    // Drop any pending throttled partial checkpoint for this entry — the 'complete'
+    // write below immediately supersedes it, so flushing first would be wasted work
+    // and would needlessly delay the complete write.
+    if (checkpointPendingEntry === entry) cancelReviewCheckpoint();
 
-  // Entry is still resident at this point (only nulled below, after the IDB write
-  // resolves) — capture non-null local bindings for the synchronous work below.
-  const ctrl  = entry.ctrl!;
-  const cache = entry.cache!;
+    // Entry is still resident until the strict IDB write succeeds.
+    const ctrl  = entry.ctrl!;
+    const cache = entry.cache!;
+    const userColor = _getUserColor(entry.game);
+    const moments = detectMissedMoments(ctrl.mainline, cache, userColor);
+    const summary = computeAnalysisSummary(ctrl.mainline, cache);
+    const reviewEngine = buildReviewEngineMetadata(reviewProtocol.engineName, reviewActiveDepth);
 
-  const userColor = _getUserColor(entry.game);
-  _analyzedGameIds.add(entry.game.id);
-  const moments = detectMissedMoments(ctrl.mainline, cache, userColor);
-  setMissedMoments(entry.game.id, moments);
-  if (moments.length > 0) _missedTacticGameIds.add(entry.game.id);
-  const summary = computeAnalysisSummary(ctrl.mainline, cache);
-  if (summary) {
-    _analyzedGameAccuracy.set(entry.game.id, {
-      white: summary.white.accuracy,
-      black: summary.black.accuracy,
-    });
-  }
+    await saveAnalysisToIdbStrict(
+      'complete',
+      entry.game.id,
+      buildAnalysisNodes(ctrl.mainline, p => cache.get(p)),
+      reviewActiveDepth,
+      reviewEngine,
+    );
 
-  const reviewEngine = buildReviewEngineMetadata(reviewProtocol.engineName, reviewActiveDepth);
-  _setReviewEngineMetadata(entry.game.id, reviewEngine);
+    // The user may have cancelled the queue while the final IDB write was in flight.
+    if (activeIndex < 0 || queue[activeIndex] !== entry) return;
 
-  void saveAnalysisToIdb(
-    'complete',
-    entry.game.id,
-    buildAnalysisNodes(ctrl.mainline, p => cache.get(p)),
-    reviewActiveDepth,
-    reviewEngine,
-  ).then(() => {
+    entry.status = 'complete';
+    _analyzedGameIds.add(entry.game.id);
+    setMissedMoments(entry.game.id, moments);
+    if (moments.length > 0) _missedTacticGameIds.add(entry.game.id);
+    else _missedTacticGameIds.delete(entry.game.id);
+    if (summary) {
+      _analyzedGameAccuracy.set(entry.game.id, {
+        white: summary.white.accuracy,
+        black: summary.black.accuracy,
+      });
+    }
+    _setReviewEngineMetadata(entry.game.id, reviewEngine);
+
     // Results are now durably saved (and resumable per T05/T06), so the heavy
     // per-entry AnalyseCtrl/eval-cache objects are no longer needed in memory —
-    // release them so long bulk runs (e.g. 200+ games) don't retain hundreds of
-    // full move trees (AP-7: unbounded in-memory caches). Only evict if the entry
-    // is still the same completed entry (defensive: a re-queue could in theory
-    // replace it, though resetErroredGame only targets 'error' entries today).
-    if (entry.status === 'complete') {
-      entry.ctrl  = null;
-      entry.cache = null;
-      entry.serializedNodes = null;
-    }
-  });
-  // Terminal state: the full analysis is now durably saved in analysis-library,
-  // so the lightweight queue manifest entry is no longer needed.
-  void clearReviewQueueManifestEntry(entry.game.id);
+    // release them so long bulk runs don't retain hundreds of full move trees.
+    entry.ctrl  = null;
+    entry.cache = null;
+    entry.serializedNodes = null;
 
-  reviewDebugLog('[review-engine] game complete:', entry.game.id);
-  _redraw();
-  advanceQueue();
+    // Terminal state: the full analysis is now durably saved in analysis-library,
+    // so the lightweight queue manifest entry is no longer needed.
+    void clearReviewQueueManifestEntry(entry.game.id);
+
+    reviewDebugLog('[review-engine] game complete:', entry.game.id);
+    _redraw();
+    advanceQueue();
+  } catch (error) {
+    if (activeIndex >= 0 && queue[activeIndex] === entry) {
+      markActiveEntryErrored('review completion save failed', error);
+    } else {
+      console.error('[review-engine] completion save failed after queue state changed', error);
+    }
+  }
 }
 
 // --- Start analysis for a queue entry ---
@@ -1097,6 +1098,13 @@ async function startEntryBatch(entry: ReviewQueueEntry): Promise<void> {
       const node = ctrl.mainline[i]!;
       prevPath = path;
       if (i > 0) path += node.id;
+      if (i > 0 && isTerminalReviewFen(node.fen)) {
+        reviewDebugLog('[review-engine] skipping terminal review position', {
+          gameId: entry.game.id,
+          nodePly: node.ply,
+        });
+        continue;
+      }
       if (!cache.has(path)) {
         items.push({
           nodeId:     node.id,
@@ -1148,11 +1156,12 @@ function advanceQueue(): void {
   const nextIndex = queue.findIndex(e => e.status === 'pending');
   if (nextIndex < 0) {
     activeIndex = -1;
-    resetThroughputSample();
+    resetReviewBatchElapsed();
     _redraw();
     return;
   }
 
+  ensureReviewBatchElapsedStarted();
   activeIndex = nextIndex;
   const entry = queue[activeIndex]!;
   entry.status = 'analyzing';
@@ -1429,7 +1438,7 @@ export function cancelBulkReview(): void {
   queue       = [];
   activeIndex = -1;
   queuePaused = false;
-  resetThroughputSample();
+  resetReviewBatchElapsed();
   void clearReviewQueueManifest();
   _redraw();
 }
@@ -1454,9 +1463,8 @@ export function pauseBulkReview(): void {
   // Force a checkpoint write now — the queue is going idle, so don't leave the
   // most recently analyzed positions sitting in the throttle window unsaved.
   flushReviewCheckpoint();
-  // The queue is idle until resumeBulkReview — the gap between this position
-  // and the next must not be counted as part of the rolling rate.
-  resetThroughputSample();
+  // The queue is idle until resumeBulkReview; elapsed time restarts on resume.
+  resetReviewBatchElapsed();
   _redraw();
 }
 
@@ -1467,6 +1475,7 @@ export function resumeBulkReview(): void {
   }
   if (!queuePaused) return;
   queuePaused = false;
+  ensureReviewBatchElapsedStarted();
   // Resume the active entry if one was mid-analysis when paused.
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (entry && entry.status === 'analyzing' && reviewItemIndex < reviewItemQueue.length) {
@@ -1489,6 +1498,7 @@ export interface QueueSummary {
   total:   number;  // games in the current queue (any status)
   done:    number;  // games with status 'complete'
   running: boolean;
+  elapsedSeconds: number | null;
 
 
 
@@ -1496,18 +1506,16 @@ export interface QueueSummary {
 
 
   remainingPositions: number;
-  // Rolling EMA positions/sec, or null until at least two positions have
-  // completed in this session (no rate sample yet after a reload/resume).
-  positionsPerSecond: number | null;
-  // Estimated seconds to drain remainingPositions at the current rate, or
-  // null when there's no rate sample yet or nothing left to do.
-  etaSeconds: number | null;
 }
 
 export function getQueueSummary(): QueueSummary {
   const total   = queue.length;
   const done    = queue.filter(e => e.status === 'complete').length;
   const running = isBulkRunning();
+  if (running) ensureReviewBatchElapsedStarted();
+  const elapsedSeconds = running && reviewBatchStartedAt !== null
+    ? (Date.now() - reviewBatchStartedAt) / 1000
+    : null;
 
   let remainingPositions = 0;
   for (const entry of queue) {
@@ -1515,18 +1523,13 @@ export function getQueueSummary(): QueueSummary {
     remainingPositions += Math.max(0, entry.total - entry.done);
   }
 
-  const positionsPerSecond = throughputPosPerSecEma;
-  const etaSeconds = positionsPerSecond && positionsPerSecond > 0 && remainingPositions > 0
-    ? remainingPositions / positionsPerSecond
-    : null;
-
-  return { total, done, running, remainingPositions, positionsPerSecond, etaSeconds };
+  return { total, done, running, elapsedSeconds, remainingPositions };
 }
 
-/** Format an ETA in seconds as a short "Xm Ys" / "Xs" string for header/queue-status display. */
-export function formatEta(etaSeconds: number | null): string | null {
-  if (etaSeconds === null || !Number.isFinite(etaSeconds)) return null;
-  const totalSeconds = Math.max(0, Math.round(etaSeconds));
+/** Format a duration in seconds as a short "Xm Ys" / "Xs" string for review status display. */
+export function formatReviewDuration(secondsValue: number | null): string | null {
+  if (secondsValue === null || !Number.isFinite(secondsValue)) return null;
+  const totalSeconds = Math.max(0, Math.round(secondsValue));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   if (minutes === 0) return `${seconds}s`;

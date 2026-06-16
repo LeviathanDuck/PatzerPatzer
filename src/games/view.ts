@@ -9,7 +9,7 @@ import { parsePgnHeader, type ImportedGame } from '../import/types';
 import type { ChessAccount } from '../accounts';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
-import { enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, getQueueSummary, isGameErrored, formatEta } from '../engine/reviewQueue';
+import { enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, getQueueSummary, isGameErrored, formatReviewDuration } from '../engine/reviewQueue';
 import { LOSS_THRESHOLDS } from '../engine/winchances';
 import { getMissedMoments, type MissedMoment } from '../engine/tactics';
 
@@ -840,9 +840,9 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     toolbar,
     queueSummary
       ? h('div.game-list__queue-status', (() => {
-          const eta = formatEta(queueSummary.etaSeconds);
+          const elapsed = formatReviewDuration(queueSummary.elapsedSeconds);
           const base = `Reviewing ${queueSummary.done} / ${queueSummary.total} games…`;
-          return eta ? `${base} ETA ${eta}` : base;
+          return elapsed ? `${base} Elapsed ${elapsed}` : base;
         })())
       : null,
     visible.length === 0

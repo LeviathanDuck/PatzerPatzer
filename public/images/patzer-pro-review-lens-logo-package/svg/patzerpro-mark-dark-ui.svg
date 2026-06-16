@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Patzer Pro review lens mark">
+
+  <g id="review-lens-mark" transform="translate(0 0) scale(1.0)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="438" cy="418" r="228" stroke="#F3F4EF" stroke-width="76"/>
+    <path d="M608 590 L780 762" stroke="#F3F4EF" stroke-width="76"/>
+    <path d="M344 438 L438 532 L594 356" stroke="#42BDA8" stroke-width="72"/>
+  </g>
+</svg>

@@ -94,6 +94,13 @@ export interface StoredAnalysis {
   nodes:           Record<string, StoredNodeEntry>; // keyed by path
 }
 
+export interface CompletedAnalysisMetadata {
+  gameId:       string;
+  reviewEngine?: ReviewEngineMetadata;
+  updatedAt:    number;
+  nodes:        Record<string, StoredNodeEntry>;
+}
+
 // --- Analysis serialization ---
 
 export function buildReviewEngineMetadata(engineName: string | undefined, reviewDepth: number): ReviewEngineMetadata {
@@ -105,6 +112,33 @@ export function buildReviewEngineMetadata(engineName: string | undefined, review
     reviewDepth,
     capturedAt:       new Date().toISOString(),
   };
+}
+
+async function persistAnalysisToIdb(
+  status: AnalysisStatus,
+  gameId: string,
+  nodes:  Record<string, StoredNodeEntry>,
+  depth:  number,
+  reviewEngine?: ReviewEngineMetadata,
+): Promise<void> {
+  const existingReviewEngine = reviewEngine === undefined && status === 'complete'
+    ? (await loadAnalysisFromIdb(gameId))?.reviewEngine
+    : undefined;
+  const storedReviewEngine = reviewEngine ?? existingReviewEngine;
+  const db = await openGameDb();
+  const record: StoredAnalysis = {
+    gameId,
+    analysisVersion: ANALYSIS_VERSION,
+    analysisDepth:   depth,
+    ...(storedReviewEngine !== undefined ? { reviewEngine: storedReviewEngine } : {}),
+    status,
+    updatedAt:       Date.now(),
+    nodes,
+  };
+  const tx = db.transaction('analysis-library', 'readwrite');
+  tx.objectStore('analysis-library').put(record, gameId);
+  await txDone(tx);
+  enqueueMainDbPut('analysis', gameId, record, record.updatedAt);
 }
 
 type PositionEvalLike = { cp?: number; mate?: number; best?: string; loss?: number; delta?: number; moves?: string[] };
@@ -596,27 +630,20 @@ export async function saveAnalysisToIdb(
   reviewEngine?: ReviewEngineMetadata,
 ): Promise<void> {
   try {
-    const existingReviewEngine = reviewEngine === undefined && status === 'complete'
-      ? (await loadAnalysisFromIdb(gameId))?.reviewEngine
-      : undefined;
-    const storedReviewEngine = reviewEngine ?? existingReviewEngine;
-    const db = await openGameDb();
-    const record: StoredAnalysis = {
-      gameId,
-      analysisVersion: ANALYSIS_VERSION,
-      analysisDepth:   depth,
-      ...(storedReviewEngine !== undefined ? { reviewEngine: storedReviewEngine } : {}),
-      status,
-      updatedAt:       Date.now(),
-      nodes,
-    };
-    const tx = db.transaction('analysis-library', 'readwrite');
-    tx.objectStore('analysis-library').put(record, gameId);
-    await txDone(tx);
-    enqueueMainDbPut('analysis', gameId, record, record.updatedAt);
+    await persistAnalysisToIdb(status, gameId, nodes, depth, reviewEngine);
   } catch (e) {
     console.warn('[idb] analysis save failed', e);
   }
+}
+
+export async function saveAnalysisToIdbStrict(
+  status: AnalysisStatus,
+  gameId: string,
+  nodes:  Record<string, StoredNodeEntry>,
+  depth:  number,
+  reviewEngine?: ReviewEngineMetadata,
+): Promise<void> {
+  await persistAnalysisToIdb(status, gameId, nodes, depth, reviewEngine);
 }
 
 export async function loadAnalysisFromIdb(gameId: string): Promise<StoredAnalysis | undefined> {
@@ -632,6 +659,43 @@ export async function loadAnalysisFromIdb(gameId: string): Promise<StoredAnalysi
     console.warn('[idb] analysis load failed', e);
     return undefined;
   }
+}
+
+export async function listCompletedAnalysisMetadataFromIdb(
+  analysisVersion: number,
+  analysisDepth: number,
+): Promise<CompletedAnalysisMetadata[]> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const records: CompletedAnalysisMetadata[] = [];
+    const req = db.transaction('analysis-library', 'readonly')
+      .objectStore('analysis-library')
+      .openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(records);
+        return;
+      }
+      const stored = cursor.value as StoredAnalysis;
+      if (
+        stored?.status === 'complete'
+        && stored.analysisVersion === analysisVersion
+        && stored.analysisDepth === analysisDepth
+        && typeof stored.gameId === 'string'
+        && stored.gameId.trim()
+      ) {
+        records.push({
+          gameId: stored.gameId,
+          ...(stored.reviewEngine !== undefined ? { reviewEngine: stored.reviewEngine } : {}),
+          updatedAt: typeof stored.updatedAt === 'number' ? stored.updatedAt : 0,
+          nodes: stored.nodes ?? {},
+        });
+      }
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
 }
 
 export async function clearAnalysisFromIdb(gameId: string): Promise<void> {

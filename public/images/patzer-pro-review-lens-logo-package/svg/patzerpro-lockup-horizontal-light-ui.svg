@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="300" viewBox="0 0 1180 300" role="img" aria-label="Patzer Pro horizontal logo">
+  <rect width="1180" height="300" fill="none"/>
+  <g transform="translate(52 46) scale(0.208)">
+
+  <g id="review-lens-mark" transform="translate(0 0) scale(1.0)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="438" cy="418" r="228" stroke="#101212" stroke-width="76"/>
+    <path d="M608 590 L780 762" stroke="#101212" stroke-width="76"/>
+    <path d="M344 438 L438 532 L594 356" stroke="#42BDA8" stroke-width="72"/>
+  </g>
+</g>
+  <text x="310" y="154" fill="#101212" font-family="Inter, SF Pro Display, Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="112" font-weight="850" letter-spacing="-3">Patzer Pro</text>
+  <text x="316" y="216" fill="#515756" font-family="Inter, SF Pro Display, Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="31" font-weight="700" letter-spacing="6">REVIEW • ANALYZE • IMPROVE</text>
+</svg>

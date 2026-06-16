@@ -24,6 +24,7 @@ const OUTBOX_KEY = 'chesspatzer.remoteSync.outbox';
 const DEVICE_TAG_KEY = 'chesspatzer.remoteSync.deviceTag';
 const SYNC_LOG_KEY = 'chesspatzer.remoteSync.syncLog';
 export const REMOTE_SYNC_LOG_EVENT = 'chesspatzer:remoteSync-sync-log-changed';
+export const REMOTE_SYNC_ANALYSIS_CHANGED_EVENT = 'chesspatzer:remoteSync-analysis-changed';
 const RELOAD_ON_SETTINGS_PULL_KEY = 'chesspatzer.remoteSync.settingsReloadedAt';
 const SETTING_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.settingUpdatedAt.';
 const ITEM_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.itemUpdatedAt.';
@@ -166,6 +167,10 @@ function normalizeLogEntry(value: unknown): RemoteSyncLogEntry | null {
 
 function emitSyncLogChanged(): void {
   window.dispatchEvent(new CustomEvent(REMOTE_SYNC_LOG_EVENT));
+}
+
+function emitAnalysisChanged(): void {
+  window.dispatchEvent(new CustomEvent(REMOTE_SYNC_ANALYSIS_CHANGED_EVENT));
 }
 
 export function getRemoteSyncDeviceTag(): string {
@@ -1249,6 +1254,7 @@ export async function applyRemoteSyncItems(
   options: { generation?: number } = {},
 ): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
+  let analysisChanged = false;
   applyingRemoteSync = true;
   try {
     for (const raw of items) {
@@ -1266,6 +1272,9 @@ export async function applyRemoteSyncItems(
         const result = item.store === 'settings'
           ? applySettingItem(item)
           : await applyIdbItem(item);
+        if (item.store === 'analysis' && (result === 'applied' || result === 'deleted')) {
+          analysisChanged = true;
+        }
         if (result === 'applied') counts[item.store] = (counts[item.store] ?? 0) + 1;
         else if (result === 'deleted') counts[`${item.store}:deleted`] = (counts[`${item.store}:deleted`] ?? 0) + 1;
         else counts.skipped = (counts.skipped ?? 0) + 1;
@@ -1277,6 +1286,7 @@ export async function applyRemoteSyncItems(
     }
   } finally {
     applyingRemoteSync = false;
+    if (analysisChanged) emitAnalysisChanged();
   }
   return counts;
 }

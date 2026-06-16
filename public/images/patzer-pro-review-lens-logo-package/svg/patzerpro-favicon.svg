@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Patzer Pro favicon">
+  <rect width="64" height="64" rx="14" fill="#101212"/>
+  <circle cx="27.4" cy="26" r="13.9" fill="none" stroke="#F3F4EF" stroke-width="5.3" stroke-linecap="round"/>
+  <path d="M38.3 36.8 L49.1 47.6" fill="none" stroke="#F3F4EF" stroke-width="5.3" stroke-linecap="round"/>
+  <path d="M21.7 27.1 L27.4 32.8 L36.8 22.2" fill="none" stroke="#42BDA8" stroke-width="5.1" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

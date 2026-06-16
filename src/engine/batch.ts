@@ -127,6 +127,7 @@ function storedInt(key: string, def: number, min: number, max: number): number {
 
 export let reviewDepth      = storedInt('patzer.reviewDepth', 16, 12, 20);
 export let pendingBatchOnReady = false;
+export const REVIEW_DEPTH_CHANGED_EVENT = 'patzer:review-depth-changed';
 
 /**
  * Optional per-position time budget (movetime, in ms) for the background bulk
@@ -151,7 +152,11 @@ export let reviewMovetime: number | null = storedReviewMovetime();
 
 // --- Setters (used by main.ts render code and loadGame) ---
 
-export function setReviewDepth(v: number): void      { reviewDepth = v; localStorage.setItem('patzer.reviewDepth', String(v)); }
+export function setReviewDepth(v: number): void {
+  reviewDepth = v;
+  localStorage.setItem('patzer.reviewDepth', String(v));
+  window.dispatchEvent(new CustomEvent(REVIEW_DEPTH_CHANGED_EVENT, { detail: { reviewDepth } }));
+}
 
 /** Set the per-position time budget. Pass `null` to return to depth-only mode (the default). */
 export function setReviewMovetime(v: number | null): void {
