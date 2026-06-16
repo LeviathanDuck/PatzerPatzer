@@ -171,6 +171,23 @@ function readAllFromStore(db: IDBDatabase, storeName: string): Promise<unknown[]
   });
 }
 
+function readLegacyImportedGameCount(db: IDBDatabase): Promise<number> {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains('game-library')) return resolve(0);
+    const req = db.transaction('game-library', 'readonly').objectStore('game-library').get('imported-games');
+    req.onsuccess = () => {
+      const games = (req.result as { games?: unknown[] } | undefined)?.games;
+      resolve(Array.isArray(games) ? games.length : 0);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function readGameCountWithLegacyFallback(db: IDBDatabase): Promise<number> {
+  const games = await readAllFromStore(db, 'games');
+  return games.length > 0 ? games.length : readLegacyImportedGameCount(db);
+}
+
 /** Read records from a store where updatedAt > since. Falls back to getAll when since is undefined. */
 function readFromStoreSince(db: IDBDatabase, storeName: string, since: number | undefined): Promise<unknown[]> {
   if (since === undefined) return readAllFromStore(db, storeName);
@@ -380,7 +397,7 @@ export interface DataCounts {
 export async function getLocalDataCounts(): Promise<DataCounts> {
   try {
     const mainDb = await openIdb(MAIN_DB_NAME, MAIN_DB_VERSION);
-    const games = await readAllFromStore(mainDb, 'games');
+    const gameCount = await readGameCountWithLegacyFallback(mainDb);
     const analysis = await readAllFromStore(mainDb, 'analysis-library');
     mainDb.close();
 
@@ -391,7 +408,7 @@ export async function getLocalDataCounts(): Promise<DataCounts> {
     puzzleDb.close();
 
     return {
-      games: games.length,
+      games: gameCount,
       analysis: analysis.length,
       puzzleDefinitions: defs.length,
       puzzleAttempts: attempts.length,
