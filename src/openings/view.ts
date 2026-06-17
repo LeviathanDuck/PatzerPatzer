@@ -3284,9 +3284,29 @@ function extractGameUrl(pgn: string): string | null {
   return null;
 }
 
+type SampleGameOutcome = 'win' | 'loss' | 'draw' | null;
+
+function sampleGameOutcomeForTarget(game: ResearchGame, target?: string): SampleGameOutcome {
+  const normalizedTarget = target?.trim().toLowerCase();
+  if (!normalizedTarget) return null;
+
+  const result = game.result?.trim();
+  if (!result || result === '*') return null;
+  if (result === '1/2-1/2' || result === '\u00BD-\u00BD') return 'draw';
+
+  const isTargetWhite = game.white?.trim().toLowerCase() === normalizedTarget;
+  const isTargetBlack = game.black?.trim().toLowerCase() === normalizedTarget;
+  if (!isTargetWhite && !isTargetBlack) return null;
+
+  if ((isTargetWhite && result === '1-0') || (isTargetBlack && result === '0-1')) return 'win';
+  if ((isTargetWhite && result === '0-1') || (isTargetBlack && result === '1-0')) return 'loss';
+  return null;
+}
+
 function renderSampleGameRow(game: ResearchGame): VNode {
   const players = [game.white ?? '?', game.black ?? '?'].join(' vs ');
   const result = game.result ?? '*';
+  const targetOutcome = sampleGameOutcomeForTarget(game, activeCollection()?.target);
   const info: string[] = [];
   if (game.opening) info.push(game.opening);
   if (game.date) info.push(game.date);
@@ -3303,7 +3323,13 @@ function renderSampleGameRow(game: ResearchGame): VNode {
   }, [
     h('div.openings__sample-players', [
       h('span', players),
-      h('span.openings__sample-result', result),
+      h('span.openings__sample-result', {
+        class: {
+          'openings__sample-result--win': targetOutcome === 'win',
+          'openings__sample-result--loss': targetOutcome === 'loss',
+          'openings__sample-result--draw': targetOutcome === 'draw',
+        },
+      }, result),
     ]),
     info.length > 0
       ? h('div.openings__sample-info', [
