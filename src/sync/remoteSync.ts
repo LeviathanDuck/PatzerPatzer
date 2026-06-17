@@ -8,6 +8,7 @@
 import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION, upgradeGameDbSchema } from '../idb/index';
 import type { SyncResult } from './client';
 import {
+  REMOTE_SYNC_STORE_NAMES,
   migrateRemoteSyncItem,
   type RemoteSyncItem,
   type RemoteSyncOperation,
@@ -23,15 +24,19 @@ const LAST_SYNC_KEY = 'chesspatzer.remoteSync.lastSyncedAt';
 const OUTBOX_KEY = 'chesspatzer.remoteSync.outbox';
 const DEVICE_TAG_KEY = 'chesspatzer.remoteSync.deviceTag';
 const SYNC_LOG_KEY = 'chesspatzer.remoteSync.syncLog';
+const SERVER_GENERATION_KEY = 'chesspatzer.remoteSync.syncGeneration';
+const FULL_PULL_REQUIRED_KEY = 'chesspatzer.remoteSync.fullPullRequired';
 export const REMOTE_SYNC_LOG_EVENT = 'chesspatzer:remoteSync-sync-log-changed';
 export const REMOTE_SYNC_ANALYSIS_CHANGED_EVENT = 'chesspatzer:remoteSync-analysis-changed';
 const RELOAD_ON_SETTINGS_PULL_KEY = 'chesspatzer.remoteSync.settingsReloadedAt';
 const SETTING_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.settingUpdatedAt.';
 const ITEM_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.itemUpdatedAt.';
 const PUSH_BATCH_SIZE = 100;
+const RESTORE_CHUNK_SIZE = 100;
 const FLUSH_DEBOUNCE_MS = 250;
 const FLUSH_INTERVAL_MS = 15_000;
 const SYNC_LOG_LIMIT = 80;
+const BACKUP_FORMAT = 'patzer-sync-backup';
 
 export type { RemoteSyncItem, RemoteSyncOperation, RemoteSyncStoreName };
 export type RemoteStoreName = RemoteSyncStoreName;
@@ -46,6 +51,9 @@ export interface RemoteSyncPersistenceOperation {
 }
 
 export type RemoteSyncLogAction =
+  | 'backup'
+  | 'restore'
+  | 'invalidate'
   | 'login'
   | 'logout'
   | 'test'
@@ -75,6 +83,13 @@ interface PullResponse {
   error?: string;
 }
 
+interface ApiErrorBody {
+  error?: string;
+  code?: string;
+  syncGeneration?: number;
+  generationReason?: string;
+}
+
 interface OutboxSnapshot {
   valid: RemoteSyncItem[];
   preservedInvalid: unknown[];
@@ -93,7 +108,44 @@ interface StatusResponse {
   tombstones?: number;
   latestUpdatedAt?: number;
   stores?: Record<string, StatusStoreSummary>;
+  syncGeneration?: number;
+  generationReason?: string;
+  code?: string;
   error?: string;
+}
+
+interface BackupCounts {
+  items: number;
+  tombstones: number;
+  stores: Record<string, { items: number; tombstones: number }>;
+}
+
+interface RawBackupBundle {
+  ok?: boolean;
+  format?: string;
+  version?: number;
+  exportedAt?: string;
+  userKey?: string;
+  syncGeneration?: number;
+  generationReason?: string;
+  items?: unknown[];
+  counts?: unknown;
+  skippedMalformedJson?: number;
+  error?: string;
+}
+
+export interface RemoteSyncBackupPreview {
+  fileName: string;
+  exportedAt: string;
+  userKey?: string;
+  syncGeneration: number;
+  generationReason?: string;
+  currentSyncGeneration: number;
+  expectedSyncGeneration: number;
+  items: RemoteSyncItem[];
+  counts: BackupCounts;
+  hash: string;
+  warnings: string[];
 }
 
 type IdbKeyMode = 'keyPath' | 'explicit' | 'scan';
@@ -171,6 +223,54 @@ function emitSyncLogChanged(): void {
 
 function emitAnalysisChanged(): void {
   window.dispatchEvent(new CustomEvent(REMOTE_SYNC_ANALYSIS_CHANGED_EVENT));
+}
+
+class RemoteSyncStaleSessionError extends Error {
+  readonly syncGeneration: number | undefined;
+  readonly generationReason: string | undefined;
+
+  constructor(body: ApiErrorBody) {
+    super(body.error || 'This browser session is stale. Re-enter the admin token and pull before pushing.');
+    this.name = 'RemoteSyncStaleSessionError';
+    this.syncGeneration = body.syncGeneration;
+    this.generationReason = body.generationReason;
+  }
+}
+
+function storedServerGeneration(): number | undefined {
+  const raw = localStorage.getItem(SERVER_GENERATION_KEY);
+  if (!raw) return undefined;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+export function getRemoteSyncGeneration(): number | undefined {
+  return storedServerGeneration();
+}
+
+function rememberServerGeneration(generation: unknown, reason?: unknown): void {
+  if (typeof generation !== 'number' || !Number.isFinite(generation) || generation <= 0) return;
+  localStorage.setItem(SERVER_GENERATION_KEY, String(Math.floor(generation)));
+  if (typeof reason === 'string' && reason.trim()) {
+    localStorage.setItem(`${SERVER_GENERATION_KEY}.reason`, reason);
+  }
+}
+
+function clearServerGeneration(): void {
+  localStorage.removeItem(SERVER_GENERATION_KEY);
+  localStorage.removeItem(`${SERVER_GENERATION_KEY}.reason`);
+}
+
+export function isRemoteSyncFullPullRequired(): boolean {
+  return localStorage.getItem(FULL_PULL_REQUIRED_KEY) === '1';
+}
+
+function requireRemoteSyncFullPull(): void {
+  localStorage.setItem(FULL_PULL_REQUIRED_KEY, '1');
+}
+
+function clearRemoteSyncFullPullRequirement(): void {
+  localStorage.removeItem(FULL_PULL_REQUIRED_KEY);
 }
 
 export function getRemoteSyncDeviceTag(): string {
@@ -525,6 +625,7 @@ let visibilityFlushHandler: (() => void) | null = null;
 let settingsObserverInstalled = false;
 let applyingRemoteSync = false;
 let syncGeneration = 0;
+let skipNextStartupPush = false;
 
 function specForPersistenceOperation(operation: RemoteSyncPersistenceOperation): IdbStoreSpec | undefined {
   const directStore = IDB_SPECS_BY_STORE.get(operation.storeName as RemoteSyncStoreName);
@@ -534,6 +635,7 @@ function specForPersistenceOperation(operation: RemoteSyncPersistenceOperation):
 
 function scheduleRemoteSyncFlush(delayMs = FLUSH_DEBOUNCE_MS): void {
   if (!hasRemoteSyncToken()) return;
+  if (isRemoteSyncFullPullRequired()) return;
   if (flushDebounceTimer !== null) window.clearTimeout(flushDebounceTimer);
   flushDebounceTimer = window.setTimeout(() => {
     flushDebounceTimer = null;
@@ -626,6 +728,58 @@ function openIdb(name: string, version: number): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+function groupSyncedStoresByDb(): Map<string, { dbName: string; dbVersion: number; stores: Set<string> }> {
+  const groups = new Map<string, { dbName: string; dbVersion: number; stores: Set<string> }>();
+  for (const spec of IDB_STORE_SPECS) {
+    const key = `${spec.dbName}::${spec.dbVersion}`;
+    const group = groups.get(key) ?? { dbName: spec.dbName, dbVersion: spec.dbVersion, stores: new Set<string>() };
+    group.stores.add(spec.objectStore);
+    if (spec.store === 'games') group.stores.add('game-library');
+    groups.set(key, group);
+  }
+  return groups;
+}
+
+function clearStores(db: IDBDatabase, storeNames: string[]): Promise<void> {
+  const existing = storeNames.filter(storeName => db.objectStoreNames.contains(storeName));
+  if (existing.length === 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(existing, 'readwrite');
+    for (const storeName of existing) tx.objectStore(storeName).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+async function clearLocalSyncedIdbStores(): Promise<void> {
+  for (const group of groupSyncedStoresByDb().values()) {
+    const db = await openIdb(group.dbName, group.dbVersion);
+    try {
+      await clearStores(db, [...group.stores]);
+    } finally {
+      db.close();
+    }
+  }
+}
+
+function clearLocalSyncedSettings(): void {
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && isAllowedSettingKey(key)) keysToRemove.push(key);
+  }
+  withSettingsRemoteApplySuppressed(() => {
+    for (const key of keysToRemove) localStorage.removeItem(key);
+  });
+}
+
+async function clearLocalSyncedDataForRestore(): Promise<void> {
+  await clearLocalSyncedIdbStores();
+  clearLocalSyncedSettings();
+  clearRemoteSyncMarkers({ clearOutbox: true });
 }
 
 function readAllFromStore(db: IDBDatabase, storeName: string): Promise<IdbRecord[]> {
@@ -857,14 +1011,15 @@ export function clearRemoteSyncToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-export function startRemoteSyncAutoSync(): void {
+export function startRemoteSyncAutoSync(options: { pushAfterHydrate?: boolean } = {}): void {
   if (autoSyncStarted) return;
   autoSyncStarted = true;
   const generation = syncGeneration;
+  const pushAfterHydrate = options.pushAfterHydrate ?? true;
   installSettingsObserver();
 
   visibilityFlushHandler = () => {
-    if (document.visibilityState === 'visible') void pullFromRemoteSync({ flushAfter: true });
+    if (document.visibilityState === 'visible') void pullFromRemoteSync({ flushAfter: !isRemoteSyncFullPullRequired() });
   };
   window.addEventListener('visibilitychange', visibilityFlushHandler);
 
@@ -874,7 +1029,9 @@ export function startRemoteSyncAutoSync(): void {
 
   void hydrateFromRemoteSync()
     .then(() => {
-      if (syncGeneration === generation && hasRemoteSyncToken()) return pushToRemoteSync();
+      const shouldPush = pushAfterHydrate && !skipNextStartupPush && !isRemoteSyncFullPullRequired();
+      skipNextStartupPush = false;
+      if (shouldPush && syncGeneration === generation && hasRemoteSyncToken()) return pushToRemoteSync();
       return { success: true, counts: {} };
     })
     .catch(error => console.warn('[remote-sync] Startup hydrate failed', error));
@@ -903,10 +1060,11 @@ export function logoutRemoteSync(): void {
   recordRemoteSyncLog('logout', 'info', 'Token session cleared for this browser.');
 }
 
-export function clearRemoteSyncLocalSyncState(): void {
-  logoutRemoteSync();
+function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneration?: boolean; clearFullPull?: boolean } = {}): void {
   localStorage.removeItem(LAST_SYNC_KEY);
-  localStorage.removeItem(OUTBOX_KEY);
+  if (options.clearOutbox) localStorage.removeItem(OUTBOX_KEY);
+  if (options.clearGeneration) clearServerGeneration();
+  if (options.clearFullPull) clearRemoteSyncFullPullRequirement();
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -914,6 +1072,11 @@ export function clearRemoteSyncLocalSyncState(): void {
     if (key.startsWith(ITEM_UPDATED_AT_PREFIX) || key.startsWith(SETTING_UPDATED_AT_PREFIX)) keysToRemove.push(key);
   }
   for (const key of keysToRemove) localStorage.removeItem(key);
+}
+
+export function clearRemoteSyncLocalSyncState(): void {
+  logoutRemoteSync();
+  clearRemoteSyncMarkers({ clearOutbox: true, clearGeneration: true, clearFullPull: true });
 }
 
 export function getRemoteSyncLastSyncedAt(): string | null {
@@ -942,20 +1105,37 @@ async function readJsonResponse<T>(res: Response): Promise<T> {
   }
 }
 
+function handleStaleSession(body: ApiErrorBody): never {
+  rememberServerGeneration(body.syncGeneration, body.generationReason);
+  stopRemoteSyncAutoSync();
+  clearRemoteSyncToken();
+  clearRemoteSyncMarkers({ clearOutbox: true });
+  requireRemoteSyncFullPull();
+  const error = new RemoteSyncStaleSessionError(body);
+  recordRemoteSyncLog('system', 'error', error.message, body.syncGeneration ? { syncGeneration: body.syncGeneration } : undefined);
+  throw error;
+}
+
 async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOverride?: string): Promise<T> {
   const token = (tokenOverride ?? storedToken()).trim();
   if (!token) throw new Error('Enter the admin sync token first.');
 
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${token}`);
+  const generation = storedServerGeneration();
+  if (generation !== undefined) headers.set('X-Patzer-Sync-Generation', String(generation));
   const res = await fetch(`${API_BASE}/${path}`, {
     ...init,
     headers,
     credentials: 'same-origin',
     cache: 'no-store',
   });
-  const body = await readJsonResponse<{ error?: string } & T>(res);
-  if (!res.ok) throw new Error(body.error || `Remote sync API failed: ${res.status}`);
+  const body = await readJsonResponse<ApiErrorBody & T>(res);
+  rememberServerGeneration(body.syncGeneration, body.generationReason);
+  if (!res.ok) {
+    if (body.code === 'stale-session') handleStaleSession(body);
+    throw new Error(body.error || `Remote sync API failed: ${res.status}`);
+  }
   return body as T;
 }
 
@@ -965,6 +1145,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+async function ensureServerGenerationLoaded(): Promise<void> {
+  if (storedServerGeneration() !== undefined) return;
+  const status = await remoteSyncFetch<StatusResponse>('status.php');
+  if (!status.ok) throw new Error(status.error || 'Remote sync status failed.');
 }
 
 function isDeletedItem(item: Pick<RemoteSyncItem, 'deleted' | 'operation'>): boolean {
@@ -985,6 +1171,160 @@ function normalizeSyncItem(
     recordRemoteSyncLog(options.logAction ?? 'pull', 'error', `Skipped ${target}: ${migrated.reason}`);
   }
   return null;
+}
+
+function numericField(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : undefined;
+}
+
+function computeBackupCounts(items: RemoteSyncItem[]): BackupCounts {
+  const counts: BackupCounts = { items: 0, tombstones: 0, stores: {} };
+  for (const item of items) {
+    const deleted = isDeletedItem(item);
+    counts.items++;
+    if (deleted) counts.tombstones++;
+    counts.stores[item.store] ??= { items: 0, tombstones: 0 };
+    counts.stores[item.store]!.items++;
+    if (deleted) counts.stores[item.store]!.tombstones++;
+  }
+  return counts;
+}
+
+function declaredBackupCounts(raw: unknown): BackupCounts {
+  const obj = objectValue(raw);
+  if (!obj) throw new Error('Backup counts are missing.');
+  const items = numericField(obj.items);
+  const tombstones = numericField(obj.tombstones);
+  const storesObj = objectValue(obj.stores);
+  if (items === undefined || tombstones === undefined || !storesObj) {
+    throw new Error('Backup counts must include items, tombstones, and stores.');
+  }
+  const stores: BackupCounts['stores'] = {};
+  for (const [store, value] of Object.entries(storesObj)) {
+    if (!REMOTE_SYNC_STORE_NAMES.includes(store as RemoteSyncStoreName)) {
+      throw new Error(`Backup counts include unsupported store ${store}.`);
+    }
+    const summary = objectValue(value);
+    const storeItems = numericField(summary?.items);
+    const storeTombstones = numericField(summary?.tombstones);
+    if (storeItems === undefined || storeTombstones === undefined) {
+      throw new Error(`Backup counts for ${store} are malformed.`);
+    }
+    stores[store] = { items: storeItems, tombstones: storeTombstones };
+  }
+  return { items, tombstones, stores };
+}
+
+function assertBackupCountsMatch(declared: BackupCounts, computed: BackupCounts): void {
+  if (declared.items !== computed.items || declared.tombstones !== computed.tombstones) {
+    throw new Error('Backup item counts do not match the item list.');
+  }
+  const stores = new Set([...Object.keys(declared.stores), ...Object.keys(computed.stores)]);
+  for (const store of stores) {
+    const expected = declared.stores[store] ?? { items: 0, tombstones: 0 };
+    const actual = computed.stores[store] ?? { items: 0, tombstones: 0 };
+    if (expected.items !== actual.items || expected.tombstones !== actual.tombstones) {
+      throw new Error(`Backup counts do not match item list for ${store}.`);
+    }
+  }
+}
+
+function normalizeBackupBundle(raw: unknown, fileName: string): {
+  exportedAt: string;
+  userKey?: string;
+  syncGeneration: number;
+  generationReason?: string;
+  items: RemoteSyncItem[];
+  counts: BackupCounts;
+  warnings: string[];
+} {
+  const bundle = objectValue(raw) as RawBackupBundle | null;
+  if (!bundle) throw new Error('Backup file must contain a JSON object.');
+  if (bundle.format !== BACKUP_FORMAT) throw new Error('Backup file is not a Patzer sync backup.');
+  if (bundle.version !== 1) throw new Error('Backup version is not supported.');
+  if (typeof bundle.exportedAt !== 'string' || !Number.isFinite(new Date(bundle.exportedAt).getTime())) {
+    throw new Error('Backup is missing a valid exportedAt timestamp.');
+  }
+  if (!Array.isArray(bundle.items)) throw new Error('Backup file is missing the items array.');
+
+  const items: RemoteSyncItem[] = [];
+  for (const rawItem of bundle.items) {
+    const item = normalizeSyncItem(rawItem, { requireUpdatedAt: true });
+    if (!item) throw new Error('Backup contains an invalid sync item.');
+    if (item.updatedAt <= 0) throw new Error(`Backup item ${item.store}/${item.itemKey} has an invalid updatedAt.`);
+    items.push(item);
+  }
+
+  const computed = computeBackupCounts(items);
+  const declared = declaredBackupCounts(bundle.counts);
+  assertBackupCountsMatch(declared, computed);
+  const syncGeneration = typeof bundle.syncGeneration === 'number' && Number.isFinite(bundle.syncGeneration)
+    ? Math.max(1, Math.floor(bundle.syncGeneration))
+    : 1;
+  const warnings: string[] = [];
+  if ((bundle.skippedMalformedJson ?? 0) > 0) {
+    warnings.push(`${bundle.skippedMalformedJson} malformed row${bundle.skippedMalformedJson === 1 ? '' : 's'} were skipped during export.`);
+  }
+  if (fileName.toLowerCase().endsWith('.json') === false) warnings.push('Backup file does not use a .json extension.');
+
+  return {
+    exportedAt: bundle.exportedAt,
+    ...(typeof bundle.userKey === 'string' && bundle.userKey.trim() ? { userKey: bundle.userKey } : {}),
+    syncGeneration,
+    ...(typeof bundle.generationReason === 'string' && bundle.generationReason.trim() ? { generationReason: bundle.generationReason } : {}),
+    items,
+    counts: computed,
+    warnings,
+  };
+}
+
+function payloadJsonForHash(item: RemoteSyncItem): string {
+  if (isDeletedItem(item)) return '';
+  const json = JSON.stringify(item.payload);
+  if (typeof json !== 'string') throw new Error(`Backup item ${item.store}/${item.itemKey} payload cannot be encoded.`);
+  return json;
+}
+
+async function hashBackupItems(items: RemoteSyncItem[]): Promise<string> {
+  const sorted = [...items].sort((a, b) => a.store.localeCompare(b.store) || a.itemKey.localeCompare(b.itemKey));
+  const lines = sorted.map(item => [
+    item.store,
+    item.itemKey,
+    String(Math.max(0, Math.floor(item.updatedAt))),
+    isDeletedItem(item) ? '1' : '0',
+    payloadJsonForHash(item),
+  ].join('\0')).join('\n') + (sorted.length > 0 ? '\n' : '');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(lines));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function statusForBackupPreview(): Promise<StatusResponse> {
+  const status = await remoteSyncFetch<StatusResponse>('status.php');
+  if (!status.ok) throw new Error(status.error || 'Remote sync status failed.');
+  return status;
+}
+
+export async function previewRemoteSyncBackupFile(file: File): Promise<RemoteSyncBackupPreview> {
+  const text = await file.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('Backup file is not valid JSON.');
+  }
+  const normalized = normalizeBackupBundle(parsed, file.name);
+  const [hash, status] = await Promise.all([
+    hashBackupItems(normalized.items),
+    statusForBackupPreview(),
+  ]);
+  const currentSyncGeneration = status.syncGeneration ?? storedServerGeneration() ?? 1;
+  return {
+    fileName: file.name,
+    ...normalized,
+    hash,
+    currentSyncGeneration,
+    expectedSyncGeneration: currentSyncGeneration + 1,
+  };
 }
 
 function readOutboxSnapshot(options: { logInvalid?: boolean } = {}): OutboxSnapshot {
@@ -1167,7 +1507,146 @@ function maxRawItemUpdatedAt(items: unknown[]): number {
   );
 }
 
+function backupCountsForResult(counts: BackupCounts): Record<string, number> {
+  const result: Record<string, number> = {
+    items: counts.items,
+    tombstones: counts.tombstones,
+  };
+  for (const [store, summary] of Object.entries(counts.stores)) {
+    result[store] = summary.items;
+    if (summary.tombstones > 0) result[`${store}:tombstones`] = summary.tombstones;
+  }
+  return result;
+}
+
+function backupDownloadName(exportedAt: string): string {
+  const stamp = new Date(exportedAt).toISOString().replace(/[:.]/g, '-');
+  return `patzer-sync-backup-${stamp}.json`;
+}
+
+function triggerJsonDownload(fileName: string, payload: unknown): void {
+  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadRemoteSyncBackup(): Promise<SyncResult> {
+  try {
+    const bundle = await remoteSyncFetch<RawBackupBundle>('export.php');
+    if (!bundle.ok) throw new Error(bundle.error || 'RemoteSync backup export failed.');
+    const normalized = normalizeBackupBundle(bundle, 'patzer-sync-backup.json');
+    triggerJsonDownload(backupDownloadName(normalized.exportedAt), bundle);
+    const counts = backupCountsForResult(normalized.counts);
+    recordRemoteSyncLog('backup', 'success', 'Token database backup downloaded.', counts);
+    return { success: true, counts };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'RemoteSync backup export failed.';
+    recordRemoteSyncLog('backup', 'error', message);
+    return { success: false, error: message };
+  }
+}
+
+interface RestoreStartResponse {
+  ok?: boolean;
+  restoreId?: string;
+  syncGeneration?: number;
+  generationReason?: string;
+  error?: string;
+}
+
+interface RestoreCommitResponse {
+  ok?: boolean;
+  items?: number;
+  tombstones?: number;
+  syncGeneration?: number;
+  generationReason?: string;
+  error?: string;
+}
+
+export async function restoreRemoteSyncBackup(preview: RemoteSyncBackupPreview): Promise<SyncResult> {
+  let localCleared = false;
+  try {
+    await ensureServerGenerationLoaded();
+    const start = await postJson<RestoreStartResponse>('restore-start.php', {
+      format: BACKUP_FORMAT,
+      version: 1,
+      exportedAt: preview.exportedAt,
+      userKey: preview.userKey,
+      counts: preview.counts,
+    });
+    if (!start.ok || !start.restoreId) throw new Error(start.error || 'Could not start restore job.');
+
+    for (const batch of chunks(preview.items, RESTORE_CHUNK_SIZE)) {
+      const result = await postJson<{ ok?: boolean; error?: string }>('restore-chunk.php', {
+        restoreId: start.restoreId,
+        items: batch,
+      });
+      if (!result.ok) throw new Error(result.error || 'Restore chunk failed.');
+    }
+
+    const commit = await postJson<RestoreCommitResponse>('restore-commit.php', {
+      restoreId: start.restoreId,
+      expectedItems: preview.counts.items,
+      expectedTombstones: preview.counts.tombstones,
+      expectedHash: preview.hash,
+    });
+    if (!commit.ok) throw new Error(commit.error || 'Restore commit failed.');
+    rememberServerGeneration(commit.syncGeneration, commit.generationReason);
+
+    stopRemoteSyncAutoSync();
+    await clearLocalSyncedDataForRestore();
+    localCleared = true;
+    requireRemoteSyncFullPull();
+    const pull = await pullFromRemoteSync({ since: null, flushAfter: false });
+    if (!pull.success) throw new Error(pull.error || 'Restore committed, but full pull failed.');
+    if (hasRemoteSyncToken()) startRemoteSyncAutoSync({ pushAfterHydrate: false });
+
+    const counts = {
+      ...backupCountsForResult(preview.counts),
+      pulled: Object.values(pull.counts ?? {}).reduce((sum, value) => sum + value, 0),
+      syncGeneration: commit.syncGeneration ?? storedServerGeneration() ?? 0,
+    };
+    recordRemoteSyncLog('restore', 'success', 'Token database restored and full-pulled into this browser.', counts);
+    return { success: true, counts };
+  } catch (error) {
+    if (localCleared) requireRemoteSyncFullPull();
+    if (hasRemoteSyncToken() && !autoSyncStarted) startRemoteSyncAutoSync({ pushAfterHydrate: false });
+    const message = error instanceof Error ? error.message : 'RemoteSync restore failed.';
+    recordRemoteSyncLog('restore', 'error', message);
+    return { success: false, error: message };
+  }
+}
+
+export async function invalidateOtherRemoteSyncBrowsers(): Promise<SyncResult> {
+  try {
+    await ensureServerGenerationLoaded();
+    const result = await postJson<{
+      ok?: boolean;
+      syncGeneration?: number;
+      generationReason?: string;
+      error?: string;
+    }>('invalidate.php', {});
+    if (!result.ok) throw new Error(result.error || 'Could not invalidate other browser sessions.');
+    rememberServerGeneration(result.syncGeneration, result.generationReason);
+    const counts = { syncGeneration: result.syncGeneration ?? storedServerGeneration() ?? 0 };
+    recordRemoteSyncLog('invalidate', 'success', 'Other browser sessions will require token re-entry.', counts);
+    return { success: true, counts };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not invalidate other browser sessions.';
+    recordRemoteSyncLog('invalidate', 'error', message);
+    return { success: false, error: message };
+  }
+}
+
 async function pushItems(items: RemoteSyncItem[]): Promise<Record<string, number>> {
+  if (items.length === 0) return {};
+  await ensureServerGenerationLoaded();
   const counts: Record<string, number> = {};
   for (const batch of chunks(items, PUSH_BATCH_SIZE)) {
     const result = await postJson<{ ok?: boolean; counts?: Record<string, number>; error?: string }>('push.php', { items: batch });
@@ -1303,6 +1782,7 @@ export async function validateRemoteSyncToken(token: string): Promise<SyncResult
         items: status.items ?? 0,
         tombstones: status.tombstones ?? 0,
         latestUpdatedAt: status.latestUpdatedAt ?? 0,
+        syncGeneration: status.syncGeneration ?? storedServerGeneration() ?? 0,
       },
     };
     recordRemoteSyncLog('token', 'success', 'Token verified.', result.counts);
@@ -1330,6 +1810,7 @@ export async function testRemoteSyncConnection(): Promise<SyncResult> {
         items: status.items ?? 0,
         tombstones: status.tombstones ?? 0,
         latestUpdatedAt: status.latestUpdatedAt ?? 0,
+        syncGeneration: status.syncGeneration ?? storedServerGeneration() ?? 0,
       },
     };
     recordRemoteSyncLog('test', 'success', 'Connection test passed.', result.counts);
@@ -1345,6 +1826,12 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
   const snapshot = readOutboxSnapshot({ logInvalid: true });
   const outbox = snapshot.valid;
   if (outbox.length === 0) return { success: true, counts: {} };
+  if (isRemoteSyncFullPullRequired()) {
+    const message = 'Pull the token database before pushing from this browser.';
+    const counts = { queued: outbox.length };
+    recordRemoteSyncLog('flush', 'error', message, counts);
+    return { success: false, error: message, counts };
+  }
   if (!hasRemoteSyncToken()) {
     const counts = { queued: outbox.length };
     recordRemoteSyncLog('flush', 'error', 'Enter the admin sync token first.', counts);
@@ -1358,7 +1845,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
     recordRemoteSyncLog('flush', 'success', 'Queued changes flushed.', counts);
     return { success: true, counts };
   } catch (error) {
-    writeOutboxSnapshot(outbox, snapshot.preservedInvalid);
+    if (!(error instanceof RemoteSyncStaleSessionError)) writeOutboxSnapshot(outbox, snapshot.preservedInvalid);
     const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
     const counts = { queued: outbox.length };
     recordRemoteSyncLog('flush', 'error', message, counts);
@@ -1368,6 +1855,11 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
 
 export async function pushToRemoteSync(): Promise<SyncResult> {
   try {
+    if (isRemoteSyncFullPullRequired()) {
+      const message = 'Pull the token database before pushing from this browser.';
+      recordRemoteSyncLog('push', 'error', message);
+      return { success: false, error: message };
+    }
     const flush = await flushRemoteSyncOutbox();
     if (!flush.success) return flush;
 
@@ -1385,8 +1877,10 @@ export async function pushToRemoteSync(): Promise<SyncResult> {
 
 export async function pullFromRemoteSync(options: { since?: number | null; flushAfter?: boolean } = {}): Promise<SyncResult> {
   try {
+    await ensureServerGenerationLoaded();
     const generation = syncGeneration;
-    const since = options.since === null ? undefined : options.since ?? getRemoteSyncLastSyncMs();
+    const fullPullRequired = isRemoteSyncFullPullRequired();
+    const since = fullPullRequired || options.since === null ? undefined : options.since ?? getRemoteSyncLastSyncMs();
     const path = since !== undefined ? `pull.php?since=${encodeURIComponent(String(since))}` : 'pull.php';
     const result = await remoteSyncFetch<PullResponse>(path);
     if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
@@ -1401,9 +1895,10 @@ export async function pullFromRemoteSync(options: { since?: number | null; flush
     if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts };
     const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
     if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
+    clearRemoteSyncFullPullRequirement();
     if (reloadAfterSettingsPullIfNeeded(counts, latestUpdatedAt)) return { success: true, counts };
 
-    if (options.flushAfter) {
+    if (options.flushAfter && !fullPullRequired) {
       const flush = await flushRemoteSyncOutbox();
       if (!flush.success) {
         return {

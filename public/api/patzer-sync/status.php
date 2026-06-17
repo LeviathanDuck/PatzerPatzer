@@ -5,6 +5,7 @@ require __DIR__ . '/_bootstrap.php';
 
 $config = patzer_require_admin();
 $pdo = patzer_db($config);
+$meta = patzer_sync_meta($pdo, $config['user_key']);
 $stmt = $pdo->prepare(
     'SELECT
        COUNT(*) AS count,
@@ -42,5 +43,7 @@ patzer_json(200, [
     'items' => isset($row['count']) ? (int) $row['count'] : 0,
     'tombstones' => isset($row['tombstones']) ? (int) $row['tombstones'] : 0,
     'latestUpdatedAt' => isset($row['latest']) ? (int) $row['latest'] : 0,
+    'syncGeneration' => $meta['syncGeneration'],
+    'generationReason' => $meta['generationReason'],
     'stores' => $stores,
 ]);

@@ -5,6 +5,7 @@ require __DIR__ . '/_bootstrap.php';
 
 $config = patzer_require_admin();
 $pdo = patzer_db($config);
+patzer_require_fresh_generation($pdo, $config);
 $body = patzer_read_json_body();
 $items = $body['items'] ?? null;
 if (!is_array($items)) patzer_json(400, ['ok' => false, 'error' => 'Expected items array.']);

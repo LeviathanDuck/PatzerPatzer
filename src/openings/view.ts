@@ -915,9 +915,9 @@ const ICON_BAR_GRAPH = '\ue03c'; // licon.BarGraph   → Prep Report
 const ICON_EYE       = '\ue054'; // licon.Eye        → Style
 const ICON_SWORDS    = '\ue033'; // licon.Swords     → Practice Against Them
 
-interface ToolDef { id: OpeningsTool; label: string; icon: string }
+export interface OpeningsToolDef { id: OpeningsTool; label: string; icon: string }
 
-const TOOL_DEFS: ToolDef[] = [
+export const OPENINGS_TOOL_DEFS: OpeningsToolDef[] = [
   { id: 'opening-tree', label: 'Tree',        icon: ICON_BRANCH },
   { id: 'repertoire',   label: 'Repertoire',  icon: ICON_BOOK },
   { id: 'prep-report',  label: 'Report',      icon: ICON_BAR_GRAPH },
@@ -931,7 +931,7 @@ const TOOL_DEFS: ToolDef[] = [
  */
 function renderToolRail(redraw: () => void): VNode {
   const current = activeTool();
-  return h('nav.openings__tool-rail', TOOL_DEFS.map(def =>
+  return h('nav.openings__tool-rail', OPENINGS_TOOL_DEFS.map(def =>
     h('button.openings__tool-rail-btn', {
       class: { 'openings__tool-rail-btn--active': current === def.id },
       attrs: { title: def.label },

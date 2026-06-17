@@ -5,6 +5,7 @@ require __DIR__ . '/_bootstrap.php';
 
 $config = patzer_require_admin();
 $pdo = patzer_db($config);
+patzer_require_fresh_generation($pdo, $config);
 $since = patzer_since();
 
 $stores = [];

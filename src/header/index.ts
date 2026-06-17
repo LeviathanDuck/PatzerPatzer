@@ -411,6 +411,7 @@ export interface HeaderDeps {
   route:               Route;
   importedGames:       ImportedGame[];
   accounts:            ChessAccount[];
+  mobileSubmenus?:     readonly HeaderMobileSubmenu[];
   selectedGameId:      string | null;
   analyzedGameIds:     ReadonlySet<string>;
   missedTacticGameIds: ReadonlySet<string>;
@@ -423,6 +424,20 @@ export interface HeaderDeps {
   downloadPgn:         (annotated: boolean) => void;
   resetAllData:        () => void;
   redraw:              () => void;
+}
+
+export interface HeaderMobileSubmenuItem {
+  id: string;
+  label: string;
+  icon?: string;
+  active?: boolean;
+  onSelect: () => void;
+}
+
+export interface HeaderMobileSubmenu {
+  section: string;
+  label?: string;
+  items: readonly HeaderMobileSubmenuItem[];
 }
 
 function platformLabel(platform: ImportPlatform): string {
@@ -1184,7 +1199,46 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
 
 // --- Mobile nav ---
 
-function renderMobileNav(route: Route, redraw: () => void): VNode {
+function renderMobileSubmenu(submenu: HeaderMobileSubmenu, redraw: () => void): VNode | null {
+  if (submenu.items.length === 0) return null;
+  return h('div.header__mobile-submenu', [
+    submenu.label ? h('div.header__mobile-submenu-label', submenu.label) : null,
+    ...submenu.items.map(item =>
+      h('button.header__mobile-submenu-item', {
+        class: { active: !!item.active },
+        attrs: { type: 'button' },
+        on: { click: () => {
+          item.onSelect();
+          showMobileNav = false;
+          redraw();
+        } },
+      }, [
+        item.icon ? h('span.header__mobile-submenu-icon', { attrs: { 'data-icon': item.icon } }) : null,
+        h('span.header__mobile-submenu-text', item.label),
+      ]),
+    ),
+  ]);
+}
+
+function renderMobileNavLinks(active: string, mobileSubmenus: readonly HeaderMobileSubmenu[], redraw: () => void): VNode[] {
+  const nodes: VNode[] = [];
+  navLinks.forEach(({ label, href, section }) => {
+    nodes.push(h('a.header__mobile-link', {
+      attrs: { href },
+      class: { active: active === section },
+      on: { click: () => { showMobileNav = false; redraw(); } },
+    }, label));
+
+    const submenu = mobileSubmenus.find(candidate => candidate.section === section);
+    if (active === section && submenu) {
+      const rendered = renderMobileSubmenu(submenu, redraw);
+      if (rendered) nodes.push(rendered);
+    }
+  });
+  return nodes;
+}
+
+function renderMobileNav(route: Route, redraw: () => void, mobileSubmenus: readonly HeaderMobileSubmenu[] = []): VNode {
   const active = activeSection(route);
   return h('div.header__mobile-nav', [
     h('button.header__hamburger', {
@@ -1195,13 +1249,7 @@ function renderMobileNav(route: Route, redraw: () => void): VNode {
     showMobileNav ? h('div.header__mobile-backdrop', {
       on: { click: () => { showMobileNav = false; redraw(); } },
     }) : null,
-    showMobileNav ? h('div.header__mobile-dropdown', navLinks.map(({ label, href, section }) =>
-      h('a.header__mobile-link', {
-        attrs: { href },
-        class: { active: active === section },
-        on: { click: () => { showMobileNav = false; redraw(); } },
-      }, label)
-    )) : null,
+    showMobileNav ? h('div.header__mobile-dropdown', renderMobileNavLinks(active, mobileSubmenus, redraw)) : null,
   ]);
 }
 
@@ -1632,7 +1680,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
         },
       }),
     ]),
-    renderMobileNav(route, redraw),
+    renderMobileNav(route, redraw, deps.mobileSubmenus ?? []),
 
     h('div.header__search', { key: 'header-search' }, [
       h('div.header__bar', [
