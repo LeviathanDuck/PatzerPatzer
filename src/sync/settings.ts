@@ -82,6 +82,8 @@ function isForbiddenSettingKey(key: string): boolean {
   return key === 'lastSyncedAt'
     || key === 'patzer.lichess.clientAuth'
     || key === 'patzer.lichess.oauthPending'
+    || key === 'patzer.lichess.bookOAuthPending'
+    || key === 'patzer.lichess.bookOAuthCallback'
     || key === 'chesspatzer.remoteSync.adminSyncToken'
     || key.startsWith('chesspatzer.remoteSync.')
     || key.startsWith('patzer.account.')

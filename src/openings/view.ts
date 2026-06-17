@@ -56,7 +56,14 @@ import { syncAccountGames, type AccountSyncResult } from '../import/accountSync'
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode } from './tree';
 import { executeResearchImport } from './import';
-import type { OpeningMoveStats, ExplorerDb, TablebaseData, TablebaseMoveStats, TablebaseCategory } from './explorer';
+import {
+  isExplorerBookAuthError,
+  type OpeningMoveStats,
+  type ExplorerDb,
+  type TablebaseData,
+  type TablebaseMoveStats,
+  type TablebaseCategory,
+} from './explorer';
 import { explorerCtrl, MAX_EXPLORER_DEPTH } from './explorerCtrl';
 import { ALL_SPEEDS, ALL_RATINGS, ALL_MODES } from './explorerConfig';
 import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
@@ -85,7 +92,7 @@ import { detectTrapPatterns } from './traps';
 import { saveVariation } from './db';
 import type { SavedVariation } from './types';
 import { saveUciLinesToLibrary } from '../study/saveAction';
-import { requestLogin } from '../sync/client';
+import { requestBookLogin } from '../auth/lichessBookAuth';
 
 let _openingsCg: CgApi | undefined;
 let _lastBoardFen: string = '';
@@ -3455,17 +3462,31 @@ function renderPlayerNamePrompt(redraw: () => void): VNode {
   ]);
 }
 
+function connectBookAccess(fen: string, redraw: () => void): void {
+  void requestBookLogin(redraw).then(() => {
+    explorerCtrl.reload(fen, redraw);
+    redraw();
+  }).catch(error => {
+    explorerCtrl.loading = false;
+    explorerCtrl.failing = error instanceof Error ? error : new Error('Lichess book login failed.');
+    redraw();
+  });
+}
+
 function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VNode {
-  const isAuthError = err.message.includes('401') || err.message.includes('Unauthorized') || err.message.includes('Not connected');
+  const isAuthError = isExplorerBookAuthError(err)
+    || err.message.includes('401')
+    || err.message.includes('Unauthorized')
+    || err.message.includes('Not connected');
   if (isAuthError) {
     return h('div.openings__explorer-box', { class: { reduced: true } }, [
       h('div.overlay'),
       h('div.openings__explorer-message', [
-        h('strong', 'Lichess account required'),
-        h('p.openings__explorer-explanation', 'The opening book requires a Lichess login.'),
+        h('strong', 'Lichess book access required'),
+        h('p.openings__explorer-explanation', 'The opening book uses a separate Lichess connection.'),
         h('button.openings__explorer-connect-btn', {
           attrs: { type: 'button' },
-          on: { click: requestLogin },
+          on: { click: () => connectBookAccess(fen, redraw) },
         }, 'Connect to Lichess'),
       ]),
     ]);

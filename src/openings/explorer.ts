@@ -9,6 +9,7 @@
  *   ui/analyse/src/explorer/explorerXhr.ts
  *   ui/analyse/src/explorer/interfaces.ts
  */
+import { getRemoteSyncGeneration, getRemoteSyncToken } from '../sync/remoteSync';
 
 /**
  * Route explorer requests through the local dev-server proxy at /api/explorer/:db.
@@ -16,6 +17,19 @@
  * token (set via env var) — required since the Lichess explorer API demands auth.
  */
 export const EXPLORER_ENDPOINT = '/api/explorer';
+const REMOTE_SYNC_BOOK_EXPLORER_ENDPOINT = '/api/patzer-sync/book-explorer.php';
+
+export class ExplorerBookAuthError extends Error {
+  constructor(message = 'Lichess book access is required.') {
+    super(message);
+    this.name = 'ExplorerBookAuthError';
+  }
+}
+
+export function isExplorerBookAuthError(error: unknown): boolean {
+  return error instanceof ExplorerBookAuthError
+    || (error instanceof Error && error.name === 'ExplorerBookAuthError');
+}
 
 // ============================================================
 // Types — adapted from lichess-org/lila: ui/analyse/src/explorer/interfaces.ts
@@ -78,13 +92,54 @@ export interface OpeningData extends ExplorerData {
 // Adapted from lichess-org/lila: ui/lib/src/xhr.ts readNdJson
 // ============================================================
 
+function looksLikeHtml(contentType: string, text: string): boolean {
+  const trimmed = text.trimStart().toLowerCase();
+  return contentType.toLowerCase().includes('text/html')
+    || trimmed.startsWith('<!doctype html')
+    || trimmed.startsWith('<html');
+}
+
+function parseExplorerLine<T>(line: string): T {
+  try {
+    return JSON.parse(line) as T;
+  } catch {
+    if (looksLikeHtml('', line)) {
+      throw new ExplorerBookAuthError('Lichess book access is required.');
+    }
+    throw new Error('Explorer returned malformed data.');
+  }
+}
+
+async function assertExplorerResponse(res: Response): Promise<void> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (res.ok && !contentType.toLowerCase().includes('text/html')) return;
+
+  const text = await res.text();
+  if (res.status === 401 || res.status === 403 || looksLikeHtml(contentType, text)) {
+    throw new ExplorerBookAuthError('Lichess book access is required.');
+  }
+
+  if (contentType.toLowerCase().includes('application/json')) {
+    try {
+      const body = JSON.parse(text) as { error?: unknown };
+      if (typeof body.error === 'string' && body.error.trim()) {
+        throw new Error(body.error);
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message !== 'Unexpected end of JSON input') throw error;
+    }
+  }
+
+  throw new Error(`Explorer API error ${res.status}`);
+}
+
 async function readNdJson<T>(res: Response, cb: (chunk: T) => void): Promise<void> {
-  if (!res.ok) throw new Error(`Explorer API error ${res.status}`);
+  await assertExplorerResponse(res);
   const reader = res.body?.getReader();
   if (!reader) {
     // Fallback: no streaming support — parse as single JSON
     const text = await res.text();
-    if (text.trim()) cb(JSON.parse(text) as T);
+    if (text.trim()) cb(parseExplorerLine<T>(text));
     return;
   }
   const decoder = new TextDecoder();
@@ -97,11 +152,32 @@ async function readNdJson<T>(res: Response, cb: (chunk: T) => void): Promise<voi
     buf = lines.pop() ?? '';
     for (const line of lines) {
       const trimmed = line.trim();
-      if (trimmed) cb(JSON.parse(trimmed) as T);
+      if (trimmed) cb(parseExplorerLine<T>(trimmed));
     }
   }
   const tail = buf.trim();
-  if (tail) cb(JSON.parse(tail) as T);
+  if (tail) cb(parseExplorerLine<T>(tail));
+}
+
+function openingRequestTarget(db: ExplorerDb): { url: URL; headers: Headers } {
+  const token = getRemoteSyncToken().trim();
+  const headers = new Headers();
+  const localDevHost = window.location.hostname === 'localhost'
+    || window.location.hostname === '127.0.0.1'
+    || window.location.hostname === '[::1]'
+    || window.location.hostname === '::1';
+  if (token && !localDevHost) {
+    headers.set('Authorization', `Bearer ${token}`);
+    const generation = getRemoteSyncGeneration();
+    if (generation !== undefined) headers.set('X-Patzer-Sync-Generation', String(generation));
+    const url = new URL(REMOTE_SYNC_BOOK_EXPLORER_ENDPOINT, window.location.origin);
+    url.searchParams.set('db', db);
+    return { url, headers };
+  }
+  return {
+    url: new URL(`${EXPLORER_ENDPOINT}/${db}`, window.location.origin),
+    headers,
+  };
 }
 
 // ============================================================
@@ -160,7 +236,7 @@ export async function openingFetch(
   onData: (chunk: Partial<OpeningData>) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const url = new URL(`${EXPLORER_ENDPOINT}/${params.db}`, window.location.origin);
+  const { url, headers } = openingRequestTarget(params.db);
   const p = url.searchParams;
 
   p.set('fen', params.fen);
@@ -190,7 +266,8 @@ export async function openingFetch(
 
   const res = await fetch(url.href, {
     cache: 'default',
-    credentials: 'omit',
+    credentials: 'same-origin',
+    headers,
     ...(signal ? { signal } : {}),
   });
 
