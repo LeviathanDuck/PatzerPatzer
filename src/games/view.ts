@@ -272,7 +272,6 @@ let gameListFilterResults: Set<'win' | 'loss' | 'draw'> = new Set();
 let gameListFilterSpeeds:  Set<string>                   = new Set();
 let gameListPage = 0;
 let gameListPageSize: GameListPageSize = loadGameListPageSize();
-let gameListAutoSelectedId: string | null = null;
 
 // Account lens shared by both game list views: whose games are shown.
 // "My accounts" = all mine-category accounts plus uncategorized PGN-paste games.
@@ -323,7 +322,6 @@ function setGameListPageSize(size: GameListPageSize): void {
 
 function resetGameListPage(): void {
   gameListPage = 0;
-  gameListAutoSelectedId = null;
 }
 
 function loadAccountFilterState(): AccountFilterState {
@@ -708,23 +706,10 @@ export function renderGameList(deps: GamesViewDeps): VNode {
 
   const anyFilter = q.length > 0 || gameListFilterResults.size > 0 || gameListFilterSpeeds.size > 0;
 
-  let totalPages = Math.max(1, Math.ceil(visible.length / gameListPageSize));
+  const totalPages = Math.max(1, Math.ceil(visible.length / gameListPageSize));
   if (gameListPage >= totalPages) gameListPage = totalPages - 1;
   if (gameListPage < 0) gameListPage = 0;
 
-  const selectedIndex = deps.selectedGameId
-    ? visible.findIndex(g => g.id === deps.selectedGameId)
-    : -1;
-  if (!deps.selectedGameId) {
-    gameListAutoSelectedId = null;
-  } else if (selectedIndex >= 0 && gameListAutoSelectedId !== deps.selectedGameId) {
-    gameListPage = Math.floor(selectedIndex / gameListPageSize);
-    gameListAutoSelectedId = deps.selectedGameId;
-  }
-
-  totalPages = Math.max(1, Math.ceil(visible.length / gameListPageSize));
-  if (gameListPage >= totalPages) gameListPage = totalPages - 1;
-  if (gameListPage < 0) gameListPage = 0;
   const pageStart = gameListPage * gameListPageSize;
   const pageEnd = Math.min(visible.length, pageStart + gameListPageSize);
   const pageGames = visible.slice(pageStart, pageEnd);
@@ -826,12 +811,12 @@ export function renderGameList(deps: GamesViewDeps): VNode {
   const paginationBar = totalPages > 1 ? h('div.game-list__pagination', [
     h('button.games-view__page-btn', {
       attrs: { type: 'button', disabled: gameListPage === 0 },
-      on: { click: () => { gameListPage--; gameListAutoSelectedId = deps.selectedGameId; deps.redraw(); } },
+      on: { click: () => { gameListPage--; deps.redraw(); } },
     }, 'Prev'),
     h('span.games-view__page-info', `Page ${gameListPage + 1} of ${totalPages}`),
     h('button.games-view__page-btn', {
       attrs: { type: 'button', disabled: gameListPage >= totalPages - 1 },
-      on: { click: () => { gameListPage++; gameListAutoSelectedId = deps.selectedGameId; deps.redraw(); } },
+      on: { click: () => { gameListPage++; deps.redraw(); } },
     }, 'Next'),
   ]) : null;
 

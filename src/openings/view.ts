@@ -57,6 +57,7 @@ import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode } from './tree';
 import { executeResearchImport } from './import';
 import {
+  ExplorerBookAuthError,
   isExplorerBookAuthError,
   type OpeningMoveStats,
   type ExplorerDb,
@@ -92,7 +93,7 @@ import { detectTrapPatterns } from './traps';
 import { saveVariation } from './db';
 import type { SavedVariation } from './types';
 import { saveUciLinesToLibrary } from '../study/saveAction';
-import { requestBookLogin } from '../auth/lichessBookAuth';
+import { clearLichessApiLoginData, requestBookLogin } from '../auth/lichessBookAuth';
 
 let _openingsCg: CgApi | undefined;
 let _lastBoardFen: string = '';
@@ -117,6 +118,7 @@ let _accountSyncMenuId: string | null = null;
 let _accountSyncRunningId: string | null = null;
 const _accountSyncMessages = new Map<string, string>();
 const _accountSyncErrors = new Map<string, string>();
+let _bookAuthNotice = '';
 
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
@@ -3463,12 +3465,34 @@ function renderPlayerNamePrompt(redraw: () => void): VNode {
 }
 
 function connectBookAccess(fen: string, redraw: () => void): void {
+  _bookAuthNotice = '';
   void requestBookLogin(redraw).then(() => {
     explorerCtrl.reload(fen, redraw);
     redraw();
   }).catch(error => {
     explorerCtrl.loading = false;
     explorerCtrl.failing = error instanceof Error ? error : new Error('Lichess book login failed.');
+    redraw();
+  });
+}
+
+function resetBookConnection(redraw: () => void): void {
+  _bookAuthNotice = 'Resetting Lichess book connection...';
+  explorerCtrl.loading = true;
+  explorerCtrl.failing = null;
+  redraw();
+
+  void clearLichessApiLoginData().then(result => {
+    explorerCtrl.loading = false;
+    explorerCtrl.failing = new ExplorerBookAuthError();
+    _bookAuthNotice = result.warnings.length > 0
+      ? `Browser Lichess login data cleared. ${result.warnings.join(' ')}`
+      : 'Lichess book connection reset. Connect to Lichess again.';
+    redraw();
+  }).catch(error => {
+    explorerCtrl.loading = false;
+    explorerCtrl.failing = error instanceof Error ? error : new Error('Failed to reset Lichess book connection.');
+    _bookAuthNotice = '';
     redraw();
   });
 }
@@ -3484,10 +3508,19 @@ function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VN
       h('div.openings__explorer-message', [
         h('strong', 'Lichess book access required'),
         h('p.openings__explorer-explanation', 'The opening book uses a separate Lichess connection.'),
-        h('button.openings__explorer-connect-btn', {
-          attrs: { type: 'button' },
-          on: { click: () => connectBookAccess(fen, redraw) },
-        }, 'Connect to Lichess'),
+        _bookAuthNotice
+          ? h('p.openings__explorer-explanation.openings__explorer-explanation--notice', _bookAuthNotice)
+          : null,
+        h('div.openings__explorer-auth-actions', [
+          h('button.openings__explorer-connect-btn', {
+            attrs: { type: 'button' },
+            on: { click: () => connectBookAccess(fen, redraw) },
+          }, 'Connect to Lichess'),
+          h('button.openings__explorer-retry.openings__explorer-reset-btn', {
+            attrs: { type: 'button' },
+            on: { click: () => resetBookConnection(redraw) },
+          }, 'Reset connection'),
+        ]),
       ]),
     ]);
   }

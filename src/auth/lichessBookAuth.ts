@@ -1,4 +1,5 @@
 import { getRemoteSyncToken } from '../sync/remoteSync';
+import { clearClientAuth } from './lichessClient';
 
 const LICHESS_AUTH_URL = 'https://lichess.org/oauth';
 const LICHESS_TOKEN_URL = 'https://lichess.org/api/token';
@@ -16,6 +17,12 @@ const POPUP_NAME = 'patzer-lichess-book-login';
 export interface BookAccessStatus {
   connected: boolean;
   username?: string;
+}
+
+export interface LichessApiLoginClearResult {
+  localAuthCleared: boolean;
+  bookAccessDisconnected: boolean;
+  warnings: string[];
 }
 
 interface PendingBookOAuth {
@@ -83,6 +90,15 @@ function redirectUri(): string {
 
 function adminSyncToken(): string {
   return getRemoteSyncToken().trim();
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function clearBookOAuthState(): void {
+  sessionStorage.removeItem(PENDING_STORAGE_KEY);
+  localStorage.removeItem(CALLBACK_STORAGE_KEY);
 }
 
 function requireAdminHeaders(initHeaders?: HeadersInit): Headers {
@@ -243,6 +259,7 @@ async function completePopupLogin(code: string, pending: PendingBookOAuth): Prom
 async function runPopupLogin(): Promise<CompletedBookLogin> {
   if (!window.isSecureContext) throw new Error('Lichess book login requires HTTPS or localhost.');
 
+  clearBookOAuthState();
   const state = randomBase64Url(24);
   const verifier = randomBase64Url(32);
   const challenge = await sha256Base64Url(verifier);
@@ -340,6 +357,31 @@ export async function disconnectBookAccess(): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'disconnect' }),
   });
+}
+
+export function clearLocalLichessApiLoginData(): void {
+  clearClientAuth();
+  clearBookOAuthState();
+}
+
+export async function clearLichessApiLoginData(): Promise<LichessApiLoginClearResult> {
+  clearLocalLichessApiLoginData();
+  const result: LichessApiLoginClearResult = {
+    localAuthCleared: true,
+    bookAccessDisconnected: false,
+    warnings: [],
+  };
+  if (!adminSyncToken()) {
+    result.warnings.push('No admin sync token is active, so only this browser was cleared.');
+    return result;
+  }
+  try {
+    await disconnectBookAccess();
+    result.bookAccessDisconnected = true;
+  } catch (error) {
+    throw new Error(errorMessage(error, 'Failed to clear Lichess book access.'));
+  }
+  return result;
 }
 
 export async function requestBookLogin(redraw?: () => void): Promise<void> {
