@@ -16,6 +16,7 @@ import { createDrillBoardAdapter, type DrillBoardAdapter } from './boardAdapter'
 import { createDrillSession, type DrillSession, type DrillMode } from './drillCtrl';
 import { scheduleNext, positionKey, isDue } from './scheduler';
 import { getPositionProgress, savePositionProgress, saveDrillAttempt } from '../studyDb';
+import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../../board/animation';
 import type { TrainableSequence, PositionProgress, DrillAttempt } from '../types';
 
 // --- Module-level drill state ---
@@ -121,16 +122,28 @@ function uciToKeys(uci: string): [Key, Key] | null {
   return [uci.slice(0, 2) as Key, uci.slice(2, 4) as Key];
 }
 
-/**
- * Sync the drill board to match the current session state.
- * Handles opponent auto-play with a short delay.
- */
+
+
+
+
+
+
+
+
+
 function syncDrillBoard(): void {
   const adapter = _adapter;
   if (!adapter || !_session) return;
 
   const session = _session;
   const seq     = session.currentSequence;
+
+
+
+  if (seq && seq.trainAs !== _trainAs) {
+    _trainAs = seq.trainAs;
+    _cgRef?.set({ orientation: _trainAs, movable: { color: _trainAs } });
+  }
 
   if (session.isDone || session.feedback === 'complete') {
     adapter.disableUserInput();
@@ -443,7 +456,7 @@ function renderDrillBoard(): VNode {
         const cg  = makeChessground(el, {
           orientation: _trainAs,
           viewOnly:    false,
-          animation:   { enabled: true, duration: 300 },
+          animation:   puzzleBoardAnimationConfig(),
           movable: {
             free:      false,
             color:     _trainAs,
@@ -464,6 +477,10 @@ function renderDrillBoard(): VNode {
     },
   });
 }
+
+onBoardAnimationChange('puzzle', () => {
+  _cgRef?.set({ animation: puzzleBoardAnimationConfig() });
+});
 
 // --- Sidebar ---
 

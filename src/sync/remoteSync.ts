@@ -575,9 +575,6 @@ const IDB_SPECS_BY_STORE = new Map<RemoteSyncStoreName, IdbStoreSpec>(
 );
 
 const SETTINGS_KEYS = new Set([
-  'patzer.autoReview',
-  'patzer.autoReviewConfirmed',
-  'patzer.autoReviewDepth',
   'patzer.reviewDepth',
   'patzer.multiPv',
   'patzer.analysisDepth',
@@ -599,6 +596,8 @@ const SETTINGS_KEYS = new Set([
   'boardZoom',
   'boardTheme',
   'pieceSet',
+  'chessBoardAnimationSpeed',
+  'puzzleBoardAnimationSpeed',
   'boardSoundEnabled',
   'boardSoundVolume',
   'puzzleAutoNext',

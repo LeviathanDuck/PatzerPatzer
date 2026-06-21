@@ -12,14 +12,6 @@ export interface ImportDateRangeConfig {
   customTo: string;
 }
 
-// Read an integer from localStorage, returning def when the key is absent,
-// unparseable, or out of [min, max].
-// Mirrors lichess-org/lila: ui/lib/src/ceval/ctrl.ts storedIntProp pattern.
-function storedInt(key: string, def: number, min: number, max: number): number {
-  const v = parseInt(localStorage.getItem(key) ?? '', 10);
-  return (!isNaN(v) && v >= min && v <= max) ? v : def;
-}
-
 
 
 export const importFilters = {
@@ -28,37 +20,10 @@ export const importFilters = {
   dateRange:            '1month' as ImportDateRange,
   customFrom:           '',
   customTo:             '',
-  autoReview:           localStorage.getItem('patzer.autoReview') === 'true',
-  autoReviewConfirmed:  localStorage.getItem('patzer.autoReviewConfirmed') === 'true',
-  autoReviewDepth:      storedInt('patzer.autoReviewDepth', 12, 2, 18),
-  // Above this many newly-imported games, auto-review must be confirmed before
-  // enqueuing the whole batch — guards against a large import silently starting
-  // a multi-hour background job.
-  autoReviewCap:        storedInt('patzer.autoReviewCap', 20, 1, 1000),
 
 
   importCategory:       null as AccountCategory | null,
 };
-
-export function setAutoReview(v: boolean): void {
-  importFilters.autoReview = v;
-  localStorage.setItem('patzer.autoReview', String(v));
-}
-
-export function setAutoReviewConfirmed(v: boolean): void {
-  importFilters.autoReviewConfirmed = v;
-  localStorage.setItem('patzer.autoReviewConfirmed', String(v));
-}
-
-export function setAutoReviewDepth(v: number): void {
-  importFilters.autoReviewDepth = v;
-  localStorage.setItem('patzer.autoReviewDepth', String(v));
-}
-
-export function setAutoReviewCap(v: number): void {
-  importFilters.autoReviewCap = v;
-  localStorage.setItem('patzer.autoReviewCap', String(v));
-}
 
 // Icons adapted from lichess-org/lila: ui/lib/src/game/perfIcons.ts + ui/lib/src/licon.ts
 export const SPEED_OPTIONS: { value: ImportSpeed; label: string; icon: string }[] = [

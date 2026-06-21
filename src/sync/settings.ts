@@ -15,9 +15,6 @@ const RELOAD_ON_HYDRATE_KEY = 'patzer.account.settingsReloadedFor';
 const FLUSH_DEBOUNCE_MS = 300;
 
 const SETTINGS_KEYS = new Set([
-  'patzer.autoReview',
-  'patzer.autoReviewConfirmed',
-  'patzer.autoReviewDepth',
   'patzer.reviewDepth',
   'patzer.multiPv',
   'patzer.analysisDepth',
@@ -39,6 +36,8 @@ const SETTINGS_KEYS = new Set([
   'boardZoom',
   'boardTheme',
   'pieceSet',
+  'chessBoardAnimationSpeed',
+  'puzzleBoardAnimationSpeed',
   'boardSoundEnabled',
   'boardSoundVolume',
   'puzzleAutoNext',

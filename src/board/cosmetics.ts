@@ -3,6 +3,15 @@
 //   ui/dasher/src/board.ts, ui/dasher/src/piece.ts
 
 import { h, type VNode } from 'snabbdom';
+import {
+  BOARD_ANIMATION_CHOICES,
+  chessBoardAnimationSpeed,
+  clearBoardAnimationLocalData,
+  puzzleBoardAnimationSpeed,
+  setChessBoardAnimationSpeed,
+  setPuzzleBoardAnimationSpeed,
+  type BoardAnimationSpeed,
+} from './animation';
 
 // --- Board wheel navigation ---
 const BOARD_WHEEL_NAV_KEY = 'boardWheelNavEnabled';
@@ -80,12 +89,16 @@ const PIECE_VARS: [string, string][] = [
   ['---black-pawn',   'bP'], ['---black-knight', 'bN'], ['---black-bishop', 'bB'],
   ['---black-rook',   'bR'], ['---black-queen',  'bQ'], ['---black-king',   'bK'],
 ];
-// Sets with webp-only assets (no .svg files). Adapted from lichess-org/lila: ui/dasher/src/piece.ts pieceVarRules()
-const PIECE_WEBP_SETS = new Set(['monarchy']);
+// Sets with complete WebP coverage. Adapted from lichess-org/lila: ui/dasher/src/piece.ts pieceVarRules()
+const PIECE_WEBP_SETS = new Set(['monarchy', 'staunty', 'cburnett']);
 export let pieceSet: string = localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT;
 
+function pieceAssetExtension(name: string): 'webp' | 'svg' {
+  return PIECE_WEBP_SETS.has(name) ? 'webp' : 'svg';
+}
+
 export function applyPieceSet(name: string): void {
-  const ext = PIECE_WEBP_SETS.has(name) ? 'webp' : 'svg';
+  const ext = pieceAssetExtension(name);
   for (const [cssVar, file] of PIECE_VARS) {
     document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.${ext})`);
   }
@@ -115,6 +128,7 @@ export function clearBoardLocalData(): void {
   localStorage.removeItem(PIECE_SET_KEY);
   localStorage.removeItem(BOARD_WHEEL_NAV_KEY);
   localStorage.removeItem(REVIEW_DOTS_USER_ONLY_KEY);
+  clearBoardAnimationLocalData();
   for (const prop of Object.keys(FILTER_DEFAULTS)) {
     localStorage.removeItem(FILTER_LS_PREFIX + prop);
   }
@@ -152,7 +166,7 @@ export function boardThumbnailUrl(name: string): string {
 // Preview URL for piece set picker tiles — wN.webp preferred, falls back to .svg.
 // Adapted from lichess-org/lila: ui/dasher/src/piece.ts pieceImage()
 export function piecePreviewUrl(name: string): string {
-  return PIECE_WEBP_SETS.has(name) ? `/piece/${name}/wN.webp` : `/piece/${name}/wN.svg`;
+  return `/piece/${name}/wN.${pieceAssetExtension(name)}`;
 }
 
 // --- Render functions ---
@@ -178,6 +192,26 @@ export function renderFilterSlider(
   ]);
 }
 
+function renderAnimationSegmentedControl(
+  label: string,
+  value: BoardAnimationSpeed,
+  setValue: (speed: BoardAnimationSpeed) => void,
+  redraw: () => void,
+): VNode {
+  return h('div.board-settings__segmented-row', [
+    h('span.board-settings__segmented-label', label),
+    h('div.board-settings__segmented-control',
+      BOARD_ANIMATION_CHOICES.map(choice =>
+        h('button.board-settings__segmented-option', {
+          class: { active: value === choice.key },
+          attrs: { type: 'button', title: `${choice.label} (${choice.durationMs}ms)` },
+          on: { click: () => { setValue(choice.key); redraw(); } },
+        }, choice.label),
+      ),
+    ),
+  ]);
+}
+
 // Board settings panel — theme tiles, piece tiles, filter sliders.
 // Adapted from lichess-org/lila: ui/dasher/src/board.ts + piece.ts render()
 export function renderBoardSettings(redraw: () => void): VNode {
@@ -190,6 +224,10 @@ export function renderBoardSettings(redraw: () => void): VNode {
     filtersAtDefault() ? null : h('button.board-settings__reset', {
       on: { click: () => { resetFilters(); redraw(); } },
     }, 'Reset'),
+
+    h('div.board-settings__label', 'Animation'),
+    renderAnimationSegmentedControl('Chess Boards', chessBoardAnimationSpeed, setChessBoardAnimationSpeed, redraw),
+    renderAnimationSegmentedControl('Puzzle Boards', puzzleBoardAnimationSpeed, setPuzzleBoardAnimationSpeed, redraw),
 
     // Board theme tile grid
     h('div.board-settings__label', 'Board'),

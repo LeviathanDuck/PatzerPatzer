@@ -8,7 +8,6 @@ import { lichess, importLichess } from '../import/lichess';
 import { pgnState, importPgn } from '../import/pgn';
 import {
   importFilters, SPEED_OPTIONS, DATE_RANGE_OPTIONS,
-  setAutoReview, setAutoReviewConfirmed, setAutoReviewDepth, setAutoReviewCap,
   currentImportDateRangeConfig,
   importSyncFilterKey,
   type ImportDateRange,
@@ -22,7 +21,7 @@ import { boardSoundEnabled, setBoardSoundEnabled, soundVolume, setSoundVolume } 
 import {
   isBulkRunning, isBulkPaused,
   pauseBulkReview, resumeBulkReview, cancelBulkReview,
-  getQueueSummary, getAutoReview, formatReviewDuration,
+  getQueueSummary, formatReviewDuration,
   isReviewEngineFailed, isReviewEngineInitializing,
 } from '../engine/reviewQueue';
 import { reviewDepth, setReviewDepth, reviewMovetime, setReviewMovetime } from '../engine/batch';
@@ -416,7 +415,7 @@ export interface HeaderDeps {
   analyzedGameIds:     ReadonlySet<string>;
   missedTacticGameIds: ReadonlySet<string>;
   importCallbacks:     ImportCallbacks;
-  onSyncGames:         (games: ImportedGame[]) => { addedCount: number; queuedForReview: boolean };
+  onSyncGames:         (games: ImportedGame[]) => { addedCount: number };
   refreshAccounts:     () => void;
   onSelectGame:        (id: string, pgn: string) => void;
   renderGameRow:       (game: ImportedGame, isAnalyzed: boolean, hasMissedTactic: boolean) => (VNode | null)[];
@@ -526,44 +525,6 @@ const REVIEW_MOVETIME_OPTIONS: { value: number | null; label: string }[] = [
   { value: 2000, label: '2s'     },
 ];
 
-// Auto-review depth options: range 2-18, step 2.
-// Multiplier labels approximate Stockfish exponential scaling (~2-3x per ply).
-const AUTO_REVIEW_DEPTHS: { depth: number; label: string }[] = [
-  { depth: 2,  label: '1×'    },
-  { depth: 4,  label: '4×'    },
-  { depth: 6,  label: '9×'    },
-  { depth: 8,  label: '25×'   },
-  { depth: 10, label: '60×'   },
-  { depth: 12, label: '150×'  },
-  { depth: 14, label: '400×'  },
-  { depth: 16, label: '1000×' },
-  { depth: 18, label: '2500×' },
-];
-
-function renderAutoReviewDepthPills(currentDepth: number, onSelect: (d: number) => void): VNode[] {
-  return AUTO_REVIEW_DEPTHS.map(({ depth, label }) =>
-    h('button.review-menu__pill', {
-      class: { active: currentDepth === depth },
-      attrs: { title: `Depth ${depth} — ~${label} relative cost` },
-      on: { click: () => onSelect(depth) },
-    }, String(depth)),
-  );
-}
-
-// Above this many newly-imported/synced games, auto-review confirms before
-// enqueuing the whole batch (see maybeEnqueueAutoReview in main.ts).
-function renderAutoReviewCapInput(currentCap: number, onChange: (cap: number) => void): VNode {
-  return h('input.review-menu__cap-input', {
-    attrs: { type: 'number', min: 1, max: 1000, value: currentCap, title: 'Confirm before auto-reviewing more than this many games at once' },
-    on: {
-      change: (e: Event) => {
-        const v = parseInt((e.target as HTMLInputElement).value, 10);
-        if (!isNaN(v) && v >= 1 && v <= 1000) onChange(v);
-      },
-    },
-  });
-}
-
 function renderReviewMenu(redraw: () => void): VNode | null {
   const engineFailed       = isReviewEngineFailed();
   const engineInitializing = isReviewEngineInitializing();
@@ -610,7 +571,6 @@ function renderReviewMenu(redraw: () => void): VNode | null {
 
   if (!active) return null;
   const summary = getQueueSummary();
-  const auto    = getAutoReview();
   const elapsed = summary ? formatReviewDuration(summary.elapsedSeconds) : null;
 
   return h('div.review-menu', [
@@ -673,11 +633,6 @@ function renderReviewMenu(redraw: () => void): VNode | null {
           }, label),
         )),
       ]),
-
-      renderToggleRow('review-auto', 'Auto-review on import', auto, (v) => {
-        setAutoReview(v);
-        redraw();
-      }),
 
     ]) : null,
   ]);
@@ -1368,10 +1323,8 @@ function renderSyncMenu(
       deps.refreshAccounts();
       if (result.addedCount === 0) {
         headerSyncMessage = 'No new games to import';
-      } else if (syncOutcome.queuedForReview) {
-        headerSyncMessage = `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}; queued for review`;
       } else {
-        headerSyncMessage = `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}`;
+        headerSyncMessage = `Imported ${syncOutcome.addedCount} new game${syncOutcome.addedCount === 1 ? '' : 's'}`;
       }
     } catch (err) {
       headerSyncError = err instanceof Error ? err.message : 'Sync failed.';
@@ -1430,26 +1383,6 @@ function renderSyncMenu(
         ]),
       ]),
     ]),
-    h('div.header__panel-divider'),
-    h('div.header__panel-section', [
-      h('div.header__panel-row',
-        renderToggleRow('sync-auto-review', 'Auto-review after sync', importFilters.autoReview, (v) => { setAutoReview(v); redraw(); }),
-      ),
-      importFilters.autoReview ? h('div.header__panel-section.--nested', [
-        h('div.header__panel-row',
-          renderToggleRow('sync-auto-review-confirm', 'Are you sure?', importFilters.autoReviewConfirmed, (v) => { setAutoReviewConfirmed(v); redraw(); }),
-        ),
-        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
-          h('div.review-menu__label', `Auto-review depth: ${importFilters.autoReviewDepth}`),
-          h('div.review-menu__row', renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => { setAutoReviewDepth(d); redraw(); })),
-        ]) : null,
-        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
-          h('div.review-menu__label', `Confirm before reviewing more than: ${importFilters.autoReviewCap} games`),
-          h('div.review-menu__row', renderAutoReviewCapInput(importFilters.autoReviewCap, (cap) => { setAutoReviewCap(cap); redraw(); })),
-        ]) : null,
-      ]) : null,
-    ]),
-    h('div.header__panel-divider'),
     h('div.header__panel-section', [
       headerSyncError ? h('div.header__panel-error', headerSyncError) : null,
       headerSyncMessage ? h('p.header__panel-hint', headerSyncMessage) : null,
@@ -1598,25 +1531,6 @@ export function renderHeader(deps: HeaderDeps): VNode {
         ]),
       ]),
 
-      h('div.header__panel-row.--mt',
-        renderToggleRow('import-auto-review', 'Auto-review after import', importFilters.autoReview, (v) => { setAutoReview(v); redraw(); }),
-      ),
-      importFilters.autoReview ? h('div.header__panel-section.--nested', [
-        h('div.header__panel-row',
-          renderToggleRow('import-auto-review-confirm', 'Are you sure?', importFilters.autoReviewConfirmed, (v) => { setAutoReviewConfirmed(v); redraw(); }),
-        ),
-        h('p.header__panel-hint.header__panel-warn',
-          'Large imports may take a long time to review. Each game runs through the engine at the configured review depth.'
-        ),
-        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
-          h('div.review-menu__label', `Auto-review depth: ${importFilters.autoReviewDepth}`),
-          h('div.review-menu__row', renderAutoReviewDepthPills(importFilters.autoReviewDepth, (d) => { setAutoReviewDepth(d); redraw(); })),
-        ]) : null,
-        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
-          h('div.review-menu__label', `Confirm before reviewing more than: ${importFilters.autoReviewCap} games`),
-          h('div.review-menu__row', renderAutoReviewCapInput(importFilters.autoReviewCap, (cap) => { setAutoReviewCap(cap); redraw(); })),
-        ]) : null,
-      ]) : null,
     ]),
 
     h('div.header__panel-divider'),

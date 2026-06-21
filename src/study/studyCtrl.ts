@@ -486,6 +486,178 @@ function reconstructPgn(game: ReturnType<typeof parsePgn>[0], _rawPgn: string, _
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export type OrpLineState = 'NEW' | 'DUE' | 'IN_PROGRESS' | 'PAUSED';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export interface OrpPracticeLineView {
+  // --- From TrainableSequence (the practice-line record itself) ---
+  sequence:    TrainableSequence;
+
+  // --- Joined from parent StudyItem ---
+  title:       string;           // StudyItem.title
+  opening:     string | undefined;  // StudyItem.opening (ECO opening name, if known)
+  eco:         string | undefined;  // StudyItem.eco (ECO code, if known)
+  collection:  string | undefined;  // extracted from 'collection:{name}' tag, if present
+  favorite:    boolean;          // StudyItem.favorite
+
+
+  lineState:      OrpLineState;  // NEW | DUE | IN_PROGRESS | PAUSED (see OrpLineState)
+  dueCount:       number;        // positions currently due (0 for NEW/PAUSED/IN_PROGRESS)
+  lastPracticed:  number | undefined; // max lastAttemptAt across line positions; undefined = never
+}
+
+/** Extract the collection name from a StudyItem.tags array, or undefined if not present. */
+function extractCollectionTag(tags: string[]): string | undefined {
+  const prefix = 'collection:';
+  const found = tags.find(t => t.startsWith(prefix));
+  return found ? found.slice(prefix.length) : undefined;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function listOrpPracticeLines(): Promise<OrpPracticeLineView[]> {
+  try {
+    const [lines, studies, progressList] = await Promise.all([
+      listPracticeLines(),
+      listStudies(),
+      listAllPositionProgress(),
+    ]);
+
+    // Build a lookup map of opening-sourced StudyItems only.
+    const openingStudies = new Map<string, StudyItem>();
+    for (const s of studies) {
+      if (s.source === 'openings') {
+        openingStudies.set(s.id, s);
+      }
+    }
+
+    // Build a progress map keyed by positionKey — loaded once, reused per line.
+    const progressMap = new Map<string, PositionProgress>(
+      progressList.map(p => [p.key, p])
+    );
+
+    const now = Date.now();
+    const results: OrpPracticeLineView[] = [];
+    for (const seq of lines) {
+      const parent = openingStudies.get(seq.studyItemId);
+      if (!parent) {
+        // Orphaned line (parent deleted) or non-opening source — skip gracefully.
+        continue;
+      }
+
+
+
+
+
+
+
+
+
+      let lineState: OrpLineState;
+      let dueCount = 0;
+      let lastPracticed: number | undefined;
+
+      if (seq.status === 'paused') {
+        lineState = 'PAUSED';
+        // Paused lines: excluded from due math (dueCount stays 0).
+        // Still surface lastPracticed for display purposes.
+      } else {
+        // Active line: use countDuePositions (passes a single-element array of the seq).
+        dueCount = countDuePositions([seq], progressMap, now);
+
+        // Determine whether any PositionProgress exists for this line.
+        let hasAnyProgress = false;
+        for (const fen of seq.fens) {
+          const key = positionKey(fen);
+          if (progressMap.has(key)) {
+            hasAnyProgress = true;
+            break;
+          }
+        }
+
+        if (!hasAnyProgress) {
+          // No progress at all → treat as new (unlearned / due per scheduler semantics).
+          lineState = 'NEW';
+        } else if (dueCount > 0) {
+          lineState = 'DUE';
+        } else {
+          lineState = 'IN_PROGRESS';
+        }
+      }
+
+      // lastPracticed: max lastAttemptAt across all positions that have progress.
+      for (const fen of seq.fens) {
+        const key = positionKey(fen);
+        const progress = progressMap.get(key);
+        if (progress && progress.lastAttemptAt) {
+          if (lastPracticed === undefined || progress.lastAttemptAt > lastPracticed) {
+            lastPracticed = progress.lastAttemptAt;
+          }
+        }
+      }
+
+      results.push({
+        sequence:      seq,
+        title:         parent.title,
+        opening:       parent.opening,
+        eco:           parent.eco,
+        collection:    extractCollectionTag(parent.tags),
+        favorite:      parent.favorite,
+        lineState,
+        dueCount,
+        lastPracticed,
+      });
+    }
+    return results;
+  } catch (e) {
+    console.warn('[studyCtrl] listOrpPracticeLines failed', e);
+    return [];
+  }
+}
+
+
+
 let _allSequences:   TrainableSequence[]          = [];
 let _progressMap:    Map<string, PositionProgress> = new Map();
 let _dueCount:       number                        = 0;

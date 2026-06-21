@@ -37,6 +37,7 @@ import {
 } from './studyDetailCtrl';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
+import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
 
 
 let _showColorPicker   = false;
@@ -107,6 +108,7 @@ export function syncStudyBoard(redraw?: () => void): void {
   );
   cg.set({
     fen:       node.fen,
+    animation: chessBoardAnimationConfig(),
     turnColor: node.ply % 2 === 0 ? 'white' : 'black',
     movable: {
       color: node.ply % 2 === 0 ? 'white' : 'black',
@@ -198,6 +200,7 @@ function renderStudyBoard(): VNode {
         const cg: CgApi = makeChessground(vnode.elm as HTMLElement, {
           orientation:  detailOrientation(),
           viewOnly:     false,
+          animation:    chessBoardAnimationConfig(),
           drawable:     { enabled: true, onChange: onShapesChange },
           fen:          node.fen,
           turnColor:    node.ply % 2 === 0 ? 'white' : 'black',
@@ -219,6 +222,10 @@ function renderStudyBoard(): VNode {
     },
   });
 }
+
+onBoardAnimationChange('chess', () => {
+  getCgRef()?.set({ animation: chessBoardAnimationConfig() });
+});
 
 
 
@@ -755,4 +762,3 @@ export function renderStudyDetail(id: string, redraw: () => void): VNode {
     ]),
   ]);
 }
-

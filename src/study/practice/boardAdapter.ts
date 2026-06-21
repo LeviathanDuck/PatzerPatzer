@@ -6,6 +6,7 @@
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
 import { playDrillFeedbackSound } from '../../board/sound';
+import { puzzleBoardAnimationConfig } from '../../board/animation';
 
 export type FeedbackType = 'correct' | 'incorrect';
 
@@ -46,7 +47,7 @@ export function createDrillBoardAdapter(cg: CgApi, wrapEl: HTMLElement): DrillBo
         orientation,
         lastMove: [] as Key[],
         movable: { color: 'both', free: false, dests: new Map() },
-        animation: { enabled: true },
+        animation: puzzleBoardAnimationConfig(),
         drawable: { shapes: [] },
       });
     },
@@ -56,7 +57,7 @@ export function createDrillBoardAdapter(cg: CgApi, wrapEl: HTMLElement): DrillBo
         fen:      afterFen,
         lastMove: [from, to],
         movable:  { color: 'both', free: false, dests: new Map() },
-        animation: { enabled: true },
+        animation: puzzleBoardAnimationConfig(),
       });
     },
 
@@ -68,7 +69,7 @@ export function createDrillBoardAdapter(cg: CgApi, wrapEl: HTMLElement): DrillBo
           dests:  legalDests,
           events: { after: onMove },
         },
-        animation: { enabled: true },
+        animation: puzzleBoardAnimationConfig(),
       });
     },
 

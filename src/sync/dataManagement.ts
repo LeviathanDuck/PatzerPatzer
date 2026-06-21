@@ -110,8 +110,8 @@ const SETTINGS_GROUPS: SettingsResetGroup[] = [
   {
     id: 'import-games',
     title: 'Import and game list',
-    description: 'Auto-review import preferences and game-list account filters.',
-    keys: ['patzer.autoReview', 'patzer.autoReviewConfirmed', 'patzer.autoReviewDepth', 'patzer.games.accountFilter.v1'],
+    description: 'Game-list account filters.',
+    keys: ['patzer.games.accountFilter.v1'],
   },
   {
     id: 'detection',

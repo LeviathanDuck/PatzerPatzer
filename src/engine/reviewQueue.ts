@@ -16,7 +16,6 @@ import {
 } from '../idb/index';
 import { pgnToTree } from '../tree/pgn';
 import { reviewDepth, reviewMovetime } from './batch';
-import { importFilters } from '../import/filters';
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
 import type { TreeNode } from '../tree/types';
@@ -1537,10 +1536,6 @@ export function formatReviewDuration(secondsValue: number | null): string | null
   const hours = Math.floor(minutes / 60);
   const remMinutes = minutes % 60;
   return `${hours}h ${remMinutes}m`;
-}
-
-export function getAutoReview(): boolean {
-  return importFilters.autoReview;
 }
 
 /** Returns true when a game in the current session queue is in the error state. */

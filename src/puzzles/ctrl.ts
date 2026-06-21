@@ -41,6 +41,7 @@ import {
   type PositionEval,
 } from '../engine/ctrl';
 import { evalWinChances, LOSS_THRESHOLDS } from '../engine/winchances';
+import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../board/animation';
 
 // Alt-castle mappings — Lichess puzzles store castling as king-to-rook-square
 // but chessground may emit king-to-destination. Both forms must be accepted.
@@ -1508,10 +1509,12 @@ export function mountPreviewBoard(el: HTMLElement, _redraw: () => void): void {
   const turn: 'white' | 'black' = pos.value.turn;
   puzzleOrientation = rc.pov;
   puzzleCg?.destroy();
+  puzzleCgAnimationScope = 'puzzle';
   puzzleCg = makeChessground(el, {
     orientation: puzzleOrientation,
     fen: rc.treeNode.fen,
     turnColor: turn,
+    animation: puzzleBoardAnimationConfig(),
     movable: { free: false, color: 'both', dests, showDests: true },
     draggable: { enabled: true, showGhost: true },
     events: {},
@@ -1930,6 +1933,7 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
 
 let puzzleCg: CgApi | undefined;
 let puzzleOrientation: 'white' | 'black' = 'white';
+let puzzleCgAnimationScope: 'puzzle' | 'static' = 'static';
 
 export function getPuzzleCg(): CgApi | undefined { return puzzleCg; }
 export function getPuzzleOrientation(): 'white' | 'black' { return puzzleOrientation; }
@@ -1970,6 +1974,7 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
 
   // Destroy previous instance if any
   puzzleCg?.destroy();
+  puzzleCgAnimationScope = 'puzzle';
 
   // The board starts at startFen showing the solver's orientation.
   // Moves are validated against the stored solution line via PuzzleRoundCtrl.
@@ -1985,7 +1990,7 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
       showDests: true,
     },
     drawable: { enabled: true },
-    animation: { enabled: true, duration: 300 },
+    animation: puzzleBoardAnimationConfig(),
     events: {
       move: (orig, dest, _capturedPiece) => {
         if (!rc) return;
@@ -2073,6 +2078,7 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
 export function destroyPuzzleBoard(): void {
   puzzleCg?.destroy();
   puzzleCg = undefined;
+  puzzleCgAnimationScope = 'static';
 }
 
 /**
@@ -2111,6 +2117,7 @@ export function syncPuzzleBoard(rcOverride?: PuzzleRoundCtrl): void {
       }
       const ctxCfg: Record<string, unknown> = {
         fen: ctxNode.fen,
+        animation: puzzleBoardAnimationConfig(),
         turnColor: ctxTurn,
         movable: { color: rc.pov, dests: new Map<Key, Key[]>() },
       };
@@ -2135,6 +2142,7 @@ export function syncPuzzleBoard(rcOverride?: PuzzleRoundCtrl): void {
   const dests = isBrowsed ? new Map<Key, Key[]>() : (chessgroundDests(pos.value) as Map<Key, Key[]>);
   const setCfg: Record<string, unknown> = {
     fen: node.fen,
+    animation: puzzleBoardAnimationConfig(),
     turnColor: turn,
     movable: { color: movableColor, dests },
   };
@@ -2279,6 +2287,7 @@ export function puzzleLast(redraw: () => void): void {
  */
 export function mountIdleBoard(el: HTMLElement): void {
   if (puzzleCg) { puzzleCg.destroy(); puzzleCg = undefined; }
+  puzzleCgAnimationScope = 'static';
   puzzleCg = makeChessground(el, {
     fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     orientation: 'white',
@@ -2288,6 +2297,11 @@ export function mountIdleBoard(el: HTMLElement): void {
     drawable: { enabled: false },
   });
 }
+
+onBoardAnimationChange('puzzle', () => {
+  if (puzzleCgAnimationScope !== 'puzzle') return;
+  puzzleCg?.set({ animation: puzzleBoardAnimationConfig() });
+});
 
 // --- User metadata (favorites, notes, tags, folders) ---
 // Thin cache layer over PuzzleUserMeta IDB records.

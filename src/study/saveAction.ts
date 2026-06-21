@@ -6,10 +6,12 @@ import { Chess } from 'chessops/chess';
 import { parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
-import { saveStudy } from './studyDb';
-import type { StudyItem, StudySource } from './types';
+import { saveStudy, getStudy, savePracticeLine, getPracticeLine } from './studyDb';
+import type { StudyItem, StudySource, TrainableSequence } from './types';
 import { MASTER_GAMES } from '../showcase/masterGames';
 import type { MasterGame } from '../showcase/masterGames';
+import { deriveFens } from './practice/extractLine';
+import type { ResearchCollection } from '../openings/types';
 
 let _nextId = 0;
 function generateStudyId(): string {
@@ -152,6 +154,173 @@ export async function saveUciLinesToLibrary(
     title:  lineTitle,
     tags:   [color === 'white' ? 'as-white' : 'as-black'],
   });
+}
+
+// ─── ORP (Opening Repetition Practice) helpers ────────────────────────────────
+// Phase 2 implementation of ORP_SAVE_DATAFLOW_CONTRACT_2026-06-16.md
+// IDs are deterministic: same moves + same color → same ID → IDB put() is upsert.
+
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+/**
+ * Derive a stable, deterministic StudyItem id for an ORP line.
+ * Encoding: 'orp-' + base64(trainAs + ':' + ucis.join(' ')) with URL-safe chars.
+ * Same moves + same color → same id; different color → different id.
+ */
+export function deriveOrpStudyItemId(trainAs: 'white' | 'black', ucis: string[]): string {
+  return 'orp-' + btoa(trainAs + ':' + ucis.join(' ')).replace(/[+/=]/g, '_');
+}
+
+/**
+ * Derive a stable, deterministic TrainableSequence id for an ORP line.
+ * Mirrors the StudyItem id derivation with a different prefix.
+ */
+export function deriveOrpSequenceId(trainAs: 'white' | 'black', ucis: string[]): string {
+  return 'orp-seq-' + btoa(trainAs + ':' + ucis.join(' ')).replace(/[+/=]/g, '_');
+}
+
+/**
+ * Return true if a collection name is human-readable (not a UUID or blank).
+ * Used to decide whether to add a 'collection:<name>' tag.
+ */
+function isHumanReadableName(name: string): boolean {
+  if (!name || name.trim() === '') return false;
+  if (/^[0-9a-f-]{36}$/i.test(name.trim())) return false; // UUID
+  return true;
+}
+
+/**
+ * Build the tags array for an ORP StudyItem per the contract.
+ * Always includes 'orp' and 'as-white'/'as-black'.
+ * Adds 'collection:<name>' when the collection has a human-readable name.
+ */
+function buildOrpTags(trainAs: 'white' | 'black', collection: ResearchCollection | null): string[] {
+  const tags: string[] = [
+    trainAs === 'white' ? 'as-white' : 'as-black',
+    'orp',
+  ];
+  if (collection && isHumanReadableName(collection.name)) {
+    tags.push('collection:' + collection.name);
+  }
+  return tags;
+}
+
+/**
+ * Result returned by saveOrpLineToLibrary on success.
+ */
+export interface OrpSaveResult {
+  studyItem: StudyItem;
+  sequence: TrainableSequence;
+}
+
+/**
+ * Save an opening line as a StudyItem (source 'openings') with a linked TrainableSequence.
+ *
+ * Implements the full ORP save contract from ORP_SAVE_DATAFLOW_CONTRACT_2026-06-16.md §5.
+ * IDs are derived deterministically so repeated saves of the same line+color are idempotent
+ * (IDB put() upserts the existing record; createdAt from the first save is preserved).
+ *
+ * Returns null if:
+ * - path.length < 3 (line too short to drill — same guard as legacy handleSaveLine)
+ * - deriveFens() returns null (unparseable/illegal UCI)
+ *
+ * @param ucis       - UCI move strings from the current session path (e.g. ['e2e4', 'c7c5']).
+ * @param sans       - SAN strings for each move (same length as ucis).
+ * @param trainAs    - Board orientation / side being trained.
+ * @param collection - Active research collection; null if not in a collection session.
+ * @param openingName - Opening name if available from an ECO lookup; absent otherwise.
+ * @param openingEco  - ECO code if available; absent otherwise.
+ */
+export async function saveOrpLineToLibrary(
+  ucis: string[],
+  sans: string[],
+  trainAs: 'white' | 'black',
+  collection: ResearchCollection | null,
+  openingName?: string,
+  openingEco?: string,
+): Promise<OrpSaveResult | null> {
+  // Guard: line too short to drill.
+  if (ucis.length < 3) return null;
+
+  // Derive FENs — abort entire save if UCI is invalid.
+  const fens = deriveFens(START_FEN, ucis);
+  if (!fens) return null;
+
+  const studyItemId = deriveOrpStudyItemId(trainAs, ucis);
+  const sequenceId  = deriveOrpSequenceId(trainAs, ucis);
+  const now = Date.now();
+
+  // Derive display title per contract §2c priority order.
+  const sanMoves = sans.slice(0, 4).join(' ');
+  let title: string;
+  if (openingName) {
+    title = openingName;
+  } else if (collection && isHumanReadableName(collection.name)) {
+    title = `${collection.name} — ${sanMoves}`;
+  } else {
+    title = `Opening line — ${sanMoves}`;
+  }
+
+  // Preserve createdAt (and status) from existing records (upsert semantics per contract §2d).
+  // createdAt: always preserved from first save; never reset on re-save.
+  // status: preserved so a user-paused sequence is not reset to 'active' on re-save.
+  let studyCreatedAt = now;
+  let seqCreatedAt   = now;
+  let seqStatus: 'active' | 'paused' = 'active';
+  try {
+    const existing = await getStudy(studyItemId);
+    if (existing) studyCreatedAt = existing.createdAt;
+  } catch (e) {
+    console.warn('[saveAction] ORP: getStudy lookup failed on upsert, using now for createdAt', e);
+  }
+  try {
+    const existingSeq = await getPracticeLine(sequenceId);
+    if (existingSeq) {
+      seqCreatedAt = existingSeq.createdAt;
+      seqStatus    = existingSeq.status;
+    }
+  } catch (e) {
+    console.warn('[saveAction] ORP: getPracticeLine lookup failed on upsert, using now for createdAt', e);
+  }
+
+  // Build the PGN from the UCI moves for the StudyItem.pgn field.
+  const pgn = uciMovesToPgn(ucis, title);
+
+  // Build StudyItem (source: 'openings').
+  const studyItem: StudyItem = {
+    id:        studyItemId,
+    pgn,
+    title,
+    source:    'openings',
+    tags:      buildOrpTags(trainAs, collection),
+    folders:   [],
+    favorite:  false,
+    createdAt: studyCreatedAt,
+    updatedAt: now,
+  };
+  if (openingEco)  studyItem.eco     = openingEco;
+  if (openingName) studyItem.opening = openingName;
+
+  // Build TrainableSequence linked to the StudyItem.
+  const sequence: TrainableSequence = {
+    id:          sequenceId,
+    studyItemId: studyItemId,
+    label:       title,
+    moves:       [...ucis],
+    sans:        [...sans],
+    fens,
+    trainAs,
+    startPly:    0,
+    status:      seqStatus,
+    createdAt:   seqCreatedAt,
+    updatedAt:   now,
+  };
+
+  // Persist both records. saveStudy / savePracticeLine use IDB put() (upsert).
+  await saveStudy(studyItem);
+  await savePracticeLine(sequence);
+
+  return { studyItem, sequence };
 }
 
 /**

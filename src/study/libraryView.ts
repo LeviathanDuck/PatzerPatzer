@@ -18,9 +18,13 @@ import {
   handleStudyClick, bulkDeleteStudies, bulkAddToFolder, bulkSetFavorite,
   viewMode, setViewMode,
   seedSampleStudies, isSeeding,
+  listOrpPracticeLines,
   type StudySortKey,
+  type OrpPracticeLineView,
 } from './studyCtrl';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
+import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
+import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { StudyItem } from './types';
 
@@ -55,6 +59,126 @@ const _expandedRows = new Set<string>();
 let _showImportModal = false;
 let _importPgnText   = '';
 let _importStatus: string | null = null;
+
+
+
+let _orpLines:        OrpPracticeLineView[] = [];
+let _orpLoaded        = false;
+let _orpError         = false;
+let _orpLoadPending   = false;
+
+
+let _orpDueLaunching = false;
+
+
+let _orpLearnLaunching = false;
+
+
+
+
+
+
+
+let _orpDrillPending = false;
+
+
+
+
+let _editingOrpLabelId: string | null = null;
+let _editingOrpLabelValue = '';
+
+
+
+
+
+
+
+
+
+
+
+
+
+async function launchOrpDueSession(redraw: () => void): Promise<void> {
+  if (_orpDueLaunching) return;
+  _orpDueLaunching = true;
+  try {
+    // Collect active ORP sequences (exclude paused — buildReviewSession filters them too,
+    // but pre-filtering keeps the progress-map query focused).
+    const activeSequences = _orpLines
+      .filter(v => v.lineState !== 'PAUSED')
+      .map(v => v.sequence);
+
+    if (activeSequences.length === 0) return;
+
+    const progressList  = await listAllPositionProgress();
+    const progressMap   = new Map(progressList.map(p => [p.key, p]));
+    const dueSequences  = buildReviewSession(activeSequences, progressMap);
+
+    if (dueSequences.length === 0) return;
+
+    // Use the first due sequence's trainAs as the initial board orientation.
+    // drillView.syncDrillBoard() corrects orientation per-sequence as the session advances.
+    const initialTrainAs = dueSequences[0]!.trainAs;
+    _orpDrillPending = true;
+    initDrillView(dueSequences, dueSequences[0]!.fens[0] ?? STARTING_FEN, initialTrainAs, redraw);
+    redraw();
+  } finally {
+    _orpDueLaunching = false;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+async function launchOrpLearnSession(redraw: () => void): Promise<void> {
+  if (_orpLearnLaunching) return;
+  _orpLearnLaunching = true;
+  try {
+    const activeSequences = _orpLines
+      .filter(v => v.lineState !== 'PAUSED')
+      .map(v => v.sequence);
+
+    if (activeSequences.length === 0) return;
+
+    const progressList  = await listAllPositionProgress();
+    const progressMap   = new Map(progressList.map(p => [p.key, p]));
+    const newSequences  = buildLearnSession(activeSequences, progressMap);
+
+    if (newSequences.length === 0) return;
+
+    const initialTrainAs = newSequences[0]!.trainAs;
+    _orpDrillPending = true;
+    initDrillView(newSequences, newSequences[0]!.fens[0] ?? STARTING_FEN, initialTrainAs, redraw, 'learn');
+    redraw();
+  } finally {
+    _orpLearnLaunching = false;
+  }
+}
+
+function loadOrpLines(redraw: () => void): void {
+  if (_orpLoadPending) return;
+  _orpLoadPending = true;
+  void listOrpPracticeLines().then(lines => {
+    _orpLines   = lines;
+    _orpLoaded  = true;
+    _orpError   = false;
+  }).catch(() => {
+    _orpError  = true;
+    _orpLoaded = true;
+  }).finally(() => {
+    _orpLoadPending = false;
+    redraw();
+  });
+}
 
 // --- Row rendering ---
 
@@ -667,6 +791,9 @@ export function renderStudyLibrary(redraw: () => void): VNode {
   if (!practiceLoaded()) loadPracticeData(redraw);
 
 
+  if (!_orpLoaded) loadOrpLines(redraw);
+
+
   if (isDrillActive() || isDrillSummary()) {
     return h('div.study-page', [
       h('div.study-page__header', [
@@ -677,6 +804,18 @@ export function renderStudyLibrary(redraw: () => void): VNode {
       ]),
       renderDrillView(redraw),
     ]);
+  }
+
+
+
+
+
+
+  if (_orpDrillPending) {
+    _orpDrillPending = false;
+    _orpLoaded       = false;
+    _orpLoadPending  = false; // allow a fresh fetch even if a stale pending guard is set
+    loadOrpLines(redraw);
   }
 
   // Lazy-load folder data if not yet loaded.
@@ -709,6 +848,9 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
 
     practiceLoaded() ? renderPracticeDashboard(redraw) : null,
+
+
+    renderOrpSection(redraw),
 
     // Two-column layout: folder sidebar + main content area
     h('div.study-library-layout', [
@@ -750,6 +892,293 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
     _showImportModal ? renderImportModal(redraw) : null,
   ]);
+}
+
+
+
+
+
+/**
+ * Format a lastPracticed epoch ms as a short relative date string for ORP rows.
+ * Returns 'today', 'yesterday', 'N days ago', or a short locale date beyond 30 days.
+ * Returns null when lastPracticed is undefined (never practiced).
+ */
+function formatLastPracticed(epochMs: number | undefined): string | null {
+  if (epochMs === undefined) return null;
+  const now   = Date.now();
+  const diffMs = now - epochMs;
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 30)  return `${diffDays}d ago`;
+  return new Date(epochMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+
+
+
+
+
+
+function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
+  const { sequence, title, opening, eco, collection, lineState, dueCount, lastPracticed, favorite } = view;
+  const moveCount = sequence.sans.length || sequence.moves.length;
+
+  // Build the source context string: prefer opening name (with ECO code if both present),
+  // fall back to collection, omit both if neither is available.
+  const openingPart  = opening
+    ? (eco ? `${eco} ${opening}` : opening)
+    : null;
+  const contextPart  = openingPart ?? collection ?? null;
+
+  // lineState badge class and label
+  const stateClass = `study-orp-row__state--${lineState.toLowerCase()}`;
+  const stateLabel = lineState === 'IN_PROGRESS' ? 'In progress' : lineState.charAt(0) + lineState.slice(1).toLowerCase();
+
+  // Due/progress badge: only show numeric due count when DUE; for others use stateLabel
+  const dueNode: VNode | null = lineState === 'DUE' && dueCount > 0
+    ? h('span.study-orp-row__due', `${dueCount} due`)
+    : null;
+
+  // Last-practiced text
+  const lastPracticedText = formatLastPracticed(lastPracticed);
+
+  // Color indicator: 'W' for white, 'B' for black — compact pill
+  const colorLabel = sequence.trainAs === 'white' ? 'W' : 'B';
+  const colorClass = `study-orp-row__color--${sequence.trainAs}`;
+
+  const isEditingLabel = _editingOrpLabelId === sequence.id;
+  const currentLabel   = sequence.label || title;
+
+  return h('div.study-orp-row', { key: sequence.id }, [
+    // Favorite star (informational only — editing is Phase 4)
+    favorite ? h('span.study-orp-row__fav', { attrs: { title: 'Favorited' } }, '★') : null,
+
+    // Main content
+    h('div.study-orp-row__main', [
+
+
+      h('div.study-orp-row__title-row', [
+        isEditingLabel
+          ? h('input.study-orp-row__label-input', {
+              attrs: { value: _editingOrpLabelValue, placeholder: 'Line label' },
+              hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
+              on: {
+                input: (e: Event) => { _editingOrpLabelValue = (e.target as HTMLInputElement).value; },
+                blur: () => {
+                  const newLabel = _editingOrpLabelValue.trim();
+                  _editingOrpLabelId    = null;
+                  _editingOrpLabelValue = '';
+                  if (newLabel) {
+                    // Load, update label + updatedAt, save, then refresh ORP section.
+                    void getPracticeLine(sequence.id).then(line => {
+                      if (!line) return;
+                      return savePracticeLine({ ...line, label: newLabel, updatedAt: Date.now() });
+                    }).then(() => {
+                      _orpLoaded      = false;
+                      _orpLoadPending = false;
+                      loadOrpLines(redraw);
+                    });
+                  }
+                  redraw();
+                },
+                keydown: (e: KeyboardEvent) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  if (e.key === 'Escape') { _editingOrpLabelId = null; redraw(); }
+                },
+              },
+            })
+          : h('span.study-orp-row__label', {
+              attrs: { title: 'Click to rename' },
+              on: { click: (e: Event) => {
+                e.stopPropagation();
+                _editingOrpLabelId    = sequence.id;
+                _editingOrpLabelValue = currentLabel;
+                redraw();
+              }},
+            }, currentLabel),
+        h('span.study-orp-row__state', { class: { [stateClass]: true } }, stateLabel),
+        dueNode,
+      ]),
+
+      // Meta row: source context (opening/ECO/collection) · color · moves · last practiced
+      h('div.study-orp-row__meta', [
+        contextPart ? h('span.study-orp-row__opening', contextPart) : null,
+        contextPart ? h('span.study-orp-row__sep', '·') : null,
+        h('span.study-orp-row__color', { class: { [colorClass]: true } }, colorLabel),
+        h('span.study-orp-row__sep', '·'),
+        h('span.study-orp-row__moves', `${moveCount} move${moveCount !== 1 ? 's' : ''}`),
+        ...(lastPracticedText
+          ? [h('span.study-orp-row__sep', '·'), h('span.study-orp-row__last', lastPracticedText)]
+          : [h('span.study-orp-row__sep', '·'), h('span.study-orp-row__last.study-orp-row__last--never', 'never')]
+        ),
+      ]),
+    ]),
+
+
+
+    h('button.study-orp-row__drill', {
+      attrs: { title: `Practice this line as ${sequence.trainAs}` },
+      on: { click: (e: Event) => {
+        e.stopPropagation();
+        _orpDrillPending = true;
+        initDrillView([sequence], sequence.fens[0] ?? STARTING_FEN, sequence.trainAs, redraw);
+        redraw();
+      }},
+    }, '▶'),
+
+
+
+
+    h('button.study-orp-row__pause', {
+      attrs: { title: sequence.status === 'active' ? 'Pause this line' : 'Resume this line' },
+      on: { click: (e: Event) => {
+        e.stopPropagation();
+        const newStatus = sequence.status === 'active' ? 'paused' : 'active';
+        void getPracticeLine(sequence.id).then(line => {
+          if (!line) return;
+          return savePracticeLine({ ...line, status: newStatus, updatedAt: Date.now() });
+        }).then(() => {
+          _orpLoaded      = false;
+          _orpLoadPending = false;
+          loadOrpLines(redraw);
+        });
+      }},
+    }, sequence.status === 'active' ? 'Pause' : 'Resume'),
+
+
+
+
+
+    h('button.study-orp-row__remove', {
+      attrs: { title: 'Remove this line from Opening Repetition Practice' },
+      on: { click: (e: Event) => {
+        e.stopPropagation();
+        if (confirm(`Remove "${sequence.label || title}" from Opening Repetition Practice?`)) {
+          void deletePracticeLine(sequence.id).then(() => {
+            _orpLoaded      = false;
+            _orpLoadPending = false;
+            loadOrpLines(redraw);
+          });
+        }
+      }},
+    }, '×'),
+  ]);
+}
+
+function renderOrpSection(redraw: () => void): VNode {
+  // LOADING state
+  if (!_orpLoaded) {
+    return h('div.study-orp-section', [
+      h('h2.study-orp-section__heading', 'Opening Repetition Practice'),
+      h('div.study-orp-section__loading', 'Loading…'),
+    ]);
+  }
+
+  // ERROR state
+  if (_orpError) {
+    return h('div.study-orp-section', [
+      h('h2.study-orp-section__heading', 'Opening Repetition Practice'),
+      h('div.study-orp-section__error', 'Could not load opening lines.'),
+    ]);
+  }
+
+
+  if (_orpLines.length === 0) {
+    return h('div.study-orp-section', [
+      h('h2.study-orp-section__heading', 'Opening Repetition Practice'),
+      h('div.study-orp-section__empty', [
+        h('p', 'No opening lines to practice yet.'),
+        h('p', [
+          'To add a line, open ',
+          h('strong', 'Opponents'),
+          ', navigate to any position in a collection, then click ',
+          h('strong', '📚 Save to Library'),
+          '. The line will appear here as a drillable repetition-practice line.',
+        ]),
+      ]),
+    ]);
+  }
+
+
+  return h('div.study-orp-section', [
+    h('h2.study-orp-section__heading', 'Opening Repetition Practice'),
+    ...renderOrpBuckets(_orpLines, redraw),
+  ]);
+}
+
+
+
+
+
+
+function renderOrpBuckets(lines: OrpPracticeLineView[], redraw: () => void): VNode[] {
+  const BUCKETS: { state: OrpPracticeLineView['lineState']; label: string }[] = [
+    { state: 'DUE',         label: 'Due' },
+    { state: 'NEW',         label: 'New' },
+    { state: 'IN_PROGRESS', label: 'In progress' },
+    { state: 'PAUSED',      label: 'Paused' },
+  ];
+
+  const grouped = new Map<string, OrpPracticeLineView[]>();
+  for (const line of lines) {
+    const bucket = grouped.get(line.lineState) ?? [];
+    bucket.push(line);
+    grouped.set(line.lineState, bucket);
+  }
+
+  // Total due positions across all ORP lines (DUE state only; NEW lines are not yet in review).
+  const totalDue = lines
+    .filter(v => v.lineState === 'DUE')
+    .reduce((sum, v) => sum + v.dueCount, 0);
+
+  const nodes: VNode[] = [];
+  for (const { state, label } of BUCKETS) {
+    const group = grouped.get(state);
+    if (!group || group.length === 0) continue;
+
+
+
+
+    const reviewDueBtn: VNode | null = state === 'DUE'
+      ? h('button.study-btn.study-btn--review.study-orp-bucket__review-btn', {
+          attrs: { disabled: totalDue === 0 || _orpDueLaunching, title: 'Start review session for all due opening lines' },
+          on: { click: (e: Event) => {
+            e.stopPropagation();
+            if (totalDue === 0 || _orpDueLaunching) return;
+            void launchOrpDueSession(redraw);
+          }},
+        }, _orpDueLaunching ? 'Starting…' : `Review due (${totalDue})`)
+      : null;
+
+
+
+    const learnNewBtn: VNode | null = state === 'NEW'
+      ? h('button.study-btn.study-btn--learn.study-orp-bucket__learn-btn', {
+          attrs: { disabled: _orpLearnLaunching, title: 'Start a learn session for new opening lines' },
+          on: { click: (e: Event) => {
+            e.stopPropagation();
+            if (_orpLearnLaunching) return;
+            void launchOrpLearnSession(redraw);
+          }},
+        }, _orpLearnLaunching ? 'Starting…' : `Learn new (${group.length})`)
+      : null;
+
+    nodes.push(
+      h('div.study-orp-bucket', { key: state }, [
+        h('div.study-orp-bucket__header', [
+          h('span.study-orp-bucket__label', label),
+          h('span.study-orp-bucket__count', `${group.length}`),
+          reviewDueBtn,
+          learnNewBtn,
+        ]),
+        h('div.study-orp-bucket__list',
+          group.map(view => renderOrpRow(view, redraw))
+        ),
+      ])
+    );
+  }
+  return nodes;
 }
 
 function renderPracticeDashboard(redraw: () => void): VNode | null {

@@ -17,6 +17,7 @@ import { parseUci } from 'chessops/util';
 import { randomMasterGame } from '../showcase/masterGames';
 import type { MasterGame } from '../showcase/masterGames';
 import { bindBoardResizeHandle } from '../board/index';
+import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
 import { renderMoveList } from '../analyse/moveList';
 import type { TreeNode } from '../tree/types';
 import type { ChessAccount } from '../accounts';
@@ -48,7 +49,7 @@ import { planOpponentTurn } from './practice';
 import type { OpeningsTool } from './types';
 import {
   SPEED_OPTIONS, DATE_RANGE_OPTIONS,
-  importFilters, setAutoReview, setAutoReviewConfirmed, setAutoReviewDepth,
+  importFilters,
   currentImportDateRangeConfig, importSyncFilterKey,
   type ImportSpeed, type ImportDateRange,
 } from '../import/filters';
@@ -76,7 +77,6 @@ import {
   arrowAllLines, setArrowAllLines,
   showArrowLabels, setShowArrowLabels,
 } from '../engine/ctrl';
-import { enqueueBulkReview } from '../engine/reviewQueue';
 import { playMoveWithDelay, cancelPlayMove } from '../engine/playMove';
 import { STRENGTH_LEVELS } from '../engine/types';
 import { renderStrengthSelector } from '../engine/strengthView';
@@ -90,9 +90,7 @@ import {
   type PrepLine, type LikelyLineEntry, type StyleViewModel,
 } from './analytics';
 import { detectTrapPatterns } from './traps';
-import { saveVariation } from './db';
-import type { SavedVariation } from './types';
-import { saveUciLinesToLibrary } from '../study/saveAction';
+import { saveOrpLineToLibrary } from '../study/saveAction';
 import { clearLichessApiLoginData, requestBookLogin } from '../auth/lichessBookAuth';
 
 let _openingsCg: CgApi | undefined;
@@ -123,7 +121,6 @@ let _bookAuthNotice = '';
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
 const ICON_FLIP       = '\ue020'; // licon.ChasingArrows — flip board
-const ACCOUNT_SYNC_AUTO_REVIEW_DEPTHS = [2, 4, 6, 8, 10, 12, 14, 16, 18] as const;
 
 function platformLabel(platform: ChessAccount['platform']): string {
   return platform === 'chesscom' ? 'Chess.com' : 'Lichess';
@@ -132,20 +129,6 @@ function platformLabel(platform: ChessAccount['platform']): string {
 function formatSyncDate(timestamp: number | null): string {
   if (timestamp === null) return 'No sync cursor yet';
   return new Date(timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function renderAccountSyncDepthPills(redraw: () => void): VNode[] {
-  return ACCOUNT_SYNC_AUTO_REVIEW_DEPTHS.map(depth =>
-    h('button.review-menu__pill', {
-      class: { active: importFilters.autoReviewDepth === depth },
-      attrs: { type: 'button', title: `Depth ${depth}` },
-      on: { click: (event: Event) => {
-        event.stopPropagation();
-        setAutoReviewDepth(depth);
-        redraw();
-      }},
-    }, String(depth)),
-  );
 }
 
 /** Render the openings page (library or session). */
@@ -230,15 +213,9 @@ function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode
       if (activeCollection()?.id === `account:${account.id}`) {
         await openAccountResearch(refreshedAccount, redraw);
       }
-      const queuedForReview = result.newGames.length > 0 &&
-        importFilters.autoReview &&
-        importFilters.autoReviewConfirmed;
-      if (queuedForReview) {
-        enqueueBulkReview(result.newGames, importFilters.autoReviewDepth);
-      }
       _accountSyncMessages.set(account.id, result.addedCount === 0
         ? 'No new games to import'
-        : `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}${queuedForReview ? '; queued for review' : ''}`);
+        : `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}`);
     } catch (err) {
       _accountSyncErrors.set(account.id, err instanceof Error ? err.message : 'Sync failed.');
     } finally {
@@ -336,28 +313,6 @@ function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode
         ]),
       ]),
     ]),
-    h('div.header__panel-divider'),
-    h('div.header__panel-section', [
-      h('div.header__panel-row',
-        renderToggleRow('opponent-sync-auto-review', 'Auto-review after sync', importFilters.autoReview, (value) => {
-          setAutoReview(value);
-          redraw();
-        }),
-      ),
-      importFilters.autoReview ? h('div.header__panel-section.--nested', [
-        h('div.header__panel-row',
-          renderToggleRow('opponent-sync-auto-review-confirm', 'Are you sure?', importFilters.autoReviewConfirmed, (value) => {
-            setAutoReviewConfirmed(value);
-            redraw();
-          }),
-        ),
-        importFilters.autoReviewConfirmed ? h('div.review-menu__section', [
-          h('div.review-menu__label', `Auto-review depth: ${importFilters.autoReviewDepth}`),
-          h('div.review-menu__row', renderAccountSyncDepthPills(redraw)),
-        ]) : null,
-      ]) : null,
-    ]),
-    h('div.header__panel-divider'),
     h('div.header__panel-section', [
       error ? h('div.header__panel-error', error) : null,
       message ? h('p.header__panel-hint', message) : null,
@@ -2349,53 +2304,52 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
  * Placed between the lines panel and the sample games panel.
  * Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts + controls.ts
  */
-let _saveFeedback: string | null = null;
-let _saveFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let _saveLibFeedback: string | null = null;
 let _saveLibFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
-function handleSaveLine(path: readonly string[], redraw: () => void): void {
-  const collection = activeCollection();
-  if (!collection || path.length < 3) return;
-
-  // Build SAN sequence from tree
-  const tree = openingTree();
-  if (!tree) return;
-  const sans: string[] = [];
-  let current: import('./tree').OpeningTreeNode = tree;
-  for (const uci of path) {
-    const child = current.children.find(c => c.uci === uci);
-    if (!child) break;
-    sans.push(child.san);
-    current = child;
-  }
-
-  const variation: SavedVariation = {
-    id: `var-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    collectionId: collection.id,
-    moves: [...path],
-    sans,
-    trainAs: boardOrientation(),
-    createdAt: Date.now(),
-  };
-
-  saveVariation(variation);
-  _saveFeedback = 'Saved!';
-  if (_saveFeedbackTimer) clearTimeout(_saveFeedbackTimer);
-  _saveFeedbackTimer = setTimeout(() => { _saveFeedback = null; redraw(); }, 1500);
-  redraw();
-}
-
 function handleSaveToLibrary(path: readonly string[], redraw: () => void): void {
-  if (path.length < 1) return;
-  const color = boardOrientation();
-  void saveUciLinesToLibrary([...path], color).then(() => {
-    _saveLibFeedback = 'Saved to Library!';
+  // Guard: canonical helper requires at least 3 half-moves to produce a drillable sequence.
+  // Show a specific message rather than silently doing nothing.
+  if (path.length < 3) {
+    _saveLibFeedback = 'Line too short to practice';
     if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
     _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
     redraw();
-  }).catch(() => {
-    _saveLibFeedback = 'Save failed';
+    return;
+  }
+
+  const trainAs   = boardOrientation();
+  const collection = activeCollection();
+
+  // Derive SAN sequence by walking the opening tree along the path.
+  const tree = openingTree();
+  const sans: string[] = [];
+  if (tree) {
+    let current: import('./tree').OpeningTreeNode = tree;
+    for (const uci of path) {
+      const child = current.children.find(c => c.uci === uci);
+      if (!child) break;
+      sans.push(child.san);
+      current = child;
+    }
+  }
+
+  // Opening name and ECO are not yet available from OpeningTreeNode —
+  // ECO lookup is a future task. Pass undefined for both fields.
+  void saveOrpLineToLibrary([...path], sans, trainAs, collection).then(result => {
+    if (result) {
+      _saveLibFeedback = 'Saved to Library!';
+    } else {
+      // null result here means deriveFens rejected the UCI (the too-short guard already
+      // fired above, so this branch is an invalid-moves failure, not a length issue).
+      _saveLibFeedback = 'Save failed — invalid moves';
+    }
+    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+    _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+    redraw();
+  }).catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : '';
+    _saveLibFeedback = msg ? `Save failed — ${msg}` : 'Save failed';
     if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
     _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
     redraw();
@@ -2424,15 +2378,8 @@ function renderOpeningsMoveList(
     h('div.analyse__moves.areplay', [
       renderMoveList(root, currentPath, () => undefined, navigate, null, false),
     ]),
-    // Save-line row: training shortcut + Study Library (visible when at least 1 move played)
+    // Save-line row: Study Library (visible when at least 1 move played)
     path.length >= 1 ? h('div.openings__save-line-row', [
-      path.length >= 3
-        ? (_saveFeedback
-            ? h('span.openings__save-feedback', _saveFeedback)
-            : h('button.openings__save-line-btn', {
-                on: { click: () => handleSaveLine(path, redraw) },
-              }, '\u2B50 Save line to training'))
-        : null,
       _saveLibFeedback
         ? h('span.openings__save-feedback', _saveLibFeedback)
         : h('button.openings__save-lib-btn', {
@@ -2480,6 +2427,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         _openingsCg = makeChessground(vnode.elm as HTMLElement, {
           fen,
           orientation: boardOrientation(),
+          animation: chessBoardAnimationConfig(),
           viewOnly: false,
           movable: {
             free: false,
@@ -2622,7 +2570,7 @@ function startImportAnimation(redraw: () => void): void {
     fen:      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     lastMove: [] as Key[],
     movable:  { color: 'both', free: false, dests: new Map() },
-    animation: { enabled: true },
+    animation: { enabled: true, duration: 200 },
   });
   // Start first move immediately so there is no visible gap between games.
   scheduleNextAnimMove(redraw, 0);
@@ -2679,6 +2627,7 @@ function syncOpeningsBoard(_redraw: () => void): void {
 
   _openingsCg.set({
     fen,
+    animation: chessBoardAnimationConfig(),
     orientation: boardOrientation(),
     movable: { dests: destsForFen(fen), color: movableColor },
     ...(node.uci ? { lastMove: [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] } : {}),
@@ -2688,6 +2637,11 @@ function syncOpeningsBoard(_redraw: () => void): void {
   setCevalFenOverride(fen);
   if (engineEnabled) evalCurrentPosition();
 }
+
+onBoardAnimationChange('chess', () => {
+  if (_animGame !== null || _animTimer !== null) return;
+  _openingsCg?.set({ animation: chessBoardAnimationConfig() });
+});
 
 // Practice opponent response scheduling.
 // After the user plays a move, the opponent responds after a short delay.
@@ -3284,9 +3238,29 @@ function extractGameUrl(pgn: string): string | null {
   return null;
 }
 
+type SampleGameOutcome = 'win' | 'loss' | 'draw' | null;
+
+function sampleGameOutcomeForTarget(game: ResearchGame, target?: string): SampleGameOutcome {
+  const normalizedTarget = target?.trim().toLowerCase();
+  if (!normalizedTarget) return null;
+
+  const result = game.result?.trim();
+  if (!result || result === '*') return null;
+  if (result === '1/2-1/2' || result === '\u00BD-\u00BD') return 'draw';
+
+  const isTargetWhite = game.white?.trim().toLowerCase() === normalizedTarget;
+  const isTargetBlack = game.black?.trim().toLowerCase() === normalizedTarget;
+  if (!isTargetWhite && !isTargetBlack) return null;
+
+  if ((isTargetWhite && result === '1-0') || (isTargetBlack && result === '0-1')) return 'win';
+  if ((isTargetWhite && result === '0-1') || (isTargetBlack && result === '1-0')) return 'loss';
+  return null;
+}
+
 function renderSampleGameRow(game: ResearchGame): VNode {
   const players = [game.white ?? '?', game.black ?? '?'].join(' vs ');
   const result = game.result ?? '*';
+  const targetOutcome = sampleGameOutcomeForTarget(game, activeCollection()?.target);
   const info: string[] = [];
   if (game.opening) info.push(game.opening);
   if (game.date) info.push(game.date);
@@ -3303,7 +3277,13 @@ function renderSampleGameRow(game: ResearchGame): VNode {
   }, [
     h('div.openings__sample-players', [
       h('span', players),
-      h('span.openings__sample-result', result),
+      h('span.openings__sample-result', {
+        class: {
+          'openings__sample-result--win': targetOutcome === 'win',
+          'openings__sample-result--loss': targetOutcome === 'loss',
+          'openings__sample-result--draw': targetOutcome === 'draw',
+        },
+      }, result),
     ]),
     info.length > 0
       ? h('div.openings__sample-info', [

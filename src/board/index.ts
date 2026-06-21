@@ -19,6 +19,7 @@ import { syncArrow } from '../engine/ctrl';
 import type { ImportedGame } from '../import/types';
 import { addNode } from '../tree/ops';
 import type { Clock, TreeNode } from '../tree/types';
+import { chessBoardAnimationConfig, onBoardAnimationChange } from './animation';
 
 // --- Injected deps ---
 
@@ -341,6 +342,7 @@ export function syncBoard(): void {
   const lastMove = uciToMove(node.uci);
   cgInstance.set({
     fen: node.fen,
+    animation: chessBoardAnimationConfig(),
     turnColor: node.ply % 2 === 0 ? 'white' : 'black',
     movable: {
       color: node.ply % 2 === 0 ? 'white' : 'black',
@@ -627,6 +629,7 @@ export function renderBoard(): VNode {
             },
           },
           fen: node.fen,
+          animation: chessBoardAnimationConfig(),
           turnColor: node.ply % 2 === 0 ? 'white' : 'black',
           movable: {
             free: false,
@@ -661,5 +664,9 @@ export function syncBoardAndArrow(): void {
 // Used during puzzle board setup to prevent intermediate FEN changes from
 // producing multiple overlapping piece animations (visible as board "vibration").
 export function setAnimationEnabled(enabled: boolean): void {
-  cgInstance?.set({ animation: { enabled } });
+  cgInstance?.set({ animation: { ...chessBoardAnimationConfig(), enabled } });
 }
+
+onBoardAnimationChange('chess', () => {
+  cgInstance?.set({ animation: chessBoardAnimationConfig() });
+});
