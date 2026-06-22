@@ -10,6 +10,7 @@ import type { RetroOutcome } from '../analyse/retroCtrl';
 import type { GameSummary } from '../stats/types';
 import { classifyOpening } from '../openings/eco';
 import type { RemoteSyncStoreName } from '../sync/remoteSync';
+import type { DiagnosticEvent, DiagnosticSession } from '../diagnostics/types';
 
 function txDone(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -249,7 +250,8 @@ export interface StoredGameRecord {
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
-export const DB_VERSION = 13;
+// v17 adds diagnostic-reports and diagnostic-outbox after v15 diagnostic-sessions.
+export const DB_VERSION = 17;
 
 let _idb: IDBDatabase | undefined;
 
@@ -324,6 +326,31 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
 
 
   ensureStore(db, event, 'review-queue', { keyPath: 'gameId' });
+
+
+  const diagnosticEventsStore = ensureStore(db, event, 'diagnostic-events', { keyPath: 'eventId' });
+  ensureIndex(diagnosticEventsStore, 'timestamp', 'timestamp', { unique: false });
+  ensureIndex(diagnosticEventsStore, 'kind',      'kind',      { unique: false });
+  ensureIndex(diagnosticEventsStore, 'severity',  'severity',  { unique: false });
+  ensureIndex(diagnosticEventsStore, 'route',     'route',     { unique: false });
+  ensureIndex(diagnosticEventsStore, 'sessionId', 'sessionId', { unique: false });
+
+
+  const diagnosticSessionsStore = ensureStore(db, event, 'diagnostic-sessions', { keyPath: 'sessionId' });
+  ensureIndex(diagnosticSessionsStore, 'startedAt', 'startedAt', { unique: false });
+  ensureIndex(diagnosticSessionsStore, 'sessionId', 'sessionId', { unique: false });
+
+
+  const diagnosticReportsStore = ensureStore(db, event, 'diagnostic-reports', { keyPath: 'reportId' });
+  ensureIndex(diagnosticReportsStore, 'createdAt', 'createdAt', { unique: false });
+  ensureIndex(diagnosticReportsStore, 'sessionId', 'sessionId', { unique: false });
+  ensureIndex(diagnosticReportsStore, 'status',    'status',    { unique: false });
+
+
+  const diagnosticOutboxStore = ensureStore(db, event, 'diagnostic-outbox', { keyPath: 'outboxId' });
+  ensureIndex(diagnosticOutboxStore, 'queuedAt', 'queuedAt', { unique: false });
+  ensureIndex(diagnosticOutboxStore, 'reportId', 'reportId', { unique: false });
+  ensureIndex(diagnosticOutboxStore, 'status',   'status',   { unique: false });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
@@ -336,6 +363,151 @@ function openGameDb(): Promise<IDBDatabase> {
     };
     req.onsuccess = () => { _idb = req.result; resolve(_idb); };
     req.onerror   = () => reject(req.error);
+  });
+}
+
+// --- Diagnostics ---
+
+export interface DiagnosticReport {
+  reportId:     string;
+  sessionId:    string;
+  createdAt:    number;
+  status:       'new' | 'submitted' | 'archived';
+  description:  string;
+  context:      Record<string, unknown>;
+}
+
+export interface DiagnosticOutboxEntry {
+  outboxId: string;
+  reportId: string;
+  queuedAt: number;
+  status:   'pending' | 'failed' | 'sent';
+  payload:  unknown;
+}
+
+export async function putDiagnosticEvent(event: DiagnosticEvent): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-events', 'readwrite');
+  tx.objectStore('diagnostic-events').put(event);
+  await txDone(tx);
+}
+
+export async function getDiagnosticEvents(options: { limit?: number; kind?: string } = {}): Promise<DiagnosticEvent[]> {
+  const limit = options.limit ?? 100;
+  if (limit <= 0) return [];
+
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const events: DiagnosticEvent[] = [];
+    const tx = db.transaction('diagnostic-events', 'readonly');
+    const req = tx.objectStore('diagnostic-events').index('timestamp').openCursor();
+
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(events);
+        return;
+      }
+
+      const event = cursor.value as DiagnosticEvent;
+      if (options.kind === undefined || event.kind === options.kind) {
+        events.push(event);
+        if (events.length >= limit) {
+          resolve(events);
+          return;
+        }
+      }
+
+      cursor.continue();
+    };
+
+    req.onerror = () => reject(req.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+export async function putDiagnosticSession(session: DiagnosticSession): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-sessions', 'readwrite');
+  tx.objectStore('diagnostic-sessions').put(session);
+  await txDone(tx);
+}
+
+export async function getDiagnosticSession(sessionId: string): Promise<DiagnosticSession | undefined> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('diagnostic-sessions', 'readonly')
+      .objectStore('diagnostic-sessions')
+      .get(sessionId);
+    req.onsuccess = () => resolve(req.result as DiagnosticSession | undefined);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getRecentDiagnosticSessions(limit: number): Promise<DiagnosticSession[]> {
+  if (limit <= 0) return [];
+
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const sessions: DiagnosticSession[] = [];
+    const tx = db.transaction('diagnostic-sessions', 'readonly');
+    const req = tx.objectStore('diagnostic-sessions').index('startedAt').openCursor(null, 'prev');
+
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(sessions);
+        return;
+      }
+
+      sessions.push(cursor.value as DiagnosticSession);
+      if (sessions.length >= limit) {
+        resolve(sessions);
+        return;
+      }
+
+      cursor.continue();
+    };
+
+    req.onerror = () => reject(req.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+export async function putDiagnosticReport(report: DiagnosticReport): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-reports', 'readwrite');
+  tx.objectStore('diagnostic-reports').put(report);
+  await txDone(tx);
+}
+
+export async function getDiagnosticReport(reportId: string): Promise<DiagnosticReport | undefined> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('diagnostic-reports', 'readonly')
+      .objectStore('diagnostic-reports')
+      .get(reportId);
+    req.onsuccess = () => resolve(req.result as DiagnosticReport | undefined);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function putDiagnosticOutboxEntry(entry: DiagnosticOutboxEntry): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-outbox', 'readwrite');
+  tx.objectStore('diagnostic-outbox').put(entry);
+  await txDone(tx);
+}
+
+export async function getPendingOutboxEntries(): Promise<DiagnosticOutboxEntry[]> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('diagnostic-outbox', 'readonly')
+      .objectStore('diagnostic-outbox')
+      .index('status')
+      .getAll('pending');
+    req.onsuccess = () => resolve((req.result as DiagnosticOutboxEntry[] | undefined) ?? []);
+    req.onerror = () => reject(req.error);
   });
 }
 
