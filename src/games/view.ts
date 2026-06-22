@@ -9,7 +9,17 @@ import { parsePgnHeader, type ImportedGame } from '../import/types';
 import type { ChessAccount } from '../accounts';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
-import { enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, getQueueSummary, isGameErrored, formatReviewDuration } from '../engine/reviewQueue';
+import {
+  enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, isBulkPaused, getQueueSummary,
+  isGameErrored, formatReviewDuration, getFailedReviewStatus, skipFailedReviewGame,
+  type QueueSummary,
+} from '../engine/reviewQueue';
+import {
+  firstReviewRunBatch,
+  selectedGameIdsInSourceOrder,
+  visibleListReviewRunContext,
+  type ReviewRunSourceContext,
+} from '../engine/reviewRun';
 import { LOSS_THRESHOLDS } from '../engine/winchances';
 import { getMissedMoments, type MissedMoment } from '../engine/tactics';
 
@@ -240,7 +250,7 @@ export interface GamesViewDeps {
   /** selectGame + navigate to analysis + startBatchWhenReady (used for Review button). */
   reviewGame:            (game: ImportedGame) => void;
   /** Run batch analysis on an ordered list of games sequentially. */
-  reviewAllGames:        (games: ImportedGame[]) => void;
+  reviewAllGames:        (games: ImportedGame[], sourceContext?: ReviewRunSourceContext) => void;
   redraw:                () => void;
 }
 
@@ -250,6 +260,7 @@ export interface GamesViewDeps {
 
 type GamesResultFilter = 'win' | 'loss' | 'draw';
 type GamesSortField    = 'date' | 'result' | 'opponent' | 'timeClass';
+type ReviewIssueFilter = 'all' | 'failed-skipped';
 
 let gamesFilterResults:  Set<GamesResultFilter> = new Set(); // empty = all
 let gamesFilterSpeeds:   Set<string>            = new Set(); // empty = all
@@ -260,6 +271,7 @@ let gamesFilterColor:    '' | 'white' | 'black' = '';
 let gamesFilterTactics:  Set<string>            = new Set();
 // Opening name substring filter (case-insensitive).
 let gamesFilterOpening = '';
+let gamesFilterReviewIssues: ReviewIssueFilter = 'all';
 let gamesSortField: GamesSortField = 'date';
 let gamesSortDir:   'asc' | 'desc' = 'desc';
 const GAMES_PAGE_SIZE = 50;
@@ -293,6 +305,107 @@ let accountFilterMenuOpen = false;
 let selectedGameIds: Set<string> = new Set();
 let lastClickedGameId: string | null = null;
 // Select mode: when true, plain taps toggle selection instead of loading the game.
+
+export function selectedGameIdsInCurrentVisibleOrder(games: readonly ImportedGame[]): string[] {
+  return selectedGameIdsInSourceOrder(games, selectedGameIds);
+}
+
+function selectedGamesInCurrentVisibleOrder(games: readonly ImportedGame[]): ImportedGame[] {
+  const orderedIds = new Set(selectedGameIdsInCurrentVisibleOrder(games));
+  return games.filter(game => orderedIds.has(game.id));
+}
+
+function selectedReviewRunContext(selectedGames: readonly ImportedGame[]): ReviewRunSourceContext {
+  const sourceGameIds = selectedGames.map(game => game.id);
+  const activeBatchIds = firstReviewRunBatch(sourceGameIds);
+  return {
+    sourceMode: 'selected-games',
+    sourceGameIds,
+    activeBatchIds,
+  };
+}
+
+type ReviewRowLifecycleLabel = {
+  label: string;
+  title: string;
+  modifier: 'active' | 'queued' | 'paused' | 'warning';
+};
+
+function reviewRowLifecycleLabel(summary: QueueSummary | null, gameId: string): ReviewRowLifecycleLabel | null {
+  if (!summary || !summary.activeBatchGameIds.includes(gameId)) return null;
+  const current = summary.currentGameId === gameId;
+  if (current && summary.stale) {
+    const age = formatReviewDuration(summary.lastProgressSeconds);
+    return {
+      label:    'Stalled',
+      title:    `No review progress${age ? ` for ${age}` : ''}`,
+      modifier: 'warning',
+    };
+  }
+  if (current && summary.lifecycleState === 'hidden-suspended') {
+    return { label: 'Hidden', title: 'Review suspended while the owning tab is hidden', modifier: 'paused' };
+  }
+  if (current && summary.lifecycleState === 'interrupted-after-reload') {
+    return { label: 'Resume', title: 'Review interrupted after reload and requires manual resume', modifier: 'paused' };
+  }
+  if (current && summary.paused) {
+    return { label: 'Paused', title: 'Review is paused', modifier: 'paused' };
+  }
+  if (current) {
+    return { label: 'Reviewing', title: 'Current review game', modifier: 'active' };
+  }
+  return { label: 'Queued', title: 'Queued in the current review batch', modifier: 'queued' };
+}
+
+function renderReviewLifecyclePill(label: ReviewRowLifecycleLabel): VNode {
+  return h(`span.game-list__row-progress.--${label.modifier}`, { attrs: { title: label.title } }, label.label);
+}
+
+function renderGamesReviewLifecyclePill(label: ReviewRowLifecycleLabel): VNode {
+  return h(`span.games-view__review-lifecycle.--${label.modifier}`, { attrs: { title: label.title } }, label.label);
+}
+
+export function currentVisibleListReviewRunContext(games: readonly ImportedGame[]): ReviewRunSourceContext {
+  return visibleListReviewRunContext(games, {
+    sortKey:       gamesSortField,
+    sortDirection: gamesSortDir,
+  });
+}
+
+function reviewRunStartFromContext(
+  games: readonly ImportedGame[],
+  sourceContext: ReviewRunSourceContext,
+): {
+  batchGames: ImportedGame[];
+  sourceContext: ReviewRunSourceContext;
+} {
+  const batchGames = firstReviewRunBatch(games);
+  return {
+    batchGames,
+    sourceContext: {
+      ...sourceContext,
+      activeBatchIds: batchGames.map(game => game.id),
+    },
+  };
+}
+
+function visibleListReviewRunStart(games: readonly ImportedGame[]): {
+  batchGames: ImportedGame[];
+  sourceContext: ReviewRunSourceContext;
+} {
+  return reviewRunStartFromContext(games, currentVisibleListReviewRunContext(games));
+}
+
+function fixedVisibleListReviewRunStart(
+  games: readonly ImportedGame[],
+  sortKey: string,
+  sortDirection: 'asc' | 'desc',
+): {
+  batchGames: ImportedGame[];
+  sourceContext: ReviewRunSourceContext;
+} {
+  return reviewRunStartFromContext(games, visibleListReviewRunContext(games, { sortKey, sortDirection }));
+}
 // Enables multi-select on touch devices where ctrl/shift+click is unavailable.
 let selectModeActive = false;
 
@@ -399,7 +512,8 @@ function toggleGamesSort(field: GamesSortField, redraw: () => void): void {
 function gamesFilterActive(): boolean {
   return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 ||
     gamesFilterOpponent.trim() !== '' || gamesFilterColor !== '' ||
-    gamesFilterTactics.size > 0 || gamesFilterOpening.trim() !== '';
+    gamesFilterTactics.size > 0 || gamesFilterOpening.trim() !== '' ||
+    gamesFilterReviewIssues !== 'all';
 }
 
 function clearGamesFilters(redraw: () => void): void {
@@ -409,6 +523,7 @@ function clearGamesFilters(redraw: () => void): void {
   gamesFilterColor    = '';
   gamesFilterTactics  = new Set();
   gamesFilterOpening  = '';
+  gamesFilterReviewIssues = 'all';
   gamesPage = 0;
   redraw();
 }
@@ -567,6 +682,13 @@ function filteredGames(deps: GamesViewDeps): ImportedGame[] {
   if (gamesFilterOpening.trim()) {
     const q = gamesFilterOpening.trim().toLowerCase();
     list = list.filter(g => g.opening?.toLowerCase().includes(q));
+  }
+
+  if (gamesFilterReviewIssues === 'failed-skipped') {
+    list = list.filter(g => {
+      const status = getFailedReviewStatus(g.id);
+      return status !== undefined && (status.attempts > 0 || status.skipped);
+    });
   }
 
   // Sort
@@ -782,13 +904,24 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       listSelectedCount > 1
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
-              const games = lensGames.filter(g => selectedGameIds.has(g.id));
+              const selectedGames = selectedGamesInCurrentVisibleOrder(lensGames);
+              const batchGames = firstReviewRunBatch(selectedGames);
+              const sourceContext = selectedReviewRunContext(selectedGames);
               selectedGameIds = new Set();
               selectModeActive = false;
-              deps.reviewAllGames(games);
+              deps.reviewAllGames(batchGames, sourceContext);
             }},
             attrs: { title: `Analyze ${listSelectedCount} selected games sequentially` },
           }, `Review ${listSelectedCount}`)
+        : null,
+      visible.length > 1
+        ? h('button.games-view__review-all-btn', {
+            on: { click: () => {
+              const { batchGames, sourceContext } = fixedVisibleListReviewRunStart(visible, 'date', 'desc');
+              deps.reviewAllGames(batchGames, sourceContext);
+            }},
+            attrs: { title: 'Analyze all visible games sequentially' },
+          }, 'Review All')
         : null,
     ]),
     h('div.game-list__page-size', [
@@ -807,7 +940,14 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     ]),
   ]);
 
-  const queueSummary = isBulkRunning() ? getQueueSummary() : null;
+  const queueSummaryCandidate = getQueueSummary();
+  const queueSummary = queueSummaryCandidate.running
+    || queueSummaryCandidate.paused
+    || queueSummaryCandidate.lifecycleState === 'batch-complete'
+    || queueSummaryCandidate.lifecycleState === 'no-more-eligible-games'
+    || queueSummaryCandidate.lifecycleState === 'stale'
+    ? queueSummaryCandidate
+    : null;
   const paginationBar = totalPages > 1 ? h('div.game-list__pagination', [
     h('button.games-view__page-btn', {
       attrs: { type: 'button', disabled: gameListPage === 0 },
@@ -826,7 +966,12 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     queueSummary
       ? h('div.game-list__queue-status', (() => {
           const elapsed = formatReviewDuration(queueSummary.elapsedSeconds);
-          const base = `Reviewing ${queueSummary.done} / ${queueSummary.total} games…`;
+          const details = [
+            queueSummary.failed > 0 ? `${queueSummary.failed} failed` : null,
+            queueSummary.skipped > 0 ? `${queueSummary.skipped} skipped` : null,
+            queueSummary.paused ? 'paused' : null,
+          ].filter(Boolean).join(' · ');
+          const base = `Reviewing ${queueSummary.done} / ${queueSummary.total} games${details ? ` · ${details}` : ''}…`;
           return elapsed ? `${base} Elapsed ${elapsed}` : base;
         })())
       : null,
@@ -838,8 +983,11 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const srcUrl          = deps.gameSourceUrl(game);
           const progress        = getReviewProgress(game.id);
           const isErrored       = isGameErrored(game.id);
+          const failedStatus    = getFailedReviewStatus(game.id);
           const isAnalyzing     = !isErrored && progress !== undefined && progress < 100;
           const isPending       = !isErrored && progress !== undefined && !isAnalyzing && !isAnalyzed;
+          const lifecycleLabel  = reviewRowLifecycleLabel(queueSummary, game.id);
+          const lifecyclePill   = lifecycleLabel ? renderReviewLifecyclePill(lifecycleLabel) : null;
 
           // Accuracy for this game (available once analyzed).
           const rawAcc    = deps.analyzedGameAccuracy.get(game.id);
@@ -855,22 +1003,33 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           // - analyzed: show user accuracy % (or nothing if unavailable)
           // - not yet queued: show Review button
           const reviewControl = isErrored
-            ? h('button.game-list__row-progress.--error', {
-                attrs: { type: 'button', title: 'Review failed - retry background review' },
+            ? h('button.game-list__row-progress.--failed-skip', {
+                attrs: {
+                  type: 'button',
+                  title: 'Skip this failed game',
+                  'aria-label': `Skip failed review for ${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
+                },
                 on: { click: (e: MouseEvent) => {
                   e.stopPropagation();
-                  enqueueBulkReview([game]);
+                  skipFailedReviewGame(game.id);
                   deps.redraw();
                 }},
-              }, 'Retry')
+              }, [
+                h('span.--failed-label', failedStatus ? `Failed (${failedStatus.attempts})` : 'Failed'),
+                h('span.--skip-label', 'Skip'),
+              ])
+            : isAnalyzing && lifecycleLabel?.modifier === 'warning'
+            ? lifecyclePill
             : isAnalyzing
             ? h('span.game-list__row-progress', `${progress}%`)
             : isPending
-              ? h('span.game-list__row-progress.--queued', 'Queued')
+              ? lifecyclePill ?? h('span.game-list__row-progress.--queued', 'Queued')
               : isAnalyzed
                 ? (userAcc !== null && userAcc !== undefined
                     ? h('span.game-list__row-progress.--accuracy', `${Math.round(userAcc)}%`)
                     : null)
+                : lifecyclePill
+                  ? lifecyclePill
                 : isBulkRunning()
                   ? h('div.game-list__row-queue-split', [
                       h('button.game-list__row-queue-btn.--top', {
@@ -1021,6 +1180,23 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       }),
     ]),
 
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Review'),
+      h('button.games-view__pill', {
+        class: { active: gamesFilterReviewIssues === 'failed-skipped' },
+        attrs: {
+          type: 'button',
+          title: 'Show games with failed or skipped review state',
+          'aria-pressed': String(gamesFilterReviewIssues === 'failed-skipped'),
+        },
+        on: { click: () => {
+          gamesFilterReviewIssues = gamesFilterReviewIssues === 'failed-skipped' ? 'all' : 'failed-skipped';
+          gamesPage = 0;
+          redraw();
+        }},
+      }, 'Failed / skipped'),
+    ]),
+
     // Summary + clear + multi-select review
     h('div.games-view__filter-group.--right', [
       h('span.games-view__summary', `${games.length} of ${lensTotal} game${lensTotal === 1 ? '' : 's'}`),
@@ -1028,12 +1204,23 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       selectedGameIds.size > 1
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
-              const ordered = games.filter(g => selectedGameIds.has(g.id));
+              const selectedGames = selectedGamesInCurrentVisibleOrder(games);
+              const batchGames = firstReviewRunBatch(selectedGames);
+              const sourceContext = selectedReviewRunContext(selectedGames);
               selectedGameIds = new Set();
-              deps.reviewAllGames(ordered);
+              deps.reviewAllGames(batchGames, sourceContext);
             }},
             attrs: { title: `Analyze ${selectedGameIds.size} selected games sequentially` },
           }, `Review Selected (${selectedGameIds.size})`)
+        : null,
+      games.length > 1
+        ? h('button.games-view__review-all-btn', {
+            on: { click: () => {
+              const { batchGames, sourceContext } = visibleListReviewRunStart(games);
+              deps.reviewAllGames(batchGames, sourceContext);
+            }},
+            attrs: { title: 'Analyze all visible games sequentially' },
+          }, 'Review All')
         : null,
     ]),
   ]);
@@ -1079,6 +1266,14 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       on: { click: () => { gamesPage++; redraw(); } },
     }, 'Next →'),
   ]) : null;
+  const tableQueueSummaryCandidate = getQueueSummary();
+  const tableQueueSummary = tableQueueSummaryCandidate.running
+    || tableQueueSummaryCandidate.paused
+    || tableQueueSummaryCandidate.lifecycleState === 'batch-complete'
+    || tableQueueSummaryCandidate.lifecycleState === 'no-more-eligible-games'
+    || tableQueueSummaryCandidate.lifecycleState === 'stale'
+    ? tableQueueSummaryCandidate
+    : null;
 
   // Table
   const table = h('div.games-view__table-wrap', [
@@ -1143,7 +1338,10 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             // Review status cell
             const reviewProgress  = !isAnalyzed ? getReviewProgress(game.id) : undefined;
             const isReviewErrored = !isAnalyzed && isGameErrored(game.id);
+            const failedStatus    = !isAnalyzed ? getFailedReviewStatus(game.id) : undefined;
             const isAnalyzing     = !isReviewErrored && reviewProgress !== undefined && reviewProgress < 100;
+            const lifecycleLabel  = !isAnalyzed ? reviewRowLifecycleLabel(tableQueueSummary, game.id) : null;
+            const lifecyclePill   = lifecycleLabel ? renderGamesReviewLifecyclePill(lifecycleLabel) : null;
             const reviewCell = isAnalyzed
               ? h('td.games-view__review-cell', [
                   h('span.games-view__reviewed', { attrs: { title: 'Reviewed' } }, '✓'),
@@ -1152,21 +1350,32 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                 ])
               : isReviewErrored
               ? h('td.games-view__review-cell', [
-                  h('button.games-view__review-error', {
-                    attrs: { type: 'button', title: 'Review failed - retry background review' },
+                  h('button.games-view__review-failed-skip', {
+                    attrs: {
+                      type: 'button',
+                      title: 'Skip this failed game',
+                      'aria-label': `Skip failed review for ${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
+                    },
                     on: { click: (e: Event) => {
                       e.stopPropagation();
-                      enqueueBulkReview([game]);
+                      skipFailedReviewGame(game.id);
                       deps.redraw();
                     }},
-                  }, 'Retry'),
+                  }, [
+                    h('span.--failed-label', failedStatus ? `Failed (${failedStatus.attempts})` : 'Failed'),
+                    h('span.--skip-label', 'Skip'),
+                  ]),
                 ])
+              : isAnalyzing && lifecycleLabel?.modifier === 'warning'
+              ? h('td.games-view__review-cell', [lifecyclePill])
               : isAnalyzing
               ? h('td.games-view__review-cell', [
                   h('span.games-view__analyzing-progress', { attrs: { title: 'Reviewing…' } }, `${reviewProgress}%`),
                 ])
               : h('td.games-view__review-cell', [
-                  isBulkRunning()
+                  lifecyclePill
+                    ? lifecyclePill
+                    : isBulkRunning()
                     ? h('div.games-view__review-split', [
                         h('button.games-view__review-queue-btn.--top', {
                           attrs: { title: 'Review next' },
@@ -1192,8 +1401,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                         }, '⬇'),
                       ])
                     : h('button.games-view__review-btn', {
-                        on: { click: (e: Event) => { e.stopPropagation(); deps.reviewGame(game); } },
-                        attrs: { title: 'Load into Analysis and start review' },
+                        on: { click: (e: Event) => {
+                          e.stopPropagation();
+                          enqueueBulkReview([game]);
+                          deps.redraw();
+                        } },
+                        attrs: { title: 'Queue for background review' },
                       }, 'Review'),
                 ]);
 

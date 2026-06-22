@@ -100,6 +100,7 @@ export interface DiagnosticEvent {
   severity: Severity;
   route: string;
   source: string;
+  sourceTag: string;
   message: string;
   metadata?: DiagnosticMetadata;
   redactionClass: RedactionClass | RedactionClassMap;
@@ -110,6 +111,12 @@ export interface DiagnosticSession {
   sessionId: string;
   startedAt: DiagnosticTimestamp;
   lastSeenAt: DiagnosticTimestamp;
+  lastHeartbeat?: DiagnosticTimestamp;
+  endedAt?: DiagnosticTimestamp;
+  interruptedDetectedAt?: DiagnosticTimestamp;
+  cleanShutdown?: boolean | 'inferred-closed';
+  /** Last document.visibilityState recorded by the session lifecycle tracker. */
+  visibilityState?: 'visible' | 'hidden';
   route: string;
   source: string;
   metadata?: DiagnosticMetadata;

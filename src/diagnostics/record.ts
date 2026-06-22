@@ -1,4 +1,5 @@
 import { appendDurableBreadcrumb } from './breadcrumbLog';
+import { putEventWithEviction } from './idbStore';
 import { RingBuffer } from './ringBuffer';
 import type {
   Breadcrumb,
@@ -11,33 +12,70 @@ import type {
   ToolModeBreadcrumb,
   UserActionBreadcrumb,
 } from './types';
+import { Severity } from './types';
 import { getSessionId, newEventId } from './id';
 import { redactEventMetadata } from './redact';
 
 const MAX_BREADCRUMBS = 100;
 
+const DEFAULT_ROUTE = '';
+
 const breadcrumbs = new RingBuffer<Breadcrumb>(MAX_BREADCRUMBS);
 const sessionTags = new Map<string, string>();
 
-type RecordedDiagnosticEvent = Partial<Omit<DiagnosticEvent, 'metadata'>> & {
-  eventId: string;
-  sessionId: string;
-  timestamp: number;
-  metadata: Record<string, string>;
-};
+function routeFromLocation(): string {
+  return typeof window === 'undefined' ? DEFAULT_ROUTE : window.location.pathname;
+}
 
-function dispatchToStorage(event: RecordedDiagnosticEvent): void {
-  console.debug('[diagnostics]', event);
+function dispatchToStorage(event: DiagnosticEvent): void {
+  putEventWithEviction(event).catch(() => {
+    // Diagnostics must never throw into app code.
+  });
+}
+
+function normalizeSnapshotLimit(maxCount: number): number {
+  if (!Number.isFinite(maxCount)) return 30;
+  return Math.max(0, Math.floor(maxCount));
+}
+
+function redactBreadcrumbMetadata(entry: Breadcrumb): Breadcrumb {
+  const metadata = (entry as Breadcrumb & { metadata?: unknown }).metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return entry;
+
+  return {
+    ...entry,
+    metadata: redactEventMetadata(metadata as Record<string, unknown>),
+  } as unknown as Breadcrumb;
+}
+
+export function snapshotBreadcrumbs(maxCount = 30): Breadcrumb[] {
+  try {
+    const limit = normalizeSnapshotLimit(maxCount);
+    if (limit === 0) return [];
+    return breadcrumbs
+      .toArray()
+      .slice(-limit)
+      .map(redactBreadcrumbMetadata);
+  } catch {
+    return [];
+  }
 }
 
 export function record(event: Partial<DiagnosticEvent>): void {
   try {
-    const recordedEvent: RecordedDiagnosticEvent = {
-      ...event,
+    const sourceTag = event.sourceTag ?? event.source ?? 'app';
+    const recordedEvent: DiagnosticEvent = {
       eventId: newEventId(),
       sessionId: getSessionId(),
       timestamp: Date.now(),
+      kind: event.kind ?? 'error',
+      severity: event.severity ?? Severity.Error,
+      route: event.route ?? routeFromLocation(),
+      source: event.source ?? event.sourceTag ?? 'app',
+      sourceTag,
+      message: event.message ?? 'Diagnostic event',
       metadata: redactEventMetadata((event.metadata ?? {}) as Record<string, unknown>),
+      redactionClass: event.redactionClass ?? 'truncate',
       breadcrumbs: event.breadcrumbs ?? breadcrumbs.toArray(),
     };
 

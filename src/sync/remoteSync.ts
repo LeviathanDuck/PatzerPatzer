@@ -1117,7 +1117,48 @@ function handleStaleSession(body: ApiErrorBody): never {
   throw error;
 }
 
-async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOverride?: string): Promise<T> {
+
+
+
+
+
+
+// Derive a short stable label from a PHP endpoint path, e.g. "push.php?since=…" → "push".
+function endpointClass(path: string): string {
+  const base = path.split('?')[0] ?? path;
+  return base.replace(/\.php$/i, '').replace(/[^a-z0-9-]/gi, '-').toLowerCase() || 'unknown';
+}
+
+// Classify the payload shape without including any payload data.
+// Derived entirely from the endpoint name; never reads request body content.
+function payloadClassForEndpoint(endpoint: string): string {
+  switch (endpoint) {
+    case 'push': return 'items-batch';
+    case 'pull': return 'pull-query';
+    case 'status': return 'status-check';
+    case 'export': return 'backup-export';
+    case 'restore-start': return 'restore-start';
+    case 'restore-chunk': return 'restore-chunk';
+    case 'restore-commit': return 'restore-commit';
+    case 'invalidate': return 'invalidate-sessions';
+    default: return endpoint;
+  }
+}
+
+interface SyncFailureDiagnostic {
+  endpointClass: string;
+  payloadClass: string;
+  httpStatus: number;
+  latencyMs: number;
+  retryCount: number;
+  errorMessage: string;
+}
+
+function logSyncFailure(diagnostic: SyncFailureDiagnostic): void {
+  console.warn('[remote-sync] fetch failure', diagnostic);
+}
+
+async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOverride?: string, retryCount = 0): Promise<T> {
   const token = (tokenOverride ?? storedToken()).trim();
   if (!token) throw new Error('Enter the admin sync token first.');
 
@@ -1125,15 +1166,28 @@ async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOve
   headers.set('Authorization', `Bearer ${token}`);
   const generation = storedServerGeneration();
   if (generation !== undefined) headers.set('X-Patzer-Sync-Generation', String(generation));
+
+  const fetchStart = Date.now();
   const res = await fetch(`${API_BASE}/${path}`, {
     ...init,
     headers,
     credentials: 'same-origin',
     cache: 'no-store',
   });
+  const latencyMs = Date.now() - fetchStart;
+
   const body = await readJsonResponse<ApiErrorBody & T>(res);
   rememberServerGeneration(body.syncGeneration, body.generationReason);
   if (!res.ok) {
+    const ep = endpointClass(path);
+    logSyncFailure({
+      endpointClass: ep,
+      payloadClass: payloadClassForEndpoint(ep),
+      httpStatus: res.status,
+      latencyMs,
+      retryCount,
+      errorMessage: body.error || `Remote sync API failed: ${res.status}`,
+    });
     if (body.code === 'stale-session') handleStaleSession(body);
     throw new Error(body.error || `Remote sync API failed: ${res.status}`);
   }

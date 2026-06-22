@@ -2,7 +2,7 @@ import { DB_NAME, DB_VERSION, putDiagnosticEvent, putDiagnosticSession } from '.
 import { Severity, type DiagnosticEvent, type DiagnosticSession } from './types';
 
 export const DIAG_EVENTS_CAP = 2000;
-export const DIAG_SESSIONS_CAP = 100;
+export const DIAG_SESSIONS_CAP = 50;
 export const DIAG_REPORTS_CAP = 500;
 export const DIAG_OUTBOX_CAP = 200;
 
@@ -109,6 +109,10 @@ export async function putEventWithEviction(event: DiagnosticEvent): Promise<void
 }
 
 export async function putSessionWithEviction(session: DiagnosticSession): Promise<void> {
-  await putDiagnosticSession(session);
-  await evictOldest('diagnostic-sessions', 'startedAt', DIAG_SESSIONS_CAP);
+  try {
+    await putDiagnosticSession(session);
+    await evictOldest('diagnostic-sessions', 'startedAt', DIAG_SESSIONS_CAP);
+  } catch {
+    // Diagnostics session persistence must never reject into app code.
+  }
 }

@@ -15,6 +15,7 @@ import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, pa
 import { accountId, getAccount, recordAccountSync, registerAccount } from '../accounts';
 import { pgnToTree } from '../tree/pgn';
 import { classifyOpening } from '../openings/eco';
+import { record, Severity } from '../diagnostics';
 
 export const lichess = {
   username: 'Leviathan_Duck',
@@ -23,6 +24,33 @@ export const lichess = {
   /** Count of games parsed so far during an active import. */
   gameCount: 0,
 };
+
+function errorClass(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+function lichessRequestClass(since: number | undefined): string {
+  return since === undefined ? 'date-range' : 'since-date-range';
+}
+
+function recordLichessImportEvent(
+  message: string,
+  severity: Severity,
+  metadata: Record<string, string | number | boolean | null>,
+): void {
+  record({
+    kind: 'api',
+    severity,
+    source: 'import.lichess',
+    sourceTag: 'import',
+    message,
+    metadata: {
+      platform: 'lichess',
+      ...metadata,
+    },
+    redactionClass: 'safe',
+  });
+}
 
 /**
  * Extract the canonical 8-character Lichess game id from the [Site] header.
@@ -76,21 +104,50 @@ export async function fetchLichessGames(
   params.set('clocks', 'true');
   if (since !== undefined) params.set('since', String(since));
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
+  const fetchStart = Date.now();
   const res = await fetch(url, { headers: { 'Accept': 'application/x-chess-pgn' } });
   if (!res.ok) {
+    recordLichessImportEvent('Lichess games fetch failed', Severity.Error, {
+      requestClass: lichessRequestClass(since),
+      errorClass: 'http-error',
+      httpStatus: res.status,
+      latencyMs: Date.now() - fetchStart,
+    });
     throw new Error(res.status === 404 ? 'Lichess: user not found' : `Lichess API error ${res.status}`);
   }
-  const text = await res.text();
-  if (!text.trim()) return [];
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (error) {
+    recordLichessImportEvent('lichess-parse-failed', Severity.Error, {
+      requestClass: lichessRequestClass(since),
+      errorClass: errorClass(error),
+      batchIndex: 0,
+    });
+    throw error;
+  }
+  if (!text.trim()) {
+    recordLichessImportEvent('lichess-import-empty', Severity.Info, {
+      requestClass: lichessRequestClass(since),
+      reason: 'empty-response',
+    });
+    return [];
+  }
 
   // Split multi-game PGN: blank line followed by the next [Event header
   const gameTexts = text.trim().split(/\n\n(?=\[Event )/).filter(s => s.trim());
 
   const result: ImportedGame[] = [];
-  for (const pgn of gameTexts) {
+  for (let index = 0; index < gameTexts.length; index++) {
+    const pgn = gameTexts[index]!;
     try {
       pgnToTree(pgn); // validate — skip games that fail to parse
-    } catch {
+    } catch (error) {
+      recordLichessImportEvent('lichess-parse-failed', Severity.Warn, {
+        requestClass: lichessRequestClass(since),
+        errorClass: errorClass(error),
+        batchIndex: index,
+      });
       continue;
     }
     // Lichess uses UTCDate; fall back to Date if absent
@@ -140,6 +197,9 @@ export async function importLichess(callbacks: ImportCallbacks): Promise<void> {
 
   const category = importFilters.importCategory;
   if (category === null) {
+    recordLichessImportEvent('lichess-account-categorize-fail', Severity.Warn, {
+      reasonClass: 'missing-category',
+    });
     lichess.error = 'Choose a category (Mine / Opponent / Study) before importing.';
     callbacks.redraw();
     return;
@@ -171,9 +231,23 @@ export async function importLichess(callbacks: ImportCallbacks): Promise<void> {
     );
     const games = filterGamesByDate(fetched);
     lichess.gameCount = games.length;
+    if (games.length === 0) {
+      recordLichessImportEvent('lichess-import-empty', Severity.Info, {
+        requestClass: lichessRequestClass(since),
+        reason: fetched.length === 0 ? 'no-games-returned' : 'no-games-after-filters',
+        useCursor,
+      });
+    }
     // Register before adding games: a registry write failure surfaces through
     // the catch below and must prevent uncategorized games from being added.
-    await registerAccount('lichess', name, category);
+    try {
+      await registerAccount('lichess', name, category);
+    } catch (error) {
+      recordLichessImportEvent('lichess-account-categorize-fail', Severity.Error, {
+        reasonClass: errorClass(error),
+      });
+      throw error;
+    }
     const timestamps = games.map(g => lichessGameTimestamp(g.pgn)).filter((t): t is number => t !== undefined);
     const newest = timestamps.length > 0 ? Math.max(...timestamps) : null;
     // Coverage extends down to the requested range start, unless the API page

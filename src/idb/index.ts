@@ -11,13 +11,133 @@ import type { GameSummary } from '../stats/types';
 import { classifyOpening } from '../openings/eco';
 import type { RemoteSyncStoreName } from '../sync/remoteSync';
 import type { DiagnosticEvent, DiagnosticSession } from '../diagnostics/types';
+import { record, Severity } from '../diagnostics';
+import type { ReviewRunManifest } from '../engine/reviewRun';
 
-function txDone(tx: IDBTransaction): Promise<void> {
+/**
+ * Resolve when an IDB transaction commits; reject on error or abort.
+ * Instruments onerror/onabort to emit a diagnostic event with the store
+ * name, mode, and error name — no record data or PII is included.
+ * QuotaExceededError additionally triggers a navigator.storage.estimate()
+ * call so quota and usage are captured alongside the failure context.
+ */
+function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+
+    const handleTxFailure = (eventLabel: string) => {
+      const err = tx.error;
+      const storeNames = Array.from(tx.objectStoreNames);
+      const storeName = storeNames.length === 1 ? storeNames[0]! : storeNames.join(',');
+      const mode = operationType ?? tx.mode ?? 'unknown';
+      const errorName = err?.name ?? 'UnknownError';
+
+      if (errorName === 'QuotaExceededError') {
+        const estimateAvailable =
+          typeof navigator !== 'undefined' &&
+          typeof navigator.storage?.estimate === 'function';
+
+        if (estimateAvailable) {
+          navigator.storage.estimate().then(({ quota, usage }) => {
+            record({
+              kind: 'idb',
+              severity: Severity.Error,
+              sourceTag: 'idb',
+              message: `IDB ${eventLabel}: QuotaExceededError`,
+              metadata: {
+                storeName,
+                mode,
+                errorName,
+                quotaBytes: quota ?? null,
+                usageBytes: usage ?? null,
+              },
+              redactionClass: 'safe',
+            });
+          }).catch(() => {
+            // estimate() failed — log without storage numbers
+            record({
+              kind: 'idb',
+              severity: Severity.Error,
+              sourceTag: 'idb',
+              message: `IDB ${eventLabel}: QuotaExceededError (estimate unavailable)`,
+              metadata: { storeName, mode, errorName },
+              redactionClass: 'safe',
+            });
+          });
+        } else {
+          record({
+            kind: 'idb',
+            severity: Severity.Error,
+            sourceTag: 'idb',
+            message: `IDB ${eventLabel}: QuotaExceededError (estimate API absent)`,
+            metadata: { storeName, mode, errorName },
+            redactionClass: 'safe',
+          });
+        }
+      } else {
+        record({
+          kind: 'idb',
+          severity: Severity.Error,
+          sourceTag: 'idb',
+          message: `IDB transaction ${eventLabel}`,
+          metadata: { storeName, mode, errorName },
+          redactionClass: 'safe',
+        });
+      }
+
+      reject(err);
+    };
+
+    tx.onerror = () => handleTxFailure('onerror');
+    tx.onabort = () => handleTxFailure('onabort');
   });
+}
+
+/**
+ * Produce a safe key descriptor for diagnostic logging.
+ * Reports the key's JS type and, for strings, its length — never the raw value.
+ * No game IDs, usernames, or any user-identifiable content is included.
+ */
+function redactKeyDescriptor(key: unknown): string {
+  if (key === undefined || key === null) return 'none';
+  const t = typeof key;
+  if (t === 'string') return `string(${(key as string).length})`;
+  if (t === 'number') return 'number';
+  if (t === 'boolean') return 'boolean';
+  if (Array.isArray(key)) return `array(${key.length})`;
+  return t;
+}
+
+/**
+ * Emit a diagnostic event for an individual IDB request failure and return
+ * the error so callers can re-reject with it.
+ * Captures the current route (window.location.pathname) at the time of failure.
+ * Session ID is captured automatically by record().
+ * Raw key values are never included — only a type/length descriptor.
+ */
+function recordReqFailure(
+  req: IDBRequest,
+  storeName: string,
+  operation: 'read' | 'write' | 'delete' | 'cursor',
+  key?: unknown,
+): DOMException | null {
+  const err = req.error;
+  const errorName = err?.name ?? 'UnknownError';
+  const metadata: Record<string, string | number> = {
+    storeName,
+    operation,
+    errorName,
+  };
+  if (key !== undefined) metadata.keyDescriptor = redactKeyDescriptor(key);
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    sourceTag: 'idb',
+    message: `IDB request onerror: ${operation} on ${storeName}`,
+    metadata,
+    redactionClass: 'safe',
+  });
+  return err;
 }
 
 function enqueueMainDbPut(storeName: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt = Date.now()): void {
@@ -250,8 +370,8 @@ export interface StoredGameRecord {
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
-// v17 adds diagnostic-reports and diagnostic-outbox after v15 diagnostic-sessions.
-export const DB_VERSION = 17;
+// v19 adds review-runs for lightweight bulk review run manifests.
+export const DB_VERSION = 19;
 
 let _idb: IDBDatabase | undefined;
 
@@ -328,6 +448,17 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   ensureStore(db, event, 'review-queue', { keyPath: 'gameId' });
 
 
+  const reviewFailuresStore = ensureStore(db, event, 'review-failures', { keyPath: 'key' });
+  ensureIndex(reviewFailuresStore, 'gameId', 'gameId', { unique: false });
+  ensureIndex(reviewFailuresStore, 'depth',  'depth',  { unique: false });
+
+
+
+  const reviewRunsStore = ensureStore(db, event, 'review-runs', { keyPath: 'runId' });
+  ensureIndex(reviewRunsStore, 'lifecycleState', 'lifecycleState', { unique: false });
+  ensureIndex(reviewRunsStore, 'updatedAt',      'updatedAt',      { unique: false });
+
+
   const diagnosticEventsStore = ensureStore(db, event, 'diagnostic-events', { keyPath: 'eventId' });
   ensureIndex(diagnosticEventsStore, 'timestamp', 'timestamp', { unique: false });
   ensureIndex(diagnosticEventsStore, 'kind',      'kind',      { unique: false });
@@ -359,9 +490,74 @@ function openGameDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e: IDBVersionChangeEvent) => {
       const db = (e.target as IDBOpenDBRequest).result;
+      const upgradeStart = Date.now();
+      const oldVersion = e.oldVersion;
+      const newVersion = e.newVersion ?? DB_VERSION;
       upgradeGameDbSchema(db, e);
+      // Emit upgrade duration after the synchronous schema mutations complete.
+      // oldVersion/newVersion contain no PII — they are integer schema version numbers.
+      const tx = (e.target as IDBOpenDBRequest).transaction;
+      if (tx) {
+        tx.oncomplete = () => {
+          record({
+            kind: 'idb',
+            severity: Severity.Info,
+            sourceTag: 'idb',
+            message: 'IDB schema upgraded',
+            metadata: {
+              oldVersion,
+              newVersion,
+              durationMs: Date.now() - upgradeStart,
+            },
+            redactionClass: 'safe',
+          });
+        };
+      }
     };
-    req.onsuccess = () => { _idb = req.result; resolve(_idb); };
+    req.onsuccess = () => {
+      _idb = req.result;
+      // Log the DB version on every successful open — no PII, integer version only.
+      record({
+        kind: 'idb',
+        severity: Severity.Info,
+        sourceTag: 'idb',
+        message: 'IDB opened',
+        metadata: { version: _idb.version },
+        redactionClass: 'safe',
+      });
+      // Attach versionchange handler: fires when another tab requests a DB upgrade.
+      // This tab holds an open connection that blocks the upgrade until we close.
+      // No PII — integer version numbers only.
+      _idb.onversionchange = (e: IDBVersionChangeEvent) => {
+        record({
+          kind: 'idb',
+          severity: Severity.Warn,
+          sourceTag: 'idb',
+          message: 'IDB versionchange: another tab is requesting a schema upgrade; this tab should reload',
+          metadata: {
+            currentVersion: e.oldVersion,
+            requestedVersion: e.newVersion,
+          },
+          redactionClass: 'safe',
+        });
+      };
+      resolve(_idb);
+    };
+    // onblocked fires when this open() call cannot proceed because another tab
+    // holds a connection to an older schema version. No PII — version numbers only.
+    req.onblocked = (e: IDBVersionChangeEvent) => {
+      record({
+        kind: 'idb',
+        severity: Severity.Warn,
+        sourceTag: 'idb',
+        message: 'IDB open blocked: another tab holds an older schema version',
+        metadata: {
+          oldVersion: e.oldVersion,
+          newVersion: e.newVersion,
+        },
+        redactionClass: 'safe',
+      });
+    };
     req.onerror   = () => reject(req.error);
   });
 }
@@ -421,7 +617,7 @@ export async function getDiagnosticEvents(options: { limit?: number; kind?: stri
       cursor.continue();
     };
 
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-events', 'cursor'));
     tx.onabort = () => reject(tx.error);
   });
 }
@@ -440,7 +636,7 @@ export async function getDiagnosticSession(sessionId: string): Promise<Diagnosti
       .objectStore('diagnostic-sessions')
       .get(sessionId);
     req.onsuccess = () => resolve(req.result as DiagnosticSession | undefined);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-sessions', 'read', sessionId));
   });
 }
 
@@ -469,7 +665,7 @@ export async function getRecentDiagnosticSessions(limit: number): Promise<Diagno
       cursor.continue();
     };
 
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-sessions', 'cursor'));
     tx.onabort = () => reject(tx.error);
   });
 }
@@ -488,7 +684,7 @@ export async function getDiagnosticReport(reportId: string): Promise<DiagnosticR
       .objectStore('diagnostic-reports')
       .get(reportId);
     req.onsuccess = () => resolve(req.result as DiagnosticReport | undefined);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-reports', 'read', reportId));
   });
 }
 
@@ -507,7 +703,7 @@ export async function getPendingOutboxEntries(): Promise<DiagnosticOutboxEntry[]
       .index('status')
       .getAll('pending');
     req.onsuccess = () => resolve((req.result as DiagnosticOutboxEntry[] | undefined) ?? []);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-outbox', 'read'));
   });
 }
 
@@ -631,7 +827,7 @@ export async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
     const gamesFromNewStore = await new Promise<StoredGameRecord[]>((resolve, reject) => {
       const req = db.transaction('games', 'readonly').objectStore('games').getAll();
       req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'games', 'read'));
     });
 
     if (gamesFromNewStore.length > 0) {
@@ -640,7 +836,7 @@ export async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
         const req = db.transaction('game-library', 'readonly')
           .objectStore('game-library').get('imported-nav');
         req.onsuccess = () => resolve(req.result as StoredGameNavState | undefined);
-        req.onerror   = () => reject(req.error);
+        req.onerror   = () => reject(recordReqFailure(req, 'game-library', 'read', 'imported-nav'));
       });
       const games = gamesFromNewStore.map(storedGameRecordToImportedGame);
       return {
@@ -689,8 +885,8 @@ export async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
         navDone = true;
         maybeResolve();
       };
-      gamesReq.onerror = () => reject(gamesReq.error);
-      navReq.onerror = () => reject(navReq.error);
+      gamesReq.onerror = () => reject(recordReqFailure(gamesReq, 'game-library', 'read', 'imported-games'));
+      navReq.onerror = () => reject(recordReqFailure(navReq, 'game-library', 'read', 'imported-nav'));
     });
   } catch (e) {
     console.warn('[idb] load failed', e);
@@ -709,7 +905,7 @@ export async function loadGamesByAccountFromIdb(accountId: string): Promise<Stor
       const req = db.transaction('games', 'readonly')
         .objectStore('games').index('accountId').getAll(accountId);
       req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'games', 'read'));
     });
   } catch (e) {
     console.warn('[idb] account games load failed', e);
@@ -730,7 +926,7 @@ export async function loadGamePgn(gameId: string): Promise<string | undefined> {
         const record = req.result as StoredGameRecord | undefined;
         resolve(record?.pgn);
       };
-      req.onerror = () => reject(req.error);
+      req.onerror = () => reject(recordReqFailure(req, 'games', 'read', gameId));
     });
   } catch (e) {
     console.warn('[idb] loadGamePgn failed', e);
@@ -766,7 +962,7 @@ export async function getAccountFromIdb(id: string): Promise<ChessAccount | unde
   return new Promise((resolve, reject) => {
     const req = db.transaction('accounts', 'readonly').objectStore('accounts').get(id);
     req.onsuccess = () => resolve(req.result as ChessAccount | undefined);
-    req.onerror   = () => reject(req.error);
+    req.onerror   = () => reject(recordReqFailure(req, 'accounts', 'read', id));
   });
 }
 
@@ -776,7 +972,7 @@ export async function listAccountsFromIdb(): Promise<ChessAccount[]> {
     return await new Promise((resolve, reject) => {
       const req = db.transaction('accounts', 'readonly').objectStore('accounts').getAll();
       req.onsuccess = () => resolve((req.result as ChessAccount[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'accounts', 'read'));
     });
   } catch (e) {
     console.warn('[idb] account list failed', e);
@@ -825,7 +1021,7 @@ export async function loadAnalysisFromIdb(gameId: string): Promise<StoredAnalysi
       const req = db.transaction('analysis-library', 'readonly')
         .objectStore('analysis-library').get(gameId);
       req.onsuccess = () => resolve(req.result as StoredAnalysis | undefined);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'analysis-library', 'read', gameId));
     });
   } catch (e) {
     console.warn('[idb] analysis load failed', e);
@@ -866,7 +1062,7 @@ export async function listCompletedAnalysisMetadataFromIdb(
       }
       cursor.continue();
     };
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(recordReqFailure(req, 'analysis-library', 'cursor'));
   });
 }
 
@@ -904,7 +1100,7 @@ export async function getRetroResult(gameId: string): Promise<RetroSessionResult
       const req = db.transaction('retro-results', 'readonly')
         .objectStore('retro-results').get(gameId);
       req.onsuccess = () => resolve(req.result as RetroSessionResult | undefined);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'retro-results', 'read', gameId));
     });
   } catch (e) {
     console.warn('[idb] retro-result load failed', e);
@@ -919,7 +1115,7 @@ export async function listRetroResults(): Promise<RetroSessionResult[]> {
       const req = db.transaction('retro-results', 'readonly')
         .objectStore('retro-results').getAll();
       req.onsuccess = () => resolve((req.result as RetroSessionResult[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'retro-results', 'read'));
     });
   } catch (e) {
     console.warn('[idb] retro-result list failed', e);
@@ -941,14 +1137,26 @@ export interface ReviewQueueManifestEntry {
   total:  number;
 }
 
-export async function saveReviewQueueManifest(entry: ReviewQueueManifestEntry): Promise<void> {
+export interface ReviewFailureRecord {
+  key:          string;
+  gameId:       string;
+  depth:        number;
+  attempts:     number;
+  lastFailedAt: number;
+  skipped?:     boolean;
+  skippedAt?:   number;
+}
+
+export async function saveReviewQueueManifest(entry: ReviewQueueManifestEntry): Promise<boolean> {
   try {
     const db = await openGameDb();
     const tx = db.transaction('review-queue', 'readwrite');
     tx.objectStore('review-queue').put(entry);
     await txDone(tx);
+    return true;
   } catch (e) {
     console.warn('[idb] review-queue manifest save failed', e);
+    return false;
   }
 }
 
@@ -980,10 +1188,89 @@ export async function loadReviewQueueManifest(): Promise<ReviewQueueManifestEntr
     return new Promise((resolve, reject) => {
       const req = db.transaction('review-queue', 'readonly').objectStore('review-queue').getAll();
       req.onsuccess = () => resolve((req.result as ReviewQueueManifestEntry[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'review-queue', 'read'));
     });
   } catch (e) {
     console.warn('[idb] review-queue manifest load failed', e);
+    return [];
+  }
+}
+
+export async function saveReviewRunManifest(manifest: ReviewRunManifest): Promise<boolean> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('review-runs', 'readwrite');
+    tx.objectStore('review-runs').put(manifest);
+    await txDone(tx);
+    return true;
+  } catch (e) {
+    console.warn('[idb] review-runs manifest save failed', e);
+    return false;
+  }
+}
+
+export async function loadReviewRunManifests(): Promise<ReviewRunManifest[]> {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('review-runs', 'readonly').objectStore('review-runs').getAll();
+      req.onsuccess = () => resolve((req.result as ReviewRunManifest[] | undefined) ?? []);
+      req.onerror   = () => reject(recordReqFailure(req, 'review-runs', 'read'));
+    });
+  } catch (e) {
+    console.warn('[idb] review-runs manifest load failed', e);
+    return [];
+  }
+}
+
+export async function loadLatestReviewRunManifest(): Promise<ReviewRunManifest | null> {
+  const manifests = await loadReviewRunManifests();
+  return manifests.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+}
+
+export async function clearReviewRunManifest(runId: string): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('review-runs', 'readwrite');
+    tx.objectStore('review-runs').delete(runId);
+    await txDone(tx);
+  } catch (e) {
+    console.warn('[idb] review-runs manifest clear failed', e);
+  }
+}
+
+export async function saveReviewFailureRecord(record: ReviewFailureRecord): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('review-failures', 'readwrite');
+    tx.objectStore('review-failures').put(record);
+    await txDone(tx);
+  } catch (e) {
+    console.warn('[idb] review-failures save failed', e);
+  }
+}
+
+export async function deleteReviewFailureRecord(key: string): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('review-failures', 'readwrite');
+    tx.objectStore('review-failures').delete(key);
+    await txDone(tx);
+  } catch (e) {
+    console.warn('[idb] review-failures delete failed', e);
+  }
+}
+
+export async function loadReviewFailureRecords(): Promise<ReviewFailureRecord[]> {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('review-failures', 'readonly').objectStore('review-failures').getAll();
+      req.onsuccess = () => resolve((req.result as ReviewFailureRecord[] | undefined) ?? []);
+      req.onerror   = () => reject(recordReqFailure(req, 'review-failures', 'read'));
+    });
+  } catch (e) {
+    console.warn('[idb] review-failures load failed', e);
     return [];
   }
 }
@@ -1011,7 +1298,7 @@ export async function getGameSummary(gameId: string): Promise<GameSummary | unde
       const req = db.transaction('game-summaries', 'readonly')
         .objectStore('game-summaries').get(gameId);
       req.onsuccess = () => resolve(req.result as GameSummary | undefined);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'game-summaries', 'read', gameId));
     });
   } catch (e) {
     console.warn('[idb] game-summary load failed', e);
@@ -1026,7 +1313,7 @@ export async function listGameSummaries(): Promise<GameSummary[]> {
       const req = db.transaction('game-summaries', 'readonly')
         .objectStore('game-summaries').getAll();
       req.onsuccess = () => resolve((req.result as GameSummary[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'game-summaries', 'read'));
     });
   } catch (e) {
     console.warn('[idb] game-summary list failed', e);
@@ -1048,7 +1335,7 @@ export async function backfillOpenings(): Promise<number> {
     const records = await new Promise<StoredGameRecord[]>((resolve, reject) => {
       const req = db.transaction('games', 'readonly').objectStore('games').getAll();
       req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'games', 'read'));
     });
     const toUpdate = records.filter(r => r.opening === null || r.eco === null);
     if (toUpdate.length === 0) return 0;
@@ -1089,7 +1376,7 @@ export async function backfillOpenings(): Promise<number> {
 export async function clearAllIdbData(): Promise<void> {
   try {
     const db = await openGameDb();
-    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts', 'review-queue'], 'readwrite');
+    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts', 'review-queue', 'review-failures', 'review-runs'], 'readwrite');
     tx.objectStore('game-library').clear();
     tx.objectStore('puzzle-library').clear();
     tx.objectStore('analysis-library').clear();
@@ -1103,6 +1390,8 @@ export async function clearAllIdbData(): Promise<void> {
     tx.objectStore('folders').clear();
     tx.objectStore('accounts').clear();
     tx.objectStore('review-queue').clear();
+    tx.objectStore('review-failures').clear();
+    tx.objectStore('review-runs').clear();
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror    = () => reject(tx.error);
@@ -1133,7 +1422,7 @@ export async function loadPuzzlesFromIdb(): Promise<PuzzleCandidate[]> {
       const req = db.transaction('puzzle-library', 'readonly')
         .objectStore('puzzle-library').get('saved-puzzles');
       req.onsuccess = () => resolve((req.result as PuzzleCandidate[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
+      req.onerror   = () => reject(recordReqFailure(req, 'puzzle-library', 'read', 'saved-puzzles'));
     });
   } catch (e) {
     console.warn('[idb] puzzle load failed', e);

@@ -40,6 +40,7 @@ function eventForBreadcrumb(breadcrumb: DurableBreadcrumb): DiagnosticEvent {
     severity: Severity.Info,
     route: routeForBreadcrumb(breadcrumb),
     source: 'diagnostics.breadcrumb',
+    sourceTag: 'diagnostics.breadcrumb',
     message: messageForBreadcrumb(breadcrumb),
     metadata: {
       breadcrumbType: breadcrumb.type,

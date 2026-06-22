@@ -22,7 +22,10 @@ import {
   isBulkRunning, isBulkPaused,
   pauseBulkReview, resumeBulkReview, cancelBulkReview,
   getQueueSummary, formatReviewDuration,
+  queueNextReviewRunBatch, dismissReviewRunNotice,
   isReviewEngineFailed, isReviewEngineInitializing,
+  getCurrentFailedReviewStatus, skipCurrentFailedReviewGame,
+  isReviewOwnerUnavailableForTakeover, takeOverUnavailableReviewOwner,
 } from '../engine/reviewQueue';
 import { reviewDepth, setReviewDepth, reviewMovetime, setReviewMovetime } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
@@ -530,7 +533,12 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   const engineInitializing = isReviewEngineInitializing();
   const running = isBulkRunning();
   const paused  = isBulkPaused();
-  const active  = running || paused;
+  const summary = getQueueSummary();
+  const lifecycleState = summary.lifecycleState;
+  const completionNotice = lifecycleState === 'batch-complete' || lifecycleState === 'no-more-eligible-games';
+  const staleNotice = summary.stale || lifecycleState === 'stale';
+  const storageFailureNotice = summary.storageHealth !== 'ok';
+  const active  = running || paused || completionNotice || storageFailureNotice;
 
   // Surface engine init failure as an explicit error state even when no game
   // is actively running (so the queue never shows a perpetual spinner).
@@ -570,17 +578,54 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   }
 
   if (!active) return null;
-  const summary = getQueueSummary();
   const elapsed = summary ? formatReviewDuration(summary.elapsedSeconds) : null;
+  const lastProgress = summary ? formatReviewDuration(summary.lastProgressSeconds) : null;
+  const failedStatus = getCurrentFailedReviewStatus();
+  const interruptedAfterReload = summary?.pauseReason === 'reload';
+  const ownerUnavailable = isReviewOwnerUnavailableForTakeover();
+  const storageFailure = summary.storageHealth !== 'ok';
+  const canControlQueue = running || paused || ownerUnavailable;
+  const timeControlLabel = summary.timeControlContext?.speeds.length
+    ? summary.timeControlContext.speeds.join(', ')
+    : 'All time controls';
+  const currentBatchLabel = summary.currentBatchIndex !== null && summary.currentBatchTotal !== null
+    ? `Game ${summary.currentBatchIndex}/${summary.currentBatchTotal}`
+    : null;
+  const reviewTriggerLabel = failedStatus
+    ? `Failed (${failedStatus.attempts})`
+    : storageFailure
+      ? 'Storage error'
+    : interruptedAfterReload
+      ? `Resume review ${summary.done}/${summary.total}`
+    : staleNotice
+      ? `Review stalled ${summary.done}/${summary.total}`
+    : lifecycleState === 'batch-complete'
+      ? `Batch complete ${summary.done}/${summary.total}`
+    : lifecycleState === 'no-more-eligible-games'
+      ? 'Review complete'
+      : summary
+        ? `Reviewing ${summary.done}/${summary.total}${elapsed ? ` · Elapsed ${elapsed}` : ''}`
+        : 'Reviewing…';
+  const reviewTriggerTitle = failedStatus
+    ? 'Current review failed and is retrying'
+    : storageFailure
+      ? 'Review storage write failed - resume may be unavailable'
+    : interruptedAfterReload
+      ? 'Review interrupted after reload - resume manually'
+    : staleNotice
+      ? 'No recent review progress detected'
+    : lifecycleState === 'batch-complete'
+      ? 'Review batch complete'
+    : lifecycleState === 'no-more-eligible-games'
+      ? 'No matching games left to review'
+    : 'Bulk Review settings';
 
   return h('div.review-menu', [
     h('button.review-menu__trigger', {
-      class: { active: showReviewMenu || active },
-      attrs: { title: 'Bulk Review settings' },
+      class: { active: showReviewMenu || active, 'review-menu__trigger--warning': staleNotice },
+      attrs: { title: reviewTriggerTitle },
       on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
-    }, summary
-      ? `Reviewing ${summary.done}/${summary.total}${elapsed ? ` · Elapsed ${elapsed}` : ''}`
-      : 'Reviewing…'),
+    }, reviewTriggerLabel),
 
     showReviewMenu ? h('div.review-menu__backdrop', {
       on: { click: () => { showReviewMenu = false; redraw(); } },
@@ -593,22 +638,96 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         h('div.review-menu__label', summary
           ? `${summary.done} of ${summary.total} game${summary.total === 1 ? '' : 's'} analyzed`
           : 'Reviewing…'),
+        summary.failed > 0 || summary.skipped > 0
+          ? h('div.review-menu__label',
+              [
+                summary.failed > 0 ? `${summary.failed} failed` : null,
+                summary.skipped > 0 ? `${summary.skipped} skipped` : null,
+                summary.remainingGames > 0 ? `${summary.remainingGames} remaining` : null,
+              ].filter(Boolean).join(' · '))
+          : null,
+        interruptedAfterReload
+          ? h('div.review-menu__label', 'Review interrupted after reload. Resume to continue.')
+          : null,
+        staleNotice
+          ? h('div.review-menu__label.review-menu__label--warning',
+              `No review progress for ${lastProgress ?? 'a while'}. You can pause, cancel, or take over if the owner is unavailable.`)
+          : null,
+        lifecycleState === 'batch-complete'
+          ? h('div.review-menu__label', 'Batch complete. Queue the next matching games when you are ready.')
+          : null,
+        lifecycleState === 'no-more-eligible-games'
+          ? h('div.review-menu__label', 'No more matching games are available for this review run.')
+          : null,
+        failedStatus
+          ? h('div.review-menu__label.review-menu__label--error',
+              failedStatus.retrying
+                ? `Failed (${failedStatus.attempts}) - retrying`
+                : `Failed (${failedStatus.attempts})`)
+          : null,
+        storageFailure
+          ? h('div.review-menu__label.review-menu__label--error',
+              summary?.storageHealth === 'checkpoint-write-failed'
+                ? 'Checkpoint save failed. Resume may not include the latest progress.'
+                : summary?.storageHealth === 'run-manifest-write-failed'
+                  ? 'Run manifest save failed. Resume may be unavailable.'
+                : 'Review manifest save failed. Resume may be unavailable.')
+          : null,
         summary && summary.remainingPositions > 0
           ? h('div.review-menu__label', elapsed
               ? `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining · Elapsed ${elapsed}`
               : `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining`)
           : null,
+        summary.currentGameLabel
+          ? h('div.review-menu__label',
+              `${currentBatchLabel ? `${currentBatchLabel} · ` : ''}${summary.currentGameLabel}`)
+          : null,
+        summary.reviewDepth !== null || summary.timeControlContext !== null
+          ? h('div.review-menu__label',
+              [
+                summary.reviewDepth !== null ? `Depth ${summary.reviewDepth}` : null,
+                timeControlLabel,
+                lastProgress ? `Last progress ${lastProgress} ago` : null,
+              ].filter(Boolean).join(' · '))
+          : null,
         h('div.review-menu__row', [
-          paused
+          lifecycleState === 'batch-complete'
+            ? h('button.review-menu__btn', {
+                attrs: { type: 'button', title: 'Queue the next matching batch from this run' },
+                on: { click: () => { void queueNextReviewRunBatch().finally(redraw); } },
+              }, 'Queue next batch')
+            : null,
+          completionNotice
+            ? h('button.review-menu__btn', {
+                attrs: { type: 'button', title: 'Dismiss this review notice' },
+                on: { click: () => { dismissReviewRunNotice(); showReviewMenu = false; redraw(); } },
+              }, 'Dismiss')
+            : null,
+          failedStatus
+            ? h('button.review-menu__btn.--cancel', {
+                attrs: { type: 'button', title: 'Skip this failed game and continue the review queue' },
+                on: { click: () => { skipCurrentFailedReviewGame(); showReviewMenu = false; redraw(); } },
+              }, 'Skip failed game')
+            : null,
+          canControlQueue && ownerUnavailable
+            ? h('button.review-menu__btn', {
+                attrs: { type: 'button', title: 'Review owner is unavailable. Take over and resume in this tab.' },
+                on: { click: () => { takeOverUnavailableReviewOwner(); redraw(); } },
+              }, 'Take over')
+            : canControlQueue && paused
             ? h('button.review-menu__btn', {
                 on: { click: () => { resumeBulkReview(); redraw(); } },
               }, 'Resume')
-            : h('button.review-menu__btn', {
+            : canControlQueue
+            ? h('button.review-menu__btn', {
                 on: { click: () => { pauseBulkReview(); redraw(); } },
-              }, 'Pause'),
-          h('button.review-menu__btn.--cancel', {
-            on: { click: () => { cancelBulkReview(); redraw(); } },
-          }, 'Cancel'),
+              }, 'Pause')
+            : null,
+          canControlQueue
+            ? h('button.review-menu__btn.--cancel', {
+                on: { click: () => { cancelBulkReview(); redraw(); } },
+              }, 'Cancel')
+            : null,
         ]),
       ]),
 

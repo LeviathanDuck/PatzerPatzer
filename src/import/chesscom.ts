@@ -13,8 +13,32 @@ import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, pa
 import { accountId, getAccount, recordAccountSync, registerAccount } from '../accounts';
 import { pgnToTree } from '../tree/pgn';
 import { classifyOpening } from '../openings/eco';
+import { record, Severity } from '../diagnostics';
 
 const CHESSCOM_BASE = 'https://api.chess.com/pub/player';
+
+function errorClass(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+function recordChesscomImportEvent(
+  message: string,
+  severity: Severity,
+  metadata: Record<string, string | number | boolean | null>,
+): void {
+  record({
+    kind: 'api',
+    severity,
+    source: 'import.chesscom',
+    sourceTag: 'import',
+    message,
+    metadata: {
+      platform: 'chesscom',
+      ...metadata,
+    },
+    redactionClass: 'safe',
+  });
+}
 
 /**
  * Return the earliest YYYY-MM string that should be fetched for the current date filter,
@@ -66,13 +90,38 @@ export async function fetchChesscomGames(
   cutoffMonth: string | null = archiveCutoffMonthFor(currentImportDateRangeConfig()),
 ): Promise<ImportedGame[]> {
   // 1. Fetch archive list (one URL per month the player has games)
+  const archivesStart = Date.now();
   const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
   if (!archivesRes.ok) {
+    record({
+      kind: 'api',
+      severity: Severity.Error,
+      sourceTag: 'import',
+      message: 'Chess.com archive list fetch failed',
+      metadata: { platform: 'chesscom', httpStatus: archivesRes.status, latencyMs: Date.now() - archivesStart },
+      redactionClass: 'safe',
+    });
     throw new Error(archivesRes.status === 404 ? 'Chess.com: user not found' : `Chess.com API error ${archivesRes.status}`);
   }
-  const archivesData = await archivesRes.json() as { archives?: string[] };
+  let archivesData: { archives?: string[] };
+  try {
+    archivesData = await archivesRes.json() as { archives?: string[] };
+  } catch (error) {
+    recordChesscomImportEvent('chesscom-parse-failed', Severity.Error, {
+      requestClass: 'archive-list',
+      errorClass: errorClass(error),
+      batchGameCount: 0,
+    });
+    throw error;
+  }
   const archives = archivesData.archives ?? [];
-  if (archives.length === 0) return [];
+  if (archives.length === 0) {
+    recordChesscomImportEvent('chesscom-import-empty', Severity.Info, {
+      requestClass: 'archive-list',
+      reason: 'no-archives',
+    });
+    return [];
+  }
 
   // 2. Select archive months that fall within the current date-filter window.
   // Archive URLs end with /YYYY/MM — extract the month string and compare to cutoff.
@@ -94,14 +143,41 @@ export async function fetchChesscomGames(
         if (!year || !month) return false;
         return `${year}-${month.padStart(2, '0')}` >= effectiveCutoff;
       });
-  if (relevantArchives.length === 0) return [];
+  if (relevantArchives.length === 0) {
+    recordChesscomImportEvent('chesscom-import-empty', Severity.Info, {
+      requestClass: 'monthly-archive',
+      reason: 'no-relevant-archives',
+    });
+    return [];
+  }
 
   // 3. Fetch all relevant archive months in parallel.
+  const archiveStartMs = Date.now();
   const archiveResponses = await Promise.all(relevantArchives.map(url => fetch(url)));
   const rawGames: any[] = [];
   for (const res of archiveResponses) {
-    if (!res.ok) throw new Error(`Chess.com API error ${res.status}`);
-    const data = await res.json() as { games?: any[] };
+    if (!res.ok) {
+      record({
+        kind: 'api',
+        severity: Severity.Error,
+        sourceTag: 'import',
+        message: 'Chess.com archive month fetch failed',
+        metadata: { platform: 'chesscom', httpStatus: res.status, latencyMs: Date.now() - archiveStartMs },
+        redactionClass: 'safe',
+      });
+      throw new Error(`Chess.com API error ${res.status}`);
+    }
+    let data: { games?: any[] };
+    try {
+      data = await res.json() as { games?: any[] };
+    } catch (error) {
+      recordChesscomImportEvent('chesscom-parse-failed', Severity.Error, {
+        requestClass: 'monthly-archive',
+        errorClass: errorClass(error),
+        batchGameCount: rawGames.length,
+      });
+      throw error;
+    }
     rawGames.push(...(data.games ?? []));
   }
 
@@ -116,7 +192,11 @@ export async function fetchChesscomGames(
     if (!pgn) continue;
     try {
       pgnToTree(pgn); // validate — skip games that fail to parse
-    } catch {
+    } catch (error) {
+      recordChesscomImportEvent('chesscom-parse-failed', Severity.Warn, {
+        errorClass: errorClass(error),
+        batchGameCount: rawGames.length,
+      });
       continue;
     }
     const white = raw.white?.username;
@@ -196,6 +276,13 @@ export async function importChesscom(callbacks: ImportCallbacks): Promise<void> 
       sinceMonth,
     ));
     chesscom.gameCount = games.length;
+    if (games.length === 0) {
+      recordChesscomImportEvent('chesscom-import-empty', Severity.Info, {
+        requestClass: 'monthly-archive',
+        reason: 'no-games-after-filters',
+        useCursor,
+      });
+    }
     // Register before adding games: a registry write failure surfaces through
     // the catch below and must prevent uncategorized games from being added.
     await registerAccount('chesscom', name, category);

@@ -4,18 +4,31 @@
 // Each game in the queue has its own AnalyseCtrl and eval cache.
 
 import { StockfishProtocol } from '../ceval/protocol';
+import { record, getSessionId, Severity } from '../diagnostics';
 import { isEngineSearching } from './ctrl';
 import { AnalyseCtrl } from '../analyse/ctrl';
 import { evalWinChances } from './winchances';
 import { hasMissedMoments, detectMissedMoments, onMissedMomentConfigChange, getMissedMoments, setMissedMoments, clearMissedMoments, type MissedMoment } from './tactics';
 import { computeAnalysisSummary } from '../analyse/evalView';
 import {
-  buildAnalysisNodes, buildAnalysisNodeEntry, buildReviewEngineMetadata, saveAnalysisToIdb, saveAnalysisToIdbStrict, type ReviewEngineMetadata,
+  buildAnalysisNodes, buildAnalysisNodeEntry, buildReviewEngineMetadata, saveAnalysisToIdbStrict, type ReviewEngineMetadata,
   saveReviewQueueManifest, clearReviewQueueManifestEntry, clearReviewQueueManifest,
   loadReviewQueueManifest, loadAnalysisFromIdb, type StoredNodeEntry,
+  saveReviewFailureRecord, deleteReviewFailureRecord, loadReviewFailureRecords,
+  saveReviewRunManifest, loadLatestReviewRunManifest,
+  ANALYSIS_VERSION,
 } from '../idb/index';
 import { pgnToTree } from '../tree/pgn';
 import { reviewDepth, reviewMovetime } from './batch';
+import {
+  createReviewRunManifest,
+  selectNextReviewRunBatch,
+  type ReviewRunLifecycleState,
+  type ReviewRunManifest,
+  type ReviewRunNextBatchSelection,
+  type ReviewRunSourceContext,
+  type ReviewRunTimeControlContext,
+} from './reviewRun';
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
 import type { TreeNode } from '../tree/types';
@@ -147,7 +160,18 @@ export function isLeaderTab(): boolean {
   return isCurrentLeader;
 }
 
-function becomeLeader(): void {
+export function isReviewOwnerUnavailableForTakeover(): boolean {
+  if (isCurrentLeader || queue.length === 0) return false;
+  const token = readLeaderToken();
+  return !token || (Date.now() - token.heartbeatAt) > LEADER_STALE_MS;
+}
+
+export function takeOverUnavailableReviewOwner(): void {
+  if (!isReviewOwnerUnavailableForTakeover()) return;
+  becomeLeader(true);
+}
+
+function becomeLeader(resumeAfterTakeover = false): void {
   if (isCurrentLeader) return;
   isCurrentLeader = true;
   writeLeaderToken();
@@ -160,12 +184,45 @@ function becomeLeader(): void {
   }
   leaderChannel?.postMessage({ type: 'leader-elected', tabId });
   console.log('[review-queue] this tab is now the leader:', tabId);
+
+  // Instrument leader acquisition. When resumeAfterTakeover is true, this tab
+  // was previously an observer and is now promoting itself after detecting a
+  // stale leader token — log observer-promotion in addition to leader-acquired
+  // so multi-tab races can be distinguished in diagnostics.
+  const leaderSessionId = getSessionId();
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'engine.reviewQueue',
+    sourceTag: 'review-queue',
+    message: 'leader-acquired',
+    metadata: {
+      eventType: 'leader-acquired',
+      sessionId: leaderSessionId,
+    },
+    redactionClass: 'safe',
+  });
+  if (resumeAfterTakeover) {
+    record({
+      kind: 'engine',
+      severity: Severity.Info,
+      source: 'engine.reviewQueue',
+      sourceTag: 'review-queue',
+      message: 'observer-promotion',
+      metadata: {
+        eventType: 'observer-promotion',
+        sessionId: leaderSessionId,
+      },
+      redactionClass: 'safe',
+    });
+  }
+
   // Pick up any work left pending by a previous leader (mid-session failover
   // takeover). Skipped at app-bootstrap time (before the library has loaded
   // — see initLeaderElection/`_libraryGames`); the bootstrap caller's own
   // `resumeReviewQueueFromManifest(stored.games)` call handles that case
   // once the real game list is known.
-  if (_libraryGames.length > 0) void takeOverAsLeader();
+  if (_libraryGames.length > 0) void takeOverAsLeader(resumeAfterTakeover);
 }
 
 function resignLeadership(): void {
@@ -177,15 +234,29 @@ function resignLeadership(): void {
   }
   clearLeaderTokenIfOwn();
   leaderChannel?.postMessage({ type: 'leader-resigned', tabId });
+
+  // Instrument leader loss (tab closing, pagehide, or explicit release).
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'engine.reviewQueue',
+    sourceTag: 'review-queue',
+    message: 'leader-lost',
+    metadata: {
+      eventType: 'leader-lost',
+      sessionId: getSessionId(),
+    },
+    redactionClass: 'safe',
+  });
+
   startObserverPolling();
 }
 
-/** Claim leadership if no live leader exists (absent or heartbeat-stale token). */
+/** Claim leadership only for an empty local tab; persisted work needs explicit takeover. */
 function tryClaimLeadership(): void {
   if (isCurrentLeader) return;
   const token = readLeaderToken();
-  const stale = !token || (Date.now() - token.heartbeatAt) > LEADER_STALE_MS;
-  if (stale) becomeLeader();
+  if (!token && queue.length === 0) becomeLeader();
 }
 
 function startObserverPolling(): void {
@@ -224,9 +295,8 @@ function initLeaderElection(): void {
       const msg = ev.data as { type: string; tabId?: string; gameId?: string };
       if (msg.type === 'leader-resigned' || msg.type === 'leader-elected') {
         if (msg.tabId !== tabId) {
-          // Another tab took over (or stepped down) — if we're not already
-          // contesting, just refresh the observer mirror; tryClaimLeadership
-          // on the next poll/heartbeat-stale check handles actual takeover.
+          // Another tab took over (or stepped down). Observer tabs only refresh
+          // their mirror here; persisted work takeover is manual.
           if (!isCurrentLeader) void refreshObserverQueue();
         }
       } else if (msg.type === 'progress' || msg.type === 'manifest-changed') {
@@ -243,16 +313,18 @@ function initLeaderElection(): void {
         cancelBulkReview();
       } else if (msg.type === 'reset-errored' && isCurrentLeader && msg.gameId) {
         resetErroredGame(msg.gameId);
+      } else if (msg.type === 'skip-failed' && isCurrentLeader && msg.gameId) {
+        skipFailedReviewGame(msg.gameId);
       }
     };
   }
 
-  // Resign cleanly on tab close so another tab can take over immediately
-  // instead of waiting out the full heartbeat-stale window. visibilitychange
-  // is used elsewhere in this file (checkpoint flush) because it fires
-  // reliably across reload/close/backgrounding, unlike beforeunload.
+  // Hidden tabs explicitly suspend/checkpoint queue work. `pagehide` still
+  // resigns leadership for unload/reload, but ordinary backgrounding keeps the
+  // same owner so it can resume when visible again.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && isCurrentLeader) resignLeadership();
+    if (document.visibilityState === 'hidden' && isCurrentLeader) suspendBulkReviewForHiddenTab();
+    else if (document.visibilityState === 'visible') resumeHiddenSuspendedReviewInThisTab();
   });
   window.addEventListener('pagehide', () => {
     if (isCurrentLeader) resignLeadership();
@@ -268,7 +340,7 @@ function initLeaderElection(): void {
  * picks up in-progress games from where the manifest/analysis-library left
  * off rather than restarting them. No-op if there is nothing to resume.
  */
-async function takeOverAsLeader(): Promise<void> {
+async function takeOverAsLeader(resumeAfterTakeover = false): Promise<void> {
   if (!isCurrentLeader) return;
   if (queue.length > 0) {
     // This tab already has live queue state (e.g. it enqueued games itself
@@ -277,6 +349,9 @@ async function takeOverAsLeader(): Promise<void> {
     return;
   }
   await resumeReviewQueueFromManifest(_libraryGames);
+  if (resumeAfterTakeover && queuePaused && queuePauseReason === 'reload') {
+    resumeBulkReview();
+  }
 }
 
 /** Rebuild a read-only mirror of `queue` from the manifest, for observer-tab display only. */
@@ -331,6 +406,8 @@ function enqueueObserverManifestOnly(games: ImportedGame[], depth: number): void
       depth,
       done:   0,
       total:  estimatePlyCountFromPgn(game.pgn),
+    }).then(saved => {
+      if (!saved) markReviewStorageWriteFailed('manifest-write-failed');
     });
   }
   if (added) leaderChannel?.postMessage({ type: 'manifest-changed', tabId });
@@ -342,6 +419,281 @@ function enqueueObserverManifestOnly(games: ImportedGame[], depth: number): void
 let queue:      ReviewQueueEntry[] = [];
 let activeIndex = -1;
 let queuePaused = false;
+export type ReviewPauseReason = 'user' | 'hidden' | 'reload';
+let queuePauseReason: ReviewPauseReason | null = null;
+let hiddenSuspendedOwnerTabId: string | null = null;
+let activeReviewRun: ReviewRunManifest | null = null;
+
+function persistActiveReviewRun(): void {
+  if (activeReviewRun) {
+    void saveReviewRunManifest(activeReviewRun).then(saved => {
+      if (!saved) markReviewStorageWriteFailed('run-manifest-write-failed');
+    });
+  }
+}
+
+function setActiveReviewRunState(lifecycleState: ReviewRunLifecycleState): void {
+  if (!activeReviewRun) return;
+  activeReviewRun.lifecycleState = lifecycleState;
+  activeReviewRun.updatedAt = Date.now();
+  persistActiveReviewRun();
+}
+
+function storedAnalysisMatchesReviewDepth(
+  stored: Awaited<ReturnType<typeof loadAnalysisFromIdb>> | undefined,
+  depth: number,
+): boolean {
+  return stored?.status === 'complete'
+    && stored.analysisVersion === ANALYSIS_VERSION
+    && stored.analysisDepth === depth;
+}
+
+function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, sourceContext?: ReviewRunSourceContext): void {
+  const enqueuedGameIds = games.map(game => game.id);
+  const sourceGameIds = sourceContext?.sourceGameIds ?? enqueuedGameIds;
+  const activeBatchIds = sourceContext?.activeBatchIds ?? enqueuedGameIds;
+  if (sourceGameIds.length === 0 || activeBatchIds.length === 0) return;
+  if (!activeReviewRun) {
+    activeReviewRun = createReviewRunManifest({
+      sourceMode:         sourceContext?.sourceMode ?? 'visible-list',
+      sourceGameIds,
+      reviewDepth:        depth,
+      activeBatchIds,
+      ...(sourceContext?.timeControlContext ? { timeControlContext: sourceContext.timeControlContext } : {}),
+      ...(sourceContext?.orderingContext ? { orderingContext: sourceContext.orderingContext } : {}),
+    });
+    persistActiveReviewRun();
+    return;
+  }
+  const sourceIds = new Set(activeReviewRun.sourceGameIds);
+  const batchIds = new Set(activeReviewRun.activeBatchIds);
+  for (const gameId of sourceGameIds) sourceIds.add(gameId);
+  for (const gameId of activeBatchIds) batchIds.add(gameId);
+  activeReviewRun.sourceGameIds = [...sourceIds];
+  activeReviewRun.activeBatchIds = [...batchIds];
+  activeReviewRun.reviewDepth = depth;
+  activeReviewRun.lifecycleState = 'running';
+  activeReviewRun.updatedAt = Date.now();
+  persistActiveReviewRun();
+}
+
+function markActiveReviewRunGameComplete(gameId: string): void {
+  if (!activeReviewRun) return;
+  if (!activeReviewRun.completedGameIds.includes(gameId)) {
+    activeReviewRun.completedGameIds = [...activeReviewRun.completedGameIds, gameId];
+  }
+  activeReviewRun.failedAttempts = activeReviewRun.failedAttempts.filter(attempt => attempt.gameId !== gameId);
+  activeReviewRun.skippedGameIds = activeReviewRun.skippedGameIds.filter(id => id !== gameId);
+  activeReviewRun.updatedAt = Date.now();
+  persistActiveReviewRun();
+}
+
+function markActiveReviewRunGameFailed(gameId: string, attempts: number, lastFailedAt: number): void {
+  if (!activeReviewRun) return;
+  if (activeReviewRun.completedGameIds.includes(gameId) || activeReviewRun.skippedGameIds.includes(gameId)) return;
+  const failedAttempts = activeReviewRun.failedAttempts.filter(attempt => attempt.gameId !== gameId);
+  activeReviewRun.failedAttempts = [...failedAttempts, { gameId, attempts, lastFailedAt }];
+  activeReviewRun.updatedAt = Date.now();
+  markReviewQueueProgress();
+  persistActiveReviewRun();
+}
+
+function markActiveReviewRunGameSkipped(gameId: string): void {
+  if (!activeReviewRun) return;
+  if (!activeReviewRun.skippedGameIds.includes(gameId)) {
+    activeReviewRun.skippedGameIds = [...activeReviewRun.skippedGameIds, gameId];
+  }
+  activeReviewRun.failedAttempts = activeReviewRun.failedAttempts.filter(attempt => attempt.gameId !== gameId);
+  activeReviewRun.completedGameIds = activeReviewRun.completedGameIds.filter(id => id !== gameId);
+  activeReviewRun.updatedAt = Date.now();
+  markReviewQueueProgress();
+  persistActiveReviewRun();
+}
+export type ReviewStorageHealth = 'ok' | 'manifest-write-failed' | 'checkpoint-write-failed' | 'run-manifest-write-failed';
+let reviewStorageHealth: ReviewStorageHealth = 'ok';
+
+const FAILED_GAME_RETRY_BASE_MS = 2_000;
+const FAILED_GAME_RETRY_MAX_MS  = 30_000;
+const REVIEW_STALE_PROGRESS_MS  = 90_000;
+
+interface FailedGameState {
+  gameId:     string;
+  depth:      number;
+  attempts:   number;
+  retrying:   boolean;
+  skipped:    boolean;
+  lastFailedAt: number;
+  skippedAt?: number;
+}
+
+export interface FailedReviewStatus {
+  gameId:       string;
+  depth:        number;
+  attempts:     number;
+  retrying:     boolean;
+  skipped:      boolean;
+  lastFailedAt: number;
+}
+
+let failedGameAttempts: Map<string, FailedGameState> = new Map();
+let failedGameRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let failedGameRetryEntry: ReviewQueueEntry | null = null;
+
+function failedGameKey(gameId: string, depth: number): string {
+  return `${gameId}::${depth}`;
+}
+
+function getFailedGameState(gameId: string, depth: number): FailedGameState | undefined {
+  return failedGameAttempts.get(failedGameKey(gameId, depth));
+}
+
+function toFailedReviewStatus(state: FailedGameState): FailedReviewStatus {
+  return {
+    gameId:       state.gameId,
+    depth:        state.depth,
+    attempts:     state.attempts,
+    retrying:     state.retrying,
+    skipped:      state.skipped,
+    lastFailedAt: state.lastFailedAt,
+  };
+}
+
+function clearFailedGameRetryTimer(): void {
+  if (failedGameRetryTimer !== null) {
+    clearTimeout(failedGameRetryTimer);
+    failedGameRetryTimer = null;
+  }
+  failedGameRetryEntry = null;
+  for (const state of failedGameAttempts.values()) state.retrying = false;
+}
+
+function hasRetryableFailedGame(): boolean {
+  return queue.some(entry => {
+    const state = getFailedGameState(entry.game.id, entry.depth);
+    return entry.status === 'error' && state !== undefined && !state.skipped;
+  });
+}
+
+function scheduleNextRetryableFailedGame(): boolean {
+  const entry = queue.find(candidate => {
+    const state = getFailedGameState(candidate.game.id, candidate.depth);
+    return candidate.status === 'error' && state !== undefined && !state.skipped;
+  });
+  if (!entry) return false;
+  scheduleFailedGameRetry(entry);
+  return true;
+}
+
+function scheduleFailedGameRetry(entry: ReviewQueueEntry): void {
+  if (queuePaused || !isCurrentLeader || reviewEngineFailed) return;
+
+  clearFailedGameRetryTimer();
+  const key = failedGameKey(entry.game.id, entry.depth);
+  const existing = failedGameAttempts.get(key);
+  const attempts = (existing?.attempts ?? 0) + 1;
+  const state: FailedGameState = {
+    gameId:       entry.game.id,
+    depth:        entry.depth,
+    attempts,
+    retrying:     true,
+    skipped:      false,
+    lastFailedAt: Date.now(),
+  };
+  failedGameAttempts.set(key, state);
+  markActiveReviewRunGameFailed(entry.game.id, attempts, state.lastFailedAt);
+  void saveReviewFailureRecord({
+    key,
+    gameId:       entry.game.id,
+    depth:        entry.depth,
+    attempts,
+    lastFailedAt: state.lastFailedAt,
+    skipped:      false,
+  });
+
+  const delay = Math.min(FAILED_GAME_RETRY_MAX_MS, FAILED_GAME_RETRY_BASE_MS * Math.max(1, attempts));
+  failedGameRetryEntry = entry;
+  failedGameRetryTimer = setTimeout(() => {
+    failedGameRetryTimer = null;
+    failedGameRetryEntry = null;
+    state.retrying = false;
+    if (queuePaused || reviewEngineFailed || !queue.includes(entry) || entry.status !== 'error') return;
+    entry.status = 'pending';
+    entry.done = entry.cache?.size ?? entry.done;
+    persistManifestEntry(entry);
+    activeIndex = -1;
+    _redraw();
+    advanceQueue();
+  }, delay);
+  _redraw();
+}
+
+function clearFailedGameState(gameId: string, depth: number): void {
+  const key = failedGameKey(gameId, depth);
+  failedGameAttempts.delete(key);
+  void deleteReviewFailureRecord(key);
+}
+
+function persistSkippedFailedGameState(entry: ReviewQueueEntry): void {
+  const key = failedGameKey(entry.game.id, entry.depth);
+  const existing = failedGameAttempts.get(key);
+  const state: FailedGameState = {
+    gameId:       entry.game.id,
+    depth:        entry.depth,
+    attempts:     existing?.attempts ?? 1,
+    retrying:     false,
+    skipped:      true,
+    lastFailedAt: existing?.lastFailedAt ?? Date.now(),
+    skippedAt:    Date.now(),
+  };
+  failedGameAttempts.set(key, state);
+  void saveReviewFailureRecord({
+    key,
+    gameId:       state.gameId,
+    depth:        state.depth,
+    attempts:     state.attempts,
+    lastFailedAt: state.lastFailedAt,
+    skipped:      true,
+    ...(state.skippedAt !== undefined ? { skippedAt: state.skippedAt } : {}),
+  });
+}
+
+function hydrateActiveReviewRunFailureCounts(): void {
+  if (!activeReviewRun) return;
+  let changed = false;
+  const completedIds = new Set(activeReviewRun.completedGameIds);
+  const skippedIds = new Set(activeReviewRun.skippedGameIds);
+  const failedByGameId = new Map(activeReviewRun.failedAttempts.map(attempt => [attempt.gameId, attempt]));
+  for (const state of failedGameAttempts.values()) {
+    if (completedIds.has(state.gameId)) continue;
+    if (state.skipped) {
+      if (!skippedIds.has(state.gameId)) {
+        skippedIds.add(state.gameId);
+        changed = true;
+      }
+      failedByGameId.delete(state.gameId);
+      continue;
+    }
+    if (skippedIds.has(state.gameId)) continue;
+    const existing = failedByGameId.get(state.gameId);
+    if (!existing || existing.attempts !== state.attempts || existing.lastFailedAt !== state.lastFailedAt) {
+      failedByGameId.set(state.gameId, {
+        gameId:       state.gameId,
+        attempts:     state.attempts,
+        lastFailedAt: state.lastFailedAt,
+      });
+      changed = true;
+    }
+  }
+  const filteredFailures = [...failedByGameId.values()].filter(attempt =>
+    !completedIds.has(attempt.gameId) && !skippedIds.has(attempt.gameId),
+  );
+  if (filteredFailures.length !== activeReviewRun.failedAttempts.length) changed = true;
+  if (!changed) return;
+  activeReviewRun.failedAttempts = filteredFailures;
+  activeReviewRun.skippedGameIds = [...skippedIds];
+  activeReviewRun.updatedAt = Date.now();
+  persistActiveReviewRun();
+}
 
 // Above this many games in a single enqueue call, defer building each entry's
 // AnalyseCtrl/eval-cache until the game actually reaches the analyzing slot
@@ -378,6 +730,11 @@ function ensureEntryBuilt(entry: ReviewQueueEntry): void {
 }
 
 /** Persist the lightweight manifest record for one queue entry (cheap, status/progress only). */
+function markReviewStorageWriteFailed(health: Exclude<ReviewStorageHealth, 'ok'>): void {
+  reviewStorageHealth = health;
+  _redraw();
+}
+
 function persistManifestEntry(entry: ReviewQueueEntry): void {
   void saveReviewQueueManifest({
     gameId: entry.game.id,
@@ -385,6 +742,8 @@ function persistManifestEntry(entry: ReviewQueueEntry): void {
     depth:  entry.depth,
     done:   entry.done,
     total:  entry.total,
+  }).then(saved => {
+    if (!saved) markReviewStorageWriteFailed('manifest-write-failed');
   });
   // Tell observer tabs a manifest record changed so they refresh their mirror
   // immediately instead of waiting for the fallback poll interval.
@@ -424,12 +783,11 @@ function flushReviewCheckpoint(): void {
 
 
 
-  void saveAnalysisToIdb(
-    'partial',
-    entry.game.id,
-    entry.serializedNodes,
-    reviewActiveDepth,
-  );
+  void saveAnalysisToIdbStrict('partial', entry.game.id, entry.serializedNodes, reviewActiveDepth)
+    .catch(error => {
+      console.warn('[review-queue] checkpoint save failed', error);
+      markReviewStorageWriteFailed('checkpoint-write-failed');
+    });
   persistManifestEntry(entry);
 }
 
@@ -477,13 +835,26 @@ if (typeof document !== 'undefined') {
 
 
 let reviewBatchStartedAt:   number | null = null;
+let reviewLastProgressAt:   number | null = null;
 
 function ensureReviewBatchElapsedStarted(): void {
-  if (reviewBatchStartedAt === null) reviewBatchStartedAt = Date.now();
+  if (reviewBatchStartedAt === null) {
+    const now = Date.now();
+    reviewBatchStartedAt = now;
+    if (reviewLastProgressAt === null) reviewLastProgressAt = now;
+  }
 }
 
 function resetReviewBatchElapsed(): void {
   reviewBatchStartedAt = null;
+  reviewLastProgressAt = null;
+}
+
+function markReviewQueueProgress(): void {
+  reviewLastProgressAt = Date.now();
+  if (activeReviewRun?.lifecycleState === 'stale') {
+    setActiveReviewRunState('running');
+  }
 }
 
 // --- Per-position engine state ---
@@ -513,6 +884,59 @@ let reviewActiveDepth      = reviewDepth;
 let reviewSearchGeneration      = 0;   // incremented on every stop() or new-search start
 let reviewSearchStartGeneration = 0;   // captured at sendNextItem() / watchdog-retry
 let reviewInflightFen           = '';  // FEN of the currently-active search
+
+interface ReviewSearchIdentity {
+  gameId:     string;
+  fen:        string;
+  nodePath:   string;
+  parentPath: string;
+  depth:      number;
+  generation: number;
+}
+
+let reviewActiveSearchIdentity: ReviewSearchIdentity | null = null;
+
+function clearReviewSearchIdentity(): void {
+  reviewActiveSearchIdentity = null;
+  reviewInflightFen = '';
+}
+
+function currentReviewSearchIdentityMatches(): boolean {
+  const identity = reviewActiveSearchIdentity;
+  const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+  const item = reviewItemQueue[reviewItemIndex];
+  if (!identity || !entry || !item) return false;
+  return identity.generation === reviewSearchGeneration
+    && identity.gameId === entry.game.id
+    && identity.depth === reviewActiveDepth
+    && identity.fen === item.fen
+    && identity.nodePath === item.nodePath
+    && identity.parentPath === item.parentPath;
+}
+
+function beginReviewSearch(item: ReviewBatchItem): void {
+  const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+  if (!entry) return;
+  reviewSearchGeneration++;
+  reviewCurrentEval           = {};
+  reviewNodePath              = item.nodePath;
+  reviewNodePly               = item.nodePly;
+  reviewParentPath            = item.parentPath;
+  reviewSearchActive          = true;
+  reviewInflightFen           = item.fen;
+  reviewSearchStartGeneration = reviewSearchGeneration;
+  reviewActiveSearchIdentity = {
+    gameId:     entry.game.id,
+    fen:        item.fen,
+    nodePath:   item.nodePath,
+    parentPath: item.parentPath,
+    depth:      reviewActiveDepth,
+    generation: reviewSearchGeneration,
+  };
+  reviewProtocol.setPosition(item.fen);
+  reviewProtocol.go(reviewActiveDepth, 1, reviewMovetime ?? undefined);
+  armWatchdog();
+}
 
 
 
@@ -601,7 +1025,7 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
   clearDispatchDefer();
   reviewWatchdogRetries = 0;
   reviewSearchActive = false;
-  reviewInflightFen = '';
+  clearReviewSearchIdentity();
   reviewCurrentEval = {};
   reviewItemQueue = [];
   reviewItemIndex = 0;
@@ -616,16 +1040,36 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
   if (entry) {
     entry.status = 'error';
     persistManifestEntry(entry);
+    scheduleFailedGameRetry(entry);
   }
 
   _redraw();
-  advanceQueue();
 }
 
 function onWatchdogExpiry(): void {
   // Cancel whichever timer did not fire (silence vs absolute backstop).
   clearWatchdog();
   console.warn('[review-watchdog] no engine output within timeout — treating position as hung; retries used:', reviewWatchdogRetries);
+
+  // Instrument watchdog expiry: record event type, depth reached, and movetime limit.
+  // Position context is ply only — never raw FEN.
+  record({
+    kind: 'engine',
+    severity: Severity.Warn,
+    source: 'engine.reviewQueue',
+    sourceTag: 'engine',
+    message: 'watchdog-expiry',
+    metadata: {
+      eventType:   'watchdog-expiry',
+      depthTarget: reviewActiveDepth,
+      depthReached: reviewCurrentEval.depth ?? null,
+      movetimeMs:  reviewMovetime ?? null,
+      ply:         reviewNodePly,
+      retries:     reviewWatchdogRetries,
+      ...reviewProtocol.deviceCapabilityMetadata(),
+    },
+    redactionClass: 'safe',
+  });
 
   if (reviewSearchActive) {
     // Increment generation before stop() so any late bestmove from the timed-out search
@@ -644,22 +1088,10 @@ function onWatchdogExpiry(): void {
       return;
     }
     console.warn('[review-watchdog] retrying position', reviewItemIndex + 1, '/', reviewItemQueue.length);
-    reviewCurrentEval           = {};
-    reviewSearchActive          = true;
-    reviewInflightFen           = item.fen;
-    reviewSearchStartGeneration = reviewSearchGeneration;
-    reviewProtocol.setPosition(item.fen);
-    reviewProtocol.go(reviewActiveDepth, 1, reviewMovetime ?? undefined);
-    armWatchdog();
+    beginReviewSearch(item);
   } else {
     // Second expiry — mark the game as errored and advance past it.
-    console.error('[review-watchdog] position permanently timed out — marking game errored and skipping', reviewItemIndex + 1, '/', reviewItemQueue.length);
-    const errorEntry = activeIndex >= 0 ? queue[activeIndex] : undefined;
-    if (errorEntry) {
-      errorEntry.status = 'error';
-      persistManifestEntry(errorEntry);
-    }
-    advanceToNextItem();
+    markActiveEntryErrored(`review position permanently timed out at ${reviewItemIndex + 1}/${reviewItemQueue.length}`);
   }
 }
 
@@ -850,6 +1282,7 @@ export function isReviewEngineInitializing(): boolean {
 function parseReviewLine(line: string): void {
   const parts = line.trim().split(/\s+/);
   if (parts[0] === 'info') {
+    if (!currentReviewSearchIdentityMatches()) return;
     // Engine is alive and searching — reset the silence watchdog.
     petWatchdog();
     let isMate = false;
@@ -857,11 +1290,17 @@ function parseReviewLine(line: string): void {
     let best:  string | undefined;
     let pvMoves: string[] = [];
     let pvIndex = 1;
+    let depth: number | undefined;
     for (let i = 1; i < parts.length; i++) {
       if (parts[i] === 'multipv') {
         const next = parts[i + 1];
         if (next === undefined) break;
         pvIndex = parseInt(next, 10);
+        i++;
+      } else if (parts[i] === 'depth') {
+        const next = parts[i + 1];
+        if (next === undefined) break;
+        depth = parseInt(next, 10);
         i++;
       } else if (parts[i] === 'score') {
         const scoreType  = parts[i + 1];
@@ -892,19 +1331,41 @@ function parseReviewLine(line: string): void {
       reviewCurrentEval.best = best;
       reviewCurrentEval.moves = pvMoves;
     }
+    if (pvIndex === 1 && depth !== undefined) {
+      reviewCurrentEval.depth = depth;
+    }
   } else if (parts[0] === 'bestmove') {
     clearWatchdog();
-    if (reviewSearchStartGeneration !== reviewSearchGeneration) {
+    if (reviewSearchStartGeneration !== reviewSearchGeneration || !currentReviewSearchIdentityMatches()) {
       // This bestmove belongs to a stopped/superseded search — discard it and reset
       // eval state so the next legitimate result is not contaminated.
       console.log('[review-engine] stale bestmove discarded (gen', reviewSearchStartGeneration,
         '!== current', reviewSearchGeneration, 'fen', reviewInflightFen, ')');
+
+      // Instrument stale bestmove drop: record event type, depth reached, and movetime limit.
+      // Position context is ply only — never raw FEN.
+      record({
+        kind: 'engine',
+        severity: Severity.Info,
+        source: 'engine.reviewQueue',
+        sourceTag: 'engine',
+        message: 'stale-bestmove-drop',
+        metadata: {
+          eventType:    'stale-bestmove-drop',
+          depthTarget:  reviewActiveDepth,
+          depthReached: reviewCurrentEval.depth ?? null,
+          movetimeMs:   reviewMovetime ?? null,
+          ply:          reviewNodePly,
+        },
+        redactionClass: 'safe',
+      });
+
       reviewCurrentEval = {};
-      reviewInflightFen = '';
+      clearReviewSearchIdentity();
       return;
     }
     reviewSearchActive = false;
-    reviewInflightFen  = '';
+    clearReviewSearchIdentity();
     const bestmove = parts[1];
     if (!bestmove || bestmove === '(none)') {
       const activeItem = reviewItemQueue[reviewItemIndex];
@@ -966,6 +1427,7 @@ function onReviewBestmove(): void {
   }
 
   entry.done++;
+  markReviewQueueProgress();
   reviewItemIndex++;
   reviewCurrentEval = {};
 
@@ -992,22 +1454,10 @@ function sendNextItem(): void {
   }
   reviewDispatchDeferCount = 0;
 
-  reviewCurrentEval           = {};
-  reviewNodePath              = item.nodePath;
-  reviewNodePly               = item.nodePly;
-  reviewParentPath            = item.parentPath;
-  reviewSearchActive          = true;
-  // Capture the current generation so the bestmove handler can detect stale results
-  // even when a stop and an immediate re-send occur within the same tick.
-  reviewInflightFen           = item.fen;
-  reviewSearchStartGeneration = reviewSearchGeneration;
-
   reviewDebugLog('[review-batch]', reviewItemIndex + 1, '/', reviewItemQueue.length,
     'nodeId:', item.nodeId, 'path:', item.nodePath, 'ply:', item.nodePly, 'gen:', reviewSearchGeneration);
 
-  reviewProtocol.setPosition(item.fen);
-  reviewProtocol.go(reviewActiveDepth, 1, reviewMovetime ?? undefined);
-  armWatchdog();
+  beginReviewSearch(item);
 }
 
 // --- Finish a single game ---
@@ -1043,6 +1493,9 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
     if (activeIndex < 0 || queue[activeIndex] !== entry) return;
 
     entry.status = 'complete';
+    markReviewQueueProgress();
+    markActiveReviewRunGameComplete(entry.game.id);
+    clearFailedGameState(entry.game.id, entry.depth);
     _analyzedGameIds.add(entry.game.id);
     setMissedMoments(entry.game.id, moments);
     if (moments.length > 0) _missedTacticGameIds.add(entry.game.id);
@@ -1156,11 +1609,14 @@ function advanceQueue(): void {
   if (nextIndex < 0) {
     activeIndex = -1;
     resetReviewBatchElapsed();
+    setActiveReviewRunState(queue.length > 0 ? 'batch-complete' : 'no-more-eligible-games');
     _redraw();
     return;
   }
 
+  setActiveReviewRunState('running');
   ensureReviewBatchElapsedStarted();
+  markReviewQueueProgress();
   activeIndex = nextIndex;
   const entry = queue[activeIndex]!;
   entry.status = 'analyzing';
@@ -1170,7 +1626,7 @@ function advanceQueue(): void {
 
 // --- Public API ---
 
-export function enqueueBulkReview(games: ImportedGame[], depth?: number): void {
+export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceContext?: ReviewRunSourceContext): void {
   const entryDepth = depth ?? reviewDepth;
   if (!isCurrentLeader) {
     // Observer tabs never build AnalyseCtrl/eval-cache trees for entries they
@@ -1179,12 +1635,15 @@ export function enqueueBulkReview(games: ImportedGame[], depth?: number): void {
     enqueueObserverManifestOnly(games, entryDepth);
     return;
   }
+  ensureActiveReviewRun(games, entryDepth, sourceContext);
+  markReviewQueueProgress();
   const lazy = games.length > LAZY_BUILD_THRESHOLD;
   reviewDebugLog('[reviewQueue] enqueueBulkReview called — games:', games.map(g => g.id), 'queue len:', queue.length, 'activeIndex:', activeIndex, 'engineInitStarted:', reviewEngineInitStarted, 'depth:', entryDepth, 'lazy:', lazy);
   for (const game of games) {
     // Skip already analyzed games.
     reviewDebugLog('[reviewQueue]  game', game.id, '— alreadyAnalyzed:', _analyzedGameIds.has(game.id), 'alreadyQueued:', queue.some(e => e.game.id === game.id));
     if (_analyzedGameIds.has(game.id)) continue;
+    clearFailedGameState(game.id, entryDepth);
 
     // Allow re-queuing errored games: remove the stale error entry first.
     const existingIdx = queue.findIndex(e => e.game.id === game.id);
@@ -1248,10 +1707,12 @@ export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
     enqueueObserverManifestOnly(games, entryDepth);
     return;
   }
+  ensureActiveReviewRun(games, entryDepth);
   const lazy = games.length > LAZY_BUILD_THRESHOLD;
   const newEntries: ReviewQueueEntry[] = [];
   for (const game of games) {
     if (_analyzedGameIds.has(game.id)) continue;
+    clearFailedGameState(game.id, entryDepth);
 
     // Allow re-queuing errored games from the front: remove the stale error entry first.
     const existingIdx = queue.findIndex(e => e.game.id === game.id);
@@ -1319,6 +1780,18 @@ export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
  */
 export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Promise<void> {
   setLibraryGamesForReviewQueue(games);
+  activeReviewRun = await loadLatestReviewRunManifest();
+  const failureRecords = await loadReviewFailureRecords();
+  failedGameAttempts = new Map(failureRecords.map(record => [record.key, {
+    gameId:       record.gameId,
+    depth:        record.depth,
+    attempts:     record.attempts,
+    retrying:     false,
+    skipped:      record.skipped === true,
+    lastFailedAt: record.lastFailedAt,
+    ...(record.skippedAt !== undefined ? { skippedAt: record.skippedAt } : {}),
+  } satisfies FailedGameState]));
+  hydrateActiveReviewRunFailureCounts();
   // Observer tabs must not rebuild full AnalyseCtrl/eval-cache trees (heavy,
   // and pointless — they never analyze). Mirror the manifest for display only;
   // if this tab later wins leadership, takeOverAsLeader() performs the real
@@ -1344,7 +1817,7 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
     }
 
     const stored = await loadAnalysisFromIdb(record.gameId);
-    if (stored?.status === 'complete') {
+    if (storedAnalysisMatchesReviewDepth(stored, record.depth)) {
       // Finished between the last manifest write and the interruption — nothing to resume.
       _analyzedGameIds.add(record.gameId);
       void clearReviewQueueManifestEntry(record.gameId);
@@ -1393,24 +1866,21 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
 
   queue = rebuilt;
   activeIndex = -1;
+  queuePaused = true;
+  queuePauseReason = 'reload';
+  hiddenSuspendedOwnerTabId = null;
+  setActiveReviewRunState('interrupted-after-reload');
   for (const entry of rebuilt) persistManifestEntry(entry);
-
-  if (!reviewEngineInitStarted && !reviewEngineFailed) {
-    void initReviewEngine('/stockfish-web');
-  }
-  if (!reviewEngineFailed) {
-    advanceQueue();
-  }
   _redraw();
 }
 
 export function isBulkRunning(): boolean {
   if (queuePaused) return false;
-  return queue.some(e => e.status === 'pending' || e.status === 'analyzing');
+  return failedGameRetryTimer !== null || queue.some(e => e.status === 'pending' || e.status === 'analyzing');
 }
 
 export function isBulkPaused(): boolean {
-  return queuePaused && queue.some(e => e.status === 'pending' || e.status === 'analyzing');
+  return queuePaused && (hasRetryableFailedGame() || queue.some(e => e.status === 'pending' || e.status === 'analyzing'));
 }
 
 export function cancelBulkReview(): void {
@@ -1423,13 +1893,14 @@ export function cancelBulkReview(): void {
   }
   clearWatchdog();
   clearDispatchDefer();
+  clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
   if (reviewSearchActive) {
     // Invalidate any in-flight search before stopping so a late bestmove is discarded.
     reviewSearchGeneration++;
     reviewProtocol.stop();
     reviewSearchActive = false;
-    reviewInflightFen  = '';
+    clearReviewSearchIdentity();
   }
   // The whole manifest is being cleared below, so drop rather than flush any
   // pending checkpoint — writing it would just be immediately wiped out.
@@ -1437,6 +1908,10 @@ export function cancelBulkReview(): void {
   queue       = [];
   activeIndex = -1;
   queuePaused = false;
+  queuePauseReason = null;
+  hiddenSuspendedOwnerTabId = null;
+  reviewStorageHealth = 'ok';
+  setActiveReviewRunState('canceled');
   resetReviewBatchElapsed();
   void clearReviewQueueManifest();
   _redraw();
@@ -1447,22 +1922,48 @@ export function pauseBulkReview(): void {
     leaderChannel?.postMessage({ type: 'pause', tabId });
     return;
   }
-  if (!isBulkRunning()) return;
+  if (!isBulkRunning() && failedGameRetryTimer === null) return;
   queuePaused = true;
+  queuePauseReason = 'user';
+  hiddenSuspendedOwnerTabId = null;
+  setActiveReviewRunState('user-paused');
   clearWatchdog();
   clearDispatchDefer();
+  clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
   if (reviewSearchActive) {
     // Invalidate any in-flight search before stopping so a late bestmove is discarded.
     reviewSearchGeneration++;
     reviewProtocol.stop();
     reviewSearchActive = false;
-    reviewInflightFen  = '';
+    clearReviewSearchIdentity();
   }
   // Force a checkpoint write now — the queue is going idle, so don't leave the
   // most recently analyzed positions sitting in the throttle window unsaved.
   flushReviewCheckpoint();
   // The queue is idle until resumeBulkReview; elapsed time restarts on resume.
+  resetReviewBatchElapsed();
+  _redraw();
+}
+
+export function suspendBulkReviewForHiddenTab(): void {
+  if (!isCurrentLeader) return;
+  if (!isBulkRunning() && failedGameRetryTimer === null) return;
+  queuePaused = true;
+  queuePauseReason = 'hidden';
+  hiddenSuspendedOwnerTabId = tabId;
+  setActiveReviewRunState('hidden-suspended');
+  clearWatchdog();
+  clearDispatchDefer();
+  clearFailedGameRetryTimer();
+  reviewWatchdogRetries = 0;
+  if (reviewSearchActive) {
+    reviewSearchGeneration++;
+    reviewProtocol.stop();
+    reviewSearchActive = false;
+    clearReviewSearchIdentity();
+  }
+  flushReviewCheckpoint();
   resetReviewBatchElapsed();
   _redraw();
 }
@@ -1474,15 +1975,34 @@ export function resumeBulkReview(): void {
   }
   if (!queuePaused) return;
   queuePaused = false;
+  queuePauseReason = null;
+  hiddenSuspendedOwnerTabId = null;
+  setActiveReviewRunState('running');
   ensureReviewBatchElapsedStarted();
   // Resume the active entry if one was mid-analysis when paused.
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (entry && entry.status === 'analyzing' && reviewItemIndex < reviewItemQueue.length) {
     sendNextItem();
+  } else if (scheduleNextRetryableFailedGame()) {
+    // Retry resumes after the normal controlled backoff instead of immediately
+    // hammering a game that was already failing.
   } else {
     advanceQueue();
   }
   _redraw();
+}
+
+export function canResumeHiddenSuspendedReviewInThisTab(): boolean {
+  return isCurrentLeader
+    && queuePaused
+    && queuePauseReason === 'hidden'
+    && hiddenSuspendedOwnerTabId === tabId
+    && (hasRetryableFailedGame() || queue.some(e => e.status === 'pending' || e.status === 'analyzing'));
+}
+
+export function resumeHiddenSuspendedReviewInThisTab(): void {
+  if (!canResumeHiddenSuspendedReviewInThisTab()) return;
+  resumeBulkReview();
 }
 
 export function getReviewProgress(gameId: string): number | undefined {
@@ -1493,11 +2013,121 @@ export function getReviewProgress(gameId: string): number | undefined {
   return Math.round((entry.done / entry.total) * 100);
 }
 
+export function getFailedReviewStatus(gameId: string, depth = reviewDepth): FailedReviewStatus | undefined {
+  const state = getFailedGameState(gameId, depth);
+  return state ? toFailedReviewStatus(state) : undefined;
+}
+
+export function getFailedReviewStatuses(): FailedReviewStatus[] {
+  return [...failedGameAttempts.values()].map(toFailedReviewStatus);
+}
+
+export function getFailedReviewGameIds(): Set<string> {
+  return new Set([...failedGameAttempts.values()].map(state => state.gameId));
+}
+
+export function getCurrentFailedReviewStatus(): FailedReviewStatus | undefined {
+  const retryEntry = failedGameRetryEntry;
+  if (retryEntry) {
+    const retryState = getFailedGameState(retryEntry.game.id, retryEntry.depth);
+    if (retryState) return toFailedReviewStatus(retryState);
+  }
+  const activeEntry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+  if (activeEntry?.status === 'error') {
+    const activeState = getFailedGameState(activeEntry.game.id, activeEntry.depth);
+    if (activeState) return toFailedReviewStatus(activeState);
+  }
+  for (const entry of queue) {
+    if (entry.status !== 'error') continue;
+    const state = getFailedGameState(entry.game.id, entry.depth);
+    if (state) return toFailedReviewStatus(state);
+  }
+  return undefined;
+}
+
+export async function getNextReviewRunBatchSelection(
+  games: readonly ImportedGame[] = _libraryGames,
+): Promise<ReviewRunNextBatchSelection | null> {
+  const manifest = activeReviewRun ?? await loadLatestReviewRunManifest();
+  if (!manifest) return null;
+  const reviewedGameIdsAtRunDepth = new Set<string>();
+  for (const gameId of manifest.sourceGameIds) {
+    const stored = await loadAnalysisFromIdb(gameId);
+    if (storedAnalysisMatchesReviewDepth(stored, manifest.reviewDepth)) {
+      reviewedGameIdsAtRunDepth.add(gameId);
+    }
+  }
+  return selectNextReviewRunBatch({
+    manifest,
+    libraryGames: games,
+    reviewedGameIdsAtRunDepth,
+  });
+}
+
+export async function queueNextReviewRunBatch(
+  games: readonly ImportedGame[] = _libraryGames,
+): Promise<'queued' | 'no-run' | 'no-more-eligible-games'> {
+  const manifest = activeReviewRun ?? await loadLatestReviewRunManifest();
+  if (!manifest) return 'no-run';
+  activeReviewRun = manifest;
+  const selection = await getNextReviewRunBatchSelection(games);
+  if (!selection) return 'no-run';
+  if (selection.batchGames.length === 0) {
+    setActiveReviewRunState('no-more-eligible-games');
+    _redraw();
+    return 'no-more-eligible-games';
+  }
+
+  activeReviewRun.activeBatchIds = [...selection.batchGameIds];
+  activeReviewRun.lifecycleState = 'running';
+  activeReviewRun.updatedAt = Date.now();
+  persistActiveReviewRun();
+  enqueueBulkReview(selection.batchGames, manifest.reviewDepth, {
+    sourceMode:          manifest.sourceMode,
+    sourceGameIds:       manifest.sourceGameIds,
+    timeControlContext:  manifest.timeControlContext,
+    orderingContext:     manifest.orderingContext,
+    activeBatchIds:      selection.batchGameIds,
+  });
+  _redraw();
+  return 'queued';
+}
+
+export function dismissReviewRunNotice(): void {
+  if (!activeReviewRun) return;
+  if (
+    activeReviewRun.lifecycleState !== 'batch-complete'
+    && activeReviewRun.lifecycleState !== 'no-more-eligible-games'
+    && activeReviewRun.lifecycleState !== 'stale'
+  ) return;
+  activeReviewRun.lifecycleState = 'idle';
+  activeReviewRun.updatedAt = Date.now();
+  persistActiveReviewRun();
+  _redraw();
+}
+
 export interface QueueSummary {
   total:   number;  // games in the current queue (any status)
   done:    number;  // games with status 'complete'
+  failed:  number;
+  skipped: number;
+  remainingGames: number;
   running: boolean;
+  paused:  boolean;
+  pauseReason: ReviewPauseReason | null;
+  lifecycleState: ReviewRunLifecycleState | null;
+  storageHealth: ReviewStorageHealth;
   elapsedSeconds: number | null;
+  lastProgressSeconds: number | null;
+  stale: boolean;
+  staleThresholdSeconds: number;
+  currentGameId: string | null;
+  currentGameLabel: string | null;
+  currentBatchIndex: number | null;
+  currentBatchTotal: number | null;
+  activeBatchGameIds: string[];
+  reviewDepth: number | null;
+  timeControlContext: ReviewRunTimeControlContext | null;
 
 
 
@@ -1508,13 +2138,68 @@ export interface QueueSummary {
 }
 
 export function getQueueSummary(): QueueSummary {
-  const total   = queue.length;
-  const done    = queue.filter(e => e.status === 'complete').length;
+  const batchIds = activeReviewRun?.activeBatchIds ?? [];
+  const batchIdSet = new Set(batchIds);
+  const runScopedIds = (ids: readonly string[]) => batchIdSet.size === 0
+    ? ids
+    : ids.filter(id => batchIdSet.has(id));
+  const total = batchIds.length > 0 ? batchIds.length : queue.length;
+  const done = activeReviewRun
+    ? runScopedIds(activeReviewRun.completedGameIds).length
+    : queue.filter(e => e.status === 'complete').length;
+  const skipped = activeReviewRun
+    ? runScopedIds(activeReviewRun.skippedGameIds).length
+    : [...failedGameAttempts.values()].filter(state => state.skipped).length;
+  const completedIds = new Set(activeReviewRun?.completedGameIds ?? []);
+  const skippedIds = new Set(activeReviewRun?.skippedGameIds ?? []);
+  const failed = activeReviewRun
+    ? activeReviewRun.failedAttempts.filter(attempt =>
+        (batchIdSet.size === 0 || batchIdSet.has(attempt.gameId))
+        && !completedIds.has(attempt.gameId)
+        && !skippedIds.has(attempt.gameId),
+      ).length
+    : [...failedGameAttempts.values()].filter(state => !state.skipped).length;
+  const remainingGames = Math.max(0, total - done - skipped);
   const running = isBulkRunning();
+  const paused  = isBulkPaused();
   if (running) ensureReviewBatchElapsedStarted();
+  const now = Date.now();
   const elapsedSeconds = running && reviewBatchStartedAt !== null
-    ? (Date.now() - reviewBatchStartedAt) / 1000
+    ? (now - reviewBatchStartedAt) / 1000
     : null;
+  const progressAnchor = reviewLastProgressAt ?? activeReviewRun?.updatedAt ?? reviewBatchStartedAt;
+  const lastProgressSeconds = running && progressAnchor !== null && progressAnchor !== undefined
+    ? (now - progressAnchor) / 1000
+    : null;
+  const currentEntry = activeIndex >= 0 ? queue[activeIndex] : queue.find(entry => entry.status === 'analyzing');
+  const currentGameId = currentEntry?.game.id ?? null;
+  const currentGameLabel = currentEntry
+    ? `${currentEntry.game.white ?? 'White'} vs ${currentEntry.game.black ?? 'Black'}`
+    : null;
+  const currentBatchTotal = total > 0 ? total : null;
+  const currentBatchIndex = currentEntry && currentBatchTotal !== null
+    ? (() => {
+        const activeBatchIndex = batchIds.indexOf(currentEntry.game.id);
+        if (activeBatchIndex >= 0) return activeBatchIndex + 1;
+        const queueIndex = queue.findIndex(entry => entry.game.id === currentEntry.game.id);
+        return queueIndex >= 0 ? queueIndex + 1 : null;
+      })()
+    : null;
+  const rawLifecycleState = activeReviewRun?.lifecycleState ?? null;
+  const staleExcludedState =
+    paused
+    || queuePauseReason === 'hidden'
+    || queuePauseReason === 'reload'
+    || rawLifecycleState === 'user-paused'
+    || rawLifecycleState === 'hidden-suspended'
+    || rawLifecycleState === 'interrupted-after-reload'
+    || rawLifecycleState === 'retrying-failed-game'
+    || failedGameRetryTimer !== null;
+  const stale = running
+    && !staleExcludedState
+    && lastProgressSeconds !== null
+    && lastProgressSeconds * 1000 >= REVIEW_STALE_PROGRESS_MS;
+  const lifecycleState = stale ? 'stale' : rawLifecycleState;
 
   let remainingPositions = 0;
   for (const entry of queue) {
@@ -1522,7 +2207,30 @@ export function getQueueSummary(): QueueSummary {
     remainingPositions += Math.max(0, entry.total - entry.done);
   }
 
-  return { total, done, running, elapsedSeconds, remainingPositions };
+  return {
+    total,
+    done,
+    failed,
+    skipped,
+    remainingGames,
+    running,
+    paused,
+    pauseReason: paused ? queuePauseReason : null,
+    lifecycleState,
+    storageHealth: reviewStorageHealth,
+    elapsedSeconds,
+    lastProgressSeconds,
+    stale,
+    staleThresholdSeconds: REVIEW_STALE_PROGRESS_MS / 1000,
+    currentGameId,
+    currentGameLabel,
+    currentBatchIndex,
+    currentBatchTotal,
+    activeBatchGameIds: [...batchIds],
+    reviewDepth: activeReviewRun?.reviewDepth ?? currentEntry?.depth ?? null,
+    timeControlContext: activeReviewRun?.timeControlContext ?? null,
+    remainingPositions,
+  };
 }
 
 /** Format a duration in seconds as a short "Xm Ys" / "Xs" string for review status display. */
@@ -1561,4 +2269,28 @@ export function resetErroredGame(gameId: string): void {
   if (activeIndex > idx) activeIndex--;
   void clearReviewQueueManifestEntry(gameId);
   _redraw();
+}
+
+export function skipFailedReviewGame(gameId: string): void {
+  if (!isCurrentLeader) {
+    leaderChannel?.postMessage({ type: 'skip-failed', tabId, gameId });
+    return;
+  }
+  const idx = queue.findIndex(e => e.game.id === gameId && e.status === 'error');
+  if (idx < 0) return;
+  const entry = queue[idx]!;
+  if (failedGameRetryEntry === entry) clearFailedGameRetryTimer();
+  persistSkippedFailedGameState(entry);
+  markActiveReviewRunGameSkipped(entry.game.id);
+  queue.splice(idx, 1);
+  if (activeIndex >= idx) activeIndex--;
+  void clearReviewQueueManifestEntry(entry.game.id);
+  _redraw();
+  advanceQueue();
+}
+
+export function skipCurrentFailedReviewGame(): void {
+  const status = getCurrentFailedReviewStatus();
+  if (!status) return;
+  skipFailedReviewGame(status.gameId);
 }

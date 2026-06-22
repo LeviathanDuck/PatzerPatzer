@@ -11,6 +11,7 @@ import { pathInit, pathIsMainline } from '../tree/ops';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import type { Glyph } from '../tree/types';
 import { type EngineMode, type EngineStrengthConfig, STRENGTH_LEVELS, DEFAULT_STRENGTH_LEVEL } from './types';
+import { record, Severity } from '../diagnostics';
 
 // --- Types ---
 
@@ -755,6 +756,25 @@ function parseEngineLine(line: string): void {
           '| ctrl.path:', _getCtrl().path,
           '| pendingEval:', pendingEval,
         );
+
+        // Instrument stale bestmove drop for the live engine: record event type, depth, and movetime.
+        // Position context is ply only — never raw FEN.
+        record({
+          kind: 'engine',
+          severity: Severity.Info,
+          source: 'engine.ctrl',
+          sourceTag: 'engine',
+          message: 'stale-bestmove-drop',
+          metadata: {
+            eventType:    'stale-bestmove-drop',
+            depthTarget:  analysisDepth,
+            depthReached: currentEval.depth ?? null,
+            movetimeMs:   searchUntilDepth ? null : searchTime,
+            ply:          evalNodePly,
+          },
+          redactionClass: 'safe',
+        });
+
         pendingLines = [];
         if (pendingEval) evalCurrentPosition();
         else if (threatMode) evalThreatPosition();

@@ -13,6 +13,7 @@ import {
   startClientLogin,
   type ClientAuthStatus,
 } from '../auth/lichessClient';
+import { record, Severity } from '../diagnostics';
 
 export { LOGIN_MODAL_EVENT, requestLogin } from '../auth/lichessClient';
 
@@ -29,9 +30,52 @@ function setLastSyncedAt(): void {
 // --- HTTP helpers ---
 // Session cookie is sent automatically for same-origin requests.
 
+/** Classify a fetch failure into a stable label for diagnostics. No credentials are included. */
+function classifyFailure(status: number | undefined, error?: unknown): string {
+  if (error !== undefined && (status === undefined || status === 0)) {
+    const msg = error instanceof Error ? error.message.toLowerCase() : '';
+    if (msg.includes('timeout')) return 'timeout';
+    return 'network-error';
+  }
+  if (status === 401 || status === 403) return 'unauthorized';
+  if (status !== undefined && status >= 500) return 'server-error';
+  if (status !== undefined && status >= 400) return 'client-error';
+  return 'unknown';
+}
+
+function isAuthPath(path: string): boolean {
+  return path.startsWith('/api/auth') || path.startsWith('/api/patzer-auth');
+}
+
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(path, { credentials: 'same-origin' });
-  if (!res.ok) throw new Error(`GET ${path}: ${res.status} ${res.statusText}`);
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(path, { credentials: 'same-origin' });
+  } catch (err) {
+    const latencyMs = Date.now() - t0;
+    record({
+      kind: isAuthPath(path) ? 'api' : 'sync',
+      severity: Severity.Error,
+      sourceTag: 'sync',
+      message: `GET ${path} network error`,
+      metadata: { path, latencyMs, failureClass: classifyFailure(undefined, err) },
+      redactionClass: 'safe',
+    });
+    throw err;
+  }
+  if (!res.ok) {
+    const latencyMs = Date.now() - t0;
+    record({
+      kind: isAuthPath(path) ? 'api' : 'sync',
+      severity: Severity.Error,
+      sourceTag: 'sync',
+      message: `GET ${path} failed`,
+      metadata: { path, status: res.status, latencyMs, failureClass: classifyFailure(res.status) },
+      redactionClass: 'safe',
+    });
+    throw new Error(`GET ${path}: ${res.status} ${res.statusText}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -42,8 +86,34 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
   };
   if (body !== undefined) opts.body = JSON.stringify(body);
-  const res = await fetch(path, opts);
-  if (!res.ok) throw new Error(`POST ${path}: ${res.status} ${res.statusText}`);
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(path, opts);
+  } catch (err) {
+    const latencyMs = Date.now() - t0;
+    record({
+      kind: isAuthPath(path) ? 'api' : 'sync',
+      severity: Severity.Error,
+      sourceTag: 'sync',
+      message: `POST ${path} network error`,
+      metadata: { path, latencyMs, failureClass: classifyFailure(undefined, err) },
+      redactionClass: 'safe',
+    });
+    throw err;
+  }
+  if (!res.ok) {
+    const latencyMs = Date.now() - t0;
+    record({
+      kind: isAuthPath(path) ? 'api' : 'sync',
+      severity: Severity.Error,
+      sourceTag: 'sync',
+      message: `POST ${path} failed`,
+      metadata: { path, status: res.status, latencyMs, failureClass: classifyFailure(res.status) },
+      redactionClass: 'safe',
+    });
+    throw new Error(`POST ${path}: ${res.status} ${res.statusText}`);
+  }
   return res.json() as Promise<T>;
 }
 
