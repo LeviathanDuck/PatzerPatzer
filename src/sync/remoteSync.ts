@@ -28,6 +28,8 @@ const SERVER_GENERATION_KEY = 'chesspatzer.remoteSync.syncGeneration';
 const FULL_PULL_REQUIRED_KEY = 'chesspatzer.remoteSync.fullPullRequired';
 export const REMOTE_SYNC_LOG_EVENT = 'chesspatzer:remoteSync-sync-log-changed';
 export const REMOTE_SYNC_ANALYSIS_CHANGED_EVENT = 'chesspatzer:remoteSync-analysis-changed';
+export const REMOTE_SYNC_APPLIED_EVENT = 'chesspatzer:remoteSync-remote-sync-applied';
+export const REMOTE_SYNC_ACTIVITY_EVENT = 'chesspatzer:remoteSync-sync-activity-changed';
 const RELOAD_ON_SETTINGS_PULL_KEY = 'chesspatzer.remoteSync.settingsReloadedAt';
 const SETTING_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.settingUpdatedAt.';
 const ITEM_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.itemUpdatedAt.';
@@ -223,6 +225,30 @@ function emitSyncLogChanged(): void {
 
 function emitAnalysisChanged(): void {
   window.dispatchEvent(new CustomEvent(REMOTE_SYNC_ANALYSIS_CHANGED_EVENT));
+}
+
+function storesChangedByCounts(counts: Record<string, number>): RemoteSyncStoreName[] {
+  const stores = new Set<RemoteSyncStoreName>();
+  for (const [key, value] of Object.entries(counts)) {
+    if (value <= 0) continue;
+    const store = key.split(':')[0];
+    if (REMOTE_SYNC_STORE_NAMES.includes(store as RemoteSyncStoreName)) {
+      stores.add(store as RemoteSyncStoreName);
+    }
+  }
+  return [...stores];
+}
+
+function emitRemoteSyncApplied(counts: Record<string, number>, latestUpdatedAt: number): void {
+  const stores = storesChangedByCounts(counts);
+  if (stores.length === 0) return;
+  window.dispatchEvent(new CustomEvent(REMOTE_SYNC_APPLIED_EVENT, {
+    detail: {
+      counts,
+      latestUpdatedAt,
+      stores,
+    },
+  }));
 }
 
 class RemoteSyncStaleSessionError extends Error {
@@ -625,6 +651,28 @@ let settingsObserverInstalled = false;
 let applyingRemoteSync = false;
 let syncGeneration = 0;
 let skipNextStartupPush = false;
+let activeSyncOperationCount = 0;
+
+function emitSyncActivityChanged(): void {
+  window.dispatchEvent(new CustomEvent(REMOTE_SYNC_ACTIVITY_EVENT, {
+    detail: { active: isRemoteSyncActive() },
+  }));
+}
+
+export function isRemoteSyncActive(): boolean {
+  return activeSyncOperationCount > 0;
+}
+
+async function withRemoteSyncActivity<T>(run: () => Promise<T>): Promise<T> {
+  activeSyncOperationCount += 1;
+  if (activeSyncOperationCount === 1) emitSyncActivityChanged();
+  try {
+    return await run();
+  } finally {
+    activeSyncOperationCount = Math.max(0, activeSyncOperationCount - 1);
+    if (activeSyncOperationCount === 0) emitSyncActivityChanged();
+  }
+}
 
 function specForPersistenceOperation(operation: RemoteSyncPersistenceOperation): IdbStoreSpec | undefined {
   const directStore = IDB_SPECS_BY_STORE.get(operation.storeName as RemoteSyncStoreName);
@@ -1028,13 +1076,13 @@ export function startRemoteSyncAutoSync(options: { pushAfterHydrate?: boolean } 
     void flushRemoteSyncOutbox();
   }, FLUSH_INTERVAL_MS);
 
-  void hydrateFromRemoteSync()
-    .then(() => {
-      const shouldPush = pushAfterHydrate && !skipNextStartupPush && !isRemoteSyncFullPullRequired();
-      skipNextStartupPush = false;
-      if (shouldPush && syncGeneration === generation && hasRemoteSyncToken()) return pushToRemoteSync();
-      return { success: true, counts: {} };
-    })
+  void withRemoteSyncActivity(async () => {
+    await hydrateFromRemoteSync();
+    const shouldPush = pushAfterHydrate && !skipNextStartupPush && !isRemoteSyncFullPullRequired();
+    skipNextStartupPush = false;
+    if (shouldPush && syncGeneration === generation && hasRemoteSyncToken()) return pushToRemoteSync();
+    return { success: true, counts: {} };
+  })
     .catch(error => console.warn('[remote-sync] Startup hydrate failed', error));
 }
 
@@ -1856,25 +1904,27 @@ export async function rememberRemoteSyncToken(token: string): Promise<SyncResult
 }
 
 export async function testRemoteSyncConnection(): Promise<SyncResult> {
-  try {
-    const status = await remoteSyncFetch<StatusResponse>('status.php');
-    if (!status.ok) return { success: false, error: status.error || 'Remote sync status failed.' };
-    const result = {
-      success: true,
-      counts: {
-        items: status.items ?? 0,
-        tombstones: status.tombstones ?? 0,
-        latestUpdatedAt: status.latestUpdatedAt ?? 0,
-        syncGeneration: status.syncGeneration ?? storedServerGeneration() ?? 0,
-      },
-    };
-    recordRemoteSyncLog('test', 'success', 'Connection test passed.', result.counts);
-    return result;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Remote sync status failed.';
-    recordRemoteSyncLog('test', 'error', message);
-    return { success: false, error: message };
-  }
+  return withRemoteSyncActivity(async () => {
+    try {
+      const status = await remoteSyncFetch<StatusResponse>('status.php');
+      if (!status.ok) return { success: false, error: status.error || 'Remote sync status failed.' };
+      const result = {
+        success: true,
+        counts: {
+          items: status.items ?? 0,
+          tombstones: status.tombstones ?? 0,
+          latestUpdatedAt: status.latestUpdatedAt ?? 0,
+          syncGeneration: status.syncGeneration ?? storedServerGeneration() ?? 0,
+        },
+      };
+      recordRemoteSyncLog('test', 'success', 'Connection test passed.', result.counts);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Remote sync status failed.';
+      recordRemoteSyncLog('test', 'error', message);
+      return { success: false, error: message };
+    }
+  });
 }
 
 export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
@@ -1893,85 +1943,92 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
     return { success: false, error: 'Enter the admin sync token first.', counts };
   }
 
-  try {
-    const counts = await pushItems(outbox);
-    writeOutboxSnapshot([], snapshot.preservedInvalid);
-    setRemoteSyncLastSyncedAt(maxItemUpdatedAt(outbox));
-    recordRemoteSyncLog('flush', 'success', 'Queued changes flushed.', counts);
-    return { success: true, counts };
-  } catch (error) {
-    if (!(error instanceof RemoteSyncStaleSessionError)) writeOutboxSnapshot(outbox, snapshot.preservedInvalid);
-    const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
-    const counts = { queued: outbox.length };
-    recordRemoteSyncLog('flush', 'error', message, counts);
-    return { success: false, error: message, counts };
-  }
+  return withRemoteSyncActivity(async () => {
+    try {
+      const counts = await pushItems(outbox);
+      writeOutboxSnapshot([], snapshot.preservedInvalid);
+      setRemoteSyncLastSyncedAt(maxItemUpdatedAt(outbox));
+      recordRemoteSyncLog('flush', 'success', 'Queued changes flushed.', counts);
+      return { success: true, counts };
+    } catch (error) {
+      if (!(error instanceof RemoteSyncStaleSessionError)) writeOutboxSnapshot(outbox, snapshot.preservedInvalid);
+      const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
+      const counts = { queued: outbox.length };
+      recordRemoteSyncLog('flush', 'error', message, counts);
+      return { success: false, error: message, counts };
+    }
+  });
 }
 
 export async function pushToRemoteSync(): Promise<SyncResult> {
-  try {
-    if (isRemoteSyncFullPullRequired()) {
-      const message = 'Pull the token database before pushing from this browser.';
+  return withRemoteSyncActivity(async () => {
+    try {
+      if (isRemoteSyncFullPullRequired()) {
+        const message = 'Pull the token database before pushing from this browser.';
+        recordRemoteSyncLog('push', 'error', message);
+        return { success: false, error: message };
+      }
+      const flush = await flushRemoteSyncOutbox();
+      if (!flush.success) return flush;
+
+      const items = await readLocalRemoteSyncItems();
+      const counts = await pushItems(items);
+      setRemoteSyncLastSyncedAt(maxItemUpdatedAt(items));
+      recordRemoteSyncLog('push', 'success', 'Local cache pushed to database.', counts);
+      return { success: true, counts };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Remote sync push failed.';
       recordRemoteSyncLog('push', 'error', message);
       return { success: false, error: message };
     }
-    const flush = await flushRemoteSyncOutbox();
-    if (!flush.success) return flush;
-
-    const items = await readLocalRemoteSyncItems();
-    const counts = await pushItems(items);
-    setRemoteSyncLastSyncedAt(maxItemUpdatedAt(items));
-    recordRemoteSyncLog('push', 'success', 'Local cache pushed to database.', counts);
-    return { success: true, counts };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Remote sync push failed.';
-    recordRemoteSyncLog('push', 'error', message);
-    return { success: false, error: message };
-  }
+  });
 }
 
 export async function pullFromRemoteSync(options: { since?: number | null; flushAfter?: boolean } = {}): Promise<SyncResult> {
-  try {
-    await ensureServerGenerationLoaded();
-    const generation = syncGeneration;
-    const fullPullRequired = isRemoteSyncFullPullRequired();
-    const since = fullPullRequired || options.since === null ? undefined : options.since ?? getRemoteSyncLastSyncMs();
-    const path = since !== undefined ? `pull.php?since=${encodeURIComponent(String(since))}` : 'pull.php';
-    const result = await remoteSyncFetch<PullResponse>(path);
-    if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
-    if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts: { skipped: 1 } };
+  return withRemoteSyncActivity(async () => {
+    try {
+      await ensureServerGenerationLoaded();
+      const generation = syncGeneration;
+      const fullPullRequired = isRemoteSyncFullPullRequired();
+      const since = fullPullRequired || options.since === null ? undefined : options.since ?? getRemoteSyncLastSyncMs();
+      const path = since !== undefined ? `pull.php?since=${encodeURIComponent(String(since))}` : 'pull.php';
+      const result = await remoteSyncFetch<PullResponse>(path);
+      if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
+      if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts: { skipped: 1 } };
 
-    const items = result.items ?? [];
-    const counts = await applyRemoteSyncItems(items, { generation });
-    if ((result.skippedMalformedJson ?? 0) > 0) {
-      counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
-      recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
-    }
-    if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts };
-    const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
-    if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
-    clearRemoteSyncFullPullRequirement();
-    if (reloadAfterSettingsPullIfNeeded(counts, latestUpdatedAt)) return { success: true, counts };
-
-    if (options.flushAfter && !fullPullRequired) {
-      const flush = await flushRemoteSyncOutbox();
-      if (!flush.success) {
-        return {
-          success: false,
-          error: flush.error || 'Remote sync flush failed.',
-          counts: { ...counts, ...(flush.counts ?? {}) },
-        };
+      const items = result.items ?? [];
+      const counts = await applyRemoteSyncItems(items, { generation });
+      if ((result.skippedMalformedJson ?? 0) > 0) {
+        counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
+        recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
       }
-      mergeCounts(counts, flush.counts);
-    }
+      if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts };
+      const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
+      if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
+      clearRemoteSyncFullPullRequirement();
+      if (reloadAfterSettingsPullIfNeeded(counts, latestUpdatedAt)) return { success: true, counts };
+      emitRemoteSyncApplied(counts, latestUpdatedAt);
 
-    recordRemoteSyncLog('pull', 'success', 'Database changes pulled into local cache.', counts);
-    return { success: true, counts };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Remote sync pull failed.';
-    recordRemoteSyncLog('pull', 'error', message);
-    return { success: false, error: message };
-  }
+      if (options.flushAfter && !fullPullRequired) {
+        const flush = await flushRemoteSyncOutbox();
+        if (!flush.success) {
+          return {
+            success: false,
+            error: flush.error || 'Remote sync flush failed.',
+            counts: { ...counts, ...(flush.counts ?? {}) },
+          };
+        }
+        mergeCounts(counts, flush.counts);
+      }
+
+      recordRemoteSyncLog('pull', 'success', 'Database changes pulled into local cache.', counts);
+      return { success: true, counts };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Remote sync pull failed.';
+      recordRemoteSyncLog('pull', 'error', message);
+      return { success: false, error: message };
+    }
+  });
 }
 
 export async function hydrateFromRemoteSync(): Promise<SyncResult> {

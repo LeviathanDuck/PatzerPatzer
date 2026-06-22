@@ -20,6 +20,9 @@ import type { ImportedGame } from '../import/types';
 import { nodeListAt, pathIsMainline } from '../tree/ops';
 import type { TreeNode, TreePath } from '../tree/types';
 
+const REVIEW_PROGRESS_LOADING_SRC = '/images/loading-icons/loading.gif';
+const REVIEW_PROGRESS_STILL_SRC = '/images/loading-icons/loading-still.png';
+
 // --- Injected deps ---
 
 let _getCtrl:           () => AnalyseCtrl                        = () => { throw new Error('pgnExport not initialised'); };
@@ -185,6 +188,30 @@ export function downloadPgn(annotated: boolean): void {
   _redraw();
 }
 
+function formatReviewPositionProgress(done: number, total: number): string | null {
+  if (total <= 0) return null;
+  const analyzed = Math.min(Math.max(0, done), total);
+  return `${analyzed}/${total} positions analyzed`;
+}
+
+function renderReviewProgressIcon(state: 'active' | 'still'): VNode {
+  return h('img.review-progress-icon', {
+    class: { 'review-progress-icon--still': state === 'still' },
+    attrs: {
+      src: state === 'active' ? REVIEW_PROGRESS_LOADING_SRC : REVIEW_PROGRESS_STILL_SRC,
+      alt: '',
+      'aria-hidden': 'true',
+    },
+  });
+}
+
+function renderReviewProgressLabel(label: string, state: 'active' | 'still'): VNode {
+  return h('span.review-progress-label', [
+    renderReviewProgressIcon(state),
+    h('span.review-progress-label__text', label),
+  ]);
+}
+
 export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   const ctrl           = _getCtrl();
   const selectedGameId = _getSelectedGameId();
@@ -194,11 +221,13 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   // Mirrors the single-action pattern in Lichess analysis controls.
   let reviewLabel: string;
   let reviewTitle: string;
+  const runningProgressLabel = batchAnalyzing
+    ? formatReviewPositionProgress(batchDone, batchQueue.length)
+    : null;
   if (batchAnalyzing) {
-    const pct = batchQueue.length > 0
-      ? Math.round((batchDone / batchQueue.length) * 100)
-      : 0;
-    reviewLabel = `${pct}%`;
+    reviewLabel = batchQueue.length > 0
+      ? `${Math.min(Math.max(0, batchDone), batchQueue.length)}/${batchQueue.length}`
+      : 'Reviewing…';
     reviewTitle = 'Analysis in progress — click to stop';
   } else if (analysisComplete) {
     reviewLabel = 'Re-analyze';
@@ -239,10 +268,12 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   };
 
   // Status line: shown only while analysis is running so the user understands
-  // what the percentage in the button refers to and how many moves remain.
+  // the compact count in the button and how many positions have been analyzed.
   // Mirrors the inline completion indicator in Lichess retro mode controls.
-  const statusLine = batchAnalyzing && batchQueue.length > 0
-    ? h('div.analyse-review-controls__status', `Analyzing… ${batchDone} of ${batchQueue.length} moves`)
+  const statusLine = batchAnalyzing && runningProgressLabel
+    ? h('div.analyse-review-controls__status', [
+        renderReviewProgressLabel(runningProgressLabel, 'active'),
+      ])
     : null;
 
 

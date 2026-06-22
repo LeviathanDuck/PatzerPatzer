@@ -88,6 +88,11 @@ export interface OpeningData extends ExplorerData {
   queuePosition?: number;
 }
 
+/** Read-only helper for UI badges that need to test loaded explorer data without fetching. */
+export function openingDataHasMove(data: OpeningData | undefined, uci: string): boolean {
+  return !!data?.moves.some(move => move.uci === uci);
+}
+
 // ============================================================
 // NDJSON streaming reader
 // Adapted from lichess-org/lila: ui/lib/src/xhr.ts readNdJson

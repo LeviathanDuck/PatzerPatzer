@@ -25,7 +25,7 @@ import {
   queueNextReviewRunBatch, dismissReviewRunNotice,
   isReviewEngineFailed, isReviewEngineInitializing,
   getCurrentFailedReviewStatus, skipCurrentFailedReviewGame,
-  isReviewOwnerUnavailableForTakeover, takeOverUnavailableReviewOwner,
+  isLeaderTab, isReviewOwnerUnavailableForTakeover, takeOverUnavailableReviewOwner,
 } from '../engine/reviewQueue';
 import { reviewDepth, setReviewDepth, reviewMovetime, setReviewMovetime } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
@@ -38,9 +38,11 @@ import type { FeedbackTone } from '../feedback/severity';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
 import { startAccountSettingsSync, stopAccountSettingsSync } from '../sync/settings';
 import {
+  REMOTE_SYNC_ACTIVITY_EVENT,
   clearRemoteSyncToken,
   getRemoteSyncToken,
   hasRemoteSyncToken,
+  isRemoteSyncActive,
   logoutRemoteSync as stopAndClearRemoteSync,
   setRemoteSyncToken,
   startRemoteSyncAutoSync,
@@ -133,6 +135,9 @@ export function openRetroModal(redraw: () => void): void {
 // --- Auth state ---
 const REMOTE_SYNC_TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
 const REMOTE_SYNC_TOKEN_EVENT = 'chesspatzer:remoteSync-token-changed';
+const REMOTE_SYNC_LOADING_SRC = '/images/loading-icons/loading.gif';
+const REVIEW_PROGRESS_LOADING_SRC = '/images/loading-icons/loading.gif';
+const REVIEW_PROGRESS_STILL_SRC = '/images/loading-icons/loading-still.png';
 
 let headerAuthUser: string | null = null;
 let headerAuthIsAdmin = false;
@@ -143,7 +148,9 @@ let loginModalError = '';
 let remoteSyncActive = false;
 let remoteSyncChecked = false;
 let remoteSyncChecking = false;
+let remoteSyncBusy = isRemoteSyncActive();
 let remoteSyncTokenListenerAttached = false;
+let remoteSyncActivityListenerAttached = false;
 let remoteSyncLoginInput = '';
 let remoteSyncLoginBusy = false;
 let remoteSyncLoginError = '';
@@ -197,6 +204,15 @@ function ensureRemoteSyncTokenListener(redraw: () => void): void {
   window.addEventListener(REMOTE_SYNC_TOKEN_EVENT, resetFromStorage);
   window.addEventListener('storage', event => {
     if (event.key === REMOTE_SYNC_TOKEN_KEY) resetFromStorage();
+  });
+}
+
+function ensureRemoteSyncActivityListener(redraw: () => void): void {
+  if (remoteSyncActivityListenerAttached) return;
+  remoteSyncActivityListenerAttached = true;
+  window.addEventListener(REMOTE_SYNC_ACTIVITY_EVENT, () => {
+    remoteSyncBusy = isRemoteSyncActive();
+    redraw();
   });
 }
 
@@ -295,6 +311,18 @@ function ensureHeaderAuth(redraw: () => void): void {
   });
 }
 
+function renderRemoteSyncIndicator(): VNode | null {
+  if (!remoteSyncBusy) return null;
+  return h('img.header__sync-loading', {
+    attrs: {
+      src: REMOTE_SYNC_LOADING_SRC,
+      alt: '',
+      'aria-hidden': 'true',
+      title: 'Sync in progress',
+    },
+  });
+}
+
 function renderUserArea(redraw: () => void): VNode | null {
   if (remoteSyncActive || (remoteSyncChecking && hasRemoteSyncToken())) {
     return h('div.header__user', {
@@ -304,18 +332,22 @@ function renderUserArea(redraw: () => void): VNode | null {
         attrs: { type: 'button', title: 'Logout' },
         on: { click: () => logoutRemoteSync(redraw) },
       }, 'Logout'),
+      renderRemoteSyncIndicator(),
     ]);
   }
-  return h('button.header__login', {
-    attrs: { type: 'button', title: 'Login' },
-    on: { click: () => {
-      remoteSyncLoginInput = '';
-      remoteSyncLoginError = '';
-      loginModalError = '';
-      showLoginModal = true;
-      redraw();
-    } },
-  }, 'Login');
+  return h('div.header__user.header__user--login', [
+    h('button.header__login', {
+      attrs: { type: 'button', title: 'Login' },
+      on: { click: () => {
+        remoteSyncLoginInput = '';
+        remoteSyncLoginError = '';
+        loginModalError = '';
+        showLoginModal = true;
+        redraw();
+      } },
+    }, 'Login'),
+    renderRemoteSyncIndicator(),
+  ]);
 }
 
 function renderLoginModal(redraw: () => void): VNode {
@@ -528,6 +560,30 @@ const REVIEW_MOVETIME_OPTIONS: { value: number | null; label: string }[] = [
   { value: 2000, label: '2s'     },
 ];
 
+function formatReviewPositionProgress(positionsAnalyzed: number, totalPositions: number): string | null {
+  if (totalPositions <= 0) return null;
+  const analyzed = Math.min(Math.max(0, positionsAnalyzed), totalPositions);
+  return `${analyzed}/${totalPositions} positions analyzed`;
+}
+
+function renderReviewProgressIcon(state: 'active' | 'still'): VNode {
+  return h('img.review-progress-icon', {
+    class: { 'review-progress-icon--still': state === 'still' },
+    attrs: {
+      src: state === 'active' ? REVIEW_PROGRESS_LOADING_SRC : REVIEW_PROGRESS_STILL_SRC,
+      alt: '',
+      'aria-hidden': 'true',
+    },
+  });
+}
+
+function renderReviewProgressLabel(label: string, state: 'active' | 'still'): VNode {
+  return h('span.review-progress-label', [
+    renderReviewProgressIcon(state),
+    h('span.review-progress-label__text', label),
+  ]);
+}
+
 function renderReviewMenu(redraw: () => void): VNode | null {
   const engineFailed       = isReviewEngineFailed();
   const engineInitializing = isReviewEngineInitializing();
@@ -548,7 +604,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         class: { active: showReviewMenu },
         attrs: { title: 'Engine unavailable — review queue halted' },
         on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
-      }, 'Engine error'),
+      }, [renderReviewProgressLabel('Engine error', 'still')]),
       showReviewMenu ? h('div.review-menu__backdrop', {
         on: { click: () => { showReviewMenu = false; redraw(); } },
       }) : null,
@@ -573,38 +629,45 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       h('button.review-menu__trigger', {
         class: { active: false },
         attrs: { title: 'Review engine loading…', disabled: true },
-      }, 'Engine loading…'),
+      }, [renderReviewProgressLabel('Engine loading…', 'active')]),
     ]);
   }
 
   if (!active) return null;
-  const elapsed = summary ? formatReviewDuration(summary.elapsedSeconds) : null;
   const lastProgress = summary ? formatReviewDuration(summary.lastProgressSeconds) : null;
   const failedStatus = getCurrentFailedReviewStatus();
   const interruptedAfterReload = summary?.pauseReason === 'reload';
+  const isQueueOwner = isLeaderTab();
   const ownerUnavailable = isReviewOwnerUnavailableForTakeover();
   const storageFailure = summary.storageHealth !== 'ok';
-  const canControlQueue = running || paused || ownerUnavailable;
+  const canControlQueue = isQueueOwner && (running || paused);
   const timeControlLabel = summary.timeControlContext?.speeds.length
     ? summary.timeControlContext.speeds.join(', ')
     : 'All time controls';
   const currentBatchLabel = summary.currentBatchIndex !== null && summary.currentBatchTotal !== null
     ? `Game ${summary.currentBatchIndex}/${summary.currentBatchTotal}`
     : null;
+  const positionProgress = formatReviewPositionProgress(summary.positionsAnalyzed, summary.totalPositions);
+  const activeProgressLabel = positionProgress ?? `${summary.done}/${summary.total} games`;
+  const positionProgressRemaining = Math.max(0, summary.totalPositions - summary.positionsAnalyzed);
   const reviewTriggerLabel = failedStatus
-    ? `Failed (${failedStatus.attempts})`
+    ? positionProgress
+      ? `Failed (${failedStatus.attempts}) · ${positionProgress}`
+      : `Failed (${failedStatus.attempts})`
     : storageFailure
       ? 'Storage error'
     : interruptedAfterReload
-      ? `Resume review ${summary.done}/${summary.total}`
+      ? `Resume review ${activeProgressLabel}`
     : staleNotice
-      ? `Review stalled ${summary.done}/${summary.total}`
+      ? `Review stalled · ${activeProgressLabel}`
+    : paused
+      ? `Review paused · ${activeProgressLabel}`
     : lifecycleState === 'batch-complete'
       ? `Batch complete ${summary.done}/${summary.total}`
     : lifecycleState === 'no-more-eligible-games'
       ? 'Review complete'
-      : summary
-        ? `Reviewing ${summary.done}/${summary.total}${elapsed ? ` · Elapsed ${elapsed}` : ''}`
+    : summary
+        ? `Reviewing ${activeProgressLabel}`
         : 'Reviewing…';
   const reviewTriggerTitle = failedStatus
     ? 'Current review failed and is retrying'
@@ -619,13 +682,15 @@ function renderReviewMenu(redraw: () => void): VNode | null {
     : lifecycleState === 'no-more-eligible-games'
       ? 'No matching games left to review'
     : 'Bulk Review settings';
+  const progressIconState: 'active' | 'still' =
+    running && !paused && !staleNotice && !failedStatus && !storageFailure ? 'active' : 'still';
 
   return h('div.review-menu', [
     h('button.review-menu__trigger', {
       class: { active: showReviewMenu || active, 'review-menu__trigger--warning': staleNotice },
       attrs: { title: reviewTriggerTitle },
       on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
-    }, reviewTriggerLabel),
+    }, [renderReviewProgressLabel(reviewTriggerLabel, progressIconState)]),
 
     showReviewMenu ? h('div.review-menu__backdrop', {
       on: { click: () => { showReviewMenu = false; redraw(); } },
@@ -673,10 +738,15 @@ function renderReviewMenu(redraw: () => void): VNode | null {
                   ? 'Run manifest save failed. Resume may be unavailable.'
                 : 'Review manifest save failed. Resume may be unavailable.')
           : null,
-        summary && summary.remainingPositions > 0
-          ? h('div.review-menu__label', elapsed
-              ? `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining · Elapsed ${elapsed}`
-              : `${summary.remainingPositions} position${summary.remainingPositions === 1 ? '' : 's'} remaining`)
+        positionProgress
+          ? h('div.review-menu__label.review-menu__label--progress', [
+              renderReviewProgressLabel(
+                positionProgressRemaining > 0
+                  ? `${positionProgress} · ${positionProgressRemaining} position${positionProgressRemaining === 1 ? '' : 's'} remaining`
+                  : positionProgress,
+                progressIconState,
+              ),
+            ])
           : null,
         summary.currentGameLabel
           ? h('div.review-menu__label',
@@ -709,7 +779,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
                 on: { click: () => { skipCurrentFailedReviewGame(); showReviewMenu = false; redraw(); } },
               }, 'Skip failed game')
             : null,
-          canControlQueue && ownerUnavailable
+          ownerUnavailable
             ? h('button.review-menu__btn', {
                 attrs: { type: 'button', title: 'Review owner is unavailable. Take over and resume in this tab.' },
                 on: { click: () => { takeOverUnavailableReviewOwner(); redraw(); } },
@@ -1531,6 +1601,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
   ensureHeaderAuth(redraw);
   ensureLoginModalListener(redraw);
   ensureRemoteSyncTokenListener(redraw);
+  ensureRemoteSyncActivityListener(redraw);
   ensureRemoteSyncAuth(redraw);
   if (!categorySyncInit) {
     categorySyncInit = true;

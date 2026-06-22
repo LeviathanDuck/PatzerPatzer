@@ -17,6 +17,7 @@ import {
 } from '../engine/reviewQueue';
 import {
   firstReviewRunBatch,
+  reviewRunStartFromContext,
   selectedGameIdsInSourceOrder,
   visibleListReviewRunContext,
   type ReviewRunSourceContext,
@@ -388,23 +389,6 @@ export function currentVisibleListReviewRunContext(games: readonly ImportedGame[
     sortKey:       gamesSortField,
     sortDirection: gamesSortDir,
   });
-}
-
-function reviewRunStartFromContext(
-  games: readonly ImportedGame[],
-  sourceContext: ReviewRunSourceContext,
-): {
-  batchGames: ImportedGame[];
-  sourceContext: ReviewRunSourceContext;
-} {
-  const batchGames = firstReviewRunBatch(games);
-  return {
-    batchGames,
-    sourceContext: {
-      ...sourceContext,
-      activeBatchIds: batchGames.map(game => game.id),
-    },
-  };
 }
 
 function visibleListReviewRunStart(games: readonly ImportedGame[]): {

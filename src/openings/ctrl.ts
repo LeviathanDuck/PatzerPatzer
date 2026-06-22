@@ -26,6 +26,12 @@ import {
   computeStyleViewModel,
   type CollectionSummary, type PrepReportData, type PrepReportLines, type StyleViewModel,
 } from './analytics';
+import {
+  cancelTreeEval,
+  isTreeEvalEnabled,
+  startTreeEvalDeepening,
+  startTreeEvalPass1,
+} from './treeEval';
 
 export type OpeningsPage = 'library' | 'loading' | 'session';
 
@@ -35,6 +41,14 @@ export const SESSION_DATE_RANGE_OPTIONS = [
   { value: 'last-month',   label: 'Last Month',   days: 30  },
   { value: 'last-3months', label: 'Last 3 Months', days: 90 },
   { value: 'last-6months', label: 'Last 6 Months', days: 180 },
+] as const;
+
+export type TreeEvalThoroughness = 'fast' | 'balanced' | 'deep';
+
+export const TREE_EVAL_THOROUGHNESS_OPTIONS: readonly { value: TreeEvalThoroughness; label: string }[] = [
+  { value: 'fast',     label: 'Fast' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'deep',     label: 'Deep' },
 ] as const;
 
 let _currentPage: OpeningsPage = 'library';
@@ -292,6 +306,9 @@ let _colorFilter: 'white' | 'black' | 'both' = 'white';
 let _speedFilter = new Set<string>(); // empty = all speeds
 let _recencyMode: 'recent' | 'all-time' = 'all-time';
 let _sessionDateRange: string | null = null;
+let _treeEvalThoroughness: TreeEvalThoroughness = 'balanced';
+const TREE_EVAL_DWELL_MS = 2_500;
+let _treeEvalDwellTimer: ReturnType<typeof setTimeout> | null = null;
 /** Games currently loaded into the tree (colour + speed + date filtered). */
 let _activeGames: ResearchGame[] = [];
 
@@ -389,6 +406,48 @@ export function flipBoard(): void { _boardOrientation = _boardOrientation === 'w
 export function openingTree(): OpeningTreeNode | null { return _openingTree; }
 export function colorFilter(): 'white' | 'black' | 'both' { return _colorFilter; }
 export function speedFilter(): ReadonlySet<string> { return _speedFilter; }
+export function treeEvalThoroughness(): TreeEvalThoroughness { return _treeEvalThoroughness; }
+
+export function setTreeEvalThoroughness(level: TreeEvalThoroughness, redraw: () => void): void {
+  _treeEvalThoroughness = level;
+  triggerTreeEvalForCurrentNode();
+  redraw();
+}
+
+export function triggerTreeEvalForCurrentNode(): void {
+  cancelTreeEvalDwellTimer();
+  if (!_sessionNode || !isTreeEvalEnabled()) {
+    cancelTreeEval();
+    return;
+  }
+  const node = _sessionNode;
+  const pathKey = _sessionPath.join('/');
+  startTreeEvalPass1(node, _treeEvalThoroughness, {
+    onPass2Complete: () => scheduleTreeEvalDwell(node.fen, pathKey),
+  });
+}
+
+function cancelTreeEvalDwellTimer(): void {
+  if (_treeEvalDwellTimer) {
+    clearTimeout(_treeEvalDwellTimer);
+    _treeEvalDwellTimer = null;
+  }
+}
+
+function cancelTreeEvalWork(): void {
+  cancelTreeEvalDwellTimer();
+  cancelTreeEval();
+}
+
+function scheduleTreeEvalDwell(fen: string, pathKey: string): void {
+  cancelTreeEvalDwellTimer();
+  _treeEvalDwellTimer = setTimeout(() => {
+    _treeEvalDwellTimer = null;
+    if (!isTreeEvalEnabled()) return;
+    if (!_sessionNode || _sessionNode.fen !== fen || _sessionPath.join('/') !== pathKey) return;
+    startTreeEvalDeepening(_sessionNode, _treeEvalThoroughness);
+  }, TREE_EVAL_DWELL_MS);
+}
 
 /** Update the speed filter and rebuild the tree. */
 export function setSpeedFilter(speeds: Set<string>, redraw: () => void): void {
@@ -425,6 +484,7 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
   _activeGames = games;
 
   // Clear the tree immediately so the view shows an empty state while building.
+  cancelTreeEvalWork();
   const emptyBuilder = new OpeningTreeBuilder();
   _openingTree = emptyBuilder.freeze();
   _sessionPath = [];
@@ -454,6 +514,7 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
       _openingTree = builder.freeze();
       _sessionNode = _openingTree;
       invalidateSampleCache();
+      triggerTreeEvalForCurrentNode();
     }
     redraw();
 
@@ -488,6 +549,7 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   else if (_colorFilter === 'black') _boardOrientation = 'black';
 
   // Enter session immediately with an empty tree — board shows starting position
+  cancelTreeEvalWork();
   const emptyBuilder = new OpeningTreeBuilder();
   _openingTree = emptyBuilder.freeze();
   _sessionPath = [];
@@ -537,6 +599,7 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
       _openingTree = builder.freeze();
       _sessionNode = nodeAtMoves(_openingTree, [..._sessionPath]) ?? _openingTree;
       invalidateSampleCache();
+      triggerTreeEvalForCurrentNode();
     }
     redraw();
 
@@ -578,6 +641,7 @@ export function navigateToMove(uci: string): void {
     _sessionPath = [..._sessionPath, uci];
     _sessionNode = child;
     persistSession();
+    triggerTreeEvalForCurrentNode();
   }
 }
 
@@ -587,6 +651,7 @@ export function navigateBack(): void {
   _sessionPath = _sessionPath.slice(0, -1);
   _sessionNode = nodeAtMoves(_openingTree, _sessionPath) ?? _openingTree;
   persistSession();
+  triggerTreeEvalForCurrentNode();
 }
 
 /** Navigate to root. */
@@ -595,6 +660,7 @@ export function navigateToRoot(): void {
   _sessionPath = [];
   _sessionNode = _openingTree;
   persistSession();
+  triggerTreeEvalForCurrentNode();
 }
 
 /** Navigate to the deepest position following the most popular child at each step. */
@@ -611,6 +677,7 @@ export function navigateToEnd(): void {
     _sessionPath = newPath;
     _sessionNode = node ?? _sessionNode;
     persistSession();
+    triggerTreeEvalForCurrentNode();
   }
 }
 
@@ -622,6 +689,7 @@ export function navigateToPath(moves: string[]): void {
     _sessionPath = [...moves];
     _sessionNode = target;
     persistSession();
+    triggerTreeEvalForCurrentNode();
   }
 }
 
@@ -841,6 +909,7 @@ export function recordPracticeMove(uci: string): void {
 /** Close the current session, return to library. */
 export function closeSession(): void {
   if (_practiceSession) { cancelPlayMove(); exitPlayMode(); }
+  cancelTreeEvalWork();
   _activeTool = 'opening-tree';
   _practiceSession = null;          // practice session must be cleared on close
   invalidateSampleCache();

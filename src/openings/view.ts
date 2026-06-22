@@ -19,6 +19,7 @@ import type { MasterGame } from '../showcase/masterGames';
 import { bindBoardResizeHandle } from '../board/index';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
 import { renderMoveList } from '../analyse/moveList';
+import { formatScore } from '../analyse/evalView';
 import type { TreeNode } from '../tree/types';
 import type { ChessAccount } from '../accounts';
 import {
@@ -28,6 +29,8 @@ import {
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
   sessionDateRange, setSessionDateRange, SESSION_DATE_RANGE_OPTIONS,
+  treeEvalThoroughness, setTreeEvalThoroughness, TREE_EVAL_THOROUGHNESS_OPTIONS,
+  triggerTreeEvalForCurrentNode,
   openCollection, closeSession, navigateToMove, navigateBack, navigateToRoot, navigateToPath, navigateToEnd,
   removeCollection, renameCollection,
   treeBuilding, treeBuildProgress, treeBuildTotal,
@@ -65,6 +68,7 @@ import {
   type TablebaseData,
   type TablebaseMoveStats,
   type TablebaseCategory,
+  openingDataHasMove,
 } from './explorer';
 import { explorerCtrl, MAX_EXPLORER_DEPTH } from './explorerCtrl';
 import { ALL_SPEEDS, ALL_RATINGS, ALL_MODES } from './explorerConfig';
@@ -78,6 +82,15 @@ import {
   arrowAllLines, setArrowAllLines,
   showArrowLabels, setShowArrowLabels,
 } from '../engine/ctrl';
+import {
+  cancelTreeEval,
+  getTreeEval,
+  getTreeEvalStatus,
+  initTreeEval,
+  isTreeEvalEnabled,
+  setTreeEvalEnabled,
+  type TreeEvalEntry,
+} from './treeEval';
 import { playMoveWithDelay, cancelPlayMove } from '../engine/playMove';
 import { STRENGTH_LEVELS } from '../engine/types';
 import { renderStrengthSelector } from '../engine/strengthView';
@@ -3140,6 +3153,7 @@ function renderDeviationPanel(redraw: () => void): VNode {
 
 function renderPlayedLinesPanel(node: OpeningTreeNode, redraw: () => void): VNode {
   const dateLabel = dateRangeDescription(activeCollection()?.settings);
+  initTreeEval({ redraw });
   return h('div.openings__lines-panel', [
     // Position header: game count + result bar — visually separated from moves
     h('div.openings__pos-header', [
@@ -3153,16 +3167,58 @@ function renderPlayedLinesPanel(node: OpeningTreeNode, redraw: () => void): VNod
     node.children.length === 0
       ? h('div.openings__moves-empty', 'No further moves in this collection.')
       : h('div.openings__moves',
-          node.children.map(child => renderMoveRow(child, node.total, redraw)),
+          node.children.map(child => renderMoveRow(child, node.total, node.fen, redraw)),
         ),
+    renderTreeEvalStatusBar(),
+    renderTreeEvalControls(redraw),
     // Speed filter chips — below the moves, above the move-nav bar
     renderSpeedFilter(redraw),
     renderDateRangeFilter(redraw),
   ]);
 }
 
-function renderMoveRow(child: OpeningTreeNode, parentTotal: number, redraw: () => void): VNode {
+function renderTreeEvalControls(redraw: () => void): VNode {
+  const enabled = isTreeEvalEnabled();
+  const thoroughness = treeEvalThoroughness();
+  return h('div.openings__tree-eval-controls', [
+    h('label.openings__tree-eval-toggle', [
+      h('input', {
+        attrs: {
+          type: 'checkbox',
+          checked: enabled,
+        },
+        on: {
+          change: (event: Event) => {
+            const on = (event.currentTarget as HTMLInputElement).checked;
+            setTreeEvalEnabled(on);
+            if (!on) cancelTreeEval();
+            else triggerTreeEvalForCurrentNode();
+            redraw();
+          },
+        },
+      }),
+      h('span.openings__tree-eval-switch'),
+      h('span.openings__tree-eval-label', 'Tree eval'),
+    ]),
+    h('div.openings__tree-eval-levels', {
+      class: { 'openings__tree-eval-levels--disabled': !enabled },
+    }, TREE_EVAL_THOROUGHNESS_OPTIONS.map(option =>
+      h('button.openings__tree-eval-level', {
+        class: { active: thoroughness === option.value },
+        attrs: {
+          type: 'button',
+          disabled: !enabled,
+          title: `${option.label} tree eval thoroughness`,
+        },
+        on: { click: () => setTreeEvalThoroughness(option.value, redraw) },
+      }, option.label),
+    )),
+  ]);
+}
+
+function renderMoveRow(child: OpeningTreeNode, parentTotal: number, parentFen: string, redraw: () => void): VNode {
   const pct = parentTotal > 0 ? ((child.total / parentTotal) * 100).toFixed(1) : '0';
+  const gameLabel = child.total === 1 ? 'game' : 'games';
 
   // Check if this move is a known deviation from theory
   const path = sessionPath();
@@ -3180,14 +3236,102 @@ function renderMoveRow(child: OpeningTreeNode, parentTotal: number, redraw: () =
     class: { 'openings__move-row--deviation': !!deviation },
     on: { click: () => { navigateToMove(child.uci); syncOpeningsBoard(redraw); redraw(); } },
   }, [
-    h('span.openings__move-san', [
-      child.san,
-      deviation ? h('span.openings__deviation-badge', {
-        attrs: { title: `Deviates from theory: ${deviation.theoryMove}` },
-      }, '\u2197') : null,  // ↗
+    h('div.openings__move-line', [
+      h('span.openings__move-san', [
+        child.san,
+        deviation ? h('span.openings__deviation-badge', {
+          attrs: { title: `Deviates from theory: ${deviation.theoryMove}` },
+        }, '\u2197') : null,  // ↗
+      ]),
+      renderMoveEvalSlot(child, parentFen),
+      h('span.openings__move-count', `${pct}% \u00b7 ${child.total} ${gameLabel}`),
     ]),
-    h('span.openings__move-count', `${child.total} (${pct}%)`),
     renderResultBar(child),
+  ]);
+}
+
+function renderMoveEvalSlot(child: OpeningTreeNode, parentFen: string): VNode {
+  const entry = isTreeEvalEnabled() ? getTreeEval(child.fen) : undefined;
+  const bookIcon = renderMastersBookIcon(parentFen, child.uci);
+  if (!entry?.settled || (entry.cp === undefined && entry.mate === undefined)) {
+    const status = getTreeEvalStatus();
+    const children: Array<VNode | null> = [];
+    if (status.inProgress) children.push(h('img.openings__move-loading', {
+        attrs: {
+          src: '/images/loading-icons/loading.gif',
+          alt: '',
+          'aria-hidden': 'true',
+        },
+      }));
+    children.push(bookIcon);
+    return h('span.openings__move-eval', children);
+  }
+  const swing = formatTreeEvalSwing(entry.swing);
+  return h('span.openings__move-eval', [
+    h('strong.openings__move-score', {
+      class: treeEvalScoreClasses(entry, child.fen),
+    }, formatScore(entry)),
+    swing
+      ? h('span.openings__move-swing', {
+          class: {
+            'openings__move-swing--bad': entry.swing !== undefined && entry.swing <= -0.08,
+            'openings__move-swing--good': entry.swing !== undefined && entry.swing >= 0.08,
+          },
+        }, swing)
+      : null,
+    bookIcon,
+  ]);
+}
+
+function renderMastersBookIcon(parentFen: string, uci: string): VNode | null {
+  if (!explorerCtrl.enabled || explorerCtrl.config.db !== 'masters') return null;
+  if (!openingDataHasMove(explorerCtrl.current(parentFen), uci)) return null;
+  return h('span.openings__move-book', {
+    attrs: {
+      'data-icon': ICON_BOOK,
+      title: 'In masters database',
+      'aria-label': 'In masters database',
+    },
+  });
+}
+
+function treeEvalScoreClasses(entry: TreeEvalEntry, fen: string): Record<string, boolean> {
+  const isKo = entry.mate === 0;
+  const isPositive = entry.cp !== undefined ? entry.cp > 0 : entry.mate !== undefined ? entry.mate > 0 : null;
+  const stm = fen.split(' ')[1];
+  const cpStm = entry.cp !== undefined ? (stm === 'w' ? entry.cp : -entry.cp) : undefined;
+  const isMassive = (cpStm !== undefined && cpStm > 200)
+    || (entry.mate !== undefined && ((stm === 'w' && entry.mate > 0) || (stm === 'b' && entry.mate < 0)));
+  return {
+    'pv__score--white':   isPositive === true,
+    'pv__score--black':   isPositive === false,
+    'pv__score--ko':      isKo,
+    'pv__score--massive': isMassive,
+  };
+}
+
+function formatTreeEvalSwing(swing: number | undefined): string {
+  if (swing === undefined) return '';
+  const percent = Math.round(swing * 100);
+  const sign = percent > 0 ? '+' : percent < 0 ? '\u2212' : '';
+  return `(${sign}${Math.abs(percent)}%)`;
+}
+
+function renderTreeEvalStatusBar(): VNode | null {
+  const status = getTreeEvalStatus();
+  if (!status.enabled || !status.inProgress) return null;
+  const refining = status.phase === 'refining';
+  return h('div.openings__tree-eval-status', {
+    class: { 'openings__tree-eval-status--refining': refining },
+  }, [
+    h('img.openings__tree-eval-status-icon', {
+      attrs: {
+        src: '/images/loading-icons/loading.gif',
+        alt: '',
+        'aria-hidden': 'true',
+      },
+    }),
+    h('span.openings__tree-eval-status-label', refining ? 'Refining...' : 'Evaluating...'),
   ]);
 }
 

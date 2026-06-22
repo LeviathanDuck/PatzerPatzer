@@ -23,12 +23,20 @@ import { pgnToTree } from '../tree/pgn';
 import { reviewDepth, reviewMovetime } from './batch';
 import {
   createReviewRunManifest,
+  hydrateReviewRunFailureCounts,
+  isReviewRunStale,
+  reviewSearchIdentityMatches,
   selectNextReviewRunBatch,
   type ReviewRunLifecycleState,
   type ReviewRunManifest,
   type ReviewRunNextBatchSelection,
+  type ReviewRunFailureState,
+  type ReviewSearchIdentitySnapshot,
   type ReviewRunSourceContext,
   type ReviewRunTimeControlContext,
+  withReviewRunGameComplete,
+  withReviewRunGameFailed,
+  withReviewRunGameSkipped,
 } from './reviewRun';
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
@@ -69,9 +77,92 @@ let reviewEngineReady       = false;
 let reviewEngineInitStarted = false;
 let reviewEngineFailed      = false;
 const reviewGameStartedAt = new WeakMap<ReviewQueueEntry, number>();
+const reviewEngineReadyWaiters = new Set<(ready: boolean) => void>();
+
+export type ReviewProtocolMessageHandler = (line: string) => void;
+
+export interface TreeEvalEngineLease {
+  setPosition(fen: string): void;
+  go(depth: number, multiPv?: number, movetime?: number): void;
+  stop(): void;
+  release(): void;
+}
+
+interface TreeEvalLeaseState {
+  token: symbol;
+  onMessage: ReviewProtocolMessageHandler;
+  onPreempt: (reason: string) => void;
+}
+
+let treeEvalLease: TreeEvalLeaseState | null = null;
 
 function isSharedArrayBufferAvailable(): boolean {
   return typeof SharedArrayBuffer !== 'undefined';
+}
+
+function resolveReviewEngineReadyWaiters(ready: boolean): void {
+  for (const resolve of reviewEngineReadyWaiters) resolve(ready);
+  reviewEngineReadyWaiters.clear();
+}
+
+function waitForReviewEngineReady(timeoutMs = 15_000): Promise<boolean> {
+  if (reviewEngineReady) return Promise.resolve(true);
+  if (reviewEngineFailed) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const done = (ready: boolean): void => {
+      clearTimeout(timer);
+      reviewEngineReadyWaiters.delete(done);
+      resolve(ready);
+    };
+    const timer = setTimeout(() => done(false), timeoutMs);
+    reviewEngineReadyWaiters.add(done);
+  });
+}
+
+export function isBulkReviewActive(): boolean {
+  return isBulkRunning() || reviewSearchActive || activeIndex >= 0;
+}
+
+function preemptTreeEvalLease(reason: string): void {
+  const lease = treeEvalLease;
+  if (!lease) return;
+  treeEvalLease = null;
+  reviewProtocol.stop();
+  lease.onPreempt(reason);
+}
+
+export async function acquireTreeEvalLease(options: {
+  onMessage: ReviewProtocolMessageHandler;
+  onPreempt: (reason: string) => void;
+}): Promise<TreeEvalEngineLease | null> {
+  if (reviewEngineFailed || isBulkReviewActive() || treeEvalLease) return null;
+  if (!reviewEngineReady) {
+    if (!reviewEngineInitStarted) void initReviewEngine('/stockfish-web');
+    const ready = await waitForReviewEngineReady();
+    if (!ready) return null;
+  }
+  if (reviewEngineFailed || !reviewEngineReady || isBulkReviewActive() || treeEvalLease) return null;
+  const token = Symbol('tree-eval-lease');
+  treeEvalLease = {
+    token,
+    onMessage: options.onMessage,
+    onPreempt: options.onPreempt,
+  };
+  const ownsLease = (): boolean => treeEvalLease?.token === token;
+  return {
+    setPosition(fen: string): void {
+      if (ownsLease()) reviewProtocol.setPosition(fen);
+    },
+    go(depth: number, multiPv = 1, movetime?: number): void {
+      if (ownsLease()) reviewProtocol.go(depth, multiPv, movetime);
+    },
+    stop(): void {
+      if (ownsLease()) reviewProtocol.stop();
+    },
+    release(): void {
+      if (ownsLease()) treeEvalLease = null;
+    },
+  };
 }
 
 type ReviewDiagnosticRole = 'leader' | 'observer' | 'unknown';
@@ -1034,33 +1125,20 @@ function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, so
 
 function markActiveReviewRunGameComplete(gameId: string): void {
   if (!activeReviewRun) return;
-  if (!activeReviewRun.completedGameIds.includes(gameId)) {
-    activeReviewRun.completedGameIds = [...activeReviewRun.completedGameIds, gameId];
-  }
-  activeReviewRun.failedAttempts = activeReviewRun.failedAttempts.filter(attempt => attempt.gameId !== gameId);
-  activeReviewRun.skippedGameIds = activeReviewRun.skippedGameIds.filter(id => id !== gameId);
-  activeReviewRun.updatedAt = Date.now();
+  activeReviewRun = withReviewRunGameComplete(activeReviewRun, gameId);
   persistActiveReviewRun();
 }
 
 function markActiveReviewRunGameFailed(gameId: string, attempts: number, lastFailedAt: number): void {
   if (!activeReviewRun) return;
-  if (activeReviewRun.completedGameIds.includes(gameId) || activeReviewRun.skippedGameIds.includes(gameId)) return;
-  const failedAttempts = activeReviewRun.failedAttempts.filter(attempt => attempt.gameId !== gameId);
-  activeReviewRun.failedAttempts = [...failedAttempts, { gameId, attempts, lastFailedAt }];
-  activeReviewRun.updatedAt = Date.now();
+  activeReviewRun = withReviewRunGameFailed(activeReviewRun, gameId, attempts, lastFailedAt);
   markReviewQueueProgress();
   persistActiveReviewRun();
 }
 
 function markActiveReviewRunGameSkipped(gameId: string): void {
   if (!activeReviewRun) return;
-  if (!activeReviewRun.skippedGameIds.includes(gameId)) {
-    activeReviewRun.skippedGameIds = [...activeReviewRun.skippedGameIds, gameId];
-  }
-  activeReviewRun.failedAttempts = activeReviewRun.failedAttempts.filter(attempt => attempt.gameId !== gameId);
-  activeReviewRun.completedGameIds = activeReviewRun.completedGameIds.filter(id => id !== gameId);
-  activeReviewRun.updatedAt = Date.now();
+  activeReviewRun = withReviewRunGameSkipped(activeReviewRun, gameId);
   markReviewQueueProgress();
   persistActiveReviewRun();
 }
@@ -1214,39 +1292,15 @@ function persistSkippedFailedGameState(entry: ReviewQueueEntry): void {
 
 function hydrateActiveReviewRunFailureCounts(): void {
   if (!activeReviewRun) return;
-  let changed = false;
-  const completedIds = new Set(activeReviewRun.completedGameIds);
-  const skippedIds = new Set(activeReviewRun.skippedGameIds);
-  const failedByGameId = new Map(activeReviewRun.failedAttempts.map(attempt => [attempt.gameId, attempt]));
-  for (const state of failedGameAttempts.values()) {
-    if (completedIds.has(state.gameId)) continue;
-    if (state.skipped) {
-      if (!skippedIds.has(state.gameId)) {
-        skippedIds.add(state.gameId);
-        changed = true;
-      }
-      failedByGameId.delete(state.gameId);
-      continue;
-    }
-    if (skippedIds.has(state.gameId)) continue;
-    const existing = failedByGameId.get(state.gameId);
-    if (!existing || existing.attempts !== state.attempts || existing.lastFailedAt !== state.lastFailedAt) {
-      failedByGameId.set(state.gameId, {
-        gameId:       state.gameId,
-        attempts:     state.attempts,
-        lastFailedAt: state.lastFailedAt,
-      });
-      changed = true;
-    }
-  }
-  const filteredFailures = [...failedByGameId.values()].filter(attempt =>
-    !completedIds.has(attempt.gameId) && !skippedIds.has(attempt.gameId),
-  );
-  if (filteredFailures.length !== activeReviewRun.failedAttempts.length) changed = true;
-  if (!changed) return;
-  activeReviewRun.failedAttempts = filteredFailures;
-  activeReviewRun.skippedGameIds = [...skippedIds];
-  activeReviewRun.updatedAt = Date.now();
+  const failureStates: ReviewRunFailureState[] = [...failedGameAttempts.values()].map(state => ({
+    gameId:       state.gameId,
+    attempts:     state.attempts,
+    lastFailedAt: state.lastFailedAt,
+    skipped:      state.skipped,
+  }));
+  const result = hydrateReviewRunFailureCounts(activeReviewRun, failureStates);
+  if (!result.changed) return;
+  activeReviewRun = result.manifest;
   persistActiveReviewRun();
 }
 
@@ -1453,14 +1507,7 @@ let reviewSearchStartGeneration = 0;   // captured at sendNextItem() / watchdog-
 let reviewInflightFen           = '';  // FEN of the currently-active search
 let reviewSearchInvalidatedAt: number | null = null;
 
-interface ReviewSearchIdentity {
-  gameId:     string;
-  fen:        string;
-  nodePath:   string;
-  parentPath: string;
-  depth:      number;
-  generation: number;
-}
+type ReviewSearchIdentity = ReviewSearchIdentitySnapshot;
 
 let reviewActiveSearchIdentity: ReviewSearchIdentity | null = null;
 
@@ -1479,15 +1526,18 @@ function currentReviewSearchIdentityMatches(): boolean {
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   const item = reviewItemQueue[reviewItemIndex];
   if (!identity || !entry || !item) return false;
-  return identity.generation === reviewSearchGeneration
-    && identity.gameId === entry.game.id
-    && identity.depth === reviewActiveDepth
-    && identity.fen === item.fen
-    && identity.nodePath === item.nodePath
-    && identity.parentPath === item.parentPath;
+  return reviewSearchIdentityMatches(identity, {
+    gameId:     entry.game.id,
+    fen:        item.fen,
+    nodePath:   item.nodePath,
+    parentPath: item.parentPath,
+    depth:      reviewActiveDepth,
+    generation: reviewSearchGeneration,
+  });
 }
 
 function beginReviewSearch(item: ReviewBatchItem): void {
+  preemptTreeEvalLease('bulk-review-started');
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (!entry) return;
   performance.mark('position-analysis-start', {
@@ -1839,6 +1889,7 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
   reviewProtocol.onMessage(line => {
     if (line.trim() === 'readyok') {
       reviewEngineReady = true;
+      resolveReviewEngineReadyWaiters(true);
       console.log('[review-engine] ready');
       // If a game is waiting for the engine, kick off its batch now.
       const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
@@ -1847,6 +1898,11 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
       }
       return;
     }
+    if (treeEvalLease && !isBulkReviewActive()) {
+      treeEvalLease.onMessage(line);
+      return;
+    }
+    if (treeEvalLease && isBulkReviewActive()) preemptTreeEvalLease('bulk-review-active');
     parseReviewLine(line);
   });
 
@@ -1856,6 +1912,8 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     console.error('[review-engine] engine error — marking failed:', msg);
     reviewEngineFailed = true;
     reviewEngineReady  = false;
+    resolveReviewEngineReadyWaiters(false);
+    preemptTreeEvalLease('review-engine-error');
     _failAnalyzingEntries();
     notifyReviewQueueStateChanged();
   };
@@ -1869,6 +1927,8 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[review-engine] init failed — engine unavailable:', msg);
     reviewEngineFailed = true;
+    resolveReviewEngineReadyWaiters(false);
+    preemptTreeEvalLease('review-engine-init-failed');
     // Demote every entry still in `analyzing` so they don't appear stuck.
     _failAnalyzingEntries();
     notifyReviewQueueStateChanged();
@@ -2269,6 +2329,7 @@ function advanceQueue(): void {
 // --- Public API ---
 
 export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceContext?: ReviewRunSourceContext): void {
+  preemptTreeEvalLease('bulk-review-enqueued');
   const entryDepth = depth ?? reviewDepth;
   if (!isCurrentLeader) {
     // Observer tabs never build AnalyseCtrl/eval-cache trees for entries they
@@ -2341,6 +2402,7 @@ export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceC
  * Games already analyzed or already in the queue are silently skipped.
  */
 export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
+  preemptTreeEvalLease('bulk-review-enqueued');
   const entryDepth = depth ?? reviewDepth;
   if (!isCurrentLeader) {
     // See enqueueBulkReview: observer tabs write the manifest only and let
@@ -2624,6 +2686,7 @@ export function suspendBulkReviewForHiddenTab(): void {
 }
 
 export function resumeBulkReview(): void {
+  preemptTreeEvalLease('bulk-review-resumed');
   if (!isCurrentLeader) {
     postReviewChannelMessage({ type: 'resume', tabId });
     return;
@@ -2634,6 +2697,9 @@ export function resumeBulkReview(): void {
   hiddenSuspendedOwnerTabId = null;
   setActiveReviewRunState('running');
   ensureReviewBatchElapsedStarted();
+  if (!reviewEngineInitStarted && !reviewEngineFailed) {
+    void initReviewEngine('/stockfish-web');
+  }
   // Resume the active entry if one was mid-analysis when paused.
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (entry && entry.status === 'analyzing' && reviewItemIndex < reviewItemQueue.length) {
@@ -2793,6 +2859,8 @@ export interface QueueSummary {
 
 
   remainingPositions: number;
+  positionsAnalyzed: number;
+  totalPositions: number;
 }
 
 export function getQueueSummary(): QueueSummary {
@@ -2844,23 +2912,26 @@ export function getQueueSummary(): QueueSummary {
       })()
     : null;
   const rawLifecycleState = activeReviewRun?.lifecycleState ?? null;
-  const staleExcludedState =
-    paused
-    || queuePauseReason === 'hidden'
-    || queuePauseReason === 'reload'
-    || rawLifecycleState === 'user-paused'
-    || rawLifecycleState === 'hidden-suspended'
-    || rawLifecycleState === 'interrupted-after-reload'
-    || rawLifecycleState === 'retrying-failed-game'
-    || failedGameRetryTimer !== null;
-  const stale = running
-    && !staleExcludedState
-    && lastProgressSeconds !== null
-    && lastProgressSeconds * 1000 >= REVIEW_STALE_PROGRESS_MS;
+  const stale = isReviewRunStale({
+    running,
+    paused,
+    pauseReason: queuePauseReason,
+    lifecycleState: rawLifecycleState,
+    retryingFailedGame: failedGameRetryTimer !== null,
+    lastProgressSeconds,
+    staleThresholdSeconds: REVIEW_STALE_PROGRESS_MS / 1000,
+  });
   const lifecycleState = stale ? 'stale' : rawLifecycleState;
 
   let remainingPositions = 0;
+  let positionsAnalyzed = 0;
+  let totalPositions = 0;
   for (const entry of queue) {
+    const entryTotal = Math.max(0, entry.total);
+    if (batchIdSet.size === 0 || batchIdSet.has(entry.game.id)) {
+      totalPositions += entryTotal;
+      positionsAnalyzed += Math.min(Math.max(0, entry.done), entryTotal);
+    }
     if (entry.status === 'complete' || entry.status === 'error') continue;
     remainingPositions += Math.max(0, entry.total - entry.done);
   }
@@ -2891,6 +2962,8 @@ export function getQueueSummary(): QueueSummary {
     watchdogLastTriggerTimestamp: reviewWatchdogLastTriggerAt,
     lastCheckpointTimestamp: checkpointLastFlushAt > 0 ? checkpointLastFlushAt : null,
     remainingPositions,
+    positionsAnalyzed,
+    totalPositions,
   };
 }
 
