@@ -11,6 +11,8 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { parseFen, makeFen } from 'chessops/fen';
+import { parsePgn, startingPosition } from 'chessops/pgn';
+import { parseSan, makeSanAndPlay } from 'chessops/san';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
@@ -28,6 +30,7 @@ import {
   refreshRegistryAccounts,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
+  sampleGamesSortMode, setSampleGamesSortMode, sampleGamesResultFilter, setSampleGamesResultFilter,
   sessionDateRange, setSessionDateRange, SESSION_DATE_RANGE_OPTIONS,
   treeEvalThoroughness, setTreeEvalThoroughness, TREE_EVAL_THOROUGHNESS_OPTIONS,
   triggerTreeEvalForCurrentNode,
@@ -58,7 +61,7 @@ import {
 } from '../import/filters';
 import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
-import type { OpeningTreeNode } from './tree';
+import type { OpeningTreeNode, SampleGameMatch } from './tree';
 import { executeResearchImport } from './import';
 import {
   ExplorerBookAuthError,
@@ -110,6 +113,17 @@ import { clearLichessApiLoginData, requestBookLogin } from '../auth/lichessBookA
 let _openingsCg: CgApi | undefined;
 let _lastBoardFen: string = '';
 let _lastBoardPractice: boolean = false;
+let _sampleRenderPathKey = '';
+let _sampleRenderLimit = 25;
+let _samplePreviewGameId: string | null = null;
+let _samplePreviewFen: string | null = null;
+let _samplePreviewStyle = '';
+let _samplePreviewTimer: ReturnType<typeof setTimeout> | null = null;
+const _sampleFinalFenCache = new Map<string, string | null>();
+
+const SAMPLE_INITIAL_BATCH = 25;
+const SAMPLE_BATCH_SIZE = 25;
+const SAMPLE_PREVIEW_SIZE = 180;
 
 // ─── Import animation state ───────────────────────────────────────────────────
 // While isFetching(), the board plays through a random master game to give the
@@ -2093,7 +2107,7 @@ function renderOpeningTreeTool(
       // Position context: played lines + sample games appear together for integrated browsing.
       node ? renderPlayedLinesPanel(node, redraw) : null,
       renderDeviationPanel(redraw),
-      renderSampleGamesPanel(),
+      renderSampleGamesPanel(redraw),
       renderExplorerToggle(node, redraw),
     ]),
   ];
@@ -3367,18 +3381,136 @@ function renderResultBar(node: { white: number; draws: number; black: number }):
 
 // ========== Sample games panel ==========
 
-function renderSampleGamesPanel(): VNode {
-  const games = sampleGames(5);
-  if (games.length === 0) {
+function renderSampleGamesPanel(redraw: () => void): VNode {
+  const samples = sampleGames(redraw);
+  if (_sampleRenderPathKey !== samples.pathKey) {
+    _sampleRenderPathKey = samples.pathKey;
+    _sampleRenderLimit = SAMPLE_INITIAL_BATCH;
+  }
+
+  const title = `Example Games${samples.total > 0 ? ` (${samples.total})` : ''}`;
+  if (samples.loading) {
     return h('div.openings__samples', [
-      h('h3.openings__samples-title', 'Example Games'),
+      h('h3.openings__samples-title', title),
+      renderSampleGamesControls(redraw),
+      h('div.openings__samples-empty', 'Loading example games...'),
+    ]);
+  }
+
+  const games = applySampleGameControls(samples.games);
+  if (samples.games.length === 0) {
+    return h('div.openings__samples', [
+      h('h3.openings__samples-title', title),
+      renderSampleGamesControls(redraw),
       h('div.openings__samples-empty', 'No games match this position.'),
     ]);
   }
+
+  if (games.length === 0) {
+    return h('div.openings__samples', [
+      h('h3.openings__samples-title', title),
+      renderSampleGamesControls(redraw),
+      h('div.openings__samples-empty', 'No games match the current filters.'),
+    ]);
+  }
+
+  const visibleGames = games.slice(0, _sampleRenderLimit);
   return h('div.openings__samples', [
-    h('h3.openings__samples-title', `Example Games (${games.length})`),
-    ...games.map(renderSampleGameRow),
+    h('h3.openings__samples-title', title),
+    renderSampleGamesControls(redraw),
+    h('div.openings__samples-list', {
+      hook: {
+        insert: vnode => bindSampleListScroll(vnode.elm as HTMLElement, games.length, redraw),
+        update: vnode => bindSampleListScroll(vnode.elm as HTMLElement, games.length, redraw),
+        destroy: vnode => unbindSampleListScroll(vnode.elm as HTMLElement),
+      },
+    }, visibleGames.map(game => renderSampleGameRow(game, redraw))),
   ]);
+}
+
+function renderSampleGamesControls(redraw: () => void): VNode {
+  const sort = sampleGamesSortMode();
+  const filter = sampleGamesResultFilter();
+  const nextFilter = filter === 'all' ? 'wins' : filter === 'wins' ? 'losses' : 'all';
+  const filterLabel = filter === 'all' ? 'All' : filter === 'wins' ? 'Wins' : 'Losses';
+
+  return h('div.openings__sample-controls', [
+    h('button.openings__speed-chip.openings__sample-control-chip', {
+      class: { active: sort === 'recent' },
+      attrs: { type: 'button', title: 'Sort example games' },
+      on: { click: () => {
+        _sampleRenderLimit = SAMPLE_INITIAL_BATCH;
+        setSampleGamesSortMode(sort === 'recent' ? 'rating' : 'recent', redraw);
+      } },
+    }, [
+      h('span.openings__speed-icon', { attrs: { 'data-icon': sort === 'recent' ? 'D' : 'R' } }),
+      sort === 'recent' ? 'Most recent' : 'Highest rating',
+    ]),
+    h('button.openings__speed-chip.openings__sample-control-chip', {
+      class: { active: filter !== 'all' },
+      attrs: { type: 'button', title: 'Filter example games by result' },
+      on: { click: () => {
+        _sampleRenderLimit = SAMPLE_INITIAL_BATCH;
+        setSampleGamesResultFilter(nextFilter, redraw);
+      } },
+    }, [
+      h('span.openings__speed-icon', { attrs: { 'data-icon': filter === 'wins' ? 'W' : filter === 'losses' ? 'L' : 'A' } }),
+      filterLabel,
+    ]),
+  ]);
+}
+
+function applySampleGameControls(games: SampleGameMatch[]): SampleGameMatch[] {
+  const target = activeCollection()?.target;
+  const filter = sampleGamesResultFilter();
+  const filtered = filter === 'all'
+    ? [...games]
+    : games.filter(game => sampleGameOutcomeForTarget(game, target) === (filter === 'wins' ? 'win' : 'loss'));
+
+  if (sampleGamesSortMode() === 'rating') {
+    filtered.sort((a, b) => sampleGameSortRating(b, target) - sampleGameSortRating(a, target));
+  } else {
+    filtered.sort((a, b) => sampleGameDateValue(b) - sampleGameDateValue(a));
+  }
+  return filtered;
+}
+
+function sampleGameDateValue(game: ResearchGame): number {
+  if (!game.date) return 0;
+  const parsed = Date.parse(game.date.replace(/\./g, '-'));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sampleGameSortRating(game: ResearchGame, target?: string): number {
+  const normalizedTarget = target?.trim().toLowerCase();
+  if (normalizedTarget) {
+    if (game.white?.trim().toLowerCase() === normalizedTarget && game.whiteRating) return game.whiteRating;
+    if (game.black?.trim().toLowerCase() === normalizedTarget && game.blackRating) return game.blackRating;
+  }
+  const ratings = [game.whiteRating, game.blackRating].filter((rating): rating is number => !!rating && rating > 0);
+  return ratings.length > 0 ? ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length : 0;
+}
+
+function bindSampleListScroll(el: HTMLElement, total: number, redraw: () => void): void {
+  const existing = (el as HTMLElement & { _sampleScrollHandler?: EventListener })._sampleScrollHandler;
+  if (existing) el.removeEventListener('scroll', existing);
+
+  const handler = () => {
+    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (remaining > 80 || _sampleRenderLimit >= total) return;
+    _sampleRenderLimit = Math.min(total, _sampleRenderLimit + SAMPLE_BATCH_SIZE);
+    redraw();
+  };
+
+  (el as HTMLElement & { _sampleScrollHandler?: EventListener })._sampleScrollHandler = handler;
+  el.addEventListener('scroll', handler, { passive: true });
+}
+
+function unbindSampleListScroll(el: HTMLElement): void {
+  const existing = (el as HTMLElement & { _sampleScrollHandler?: EventListener })._sampleScrollHandler;
+  if (!existing) return;
+  el.removeEventListener('scroll', existing);
+  delete (el as HTMLElement & { _sampleScrollHandler?: EventListener })._sampleScrollHandler;
 }
 
 /** Extract game URL from PGN headers (Site for Lichess, Link for Chess.com). */
@@ -3411,18 +3543,18 @@ function sampleGameOutcomeForTarget(game: ResearchGame, target?: string): Sample
   return null;
 }
 
-function renderSampleGameRow(game: ResearchGame): VNode {
-  const players = [game.white ?? '?', game.black ?? '?'].join(' vs ');
+function renderSampleGameRow(game: SampleGameMatch, redraw: () => void): VNode {
   const result = game.result ?? '*';
   const targetOutcome = sampleGameOutcomeForTarget(game, activeCollection()?.target);
   const info: string[] = [];
   if (game.opening) info.push(game.opening);
   if (game.date) info.push(game.date);
   if (game.timeClass) info.push(game.timeClass);
-  const ratings: string[] = [];
-  if (game.whiteRating) ratings.push(`W:${game.whiteRating}`);
-  if (game.blackRating) ratings.push(`B:${game.blackRating}`);
   const gameUrl = extractGameUrl(game.pgn);
+  const collection = activeCollection();
+  const analyzeUrl = collection
+    ? `#/analysis/research:${encodeURIComponent(collection.id)}:${encodeURIComponent(game.id)}:${sessionPath().length}`
+    : null;
 
   return h('div.openings__sample-row', {
     key: game.id,
@@ -3430,7 +3562,10 @@ function renderSampleGameRow(game: ResearchGame): VNode {
     on: gameUrl ? { click: () => window.open(gameUrl, '_blank') } : {},
   }, [
     h('div.openings__sample-players', [
-      h('span', players),
+      h('div.openings__sample-player-lines', [
+        renderSamplePlayerLine('white', game.white, game.whiteRating),
+        renderSamplePlayerLine('black', game.black, game.blackRating),
+      ]),
       h('span.openings__sample-result', {
         class: {
           'openings__sample-result--win': targetOutcome === 'win',
@@ -3440,33 +3575,131 @@ function renderSampleGameRow(game: ResearchGame): VNode {
       }, result),
     ]),
     info.length > 0
-      ? h('div.openings__sample-info', [
-          info.join(' \u00B7 '),
-          ratings.length > 0 ? ` \u00B7 ${ratings.join(' ')}` : '',
-        ])
+      ? h('div.openings__sample-info', info.join(' \u00B7 '))
       : null,
     h('div.openings__sample-actions', [
       h('button.openings__sample-copy', {
-        attrs: { title: 'Copy PGN' },
+        attrs: { title: 'Analyze this game' },
         on: { click: (e: Event) => {
           e.stopPropagation();
-          void navigator.clipboard.writeText(game.pgn).then(() => {
-            const btn = e.target as HTMLButtonElement;
-            btn.textContent = 'Copied!';
-            setTimeout(() => { btn.textContent = 'Copy PGN'; }, 1500);
-          });
+          if (analyzeUrl) window.open(analyzeUrl, '_blank');
         } },
-      }, 'Copy PGN'),
-      game.source === 'lichess' && game.pgn
-        ? h('a.openings__sample-link', {
-            attrs: {
-              href: extractLichessUrl(game.pgn),
-              target: '_blank',
-              rel: 'noopener',
-              title: 'View on Lichess',
-            },
-          }, 'Lichess')
+      }, 'Analyze'),
+      gameUrl
+        ? renderSampleSourceLink(game, gameUrl, redraw)
         : null,
+    ]),
+    game.sampleNextMove ? h('span.openings__sample-next-move', game.sampleNextMove) : null,
+  ]);
+}
+
+function renderSampleSourceLink(game: SampleGameMatch, gameUrl: string, redraw: () => void): VNode {
+  const label = game.source === 'chesscom' ? 'Chess.com' : 'Lichess';
+  return h('span.openings__sample-link-wrap', [
+    h('a.openings__sample-link', {
+      attrs: {
+        href: gameUrl,
+        target: '_blank',
+        rel: 'noopener',
+        title: `View on ${label}`,
+      },
+      on: {
+        click: (event: Event) => event.stopPropagation(),
+        mouseenter: (event: MouseEvent) => scheduleSamplePreview(game, event.currentTarget as HTMLElement, redraw),
+        mouseleave: () => clearSamplePreview(redraw),
+      },
+    }, label),
+    _samplePreviewGameId === game.id && _samplePreviewFen
+      ? renderSamplePreviewBoard(_samplePreviewFen)
+      : null,
+  ]);
+}
+
+function scheduleSamplePreview(game: SampleGameMatch, anchor: HTMLElement, redraw: () => void): void {
+  clearSamplePreviewTimer();
+  const rect = anchor.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - SAMPLE_PREVIEW_SIZE - 8));
+  const above = rect.top >= SAMPLE_PREVIEW_SIZE + 12;
+  const top = above ? rect.top - SAMPLE_PREVIEW_SIZE - 8 : Math.min(rect.bottom + 8, window.innerHeight - SAMPLE_PREVIEW_SIZE - 8);
+  _samplePreviewStyle = `left:${left}px;top:${Math.max(8, top)}px;width:${SAMPLE_PREVIEW_SIZE}px;height:${SAMPLE_PREVIEW_SIZE}px;`;
+  _samplePreviewTimer = setTimeout(() => {
+    const cacheKey = game.id;
+    const cached = _sampleFinalFenCache.has(cacheKey) ? _sampleFinalFenCache.get(cacheKey)! : computeFinalFen(game.pgn);
+    if (!_sampleFinalFenCache.has(cacheKey)) _sampleFinalFenCache.set(cacheKey, cached);
+    if (!cached) return;
+    _samplePreviewGameId = game.id;
+    _samplePreviewFen = cached;
+    redraw();
+  }, 200);
+}
+
+function clearSamplePreview(redraw: () => void): void {
+  clearSamplePreviewTimer();
+  _samplePreviewGameId = null;
+  _samplePreviewFen = null;
+  redraw();
+}
+
+function clearSamplePreviewTimer(): void {
+  if (_samplePreviewTimer !== null) clearTimeout(_samplePreviewTimer);
+  _samplePreviewTimer = null;
+}
+
+function renderSamplePreviewBoard(fen: string): VNode {
+  const config = {
+    fen,
+    orientation: 'white' as const,
+    coordinates: false,
+    viewOnly: true,
+    movable: { free: false },
+    drawable: { enabled: false, visible: false },
+  };
+  return h('div.openings__sample-preview', {
+    attrs: { style: _samplePreviewStyle },
+  }, [
+    h('div.openings__sample-preview-board.cg-wrap.is2d', {
+      hook: {
+        insert: (vnode: VNode) => ((vnode.elm as HTMLElement & { _cg?: CgApi })._cg = makeChessground(vnode.elm as HTMLElement, config)),
+        update: (old: VNode, vnode: VNode) => {
+          const cg = (old.elm as HTMLElement & { _cg?: CgApi })._cg;
+          if (cg) {
+            (vnode.elm as HTMLElement & { _cg?: CgApi })._cg = cg;
+            cg.set(config);
+          }
+        },
+        destroy: (vnode: VNode) => (vnode.elm as HTMLElement & { _cg?: CgApi })._cg?.destroy(),
+      },
+    }),
+  ]);
+}
+
+function computeFinalFen(pgn: string): string | null {
+  try {
+    const parsed = parsePgn(pgn);
+    const game = parsed[0];
+    if (!game) return null;
+    const setup = startingPosition(game.headers);
+    if (setup.isErr) return null;
+    const pos = setup.value;
+    let node = game.moves.children[0];
+    while (node) {
+      const move = parseSan(pos, node.data.san);
+      if (!move) return null;
+      makeSanAndPlay(pos, move);
+      node = node.children[0];
+    }
+    return makeFen(pos.toSetup());
+  } catch {
+    return null;
+  }
+}
+
+function renderSamplePlayerLine(color: 'white' | 'black', name: string | undefined, rating: number | undefined): VNode {
+  return h('div.openings__sample-player-line', [
+    h(`span.openings__sample-color-icon.openings__sample-color-icon--${color}`),
+    h('span.openings__sample-player-name', [
+      name || '?',
+      rating && rating > 0 ? ` (${rating})` : '',
     ]),
   ]);
 }

@@ -18,6 +18,10 @@ import { parseSan, makeSanAndPlay } from 'chessops/san';
 import { makeUci } from 'chessops';
 import type { ResearchGame } from './types';
 
+export interface SampleGameMatch extends ResearchGame {
+  sampleNextMove?: string;
+}
+
 /** A node in the opening frequency tree. */
 export interface OpeningTreeNode {
   /** FEN at this position (full FEN). */
@@ -285,22 +289,31 @@ export function nodeAtMoves(root: OpeningTreeNode, moves: string[]): OpeningTree
 
 /**
  * Find games from the collection whose mainline passes through the given move path.
- * Returns up to `limit` matching ResearchGame records.
+ * Returns matching ResearchGame records, optionally capped by `limit`.
  */
 export function findSampleGames(
-  games: readonly ResearchGame[], path: readonly string[], limit = 5,
-): ResearchGame[] {
-  if (path.length === 0) return games.slice(0, limit);
+  games: readonly ResearchGame[], path: readonly string[], limit = Number.POSITIVE_INFINITY,
+): SampleGameMatch[] {
+  if (path.length === 0) {
+    const results: SampleGameMatch[] = [];
+    for (const game of games) {
+      if (results.length >= limit) break;
+      const sampleNextMove = gameNextMoveLabel(game, path);
+      results.push({ ...game, ...(sampleNextMove ? { sampleNextMove } : {}) });
+    }
+    return results;
+  }
 
-  const results: ResearchGame[] = [];
+  const results: SampleGameMatch[] = [];
   for (const game of games) {
     if (results.length >= limit) break;
-    if (gameMatchesPath(game, path)) results.push(game);
+    const sampleNextMove = gameNextMoveLabel(game, path);
+    if (sampleNextMove !== false) results.push({ ...game, ...(sampleNextMove ? { sampleNextMove } : {}) });
   }
   return results;
 }
 
-function gameMatchesPath(game: ResearchGame, path: readonly string[]): boolean {
+function gameNextMoveLabel(game: ResearchGame, path: readonly string[]): string | null | false {
   try {
     const parsed = parsePgn(game.pgn);
     if (parsed.length === 0) return false;
@@ -319,8 +332,13 @@ function gameMatchesPath(game: ResearchGame, path: readonly string[]): boolean {
       makeSanAndPlay(pos, move);
       node = node.children[0];
     }
-    return true;
+    return node ? formatContinuationMove(path.length, node.data.san) : null;
   } catch {
     return false;
   }
+}
+
+function formatContinuationMove(currentPly: number, san: string): string {
+  const moveNumber = Math.floor(currentPly / 2) + 1;
+  return currentPly % 2 === 0 ? `${moveNumber}.${san}` : `${moveNumber}...${san}`;
 }

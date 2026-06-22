@@ -5,7 +5,7 @@
  * touches the main analysis/puzzle persistence in 'patzer-pro'.
  */
 
-import type { ResearchCollection, OpeningsTool, SavedVariation } from './types';
+import type { ResearchCollection, ResearchGame, OpeningsTool, SavedVariation } from './types';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
 import { record, Severity } from '../diagnostics';
 
@@ -171,6 +171,30 @@ export async function loadCollections(): Promise<ResearchCollection[]> {
   } catch (e) {
     console.warn('[openings-db] load failed', e);
     return [];
+  }
+}
+
+/** Load one research game by collection/game id without hydrating unrelated analysis-library data. */
+export async function loadResearchGame(collectionId: string, gameId: string): Promise<{
+  collectionId: string;
+  collectionName: string;
+  game: ResearchGame;
+} | null> {
+  try {
+    const db = await openDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('collections', 'readonly');
+      const req = tx.objectStore('collections').get(collectionId);
+      req.onsuccess = () => {
+        const collection = req.result as ResearchCollection | undefined;
+        const game = collection?.games.find(g => g.id === gameId);
+        resolve(collection && game ? { collectionId, collectionName: collection.name, game } : null);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[openings-db] research game load failed', e);
+    return null;
   }
 }
 

@@ -19,7 +19,7 @@ import { listAccounts, type AccountCategory, type ChessAccount } from '../accoun
 import { loadGamesByAccountFromIdb } from '../idb';
 import { DEFAULT_STRENGTH_LEVEL } from '../engine/types';
 import { cancelPlayMove } from '../engine/playMove';
-import { OpeningTreeBuilder, nodeAtMoves, findSampleGames, type OpeningTreeNode } from './tree';
+import { OpeningTreeBuilder, nodeAtMoves, findSampleGames, type OpeningTreeNode, type SampleGameMatch } from './tree';
 import type { ImportSpeed, ImportDateRange } from '../import/filters';
 import {
   computeCollectionSummary, computePrepReport, computePrepReportLines,
@@ -51,9 +51,14 @@ export const TREE_EVAL_THOROUGHNESS_OPTIONS: readonly { value: TreeEvalThoroughn
   { value: 'deep',     label: 'Deep' },
 ] as const;
 
+export type SampleGamesSortMode = 'recent' | 'rating';
+export type SampleGamesResultFilter = 'all' | 'wins' | 'losses';
+
 let _currentPage: OpeningsPage = 'library';
 let _collections: ResearchCollection[] = [];
 let _collectionsLoaded = false;
+let _sampleGamesSortMode: SampleGamesSortMode = 'recent';
+let _sampleGamesResultFilter: SampleGamesResultFilter = 'all';
 
 
 let _accounts: ChessAccount[] = [];
@@ -88,6 +93,24 @@ export function presetColorFilter(color: 'white' | 'black' | 'both'): void {
   _colorFilter = color;
   if (color === 'white') _boardOrientation = 'white';
   else if (color === 'black') _boardOrientation = 'black';
+}
+
+export function sampleGamesSortMode(): SampleGamesSortMode {
+  return _sampleGamesSortMode;
+}
+
+export function setSampleGamesSortMode(mode: SampleGamesSortMode, redraw?: () => void): void {
+  _sampleGamesSortMode = mode;
+  redraw?.();
+}
+
+export function sampleGamesResultFilter(): SampleGamesResultFilter {
+  return _sampleGamesResultFilter;
+}
+
+export function setSampleGamesResultFilter(filter: SampleGamesResultFilter, redraw?: () => void): void {
+  _sampleGamesResultFilter = filter;
+  redraw?.();
 }
 
 /**
@@ -694,23 +717,79 @@ export function navigateToPath(moves: string[]): void {
 }
 
 // --- Cached sample games (avoid re-parsing PGN on every render) ---
+export interface SampleGamesState {
+  games: SampleGameMatch[];
+  total: number;
+  loading: boolean;
+  pathKey: string;
+}
+
 let _cachedSamplesPath: string = '';
-let _cachedSamples: ResearchGame[] = [];
+let _cachedSamples: SampleGameMatch[] = [];
+let _cachedSamplesLoading = false;
+let _cachedSamplesScheduledPath = '';
+let _cachedSamplesGeneration = 0;
+
+const scheduleIdle = (cb: () => void): void => {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(cb, { timeout: 350 });
+  } else {
+    setTimeout(cb, 0);
+  }
+};
 
 /** Get sample games matching the current path. Cached until path changes. */
-export function sampleGames(limit = 5): ResearchGame[] {
+export function sampleGames(redraw?: () => void): SampleGamesState {
+  const pathKey = _sessionPath.join('/');
+  const total = _sessionNode?.total ?? 0;
+  if (!_activeCollection) return { games: [], total: 0, loading: false, pathKey };
+
+  if (pathKey !== _cachedSamplesPath && pathKey !== _cachedSamplesScheduledPath) {
+    const collection = _activeCollection;
+    const path = [..._sessionPath];
+    const generation = ++_cachedSamplesGeneration;
+    _cachedSamplesScheduledPath = pathKey;
+    _cachedSamplesLoading = true;
+    _cachedSamples = [];
+    scheduleIdle(() => {
+      if (generation !== _cachedSamplesGeneration || _activeCollection?.id !== collection.id) return;
+      const matches = findSampleGames(collection.games, path);
+      if (generation !== _cachedSamplesGeneration || _sessionPath.join('/') !== pathKey) return;
+      _cachedSamplesPath = pathKey;
+      _cachedSamplesScheduledPath = '';
+      _cachedSamples = matches;
+      _cachedSamplesLoading = false;
+      redraw?.();
+    });
+  }
+
+  return {
+    games: pathKey === _cachedSamplesPath ? _cachedSamples : [],
+    total,
+    loading: _cachedSamplesLoading || pathKey !== _cachedSamplesPath,
+    pathKey,
+  };
+}
+
+/** Synchronous sample read for tests/debug tools that do not have a redraw loop. */
+export function sampleGamesNow(limit = Number.POSITIVE_INFINITY): SampleGameMatch[] {
   if (!_activeCollection) return [];
   const pathKey = _sessionPath.join('/');
   if (pathKey !== _cachedSamplesPath) {
     _cachedSamplesPath = pathKey;
     _cachedSamples = findSampleGames(_activeCollection.games, _sessionPath, limit);
+    _cachedSamplesLoading = false;
+    _cachedSamplesScheduledPath = '';
   }
   return _cachedSamples;
 }
 
 function invalidateSampleCache(): void {
   _cachedSamplesPath = '';
+  _cachedSamplesScheduledPath = '';
   _cachedSamples = [];
+  _cachedSamplesLoading = false;
+  _cachedSamplesGeneration++;
   _summaryCache = null;      // analytics must recompute when data changes
   _prepReportCache = null;   // Prep Report view-model must also recompute
   _styleCache = null;        // Style view-model must also recompute
