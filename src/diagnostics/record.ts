@@ -116,14 +116,24 @@ function buildBreadcrumb(
       if (mode) entry.mode = mode;
       return entry;
     }
-    case 'lifecycle-change':
-    default: {
+    case 'lifecycle-change': {
       const event = metadata
         ? `${type}:${message}:${JSON.stringify(redactEventMetadata(metadata))}`
         : `${type}:${message}`;
       const entry: LifecycleBreadcrumb = {
         type: 'lifecycle-change',
         event,
+        timestamp,
+      };
+      return entry;
+    }
+    default: {
+      const action = metadata
+        ? `${type}:${message}:${JSON.stringify(redactEventMetadata(metadata))}`
+        : `${type}:${message}`;
+      const entry: UserActionBreadcrumb = {
+        type: 'user-action',
+        action,
         timestamp,
       };
       return entry;
