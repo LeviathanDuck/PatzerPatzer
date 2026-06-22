@@ -107,8 +107,40 @@ export interface DiagnosticEvent {
   breadcrumbs?: Breadcrumb[];
 }
 
+export type DiagnosticAggregateKind =
+  | 'error-frequency'
+  | 'route-instability'
+  | 'performance-percentile'
+  | 'workflow-crash-correlation';
+
+export interface DiagnosticAggregate {
+  aggregateId: string;
+  kind: DiagnosticAggregateKind;
+  groupingKey: string;
+  route: string;
+  deviceClass: string;
+  count: number;
+  rank?: number;
+  totalEvents?: number;
+  errorCount?: number;
+  errorRate?: number;
+  crashCorrelationCount?: number;
+  longTaskCount?: number;
+  measureName?: string;
+  sampleCount?: number;
+  p50?: number;
+  p75?: number;
+  p95?: number;
+  firstSeen: DiagnosticTimestamp;
+  lastSeen: DiagnosticTimestamp;
+  updatedAt: DiagnosticTimestamp;
+}
+
 export interface DiagnosticSession {
   sessionId: string;
+  release: string;
+  version: string;
+  buildId: string;
   startedAt: DiagnosticTimestamp;
   lastSeenAt: DiagnosticTimestamp;
   lastHeartbeat?: DiagnosticTimestamp;
@@ -121,4 +153,64 @@ export interface DiagnosticSession {
   source: string;
   metadata?: DiagnosticMetadata;
   breadcrumbs?: Breadcrumb[];
+}
+
+export interface DiagnosticErrorGroup {
+  errorGroupId: string;
+  eventIds?: string[];
+  kind?: EventKind;
+  severity?: Severity;
+  route?: string;
+  sourceTag?: string;
+  message?: string;
+  firstSeenAt?: DiagnosticTimestamp;
+  lastSeenAt?: DiagnosticTimestamp;
+  count?: number;
+  metadata?: DiagnosticMetadata;
+}
+
+export interface BugPackageRouteTransition {
+  from: string;
+  to: string;
+  timestamp: DiagnosticTimestamp;
+}
+
+export interface BugPackageRouteContext {
+  route: string;
+  queryParams: Record<string, string>;
+  recentTransitions: BugPackageRouteTransition[];
+}
+
+export interface BugPackagePerformanceMetric {
+  value: number | null;
+  rating: string | null;
+  timestamp: DiagnosticTimestamp | null;
+}
+
+export interface BugPackageLongTask {
+  startTime: number | null;
+  duration: number | null;
+  route: string | null;
+  timestamp: DiagnosticTimestamp;
+}
+
+export interface BugPackagePerformanceSummary {
+  CLS: BugPackagePerformanceMetric | null;
+  LCP: BugPackagePerformanceMetric | null;
+  INP: BugPackagePerformanceMetric | null;
+  FCP: BugPackagePerformanceMetric | null;
+  TTFB: BugPackagePerformanceMetric | null;
+  recentLongTask: BugPackageLongTask | null;
+}
+
+export interface BugPackage {
+  reportId: string;
+  errorGroupId: string;
+  report: DiagnosticMetadata;
+  errorGroup: DiagnosticMetadata;
+  breadcrumbs: Breadcrumb[];
+  routeContext: BugPackageRouteContext;
+  performanceSummary: BugPackagePerformanceSummary | null;
+  reproNotes: string;
+  assembledAt: string;
 }

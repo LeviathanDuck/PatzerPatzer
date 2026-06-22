@@ -11,10 +11,6 @@ export const pgnState = {
   key:   0,  // incremented on successful import to reset the textarea via Snabbdom key
 };
 
-function errorClass(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
 function pgnEntries(raw: string): string[] {
   return raw.trim().split(/\n\n(?=\[Event )/).filter(entry => entry.trim().length > 0);
 }
@@ -31,7 +27,7 @@ function recordPgnImportEvent(
     sourceTag: 'import',
     message,
     metadata: {
-      platform: 'pgn',
+      platform: 'pgn-file',
       ...metadata,
     },
     redactionClass: 'safe',
@@ -63,7 +59,7 @@ function recordPgnBatchDiagnostics(entries: string[]): void {
       pgnToTree(entries[index]!);
     } catch (error) {
       recordPgnImportEvent('pgn-parse-failed', Severity.Warn, {
-        errorClass: errorClass(error),
+        errorClass: 'ParseError',
         gameIndex: index,
       });
     }
@@ -73,7 +69,13 @@ function recordPgnBatchDiagnostics(entries: string[]): void {
 export function importPgn(callbacks: ImportCallbacks): void {
   const input = pgnState.input;
   const raw = input.trim();
-  if (!raw) return;
+  if (!raw) {
+    recordPgnImportEvent('PGN import failed', Severity.Warn, {
+      errorClass: 'EmptyFile',
+      gameIndex: 0,
+    });
+    return;
+  }
   recordEncodingDiagnostics(input);
   recordPgnBatchDiagnostics(pgnEntries(raw));
   try {
@@ -114,7 +116,7 @@ export function importPgn(callbacks: ImportCallbacks): void {
     callbacks.addGames([game], game); // addGames calls loadGame which calls redraw
   } catch (err) {
     recordPgnImportEvent('PGN import failed', Severity.Error, {
-      errorClass: errorClass(err),
+      errorClass: 'ParseError',
       gameIndex: 0,
     });
     pgnState.error = 'Invalid PGN — could not parse.';

@@ -1,3 +1,5 @@
+import { record, Severity } from '../diagnostics';
+
 const LICHESS_AUTH_URL = 'https://lichess.org/oauth';
 const LICHESS_TOKEN_URL = 'https://lichess.org/api/token';
 const LICHESS_ACCOUNT_URL = 'https://lichess.org/api/account';
@@ -48,6 +50,45 @@ function randomBase64Url(bytes: number): string {
   const values = new Uint8Array(bytes);
   crypto.getRandomValues(values);
   return base64Url(values);
+}
+
+function errorClass(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function authFailureClass(status: number | undefined, error?: unknown): string {
+  if (error !== undefined && status === undefined) return 'network-error';
+  if (status === 401) return 'auth-expired';
+  if (status === 403) return 'auth-rejected';
+  if (status !== undefined && status >= 500) return 'auth-server-error';
+  if (status !== undefined && status >= 400) return 'auth-rejected';
+  return 'unknown';
+}
+
+function recordClientAuthFailure(
+  endpointClass: string,
+  startedAt: number,
+  status: number | undefined,
+  error?: unknown,
+): void {
+  record({
+    kind: 'api',
+    severity: Severity.Error,
+    source: 'auth/lichessClient',
+    sourceTag: 'auth',
+    message: `${endpointClass} failed`,
+    metadata: {
+      provider: 'lichess',
+      endpointClass,
+      ...(status !== undefined ? { httpStatus: status } : {}),
+      latencyMs: Date.now() - startedAt,
+      failureClass: authFailureClass(status, error),
+      ...(error !== undefined ? { errorClass: errorClass(error) } : {}),
+    },
+    redactionClass: 'safe',
+  });
 }
 
 async function sha256Base64Url(value: string): Promise<string> {
@@ -174,19 +215,39 @@ export async function completeClientLoginIfPresent(): Promise<ClientAuthStatus |
       code_verifier: pending.verifier,
     });
 
-    const tokenRes = await fetch(LICHESS_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    if (!tokenRes.ok) throw new Error(`Lichess token request failed: ${tokenRes.status}`);
+    const tokenStart = Date.now();
+    let tokenRes: Response;
+    try {
+      tokenRes = await fetch(LICHESS_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+    } catch (error) {
+      recordClientAuthFailure('oauth-token', tokenStart, undefined, error);
+      throw error;
+    }
+    if (!tokenRes.ok) {
+      recordClientAuthFailure('oauth-token', tokenStart, tokenRes.status);
+      throw new Error(`Lichess token request failed: ${tokenRes.status}`);
+    }
     const tokenJson = await tokenRes.json() as TokenResponse;
     if (!tokenJson.access_token) throw new Error('Lichess token response did not include an access token.');
 
-    const accountRes = await fetch(LICHESS_ACCOUNT_URL, {
-      headers: { Authorization: `Bearer ${tokenJson.access_token}` },
-    });
-    if (!accountRes.ok) throw new Error(`Lichess account request failed: ${accountRes.status}`);
+    const accountStart = Date.now();
+    let accountRes: Response;
+    try {
+      accountRes = await fetch(LICHESS_ACCOUNT_URL, {
+        headers: { Authorization: `Bearer ${tokenJson.access_token}` },
+      });
+    } catch (error) {
+      recordClientAuthFailure('oauth-account', accountStart, undefined, error);
+      throw error;
+    }
+    if (!accountRes.ok) {
+      recordClientAuthFailure('oauth-account', accountStart, accountRes.status);
+      throw new Error(`Lichess account request failed: ${accountRes.status}`);
+    }
     const account = await accountRes.json() as AccountResponse;
     const username = account.username ?? account.id;
     if (!username) throw new Error('Lichess account response did not include a username.');

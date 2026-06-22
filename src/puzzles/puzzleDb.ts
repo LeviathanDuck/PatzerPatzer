@@ -25,12 +25,41 @@ import { DEFAULT_USER_PUZZLE_PERF } from './types';
 import { loadManifest, loadFilteredShard, findMatchingShards } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
+import { record, Severity } from '../diagnostics';
 
-function txDone(tx: IDBTransaction): Promise<void> {
+function txStoreName(tx: IDBTransaction): string {
+  const storeNames = Array.from(tx.objectStoreNames);
+  return storeNames.length === 1 ? storeNames[0]! : storeNames.join(',');
+}
+
+function recordPuzzleTxFail(tx: IDBTransaction, eventLabel: string, operationType?: string): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'puzzles/puzzleDb',
+    sourceTag: 'idb',
+    message: `IDB transaction ${eventLabel}`,
+    metadata: {
+      storeName: txStoreName(tx),
+      operation: operationType ?? (tx.mode === 'readonly' ? 'read' : 'write'),
+      mode: tx.mode,
+      errorName: tx.error?.name ?? 'UnknownError',
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+    tx.onerror = () => {
+      recordPuzzleTxFail(tx, 'onerror', operationType);
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      recordPuzzleTxFail(tx, 'onabort', operationType);
+      reject(tx.error);
+    };
   });
 }
 
@@ -257,7 +286,7 @@ export async function deletePuzzleDefinition(id: string): Promise<void> {
     const db = await openPuzzleDb();
     const tx = db.transaction(STORE_DEFINITIONS, 'readwrite');
     tx.objectStore(STORE_DEFINITIONS).delete(id);
-    await txDone(tx);
+    await txDone(tx, 'delete');
     enqueuePuzzleDelete('puzzle-definitions', id);
   } catch (e) {
     console.warn('[puzzleDb] definition delete failed', e);
@@ -323,8 +352,14 @@ async function pruneOldAttempts(puzzleId: string, keep: number): Promise<void> {
         }
         resolve();
       };
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
+      tx.onerror = () => {
+        recordPuzzleTxFail(tx, 'onerror', 'delete');
+        reject(tx.error);
+      };
+      tx.onabort = () => {
+        recordPuzzleTxFail(tx, 'onabort', 'delete');
+        reject(tx.error);
+      };
     });
   } catch (e) {
     console.warn('[puzzleDb] pruneOldAttempts failed', e);
@@ -592,7 +627,10 @@ export async function pullAndMergePuzzleRatingHistory(): Promise<void> {
       const store = tx.objectStore(STORE_RATING_HISTORY);
       for (const entry of missing) store.add(entry);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.onerror = () => {
+        recordPuzzleTxFail(tx, 'onerror', 'write');
+        reject(tx.error);
+      };
     });
   } catch (e) {
     console.warn('[puzzleDb] pullAndMergePuzzleRatingHistory failed', e);
@@ -625,7 +663,10 @@ export async function pullAndMergeRatedAttempts(): Promise<void> {
       const store = tx.objectStore(STORE_ATTEMPTS);
       for (const attempt of missing) store.add(attempt);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.onerror = () => {
+        recordPuzzleTxFail(tx, 'onerror', 'write');
+        reject(tx.error);
+      };
     });
   } catch (e) {
     console.warn('[puzzleDb] pullAndMergeRatedAttempts failed', e);
@@ -804,10 +845,7 @@ export async function clearAllPuzzleV1Data(): Promise<void> {
     tx.objectStore(STORE_USER_META).clear();
     tx.objectStore(STORE_USER_PERF).clear();
     tx.objectStore(STORE_RATING_HISTORY).clear();
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror    = () => reject(tx.error);
-    });
+    await txDone(tx, 'clear');
   } catch (e) {
     console.warn('[puzzleDb] clearAllPuzzleV1Data failed', e);
   }

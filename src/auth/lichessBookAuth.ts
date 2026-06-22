@@ -1,5 +1,6 @@
 import { getRemoteSyncToken } from '../sync/remoteSync';
 import { clearClientAuth } from './lichessClient';
+import { record, Severity } from '../diagnostics';
 
 const LICHESS_AUTH_URL = 'https://lichess.org/oauth';
 const LICHESS_TOKEN_URL = 'https://lichess.org/api/token';
@@ -96,6 +97,45 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function errorClass(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function authFailureClass(status: number | undefined, error?: unknown): string {
+  if (error !== undefined && status === undefined) return 'network-error';
+  if (status === 401) return 'unauthorized';
+  if (status === 403) return 'auth-rejected';
+  if (status !== undefined && status >= 500) return 'server-error';
+  if (status !== undefined && status >= 400) return 'auth-rejected';
+  return 'unknown';
+}
+
+function recordBookAuthFailure(
+  endpointClass: string,
+  startedAt: number,
+  status: number | undefined,
+  error?: unknown,
+): void {
+  record({
+    kind: 'api',
+    severity: Severity.Error,
+    source: 'auth/lichessBookAuth',
+    sourceTag: 'auth',
+    message: `${endpointClass} failed`,
+    metadata: {
+      provider: 'lichess-book',
+      endpointClass,
+      httpStatus: status ?? null,
+      latencyMs: Date.now() - startedAt,
+      failureClass: authFailureClass(status, error),
+      ...(error !== undefined ? { errorClass: errorClass(error) } : {}),
+    },
+    redactionClass: 'safe',
+  });
+}
+
 function clearBookOAuthState(): void {
   sessionStorage.removeItem(PENDING_STORAGE_KEY);
   localStorage.removeItem(CALLBACK_STORAGE_KEY);
@@ -127,22 +167,41 @@ async function readJsonResponse<T extends BookAuthResponse>(res: Response): Prom
 
 async function bookAuthFetch<T extends BookAuthResponse>(init: RequestInit = {}): Promise<T> {
   const headers = requireAdminHeaders(init.headers);
-  const res = await fetch(BOOK_AUTH_ENDPOINT, {
-    ...init,
-    headers,
-    credentials: 'same-origin',
-    cache: 'no-store',
-  });
+  const startedAt = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(BOOK_AUTH_ENDPOINT, {
+      ...init,
+      headers,
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+  } catch (error) {
+    recordBookAuthFailure('book-auth', startedAt, undefined, error);
+    throw error;
+  }
+  if (!res.ok) recordBookAuthFailure('book-auth', startedAt, res.status);
   return readJsonResponse<T>(res);
 }
 
 async function getServerLichessStatus(): Promise<BookAccessStatus | null> {
   try {
-    const res = await fetch(SERVER_LICHESS_STATUS_ENDPOINT, {
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-    });
+    const startedAt = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(SERVER_LICHESS_STATUS_ENDPOINT, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+    } catch (error) {
+      recordBookAuthFailure('server-lichess-status', startedAt, undefined, error);
+      throw error;
+    }
+    if (!res.ok) {
+      recordBookAuthFailure('server-lichess-status', startedAt, res.status);
+      return null;
+    }
     const contentType = res.headers.get('content-type') ?? '';
     if (!contentType.toLowerCase().includes('application/json')) return null;
     const body = await res.json() as ServerLichessStatusResponse;
@@ -232,19 +291,39 @@ async function completePopupLogin(code: string, pending: PendingBookOAuth): Prom
     code_verifier: pending.verifier,
   });
 
-  const tokenRes = await fetch(LICHESS_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
-  });
-  if (!tokenRes.ok) throw new Error(`Lichess token request failed: ${tokenRes.status}`);
+  const tokenStart = Date.now();
+  let tokenRes: Response;
+  try {
+    tokenRes = await fetch(LICHESS_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+  } catch (error) {
+    recordBookAuthFailure('book-oauth-token', tokenStart, undefined, error);
+    throw error;
+  }
+  if (!tokenRes.ok) {
+    recordBookAuthFailure('book-oauth-token', tokenStart, tokenRes.status);
+    throw new Error(`Lichess token request failed: ${tokenRes.status}`);
+  }
   const tokenJson = await tokenRes.json() as TokenResponse;
   if (!tokenJson.access_token) throw new Error('Lichess token response did not include an access token.');
 
-  const accountRes = await fetch(LICHESS_ACCOUNT_URL, {
-    headers: { Authorization: `Bearer ${tokenJson.access_token}` },
-  });
-  if (!accountRes.ok) throw new Error(`Lichess account request failed: ${accountRes.status}`);
+  const accountStart = Date.now();
+  let accountRes: Response;
+  try {
+    accountRes = await fetch(LICHESS_ACCOUNT_URL, {
+      headers: { Authorization: `Bearer ${tokenJson.access_token}` },
+    });
+  } catch (error) {
+    recordBookAuthFailure('book-oauth-account', accountStart, undefined, error);
+    throw error;
+  }
+  if (!accountRes.ok) {
+    recordBookAuthFailure('book-oauth-account', accountStart, accountRes.status);
+    throw new Error(`Lichess account request failed: ${accountRes.status}`);
+  }
   const account = await accountRes.json() as AccountResponse;
   const username = account.username ?? account.id;
   if (!username) throw new Error('Lichess account response did not include a username.');

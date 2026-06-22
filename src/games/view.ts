@@ -11,7 +11,8 @@ import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
 import {
   enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, isBulkPaused, getQueueSummary,
-  isGameErrored, formatReviewDuration, getFailedReviewStatus, skipFailedReviewGame,
+  isGameErrored, formatReviewDuration, getFailedReviewStatus, skipFailedReviewGame, isLeaderTab,
+  getReviewCrashContext, subscribeReviewQueueState,
   type QueueSummary,
 } from '../engine/reviewQueue';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../engine/reviewRun';
 import { LOSS_THRESHOLDS } from '../engine/winchances';
 import { getMissedMoments, type MissedMoment } from '../engine/tactics';
+import { reportIssue } from '../diagnostics/reporting/reportAction';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 const GAME_LIST_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -298,6 +300,22 @@ const DEFAULT_ACCOUNT_FILTER: CustomAccountFilterState = { mode: 'custom', inclu
 
 let accountFilterState: AccountFilterState = loadAccountFilterState();
 let accountFilterMenuOpen = false;
+let unsubscribeQueueHealthStatus: (() => void) | null = null;
+
+function reportGamesIssue(): void {
+  const session = reportIssue({ triggeredBy: 'games-route', route: '/games' });
+  console.info('[diagnostics] report issue session', session);
+}
+
+function bindQueueHealthStatus(redraw: () => void): void {
+  if (unsubscribeQueueHealthStatus !== null) return;
+  unsubscribeQueueHealthStatus = subscribeReviewQueueState(redraw);
+}
+
+function unbindQueueHealthStatus(): void {
+  unsubscribeQueueHealthStatus?.();
+  unsubscribeQueueHealthStatus = null;
+}
 
 // Multi-select state shared across both game list views.
 // Tracks the set of selected game IDs and the last-clicked game for shift-range selection.
@@ -964,9 +982,29 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     h('div.game-list__header', countLabel),
     toolbar,
     queueSummary
-      ? h('div.game-list__queue-status', (() => {
+      ? h('div.game-list__queue-status', {
+          hook: {
+            insert: () => bindQueueHealthStatus(deps.redraw),
+            destroy: unbindQueueHealthStatus,
+          },
+        }, (() => {
           const elapsed = formatReviewDuration(queueSummary.elapsedSeconds);
+          const role = isLeaderTab() ? 'leader' : 'observer';
+          const reviewContext = getReviewCrashContext();
           const details = [
+            `Queue depth: ${queueSummary.total}`,
+            `Role: ${role}`,
+            reviewContext ? `Analyzing: ${reviewContext.safeGameId ?? 'unknown'}` : null,
+            reviewContext ? `Progress: ${reviewContext.positionsDone} / ${reviewContext.totalPositions} positions` : null,
+            `Watchdog: ${queueSummary.watchdogTriggered ? 'triggered' : 'alive'}`,
+            queueSummary.watchdogLastTriggerTimestamp !== null
+              ? `Last trigger: ${new Date(queueSummary.watchdogLastTriggerTimestamp).toLocaleString()}`
+              : null,
+            `Last checkpoint: ${
+              queueSummary.lastCheckpointTimestamp !== null
+                ? new Date(queueSummary.lastCheckpointTimestamp).toLocaleString()
+                : 'none'
+            }`,
             queueSummary.failed > 0 ? `${queueSummary.failed} failed` : null,
             queueSummary.skipped > 0 ? `${queueSummary.skipped} skipped` : null,
             queueSummary.paused ? 'paused' : null,
@@ -1200,6 +1238,10 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     // Summary + clear + multi-select review
     h('div.games-view__filter-group.--right', [
       h('span.games-view__summary', `${games.length} of ${lensTotal} game${lensTotal === 1 ? '' : 's'}`),
+      h('button.games-view__clear', {
+        attrs: { type: 'button', title: 'Report an issue with the Games page' },
+        on: { click: reportGamesIssue },
+      }, 'Report issue'),
       gamesFilterActive() ? h('button.games-view__clear', { on: { click: () => clearGamesFilters(redraw) } }, 'Clear filters') : null,
       selectedGameIds.size > 1
         ? h('button.games-view__review-all-btn', {

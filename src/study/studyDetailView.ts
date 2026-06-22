@@ -38,6 +38,7 @@ import {
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
+import { reportIssue } from '../diagnostics/reporting/reportAction';
 
 
 let _showColorPicker   = false;
@@ -122,6 +123,11 @@ export function syncStudyBoard(redraw?: () => void): void {
 
 
 let _studyMenuOpen = false;
+
+function reportStudyIssue(): void {
+  const session = reportIssue({ triggeredBy: 'study-route', route: '/study' });
+  console.info('[diagnostics] report issue session', session);
+}
 
 // Flip icon codepoint — Adapted from lichess-org/lila: ui/lib/src/licon.ts
 const ICON_FLIP = ''; // licon.ChasingArrows — flip board
@@ -248,6 +254,10 @@ function renderStudyActionMenu(redraw: () => void): VNode | null {
         attrs: { 'data-icon': ICON_FLIP, title: 'Flip board' },
         on: { click: () => { flipStudyBoard(redraw); close(); } },
       }, 'Flip board'),
+      h('button', {
+        attrs: { title: 'Report an issue with the Study page' },
+        on: { click: () => { reportStudyIssue(); close(); } },
+      }, 'Report issue'),
     ]),
 
     h('h2', 'Display'),

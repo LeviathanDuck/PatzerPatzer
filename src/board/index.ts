@@ -606,6 +606,7 @@ export function renderBoard(): VNode {
     key: 'board',
     hook: {
       insert: vnode => {
+        performance.mark('board-render-start');
         const ctrl = _getCtrl();
         const node = ctrl.node;
         const dests = cachedDests(node.fen);
@@ -645,6 +646,7 @@ export function renderBoard(): VNode {
         // Attach resize handle after Chessground is initialized.
         // Adapted from lichess-org/lila: ui/lib/src/chessgroundResize.ts resizeHandle()
         bindBoardResizeHandle(vnode.elm as HTMLElement);
+        performance.mark('board-render-end');
       },
       destroy: () => {
         cgInstance?.destroy();

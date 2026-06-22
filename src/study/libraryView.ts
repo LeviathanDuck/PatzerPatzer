@@ -1213,4 +1213,3 @@ function renderPracticeDashboard(redraw: () => void): VNode | null {
       : null,
   ]);
 }
-

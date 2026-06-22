@@ -43,8 +43,34 @@ function classifyFailure(status: number | undefined, error?: unknown): string {
   return 'unknown';
 }
 
+function errorClass(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
 function isAuthPath(path: string): boolean {
   return path.startsWith('/api/auth') || path.startsWith('/api/patzer-auth');
+}
+
+function classifyAuthFailure(status: number | undefined, error?: unknown): string {
+  if (error !== undefined && (status === undefined || status === 0)) return classifyFailure(status, error);
+  if (status === 401) return 'session-missing';
+  if (status === 403) return 'auth-rejected';
+  if (status !== undefined && status >= 500) return 'auth-server-error';
+  if (status !== undefined && status >= 400) return 'auth-rejected';
+  return 'unknown';
+}
+
+function failureClassFor(path: string, status: number | undefined, error?: unknown): string {
+  return isAuthPath(path) ? classifyAuthFailure(status, error) : classifyFailure(status, error);
+}
+
+function syncEndpointClass(method: 'GET' | 'POST', path: string): string {
+  if (!path.startsWith('/api/sync/')) return isAuthPath(path) ? 'auth-session' : 'other-api';
+  if (method === 'GET') return 'sync-read';
+  if (method === 'POST') return 'sync-write';
+  return 'sync-route';
 }
 
 async function apiGet<T>(path: string): Promise<T> {
@@ -58,8 +84,14 @@ async function apiGet<T>(path: string): Promise<T> {
       kind: isAuthPath(path) ? 'api' : 'sync',
       severity: Severity.Error,
       sourceTag: 'sync',
-      message: `GET ${path} network error`,
-      metadata: { path, latencyMs, failureClass: classifyFailure(undefined, err) },
+      message: `GET ${syncEndpointClass('GET', path)} network error`,
+      metadata: {
+        endpointClass: syncEndpointClass('GET', path),
+        httpStatus: null,
+        latencyMs,
+        failureClass: failureClassFor(path, undefined, err),
+        errorClass: errorClass(err),
+      },
       redactionClass: 'safe',
     });
     throw err;
@@ -70,8 +102,13 @@ async function apiGet<T>(path: string): Promise<T> {
       kind: isAuthPath(path) ? 'api' : 'sync',
       severity: Severity.Error,
       sourceTag: 'sync',
-      message: `GET ${path} failed`,
-      metadata: { path, status: res.status, latencyMs, failureClass: classifyFailure(res.status) },
+      message: `GET ${syncEndpointClass('GET', path)} failed`,
+      metadata: {
+        endpointClass: syncEndpointClass('GET', path),
+        httpStatus: res.status,
+        latencyMs,
+        failureClass: failureClassFor(path, res.status),
+      },
       redactionClass: 'safe',
     });
     throw new Error(`GET ${path}: ${res.status} ${res.statusText}`);
@@ -96,8 +133,14 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
       kind: isAuthPath(path) ? 'api' : 'sync',
       severity: Severity.Error,
       sourceTag: 'sync',
-      message: `POST ${path} network error`,
-      metadata: { path, latencyMs, failureClass: classifyFailure(undefined, err) },
+      message: `POST ${syncEndpointClass('POST', path)} network error`,
+      metadata: {
+        endpointClass: syncEndpointClass('POST', path),
+        httpStatus: null,
+        latencyMs,
+        failureClass: failureClassFor(path, undefined, err),
+        errorClass: errorClass(err),
+      },
       redactionClass: 'safe',
     });
     throw err;
@@ -108,8 +151,13 @@ async function apiPost<T>(path: string, body?: unknown): Promise<T> {
       kind: isAuthPath(path) ? 'api' : 'sync',
       severity: Severity.Error,
       sourceTag: 'sync',
-      message: `POST ${path} failed`,
-      metadata: { path, status: res.status, latencyMs, failureClass: classifyFailure(res.status) },
+      message: `POST ${syncEndpointClass('POST', path)} failed`,
+      metadata: {
+        endpointClass: syncEndpointClass('POST', path),
+        httpStatus: res.status,
+        latencyMs,
+        failureClass: failureClassFor(path, res.status),
+      },
       redactionClass: 'safe',
     });
     throw new Error(`POST ${path}: ${res.status} ${res.statusText}`);

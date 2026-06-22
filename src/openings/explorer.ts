@@ -10,6 +10,7 @@
  *   ui/analyse/src/explorer/interfaces.ts
  */
 import { getRemoteSyncGeneration, getRemoteSyncToken } from '../sync/remoteSync';
+import { record, Severity } from '../diagnostics';
 
 /**
  * Route explorer requests through the local dev-server proxy at /api/explorer/:db.
@@ -159,6 +160,36 @@ async function readNdJson<T>(res: Response, cb: (chunk: T) => void): Promise<voi
   if (tail) cb(parseExplorerLine<T>(tail));
 }
 
+// ============================================================
+// Failure instrumentation — API diagnostics
+// Logs endpoint class, HTTP status, and latency on failure.
+// Raw API response payloads, FEN strings, and tokens are
+// never included in the metadata passed to record().
+// ============================================================
+
+interface ExplorerFailureContext {
+  endpointClass: string;
+  httpStatus: number;
+  latencyMs: number;
+  errorName: string;
+}
+
+function recordExplorerFailure(ctx: ExplorerFailureContext): void {
+  record({
+    kind: 'api',
+    severity: Severity.Error,
+    sourceTag: 'explorer',
+    message: `Explorer API failure: ${ctx.endpointClass} ${ctx.httpStatus || '(no response)'}`,
+    metadata: {
+      endpointClass: ctx.endpointClass,
+      httpStatus: ctx.httpStatus,
+      latencyMs: ctx.latencyMs,
+      errorName: ctx.errorName,
+    },
+    redactionClass: 'safe',
+  });
+}
+
 function openingRequestTarget(db: ExplorerDb): { url: URL; headers: Headers } {
   const token = getRemoteSyncToken().trim();
   const headers = new Headers();
@@ -230,6 +261,9 @@ export type OpeningParams = MastersParams | LichessParams | PlayerParams;
  * Calls onData for each NDJSON chunk as it arrives — callers
  * should merge chunks via Object.assign to build the final response.
  * Pass an AbortSignal to cancel in-flight requests on navigation.
+ *
+ * On failure, records a diagnostic event with endpoint class, HTTP status,
+ * and latency. Raw API payloads, FEN strings, and tokens are never logged.
  */
 export async function openingFetch(
   params: OpeningParams,
@@ -238,6 +272,8 @@ export async function openingFetch(
 ): Promise<void> {
   const { url, headers } = openingRequestTarget(params.db);
   const p = url.searchParams;
+  // Endpoint class identifies the DB type — not position-specific data.
+  const endpointClass = `explorer-${params.db}`;
 
   p.set('fen', params.fen);
   if (params.play?.length) p.set('play', params.play.join(','));
@@ -264,18 +300,42 @@ export async function openingFetch(
     if (params.until) p.set('until', params.until);
   }
 
-  const res = await fetch(url.href, {
-    cache: 'default',
-    credentials: 'same-origin',
-    headers,
-    ...(signal ? { signal } : {}),
-  });
+  const t0 = Date.now();
+  let httpStatus = 0;
 
-  await readNdJson<Partial<OpeningData>>(res, chunk => {
-    chunk.isOpening = true;
-    chunk.fen = params.fen;
-    onData(chunk);
-  });
+  performance.mark('opening-explorer-fetch-start');
+  try {
+    const res = await fetch(url.href, {
+      cache: 'default',
+      credentials: 'same-origin',
+      headers,
+      ...(signal ? { signal } : {}),
+    });
+
+    httpStatus = res.status;
+
+    await readNdJson<Partial<OpeningData>>(res, chunk => {
+      chunk.isOpening = true;
+      chunk.fen = params.fen;
+      onData(chunk);
+    });
+    performance.mark('opening-explorer-fetch-end');
+  } catch (err) {
+    performance.mark('opening-explorer-fetch-end');
+    // AbortError means the caller cancelled intentionally — not a failure worth logging.
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+
+    const latencyMs = Date.now() - t0;
+
+    recordExplorerFailure({
+      endpointClass,
+      httpStatus,
+      latencyMs,
+      errorName: err instanceof Error ? err.name : 'UnknownError',
+    });
+
+    throw err;
+  }
 }
 
 // ============================================================
@@ -345,6 +405,9 @@ export function isTablebasePosition(fen: string): boolean {
  * Fetch tablebase data for a position from tablebase.lichess.ovh.
  * Public endpoint — no auth needed.
  * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerXhr.ts tablebase()
+ *
+ * On failure, records a diagnostic event with endpoint class, HTTP status,
+ * and latency. Raw API payloads and FEN strings are never logged.
  */
 export async function tablebaseFetch(
   fen: string,
@@ -352,11 +415,45 @@ export async function tablebaseFetch(
 ): Promise<TablebaseData> {
   const url = new URL(TABLEBASE_ENDPOINT);
   url.searchParams.set('fen', fen);
-  const res = await fetch(url.href, { ...(signal ? { signal } : {}), credentials: 'omit' });
-  if (!res.ok) throw new Error(`Tablebase API error ${res.status}`);
-  const data = await res.json() as TablebaseData;
-  data.fen = fen;
-  return data;
+  const t0 = Date.now();
+  let httpStatus = 0;
+
+  try {
+    const res = await fetch(url.href, { ...(signal ? { signal } : {}), credentials: 'omit' });
+    httpStatus = res.status;
+
+    if (!res.ok) {
+      const latencyMs = Date.now() - t0;
+      recordExplorerFailure({
+        endpointClass: 'tablebase',
+        httpStatus,
+        latencyMs,
+        errorName: 'HttpError',
+      });
+      throw new Error(`Tablebase API error ${res.status}`);
+    }
+
+    const data = await res.json() as TablebaseData;
+    data.fen = fen;
+    return data;
+  } catch (err) {
+    // AbortError means the caller cancelled intentionally — not a failure worth logging.
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+
+    // Re-throw errors already handled above (HttpError thrown after logging).
+    if (err instanceof Error && err.message.startsWith('Tablebase API error')) throw err;
+
+    // Network-level failure (no response received).
+    const latencyMs = Date.now() - t0;
+    recordExplorerFailure({
+      endpointClass: 'tablebase',
+      httpStatus,
+      latencyMs,
+      errorName: err instanceof Error ? err.name : 'UnknownError',
+    });
+
+    throw err;
+  }
 }
 
 

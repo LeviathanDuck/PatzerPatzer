@@ -9,6 +9,40 @@ import { nodeAtPath, addNode, pathInit, pathLast } from '../tree/ops';
 import { getStudy, saveStudy } from './studyDb';
 import type { StudyItem } from './types';
 import type { TreeNode } from '../tree/types';
+import { record, Severity } from '../diagnostics';
+
+function classifyStudyError(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function recordStudyLoadFail(error: unknown): void {
+  record({
+    kind: 'render',
+    severity: Severity.Error,
+    source: 'study/studyDetailCtrl',
+    sourceTag: 'study-load-fail',
+    message: 'study-load-fail',
+    metadata: {
+      errorClass: classifyStudyError(error),
+      route: 'study-detail',
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordStudyRouteEmpty(): void {
+  record({
+    kind: 'render',
+    severity: Severity.Warn,
+    source: 'study/studyDetailCtrl',
+    sourceTag: 'study-route-empty',
+    message: 'study-route-empty',
+    metadata: { route: 'study-detail' },
+    redactionClass: 'safe',
+  });
+}
 
 // --- Module-level state ---
 
@@ -45,14 +79,25 @@ export function loadStudyDetail(id: string, redraw: () => void): void {
   _dirty  = false;
   clearTimeout(_autoSaveTimer);
   getStudy(id).then(item => {
-    if (!item) { _loaded = true; redraw(); return; }
+    if (!item) {
+      recordStudyRouteEmpty();
+      _loaded = true;
+      redraw();
+      return;
+    }
     _study = item;
     try {
       _root = pgnToTree(item.pgn);
-    } catch {
+    } catch (e) {
+      recordStudyLoadFail(e);
       _root = pgnToTree(''); // empty tree on parse failure
     }
     _path = '';
+    _loaded = true;
+    redraw();
+  }).catch(e => {
+    recordStudyLoadFail(e);
+    recordStudyRouteEmpty();
     _loaded = true;
     redraw();
   });

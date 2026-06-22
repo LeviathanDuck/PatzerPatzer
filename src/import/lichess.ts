@@ -105,7 +105,18 @@ export async function fetchLichessGames(
   if (since !== undefined) params.set('since', String(since));
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
   const fetchStart = Date.now();
-  const res = await fetch(url, { headers: { 'Accept': 'application/x-chess-pgn' } });
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { 'Accept': 'application/x-chess-pgn' } });
+  } catch (error) {
+    recordLichessImportEvent('Lichess games fetch failed', Severity.Error, {
+      requestClass: lichessRequestClass(since),
+      errorClass: errorClass(error),
+      httpStatus: null,
+      latencyMs: Date.now() - fetchStart,
+    });
+    throw error;
+  }
   if (!res.ok) {
     recordLichessImportEvent('Lichess games fetch failed', Severity.Error, {
       requestClass: lichessRequestClass(since),
@@ -119,10 +130,11 @@ export async function fetchLichessGames(
   try {
     text = await res.text();
   } catch (error) {
-    recordLichessImportEvent('lichess-parse-failed', Severity.Error, {
+    recordLichessImportEvent('Lichess games stream failed', Severity.Error, {
       requestClass: lichessRequestClass(since),
       errorClass: errorClass(error),
-      batchIndex: 0,
+      httpStatus: res.status,
+      latencyMs: Date.now() - fetchStart,
     });
     throw error;
   }

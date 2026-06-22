@@ -33,11 +33,38 @@ function recordChesscomImportEvent(
     sourceTag: 'import',
     message,
     metadata: {
-      platform: 'chesscom',
+      platform: 'chess-com',
       ...metadata,
     },
     redactionClass: 'safe',
   });
+}
+
+async function fetchChesscomResponse(
+  url: string,
+  requestClass: string,
+  failureMessage: string,
+): Promise<Response> {
+  const startedAt = Date.now();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      recordChesscomImportEvent(failureMessage, Severity.Error, {
+        requestClass,
+        errorClass: 'http-error',
+        httpStatus: res.status,
+        latencyMs: Date.now() - startedAt,
+      });
+    }
+    return res;
+  } catch (error) {
+    recordChesscomImportEvent(failureMessage, Severity.Error, {
+      requestClass,
+      errorClass: errorClass(error),
+      latencyMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -90,17 +117,12 @@ export async function fetchChesscomGames(
   cutoffMonth: string | null = archiveCutoffMonthFor(currentImportDateRangeConfig()),
 ): Promise<ImportedGame[]> {
   // 1. Fetch archive list (one URL per month the player has games)
-  const archivesStart = Date.now();
-  const archivesRes = await fetch(`${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`);
+  const archivesRes = await fetchChesscomResponse(
+    `${CHESSCOM_BASE}/${username.toLowerCase()}/games/archives`,
+    'archive-list',
+    'Chess.com archive list fetch failed',
+  );
   if (!archivesRes.ok) {
-    record({
-      kind: 'api',
-      severity: Severity.Error,
-      sourceTag: 'import',
-      message: 'Chess.com archive list fetch failed',
-      metadata: { platform: 'chesscom', httpStatus: archivesRes.status, latencyMs: Date.now() - archivesStart },
-      redactionClass: 'safe',
-    });
     throw new Error(archivesRes.status === 404 ? 'Chess.com: user not found' : `Chess.com API error ${archivesRes.status}`);
   }
   let archivesData: { archives?: string[] };
@@ -152,19 +174,12 @@ export async function fetchChesscomGames(
   }
 
   // 3. Fetch all relevant archive months in parallel.
-  const archiveStartMs = Date.now();
-  const archiveResponses = await Promise.all(relevantArchives.map(url => fetch(url)));
+  const archiveResponses = await Promise.all(relevantArchives.map(url =>
+    fetchChesscomResponse(url, 'monthly-archive', 'Chess.com archive month fetch failed'),
+  ));
   const rawGames: any[] = [];
   for (const res of archiveResponses) {
     if (!res.ok) {
-      record({
-        kind: 'api',
-        severity: Severity.Error,
-        sourceTag: 'import',
-        message: 'Chess.com archive month fetch failed',
-        metadata: { platform: 'chesscom', httpStatus: res.status, latencyMs: Date.now() - archiveStartMs },
-        redactionClass: 'safe',
-      });
       throw new Error(`Chess.com API error ${res.status}`);
     }
     let data: { games?: any[] };

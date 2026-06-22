@@ -10,14 +10,16 @@ import type { RetroOutcome } from '../analyse/retroCtrl';
 import type { GameSummary } from '../stats/types';
 import { classifyOpening } from '../openings/eco';
 import type { RemoteSyncStoreName } from '../sync/remoteSync';
-import type { DiagnosticEvent, DiagnosticSession } from '../diagnostics/types';
+import type { DiagnosticAggregate, DiagnosticAggregateKind, DiagnosticEvent, DiagnosticSession } from '../diagnostics/types';
+import type { DiagnosticReport as AssembledDiagnosticReport } from '../diagnostics/reporting/reportAssembly';
 import { record, Severity } from '../diagnostics';
+import { captureStorageEstimate } from '../diagnostics/performance/deviceSignals';
 import type { ReviewRunManifest } from '../engine/reviewRun';
 
 /**
  * Resolve when an IDB transaction commits; reject on error or abort.
  * Instruments onerror/onabort to emit a diagnostic event with the store
- * name, mode, and error name — no record data or PII is included.
+ * name, operation, and error name — no record data or PII is included.
  * QuotaExceededError additionally triggers a navigator.storage.estimate()
  * call so quota and usage are captured alongside the failure context.
  */
@@ -29,7 +31,8 @@ function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
       const err = tx.error;
       const storeNames = Array.from(tx.objectStoreNames);
       const storeName = storeNames.length === 1 ? storeNames[0]! : storeNames.join(',');
-      const mode = operationType ?? tx.mode ?? 'unknown';
+      const mode = tx.mode ?? 'unknown';
+      const operation = operationType ?? (mode === 'readonly' ? 'read' : 'write');
       const errorName = err?.name ?? 'UnknownError';
 
       if (errorName === 'QuotaExceededError') {
@@ -46,8 +49,11 @@ function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
               message: `IDB ${eventLabel}: QuotaExceededError`,
               metadata: {
                 storeName,
+                operation,
                 mode,
                 errorName,
+                quota: quota ?? null,
+                usage: usage ?? null,
                 quotaBytes: quota ?? null,
                 usageBytes: usage ?? null,
               },
@@ -60,7 +66,7 @@ function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
               severity: Severity.Error,
               sourceTag: 'idb',
               message: `IDB ${eventLabel}: QuotaExceededError (estimate unavailable)`,
-              metadata: { storeName, mode, errorName },
+              metadata: { storeName, operation, mode, errorName },
               redactionClass: 'safe',
             });
           });
@@ -70,7 +76,7 @@ function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
             severity: Severity.Error,
             sourceTag: 'idb',
             message: `IDB ${eventLabel}: QuotaExceededError (estimate API absent)`,
-            metadata: { storeName, mode, errorName },
+            metadata: { storeName, operation, mode, errorName },
             redactionClass: 'safe',
           });
         }
@@ -80,7 +86,7 @@ function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
           severity: Severity.Error,
           sourceTag: 'idb',
           message: `IDB transaction ${eventLabel}`,
-          metadata: { storeName, mode, errorName },
+          metadata: { storeName, operation, mode, errorName },
           redactionClass: 'safe',
         });
       }
@@ -260,6 +266,7 @@ async function persistAnalysisToIdb(
   tx.objectStore('analysis-library').put(record, gameId);
   await txDone(tx);
   enqueueMainDbPut('analysis', gameId, record, record.updatedAt);
+  void captureStorageEstimate('post-idb-write');
 }
 
 type PositionEvalLike = { cp?: number; mate?: number; best?: string; loss?: number; delta?: number; moves?: string[] };
@@ -370,8 +377,8 @@ export interface StoredGameRecord {
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
-// v19 adds review-runs for lightweight bulk review run manifests.
-export const DB_VERSION = 19;
+// v21 adds local diagnostic aggregate rollups for admin summaries.
+export const DB_VERSION = 21;
 
 let _idb: IDBDatabase | undefined;
 
@@ -474,6 +481,9 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
 
   const diagnosticReportsStore = ensureStore(db, event, 'diagnostic-reports', { keyPath: 'reportId' });
   ensureIndex(diagnosticReportsStore, 'createdAt', 'createdAt', { unique: false });
+  ensureIndex(diagnosticReportsStore, 'timestamp', 'timestamp', { unique: false });
+  ensureIndex(diagnosticReportsStore, 'severity',  'severity',  { unique: false });
+  ensureIndex(diagnosticReportsStore, 'route',     'route',     { unique: false });
   ensureIndex(diagnosticReportsStore, 'sessionId', 'sessionId', { unique: false });
   ensureIndex(diagnosticReportsStore, 'status',    'status',    { unique: false });
 
@@ -482,6 +492,12 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   ensureIndex(diagnosticOutboxStore, 'queuedAt', 'queuedAt', { unique: false });
   ensureIndex(diagnosticOutboxStore, 'reportId', 'reportId', { unique: false });
   ensureIndex(diagnosticOutboxStore, 'status',   'status',   { unique: false });
+
+  // v21: derived diagnostics aggregate store. Values contain safe rollup keys,
+  // counts, and timestamps only; raw event messages/metadata stay in events.
+  const diagnosticAggregatesStore = ensureStore(db, event, 'diagnostic-aggregates', { keyPath: 'aggregateId' });
+  ensureIndex(diagnosticAggregatesStore, 'kind', 'kind', { unique: false });
+  ensureIndex(diagnosticAggregatesStore, 'lastSeen', 'lastSeen', { unique: false });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
@@ -564,21 +580,27 @@ function openGameDb(): Promise<IDBDatabase> {
 
 // --- Diagnostics ---
 
-export interface DiagnosticReport {
-  reportId:     string;
-  sessionId:    string;
-  createdAt:    number;
-  status:       'new' | 'submitted' | 'archived';
-  description:  string;
-  context:      Record<string, unknown>;
+export type DiagnosticReportStatus = 'pending' | 'submitted' | 'failed';
+export type DiagnosticReportTriageState = 'new' | 'investigating' | 'reproduced' | 'fixed' | 'invalid' | 'archived';
+
+export interface DiagnosticReport extends AssembledDiagnosticReport {
+  timestamp: number;
+  severity:  AssembledDiagnosticReport['userInput']['severity'];
+  route:     string;
+  status:    DiagnosticReportStatus;
+  triageState?: DiagnosticReportTriageState;
+  adminNotes: string;
 }
 
 export interface DiagnosticOutboxEntry {
-  outboxId: string;
-  reportId: string;
-  queuedAt: number;
-  status:   'pending' | 'failed' | 'sent';
-  payload:  unknown;
+  outboxId:      string;
+  reportId:      string;
+  queuedAt:      number;
+  timestamp:     number;
+  updatedAt:     number;
+  status:        'pending' | 'failed' | 'sent' | 'abandoned';
+  attemptCount:  number;
+  payload:       string;
 }
 
 export async function putDiagnosticEvent(event: DiagnosticEvent): Promise<void> {
@@ -618,7 +640,22 @@ export async function getDiagnosticEvents(options: { limit?: number; kind?: stri
     };
 
     req.onerror = () => reject(recordReqFailure(req, 'diagnostic-events', 'cursor'));
-    tx.onabort = () => reject(tx.error);
+    tx.onabort = () => {
+      record({
+        kind: 'idb',
+        severity: Severity.Error,
+        sourceTag: 'idb',
+        message: 'IDB transaction onabort',
+        metadata: {
+          storeName: 'diagnostic-events',
+          operation: 'read',
+          mode: tx.mode,
+          errorName: tx.error?.name ?? 'UnknownError',
+        },
+        redactionClass: 'safe',
+      });
+      reject(tx.error);
+    };
   });
 }
 
@@ -666,7 +703,22 @@ export async function getRecentDiagnosticSessions(limit: number): Promise<Diagno
     };
 
     req.onerror = () => reject(recordReqFailure(req, 'diagnostic-sessions', 'cursor'));
-    tx.onabort = () => reject(tx.error);
+    tx.onabort = () => {
+      record({
+        kind: 'idb',
+        severity: Severity.Error,
+        sourceTag: 'idb',
+        message: 'IDB transaction onabort',
+        metadata: {
+          storeName: 'diagnostic-sessions',
+          operation: 'read',
+          mode: tx.mode,
+          errorName: tx.error?.name ?? 'UnknownError',
+        },
+        redactionClass: 'safe',
+      });
+      reject(tx.error);
+    };
   });
 }
 
@@ -688,6 +740,29 @@ export async function getDiagnosticReport(reportId: string): Promise<DiagnosticR
   });
 }
 
+export async function getAllDiagnosticReports(): Promise<DiagnosticReport[]> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('diagnostic-reports', 'readonly')
+      .objectStore('diagnostic-reports')
+      .index('timestamp')
+      .getAll();
+    req.onsuccess = () => {
+      const reports = ((req.result as DiagnosticReport[] | undefined) ?? [])
+        .sort((a, b) => b.timestamp - a.timestamp);
+      resolve(reports);
+    };
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-reports', 'read'));
+  });
+}
+
+export async function deleteDiagnosticReport(reportId: string): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-reports', 'readwrite');
+  tx.objectStore('diagnostic-reports').delete(reportId);
+  await txDone(tx, 'delete');
+}
+
 export async function putDiagnosticOutboxEntry(entry: DiagnosticOutboxEntry): Promise<void> {
   const db = await openGameDb();
   const tx = db.transaction('diagnostic-outbox', 'readwrite');
@@ -704,6 +779,65 @@ export async function getPendingOutboxEntries(): Promise<DiagnosticOutboxEntry[]
       .getAll('pending');
     req.onsuccess = () => resolve((req.result as DiagnosticOutboxEntry[] | undefined) ?? []);
     req.onerror = () => reject(recordReqFailure(req, 'diagnostic-outbox', 'read'));
+  });
+}
+
+export async function deleteDiagnosticOutboxEntry(outboxId: string): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-outbox', 'readwrite');
+  tx.objectStore('diagnostic-outbox').delete(outboxId);
+  await txDone(tx);
+}
+
+export async function replaceDiagnosticAggregates(
+  kind: DiagnosticAggregateKind,
+  aggregates: DiagnosticAggregate[],
+): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-aggregates', 'readwrite');
+  const store = tx.objectStore('diagnostic-aggregates');
+  const req = store.index('kind').openCursor(kind);
+
+  await new Promise<void>((resolve, reject) => {
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        for (const aggregate of aggregates) store.put(aggregate);
+        resolve();
+        return;
+      }
+
+      cursor.delete();
+      cursor.continue();
+    };
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-aggregates', 'cursor'));
+  });
+
+  await txDone(tx);
+}
+
+export async function getDiagnosticAggregates(kind?: DiagnosticAggregateKind): Promise<DiagnosticAggregate[]> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const aggregates: DiagnosticAggregate[] = [];
+    const tx = db.transaction('diagnostic-aggregates', 'readonly');
+    const store = tx.objectStore('diagnostic-aggregates');
+    const req = kind
+      ? store.index('kind').openCursor(kind)
+      : store.openCursor();
+
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(aggregates);
+        return;
+      }
+
+      aggregates.push(cursor.value as DiagnosticAggregate);
+      cursor.continue();
+    };
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-aggregates', 'cursor'));
+    tx.onabort = () => reject(tx.error);
   });
 }
 
@@ -758,6 +892,7 @@ export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
     for (const record of records) {
       enqueueMainDbPut('games', record.id, record, record.updatedAt);
     }
+    void captureStorageEstimate('post-idb-write');
   } catch (e) {
     console.warn('[idb] save failed', e);
   }
@@ -775,6 +910,7 @@ export async function saveGameToIdb(game: ImportedGame): Promise<void> {
     tx.objectStore('games').put(record);
     await txDone(tx);
     enqueueMainDbPut('games', record.id, record, record.updatedAt);
+    void captureStorageEstimate('post-idb-write');
   } catch (e) {
     console.warn('[idb] single-game save failed', e);
   }
@@ -1071,7 +1207,7 @@ export async function clearAnalysisFromIdb(gameId: string): Promise<void> {
     const db = await openGameDb();
     const tx = db.transaction('analysis-library', 'readwrite');
     tx.objectStore('analysis-library').delete(gameId);
-    await txDone(tx);
+    await txDone(tx, 'delete');
     enqueueMainDbDelete('analysis', gameId);
   } catch (e) {
     console.warn('[idb] analysis clear failed', e);
@@ -1137,6 +1273,11 @@ export interface ReviewQueueManifestEntry {
   total:  number;
 }
 
+export interface ReviewQueueManifestLoadResult {
+  entries: ReviewQueueManifestEntry[];
+  errorDetail: string | null;
+}
+
 export interface ReviewFailureRecord {
   key:          string;
   gameId:       string;
@@ -1165,7 +1306,7 @@ export async function clearReviewQueueManifestEntry(gameId: string): Promise<voi
     const db = await openGameDb();
     const tx = db.transaction('review-queue', 'readwrite');
     tx.objectStore('review-queue').delete(gameId);
-    await txDone(tx);
+    await txDone(tx, 'delete');
   } catch (e) {
     console.warn('[idb] review-queue manifest clear failed', e);
   }
@@ -1176,24 +1317,41 @@ export async function clearReviewQueueManifest(): Promise<void> {
     const db = await openGameDb();
     const tx = db.transaction('review-queue', 'readwrite');
     tx.objectStore('review-queue').clear();
-    await txDone(tx);
+    await txDone(tx, 'clear');
   } catch (e) {
     console.warn('[idb] review-queue manifest clear-all failed', e);
   }
 }
 
-export async function loadReviewQueueManifest(): Promise<ReviewQueueManifestEntry[]> {
+function diagnosticIdbErrorDetail(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name || 'Error';
+  if (error instanceof DOMException) return error.message || error.name || 'DOMException';
+  if (typeof error === 'string') return error || 'UnknownError';
+  if (error === null || error === undefined) return 'UnknownError';
+  return 'NonErrorThrow';
+}
+
+export async function loadReviewQueueManifestWithDiagnostics(): Promise<ReviewQueueManifestLoadResult> {
   try {
     const db = await openGameDb();
-    return new Promise((resolve, reject) => {
+    const entries = await new Promise<ReviewQueueManifestEntry[]>((resolve, reject) => {
       const req = db.transaction('review-queue', 'readonly').objectStore('review-queue').getAll();
       req.onsuccess = () => resolve((req.result as ReviewQueueManifestEntry[] | undefined) ?? []);
       req.onerror   = () => reject(recordReqFailure(req, 'review-queue', 'read'));
     });
+    return { entries, errorDetail: null };
   } catch (e) {
     console.warn('[idb] review-queue manifest load failed', e);
-    return [];
+    return {
+      entries: [],
+      errorDetail: diagnosticIdbErrorDetail(e),
+    };
   }
+}
+
+export async function loadReviewQueueManifest(): Promise<ReviewQueueManifestEntry[]> {
+  const result = await loadReviewQueueManifestWithDiagnostics();
+  return result.entries;
 }
 
 export async function saveReviewRunManifest(manifest: ReviewRunManifest): Promise<boolean> {
@@ -1233,7 +1391,7 @@ export async function clearReviewRunManifest(runId: string): Promise<void> {
     const db = await openGameDb();
     const tx = db.transaction('review-runs', 'readwrite');
     tx.objectStore('review-runs').delete(runId);
-    await txDone(tx);
+    await txDone(tx, 'delete');
   } catch (e) {
     console.warn('[idb] review-runs manifest clear failed', e);
   }
@@ -1255,7 +1413,7 @@ export async function deleteReviewFailureRecord(key: string): Promise<void> {
     const db = await openGameDb();
     const tx = db.transaction('review-failures', 'readwrite');
     tx.objectStore('review-failures').delete(key);
-    await txDone(tx);
+    await txDone(tx, 'delete');
   } catch (e) {
     console.warn('[idb] review-failures delete failed', e);
   }
@@ -1352,10 +1510,7 @@ export async function backfillOpenings(): Promise<number> {
       updatedRecords.push(record);
       count++;
     }
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror    = () => reject(tx.error);
-    });
+    await txDone(tx, 'write');
     for (const record of updatedRecords) {
       enqueueMainDbPut('games', record.id, record, record.updatedAt);
     }
@@ -1392,10 +1547,7 @@ export async function clearAllIdbData(): Promise<void> {
     tx.objectStore('review-queue').clear();
     tx.objectStore('review-failures').clear();
     tx.objectStore('review-runs').clear();
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror    = () => reject(tx.error);
-    });
+    await txDone(tx, 'clear');
   } catch (e) {
     console.warn('[idb] clearAllIdbData failed', e);
   }

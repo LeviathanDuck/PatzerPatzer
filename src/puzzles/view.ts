@@ -47,6 +47,7 @@ import { mainlineNodeList, promoteAt, pathInit } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
 import type { Role } from '@lichess-org/chessground/types';
 import { savePuzzleToLibrary } from '../study/saveAction';
+import { reportIssue } from '../diagnostics/reporting/reportAction';
 
 // ---------------------------------------------------------------------------
 // Puzzle player strips
@@ -58,6 +59,11 @@ type MaterialDiffSide = Record<Role, number>;
 interface MaterialDiff { white: MaterialDiffSide; black: MaterialDiffSide; }
 const ROLE_ORDER: Role[] = ['queen', 'rook', 'bishop', 'knight', 'pawn'];
 const ROLE_POINTS: Record<Role, number> = { queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1, king: 0 };
+
+function reportPuzzlesIssue(): void {
+  const session = reportIssue({ triggeredBy: 'puzzles-route', route: '/puzzles' });
+  console.info('[diagnostics] report issue session', session);
+}
 
 function puzzleMaterialDiff(fen: string): MaterialDiff {
   const diff: MaterialDiff = {
@@ -1646,6 +1652,14 @@ function renderPuzzleRoundActionMenu(rc: PuzzleRoundCtrl, redraw: () => void): V
           close();
         } },
       }, 'Flip board'),
+
+      h('button', {
+        attrs: { title: 'Report an issue with the Puzzles page' },
+        on: { click: () => {
+          reportPuzzlesIssue();
+          close();
+        } },
+      }, 'Report issue'),
     ]),
 
     // Auto-next is a per-session setting that triggers after each solve.

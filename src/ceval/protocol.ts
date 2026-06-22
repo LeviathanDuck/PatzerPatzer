@@ -23,6 +23,8 @@ export interface EngineDeviceCapabilityMetadata {
   hardwareConcurrency: number | null;
 }
 
+type EnginePhase = 'running' | 'idle' | 'analyzing';
+
 // Local interface — matches @lichess-org/stockfish-web's StockfishWeb interface.
 // Declared here to avoid a static bundle import of the package.
 interface StockfishWebModule {
@@ -51,10 +53,33 @@ function sharedWasmMemory(lo: number, hi = 32767): WebAssembly.Memory {
   }
 }
 
+function diagnosticErrorName(error: unknown): string {
+  return error instanceof Error ? error.name : 'UnknownError';
+}
+
+function classifyModuleInitFailure(error: unknown): 'wasm-unavailable' | 'worker-create-failed' {
+  if (error instanceof RangeError || error instanceof WebAssembly.CompileError || error instanceof WebAssembly.LinkError || error instanceof WebAssembly.RuntimeError) {
+    return 'wasm-unavailable';
+  }
+
+  return 'worker-create-failed';
+}
+
+function classifyRuntimeErrorMessage(message: string): string {
+  const normalized = message.toLowerCase();
+  if (!normalized.trim()) return 'unknown';
+  if (normalized.includes('out of memory') || normalized.includes('oom') || normalized.includes('memory')) return 'out-of-memory';
+  if (normalized.includes('wasm') || normalized.includes('trap') || normalized.includes('runtimeerror')) return 'wasm-runtime';
+  if (normalized.includes('terminated') || normalized.includes('killed') || normalized.includes('aborted')) return 'worker-terminated';
+  if (normalized.includes('network') || normalized.includes('fetch') || normalized.includes('load')) return 'asset-load';
+  return 'runtime-error';
+}
+
 export class StockfishProtocol {
   private module: StockfishWebModule | undefined;
   private onLine: LineCallback | undefined;
   private _initStartedAt: number | undefined;
+  private _enginePhase: EnginePhase = 'idle';
 
   // Device capability snapshot — read once at engine-start for error correlation.
   // navigator.deviceMemory is not universally supported (Chromium-only); cast through
@@ -80,6 +105,25 @@ export class StockfishProtocol {
       deviceMemory: this._deviceMemory ?? null,
       hardwareConcurrency: this._hardwareConcurrency ?? null,
     };
+  }
+
+  private recordInitFailure(failureReason: 'worker-create-failed' | 'init-timeout' | 'wasm-unavailable', error: unknown): void {
+    const startedAt = this._initStartedAt ?? Date.now();
+    const initDuration = Date.now() - startedAt;
+    record({
+      kind: 'engine',
+      severity: Severity.Error,
+      source: 'ceval.protocol',
+      sourceTag: 'engine',
+      message: 'Stockfish init failed',
+      metadata: {
+        failureReason,
+        initDuration,
+        errorName: diagnosticErrorName(error),
+        ...this.deviceCapabilityMetadata(),
+      },
+      redactionClass: 'safe',
+    });
   }
 
   /**
@@ -122,30 +166,20 @@ export class StockfishProtocol {
         }) => Promise<StockfishWebModule>;
       });
     } catch (e) {
-      const durationMs = Date.now() - this._initStartedAt;
-      const errorName = e instanceof Error ? e.name : 'UnknownError';
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      record({
-        kind: 'engine',
-        severity: Severity.Error,
-        source: 'ceval.protocol',
-        sourceTag: 'engine',
-        message: 'Stockfish script load failed',
-        metadata: {
-          errorName,
-          errorMessage,
-          durationMs,
-          ...this.deviceCapabilityMetadata(),
-        },
-        redactionClass: 'safe',
-      });
+      this.recordInitFailure('worker-create-failed', e);
       throw e;
     }
 
     // minMem=1536 pages (96 MB) matches Lichess's sf_18_smallnet config.
     // sharedWasmMemory retries with a smaller max if the initial alloc fails.
     // Adapted from lichess-org/lila: ui/lib/src/ceval/util.ts
-    const wasmMemory = sharedWasmMemory(1536);
+    let wasmMemory: WebAssembly.Memory;
+    try {
+      wasmMemory = sharedWasmMemory(1536);
+    } catch (e) {
+      this.recordInitFailure('wasm-unavailable', e);
+      throw e;
+    }
 
     try {
       this.module = await makeModule({
@@ -157,27 +191,12 @@ export class StockfishProtocol {
         mainScriptUrlOrBlob: scriptUrl,
       });
     } catch (e) {
-      const durationMs = Date.now() - this._initStartedAt;
-      const errorName = e instanceof Error ? e.name : 'UnknownError';
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      record({
-        kind: 'engine',
-        severity: Severity.Error,
-        source: 'ceval.protocol',
-        sourceTag: 'engine',
-        message: 'Stockfish module init failed',
-        metadata: {
-          errorName,
-          errorMessage,
-          durationMs,
-          ...this.deviceCapabilityMetadata(),
-        },
-        redactionClass: 'safe',
-      });
+      this.recordInitFailure(classifyModuleInitFailure(e), e);
       throw e;
     }
 
     // Init succeeded — log duration for observability.
+    this._enginePhase = 'running';
     const initDurationMs = Date.now() - this._initStartedAt;
     console.log(`[ceval] Stockfish module ready in ${initDurationMs}ms`);
     record({
@@ -196,11 +215,9 @@ export class StockfishProtocol {
     // Error handler for corrupt NNUE data.
     // Mirrors lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts makeErrorHandler
     // Promoted into a real failure signal: callers may set onEngineError to be notified.
-    // Logs the error message class for post-init diagnostics without exposing raw state.
+    // Logs a closed error class for post-init diagnostics without storing raw engine text.
     this.module.onError = (msg: string) => {
       console.error('[ceval] engine error:', msg);
-      // Extract the message class (first token) to avoid logging position data.
-      const msgClass = (msg.split(':')[0] ?? msg).trim().slice(0, 80);
       record({
         kind: 'engine',
         severity: Severity.Error,
@@ -208,7 +225,8 @@ export class StockfishProtocol {
         sourceTag: 'engine',
         message: 'Stockfish engine error',
         metadata: {
-          msgClass,
+          errorMessageClass: classifyRuntimeErrorMessage(msg),
+          enginePhase: this._enginePhase,
           ...this.deviceCapabilityMetadata(),
         },
         redactionClass: 'safe',
@@ -256,12 +274,14 @@ export class StockfishProtocol {
   go(depth: number, multiPv = 1, movetime?: number): void {
     this.send(`setoption name MultiPV value ${multiPv}`);
     const timeClause = movetime !== undefined ? ` movetime ${movetime}` : '';
+    this._enginePhase = 'analyzing';
     this.send(`go depth ${depth}${timeClause}`);
   }
 
   /** Interrupt a running search. */
   stop(): void {
     this.send('stop');
+    this._enginePhase = 'idle';
   }
 
 
@@ -294,6 +314,7 @@ export class StockfishProtocol {
    */
   goPlay(depth: number): void {
     this.send('setoption name MultiPV value 1');
+    this._enginePhase = 'analyzing';
     this.send(`go depth ${depth}`);
   }
 
@@ -301,6 +322,7 @@ export class StockfishProtocol {
   destroy(): void {
     this.send('quit');
     this.module = undefined;
+    this._enginePhase = 'idle';
   }
 
   private send(cmd: string): void {
@@ -316,6 +338,8 @@ export class StockfishProtocol {
 
     if (parts[0] === 'id' && parts[1] === 'name') {
       this.engineName = parts.slice(2).join(' ');
+    } else if (parts[0] === 'bestmove') {
+      this._enginePhase = 'idle';
     } else if (parts[0] === 'uciok') {
       // Analysis mode + no contempt.
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts connected()

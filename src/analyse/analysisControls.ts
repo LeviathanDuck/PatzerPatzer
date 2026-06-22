@@ -20,6 +20,7 @@ import {
 } from '../engine/ctrl';
 import { reviewDotsUserOnly, setReviewDotsUserOnly } from '../board/cosmetics';
 import { analysisComplete, batchAnalyzing } from '../engine/batch';
+import { reportIssue } from '../diagnostics/reporting/reportAction';
 
 // --- Action-menu open/close state ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts actionMenu() reactive field.
@@ -229,6 +230,15 @@ export function renderActionMenu(): VNode | null {
         attrs: { 'data-icon': ICON_FLIP, title: 'Flip board (hotkey: f)' },
         on:    { click: () => { deps.onFlipBoard(); close(); } },
       }, 'Flip board'),
+
+      h('button', {
+        attrs: { title: 'Report an issue with the Analysis page' },
+        on:    { click: () => {
+          const session = reportIssue({ triggeredBy: 'analysis-route', route: '/analysis' });
+          console.info('[diagnostics] report issue session', session);
+          close();
+        } },
+      }, 'Report issue'),
     ]),
 
 

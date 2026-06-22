@@ -5,6 +5,7 @@
 
 import { StockfishProtocol } from '../ceval/protocol';
 import { record, getSessionId, Severity } from '../diagnostics';
+import { captureMemorySnapshot } from '../diagnostics/performance/deviceSignals';
 import { isEngineSearching } from './ctrl';
 import { AnalyseCtrl } from '../analyse/ctrl';
 import { evalWinChances } from './winchances';
@@ -13,7 +14,7 @@ import { computeAnalysisSummary } from '../analyse/evalView';
 import {
   buildAnalysisNodes, buildAnalysisNodeEntry, buildReviewEngineMetadata, saveAnalysisToIdbStrict, type ReviewEngineMetadata,
   saveReviewQueueManifest, clearReviewQueueManifestEntry, clearReviewQueueManifest,
-  loadReviewQueueManifest, loadAnalysisFromIdb, type StoredNodeEntry,
+  loadReviewQueueManifestWithDiagnostics, loadAnalysisFromIdb, type StoredNodeEntry,
   saveReviewFailureRecord, deleteReviewFailureRecord, loadReviewFailureRecords,
   saveReviewRunManifest, loadLatestReviewRunManifest,
   ANALYSIS_VERSION,
@@ -60,10 +61,377 @@ function isTerminalReviewFen(fen: string): boolean {
 // Initialized lazily on first enqueueBulkReview call.
 // Runs at Threads=1, Hash=32 to minimize CPU/memory competition with the live engine.
 
-export const reviewProtocol = new StockfishProtocol({ threads: 1, hash: 32 });
+const REVIEW_ENGINE_THREADS = 1;
+const REVIEW_ENGINE_HASH_MB = 32;
+
+export const reviewProtocol = new StockfishProtocol({ threads: REVIEW_ENGINE_THREADS, hash: REVIEW_ENGINE_HASH_MB });
 let reviewEngineReady       = false;
 let reviewEngineInitStarted = false;
 let reviewEngineFailed      = false;
+const reviewGameStartedAt = new WeakMap<ReviewQueueEntry, number>();
+
+function isSharedArrayBufferAvailable(): boolean {
+  return typeof SharedArrayBuffer !== 'undefined';
+}
+
+type ReviewDiagnosticRole = 'leader' | 'observer' | 'unknown';
+
+function reviewDiagnosticRole(): ReviewDiagnosticRole {
+  if (isCurrentLeader) return 'leader';
+  return leaderElectionStarted ? 'observer' : 'unknown';
+}
+
+function safeReviewGameId(gameId: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < gameId.length; i++) {
+    hash ^= gameId.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `game-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function recordReviewGameEnqueued(gameId: string, queuePosition: number): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-game-enqueued',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(gameId),
+      queuePosition,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewGameStarted(entry: ReviewQueueEntry): void {
+  const timestamp = Date.now();
+  reviewGameStartedAt.set(entry, timestamp);
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-game-started',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      totalPositions: entry.total,
+      engineThreads: REVIEW_ENGINE_THREADS,
+      engineHash: REVIEW_ENGINE_HASH_MB,
+      timestamp,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewGameComplete(entry: ReviewQueueEntry): void {
+  const timestamp = Date.now();
+  const startedAt = reviewGameStartedAt.get(entry) ?? timestamp;
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-game-complete',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      totalPositions: entry.total,
+      totalDurationMs: Math.max(1, Math.round(timestamp - startedAt)),
+      timestamp,
+    },
+    redactionClass: 'safe',
+  });
+  reviewGameStartedAt.delete(entry);
+}
+
+function recordReviewCtrlCacheEvicted(entry: ReviewQueueEntry): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-ctrl-cache-evicted',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function reviewErrorClass(error: unknown): string {
+  if (error instanceof Error) return error.name || 'Error';
+  if (typeof error === 'string') return 'StringError';
+  if (error === null) return 'NullError';
+  if (error === undefined) return 'UnknownError';
+  return 'NonErrorThrow';
+}
+
+function recordReviewGameErrored(entry: ReviewQueueEntry, error: unknown, lastPositionIndex: number, requeued: boolean): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-game-errored',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      errorClass: reviewErrorClass(error),
+      lastPositionIndex,
+      requeued,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewWatchdogTriggered(entry: ReviewQueueEntry, timestamp: number): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Warn,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-watchdog-triggered',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      positionIndex: reviewItemIndex,
+      elapsedSinceLastBestmoveMs: Math.max(1, Math.round(timestamp - (reviewLastProgressAt ?? timestamp))),
+      depth: reviewActiveDepth ?? null,
+      movetime: reviewMovetime ?? null,
+      timestamp,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewWatchdogRecovery(entry: ReviewQueueEntry, timestamp: number, recoveryStartedAt: number): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-watchdog-recovery',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      positionIndex: reviewItemIndex,
+      recoveryLatencyMs: Math.max(1, Math.round(timestamp - recoveryStartedAt)),
+      timestamp,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewWatchdogAbort(entry: ReviewQueueEntry, timestamp: number, abortStartedAt: number): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-watchdog-abort',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      positionIndex: reviewItemIndex,
+      totalWatchdogWaitMs: Math.max(1, Math.round(timestamp - abortStartedAt)),
+      timestamp,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewStaleBestmoveDropped(entry: ReviewQueueEntry, timestamp: number, invalidatedAt: number): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Warn,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-stale-bestmove-dropped',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      positionIndex: reviewItemIndex,
+      arrivalDelayMs: Math.max(1, Math.round(timestamp - invalidatedAt)),
+      timestamp,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewCheckpointFlushed(entry: ReviewQueueEntry, flushStartedAt: number, positionCount: number): void {
+  const writeLatencyMs = Math.max(1, Math.round(Date.now() - flushStartedAt));
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-checkpoint-flushed',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      positionsDone: entry.done,
+      totalPositions: entry.total,
+      positionCount,
+      flushDurationMs: writeLatencyMs,
+      writeLatencyMs,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewCheckpointFlushFailure(entry: ReviewQueueEntry, error: unknown, positionCount: number): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-checkpoint-flush-failure',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      idbErrorDetail: diagnosticErrorMessage(error),
+      positionCount,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewManifestReadFailure(idbErrorDetail: string, recoveryAttempted: boolean): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-manifest-read-failure',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      idbErrorDetail,
+      recoveryAttempted,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewManifestWriteFailure(idbErrorDetail: string): void {
+  const activeEntry = activeIndex >= 0 ? queue[activeIndex] : null;
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-manifest-write-failure',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      idbErrorDetail,
+      queueDepth: queue.length,
+      currentGameSafeId: activeEntry ? safeReviewGameId(activeEntry.game.id) : null,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewManifestRecoveryActivated(gameId: string, lastCheckpointPositionIndex: number | null): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-manifest-recovery-activated',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      interruptedGameSafeId: safeReviewGameId(gameId),
+      lastCheckpointPositionIndex,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewQueueLifecycleEvent(message: 'review-queue-aborted' | 'review-queue-cleared', severity: Severity): void {
+  record({
+    kind: 'engine',
+    severity,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message,
+    metadata: {
+      role: reviewDiagnosticRole(),
+      queueDepth: queue.length,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordReviewEngineInitStart(): number {
+  const initStartedAt = Date.now();
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-engine-init-start',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      timestamp: initStartedAt,
+      wasmBuild: 'nnue',
+      sharedArrayBufferAvailable: isSharedArrayBufferAvailable(),
+    },
+    redactionClass: 'safe',
+  });
+  return initStartedAt;
+}
+
+function recordReviewEngineInitSuccess(initStartedAt: number): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-engine-init-success',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      threads: REVIEW_ENGINE_THREADS,
+      hash: REVIEW_ENGINE_HASH_MB,
+      initDurationMs: Math.max(1, Math.round(Date.now() - initStartedAt)),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function reviewEngineInitErrorReason(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name || 'Error';
+  if (typeof error === 'string') return error || 'Unknown init failure';
+  return 'Unknown init failure';
+}
+
+function recordReviewEngineInitFailure(initStartedAt: number, error: unknown): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-engine-init-failure',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      errorReason: reviewEngineInitErrorReason(error),
+      initDurationMs: Math.max(1, Math.round(Date.now() - initStartedAt)),
+    },
+    redactionClass: 'safe',
+  });
+}
 
 // --- Types ---
 
@@ -119,11 +487,54 @@ const OBSERVER_POLL_MS        = 4_000;  // observer fallback refresh if broadcas
 
 const tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 let isCurrentLeader = false;
+let leaderElectionStarted = false;
 let leaderHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let observerPollTimer:    ReturnType<typeof setInterval> | null = null;
 let leaderChannel: BroadcastChannel | null = null;
 
 interface LeaderToken { tabId: string; heartbeatAt: number }
+type ReviewChannelMessage =
+  | { type: 'leader-elected'; tabId: string }
+  | { type: 'leader-resigned'; tabId: string }
+  | { type: 'progress'; tabId: string }
+  | { type: 'manifest-changed'; tabId: string }
+  | { type: 'wake'; tabId: string }
+  | { type: 'pause'; tabId: string }
+  | { type: 'resume'; tabId: string }
+  | { type: 'cancel'; tabId: string }
+  | { type: 'reset-errored'; tabId: string; gameId: string }
+  | { type: 'skip-failed'; tabId: string; gameId: string };
+
+function diagnosticErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name || 'Error';
+  if (typeof error === 'string') return error || 'Unknown error';
+  return 'Unknown error';
+}
+
+function recordReviewChannelError(message: 'review-channel-send-error' | 'review-channel-receive-error', error: unknown): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message,
+    metadata: {
+      role: reviewDiagnosticRole(),
+      channelName: LEADER_CHANNEL_NAME,
+      errorMessage: diagnosticErrorMessage(error),
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function postReviewChannelMessage(message: ReviewChannelMessage): void {
+  try {
+    leaderChannel?.postMessage(message);
+  } catch (error) {
+    recordReviewChannelError('review-channel-send-error', error);
+  }
+}
 
 function readLeaderToken(): LeaderToken | null {
   try {
@@ -163,7 +574,25 @@ export function isLeaderTab(): boolean {
 export function isReviewOwnerUnavailableForTakeover(): boolean {
   if (isCurrentLeader || queue.length === 0) return false;
   const token = readLeaderToken();
-  return !token || (Date.now() - token.heartbeatAt) > LEADER_STALE_MS;
+  if (!token) return true;
+  const timestamp = Date.now();
+  const heartbeatAgeMs = timestamp - token.heartbeatAt;
+  if (heartbeatAgeMs <= LEADER_STALE_MS) return false;
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-stale-leader-detected',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      tabId,
+      heartbeatAgeMs,
+      timestamp,
+    },
+    redactionClass: 'safe',
+  });
+  return true;
 }
 
 export function takeOverUnavailableReviewOwner(): void {
@@ -182,8 +611,23 @@ function becomeLeader(resumeAfterTakeover = false): void {
     clearInterval(observerPollTimer);
     observerPollTimer = null;
   }
-  leaderChannel?.postMessage({ type: 'leader-elected', tabId });
+  postReviewChannelMessage({ type: 'leader-elected', tabId });
   console.log('[review-queue] this tab is now the leader:', tabId);
+
+  const leaderTimestamp = Date.now();
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-tab-became-leader',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      tabId,
+      timestamp: leaderTimestamp,
+    },
+    redactionClass: 'safe',
+  });
 
   // Instrument leader acquisition. When resumeAfterTakeover is true, this tab
   // was previously an observer and is now promoting itself after detecting a
@@ -197,6 +641,7 @@ function becomeLeader(resumeAfterTakeover = false): void {
     sourceTag: 'review-queue',
     message: 'leader-acquired',
     metadata: {
+      role: reviewDiagnosticRole(),
       eventType: 'leader-acquired',
       sessionId: leaderSessionId,
     },
@@ -206,10 +651,24 @@ function becomeLeader(resumeAfterTakeover = false): void {
     record({
       kind: 'engine',
       severity: Severity.Info,
+      source: 'review-engine',
+      sourceTag: 'review-engine',
+      message: 'review-leadership-transferred',
+      metadata: {
+        role: reviewDiagnosticRole(),
+        newLeaderTabId: tabId,
+        timestamp: Date.now(),
+      },
+      redactionClass: 'safe',
+    });
+    record({
+      kind: 'engine',
+      severity: Severity.Info,
       source: 'engine.reviewQueue',
       sourceTag: 'review-queue',
       message: 'observer-promotion',
       metadata: {
+        role: reviewDiagnosticRole(),
         eventType: 'observer-promotion',
         sessionId: leaderSessionId,
       },
@@ -233,7 +692,7 @@ function resignLeadership(): void {
     leaderHeartbeatTimer = null;
   }
   clearLeaderTokenIfOwn();
-  leaderChannel?.postMessage({ type: 'leader-resigned', tabId });
+  postReviewChannelMessage({ type: 'leader-resigned', tabId });
 
   // Instrument leader loss (tab closing, pagehide, or explicit release).
   record({
@@ -243,6 +702,7 @@ function resignLeadership(): void {
     sourceTag: 'review-queue',
     message: 'leader-lost',
     metadata: {
+      role: reviewDiagnosticRole(),
       eventType: 'leader-lost',
       sessionId: getSessionId(),
     },
@@ -273,7 +733,7 @@ function startObserverPolling(): void {
 async function refreshObserverQueue(): Promise<void> {
   if (isCurrentLeader) return;
   await mirrorQueueFromManifest();
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 /**
@@ -285,37 +745,51 @@ function initLeaderElection(): void {
   if (typeof window === 'undefined') {
     // No browser globals (tests, SSR) — act as leader unconditionally so
     // existing single-tab behavior is unaffected.
+    leaderElectionStarted = true;
     isCurrentLeader = true;
     return;
   }
 
+  leaderElectionStarted = true;
+
   if (typeof BroadcastChannel !== 'undefined') {
     leaderChannel = new BroadcastChannel(LEADER_CHANNEL_NAME);
     leaderChannel.onmessage = (ev: MessageEvent) => {
-      const msg = ev.data as { type: string; tabId?: string; gameId?: string };
-      if (msg.type === 'leader-resigned' || msg.type === 'leader-elected') {
-        if (msg.tabId !== tabId) {
-          // Another tab took over (or stepped down). Observer tabs only refresh
-          // their mirror here; persisted work takeover is manual.
-          if (!isCurrentLeader) void refreshObserverQueue();
+      try {
+        const msg = ev.data as { type?: string; tabId?: string; gameId?: string } | null;
+        if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
+          recordReviewChannelError('review-channel-receive-error', new Error('Malformed BroadcastChannel message'));
+          return;
         }
-      } else if (msg.type === 'progress' || msg.type === 'manifest-changed') {
-        if (!isCurrentLeader) void refreshObserverQueue();
-      } else if (msg.type === 'wake') {
-        // An observer tab enqueued work — if we're the leader, make sure the
-        // queue is advancing; harmless no-op otherwise.
-        if (isCurrentLeader) advanceQueue();
-      } else if (msg.type === 'pause' && isCurrentLeader) {
-        pauseBulkReview();
-      } else if (msg.type === 'resume' && isCurrentLeader) {
-        resumeBulkReview();
-      } else if (msg.type === 'cancel' && isCurrentLeader) {
-        cancelBulkReview();
-      } else if (msg.type === 'reset-errored' && isCurrentLeader && msg.gameId) {
-        resetErroredGame(msg.gameId);
-      } else if (msg.type === 'skip-failed' && isCurrentLeader && msg.gameId) {
-        skipFailedReviewGame(msg.gameId);
+        if (msg.type === 'leader-resigned' || msg.type === 'leader-elected') {
+          if (msg.tabId !== tabId) {
+            // Another tab took over (or stepped down). Observer tabs only refresh
+            // their mirror here; persisted work takeover is manual.
+            if (!isCurrentLeader) void refreshObserverQueue();
+          }
+        } else if (msg.type === 'progress' || msg.type === 'manifest-changed') {
+          if (!isCurrentLeader) void refreshObserverQueue();
+        } else if (msg.type === 'wake') {
+          // An observer tab enqueued work — if we're the leader, make sure the
+          // queue is advancing; harmless no-op otherwise.
+          if (isCurrentLeader) advanceQueue();
+        } else if (msg.type === 'pause' && isCurrentLeader) {
+          pauseBulkReview();
+        } else if (msg.type === 'resume' && isCurrentLeader) {
+          resumeBulkReview();
+        } else if (msg.type === 'cancel' && isCurrentLeader) {
+          cancelBulkReview();
+        } else if (msg.type === 'reset-errored' && isCurrentLeader && msg.gameId) {
+          resetErroredGame(msg.gameId);
+        } else if (msg.type === 'skip-failed' && isCurrentLeader && msg.gameId) {
+          skipFailedReviewGame(msg.gameId);
+        }
+      } catch (error) {
+        recordReviewChannelError('review-channel-receive-error', error);
       }
+    };
+    leaderChannel.onmessageerror = (ev: MessageEvent) => {
+      recordReviewChannelError('review-channel-receive-error', ev.data ?? new Error('BroadcastChannel messageerror'));
     };
   }
 
@@ -331,7 +805,24 @@ function initLeaderElection(): void {
   });
 
   tryClaimLeadership();
-  if (!isCurrentLeader) startObserverPolling();
+  if (!isCurrentLeader) {
+    const leaderToken = readLeaderToken();
+    record({
+      kind: 'engine',
+      severity: Severity.Info,
+      source: 'review-engine',
+      sourceTag: 'review-engine',
+      message: 'review-tab-became-observer',
+      metadata: {
+        role: reviewDiagnosticRole(),
+        tabId,
+        leaderTabId: leaderToken?.tabId ?? null,
+        timestamp: Date.now(),
+      },
+      redactionClass: 'safe',
+    });
+    startObserverPolling();
+  }
 }
 
 /**
@@ -356,7 +847,8 @@ async function takeOverAsLeader(resumeAfterTakeover = false): Promise<void> {
 
 /** Rebuild a read-only mirror of `queue` from the manifest, for observer-tab display only. */
 async function mirrorQueueFromManifest(): Promise<void> {
-  const manifest = await loadReviewQueueManifest();
+  const { entries: manifest, errorDetail } = await loadReviewQueueManifestWithDiagnostics();
+  if (errorDetail) recordReviewManifestReadFailure(errorDetail, false);
   queue = manifest.map(record => {
     const game = _libraryGames.find(g => g.id === record.gameId);
     // Fallback placeholder when the library snapshot hasn't caught up yet —
@@ -396,9 +888,12 @@ export function setLibraryGamesForReviewQueue(games: ImportedGame[]): void {
 
 function enqueueObserverManifestOnly(games: ImportedGame[], depth: number): void {
   let added = false;
+  let observerAddedCount = 0;
   for (const game of games) {
     if (_analyzedGameIds.has(game.id)) continue;
     if (queue.some(e => e.game.id === game.id && e.status !== 'error')) continue;
+    const queuePosition = queue.length + observerAddedCount;
+    observerAddedCount++;
     added = true;
     void saveReviewQueueManifest({
       gameId: game.id,
@@ -407,11 +902,15 @@ function enqueueObserverManifestOnly(games: ImportedGame[], depth: number): void
       done:   0,
       total:  estimatePlyCountFromPgn(game.pgn),
     }).then(saved => {
-      if (!saved) markReviewStorageWriteFailed('manifest-write-failed');
+      if (!saved) {
+        recordReviewManifestWriteFailure('saveReviewQueueManifest returned false');
+        markReviewStorageWriteFailed('manifest-write-failed');
+      }
     });
+    recordReviewGameEnqueued(game.id, queuePosition);
   }
-  if (added) leaderChannel?.postMessage({ type: 'manifest-changed', tabId });
-  leaderChannel?.postMessage({ type: 'wake', tabId });
+  if (added) postReviewChannelMessage({ type: 'manifest-changed', tabId });
+  postReviewChannelMessage({ type: 'wake', tabId });
 }
 
 // --- Queue state ---
@@ -423,6 +922,62 @@ export type ReviewPauseReason = 'user' | 'hidden' | 'reload';
 let queuePauseReason: ReviewPauseReason | null = null;
 let hiddenSuspendedOwnerTabId: string | null = null;
 let activeReviewRun: ReviewRunManifest | null = null;
+
+export interface ReviewCrashContext {
+  safeGameId: string | null;
+  positionIndex: number | null;
+  positionsDone: number;
+  totalPositions: number;
+  role: ReviewDiagnosticRole;
+  watchdogActive: boolean;
+  watchdogTriggered: boolean;
+  watchdogLastTriggerTimestamp: number | null;
+  lastCheckpointTimestamp: number | null;
+}
+
+export function isReviewQueueEntryAnalyzing(): boolean {
+  try {
+    return queue.some(entry => entry.status === 'analyzing');
+  } catch {
+    return false;
+  }
+}
+
+export function getReviewCrashContext(): ReviewCrashContext | null {
+  try {
+    const entry = activeIndex >= 0 ? queue[activeIndex] : queue.find(candidate => candidate.status === 'analyzing');
+    if (!entry || entry.status !== 'analyzing') return null;
+    return {
+      safeGameId: safeReviewGameId(entry.game.id),
+      positionIndex: reviewItemIndex >= 0 ? reviewItemIndex : null,
+      positionsDone: entry.done,
+      totalPositions: entry.total,
+      role: reviewDiagnosticRole(),
+      watchdogActive: reviewWatchdogTimer !== undefined || reviewWatchdogAbsoluteTimer !== undefined,
+      watchdogTriggered: reviewWatchdogTriggeredAt !== null,
+      watchdogLastTriggerTimestamp: reviewWatchdogLastTriggerAt,
+      lastCheckpointTimestamp: checkpointLastFlushAt > 0 ? checkpointLastFlushAt : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function publishReviewQueueAnalysisSignal(): void {
+  try {
+    if (typeof window === 'undefined') return;
+    const target = window as Window & {
+      __patzerReviewQueueEntryAnalyzing?: () => boolean;
+      __patzerReviewCrashContext?: () => ReviewCrashContext | null;
+    };
+    target.__patzerReviewQueueEntryAnalyzing = isReviewQueueEntryAnalyzing;
+    target.__patzerReviewCrashContext = getReviewCrashContext;
+  } catch {
+    // Diagnostics correlation must never affect queue behavior.
+  }
+}
+
+publishReviewQueueAnalysisSignal();
 
 function persistActiveReviewRun(): void {
   if (activeReviewRun) {
@@ -621,10 +1176,10 @@ function scheduleFailedGameRetry(entry: ReviewQueueEntry): void {
     entry.done = entry.cache?.size ?? entry.done;
     persistManifestEntry(entry);
     activeIndex = -1;
-    _redraw();
+    notifyReviewQueueStateChanged();
     advanceQueue();
   }, delay);
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 function clearFailedGameState(gameId: string, depth: number): void {
@@ -732,7 +1287,7 @@ function ensureEntryBuilt(entry: ReviewQueueEntry): void {
 /** Persist the lightweight manifest record for one queue entry (cheap, status/progress only). */
 function markReviewStorageWriteFailed(health: Exclude<ReviewStorageHealth, 'ok'>): void {
   reviewStorageHealth = health;
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 function persistManifestEntry(entry: ReviewQueueEntry): void {
@@ -743,11 +1298,14 @@ function persistManifestEntry(entry: ReviewQueueEntry): void {
     done:   entry.done,
     total:  entry.total,
   }).then(saved => {
-    if (!saved) markReviewStorageWriteFailed('manifest-write-failed');
+    if (!saved) {
+      recordReviewManifestWriteFailure('saveReviewQueueManifest returned false');
+      markReviewStorageWriteFailed('manifest-write-failed');
+    }
   });
   // Tell observer tabs a manifest record changed so they refresh their mirror
   // immediately instead of waiting for the fallback poll interval.
-  leaderChannel?.postMessage({ type: 'manifest-changed', tabId });
+  postReviewChannelMessage({ type: 'manifest-changed', tabId });
 }
 
 // --- Per-bestmove checkpoint throttle (CR-10: throttle engine-driven writes) ---
@@ -766,6 +1324,7 @@ const CHECKPOINT_MIN_INTERVAL_MS   = 2_000; // ...or at least every T ms, whiche
 
 let checkpointTimer:           ReturnType<typeof setTimeout> | null = null;
 let checkpointLastFlushAt      = 0;
+let checkpointLastAttemptAt    = 0;
 let checkpointPositionsPending = 0;
 let checkpointPendingEntry:    ReviewQueueEntry | null = null;
 
@@ -775,16 +1334,24 @@ function flushReviewCheckpoint(): void {
     clearTimeout(checkpointTimer);
     checkpointTimer = null;
   }
+  const flushedPositionCount = checkpointPositionsPending;
   checkpointPositionsPending = 0;
-  checkpointLastFlushAt      = Date.now();
+  checkpointLastAttemptAt    = Date.now();
   const entry = checkpointPendingEntry;
   checkpointPendingEntry = null;
   if (!entry || !entry.ctrl || !entry.cache || !entry.serializedNodes) return;
 
 
 
+  const flushStartedAt = Date.now();
   void saveAnalysisToIdbStrict('partial', entry.game.id, entry.serializedNodes, reviewActiveDepth)
+    .then(() => {
+      checkpointLastFlushAt = Date.now();
+      recordReviewCheckpointFlushed(entry, flushStartedAt, flushedPositionCount);
+      notifyReviewQueueStateChanged();
+    })
     .catch(error => {
+      recordReviewCheckpointFlushFailure(entry, error, flushedPositionCount);
       console.warn('[review-queue] checkpoint save failed', error);
       markReviewStorageWriteFailed('checkpoint-write-failed');
     });
@@ -800,7 +1367,7 @@ function flushReviewCheckpoint(): void {
 function scheduleReviewCheckpoint(entry: ReviewQueueEntry): void {
   checkpointPendingEntry = entry;
   checkpointPositionsPending++;
-  const elapsed = Date.now() - checkpointLastFlushAt;
+  const elapsed = Date.now() - Math.max(checkpointLastFlushAt, checkpointLastAttemptAt);
   if (checkpointPositionsPending >= CHECKPOINT_POSITION_INTERVAL || elapsed >= CHECKPOINT_MIN_INTERVAL_MS) {
     flushReviewCheckpoint();
     return;
@@ -884,6 +1451,7 @@ let reviewActiveDepth      = reviewDepth;
 let reviewSearchGeneration      = 0;   // incremented on every stop() or new-search start
 let reviewSearchStartGeneration = 0;   // captured at sendNextItem() / watchdog-retry
 let reviewInflightFen           = '';  // FEN of the currently-active search
+let reviewSearchInvalidatedAt: number | null = null;
 
 interface ReviewSearchIdentity {
   gameId:     string;
@@ -899,6 +1467,11 @@ let reviewActiveSearchIdentity: ReviewSearchIdentity | null = null;
 function clearReviewSearchIdentity(): void {
   reviewActiveSearchIdentity = null;
   reviewInflightFen = '';
+}
+
+function invalidateReviewSearchIdentity(): void {
+  reviewSearchInvalidatedAt = Date.now();
+  clearReviewSearchIdentity();
 }
 
 function currentReviewSearchIdentityMatches(): boolean {
@@ -917,6 +1490,12 @@ function currentReviewSearchIdentityMatches(): boolean {
 function beginReviewSearch(item: ReviewBatchItem): void {
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (!entry) return;
+  performance.mark('position-analysis-start', {
+    detail: {
+      index: reviewItemIndex,
+      fen: item.fen,
+    },
+  });
   reviewSearchGeneration++;
   reviewCurrentEval           = {};
   reviewNodePath              = item.nodePath;
@@ -991,6 +1570,8 @@ function clearDispatchDefer(): void {
 let reviewWatchdogTimer:         ReturnType<typeof setTimeout> | undefined = undefined; // silence timer
 let reviewWatchdogAbsoluteTimer: ReturnType<typeof setTimeout> | undefined = undefined; // hard backstop
 let reviewWatchdogRetries  = 0;          // retry count for the current position (bounded to 1)
+let reviewWatchdogTriggeredAt: number | null = null;
+let reviewWatchdogLastTriggerAt: number | null = null;
 const WATCHDOG_SILENCE_MS  = 12_000;     // fire after this long with NO engine output for the active search
 const WATCHDOG_ABSOLUTE_MS = 240_000;    // hard per-position backstop, independent of output
 const WATCHDOG_MAX_RETRIES = 1;          // retry once, then skip
@@ -1021,9 +1602,11 @@ function clearWatchdog(): void {
 }
 
 function markActiveEntryErrored(reason: string, error?: unknown): void {
+  const lastPositionIndex = Math.max(0, reviewItemIndex - 1);
   clearWatchdog();
   clearDispatchDefer();
   reviewWatchdogRetries = 0;
+  reviewWatchdogTriggeredAt = null;
   reviewSearchActive = false;
   clearReviewSearchIdentity();
   reviewCurrentEval = {};
@@ -1041,12 +1624,20 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
     entry.status = 'error';
     persistManifestEntry(entry);
     scheduleFailedGameRetry(entry);
+    recordReviewGameErrored(entry, error, lastPositionIndex, true);
   }
 
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 function onWatchdogExpiry(): void {
+  const watchdogTriggeredAt = Date.now();
+  if (reviewWatchdogTriggeredAt === null) reviewWatchdogTriggeredAt = watchdogTriggeredAt;
+  reviewWatchdogLastTriggerAt = watchdogTriggeredAt;
+  const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+  if (entry) recordReviewWatchdogTriggered(entry, watchdogTriggeredAt);
+  notifyReviewQueueStateChanged();
+
   // Cancel whichever timer did not fire (silence vs absolute backstop).
   clearWatchdog();
   console.warn('[review-watchdog] no engine output within timeout — treating position as hung; retries used:', reviewWatchdogRetries);
@@ -1060,6 +1651,7 @@ function onWatchdogExpiry(): void {
     sourceTag: 'engine',
     message: 'watchdog-expiry',
     metadata: {
+      role:        reviewDiagnosticRole(),
       eventType:   'watchdog-expiry',
       depthTarget: reviewActiveDepth,
       depthReached: reviewCurrentEval.depth ?? null,
@@ -1077,6 +1669,7 @@ function onWatchdogExpiry(): void {
     reviewSearchGeneration++;
     reviewProtocol.stop();
     reviewSearchActive = false;
+    invalidateReviewSearchIdentity();
   }
 
   if (reviewWatchdogRetries < WATCHDOG_MAX_RETRIES) {
@@ -1091,6 +1684,8 @@ function onWatchdogExpiry(): void {
     beginReviewSearch(item);
   } else {
     // Second expiry — mark the game as errored and advance past it.
+    if (entry) recordReviewWatchdogAbort(entry, watchdogTriggeredAt, reviewWatchdogTriggeredAt ?? watchdogTriggeredAt);
+    recordReviewQueueLifecycleEvent('review-queue-aborted', Severity.Warn);
     markActiveEntryErrored(`review position permanently timed out at ${reviewItemIndex + 1}/${reviewItemQueue.length}`);
   }
 }
@@ -1098,6 +1693,7 @@ function onWatchdogExpiry(): void {
 /** Advance past the current position (skip or finish) after a watchdog skip. */
 function advanceToNextItem(): void {
   reviewWatchdogRetries = 0;
+  reviewWatchdogTriggeredAt = null;
   reviewCurrentEval = {};
   reviewItemIndex++;
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
@@ -1106,7 +1702,7 @@ function advanceToNextItem(): void {
   // If the entry was marked errored (by the second watchdog expiry), skip to
   // the next game in the queue rather than continuing its remaining positions.
   if (entry.status === 'error') {
-    _redraw();
+    notifyReviewQueueStateChanged();
     advanceQueue();
     return;
   }
@@ -1127,6 +1723,26 @@ let _getUserColor:         (game: ImportedGame) => 'white' | 'black' | null     
 let _redraw:               () => void                                                   = () => {};
 let _setReviewEngineMetadata: (gameId: string, metadata: ReviewEngineMetadata) => void  = () => {};
 
+const reviewQueueStateListeners = new Set<() => void>();
+
+/** Subscribe to review queue state changes; returns an unsubscribe cleanup. */
+export function subscribeReviewQueueState(listener: () => void): () => void {
+  reviewQueueStateListeners.add(listener);
+  return () => {
+    reviewQueueStateListeners.delete(listener);
+  };
+}
+
+function notifyReviewQueueStateChanged(): void {
+  _redraw();
+  for (const listener of reviewQueueStateListeners) {
+    try {
+      listener();
+    } catch (error) {
+      console.warn('[review-queue] state-change listener failed', error);
+    }
+  }
+}
 
 export function initReviewQueue(deps: {
   analyzedGameIds:      Set<string>;
@@ -1205,7 +1821,7 @@ function recomputeMissedTactics(): void {
         _missedTacticGameIds.delete(entry.game.id);
       }
     }
-    _redraw();
+    notifyReviewQueueStateChanged();
   })();
 }
 
@@ -1218,6 +1834,7 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
   if (!isCurrentLeader) return;
   if (reviewEngineInitStarted) return;
   reviewEngineInitStarted = true;
+  const initStartedAt = recordReviewEngineInitStart();
 
   reviewProtocol.onMessage(line => {
     if (line.trim() === 'readyok') {
@@ -1240,19 +1857,21 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     reviewEngineFailed = true;
     reviewEngineReady  = false;
     _failAnalyzingEntries();
-    _redraw();
+    notifyReviewQueueStateChanged();
   };
 
   try {
     await reviewProtocol.init(baseUrl);
+    recordReviewEngineInitSuccess(initStartedAt);
   } catch (err) {
     // WASM alloc, SharedArrayBuffer COOP/COEP, or NNUE fetch failure.
+    recordReviewEngineInitFailure(initStartedAt, err);
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[review-engine] init failed — engine unavailable:', msg);
     reviewEngineFailed = true;
     // Demote every entry still in `analyzing` so they don't appear stuck.
     _failAnalyzingEntries();
-    _redraw();
+    notifyReviewQueueStateChanged();
   }
 }
 
@@ -1341,6 +1960,11 @@ function parseReviewLine(line: string): void {
       // eval state so the next legitimate result is not contaminated.
       console.log('[review-engine] stale bestmove discarded (gen', reviewSearchStartGeneration,
         '!== current', reviewSearchGeneration, 'fen', reviewInflightFen, ')');
+      const staleEntry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+      if (staleEntry) {
+        const timestamp = Date.now();
+        recordReviewStaleBestmoveDropped(staleEntry, timestamp, reviewSearchInvalidatedAt ?? timestamp);
+      }
 
       // Instrument stale bestmove drop: record event type, depth reached, and movetime limit.
       // Position context is ply only — never raw FEN.
@@ -1351,6 +1975,7 @@ function parseReviewLine(line: string): void {
         sourceTag: 'engine',
         message: 'stale-bestmove-drop',
         metadata: {
+          role:         reviewDiagnosticRole(),
           eventType:    'stale-bestmove-drop',
           depthTarget:  reviewActiveDepth,
           depthReached: reviewCurrentEval.depth ?? null,
@@ -1362,10 +1987,12 @@ function parseReviewLine(line: string): void {
 
       reviewCurrentEval = {};
       clearReviewSearchIdentity();
+      reviewSearchInvalidatedAt = null;
       return;
     }
     reviewSearchActive = false;
     clearReviewSearchIdentity();
+    reviewSearchInvalidatedAt = null;
     const bestmove = parts[1];
     if (!bestmove || bestmove === '(none)') {
       const activeItem = reviewItemQueue[reviewItemIndex];
@@ -1388,9 +2015,14 @@ function parseReviewLine(line: string): void {
 // --- Bestmove handler ---
 
 function onReviewBestmove(): void {
-  reviewWatchdogRetries = 0;
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (!entry) return;
+  if (reviewWatchdogRetries > 0 && reviewWatchdogTriggeredAt !== null) {
+    const timestamp = Date.now();
+    recordReviewWatchdogRecovery(entry, timestamp, reviewWatchdogTriggeredAt);
+  }
+  reviewWatchdogRetries = 0;
+  reviewWatchdogTriggeredAt = null;
 
   // entry is the in-progress active entry here, never 'complete' — ctrl/cache
   // have not been evicted yet.
@@ -1404,6 +2036,12 @@ function onReviewBestmove(): void {
   // Capture the just-analyzed item's identity before reviewItemIndex advances —
   // needed to append a single StoredNodeEntry below without re-walking the mainline.
   const item = reviewItemQueue[reviewItemIndex];
+  performance.mark('position-analysis-complete', {
+    detail: {
+      index: reviewItemIndex,
+      fen: item?.fen ?? '',
+    },
+  });
 
   if (stored.cp !== undefined || stored.mate !== undefined) {
     const parentEval = cache.get(parentPath);
@@ -1432,7 +2070,7 @@ function onReviewBestmove(): void {
   reviewCurrentEval = {};
 
   scheduleReviewCheckpoint(entry);
-  _redraw();
+  notifyReviewQueueStateChanged();
 
   if (reviewItemIndex < reviewItemQueue.length) {
     sendNextItem();
@@ -1496,6 +2134,8 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
     markReviewQueueProgress();
     markActiveReviewRunGameComplete(entry.game.id);
     clearFailedGameState(entry.game.id, entry.depth);
+    recordReviewGameComplete(entry);
+    captureMemorySnapshot('post-review');
     _analyzedGameIds.add(entry.game.id);
     setMissedMoments(entry.game.id, moments);
     if (moments.length > 0) _missedTacticGameIds.add(entry.game.id);
@@ -1514,13 +2154,14 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
     entry.ctrl  = null;
     entry.cache = null;
     entry.serializedNodes = null;
+    recordReviewCtrlCacheEvicted(entry);
 
     // Terminal state: the full analysis is now durably saved in analysis-library,
     // so the lightweight queue manifest entry is no longer needed.
     void clearReviewQueueManifestEntry(entry.game.id);
 
     reviewDebugLog('[review-engine] game complete:', entry.game.id);
-    _redraw();
+    notifyReviewQueueStateChanged();
     advanceQueue();
   } catch (error) {
     if (activeIndex >= 0 && queue[activeIndex] === entry) {
@@ -1569,6 +2210,7 @@ async function startEntryBatch(entry: ReviewQueueEntry): Promise<void> {
     }
 
     entry.total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
+    recordReviewGameStarted(entry);
 
     if (items.length === 0) {
       finishEntry(entry);
@@ -1601,7 +2243,7 @@ function advanceQueue(): void {
   // the manifest-persisted 'pending' entries will be picked up whenever a
   // leader tab is open and polls/claims).
   if (!isCurrentLeader) {
-    leaderChannel?.postMessage({ type: 'wake', tabId });
+    postReviewChannelMessage({ type: 'wake', tabId });
     return;
   }
 
@@ -1610,7 +2252,7 @@ function advanceQueue(): void {
     activeIndex = -1;
     resetReviewBatchElapsed();
     setActiveReviewRunState(queue.length > 0 ? 'batch-complete' : 'no-more-eligible-games');
-    _redraw();
+    notifyReviewQueueStateChanged();
     return;
   }
 
@@ -1679,6 +2321,7 @@ export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceC
     };
     queue.push(entry);
     persistManifestEntry(entry);
+    recordReviewGameEnqueued(entry.game.id, queue.length - 1);
   }
 
   // Init engine lazily on first enqueue (skip if already failed).
@@ -1749,7 +2392,11 @@ export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
   // Insert immediately after the active entry so these are next in line.
   const insertAt = activeIndex >= 0 ? activeIndex + 1 : 0;
   queue.splice(insertAt, 0, ...newEntries);
-  for (const entry of newEntries) persistManifestEntry(entry);
+  for (let i = 0; i < newEntries.length; i++) {
+    const entry = newEntries[i]!;
+    persistManifestEntry(entry);
+    recordReviewGameEnqueued(entry.game.id, insertAt + i);
+  }
 
   if (!reviewEngineInitStarted && !reviewEngineFailed) {
     void initReviewEngine('/stockfish-web');
@@ -1798,11 +2445,12 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
   // (heavy) resume at that point.
   if (!isCurrentLeader) {
     await mirrorQueueFromManifest();
-    _redraw();
+    notifyReviewQueueStateChanged();
     return;
   }
 
-  const manifest = await loadReviewQueueManifest();
+  const { entries: manifest, errorDetail } = await loadReviewQueueManifestWithDiagnostics();
+  if (errorDetail) recordReviewManifestReadFailure(errorDetail, true);
   if (manifest.length === 0) return;
 
   const gamesById = new Map(games.map(g => [g.id, g]));
@@ -1846,6 +2494,9 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
         cache.set(entry.path, ev);
       }
     }
+    if (record.status === 'analyzing') {
+      recordReviewManifestRecoveryActivated(record.gameId, stored ? cache.size : null);
+    }
 
     const total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
     rebuilt.push({
@@ -1871,7 +2522,7 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
   hiddenSuspendedOwnerTabId = null;
   setActiveReviewRunState('interrupted-after-reload');
   for (const entry of rebuilt) persistManifestEntry(entry);
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 export function isBulkRunning(): boolean {
@@ -1888,23 +2539,25 @@ export function cancelBulkReview(): void {
   // read-only manifest mirror) — wake the leader to perform the actual cancel
   // instead of clearing the shared manifest out from under it.
   if (!isCurrentLeader) {
-    leaderChannel?.postMessage({ type: 'cancel', tabId });
+    postReviewChannelMessage({ type: 'cancel', tabId });
     return;
   }
   clearWatchdog();
   clearDispatchDefer();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
+  reviewWatchdogTriggeredAt = null;
   if (reviewSearchActive) {
     // Invalidate any in-flight search before stopping so a late bestmove is discarded.
     reviewSearchGeneration++;
     reviewProtocol.stop();
     reviewSearchActive = false;
-    clearReviewSearchIdentity();
+    invalidateReviewSearchIdentity();
   }
   // The whole manifest is being cleared below, so drop rather than flush any
   // pending checkpoint — writing it would just be immediately wiped out.
   cancelReviewCheckpoint();
+  recordReviewQueueLifecycleEvent('review-queue-cleared', Severity.Info);
   queue       = [];
   activeIndex = -1;
   queuePaused = false;
@@ -1914,12 +2567,12 @@ export function cancelBulkReview(): void {
   setActiveReviewRunState('canceled');
   resetReviewBatchElapsed();
   void clearReviewQueueManifest();
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 export function pauseBulkReview(): void {
   if (!isCurrentLeader) {
-    leaderChannel?.postMessage({ type: 'pause', tabId });
+    postReviewChannelMessage({ type: 'pause', tabId });
     return;
   }
   if (!isBulkRunning() && failedGameRetryTimer === null) return;
@@ -1931,19 +2584,20 @@ export function pauseBulkReview(): void {
   clearDispatchDefer();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
+  reviewWatchdogTriggeredAt = null;
   if (reviewSearchActive) {
     // Invalidate any in-flight search before stopping so a late bestmove is discarded.
     reviewSearchGeneration++;
     reviewProtocol.stop();
     reviewSearchActive = false;
-    clearReviewSearchIdentity();
+    invalidateReviewSearchIdentity();
   }
   // Force a checkpoint write now — the queue is going idle, so don't leave the
   // most recently analyzed positions sitting in the throttle window unsaved.
   flushReviewCheckpoint();
   // The queue is idle until resumeBulkReview; elapsed time restarts on resume.
   resetReviewBatchElapsed();
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 export function suspendBulkReviewForHiddenTab(): void {
@@ -1957,20 +2611,21 @@ export function suspendBulkReviewForHiddenTab(): void {
   clearDispatchDefer();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
+  reviewWatchdogTriggeredAt = null;
   if (reviewSearchActive) {
     reviewSearchGeneration++;
     reviewProtocol.stop();
     reviewSearchActive = false;
-    clearReviewSearchIdentity();
+    invalidateReviewSearchIdentity();
   }
   flushReviewCheckpoint();
   resetReviewBatchElapsed();
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 export function resumeBulkReview(): void {
   if (!isCurrentLeader) {
-    leaderChannel?.postMessage({ type: 'resume', tabId });
+    postReviewChannelMessage({ type: 'resume', tabId });
     return;
   }
   if (!queuePaused) return;
@@ -1989,7 +2644,7 @@ export function resumeBulkReview(): void {
   } else {
     advanceQueue();
   }
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 export function canResumeHiddenSuspendedReviewInThisTab(): boolean {
@@ -2074,7 +2729,7 @@ export async function queueNextReviewRunBatch(
   if (!selection) return 'no-run';
   if (selection.batchGames.length === 0) {
     setActiveReviewRunState('no-more-eligible-games');
-    _redraw();
+    notifyReviewQueueStateChanged();
     return 'no-more-eligible-games';
   }
 
@@ -2089,7 +2744,7 @@ export async function queueNextReviewRunBatch(
     orderingContext:     manifest.orderingContext,
     activeBatchIds:      selection.batchGameIds,
   });
-  _redraw();
+  notifyReviewQueueStateChanged();
   return 'queued';
 }
 
@@ -2103,7 +2758,7 @@ export function dismissReviewRunNotice(): void {
   activeReviewRun.lifecycleState = 'idle';
   activeReviewRun.updatedAt = Date.now();
   persistActiveReviewRun();
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 export interface QueueSummary {
@@ -2128,6 +2783,9 @@ export interface QueueSummary {
   activeBatchGameIds: string[];
   reviewDepth: number | null;
   timeControlContext: ReviewRunTimeControlContext | null;
+  watchdogTriggered: boolean;
+  watchdogLastTriggerTimestamp: number | null;
+  lastCheckpointTimestamp: number | null;
 
 
 
@@ -2229,6 +2887,9 @@ export function getQueueSummary(): QueueSummary {
     activeBatchGameIds: [...batchIds],
     reviewDepth: activeReviewRun?.reviewDepth ?? currentEntry?.depth ?? null,
     timeControlContext: activeReviewRun?.timeControlContext ?? null,
+    watchdogTriggered: reviewWatchdogTriggeredAt !== null,
+    watchdogLastTriggerTimestamp: reviewWatchdogLastTriggerAt,
+    lastCheckpointTimestamp: checkpointLastFlushAt > 0 ? checkpointLastFlushAt : null,
     remainingPositions,
   };
 }
@@ -2259,7 +2920,7 @@ export function isGameErrored(gameId: string): boolean {
  */
 export function resetErroredGame(gameId: string): void {
   if (!isCurrentLeader) {
-    leaderChannel?.postMessage({ type: 'reset-errored', tabId, gameId });
+    postReviewChannelMessage({ type: 'reset-errored', tabId, gameId });
     return;
   }
   const idx = queue.findIndex(e => e.game.id === gameId && e.status === 'error');
@@ -2268,12 +2929,12 @@ export function resetErroredGame(gameId: string): void {
   // If the active index pointed past the removed entry, adjust it.
   if (activeIndex > idx) activeIndex--;
   void clearReviewQueueManifestEntry(gameId);
-  _redraw();
+  notifyReviewQueueStateChanged();
 }
 
 export function skipFailedReviewGame(gameId: string): void {
   if (!isCurrentLeader) {
-    leaderChannel?.postMessage({ type: 'skip-failed', tabId, gameId });
+    postReviewChannelMessage({ type: 'skip-failed', tabId, gameId });
     return;
   }
   const idx = queue.findIndex(e => e.game.id === gameId && e.status === 'error');
@@ -2285,7 +2946,7 @@ export function skipFailedReviewGame(gameId: string): void {
   queue.splice(idx, 1);
   if (activeIndex >= idx) activeIndex--;
   void clearReviewQueueManifestEntry(entry.game.id);
-  _redraw();
+  notifyReviewQueueStateChanged();
   advanceQueue();
 }
 

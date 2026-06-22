@@ -580,9 +580,17 @@ export function renderEvalGraph(
   // Vertical bar at current move (drawn before dots so dots render on top)
   const curPt = valid.find(p => p.path === currentPath);
   if (curPt) {
+    if (bg) {
+      svgNodes.push(h('line', { attrs: {
+        x1: curPt.x, y1: 0, x2: curPt.x, y2: svgH,
+        stroke: 'rgba(0,0,0,0.72)', 'stroke-width': 4, opacity: '0.75',
+      } }));
+    }
     svgNodes.push(h('line', { attrs: {
       x1: curPt.x, y1: 0, x2: curPt.x, y2: svgH,
-      stroke: '#4a8', 'stroke-width': 1, opacity: '0.55',
+      stroke: bg ? '#62d8ad' : '#4a8',
+      'stroke-width': bg ? 2 : 1,
+      opacity: bg ? '0.95' : '0.55',
     } }));
   }
 

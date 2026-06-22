@@ -11,10 +11,12 @@ import {
   summariesLoaded,
   timeFilter,
   setTimeFilter,
+  recordStatsAggregateError,
   type StatsTimeFilter,
 } from './ctrl';
 import type { GameSummary } from './types';
 import { diagnoseWeaknesses, type DiagnosedWeakness } from './weakness';
+import { reportIssue } from '../diagnostics/reporting/reportAction';
 
 // ── Time-control filter tabs ──────────────────────────────────────────────────
 
@@ -25,6 +27,11 @@ const TIME_FILTERS: { label: string; value: StatsTimeFilter }[] = [
   { label: 'Rapid',     value: 'rapid' },
   { label: 'Classical', value: 'classical' },
 ];
+
+function reportStatsIssue(): void {
+  const session = reportIssue({ triggeredBy: 'stats-route', route: '/stats' });
+  console.info('[diagnostics] report issue session', session);
+}
 
 function renderTimeFilterTabs(redraw: () => void): VNode {
   const active = timeFilter();
@@ -56,6 +63,10 @@ function renderHeader(redraw: () => void): VNode {
   return h('div.stats-header', [
     h('h2.stats-title', 'Improvement Stats'),
     renderTimeFilterTabs(redraw),
+    h('button.stats-filter-tab', {
+      attrs: { type: 'button', title: 'Report an issue with the Stats page' },
+      on: { click: reportStatsIssue },
+    }, 'Report issue'),
     h('div.stats-game-count', `${count} analyzed game${count === 1 ? '' : 's'}`),
   ]);
 }
@@ -67,6 +78,23 @@ function renderPlaceholderSection(title: string, note: string): VNode {
     h('h3.stats-section-title', title),
     h('p.stats-section-note', note),
   ]);
+}
+
+function renderStatsAggregateFallback(title: string): VNode {
+  return renderPlaceholderSection(title, 'This stats section could not be computed.');
+}
+
+function safeStatsSection(
+  aggregation: string,
+  title:       string,
+  render:      () => VNode | null,
+): VNode | null {
+  try {
+    return render();
+  } catch (error) {
+    recordStatsAggregateError(aggregation, error);
+    return renderStatsAggregateFallback(title);
+  }
 }
 
 // ── Trend charts (inline SVG) ─────────────────────────────────────────────────
@@ -635,18 +663,18 @@ export function renderStatsPage(redraw: () => void): VNode {
   return h('div.stats-page', [
     renderHeader(redraw),
     // Weakness panel
-    renderWeaknessPanel(summaries),
+    safeStatsSection('renderWeaknessPanel', 'Your Weaknesses', () => renderWeaknessPanel(summaries)),
     // Accuracy & blunder trends
-    renderTrendSection(summaries),
+    safeStatsSection('renderTrendSection', 'Accuracy & Blunder Trends', () => renderTrendSection(summaries)),
     // Opening win rate table (import data only — renders before any games are reviewed)
-    renderImportOpeningTable(summaries),
+    safeStatsSection('renderImportOpeningTable', 'Opening Win Rates', () => renderImportOpeningTable(summaries)),
     // Opening performance table (analysis data — accuracy and blunder columns)
-    renderOpeningTable(summaries, redraw),
+    safeStatsSection('renderOpeningTable', 'Opening Performance', () => renderOpeningTable(summaries, redraw)),
     // Tactical profile
-    renderTacticalProfile(summaries),
+    safeStatsSection('renderTacticalProfile', 'Tactical Profile', () => renderTacticalProfile(summaries)),
     // Conversion and resourcefulness metrics (hidden below 5 qualifying games)
-    renderConversionMetrics(summaries),
+    safeStatsSection('renderConversionMetrics', 'Conversion & Resourcefulness', () => renderConversionMetrics(summaries)),
     // Clock / time-management profile (hidden when insufficient clock data)
-    renderClockProfile(summaries),
+    safeStatsSection('renderClockProfile', 'Time Management', () => renderClockProfile(summaries)),
   ].filter(Boolean) as VNode[]);
 }

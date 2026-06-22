@@ -8,6 +8,55 @@ import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
 import type { StudyItem, TrainableSequence, PositionProgress, StudyFolder } from './types';
+import { record, Severity } from '../diagnostics';
+
+function classifyStudyError(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function recordStudyLoadFail(route: string, error: unknown): void {
+  record({
+    kind: 'render',
+    severity: Severity.Error,
+    source: 'study/studyCtrl',
+    sourceTag: 'study-load-fail',
+    message: 'study-load-fail',
+    metadata: {
+      errorClass: classifyStudyError(error),
+      route,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordStudyRouteEmpty(route: string): void {
+  record({
+    kind: 'render',
+    severity: Severity.Warn,
+    source: 'study/studyCtrl',
+    sourceTag: 'study-route-empty',
+    message: 'study-route-empty',
+    metadata: { route },
+    redactionClass: 'safe',
+  });
+}
+
+function recordOrpLoadFail(route: string, error: unknown): void {
+  record({
+    kind: 'render',
+    severity: Severity.Error,
+    source: 'study/studyCtrl',
+    sourceTag: 'orp-load-fail',
+    message: 'orp-load-fail',
+    metadata: {
+      errorClass: classifyStudyError(error),
+      route,
+    },
+    redactionClass: 'safe',
+  });
+}
 
 let _importIdSeq = 0;
 function nextImportId(): string {
@@ -220,7 +269,15 @@ export function initStudyLibrary(redraw: () => void): void {
   getStudiesPaginated(sortIdx, dir, 0, PAGE_SIZE + 1).then(items => {
     _hasMore  = items.length > PAGE_SIZE;
     _studies  = _hasMore ? items.slice(0, PAGE_SIZE) : items;
+    if (_studies.length === 0) recordStudyRouteEmpty('study-library');
     _loaded   = true;
+    _indexDirty = true;
+    redraw();
+  }).catch(e => {
+    recordStudyLoadFail('study-library', e);
+    _studies = [];
+    _hasMore = false;
+    _loaded = true;
     _indexDirty = true;
     redraw();
   });
@@ -241,7 +298,12 @@ export function loadNextPage(redraw: () => void): void {
     _hasMore     = items.length > PAGE_SIZE;
     _loadingMore = false;
     _studies     = [..._studies, ...(_hasMore ? items.slice(0, PAGE_SIZE) : items)];
+    if (_studies.length === 0) recordStudyRouteEmpty('study-library');
     _indexDirty  = true;
+    redraw();
+  }).catch(e => {
+    recordStudyLoadFail('study-library', e);
+    _loadingMore = false;
     redraw();
   });
 }
@@ -266,7 +328,10 @@ export function loadFolders(redraw: () => void): void {
     _folders      = items;
     _foldersLoaded = true;
     redraw();
-  }).catch(() => { _foldersLoaded = true; });
+  }).catch(e => {
+    recordStudyLoadFail('study-library', e);
+    _foldersLoaded = true;
+  });
 }
 
 let _folderIdSeq = 0;
@@ -651,6 +716,8 @@ export async function listOrpPracticeLines(): Promise<OrpPracticeLineView[]> {
     }
     return results;
   } catch (e) {
+    recordOrpLoadFail('opening-repetition-practice', e);
+    recordStudyLoadFail('opening-practice-lines', e);
     console.warn('[studyCtrl] listOrpPracticeLines failed', e);
     return [];
   }
@@ -698,6 +765,7 @@ export function loadPracticeData(redraw: () => void): void {
       _dueCount       = countDuePositions(seqs, _progressMap);
       _practiceLoaded = true;
     } catch (e) {
+      recordStudyLoadFail('study-practice', e);
       console.warn('[studyCtrl] loadPracticeData failed', e);
       _practiceLoaded = true;
     } finally {

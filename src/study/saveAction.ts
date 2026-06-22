@@ -12,6 +12,7 @@ import { MASTER_GAMES } from '../showcase/masterGames';
 import type { MasterGame } from '../showcase/masterGames';
 import { deriveFens } from './practice/extractLine';
 import type { ResearchCollection } from '../openings/types';
+import { record, Severity } from '../diagnostics';
 
 let _nextId = 0;
 function generateStudyId(): string {
@@ -162,6 +163,51 @@ export async function saveUciLinesToLibrary(
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+function classifyOrpError(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function orpRouteLabel(): string {
+  if (typeof window === 'undefined') return 'unknown';
+  const hash = window.location.hash;
+  if (hash.startsWith('#/openings')) return 'openings';
+  if (hash.startsWith('#/study')) return 'study';
+  return 'other';
+}
+
+function recordOrpLoadFail(error: unknown): void {
+  record({
+    kind: 'render',
+    severity: Severity.Error,
+    source: 'study/saveAction',
+    sourceTag: 'orp-load-fail',
+    message: 'orp-load-fail',
+    metadata: {
+      errorClass: classifyOrpError(error),
+      route: orpRouteLabel(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordOrpSaveFail(errorClass: string): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'study/saveAction',
+    sourceTag: 'orp-save-fail',
+    message: 'orp-save-fail',
+    metadata: {
+      errorClass,
+      route: orpRouteLabel(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
 /**
  * Derive a stable, deterministic StudyItem id for an ORP line.
  * Encoding: 'orp-' + base64(trainAs + ':' + ucis.join(' ')) with URL-safe chars.
@@ -240,11 +286,17 @@ export async function saveOrpLineToLibrary(
   openingEco?: string,
 ): Promise<OrpSaveResult | null> {
   // Guard: line too short to drill.
-  if (ucis.length < 3) return null;
+  if (ucis.length < 3) {
+    recordOrpSaveFail('validation-error');
+    return null;
+  }
 
   // Derive FENs — abort entire save if UCI is invalid.
   const fens = deriveFens(START_FEN, ucis);
-  if (!fens) return null;
+  if (!fens) {
+    recordOrpSaveFail('validation-error');
+    return null;
+  }
 
   const studyItemId = deriveOrpStudyItemId(trainAs, ucis);
   const sequenceId  = deriveOrpSequenceId(trainAs, ucis);
@@ -271,6 +323,7 @@ export async function saveOrpLineToLibrary(
     const existing = await getStudy(studyItemId);
     if (existing) studyCreatedAt = existing.createdAt;
   } catch (e) {
+    recordOrpLoadFail(e);
     console.warn('[saveAction] ORP: getStudy lookup failed on upsert, using now for createdAt', e);
   }
   try {
@@ -280,6 +333,7 @@ export async function saveOrpLineToLibrary(
       seqStatus    = existingSeq.status;
     }
   } catch (e) {
+    recordOrpLoadFail(e);
     console.warn('[saveAction] ORP: getPracticeLine lookup failed on upsert, using now for createdAt', e);
   }
 
@@ -317,8 +371,22 @@ export async function saveOrpLineToLibrary(
   };
 
   // Persist both records. saveStudy / savePracticeLine use IDB put() (upsert).
-  await saveStudy(studyItem);
-  await savePracticeLine(sequence);
+  try {
+    await saveStudy(studyItem);
+    await savePracticeLine(sequence);
+  } catch (e) {
+    recordOrpSaveFail(classifyOrpError(e));
+    throw e;
+  }
+
+  const [persistedStudy, persistedSequence] = await Promise.all([
+    getStudy(studyItemId),
+    getPracticeLine(sequenceId),
+  ]);
+  if (!persistedStudy || !persistedSequence) {
+    recordOrpSaveFail('idb-write-error');
+    throw new Error('idb-write-error');
+  }
 
   return { studyItem, sequence };
 }

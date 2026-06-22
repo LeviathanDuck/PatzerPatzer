@@ -8,6 +8,7 @@
 
 import { listGameSummaries, loadGamesFromIdb } from '../idb/index';
 import type { ImportedGame } from '../import/types';
+import { record, Severity } from '../diagnostics';
 import type { GameSummary } from './types';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
@@ -29,6 +30,84 @@ let _filteredCache: GameSummary[] | null = null;
 // Generation counter: bumped when external changes (e.g. batch analysis) invalidate cached data.
 let _dataGeneration = 0;
 let _loadedGeneration = -1;
+
+// ── Diagnostics ───────────────────────────────────────────────────────────────
+
+function classifyStatsError(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function statsRouteLabel(): string {
+  const hash = window.location.hash || '';
+  if (hash.startsWith('#/stats')) return 'stats';
+  return hash ? 'other' : 'unknown';
+}
+
+function recordStatsLoadFail(error: unknown): void {
+  record({
+    kind: 'render',
+    severity: Severity.Error,
+    source: 'stats/ctrl',
+    sourceTag: 'stats-load-fail',
+    message: 'stats-load-fail',
+    metadata: {
+      errorClass: classifyStatsError(error),
+      route: statsRouteLabel(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordStatsMissingSummary(count: number): void {
+  record({
+    kind: 'render',
+    severity: Severity.Warn,
+    source: 'stats/ctrl',
+    sourceTag: 'stats-missing-summary',
+    message: 'stats-missing-summary',
+    metadata: { count },
+    redactionClass: 'safe',
+  });
+}
+
+export function recordStatsAggregateError(aggregation: string, error: unknown): void {
+  record({
+    kind: 'render',
+    severity: Severity.Error,
+    source: 'stats/view',
+    sourceTag: 'stats-aggregate-error',
+    message: 'stats-aggregate-error',
+    metadata: {
+      aggregation,
+      errorClass: classifyStatsError(error),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function isCompleteStatsSummary(summary: GameSummary): boolean {
+  return Boolean(summary.gameId)
+    && Number.isFinite(summary.accuracy)
+    && Number.isFinite(summary.blunderCount)
+    && Number.isFinite(summary.totalMoves)
+    && Boolean(summary.analyzedAt);
+}
+
+function countMissingOrIncompleteSummaries(games: ImportedGame[], summaries: GameSummary[]): number {
+  if (games.length === 0) return 0;
+  const summariesById = new Map<string, GameSummary>();
+  for (const summary of summaries) {
+    if (summary.gameId) summariesById.set(summary.gameId, summary);
+  }
+  let missing = 0;
+  for (const game of games) {
+    const summary = game.id ? summariesById.get(game.id) : undefined;
+    if (!summary || !isCompleteStatsSummary(summary)) missing++;
+  }
+  return missing;
+}
 
 // ── Initialisation ────────────────────────────────────────────────────────────
 
@@ -57,12 +136,15 @@ function loadSummaries(): void {
   void Promise.all([listGameSummaries(), loadGamesFromIdb()]).then(([summaries, stored]) => {
     _summaries        = summaries;
     _importedGames    = stored?.games ?? [];
+    const missingSummaries = countMissingOrIncompleteSummaries(_importedGames, _summaries);
+    if (missingSummaries > 0) recordStatsMissingSummary(missingSummaries);
     _summariesLoaded  = true;
     _summariesLoading = false;
     _filteredCache    = null;
     _loadedGeneration = _dataGeneration;
     _redraw();
-  }).catch(() => {
+  }).catch((error) => {
+    recordStatsLoadFail(error);
     _summariesLoaded = true;
     _summariesLoading = false;
     _filteredCache   = null;

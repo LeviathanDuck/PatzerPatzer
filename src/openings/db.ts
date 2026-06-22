@@ -7,15 +7,85 @@
 
 import type { ResearchCollection, OpeningsTool, SavedVariation } from './types';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
+import { record, Severity } from '../diagnostics';
 
 const DB_NAME = 'patzer-openings';
 const DB_VERSION = 3;
 
-function txDone(tx: IDBTransaction): Promise<void> {
+function classifyOpeningsError(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function openingsRouteLabel(): string {
+  if (typeof window === 'undefined') return 'unknown';
+  return window.location.hash.startsWith('#/openings') ? 'openings' : 'other';
+}
+
+function recordOrpLoadFail(error: unknown): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'openings/db',
+    sourceTag: 'orp-load-fail',
+    message: 'orp-load-fail',
+    metadata: {
+      errorClass: classifyOpeningsError(error),
+      route: openingsRouteLabel(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordOrpSaveFail(error: unknown): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'openings/db',
+    sourceTag: 'orp-save-fail',
+    message: 'orp-save-fail',
+    metadata: {
+      errorClass: classifyOpeningsError(error),
+      route: openingsRouteLabel(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function txStoreName(tx: IDBTransaction): string {
+  const storeNames = Array.from(tx.objectStoreNames);
+  return storeNames.length === 1 ? storeNames[0]! : storeNames.join(',');
+}
+
+function recordOpeningsTxFail(tx: IDBTransaction, eventLabel: string, operationType?: string): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'openings/db',
+    sourceTag: 'idb',
+    message: `IDB transaction ${eventLabel}`,
+    metadata: {
+      storeName: txStoreName(tx),
+      operation: operationType ?? (tx.mode === 'readonly' ? 'read' : 'write'),
+      mode: tx.mode,
+      errorName: tx.error?.name ?? 'UnknownError',
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+    tx.onerror = () => {
+      recordOpeningsTxFail(tx, 'onerror', operationType);
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      recordOpeningsTxFail(tx, 'onabort', operationType);
+      reject(tx.error);
+    };
   });
 }
 
@@ -110,7 +180,7 @@ export async function deleteCollection(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('collections', 'readwrite');
     tx.objectStore('collections').delete(id);
-    await txDone(tx);
+    await txDone(tx, 'delete');
     enqueueOpeningsDelete('opening-collections', id);
   } catch (e) {
     console.warn('[openings-db] delete failed', e);
@@ -128,7 +198,7 @@ export async function clearAllOpeningsData(): Promise<void> {
     tx.objectStore('collections').clear();
     tx.objectStore('session').clear();
     tx.objectStore('training-variations').clear();
-    await txDone(tx);
+    await txDone(tx, 'clear');
     for (const collection of collections) enqueueOpeningsDelete('opening-collections', collection.id);
     if (session) enqueueOpeningsDelete('opening-session', 'current');
     for (const variation of variations) enqueueOpeningsDelete('opening-training-variations', variation.id);
@@ -172,7 +242,7 @@ export async function clearSessionState(): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('session', 'readwrite');
     tx.objectStore('session').delete('current');
-    await txDone(tx);
+    await txDone(tx, 'delete');
     enqueueOpeningsDelete('opening-session', 'current');
   } catch (e) {
     console.warn('[openings-db] session clear failed', e);
@@ -192,6 +262,7 @@ export async function saveVariation(variation: SavedVariation): Promise<void> {
     await txDone(tx);
     enqueueOpeningsPut('opening-training-variations', variation.id, variation, Date.now());
   } catch (e) {
+    recordOrpSaveFail(e);
     console.warn('[openings-db] variation save failed', e);
   }
 }
@@ -207,6 +278,7 @@ export async function loadVariations(): Promise<SavedVariation[]> {
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordOrpLoadFail(e);
     console.warn('[openings-db] variation load failed', e);
     return [];
   }
@@ -218,7 +290,7 @@ export async function deleteVariation(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('training-variations', 'readwrite');
     tx.objectStore('training-variations').delete(id);
-    await txDone(tx);
+    await txDone(tx, 'delete');
     enqueueOpeningsDelete('opening-training-variations', id);
   } catch (e) {
     console.warn('[openings-db] variation delete failed', e);

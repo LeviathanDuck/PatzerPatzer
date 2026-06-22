@@ -68,6 +68,7 @@ import {
 } from './explorer';
 import { explorerCtrl, MAX_EXPLORER_DEPTH } from './explorerCtrl';
 import { ALL_SPEEDS, ALL_RATINGS, ALL_MODES } from './explorerConfig';
+import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
 import { renderMoveNavBar } from '../analyse/analysisControls';
 import {
@@ -121,6 +122,11 @@ let _bookAuthNotice = '';
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
 const ICON_FLIP       = '\ue020'; // licon.ChasingArrows — flip board
+
+function reportOpeningsIssue(): void {
+  const session = reportIssue({ triggeredBy: 'opponents-route', route: '/openings' });
+  console.info('[diagnostics] report issue session', session);
+}
 
 function platformLabel(platform: ChessAccount['platform']): string {
   return platform === 'chesscom' ? 'Chess.com' : 'Lichess';
@@ -861,6 +867,10 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
           close();
         } },
       }, 'Flip board'),
+      h('button', {
+        attrs: { title: 'Report an issue with the Opponent Research page' },
+        on: { click: () => { reportOpeningsIssue(); close(); } },
+      }, 'Report issue'),
     ]),
 
     h('h2', 'Display'),

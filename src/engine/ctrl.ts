@@ -65,9 +65,11 @@ export function initEngine(deps: {
   getCgInstance: () => CgApi | undefined;
   redraw:        () => void;
 }): void {
+  performance.mark('engine-init-start');
   _getCtrl       = deps.getCtrl;
   _getCgInstance = deps.getCgInstance;
   _redraw        = deps.redraw;
+  performance.mark('engine-init-end');
 }
 
 // --- Batch callback hooks (avoids circular import with engine/batch.ts) ---

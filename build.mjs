@@ -2,6 +2,26 @@ import * as esbuild from 'esbuild';
 import * as sass from 'sass';
 import fs from 'fs';
 
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const buildId = process.env.PATZER_BUILD_ID || new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
+const version = pkg.version || '0.0.0';
+const release = `patzer-pro@${version}+${buildId}`;
+const sourcemapRoot = 'dist/sourcemaps';
+
+fs.rmSync(sourcemapRoot, { recursive: true, force: true });
+fs.mkdirSync(`${sourcemapRoot}/js`, { recursive: true });
+fs.rmSync('public/js/main.js.map', { force: true });
+fs.rmSync('public/js/stockfish-worker.js.map', { force: true });
+
+function moveSourcemap(publicMapPath) {
+  const mapName = publicMapPath.split('/').pop();
+  const privateMapPath = `${sourcemapRoot}/js/${mapName}`;
+  if (fs.existsSync(publicMapPath)) {
+    fs.renameSync(publicMapPath, privateMapPath);
+    console.log(' ', privateMapPath);
+  }
+}
+
 // Compile TypeScript — main bundle
 await esbuild.build({
   entryPoints: ['src/main.ts'],
@@ -9,9 +29,16 @@ await esbuild.build({
   outfile: 'public/js/main.js',
   format: 'esm',
   target: 'es2021',
-  sourcemap: true,
+  minify: true,
+  sourcemap: 'external',
+  define: {
+    __PATZER_RELEASE__: JSON.stringify(release),
+    __PATZER_VERSION__: JSON.stringify(version),
+    __PATZER_BUILD_ID__: JSON.stringify(buildId),
+  },
   logLevel: 'info',
 });
+moveSourcemap('public/js/main.js.map');
 
 // Compile TypeScript — Stockfish worker entry
 // The worker is a classic (non-module) worker so it uses iife format.
@@ -22,9 +49,11 @@ await esbuild.build({
   outfile: 'public/js/stockfish-worker.js',
   format: 'iife',
   target: 'es2021',
-  sourcemap: true,
+  minify: true,
+  sourcemap: 'external',
   logLevel: 'info',
 });
+moveSourcemap('public/js/stockfish-worker.js.map');
 
 // Copy @lichess-org/stockfish-web engine files to public/stockfish-web/.
 // sf_18_smallnet is Stockfish 18 with a 15 MB NNUE — the same build Lichess

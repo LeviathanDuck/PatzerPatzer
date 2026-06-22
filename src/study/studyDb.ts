@@ -5,12 +5,78 @@
 import { DB_NAME, DB_VERSION, upgradeGameDbSchema } from '../idb/index';
 import type { StudyItem, TrainableSequence, PositionProgress, DrillAttempt, StudyFolder } from './types';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
+import { record, Severity } from '../diagnostics';
 
-function txDone(tx: IDBTransaction): Promise<void> {
+type StudyStoreName =
+  | 'studies'
+  | 'practice-lines'
+  | 'position-progress'
+  | 'drill-attempts'
+  | 'folders';
+
+function classifyStudyError(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function studyRouteLabel(): string {
+  if (typeof window === 'undefined') return 'unknown';
+  const hash = window.location.hash;
+  if (hash === '#/study' || hash === '#/study/') return 'study-library';
+  if (hash.startsWith('#/study/')) return 'study-detail';
+  return 'other';
+}
+
+function recordStudyIdbReadFail(storeName: StudyStoreName, error: unknown): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'study/studyDb',
+    sourceTag: 'study-idb-read-fail',
+    message: 'study-idb-read-fail',
+    metadata: {
+      storeName,
+      errorClass: classifyStudyError(error),
+      route: studyRouteLabel(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function txStoreName(tx: IDBTransaction): string {
+  const storeNames = Array.from(tx.objectStoreNames);
+  return storeNames.length === 1 ? storeNames[0]! : storeNames.join(',');
+}
+
+function recordStudyTxFail(tx: IDBTransaction, eventLabel: string, operationType?: string): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'study/studyDb',
+    sourceTag: 'idb',
+    message: `IDB transaction ${eventLabel}`,
+    metadata: {
+      storeName: txStoreName(tx),
+      operation: operationType ?? (tx.mode === 'readonly' ? 'read' : 'write'),
+      mode: tx.mode,
+      errorName: tx.error?.name ?? 'UnknownError',
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function txDone(tx: IDBTransaction, operationType?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+    tx.onerror = () => {
+      recordStudyTxFail(tx, 'onerror', operationType);
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      recordStudyTxFail(tx, 'onabort', operationType);
+      reject(tx.error);
+    };
   });
 }
 
@@ -74,6 +140,7 @@ export async function getStudy(id: string): Promise<StudyItem | undefined> {
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('studies', e);
     console.warn('[studyDb] getStudy failed', e);
     return undefined;
   }
@@ -88,6 +155,7 @@ export async function listStudies(): Promise<StudyItem[]> {
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('studies', e);
     console.warn('[studyDb] listStudies failed', e);
     return [];
   }
@@ -129,6 +197,7 @@ export async function getStudiesPaginated(
       req.onerror = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('studies', e);
     console.warn('[studyDb] getStudiesPaginated failed', e);
     return [];
   }
@@ -139,7 +208,7 @@ export async function deleteStudy(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('studies', 'readwrite');
     tx.objectStore('studies').delete(id);
-    await txDone(tx);
+    await txDone(tx, 'delete');
     enqueueStudyDelete('studies', id);
   } catch (e) {
     console.warn('[studyDb] deleteStudy failed', e);
@@ -169,6 +238,7 @@ export async function getPracticeLine(id: string): Promise<TrainableSequence | u
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('practice-lines', e);
     console.warn('[studyDb] getPracticeLine failed', e);
     return undefined;
   }
@@ -192,6 +262,7 @@ export async function listPracticeLines(studyItemId?: string): Promise<Trainable
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('practice-lines', e);
     console.warn('[studyDb] listPracticeLines failed', e);
     return [];
   }
@@ -202,7 +273,7 @@ export async function deletePracticeLine(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('practice-lines', 'readwrite');
     tx.objectStore('practice-lines').delete(id);
-    await txDone(tx);
+    await txDone(tx, 'delete');
     enqueueStudyDelete('practice-lines', id);
   } catch (e) {
     console.warn('[studyDb] deletePracticeLine failed', e);
@@ -232,6 +303,7 @@ export async function getPositionProgress(key: string): Promise<PositionProgress
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('position-progress', e);
     console.warn('[studyDb] getPositionProgress failed', e);
     return undefined;
   }
@@ -249,6 +321,7 @@ export async function listDuePositions(now = Date.now()): Promise<PositionProgre
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('position-progress', e);
     console.warn('[studyDb] listDuePositions failed', e);
     return [];
   }
@@ -263,6 +336,7 @@ export async function listAllPositionProgress(): Promise<PositionProgress[]> {
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('position-progress', e);
     console.warn('[studyDb] listAllPositionProgress failed', e);
     return [];
   }
@@ -300,6 +374,7 @@ export async function listDrillAttempts(positionKey?: string): Promise<DrillAtte
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('drill-attempts', e);
     console.warn('[studyDb] listDrillAttempts failed', e);
     return [];
   }
@@ -332,6 +407,7 @@ export async function getFolder(id: string): Promise<StudyFolder | undefined> {
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('folders', e);
     console.warn('[studyDb] getFolder failed', e);
     return undefined;
   }
@@ -346,6 +422,7 @@ export async function listFolders(): Promise<StudyFolder[]> {
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordStudyIdbReadFail('folders', e);
     console.warn('[studyDb] listFolders failed', e);
     return [];
   }
@@ -356,7 +433,7 @@ export async function deleteFolder(id: string): Promise<void> {
     const db = await openDb();
     const tx = db.transaction('folders', 'readwrite');
     tx.objectStore('folders').delete(id);
-    await txDone(tx);
+    await txDone(tx, 'delete');
     enqueueStudyDelete('folders', id);
   } catch (e) {
     console.warn('[studyDb] deleteFolder failed', e);

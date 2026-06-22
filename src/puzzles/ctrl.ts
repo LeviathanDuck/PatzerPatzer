@@ -26,7 +26,7 @@ import { pgnToTree } from '../tree/pgn';
 import { listPuzzleDefinitions, listPuzzleDefinitionsBySource, countPuzzleDefinitionsBySource, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getAllAttemptsByPuzzle, getMeta, saveMeta, getUserPuzzlePerf, saveUserPuzzlePerf, getPuzzleRatedEligibility, appendRatingHistory, syncRatedLadder, findRatedPuzzleInShards } from './puzzleDb';
 import { bindBoardResizeHandle } from '../board/index';
 import { playMoveSound } from '../board/sound';
-import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestOpenings, getManifestTotalCount, type ShardMeta } from './shardLoader';
+import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestOpenings, getManifestTotalCount, type PuzzleManifest, type ShardMeta } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
 import type { PuzzleDefinition, PuzzleAttempt, SolveResult, FailureReason, PuzzleSourceKind, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSessionMode, UserPuzzlePerf, RatedEligibility, NonRatedReason, PuzzleDifficulty, PuzzleRatingDelta, RatedScoringOutcome, ImportedLichessPuzzleDefinition, PuzzleRatingSnapshot } from './types';
 import { DEFAULT_USER_PUZZLE_PERF, PUZZLE_DIFFICULTY_OFFSETS, DEFAULT_PUZZLE_DIFFICULTY, PUZZLE_GLICKO_CAPS } from './types';
@@ -42,6 +42,7 @@ import {
 } from '../engine/ctrl';
 import { evalWinChances, LOSS_THRESHOLDS } from '../engine/winchances';
 import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../board/animation';
+import { record, Severity } from '../diagnostics';
 
 // Alt-castle mappings — Lichess puzzles store castling as king-to-rook-square
 // but chessground may emit king-to-destination. Both forms must be accepted.
@@ -134,6 +135,77 @@ export interface PuzzleRoundState {
   definition: PuzzleDefinition | null;
   status: 'loading' | 'ready' | 'error';
   error?: string;
+}
+
+type PuzzleSetClass =
+  | 'round-idb'
+  | 'library-counts'
+  | 'user-library'
+  | 'imported-lichess'
+  | 'imported-session'
+  | 'rated-stream'
+  | 'next-puzzle'
+  | 'retry-session'
+  | 'due-session';
+
+function classifyPuzzleError(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function recordPuzzleLoadFail(error: unknown, setClass: PuzzleSetClass): void {
+  record({
+    kind: 'error',
+    severity: Severity.Error,
+    source: 'puzzles/ctrl',
+    sourceTag: 'puzzle-load-fail',
+    message: 'puzzle-load-fail',
+    metadata: {
+      errorClass: classifyPuzzleError(error),
+      setClass,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function recordPuzzleSetEmpty(setClass: PuzzleSetClass): void {
+  record({
+    kind: 'render',
+    severity: Severity.Warn,
+    source: 'puzzles/ctrl',
+    sourceTag: 'puzzle-set-empty',
+    message: 'puzzle-set-empty',
+    metadata: { setClass },
+    redactionClass: 'safe',
+  });
+}
+
+function recordPuzzleInvalidStateTransition(
+  fromState: string,
+  toState: string,
+  action: string,
+): void {
+  record({
+    kind: 'render',
+    severity: Severity.Warn,
+    source: 'puzzles/ctrl',
+    sourceTag: 'puzzle-invalid-state-transition',
+    message: 'puzzle-invalid-state-transition',
+    metadata: {
+      fromState,
+      toState,
+      action,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function isValidRoundStatusTransition(from: RoundStatus, to: RoundStatus): boolean {
+  if (from === to) return true;
+  if (from === 'playing') return to === 'solved' || to === 'failed' || to === 'viewing';
+  if (from === 'viewing') return to === 'playing';
+  return false;
 }
 
 
@@ -451,6 +523,33 @@ export class PuzzleRoundCtrl {
     this.puzzleTreePath = path;
     this.livePath = path;
     this.contextPeekPath = null;
+  }
+
+  private setRoundStatus(nextStatus: RoundStatus, action: string): void {
+    if (!isValidRoundStatusTransition(this.status, nextStatus)) {
+      recordPuzzleInvalidStateTransition(
+        `round:${this.status}`,
+        `round:${nextStatus}`,
+        action,
+      );
+    }
+    this.status = nextStatus;
+  }
+
+  private setPuzzleMode(nextMode: PuzzleMode, action: string): void {
+    const valid =
+      this.mode === nextMode
+      || (this.mode === 'play' && (nextMode === 'try' || nextMode === 'view'))
+      || (this.mode === 'try' && nextMode === 'view')
+      || (this.mode === 'view' && nextMode === 'play');
+    if (!valid) {
+      recordPuzzleInvalidStateTransition(
+        `mode:${this.mode}`,
+        `mode:${nextMode}`,
+        action,
+      );
+    }
+    this.mode = nextMode;
   }
 
   /**
@@ -804,11 +903,20 @@ export class PuzzleRoundCtrl {
    * On wrong move: sets status='failed', records failure reason.
    */
   submitUserMove(uci: string): { accepted: boolean } {
-    if (this.status !== 'playing') return { accepted: false };
-    if (this.mode === 'view') return { accepted: false };
+    if (this.status !== 'playing') {
+      recordPuzzleInvalidStateTransition(`round:${this.status}`, 'round:playing', 'submit-user-move');
+      return { accepted: false };
+    }
+    if (this.mode === 'view') {
+      recordPuzzleInvalidStateTransition('mode:view', 'mode:play', 'submit-user-move');
+      return { accepted: false };
+    }
 
     const expected = this.currentExpectedMove();
-    if (!expected) return { accepted: false };
+    if (!expected) {
+      recordPuzzleInvalidStateTransition(`solution:${this.progressPly}`, 'solution:expected-move', 'submit-user-move');
+      return { accepted: false };
+    }
 
     // Compute the FEN before this move for quality evaluation.
     const posBefore = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
@@ -834,8 +942,8 @@ export class PuzzleRoundCtrl {
 
       // Check if puzzle is solved (all solution moves played)
       if (this.progressPly >= this.solutionLine.length) {
-        this.status = 'solved';
-        this.mode = 'view';
+        this.setRoundStatus('solved', 'submit-user-move');
+        this.setPuzzleMode('view', 'submit-user-move');
         this.recordAttempt();
         // Sync board to allow both sides to move in analysis mode
         syncPuzzleBoard();
@@ -859,7 +967,7 @@ export class PuzzleRoundCtrl {
 
     // On first wrong move, switch from 'play' to 'try' and send result
     if (this.mode === 'play') {
-      this.mode = 'try';
+      this.setPuzzleMode('try', 'submit-user-move');
       this.canViewSolution = true;
     }
 
@@ -900,8 +1008,8 @@ export class PuzzleRoundCtrl {
    */
   viewSolution(redraw: () => void): void {
     if (this.mode === 'view') return;
-    this.status = 'failed';
-    this.mode = 'view';
+    this.setRoundStatus('failed', 'view-solution');
+    this.setPuzzleMode('view', 'view-solution');
     this.revealedSolution = true;
     this.recordAttempt();
     // Add remaining solution moves to the tree for navigation
@@ -921,14 +1029,26 @@ export class PuzzleRoundCtrl {
    * - there's no next move in the solution line
    */
   playOpponentReply(): void {
-    if (this.status !== 'playing') return;
-    if (this.isUserTurn()) return; // opponent moves are at odd indices
+    if (this.status !== 'playing') {
+      recordPuzzleInvalidStateTransition(`round:${this.status}`, 'round:playing', 'opponent-reply');
+      return;
+    }
+    if (this.isUserTurn()) {
+      recordPuzzleInvalidStateTransition('turn:user', 'turn:opponent', 'opponent-reply');
+      return;
+    } // opponent moves are at odd indices
 
     const opponentUci = this.currentExpectedMove();
-    if (!opponentUci) return;
+    if (!opponentUci) {
+      recordPuzzleInvalidStateTransition(`solution:${this.progressPly}`, 'solution:opponent-move', 'opponent-reply');
+      return;
+    }
 
     const cg = getPuzzleCg();
-    if (!cg) return;
+    if (!cg) {
+      recordPuzzleInvalidStateTransition('board:missing', 'board:mounted', 'opponent-reply');
+      return;
+    }
 
     // Play opponent move sound
     const preOpponentPos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
@@ -941,7 +1061,7 @@ export class PuzzleRoundCtrl {
     // Check if puzzle is solved after opponent reply (shouldn't happen normally,
     // but handle edge case where solution ends on opponent move)
     if (this.progressPly >= this.solutionLine.length) {
-      this.status = 'solved';
+      this.setRoundStatus('solved', 'opponent-reply');
       this.recordAttempt();
       this.redraw();
       return;
@@ -1150,8 +1270,8 @@ export class PuzzleRoundCtrl {
     if (!this.failureReasons.includes('skip-pressed')) {
       this.failureReasons.push('skip-pressed');
     }
-    this.status = 'failed';
-    this.mode = 'view';
+    this.setRoundStatus('failed', 'skip-puzzle');
+    this.setPuzzleMode('view', 'skip-puzzle');
     this.feedback = 'fail';
 
     // Record with skipped flag — bypass normal recordAttempt to set skipped=true
@@ -1590,6 +1710,7 @@ export async function startRatedSession(redraw: () => void): Promise<void> {
     _sessionSeenIds.add(def.id);
     await openPuzzleRound(def.id, redraw);
   } else {
+    recordPuzzleSetEmpty('rated-stream');
     _emptyRatedStream = true;
     _ratedStreamActive = false;
     redraw();
@@ -1764,8 +1885,15 @@ export async function selectNextRatedPuzzle(): Promise<PuzzleDefinition | null> 
   const offset = PUZZLE_DIFFICULTY_OFFSETS[_currentDifficulty];
   const targetRating = userRating + offset;
 
-  const allDefs = await listPuzzleDefinitions();
+  let allDefs: PuzzleDefinition[];
+  try {
+    allDefs = await listPuzzleDefinitions();
+  } catch (e) {
+    recordPuzzleLoadFail(e, 'rated-stream');
+    throw e;
+  }
   const importedDefs = allDefs.filter(d => d.sourceKind === 'imported-lichess');
+  if (importedDefs.length === 0) recordPuzzleSetEmpty('rated-stream');
 
   async function pickFromIdb(window: number): Promise<PuzzleDefinition | null> {
     const rMin = targetRating - window;
@@ -1790,7 +1918,12 @@ export async function selectNextRatedPuzzle(): Promise<PuzzleDefinition | null> 
   if (result) return result;
 
   // Shard fallback (narrow window)
-  result = await findRatedPuzzleInShards(targetRating, RATED_SELECTION_WINDOW, _sessionSeenIds);
+  try {
+    result = await findRatedPuzzleInShards(targetRating, RATED_SELECTION_WINDOW, _sessionSeenIds);
+  } catch (e) {
+    recordPuzzleLoadFail(e, 'rated-stream');
+    throw e;
+  }
   if (result) return result;
 
   // IDB path (wide window)
@@ -1798,7 +1931,14 @@ export async function selectNextRatedPuzzle(): Promise<PuzzleDefinition | null> 
   if (result) return result;
 
   // Shard fallback (wide window)
-  return findRatedPuzzleInShards(targetRating, RATED_SELECTION_WINDOW_WIDE, _sessionSeenIds);
+  try {
+    const fallback = await findRatedPuzzleInShards(targetRating, RATED_SELECTION_WINDOW_WIDE, _sessionSeenIds);
+    if (!fallback) recordPuzzleSetEmpty('rated-stream');
+    return fallback;
+  } catch (e) {
+    recordPuzzleLoadFail(e, 'rated-stream');
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1887,6 +2027,7 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
   // Avoid re-fetching if we already have the right puzzle loaded or loading
   if (roundState && state.puzzleId === id && roundState.status !== 'error') return;
 
+  performance.mark('puzzle-load-start');
   state = { view: 'round', puzzleId: id };
   roundState = { definition: null, status: 'loading' };
   redraw();
@@ -1894,6 +2035,7 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
   try {
     const def = await getPuzzleDefinition(id);
     if (!def) {
+      recordPuzzleLoadFail(new Error('PuzzleDefinitionNotFound'), 'round-idb');
       roundState = { definition: null, status: 'error', error: `Puzzle "${id}" not found` };
     } else {
       roundState = { definition: def, status: 'ready' };
@@ -1917,11 +2059,14 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
       prefetchSessionPgns();
     }
   } catch (e) {
+    recordPuzzleLoadFail(e, 'round-idb');
     roundState = {
       definition: null,
       status: 'error',
       error: e instanceof Error ? e.message : 'Failed to load puzzle',
     };
+  } finally {
+    performance.mark('puzzle-load-end');
   }
   redraw();
 }
@@ -2374,11 +2519,14 @@ export async function loadLibraryCounts(redraw: () => void): Promise<void> {
       const manifest = await loadManifest();
       imported = manifest.totalCount;
     } catch {
+      recordPuzzleLoadFail(new Error('PuzzleManifestLoadFailed'), 'library-counts');
       // Manifest not available — fall back to IDB count by source
       imported = await countPuzzleDefinitionsBySource('imported-lichess');
     }
     libraryCounts = { imported, user };
+    if (imported === 0 && user === 0) recordPuzzleSetEmpty('library-counts');
   } catch (e) {
+    recordPuzzleLoadFail(e, 'library-counts');
     console.warn('[puzzle-ctrl] loadLibraryCounts failed', e);
     libraryCounts = { imported: 0, user: 0 };
   }
@@ -2467,6 +2615,7 @@ export async function openPuzzleList(
       await openUserLibraryList(redraw);
     }
   } catch (e) {
+    recordPuzzleLoadFail(e, source === 'imported-lichess' ? 'imported-lichess' : 'user-library');
     console.warn('[puzzle-ctrl] openPuzzleList failed', e);
     if (puzzleListState) puzzleListState.loading = false;
   }
@@ -2477,6 +2626,7 @@ export async function openPuzzleList(
 async function openUserLibraryList(redraw: () => void): Promise<void> {
   const forSource = await listPuzzleDefinitionsBySource('user-library');
   forSource.sort((a, b) => b.createdAt - a.createdAt);
+  if (forSource.length === 0) recordPuzzleSetEmpty('user-library');
 
   puzzleListState!.allForSource = forSource;
   puzzleListState!.availableThemes = [];
@@ -2496,9 +2646,12 @@ async function openImportedList(redraw: () => void): Promise<void> {
   // Load the first shard
   if (_importedShards.length > 0) {
     await loadNextImportedShard();
+  } else {
+    recordPuzzleSetEmpty('imported-lichess');
   }
   puzzleListState!.loading = false;
   applyListFilters(puzzleListState!);
+  if (puzzleListState!.filtered.length === 0) recordPuzzleSetEmpty('imported-lichess');
   redraw();
 }
 
@@ -2515,6 +2668,7 @@ async function loadNextImportedShard(): Promise<boolean> {
   const defs = records
     .map(r => lichessShardRecordToDefinition(r))
     .filter((d): d is NonNullable<typeof d> => d !== undefined);
+  if (defs.length === 0) recordPuzzleSetEmpty('imported-lichess');
 
   puzzleListState!.allForSource.push(...defs);
   // Sort by rating ascending
@@ -2535,9 +2689,15 @@ export async function loadMoreImportedShards(redraw: () => void): Promise<void> 
   if (!puzzleListState || puzzleListState.source !== 'imported-lichess') return;
   puzzleListState.loading = true;
   redraw();
-  const loaded = await loadNextImportedShard();
-  puzzleListState.loading = false;
-  if (!loaded) console.log('[puzzle-ctrl] all shards loaded');
+  try {
+    const loaded = await loadNextImportedShard();
+    puzzleListState.loading = false;
+    if (!loaded) console.log('[puzzle-ctrl] all shards loaded');
+  } catch (e) {
+    recordPuzzleLoadFail(e, 'imported-lichess');
+    puzzleListState.loading = false;
+    console.warn('[puzzle-ctrl] loadMoreImportedShards failed', e);
+  }
   redraw();
 }
 
@@ -2556,7 +2716,13 @@ export async function startImportedSession(
   ratingMax: number | undefined,
   redraw: () => void,
 ): Promise<void> {
-  const manifest = await loadManifest();
+  let manifest: PuzzleManifest;
+  try {
+    manifest = await loadManifest();
+  } catch (e) {
+    recordPuzzleLoadFail(e, 'imported-session');
+    throw e;
+  }
   const filters: { ratingMin?: number; ratingMax?: number; theme?: string } = {};
   if (ratingMin !== undefined) filters.ratingMin = ratingMin;
   if (ratingMax !== undefined) filters.ratingMax = ratingMax;
@@ -2564,6 +2730,7 @@ export async function startImportedSession(
   // Find shards that match the rating range (theme check is per-record)
   const matchingShards = findMatchingShards(manifest, filters);
   if (matchingShards.length === 0) {
+    recordPuzzleSetEmpty('imported-session');
     console.warn('[puzzle-ctrl] no shards match filters');
     return;
   }
@@ -2576,7 +2743,13 @@ export async function startImportedSession(
   let firstPickShardIndex = 0;
 
   for (let si = 0; si < matchingShards.length; si++) {
-    const records = await loadFilteredShard(matchingShards[si]!.id, filters);
+    let records: LichessShardRecord[];
+    try {
+      records = await loadFilteredShard(matchingShards[si]!.id, filters);
+    } catch (e) {
+      recordPuzzleLoadFail(e, 'imported-session');
+      throw e;
+    }
     for (const r of records) {
       if (themes.length > 0 && !themes.some(t => r.themes.includes(t))) continue;
       if (openings.length > 0 && !openings.some(o => r.openingTags.includes(o))) continue;
@@ -2587,6 +2760,7 @@ export async function startImportedSession(
   }
 
   if (!firstPick) {
+    recordPuzzleSetEmpty('imported-session');
     console.warn('[puzzle-ctrl] no imported puzzles match selection');
     _importedSessionError = 'No puzzles match your selection. Try widening the rating range or selecting different themes.';
     redraw();
@@ -2640,7 +2814,13 @@ async function fillSessionQueueBackground(
   const candidates: PuzzleDefinition[] = [];
 
   for (let si = startShardIndex; si < shards.length && candidates.length < 199; si++) {
-    const records = await loadFilteredShard(shards[si]!.id, filters);
+    let records: LichessShardRecord[];
+    try {
+      records = await loadFilteredShard(shards[si]!.id, filters);
+    } catch (e) {
+      recordPuzzleLoadFail(e, 'imported-session');
+      throw e;
+    }
     for (const r of records) {
       if (themes.length > 0 && !themes.some(t => r.themes.includes(t))) continue;
       if (openings.length > 0 && !openings.some(o => r.openingTags.includes(o))) continue;
@@ -2651,7 +2831,10 @@ async function fillSessionQueueBackground(
     }
   }
 
-  if (candidates.length === 0) return;
+  if (candidates.length === 0) {
+    recordPuzzleSetEmpty('imported-session');
+    return;
+  }
 
   // Shuffle for variety before storing
   for (let i = candidates.length - 1; i > 0; i--) {
@@ -2678,10 +2861,19 @@ export async function retryFailedPuzzles(redraw: () => void): Promise<void> {
   // Load definitions from IDB
   const defs: PuzzleDefinition[] = [];
   for (const id of failedIds) {
-    const def = await getPuzzleDefinition(id);
+    let def: PuzzleDefinition | undefined;
+    try {
+      def = await getPuzzleDefinition(id);
+    } catch (e) {
+      recordPuzzleLoadFail(e, 'retry-session');
+      throw e;
+    }
     if (def) defs.push(def);
   }
-  if (defs.length === 0) return;
+  if (defs.length === 0) {
+    recordPuzzleSetEmpty('retry-session');
+    return;
+  }
 
   // Shuffle for variety
   for (let i = defs.length - 1; i > 0; i--) {
@@ -3009,6 +3201,7 @@ export async function nextPuzzle(redraw: () => void): Promise<void> {
       p => p.sourceKind === sourceKind && p.id !== currentDef.id,
     );
     if (candidates.length === 0) {
+      recordPuzzleSetEmpty('next-puzzle');
       console.warn('[puzzle-ctrl] no more puzzles of kind', sourceKind);
       return;
     }
@@ -3017,6 +3210,7 @@ export async function nextPuzzle(redraw: () => void): Promise<void> {
     activeRoundCtrl = null;
     window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
   } catch (e) {
+    recordPuzzleLoadFail(e, 'next-puzzle');
     console.warn('[puzzle-ctrl] nextPuzzle failed', e);
   }
 }
@@ -3065,9 +3259,16 @@ export function getRetryCount(): number | undefined { return retryCount; }
  * or recovered solve, plus puzzles that have never been attempted.
  */
 export async function buildRetryQueue(): Promise<PuzzleDefinition[]> {
-  const allDefs = await listPuzzleDefinitions();
-  // Single pass over all attempts instead of N serial getAttempts() calls.
-  const attemptsByPuzzle = await getAllAttemptsByPuzzle();
+  let allDefs: PuzzleDefinition[];
+  let attemptsByPuzzle: Map<string, PuzzleAttempt[]>;
+  try {
+    allDefs = await listPuzzleDefinitions();
+    // Single pass over all attempts instead of N serial getAttempts() calls.
+    attemptsByPuzzle = await getAllAttemptsByPuzzle();
+  } catch (e) {
+    recordPuzzleLoadFail(e, 'retry-session');
+    throw e;
+  }
   const queue: PuzzleDefinition[] = [];
 
   for (const def of allDefs) {
@@ -3089,6 +3290,7 @@ export async function buildRetryQueue(): Promise<PuzzleDefinition[]> {
     }
   }
 
+  if (queue.length === 0) recordPuzzleSetEmpty('retry-session');
   return queue;
 }
 
@@ -3114,6 +3316,7 @@ export async function startRetrySession(redraw: () => void): Promise<void> {
   try {
     const queue = await buildRetryQueue();
     if (queue.length === 0) {
+      recordPuzzleSetEmpty('retry-session');
       console.warn('[puzzle-ctrl] no puzzles need retry');
       return;
     }
@@ -3125,6 +3328,7 @@ export async function startRetrySession(redraw: () => void): Promise<void> {
     const first = retryQueue[0]!;
     window.location.hash = `#/puzzles/${encodeURIComponent(first.id)}`;
   } catch (e) {
+    recordPuzzleLoadFail(e, 'retry-session');
     console.warn('[puzzle-ctrl] startRetrySession failed', e);
     retrySessionActive = false;
   }
@@ -3240,13 +3444,25 @@ export function getDueCount(): number | undefined { return dueCount; }
  * never been attempted (no meta or dueAt absent → check attempts).
  */
 export async function getDuePuzzles(): Promise<PuzzleDefinition[]> {
-  const allDefs = await listPuzzleDefinitions();
+  let allDefs: PuzzleDefinition[];
+  try {
+    allDefs = await listPuzzleDefinitions();
+  } catch (e) {
+    recordPuzzleLoadFail(e, 'due-session');
+    throw e;
+  }
   const now = Date.now();
   const due: PuzzleDefinition[] = [];
 
   // Pre-load all attempts once for puzzles that lack cached meta.
   // Replaces N serial getAttempts() calls with a single cursor scan.
-  const attemptsByPuzzle = await getAllAttemptsByPuzzle();
+  let attemptsByPuzzle: Map<string, PuzzleAttempt[]>;
+  try {
+    attemptsByPuzzle = await getAllAttemptsByPuzzle();
+  } catch (e) {
+    recordPuzzleLoadFail(e, 'due-session');
+    throw e;
+  }
 
   for (const def of allDefs) {
     const meta = metaCache.get(def.id) ?? (await getMeta(def.id));
@@ -3268,6 +3484,7 @@ export async function getDuePuzzles(): Promise<PuzzleDefinition[]> {
     }
   }
 
+  if (due.length === 0) recordPuzzleSetEmpty('due-session');
   return due;
 }
 
@@ -3292,6 +3509,7 @@ export async function startDueSession(redraw: () => void): Promise<void> {
   try {
     const queue = await getDuePuzzles();
     if (queue.length === 0) {
+      recordPuzzleSetEmpty('due-session');
       console.warn('[puzzle-ctrl] no puzzles due for review');
       return;
     }
@@ -3302,6 +3520,7 @@ export async function startDueSession(redraw: () => void): Promise<void> {
     const first = retryQueue[0]!;
     window.location.hash = `#/puzzles/${encodeURIComponent(first.id)}`;
   } catch (e) {
+    recordPuzzleLoadFail(e, 'due-session');
     console.warn('[puzzle-ctrl] startDueSession failed', e);
     retrySessionActive = false;
   }

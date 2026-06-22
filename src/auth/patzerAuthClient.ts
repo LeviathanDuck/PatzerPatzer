@@ -1,3 +1,5 @@
+import { record, Severity } from '../diagnostics';
+
 const PATZER_AUTH_BASE = '/api/patzer-auth';
 
 export interface MagicLinkRequestResult {
@@ -13,6 +15,45 @@ function callbackURL(): string {
   return window.location.pathname || '/';
 }
 
+function errorClass(error: unknown): string {
+  if (error instanceof DOMException) return error.name || 'DOMException';
+  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
+  return typeof error;
+}
+
+function authFailureClass(status: number | undefined, error?: unknown): string {
+  if (error !== undefined && status === undefined) return 'network-error';
+  if (status === 401) return 'unauthorized';
+  if (status === 403) return 'auth-rejected';
+  if (status !== undefined && status >= 500) return 'server-error';
+  if (status !== undefined && status >= 400) return 'auth-rejected';
+  return 'unknown';
+}
+
+function recordPatzerAuthFailure(
+  endpointClass: string,
+  startedAt: number,
+  status: number | undefined,
+  error?: unknown,
+): void {
+  record({
+    kind: 'api',
+    severity: Severity.Error,
+    source: 'auth/patzerAuthClient',
+    sourceTag: 'auth',
+    message: `${endpointClass} failed`,
+    metadata: {
+      provider: 'patzer',
+      endpointClass,
+      httpStatus: status ?? null,
+      latencyMs: Date.now() - startedAt,
+      failureClass: authFailureClass(status, error),
+      ...(error !== undefined ? { errorClass: errorClass(error) } : {}),
+    },
+    redactionClass: 'safe',
+  });
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!text) return {} as T;
@@ -23,18 +64,26 @@ export async function requestPatzerMagicLink(email: string): Promise<MagicLinkRe
   const normalizedEmail = email.trim();
   if (!normalizedEmail) throw new Error('Enter an email address.');
 
-  const res = await fetch(`${PATZER_AUTH_BASE}/sign-in/magic-link`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: normalizedEmail,
-      callbackURL: callbackURL(),
-      errorCallbackURL: callbackURL(),
-    }),
-  });
+  const magicLinkStart = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(`${PATZER_AUTH_BASE}/sign-in/magic-link`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: normalizedEmail,
+        callbackURL: callbackURL(),
+        errorCallbackURL: callbackURL(),
+      }),
+    });
+  } catch (error) {
+    recordPatzerAuthFailure('patzer-magic-link', magicLinkStart, undefined, error);
+    throw error;
+  }
 
   if (!res.ok) {
+    recordPatzerAuthFailure('patzer-magic-link', magicLinkStart, res.status);
     let message = `Magic-link request failed: ${res.status}`;
     try {
       const body = await readJson<{ message?: string; error?: string }>(res);
