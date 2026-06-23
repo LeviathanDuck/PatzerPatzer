@@ -3183,7 +3183,6 @@ function renderPlayedLinesPanel(node: OpeningTreeNode, redraw: () => void): VNod
       : h('div.openings__moves',
           node.children.map(child => renderMoveRow(child, node.total, node.fen, redraw)),
         ),
-    renderTreeEvalStatusBar(),
     renderTreeEvalControls(redraw),
     // Speed filter chips — below the moves, above the move-nav bar
     renderSpeedFilter(redraw),
@@ -3193,6 +3192,9 @@ function renderPlayedLinesPanel(node: OpeningTreeNode, redraw: () => void): VNod
 
 function renderTreeEvalControls(redraw: () => void): VNode {
   const enabled = isTreeEvalEnabled();
+  const status = getTreeEvalStatus();
+  const active = enabled && status.inProgress;
+  const refining = active && status.phase === 'refining';
   const thoroughness = treeEvalThoroughness();
   return h('div.openings__tree-eval-controls', [
     h('label.openings__tree-eval-toggle', [
@@ -3213,6 +3215,23 @@ function renderTreeEvalControls(redraw: () => void): VNode {
       }),
       h('span.openings__tree-eval-switch'),
       h('span.openings__tree-eval-label', 'Tree eval'),
+      h('span.openings__tree-eval-activity', {
+        class: {
+          'openings__tree-eval-activity--active': active,
+          'openings__tree-eval-activity--refining': refining,
+        },
+        attrs: {
+          title: active ? (refining ? 'Tree eval refining' : 'Tree eval evaluating') : 'Tree eval idle',
+          'aria-hidden': 'true',
+        },
+      }, active ? [
+        h('img.openings__tree-eval-activity-icon', {
+          attrs: {
+            src: '/images/loading-icons/loading.gif',
+            alt: '',
+          },
+        }),
+      ] : []),
     ]),
     h('div.openings__tree-eval-levels', {
       class: { 'openings__tree-eval-levels--disabled': !enabled },
@@ -3268,17 +3287,7 @@ function renderMoveEvalSlot(child: OpeningTreeNode, parentFen: string): VNode {
   const entry = isTreeEvalEnabled() ? getTreeEval(child.fen) : undefined;
   const bookIcon = renderMastersBookIcon(parentFen, child.uci);
   if (!entry?.settled || (entry.cp === undefined && entry.mate === undefined)) {
-    const status = getTreeEvalStatus();
-    const children: Array<VNode | null> = [];
-    if (status.inProgress) children.push(h('img.openings__move-loading', {
-        attrs: {
-          src: '/images/loading-icons/loading.gif',
-          alt: '',
-          'aria-hidden': 'true',
-        },
-      }));
-    children.push(bookIcon);
-    return h('span.openings__move-eval', children);
+    return h('span.openings__move-eval', bookIcon ? [bookIcon] : []);
   }
   const swing = formatTreeEvalSwing(entry.swing);
   return h('span.openings__move-eval', [
@@ -3329,24 +3338,6 @@ function formatTreeEvalSwing(swing: number | undefined): string {
   const percent = Math.round(swing * 100);
   const sign = percent > 0 ? '+' : percent < 0 ? '\u2212' : '';
   return `(${sign}${Math.abs(percent)}%)`;
-}
-
-function renderTreeEvalStatusBar(): VNode | null {
-  const status = getTreeEvalStatus();
-  if (!status.enabled || !status.inProgress) return null;
-  const refining = status.phase === 'refining';
-  return h('div.openings__tree-eval-status', {
-    class: { 'openings__tree-eval-status--refining': refining },
-  }, [
-    h('img.openings__tree-eval-status-icon', {
-      attrs: {
-        src: '/images/loading-icons/loading.gif',
-        alt: '',
-        'aria-hidden': 'true',
-      },
-    }),
-    h('span.openings__tree-eval-status-label', refining ? 'Refining...' : 'Evaluating...'),
-  ]);
 }
 
 /**

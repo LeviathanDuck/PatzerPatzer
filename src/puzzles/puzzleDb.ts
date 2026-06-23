@@ -99,6 +99,7 @@ const STORE_USER_META      = 'user-meta';
 const STORE_USER_PERF      = 'user-perf';
 /** Append-only rating history entries (PuzzleRatingHistoryEntry), auto-increment key. */
 const STORE_RATING_HISTORY = 'rating-history';
+const LOCAL_NODE_SYNC_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 let _db: IDBDatabase | undefined;
 
@@ -560,18 +561,28 @@ async function listRatedAttempts(): Promise<PuzzleAttempt[]> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Cloud sync: push/pull/merge for user puzzle perf, rating history, and rated attempts
-//
-// Merge rule for UserPuzzlePerf:
-//   Server wins if nb (total rated puzzles) is higher — prevents overwrites
-//   from stale local state on a new device. If local nb is equal or higher,
-//   local state is pushed. This is a simple last-writer-wins by game count.
-//
-// Merge rule for rating history:
-//   Append-only: push any local entries with timestamps newer than the
-//   server's most recent entry timestamp.
-// ---------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function shouldUseNodePuzzleSyncEndpoints(): boolean {
+  return LOCAL_NODE_SYNC_HOSTS.has(window.location.hostname);
+}
 
 /**
  * Pull UserPuzzlePerf from the server and merge into local IDB.
@@ -775,6 +786,7 @@ export async function pushNewRatedAttempts(): Promise<void> {
  * Preserves local-first offline behavior — gracefully no-ops on network failure.
  */
 export async function syncRatedLadder(): Promise<void> {
+  if (!shouldUseNodePuzzleSyncEndpoints()) return;
   await pullAndMergePuzzlePerf();
   await pullAndMergePuzzleRatingHistory();
   await pullAndMergeRatedAttempts();

@@ -2,6 +2,7 @@ import { getSessionId, newEventId } from './id';
 import { putEventWithEviction } from './idbStore';
 import { snapshotBreadcrumbs } from './record';
 import { redactDiagnosticText, redactEventMetadata } from './redact';
+import { currentAppRoute } from './route';
 import {
   Severity,
   type Breadcrumb,
@@ -23,10 +24,6 @@ function stackFromError(error: unknown): string | undefined {
     return (error as { stack: string }).stack;
   }
   return undefined;
-}
-
-function currentRoute(): string {
-  return typeof window === 'undefined' ? '' : window.location.pathname;
 }
 
 function viewportSize(): { width: number; height: number } | undefined {
@@ -151,7 +148,7 @@ function handleResourceError(element: HTMLElement): void {
       timestamp: Date.now(),
       kind: 'resource-error',
       severity: Severity.Error,
-      route: currentRoute(),
+      route: currentAppRoute(),
       source: 'window.error',
       sourceTag: 'window.error',
       message: `Resource failed to load: ${element.tagName.toLowerCase()}`,
@@ -177,7 +174,7 @@ export function normalizeErrorEvent(event: Pick<ErrorEvent, 'message' | 'filenam
     timestamp: Date.now(),
     kind: 'error',
     severity: Severity.Error,
-    route: currentRoute(),
+    route: currentAppRoute(),
     source: event.filename ? redactedResourceUrl(event.filename) : 'window.error',
     sourceTag: 'window.error',
     message: redactDiagnosticText(event.message || 'Unhandled script error'),

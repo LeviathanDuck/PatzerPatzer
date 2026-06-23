@@ -1,13 +1,9 @@
 import { onCLS, onFCP, onINP, onLCP, onTTFB } from 'web-vitals/attribution';
 import { record } from '../record';
+import { currentAppRoute } from '../route';
 import { Severity, type DiagnosticMetadata } from '../types';
 
 let webVitalsInitialized = false;
-
-function currentRoute(): string {
-  if (typeof window === 'undefined') return '';
-  return window.location.pathname || '/';
-}
 
 function rectMetadata(rect: DOMRectReadOnly | undefined): DiagnosticMetadata | null {
   if (!rect) return null;
@@ -80,7 +76,7 @@ function commonMetadata(metric: {
     rating: metric.rating,
     navigationType: navigationType(),
     metricNavigationType: metric.navigationType,
-    route: currentRoute(),
+    route: currentAppRoute('/'),
     deviceClass: deviceClass(),
     viewport: viewportMetadata(),
     connectionEffectiveType: connectionEffectiveType(),
@@ -101,7 +97,7 @@ export function initWebVitals(): void {
         source: 'diagnostics/performance/webVitals',
         sourceTag: 'web-vitals.cls',
         message: 'Web Vital CLS',
-        route: currentRoute(),
+        route: currentAppRoute('/'),
         metadata: {
           ...commonMetadata(metric),
           largestShiftTarget: attribution.largestShiftTarget ?? null,
@@ -122,7 +118,7 @@ export function initWebVitals(): void {
         source: 'diagnostics/performance/webVitals',
         sourceTag: 'web-vitals.inp',
         message: 'Web Vital INP',
-        route: currentRoute(),
+        route: currentAppRoute('/'),
         metadata: {
           ...commonMetadata(metric),
           interactionTarget: attribution.interactionTarget || null,
@@ -150,7 +146,7 @@ export function initWebVitals(): void {
         source: 'diagnostics/performance/webVitals',
         sourceTag: 'web-vitals.lcp',
         message: 'Web Vital LCP',
-        route: currentRoute(),
+        route: currentAppRoute('/'),
         metadata: {
           ...commonMetadata(metric),
           lcpTarget: attribution.target ?? null,
@@ -173,7 +169,7 @@ export function initWebVitals(): void {
         source: 'diagnostics/performance/webVitals',
         sourceTag: 'web-vitals.fcp',
         message: 'Web Vital FCP',
-        route: currentRoute(),
+        route: currentAppRoute('/'),
         metadata: {
           ...commonMetadata(metric),
           entryCount: metric.entries.length,
@@ -191,7 +187,7 @@ export function initWebVitals(): void {
         source: 'diagnostics/performance/webVitals',
         sourceTag: 'web-vitals.ttfb',
         message: 'Web Vital TTFB',
-        route: currentRoute(),
+        route: currentAppRoute('/'),
         metadata: {
           ...commonMetadata(metric),
           waitingDuration: attribution.waitingDuration,

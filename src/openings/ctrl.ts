@@ -32,6 +32,12 @@ import {
   startTreeEvalDeepening,
   startTreeEvalPass1,
 } from './treeEval';
+import {
+  createOpeningTreeBuildContext,
+  openingTreeBuildMilestonesForProgress,
+  recordOpeningTreeBuildEvent,
+  recordOpeningTreeBuildFailure,
+} from './treeBuildDiagnostics';
 
 export type OpeningsPage = 'library' | 'loading' | 'session';
 
@@ -521,31 +527,61 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
   redraw();
 
   const CHUNK = 200;
+  const buildContext = createOpeningTreeBuildContext({
+    reason: 'filter-rebuild',
+    collection: _activeCollection,
+    filteredGames: games.length,
+    colorFilter: _colorFilter,
+    speedFilter: _speedFilter,
+    dateRange: _sessionDateRange,
+    activeTool: _activeTool,
+    chunkSize: CHUNK,
+  });
+  let nextMilestoneIndex = 0;
   const builder = new OpeningTreeBuilder();
   let index = 0;
   let chunkCount = 0;
+  recordOpeningTreeBuildEvent(buildContext, { phase: 'start', progressGames: 0 });
 
   function processChunk(): void {
-    const end = Math.min(index + CHUNK, games.length);
-    builder.addGames(games.slice(index, end));
-    index = end;
-    chunkCount++;
-    _treeBuildProgress = index;
+    try {
+      const end = Math.min(index + CHUNK, games.length);
+      builder.addGames(games.slice(index, end));
+      index = end;
+      chunkCount++;
+      _treeBuildProgress = index;
 
-    const done = index >= games.length;
-    if (done || chunkCount % 4 === 0) {
-      _openingTree = builder.freeze();
-      _sessionNode = _openingTree;
-      invalidateSampleCache();
-      triggerTreeEvalForCurrentNode();
-    }
-    redraw();
+      const milestoneResult = openingTreeBuildMilestonesForProgress(games.length, index, nextMilestoneIndex);
+      nextMilestoneIndex = milestoneResult.nextIndex;
+      for (const milestone of milestoneResult.milestones) {
+        recordOpeningTreeBuildEvent(buildContext, {
+          phase: 'milestone',
+          progressGames: index,
+          milestonePercent: milestone,
+        });
+      }
 
-    if (!done) {
-      setTimeout(processChunk, 0);
-    } else {
-      _treeBuilding = false;
+      const done = index >= games.length;
+      if (done || chunkCount % 4 === 0) {
+        _openingTree = builder.freeze();
+        _sessionNode = _openingTree;
+        invalidateSampleCache();
+        triggerTreeEvalForCurrentNode();
+      }
       redraw();
+
+      if (!done) {
+        setTimeout(processChunk, 0);
+      } else {
+        _treeBuilding = false;
+        recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index });
+        redraw();
+      }
+    } catch (error) {
+      _treeBuilding = false;
+      recordOpeningTreeBuildFailure(buildContext, index, error);
+      redraw();
+      throw error;
     }
   }
 
@@ -604,33 +640,63 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   redraw();
 
   const CHUNK = 200;
+  const buildContext = createOpeningTreeBuildContext({
+    reason: 'open-collection',
+    collection,
+    filteredGames: games.length,
+    colorFilter: _colorFilter,
+    speedFilter: _speedFilter,
+    dateRange: _sessionDateRange,
+    activeTool: _activeTool,
+    chunkSize: CHUNK,
+  });
+  let nextMilestoneIndex = 0;
   const builder = new OpeningTreeBuilder();
   let index = 0;
   let chunkCount = 0;
+  recordOpeningTreeBuildEvent(buildContext, { phase: 'start', progressGames: 0 });
 
   function processChunk(): void {
-    const end = Math.min(index + CHUNK, games.length);
-    builder.addGames(games.slice(index, end));
-    index = end;
-    chunkCount++;
-    _treeBuildProgress = index;
+    try {
+      const end = Math.min(index + CHUNK, games.length);
+      builder.addGames(games.slice(index, end));
+      index = end;
+      chunkCount++;
+      _treeBuildProgress = index;
 
-    const done = index >= games.length;
-    // Freeze the tree periodically (every 4 chunks) or on the final chunk.
-    // freeze() does a full DFS so we don't want to call it on every chunk.
-    if (done || chunkCount % 4 === 0) {
-      _openingTree = builder.freeze();
-      _sessionNode = nodeAtMoves(_openingTree, [..._sessionPath]) ?? _openingTree;
-      invalidateSampleCache();
-      triggerTreeEvalForCurrentNode();
-    }
-    redraw();
+      const milestoneResult = openingTreeBuildMilestonesForProgress(games.length, index, nextMilestoneIndex);
+      nextMilestoneIndex = milestoneResult.nextIndex;
+      for (const milestone of milestoneResult.milestones) {
+        recordOpeningTreeBuildEvent(buildContext, {
+          phase: 'milestone',
+          progressGames: index,
+          milestonePercent: milestone,
+        });
+      }
 
-    if (!done) {
-      setTimeout(processChunk, 0);
-    } else {
-      _treeBuilding = false;
+      const done = index >= games.length;
+      // Freeze the tree periodically (every 4 chunks) or on the final chunk.
+      // freeze() does a full DFS so we don't want to call it on every chunk.
+      if (done || chunkCount % 4 === 0) {
+        _openingTree = builder.freeze();
+        _sessionNode = nodeAtMoves(_openingTree, [..._sessionPath]) ?? _openingTree;
+        invalidateSampleCache();
+        triggerTreeEvalForCurrentNode();
+      }
       redraw();
+
+      if (!done) {
+        setTimeout(processChunk, 0);
+      } else {
+        _treeBuilding = false;
+        recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index });
+        redraw();
+      }
+    } catch (error) {
+      _treeBuilding = false;
+      recordOpeningTreeBuildFailure(buildContext, index, error);
+      redraw();
+      throw error;
     }
   }
 

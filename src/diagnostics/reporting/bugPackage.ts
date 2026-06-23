@@ -1,6 +1,7 @@
 import { getDiagnosticEvents } from '../../idb';
 import { snapshotBreadcrumbs } from '../record';
 import { redactDiagnosticText, redactEventMetadata, sanitizeRoute } from '../redact';
+import { currentAppRoute, sanitizeAppRoute } from '../route';
 import type { DiagnosticReport } from './reportAssembly';
 import type {
   Breadcrumb,
@@ -73,7 +74,7 @@ function errorGroupMetadata(errorGroup: DiagnosticErrorGroup): DiagnosticMetadat
     eventIds: errorGroup.eventIds?.join(',') ?? null,
     kind: errorGroup.kind ?? null,
     severity: errorGroup.severity ?? null,
-    route: errorGroup.route ? sanitizeRoute(errorGroup.route) : null,
+    route: errorGroup.route ? sanitizeAppRoute(errorGroup.route) : null,
     sourceTag: errorGroup.sourceTag ?? null,
     message: errorGroup.message ?? null,
     firstSeenAt: errorGroup.firstSeenAt ?? null,
@@ -88,16 +89,6 @@ function errorGroupMetadata(errorGroup: DiagnosticErrorGroup): DiagnosticMetadat
   }
 
   return metadata;
-}
-
-function currentRoute(): string {
-  try {
-    if (typeof window === 'undefined') return '';
-    const hashRoute = window.location.hash.startsWith('#/') ? window.location.hash.slice(1) : '';
-    return sanitizeRoute(hashRoute || window.location.pathname || '');
-  } catch {
-    return '';
-  }
 }
 
 function currentQueryParams(): Record<string, string> {
@@ -123,8 +114,8 @@ function sanitizeBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
     case 'route-transition':
       return {
         ...breadcrumb,
-        from: sanitizeRoute(breadcrumb.from),
-        to: sanitizeRoute(breadcrumb.to),
+        from: sanitizeAppRoute(breadcrumb.from),
+        to: sanitizeAppRoute(breadcrumb.to),
       };
     case 'user-action':
       return {
@@ -169,15 +160,15 @@ function routeTransitions(breadcrumbs: Breadcrumb[]): BugPackageRouteTransition[
     ))
     .slice(-ROUTE_TRANSITION_LIMIT)
     .map(breadcrumb => ({
-      from: sanitizeRoute(breadcrumb.from),
-      to: sanitizeRoute(breadcrumb.to),
+      from: sanitizeAppRoute(breadcrumb.from),
+      to: sanitizeAppRoute(breadcrumb.to),
       timestamp: breadcrumb.timestamp,
     }));
 }
 
 function buildRouteContext(breadcrumbs: Breadcrumb[]): BugPackageRouteContext {
   return {
-    route: currentRoute(),
+    route: currentAppRoute(),
     queryParams: currentQueryParams(),
     recentTransitions: routeTransitions(breadcrumbs),
   };

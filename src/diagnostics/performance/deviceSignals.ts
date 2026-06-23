@@ -1,4 +1,5 @@
 import { record } from '../record';
+import { currentAppRoute } from '../route';
 import { Severity } from '../types';
 
 interface NetworkInformationLike {
@@ -24,11 +25,6 @@ interface PerformanceWithMemory extends Performance {
 
 let viewportBreadcrumbsInitialized = false;
 
-function currentRoute(): string {
-  if (typeof window === 'undefined') return '';
-  return window.location.pathname || '/';
-}
-
 function orientationType(): string {
   try {
     return screen.orientation?.type ?? 'unknown';
@@ -38,18 +34,19 @@ function orientationType(): string {
 }
 
 function emitViewportEvent(sourceTag: string, message: string): void {
+  const route = currentAppRoute('/');
   record({
     kind: 'performance',
     severity: Severity.Info,
     source: 'diagnostics/performance/deviceSignals',
     sourceTag,
     message,
-    route: currentRoute(),
+    route,
     metadata: {
       width: typeof window === 'undefined' ? 0 : window.innerWidth,
       height: typeof window === 'undefined' ? 0 : window.innerHeight,
       orientation: orientationType(),
-      route: currentRoute(),
+      route,
     },
     redactionClass: 'safe',
   });
@@ -60,6 +57,7 @@ export function captureDeviceSignals(): void {
     if (typeof navigator === 'undefined') return;
     const nav = navigator as NavigatorWithDeviceSignals;
     const connection = nav.connection;
+    const route = currentAppRoute('/');
 
     record({
       kind: 'performance',
@@ -67,14 +65,14 @@ export function captureDeviceSignals(): void {
       source: 'diagnostics/performance/deviceSignals',
       sourceTag: 'performance.device-signals',
       message: 'Device capability signals',
-      route: currentRoute(),
+      route,
       metadata: {
         deviceMemory: nav.deviceMemory ?? null,
         hardwareConcurrency: nav.hardwareConcurrency ?? null,
         connectionEffectiveType: connection?.effectiveType ?? 'unknown',
         connectionDownlink: connection?.downlink ?? null,
         connectionRtt: connection?.rtt ?? null,
-        route: currentRoute(),
+        route,
       },
       redactionClass: 'safe',
     });
@@ -91,6 +89,7 @@ export function captureMemorySnapshot(label: string): void {
     if (typeof performance === 'undefined') return;
     const memory = (performance as PerformanceWithMemory).memory;
     if (!memory) return;
+    const route = currentAppRoute('/');
 
     record({
       kind: 'performance',
@@ -98,13 +97,13 @@ export function captureMemorySnapshot(label: string): void {
       source: 'diagnostics/performance/deviceSignals',
       sourceTag: 'performance.memory-snapshot',
       message: 'Memory snapshot',
-      route: currentRoute(),
+      route,
       metadata: {
         label,
         jsHeapSizeLimit: memory.jsHeapSizeLimit ?? null,
         totalJSHeapSize: memory.totalJSHeapSize ?? null,
         usedJSHeapSize: memory.usedJSHeapSize ?? null,
-        route: currentRoute(),
+        route,
       },
       redactionClass: 'safe',
     });
@@ -122,6 +121,7 @@ export async function captureStorageEstimate(label: string): Promise<void> {
     const usagePercent = quota && usage !== null
       ? (usage / quota) * 100
       : null;
+    const route = currentAppRoute('/');
 
     record({
       kind: 'performance',
@@ -129,13 +129,13 @@ export async function captureStorageEstimate(label: string): Promise<void> {
       source: 'diagnostics/performance/deviceSignals',
       sourceTag: 'performance.storage-estimate',
       message: 'Storage estimate',
-      route: currentRoute(),
+      route,
       metadata: {
         label,
         quota,
         usage,
         usagePercent,
-        route: currentRoute(),
+        route,
       },
       redactionClass: 'safe',
     });

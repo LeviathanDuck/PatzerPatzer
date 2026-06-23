@@ -1,15 +1,11 @@
 import { record } from '../record';
+import { currentAppRoute } from '../route';
 import { Severity, type DiagnosticMetadataValue } from '../types';
 
 let longTaskObserverInitialized = false;
 let longAnimationFrameObserverInitialized = false;
 let navigationTimingSummaryInitialized = false;
 let resourceTimingSummaryInitialized = false;
-
-function currentRoute(): string {
-  if (typeof window === 'undefined') return '';
-  return window.location.pathname || '/';
-}
 
 function attributionValue(value: unknown): DiagnosticMetadataValue {
   if (value === null || value === undefined) return null;
@@ -35,19 +31,20 @@ export function initLongTaskObserver(): void {
     const observer = new PerformanceObserver(list => {
       for (const entry of list.getEntries()) {
         const longTask = entry as PerformanceEntry & { attribution?: unknown[] };
+        const route = currentAppRoute('/');
         record({
           kind: 'performance',
           severity: Severity.Warn,
           source: 'diagnostics/performance/observers',
           sourceTag: 'performance.longtask',
           message: 'Long task detected',
-          route: currentRoute(),
+          route,
           metadata: {
             entryType: entry.entryType,
             name: entry.name,
             startTime: entry.startTime,
             duration: entry.duration,
-            route: currentRoute(),
+            route,
             attribution: (longTask.attribution ?? []).map(attributionValue),
           },
           redactionClass: 'safe',
@@ -69,19 +66,20 @@ export function initLongAnimationFrameObserver(): void {
     const observer = new PerformanceObserver(list => {
       for (const entry of list.getEntries()) {
         const longAnimationFrame = entry as PerformanceEntry & { blockingDuration?: number };
+        const route = currentAppRoute('/');
         record({
           kind: 'performance',
           severity: Severity.Warn,
           source: 'diagnostics/performance/observers',
           sourceTag: 'performance.long-animation-frame',
           message: 'Long animation frame detected',
-          route: currentRoute(),
+          route,
           metadata: {
             entryType: entry.entryType,
             startTime: entry.startTime,
             duration: entry.duration,
             blockingDuration: longAnimationFrame.blockingDuration ?? 0,
-            route: currentRoute(),
+            route,
           },
           redactionClass: 'safe',
         });
@@ -111,6 +109,7 @@ export function initNavigationTimingSummary(): void {
       if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return;
       const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
       if (!navigation) return;
+      const route = currentAppRoute('/');
 
       record({
         kind: 'performance',
@@ -118,14 +117,14 @@ export function initNavigationTimingSummary(): void {
         source: 'diagnostics/performance/observers',
         sourceTag: 'performance.navigation-timing',
         message: 'Navigation timing summary',
-        route: currentRoute(),
+        route,
         metadata: {
           dns: Math.max(0, navigation.domainLookupEnd - navigation.domainLookupStart),
           tcp: Math.max(0, navigation.connectEnd - navigation.connectStart),
           ttfb: Math.max(0, navigation.responseStart - navigation.requestStart),
           domInteractive: Math.max(0, navigation.domInteractive - navigation.fetchStart),
           loadComplete: Math.max(0, navigation.loadEventEnd - navigation.fetchStart),
-          route: currentRoute(),
+          route,
         },
         redactionClass: 'safe',
       });
@@ -144,6 +143,7 @@ export function initResourceTimingSummary(route: string, slowestN = 5): void {
       if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return;
       const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
       const buckets: Record<string, { count: number; totalDuration: number }> = {};
+      const summaryRoute = route || currentAppRoute('/');
 
       for (const entry of resources) {
         const type = entry.initiatorType || 'other';
@@ -169,9 +169,9 @@ export function initResourceTimingSummary(route: string, slowestN = 5): void {
         source: 'diagnostics/performance/observers',
         sourceTag: 'performance.resource-timing-summary',
         message: 'Resource timing summary',
-        route,
+        route: summaryRoute,
         metadata: {
-          route,
+          route: summaryRoute,
           buckets,
           slowest,
         },

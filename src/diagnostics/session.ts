@@ -3,6 +3,7 @@ import { runCrashInference } from './crashInference';
 import { getSessionId } from './id';
 import { putSessionWithEviction } from './idbStore';
 import { breadcrumb, record } from './record';
+import { currentAppRoute, currentRouteSnapshot, type DiagnosticRouteSnapshot } from './route';
 import { Severity, type DiagnosticSession } from './types';
 
 declare const __PATZER_RELEASE__: string;
@@ -30,6 +31,7 @@ let currentSession: SessionRecord | null = null;
 let heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
 let initialized = false;
 let listenersAttached = false;
+let lastObservedRoute = '';
 
 function getReleaseIdentity(): Pick<DiagnosticSession, 'release' | 'version' | 'buildId'> {
   return {
@@ -86,6 +88,23 @@ function recordLifecycleBreadcrumb(event: string): void {
   }
 }
 
+function currentRouteMetadata(): DiagnosticRouteSnapshot {
+  return currentRouteSnapshot();
+}
+
+function updateCurrentSessionRoute(): string {
+  const route = currentAppRoute();
+  if (currentSession) currentSession = { ...currentSession, route };
+  return route;
+}
+
+function persistCurrentSession(): void {
+  if (!currentSession) return;
+  putSessionWithEviction(currentSession).catch(() => {
+    // Diagnostics must never throw into app code.
+  });
+}
+
 function putSessionDuringPagehide(session: SessionRecord): void {
   try {
     if (typeof indexedDB === 'undefined') return;
@@ -118,6 +137,7 @@ export function startHeartbeat(): void {
         const lastHeartbeat = Date.now();
         currentSession = {
           ...currentSession,
+          route: currentAppRoute(),
           lastSeenAt: lastHeartbeat,
           lastHeartbeat,
         };
@@ -138,6 +158,7 @@ export function markCleanShutdown(): void {
     if (!currentSession) return;
     currentSession = {
       ...currentSession,
+      route: currentAppRoute(),
       cleanShutdown: true,
       endedAt: Date.now(),
     };
@@ -200,10 +221,8 @@ export function attachSessionListeners(): void {
           // Persist last visibility state so crash inference can distinguish
           // a kill-while-backgrounded from a kill-while-active.
           if (currentSession) {
-            currentSession = { ...currentSession, visibilityState: state };
-            putSessionWithEviction(currentSession).catch(() => {
-              // Diagnostics must never throw into app code.
-            });
+            currentSession = { ...currentSession, route: currentAppRoute(), visibilityState: state };
+            persistCurrentSession();
           }
         } catch {
           // Diagnostics must never throw into app code.
@@ -230,6 +249,20 @@ export function attachSessionListeners(): void {
   // page entered the cache, not that it is being destroyed.
   try {
     if (typeof window !== 'undefined') {
+      lastObservedRoute = currentAppRoute();
+
+      window.addEventListener('hashchange', () => {
+        try {
+          const from = lastObservedRoute;
+          const to = updateCurrentSessionRoute();
+          lastObservedRoute = to;
+          breadcrumb('route-transition', to, { from, to });
+          persistCurrentSession();
+        } catch {
+          // Diagnostics must never throw into app code.
+        }
+      });
+
       window.addEventListener('pagehide', (ev: PageTransitionEvent) => {
         try {
           recordLifecycleBreadcrumb(ev.persisted ? 'pagehide-bfcache' : 'pagehide');
@@ -269,14 +302,16 @@ export function initSession(): void {
     const startedAt = Date.now();
     const metadata = collectDeviceMetadata();
     const releaseIdentity = getReleaseIdentity();
+    const routeMetadata = currentRouteMetadata();
     cachedDeviceMetadata = metadata;
+    lastObservedRoute = routeMetadata.appRoute;
 
     const session: SessionRecord = {
       sessionId,
       ...releaseIdentity,
       startedAt,
       lastSeenAt: startedAt,
-      route: typeof window === 'undefined' ? '' : window.location.pathname,
+      route: routeMetadata.appRoute,
       source: 'diagnostics/session',
       cleanShutdown: false,
       metadata,
@@ -299,6 +334,9 @@ export function initSession(): void {
         os: metadata.os ?? 'unknown',
         viewportWidth: metadata.viewportWidth ?? '0',
         viewportHeight: metadata.viewportHeight ?? '0',
+        route: routeMetadata.appRoute,
+        pathRoute: routeMetadata.pathRoute,
+        hashRoute: routeMetadata.hashRoute,
       },
     });
 

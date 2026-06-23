@@ -221,6 +221,25 @@ function popupFeatures(): string {
   return `popup=yes,width=${width},height=${height},left=${left},top=${top}`;
 }
 
+function openBookLoginPopup(): Window | null {
+  const popup = window.open('about:blank', POPUP_NAME, popupFeatures());
+  popup?.focus();
+  return popup;
+}
+
+function closeBookLoginPopup(popup: Window | null): void {
+  if (popup && !popup.closed) popup.close();
+}
+
+function navigateBookLoginPopup(popup: Window | null, url: string): Window {
+  if (!popup || popup.closed) {
+    throw new Error('Popup blocked. Allow popups for this site to connect Lichess book access.');
+  }
+  popup.location.href = url;
+  popup.focus();
+  return popup;
+}
+
 function isCallbackMessage(value: unknown): value is BookCallbackMessage {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -335,46 +354,54 @@ async function completePopupLogin(code: string, pending: PendingBookOAuth): Prom
   };
 }
 
-async function runPopupLogin(): Promise<CompletedBookLogin> {
-  if (!window.isSecureContext) throw new Error('Lichess book login requires HTTPS or localhost.');
+async function runPopupLogin(popup: Window | null): Promise<CompletedBookLogin> {
+  if (!window.isSecureContext) {
+    closeBookLoginPopup(popup);
+    throw new Error('Lichess book login requires HTTPS or localhost.');
+  }
 
   clearBookOAuthState();
   const state = randomBase64Url(24);
   const verifier = randomBase64Url(32);
-  const challenge = await sha256Base64Url(verifier);
   const pending: PendingBookOAuth = { state, verifier, createdAt: Date.now() };
-  sessionStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pending));
 
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: CLIENT_ID,
-    redirect_uri: redirectUri(),
-    code_challenge_method: 'S256',
-    code_challenge: challenge,
-    state,
-    scope: '',
-  });
-
-  const popup = window.open(`${LICHESS_AUTH_URL}?${params.toString()}`, POPUP_NAME, popupFeatures());
-  if (!popup) {
+  let authPopup: Window | null = popup;
+  try {
+    sessionStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pending));
+    const challenge = await sha256Base64Url(verifier);
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: CLIENT_ID,
+      redirect_uri: redirectUri(),
+      code_challenge_method: 'S256',
+      code_challenge: challenge,
+      state,
+      scope: '',
+    });
+    authPopup = navigateBookLoginPopup(popup, `${LICHESS_AUTH_URL}?${params.toString()}`);
+  } catch (error) {
     sessionStorage.removeItem(PENDING_STORAGE_KEY);
+    closeBookLoginPopup(authPopup);
+    throw error;
+  }
+  const activePopup = authPopup;
+  if (!activePopup || activePopup.closed) {
+    sessionStorage.removeItem(PENDING_STORAGE_KEY);
+    closeBookLoginPopup(activePopup);
     throw new Error('Popup blocked. Allow popups for this site to connect Lichess book access.');
   }
-  popup.focus();
 
   try {
-    const code = await waitForPopupCallback(popup, state);
+    const code = await waitForPopupCallback(activePopup, state);
     return await completePopupLogin(code, pending);
   } finally {
     sessionStorage.removeItem(PENDING_STORAGE_KEY);
-    if (!popup.closed) popup.close();
+    closeBookLoginPopup(activePopup);
   }
 }
 
-async function runServerPopupLogin(): Promise<void> {
-  const popup = window.open(SERVER_LICHESS_CONNECT_ENDPOINT, POPUP_NAME, popupFeatures());
-  if (!popup) throw new Error('Popup blocked. Allow popups for this site to connect Lichess book access.');
-  popup.focus();
+async function runServerPopupLogin(popup: Window | null): Promise<void> {
+  const authPopup = navigateBookLoginPopup(popup, SERVER_LICHESS_CONNECT_ENDPOINT);
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -385,11 +412,11 @@ async function runServerPopupLogin(): Promise<void> {
         if (status?.connected) {
           settled = true;
           window.clearInterval(timer);
-          if (!popup.closed) popup.close();
+          closeBookLoginPopup(authPopup);
           resolve();
           return;
         }
-        if (popup.closed && Date.now() - startedAt > 1000) {
+        if (authPopup.closed && Date.now() - startedAt > 1000) {
           settled = true;
           window.clearInterval(timer);
           reject(new Error('Lichess book login was cancelled.'));
@@ -398,7 +425,7 @@ async function runServerPopupLogin(): Promise<void> {
         if (Date.now() - startedAt > 5 * 60 * 1000) {
           settled = true;
           window.clearInterval(timer);
-          if (!popup.closed) popup.close();
+          closeBookLoginPopup(authPopup);
           reject(new Error('Lichess book login timed out.'));
         }
       });
@@ -464,21 +491,34 @@ export async function clearLichessApiLoginData(): Promise<LichessApiLoginClearRe
 }
 
 export async function requestBookLogin(redraw?: () => void): Promise<void> {
+  const popup = openBookLoginPopup();
   if (!adminSyncToken()) {
-    const serverStatus = await getServerLichessStatus();
-    if (serverStatus?.connected) {
-      redraw?.();
-      return;
+    try {
+      const serverStatus = await getServerLichessStatus();
+      if (serverStatus?.connected) {
+        closeBookLoginPopup(popup);
+        redraw?.();
+        return;
+      }
+      if (serverStatus) {
+        await runServerPopupLogin(popup);
+        redraw?.();
+        return;
+      }
+      closeBookLoginPopup(popup);
+      requireAdminHeaders();
+    } catch (error) {
+      closeBookLoginPopup(popup);
+      throw error;
     }
-    if (serverStatus) {
-      await runServerPopupLogin();
-      redraw?.();
-      return;
-    }
-    requireAdminHeaders();
   }
-  const login = await runPopupLogin();
-  await saveBookAccess(login);
-  await getBookAccessStatus();
-  redraw?.();
+  try {
+    const login = await runPopupLogin(popup);
+    await saveBookAccess(login);
+    await getBookAccessStatus();
+    redraw?.();
+  } catch (error) {
+    closeBookLoginPopup(popup);
+    throw error;
+  }
 }

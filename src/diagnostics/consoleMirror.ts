@@ -1,6 +1,7 @@
 import { getSessionId, newEventId } from './id';
 import { putEventWithEviction } from './idbStore';
 import { redactDiagnosticText } from './redact';
+import { currentAppRoute } from './route';
 import { Severity, type DiagnosticEvent } from './types';
 
 const SERIALIZED_ARGS_MAX = 500;
@@ -11,10 +12,6 @@ const originalConsoleError = console.error.bind(console);
 
 let consoleMirrorInstalled = false;
 const dedupLastSeen = new Map<string, number>();
-
-function currentRoute(): string {
-  return typeof window === 'undefined' ? '' : window.location.pathname;
-}
 
 function serializeArg(arg: unknown): string {
   try {
@@ -58,7 +55,7 @@ export function normalizeConsoleEvent(
     timestamp: now,
     kind: 'console',
     severity,
-    route: currentRoute(),
+    route: currentAppRoute(),
     source,
     sourceTag: source,
     message: serializedArgs.join(' '),

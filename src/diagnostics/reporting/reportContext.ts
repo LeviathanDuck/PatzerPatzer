@@ -1,6 +1,7 @@
 import { getDiagnosticEvents } from '../../idb';
 import { snapshotBreadcrumbs } from '../record';
 import { redactDiagnosticText, redactEventMetadata, sanitizeRoute } from '../redact';
+import { currentAppRoute, sanitizeAppRoute } from '../route';
 import {
   Severity,
   type Breadcrumb,
@@ -95,18 +96,6 @@ function normalizedLimit(value: number | undefined, fallback: number): number {
   return Math.max(0, Math.floor(value));
 }
 
-function currentRoute(): string {
-  try {
-    if (typeof window === 'undefined') return '';
-    const path = window.location.pathname || '';
-    const hash = window.location.hash || '';
-    const hashRoute = hash.startsWith('#/') ? hash.slice(1) : '';
-    return sanitizeRoute(hashRoute || path);
-  } catch {
-    return '';
-  }
-}
-
 function redactText(value: string): string {
   return redactDiagnosticText(value);
 }
@@ -131,8 +120,8 @@ function redactBreadcrumb(breadcrumb: Breadcrumb): ReportBreadcrumb {
 
   switch (breadcrumb.type) {
     case 'route-transition':
-      fields.from = sanitizeRoute(breadcrumb.from);
-      fields.to = sanitizeRoute(breadcrumb.to);
+      fields.from = sanitizeAppRoute(breadcrumb.from);
+      fields.to = sanitizeAppRoute(breadcrumb.to);
       break;
     case 'user-action':
       addField(fields, 'action', breadcrumb.action);
@@ -191,7 +180,7 @@ function redactDiagnosticEvent(event: DiagnosticEvent): ReportRecentError {
     timestamp: event.timestamp,
     kind: event.kind,
     severity: event.severity,
-    route: sanitizeRoute(event.route),
+    route: sanitizeAppRoute(event.route),
     sourceTag: redactText(event.sourceTag),
     message: redactText(event.message),
   };
@@ -230,7 +219,7 @@ export async function captureRouteContext(options: CaptureRouteContextOptions = 
   const recentErrorLimit = normalizedLimit(options.recentErrorLimit, DEFAULT_RECENT_ERROR_LIMIT);
 
   return {
-    route: currentRoute(),
+    route: currentAppRoute(),
     breadcrumbs: readBreadcrumbs(breadcrumbLimit),
     recentErrors: await readRecentErrors(recentErrorLimit),
     capturedAt: Date.now(),

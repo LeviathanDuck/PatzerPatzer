@@ -2,6 +2,7 @@ import { getSessionId, newEventId } from './id';
 import { putEventWithEviction } from './idbStore';
 import { snapshotBreadcrumbs } from './record';
 import { redactDiagnosticText, redactEventMetadata } from './redact';
+import { currentAppRoute } from './route';
 import {
   Severity,
   type Breadcrumb,
@@ -22,10 +23,6 @@ interface NormalizedRejection {
 type GroupedDiagnosticEvent = DiagnosticEvent & {
   groupKey: string;
 };
-
-function currentRoute(): string {
-  return typeof window === 'undefined' ? '' : window.location.pathname;
-}
 
 function breadcrumbSnapshot(): Breadcrumb[] {
   try {
@@ -149,7 +146,7 @@ export function normalizeUnhandledRejection(reason: unknown): GroupedDiagnosticE
     kind: 'unhandled-rejection',
     groupKey: computeRejectionGroupKey(reason),
     severity: Severity.Error,
-    route: currentRoute(),
+    route: currentAppRoute(),
     source: 'window.unhandledrejection',
     sourceTag: 'window.unhandledrejection',
     message: redactDiagnosticText(normalized.message),

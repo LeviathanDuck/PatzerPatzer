@@ -15,17 +15,12 @@ import type {
 import { Severity } from './types';
 import { getSessionId, newEventId } from './id';
 import { redactEventMetadata } from './redact';
+import { currentAppRoute, sanitizeAppRoute } from './route';
 
 const MAX_BREADCRUMBS = 100;
 
-const DEFAULT_ROUTE = '';
-
 const breadcrumbs = new RingBuffer<Breadcrumb>(MAX_BREADCRUMBS);
 const sessionTags = new Map<string, string>();
-
-function routeFromLocation(): string {
-  return typeof window === 'undefined' ? DEFAULT_ROUTE : window.location.pathname;
-}
 
 function dispatchToStorage(event: DiagnosticEvent): void {
   putEventWithEviction(event).catch(() => {
@@ -70,7 +65,7 @@ export function record(event: Partial<DiagnosticEvent>): void {
       timestamp: Date.now(),
       kind: event.kind ?? 'error',
       severity: event.severity ?? Severity.Error,
-      route: event.route ?? routeFromLocation(),
+      route: event.route ?? currentAppRoute(),
       source: event.source ?? event.sourceTag ?? 'app',
       sourceTag,
       message: event.message ?? 'Diagnostic event',
@@ -106,8 +101,8 @@ function buildBreadcrumb(
     case 'route-transition': {
       const entry: RouteBreadcrumb = {
         type,
-        from: textFromMetadata(metadata, 'from') ?? '',
-        to: textFromMetadata(metadata, 'to') ?? message,
+        from: sanitizeAppRoute(textFromMetadata(metadata, 'from') ?? ''),
+        to: sanitizeAppRoute(textFromMetadata(metadata, 'to') ?? message),
         timestamp,
       };
       return entry;
