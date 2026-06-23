@@ -2109,10 +2109,12 @@ function renderOpeningTreeTool(
       renderCeval(),
       renderEngineSettings({ showArrowSettings: true }),
       engineEnabled ? renderPvBox() : null,
-      // Move list + nav bar directly under the engine block (mirrors analysis-board column order).
+      // Move list directly under the engine block (mirrors analysis-board column order).
       openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
       // Opening tree move rows stay in the right panel; only lower context controls move under board.
       node ? renderPlayedLinesPanel(node, redraw) : null,
+      // Board navigation controls render beneath the opening tree list.
+      renderOpeningsMoveNavBar(node, path, redraw),
     ]),
     h('div.openings__underboard', [
       // Position context lives under the board, mirroring the analysis underboard pattern.
@@ -2422,9 +2424,6 @@ function renderOpeningsMoveList(
     redraw();
   };
 
-  const canPrev = path.length > 0;
-  const canNext = node !== null && node.children.length > 0;
-
   return h('div.openings__move-list', [
     h('div.analyse__moves.areplay', [
       renderMoveList(root, currentPath, () => undefined, navigate, null, false),
@@ -2432,30 +2431,45 @@ function renderOpeningsMoveList(
     _saveLibFeedback ? h('div.openings__save-line-row', [
       h('span.openings__save-feedback', _saveLibFeedback),
     ]) : null,
-    renderMoveNavBar([], {
-      canPrev,
-      canNext,
-      first:      () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); },
-      prev:       () => { navigateBack(); syncOpeningsBoard(redraw); redraw(); },
-      next:       () => {
-        if (node && node.children.length > 0) {
-          navigateToMove(node.children[0]!.uci);
-          syncOpeningsBoard(redraw);
-          redraw();
-        }
-      },
-      last:       () => { navigateToEnd(); syncOpeningsBoard(redraw); redraw(); },
-      bookActive: explorerCtrl.enabled,
-      onBook:     () => {
-        explorerCtrl.toggle();
-        if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw);
-        redraw();
-      },
-      menuTitle: 'Opponents menu',
-      menuOpen:  _openingsMenuOpen,
-      onMenu:    () => { _openingsMenuOpen = !_openingsMenuOpen; redraw(); },
-    }),
   ]);
+}
+
+/**
+ * Move-nav-bar navigation controls (first/back/next/last + book/menu) for the
+ * Opponents opening tree page. Rendered beneath the opening tree (played-lines)
+ * list so the board navigation controls sit below the move rows.
+ */
+function renderOpeningsMoveNavBar(
+  node: OpeningTreeNode | null,
+  path: readonly string[],
+  redraw: () => void,
+): VNode {
+  const canPrev = path.length > 0;
+  const canNext = node !== null && node.children.length > 0;
+
+  return renderMoveNavBar([], {
+    canPrev,
+    canNext,
+    first:      () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); },
+    prev:       () => { navigateBack(); syncOpeningsBoard(redraw); redraw(); },
+    next:       () => {
+      if (node && node.children.length > 0) {
+        navigateToMove(node.children[0]!.uci);
+        syncOpeningsBoard(redraw);
+        redraw();
+      }
+    },
+    last:       () => { navigateToEnd(); syncOpeningsBoard(redraw); redraw(); },
+    bookActive: explorerCtrl.enabled,
+    onBook:     () => {
+      explorerCtrl.toggle();
+      if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw);
+      redraw();
+    },
+    menuTitle: 'Opponents menu',
+    menuOpen:  _openingsMenuOpen,
+    onMenu:    () => { _openingsMenuOpen = !_openingsMenuOpen; redraw(); },
+  });
 }
 
 function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): VNode {
