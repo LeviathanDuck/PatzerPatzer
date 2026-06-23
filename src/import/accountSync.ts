@@ -188,3 +188,74 @@ export async function syncAccountGames(account: ChessAccount, options: AccountSy
     widerSafetyFetch,
   };
 }
+
+function peekAbortError(): Error {
+  const error = new Error('Aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+export interface AccountPeekOptions {
+  rated: boolean;
+  speeds: ReadonlySet<ImportSpeed>;
+  signal?: AbortSignal;
+}
+
+export interface AccountPeekResult {
+  accountId: string;
+  /** False when there is no cursor to do a cheap incremental peek. */
+  supported: boolean;
+  /** New (deduped) games available to sync for the requested speeds. */
+  newGameCount: number;
+  fetchedCount: number;
+  cursorTimestamp: number | null;
+  usedCursor: boolean;
+}
+
+
+
+
+
+
+
+export async function peekAccountSync(account: ChessAccount, options: AccountPeekOptions): Promise<AccountPeekResult> {
+  const cursor = account.newestGameTimestamp;
+  const base: AccountPeekResult = {
+    accountId: account.id,
+    supported: false,
+    newGameCount: 0,
+    fetchedCount: 0,
+    cursorTimestamp: cursor,
+    usedCursor: false,
+  };
+
+  // A cheap incremental peek needs a baseline cursor; without one we would have
+  // to fetch the whole history, which is too heavy for a silent background check.
+  if (cursor === null) return base;
+  if (options.signal?.aborted) throw peekAbortError();
+
+  const speedSet = new Set(options.speeds);
+  let fetched: ImportedGame[];
+  if (account.platform === 'lichess') {
+    const since = Math.max(0, cursor - SYNC_OVERLAP_MS);
+    fetched = await fetchLichessGames(account.displayName, options.rated, speedSet, undefined, since);
+  } else if (account.platform === 'chesscom') {
+    const sinceMonth = new Date(cursor).toISOString().slice(0, 7);
+    fetched = await fetchChesscomGames(account.displayName, options.rated, speedSet, undefined, sinceMonth, null);
+  } else {
+    return base;
+  }
+  if (options.signal?.aborted) throw peekAbortError();
+
+  // Count only: dedupe against existing games but never persist.
+  const existing = await loadExistingGames();
+  const newGames = dedupeIncoming(existing, fetched);
+  return {
+    accountId: account.id,
+    supported: true,
+    newGameCount: newGames.length,
+    fetchedCount: fetched.length,
+    cursorTimestamp: cursor,
+    usedCursor: true,
+  };
+}

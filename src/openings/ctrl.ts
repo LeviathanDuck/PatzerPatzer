@@ -89,6 +89,29 @@ export async function refreshRegistryAccounts(redraw: () => void): Promise<reado
   return _accounts;
 }
 
+
+
+
+const _importedSpeedsCache = new Map<string, Set<string>>();
+
+/** Distinct non-empty timeClass values present in an account's imported games (cached). */
+export async function getImportedSpeedsForAccount(accountId: string): Promise<Set<string>> {
+  const cached = _importedSpeedsCache.get(accountId);
+  if (cached) return cached;
+  const records = await loadGamesByAccountFromIdb(accountId);
+  const speeds = new Set<string>();
+  for (const record of records) {
+    if (record.timeClass) speeds.add(record.timeClass);
+  }
+  _importedSpeedsCache.set(accountId, speeds);
+  return speeds;
+}
+
+/** Clear the cached imported-speeds for an account (e.g. after a sync adds games). */
+export function invalidateImportedSpeeds(accountId: string): void {
+  _importedSpeedsCache.delete(accountId);
+}
+
 /**
  * Set the color filter state without rebuilding the active tree.
  * For use immediately before opening a new session: openCollection reads
@@ -356,6 +379,15 @@ export function setSessionDateRange(range: string | null, redraw: () => void): v
   setColorFilter(_colorFilter, redraw);
 }
 
+
+
+
+
+
+export function presetSessionDateRange(range: string | null): void {
+  _sessionDateRange = range;
+}
+
 /** Games currently in the tree (colour + speed + date filtered). */
 export function activeGames(): readonly ResearchGame[] { return _activeGames; }
 
@@ -484,6 +516,14 @@ export function setSpeedFilter(speeds: Set<string>, redraw: () => void): void {
   setColorFilter(_colorFilter, redraw);
 }
 
+
+
+
+
+export function presetSpeedFilter(speeds: Set<string>): void {
+  _speedFilter = speeds;
+}
+
 /** Change which color's games are included in the tree and rebuild.
  *  Mirrors the openCollection() async chunked pattern so the board flips
  *  immediately while the new tree streams in incrementally.
@@ -524,6 +564,8 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
   _treeBuildProgress = 0;
   _treeBuildTotal = games.length;
   _treeBuilding = true;
+  const generation = ++_buildGeneration;
+  _activeBuildCount++;
   redraw();
 
   const CHUNK = 200;
@@ -536,14 +578,29 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
     dateRange: _sessionDateRange,
     activeTool: _activeTool,
     chunkSize: CHUNK,
+    buildGeneration: generation,
   });
   let nextMilestoneIndex = 0;
   const builder = new OpeningTreeBuilder();
   let index = 0;
   let chunkCount = 0;
-  recordOpeningTreeBuildEvent(buildContext, { phase: 'start', progressGames: 0 });
+  recordOpeningTreeBuildEvent(buildContext, { phase: 'start', progressGames: 0, activeBuildCount: _activeBuildCount });
 
   function processChunk(): void {
+
+
+
+    if (generation !== _buildGeneration) {
+      recordOpeningTreeBuildEvent(buildContext, {
+        phase: 'stale-suppressed',
+        progressGames: index,
+        supersededByGeneration: _buildGeneration,
+        cancelReason: _treeBuilding ? 'superseded-by-newer-build' : 'session-closed',
+        activeBuildCount: _activeBuildCount,
+      });
+      _activeBuildCount = Math.max(0, _activeBuildCount - 1);
+      return;
+    }
     try {
       const end = Math.min(index + CHUNK, games.length);
       builder.addGames(games.slice(index, end));
@@ -574,11 +631,13 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
         setTimeout(processChunk, 0);
       } else {
         _treeBuilding = false;
-        recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index });
+        _activeBuildCount = Math.max(0, _activeBuildCount - 1);
+        recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index, activeBuildCount: _activeBuildCount });
         redraw();
       }
     } catch (error) {
       _treeBuilding = false;
+      _activeBuildCount = Math.max(0, _activeBuildCount - 1);
       recordOpeningTreeBuildFailure(buildContext, index, error);
       redraw();
       throw error;
@@ -593,6 +652,16 @@ export function sessionNode(): OpeningTreeNode | null { return _sessionNode; }
 let _treeBuildProgress = 0;
 let _treeBuildTotal = 0;
 let _treeBuilding = false;
+
+
+
+
+
+let _buildGeneration = 0;
+
+
+
+let _activeBuildCount = 0;
 
 export function treeBuildProgress(): number { return _treeBuildProgress; }
 export function treeBuildTotal(): number { return _treeBuildTotal; }
@@ -637,6 +706,8 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   _treeBuildProgress = 0;
   _treeBuildTotal = games.length;
   _treeBuilding = true;
+  const generation = ++_buildGeneration;
+  _activeBuildCount++;
   redraw();
 
   const CHUNK = 200;
@@ -649,14 +720,29 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
     dateRange: _sessionDateRange,
     activeTool: _activeTool,
     chunkSize: CHUNK,
+    buildGeneration: generation,
   });
   let nextMilestoneIndex = 0;
   const builder = new OpeningTreeBuilder();
   let index = 0;
   let chunkCount = 0;
-  recordOpeningTreeBuildEvent(buildContext, { phase: 'start', progressGames: 0 });
+  recordOpeningTreeBuildEvent(buildContext, { phase: 'start', progressGames: 0, activeBuildCount: _activeBuildCount });
 
   function processChunk(): void {
+
+
+
+    if (generation !== _buildGeneration) {
+      recordOpeningTreeBuildEvent(buildContext, {
+        phase: 'stale-suppressed',
+        progressGames: index,
+        supersededByGeneration: _buildGeneration,
+        cancelReason: _treeBuilding ? 'superseded-by-newer-build' : 'session-closed',
+        activeBuildCount: _activeBuildCount,
+      });
+      _activeBuildCount = Math.max(0, _activeBuildCount - 1);
+      return;
+    }
     try {
       const end = Math.min(index + CHUNK, games.length);
       builder.addGames(games.slice(index, end));
@@ -689,11 +775,13 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
         setTimeout(processChunk, 0);
       } else {
         _treeBuilding = false;
-        recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index });
+        _activeBuildCount = Math.max(0, _activeBuildCount - 1);
+        recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index, activeBuildCount: _activeBuildCount });
         redraw();
       }
     } catch (error) {
       _treeBuilding = false;
+      _activeBuildCount = Math.max(0, _activeBuildCount - 1);
       recordOpeningTreeBuildFailure(buildContext, index, error);
       redraw();
       throw error;
@@ -1055,6 +1143,11 @@ export function recordPracticeMove(uci: string): void {
 export function closeSession(): void {
   if (_practiceSession) { cancelPlayMove(); exitPlayMode(); }
   cancelTreeEvalWork();
+
+
+
+  _buildGeneration++;
+  _treeBuilding = false;
   _activeTool = 'opening-tree';
   _practiceSession = null;          // practice session must be cleared on close
   invalidateSampleCache();

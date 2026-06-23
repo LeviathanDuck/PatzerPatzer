@@ -5,12 +5,14 @@ import { Severity, type DiagnosticMetadata } from '../diagnostics/types';
 import type { OpeningsTool, ResearchCollection, ResearchSource } from './types';
 
 export type OpeningTreeBuildReason = 'open-collection' | 'filter-rebuild';
-export type OpeningTreeBuildPhase = 'start' | 'milestone' | 'complete' | 'failed';
+export type OpeningTreeBuildPhase = 'start' | 'milestone' | 'complete' | 'failed' | 'stale-suppressed';
 
 export const OPENING_TREE_BUILD_MILESTONES = [25, 50, 75, 100] as const;
 
 export interface OpeningTreeBuildContext {
   buildId: string;
+
+  buildGeneration: number;
   reason: OpeningTreeBuildReason;
   collectionKind: 'account' | 'saved';
   collectionSource: ResearchSource;
@@ -30,6 +32,12 @@ export interface OpeningTreeBuildEventDetails {
   progressGames: number;
   milestonePercent?: number;
   errorName?: string;
+
+  activeBuildCount?: number;
+  /** The newer generation that superseded this build, for stale-suppressed events. */
+  supersededByGeneration?: number;
+  /** Why a build stopped early, e.g. superseded-by-newer-build or session-closed. */
+  cancelReason?: string;
 }
 
 export interface OpeningTreeBuildMilestoneResult {
@@ -65,11 +73,13 @@ export function createOpeningTreeBuildContext(options: {
   dateRange: string | null;
   activeTool: OpeningsTool;
   chunkSize: number;
+  buildGeneration: number;
   now?: number;
 }): OpeningTreeBuildContext {
   const speedFilters = safeSpeedFilters(options.speedFilter);
   return {
     buildId: createOpeningTreeBuildId(options.now),
+    buildGeneration: Math.max(0, Math.floor(options.buildGeneration)),
     reason: options.reason,
     collectionKind: collectionKind(options.collection),
     collectionSource: options.collection.source,
@@ -127,6 +137,7 @@ export function buildOpeningTreeDiagnosticMetadata(
   const device = getDeviceMetadata();
   return {
     buildId: context.buildId,
+    buildGeneration: context.buildGeneration,
     phase: details.phase,
     reason: context.reason,
     collectionKind: context.collectionKind,
@@ -146,6 +157,9 @@ export function buildOpeningTreeDiagnosticMetadata(
     viewportWidth: device.viewportWidth ?? '0',
     viewportHeight: device.viewportHeight ?? '0',
     ...(details.errorName ? { errorName: details.errorName } : {}),
+    ...(details.activeBuildCount !== undefined ? { activeBuildCount: Math.max(0, details.activeBuildCount) } : {}),
+    ...(details.supersededByGeneration !== undefined ? { supersededByGeneration: Math.max(0, details.supersededByGeneration) } : {}),
+    ...(details.cancelReason ? { cancelReason: details.cancelReason } : {}),
   };
 }
 

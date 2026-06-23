@@ -27,14 +27,14 @@ import type { ChessAccount } from '../accounts';
 import {
   collections, collectionsLoaded, loadSavedCollections,
   registryAccounts, accountsLoaded, loadRegistryAccounts, openAccountResearch,
-  refreshRegistryAccounts,
+  refreshRegistryAccounts, invalidateImportedSpeeds,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
   sampleGamesSortMode, setSampleGamesSortMode, sampleGamesResultFilter, setSampleGamesResultFilter,
   sessionDateRange, setSessionDateRange, SESSION_DATE_RANGE_OPTIONS,
   treeEvalThoroughness, setTreeEvalThoroughness, TREE_EVAL_THOROUGHNESS_OPTIONS,
   triggerTreeEvalForCurrentNode,
-  openCollection, closeSession, navigateToMove, navigateBack, navigateToRoot, navigateToPath, navigateToEnd,
+  openCollection, closeSession, presetColorFilter, presetSpeedFilter, presetSessionDateRange, navigateToMove, navigateBack, navigateToRoot, navigateToPath, navigateToEnd,
   removeCollection, renameCollection,
   treeBuilding, treeBuildProgress, treeBuildTotal,
   isFetching, importStep, importSource, importUsername, importColor, importError,
@@ -141,6 +141,8 @@ const ANIM_MOVE_MS = 300; // ms per move
 let _openingsMenuOpen = false;
 let _dateRangePopupOpen = false;
 let _accountSyncMenuId: string | null = null;
+
+let _expandedCardKey: string | null = null;
 let _accountSyncRunningId: string | null = null;
 const _accountSyncMessages = new Map<string, string>();
 const _accountSyncErrors = new Map<string, string>();
@@ -162,6 +164,21 @@ function platformLabel(platform: ChessAccount['platform']): string {
 function formatSyncDate(timestamp: number | null): string {
   if (timestamp === null) return 'No sync cursor yet';
   return new Date(timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+
+function formatLongSyncDate(timestamp: number | null): string {
+  if (timestamp === null) return 'never';
+  const d = new Date(timestamp);
+  const month = d.toLocaleDateString(undefined, { month: 'long' });
+  const day = d.getDate();
+  const v = day % 100;
+  const suffix = v >= 11 && v <= 13 ? 'th'
+    : day % 10 === 1 ? 'st'
+    : day % 10 === 2 ? 'nd'
+    : day % 10 === 3 ? 'rd'
+    : 'th';
+  return `${month} ${day}${suffix} ${d.getFullYear()}`;
 }
 
 /** Render the openings page (library or session). */
@@ -216,6 +233,47 @@ function renderLibraryPage(redraw: () => void): VNode {
 
 
 
+
+
+
+
+
+async function runAccountSync(account: ChessAccount, redraw: () => void): Promise<void> {
+  if (_accountSyncRunningId !== null) return;
+  const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
+  const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
+  const needsFallback = account.newestGameTimestamp === null || filterMismatch;
+  _accountSyncRunningId = account.id;
+  _accountSyncMessages.delete(account.id);
+  _accountSyncErrors.delete(account.id);
+  redraw();
+  try {
+    const result: AccountSyncResult = await syncAccountGames(account, {
+      rated: importFilters.rated,
+      speeds: importFilters.speeds,
+      onProgress: count => {
+        _accountSyncMessages.set(account.id, `Fetched ${count} game${count === 1 ? '' : 's'}...`);
+        redraw();
+      },
+      ...(needsFallback ? { fallbackDateRange: currentImportDateRangeConfig() } : {}),
+    });
+    invalidateImportedSpeeds(account.id);
+    const refreshedAccounts = await refreshRegistryAccounts(redraw);
+    const refreshedAccount = refreshedAccounts.find(a => a.id === account.id) ?? account;
+    if (activeCollection()?.id === `account:${account.id}`) {
+      await openAccountResearch(refreshedAccount, redraw);
+    }
+    _accountSyncMessages.set(account.id, result.addedCount === 0
+      ? 'No new games to import'
+      : `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}`);
+  } catch (err) {
+    _accountSyncErrors.set(account.id, err instanceof Error ? err.message : 'Sync failed.');
+  } finally {
+    _accountSyncRunningId = null;
+    redraw();
+  }
+}
+
 function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode {
   const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
   const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
@@ -224,37 +282,9 @@ function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode
   const message = _accountSyncMessages.get(account.id);
   const error = _accountSyncErrors.get(account.id);
 
-  const runSync = async (event: Event): Promise<void> => {
+  const runSync = (event: Event): void => {
     event.stopPropagation();
-    if (_accountSyncRunningId !== null) return;
-    _accountSyncRunningId = account.id;
-    _accountSyncMessages.delete(account.id);
-    _accountSyncErrors.delete(account.id);
-    redraw();
-    try {
-      const result: AccountSyncResult = await syncAccountGames(account, {
-        rated: importFilters.rated,
-        speeds: importFilters.speeds,
-        onProgress: count => {
-          _accountSyncMessages.set(account.id, `Fetched ${count} game${count === 1 ? '' : 's'}...`);
-          redraw();
-        },
-        ...(needsFallback ? { fallbackDateRange: currentImportDateRangeConfig() } : {}),
-      });
-      const refreshedAccounts = await refreshRegistryAccounts(redraw);
-      const refreshedAccount = refreshedAccounts.find(a => a.id === account.id) ?? account;
-      if (activeCollection()?.id === `account:${account.id}`) {
-        await openAccountResearch(refreshedAccount, redraw);
-      }
-      _accountSyncMessages.set(account.id, result.addedCount === 0
-        ? 'No new games to import'
-        : `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}`);
-    } catch (err) {
-      _accountSyncErrors.set(account.id, err instanceof Error ? err.message : 'Sync failed.');
-    } finally {
-      _accountSyncRunningId = null;
-      redraw();
-    }
+    void runAccountSync(account, redraw);
   };
 
   return h('div.openings__account-sync-menu', {
@@ -357,6 +387,100 @@ function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode
   ]);
 }
 
+
+
+
+
+
+
+
+
+
+function renderPreLoadSyncArea(account: ChessAccount, redraw: () => void): VNode {
+  const message = _accountSyncMessages.get(account.id);
+  const error = _accountSyncErrors.get(account.id);
+  const running = _accountSyncRunningId === account.id;
+  return h('div.openings__preload-sync', [
+    h('div.openings__preload-sync-row', [
+      h('span.openings__preload-sync-date', `Last synced ${formatLongSyncDate(account.lastSyncedAt)}`),
+      h('button.openings__preload-sync-btn', {
+        attrs: { type: 'button', disabled: _accountSyncRunningId !== null },
+        on: { click: (e: Event) => { e.stopPropagation(); void runAccountSync(account, redraw); } },
+      }, running ? 'Syncing…' : 'Sync'),
+    ]),
+    error ? h('div.openings__preload-sync-error', error)
+      : message ? h('div.openings__preload-sync-msg', message) : null,
+  ]);
+}
+
+function renderPreLoadFilterPanel(onBuild: () => void, redraw: () => void, account?: ChessAccount): VNode {
+  const color = colorFilter();
+  const colorBtn = (value: 'white' | 'black' | 'both', label: string): VNode =>
+    h('button.openings__preload-color', {
+      class: { active: color === value },
+      attrs: { type: 'button' },
+      on: { click: (e: Event) => { e.stopPropagation(); presetColorFilter(value); redraw(); } },
+    }, label);
+
+  const speeds = speedFilter();
+  const toggleSpeed = (value: string): void => {
+    let next: Set<string>;
+    if (speeds.size === 0) next = new Set([value]);
+    else if (speeds.has(value)) {
+      next = speeds.size === 1 ? new Set() : new Set([...speeds].filter(s => s !== value));
+    } else {
+      next = new Set(speeds);
+      next.add(value);
+      if (SPEED_OPTIONS.every(s => next.has(s.value))) next = new Set();
+    }
+    presetSpeedFilter(next);
+    redraw();
+  };
+
+  const range = sessionDateRange();
+  const periodBtn = (value: string | null, label: string): VNode =>
+    h('button.openings__preload-period', {
+      class: { active: range === value },
+      attrs: { type: 'button' },
+      on: { click: (e: Event) => { e.stopPropagation(); presetSessionDateRange(value); redraw(); } },
+    }, label);
+
+  return h('div.openings__preload-panel', {
+    on: { click: (e: Event) => e.stopPropagation() },
+  }, [
+    h('div.openings__preload-section', [
+      h('div.openings__preload-label', 'Color'),
+      h('div.openings__preload-row', [
+        colorBtn('white', 'White'),
+        colorBtn('black', 'Black'),
+        colorBtn('both', 'Both'),
+      ]),
+    ]),
+    h('div.openings__preload-section', [
+      h('div.openings__preload-label', 'Time control'),
+      h('div.openings__preload-row', SPEED_OPTIONS.map(({ value, label, icon }) =>
+        h('button.openings__preload-speed', {
+          class: { active: speeds.size === 0 || speeds.has(value) },
+          attrs: { type: 'button', 'data-icon': icon },
+          on: { click: (e: Event) => { e.stopPropagation(); toggleSpeed(value); } },
+        }, label),
+      )),
+    ]),
+    h('div.openings__preload-section', [
+      h('div.openings__preload-label', 'Period'),
+      h('div.openings__preload-row', [
+        periodBtn(null, 'All time'),
+        ...SESSION_DATE_RANGE_OPTIONS.map(o => periodBtn(o.value, o.label)),
+      ]),
+    ]),
+    account ? renderPreLoadSyncArea(account, redraw) : null,
+    h('button.openings__preload-build', {
+      attrs: { type: 'button' },
+      on: { click: (e: Event) => { e.stopPropagation(); onBuild(); } },
+    }, 'Build tree'),
+  ]);
+}
+
 function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => void): VNode {
   const order = (c: string) => c === 'opponent' ? 0 : c === 'study' ? 1 : c === 'mine' ? 2 : 3;
   const sorted = [...accounts].sort((a, b) =>
@@ -366,7 +490,12 @@ function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => 
     h('div.openings__collections', sorted.map(account =>
       h('div.openings__collection-row', {
         key: `account:${account.id}`,
-        on: { click: () => void openAccountResearch(account, redraw) },
+        on: { click: () => {
+          const key = `account:${account.id}`;
+          _expandedCardKey = _expandedCardKey === key ? null : key;
+          _accountSyncMenuId = null;
+          redraw();
+        } },
       }, [
         h('div.openings__card-top', [
           h('span.openings__collection-name', account.displayName),
@@ -378,6 +507,7 @@ function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => 
                   on: { click: (event: Event) => {
                     event.stopPropagation();
                     _accountSyncMenuId = _accountSyncMenuId === account.id ? null : account.id;
+                    _expandedCardKey = null;
                     redraw();
                   }},
                 }, _accountSyncRunningId === account.id ? 'Syncing...' : 'Sync')
@@ -390,6 +520,9 @@ function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => 
           : null,
         _accountSyncMenuId !== account.id && _accountSyncErrors.has(account.id)
           ? h('p.openings__account-sync-error', _accountSyncErrors.get(account.id))
+          : null,
+        _expandedCardKey === `account:${account.id}`
+          ? renderPreLoadFilterPanel(() => { _expandedCardKey = null; void openAccountResearch(account, redraw); }, redraw, account)
           : null,
       ]),
     )),
@@ -565,7 +698,10 @@ function renderCollectionCard(c: ResearchCollection, redraw: () => void): VNode 
 
   return h('div.openings__collection-row', {
     key: c.id,
-    on: { click: () => openCollection(c, redraw) },
+    on: { click: () => {
+      _expandedCardKey = _expandedCardKey === c.id ? null : c.id;
+      redraw();
+    } },
   }, [
     h('div.openings__card-top', [
       h('span.openings__collection-name', c.name),
@@ -634,6 +770,10 @@ function renderCollectionCard(c: ResearchCollection, redraw: () => void): VNode 
 
     // Rating sparkline
     renderSparkline(extractRatingSeries(c)),
+
+    _expandedCardKey === c.id
+      ? renderPreLoadFilterPanel(() => { _expandedCardKey = null; openCollection(c, redraw); }, redraw)
+      : null,
   ]);
 }
 
