@@ -2097,7 +2097,6 @@ function renderOpeningTreeTool(
     ]),
     h('div.openings__session-panel', [
       renderOpeningsActionMenu(redraw),
-      renderFilterBadge(redraw),
       // Keep FEN override in sync with the current openings position on every render.
       // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
       (() => {
@@ -2112,7 +2111,10 @@ function renderOpeningTreeTool(
       engineEnabled ? renderPvBox() : null,
       // Move list + nav bar directly under the engine block (mirrors analysis-board column order).
       openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
-      // Position context: played lines + sample games appear together for integrated browsing.
+    ]),
+    h('div.openings__underboard', [
+      // Position context lives under the board, mirroring the analysis underboard pattern.
+      renderFilterBadge(redraw),
       node ? renderPlayedLinesPanel(node, redraw) : null,
       renderDeviationPanel(redraw),
       renderSampleGamesPanel(redraw),
@@ -2194,7 +2196,9 @@ function renderSessionPage(redraw: () => void): VNode {
         ? `${node.total} game${node.total !== 1 ? 's' : ''} reached this position`
         : ''),
     ]),
-    h('div.openings__session-body', [
+    h('div.openings__session-body', {
+      class: { 'openings__session-body--tree': activeTool() === 'opening-tree' },
+    }, [
       renderToolRail(redraw),
       // Active tool owns the main content area.
       ...(activeTool() === 'opening-tree'
