@@ -14,6 +14,7 @@ const CALLBACK_MESSAGE_TYPE = 'patzer:book-oauth-callback';
 const PENDING_STORAGE_KEY = 'patzer.lichess.bookOAuthPending';
 const CALLBACK_STORAGE_KEY = 'patzer.lichess.bookOAuthCallback';
 const POPUP_NAME = 'patzer-lichess-book-login';
+const POPUP_CLOSE_CALLBACK_GRACE_MS = 1500;
 
 export interface BookAccessStatus {
   connected: boolean;
@@ -67,6 +68,9 @@ interface CompletedBookLogin {
   expiresAt: number | null;
 }
 
+type BookCallbackChannel = 'message' | 'storage' | 'initial-storage' | 'close-storage' | 'close-grace-storage';
+type BookAuthPhaseMetadata = Record<string, string | number | boolean | null>;
+
 function base64Url(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -110,6 +114,26 @@ function authFailureClass(status: number | undefined, error?: unknown): string {
   if (status !== undefined && status >= 500) return 'server-error';
   if (status !== undefined && status >= 400) return 'auth-rejected';
   return 'unknown';
+}
+
+function recordBookAuthPhase(
+  phase: string,
+  severity: Severity = Severity.Info,
+  metadata: BookAuthPhaseMetadata = {},
+): void {
+  record({
+    kind: 'api',
+    severity,
+    source: 'auth/lichessBookAuth',
+    sourceTag: 'auth',
+    message: `Lichess book auth ${phase}`,
+    metadata: {
+      provider: 'lichess-book',
+      phase,
+      ...metadata,
+    },
+    redactionClass: 'safe',
+  });
 }
 
 function recordBookAuthFailure(
@@ -223,6 +247,9 @@ function popupFeatures(): string {
 
 function openBookLoginPopup(): Window | null {
   const popup = window.open('about:blank', POPUP_NAME, popupFeatures());
+  recordBookAuthPhase(popup ? 'popup-opened' : 'popup-blocked', popup ? Severity.Info : Severity.Error, {
+    popupOpened: !!popup,
+  });
   popup?.focus();
   return popup;
 }
@@ -233,10 +260,27 @@ function closeBookLoginPopup(popup: Window | null): void {
 
 function navigateBookLoginPopup(popup: Window | null, url: string): Window {
   if (!popup || popup.closed) {
+    recordBookAuthPhase('popup-unavailable-before-navigation', Severity.Error, {
+      popupOpened: !!popup,
+      popupClosed: popup?.closed ?? null,
+    });
     throw new Error('Popup blocked. Allow popups for this site to connect Lichess book access.');
   }
-  popup.location.href = url;
-  popup.focus();
+  try {
+    popup.location.href = url;
+    popup.focus();
+    recordBookAuthPhase('popup-navigated', Severity.Info, {
+      popupOpened: true,
+      popupClosed: popup.closed,
+    });
+  } catch (error) {
+    recordBookAuthPhase('popup-navigation-failed', Severity.Error, {
+      popupOpened: true,
+      popupClosed: popup.closed,
+      errorClass: errorClass(error),
+    });
+    throw error;
+  }
   return popup;
 }
 
@@ -244,14 +288,25 @@ function isCallbackMessage(value: unknown): value is BookCallbackMessage {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function readStoredCallback(): BookCallbackMessage | null {
+  const raw = localStorage.getItem(CALLBACK_STORAGE_KEY);
+  if (!raw) return null;
+  const message = JSON.parse(raw) as unknown;
+  return isCallbackMessage(message) ? message : null;
+}
+
 function waitForPopupCallback(popup: Window, state: string): Promise<string> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let closeObserved = false;
+    let closeGraceTimer = 0;
+    const startedAt = Date.now();
     const cleanup = () => {
       window.removeEventListener('message', onMessage);
       window.removeEventListener('storage', onStorage);
       window.clearInterval(closedTimer);
       window.clearTimeout(timeoutTimer);
+      window.clearTimeout(closeGraceTimer);
     };
     const finish = (fn: () => void) => {
       if (settled) return;
@@ -259,45 +314,101 @@ function waitForPopupCallback(popup: Window, state: string): Promise<string> {
       cleanup();
       fn();
     };
-    const handleCallbackMessage = (message: BookCallbackMessage) => {
-      if (message.type !== CALLBACK_MESSAGE_TYPE) return;
+    const elapsedMs = () => Date.now() - startedAt;
+    const handleCallbackMessage = (message: BookCallbackMessage, callbackChannel: BookCallbackChannel): boolean => {
+      if (message.type !== CALLBACK_MESSAGE_TYPE) return false;
+      recordBookAuthPhase('callback-received', Severity.Info, {
+        callbackChannel,
+        elapsedMs: elapsedMs(),
+      });
       if (message.state !== state) {
+        recordBookAuthPhase('callback-state-mismatch', Severity.Error, {
+          callbackChannel,
+          elapsedMs: elapsedMs(),
+          failureClass: 'state-mismatch',
+        });
         finish(() => reject(new Error('Invalid Lichess book login state.')));
-        return;
+        return true;
       }
       if (message.error) {
+        recordBookAuthPhase('callback-error', Severity.Error, {
+          callbackChannel,
+          elapsedMs: elapsedMs(),
+          failureClass: 'provider-error',
+        });
         finish(() => reject(new Error(`Lichess book login failed: ${message.error}`)));
-        return;
+        return true;
       }
       const code = typeof message.code === 'string' ? message.code : '';
       if (!code) {
+        recordBookAuthPhase('callback-missing-code', Severity.Error, {
+          callbackChannel,
+          elapsedMs: elapsedMs(),
+          failureClass: 'missing-code',
+        });
         finish(() => reject(new Error('Lichess book login did not return an authorization code.')));
-        return;
+        return true;
       }
       localStorage.removeItem(CALLBACK_STORAGE_KEY);
+      recordBookAuthPhase('callback-accepted', Severity.Info, {
+        callbackChannel,
+        elapsedMs: elapsedMs(),
+      });
       finish(() => resolve(code));
+      return true;
+    };
+    const handleStoredCallback = (callbackChannel: BookCallbackChannel): boolean => {
+      try {
+        const message = readStoredCallback();
+        return message ? handleCallbackMessage(message, callbackChannel) : false;
+      } catch {
+        recordBookAuthPhase('callback-storage-invalid', Severity.Error, {
+          callbackChannel,
+          elapsedMs: elapsedMs(),
+          failureClass: 'invalid-callback-json',
+        });
+        finish(() => reject(new Error('Invalid Lichess book login callback.')));
+        return true;
+      }
     };
     const onMessage = (event: MessageEvent<unknown>) => {
       if (event.origin !== window.location.origin || !isCallbackMessage(event.data)) return;
-      handleCallbackMessage(event.data);
+      handleCallbackMessage(event.data, 'message');
     };
     const onStorage = (event: StorageEvent) => {
       if (event.key !== CALLBACK_STORAGE_KEY || !event.newValue) return;
-      try {
-        const message = JSON.parse(event.newValue) as unknown;
-        if (isCallbackMessage(message)) handleCallbackMessage(message);
-      } catch {
-        finish(() => reject(new Error('Invalid Lichess book login callback.')));
-      }
+      handleStoredCallback('storage');
     };
     const closedTimer = window.setInterval(() => {
-      if (popup.closed) finish(() => reject(new Error('Lichess book login was cancelled.')));
+      if (!popup.closed || settled) return;
+      if (handleStoredCallback(closeObserved ? 'close-grace-storage' : 'close-storage')) return;
+      if (closeObserved) return;
+      closeObserved = true;
+      recordBookAuthPhase('popup-closed-before-callback', Severity.Warn, {
+        popupClosed: true,
+        elapsedMs: elapsedMs(),
+        graceMs: POPUP_CLOSE_CALLBACK_GRACE_MS,
+      });
+      closeGraceTimer = window.setTimeout(() => {
+        if (handleStoredCallback('close-grace-storage')) return;
+        recordBookAuthPhase('popup-close-cancelled', Severity.Warn, {
+          popupClosed: true,
+          elapsedMs: elapsedMs(),
+          failureClass: 'popup-closed-before-callback',
+        });
+        finish(() => reject(new Error('Lichess book login was cancelled.')));
+      }, POPUP_CLOSE_CALLBACK_GRACE_MS);
     }, 500);
     const timeoutTimer = window.setTimeout(() => {
+      recordBookAuthPhase('callback-timeout', Severity.Error, {
+        elapsedMs: elapsedMs(),
+        failureClass: 'timeout',
+      });
       finish(() => reject(new Error('Lichess book login timed out.')));
     }, 5 * 60 * 1000);
     window.addEventListener('message', onMessage);
     window.addEventListener('storage', onStorage);
+    handleStoredCallback('initial-storage');
   });
 }
 
@@ -311,6 +422,9 @@ async function completePopupLogin(code: string, pending: PendingBookOAuth): Prom
   });
 
   const tokenStart = Date.now();
+  recordBookAuthPhase('token-exchange-started', Severity.Info, {
+    endpointClass: 'book-oauth-token',
+  });
   let tokenRes: Response;
   try {
     tokenRes = await fetch(LICHESS_TOKEN_URL, {
@@ -320,16 +434,42 @@ async function completePopupLogin(code: string, pending: PendingBookOAuth): Prom
     });
   } catch (error) {
     recordBookAuthFailure('book-oauth-token', tokenStart, undefined, error);
+    recordBookAuthPhase('token-exchange-failed', Severity.Error, {
+      endpointClass: 'book-oauth-token',
+      latencyMs: Date.now() - tokenStart,
+      failureClass: authFailureClass(undefined, error),
+      errorClass: errorClass(error),
+    });
     throw error;
   }
   if (!tokenRes.ok) {
     recordBookAuthFailure('book-oauth-token', tokenStart, tokenRes.status);
+    recordBookAuthPhase('token-exchange-failed', Severity.Error, {
+      endpointClass: 'book-oauth-token',
+      httpStatus: tokenRes.status,
+      latencyMs: Date.now() - tokenStart,
+      failureClass: authFailureClass(tokenRes.status),
+    });
     throw new Error(`Lichess token request failed: ${tokenRes.status}`);
   }
   const tokenJson = await tokenRes.json() as TokenResponse;
-  if (!tokenJson.access_token) throw new Error('Lichess token response did not include an access token.');
+  if (!tokenJson.access_token) {
+    recordBookAuthPhase('token-exchange-failed', Severity.Error, {
+      endpointClass: 'book-oauth-token',
+      latencyMs: Date.now() - tokenStart,
+      failureClass: 'missing-token',
+    });
+    throw new Error('Lichess token response did not include an access token.');
+  }
+  recordBookAuthPhase('token-exchange-succeeded', Severity.Info, {
+    endpointClass: 'book-oauth-token',
+    latencyMs: Date.now() - tokenStart,
+  });
 
   const accountStart = Date.now();
+  recordBookAuthPhase('account-fetch-started', Severity.Info, {
+    endpointClass: 'book-oauth-account',
+  });
   let accountRes: Response;
   try {
     accountRes = await fetch(LICHESS_ACCOUNT_URL, {
@@ -337,15 +477,38 @@ async function completePopupLogin(code: string, pending: PendingBookOAuth): Prom
     });
   } catch (error) {
     recordBookAuthFailure('book-oauth-account', accountStart, undefined, error);
+    recordBookAuthPhase('account-fetch-failed', Severity.Error, {
+      endpointClass: 'book-oauth-account',
+      latencyMs: Date.now() - accountStart,
+      failureClass: authFailureClass(undefined, error),
+      errorClass: errorClass(error),
+    });
     throw error;
   }
   if (!accountRes.ok) {
     recordBookAuthFailure('book-oauth-account', accountStart, accountRes.status);
+    recordBookAuthPhase('account-fetch-failed', Severity.Error, {
+      endpointClass: 'book-oauth-account',
+      httpStatus: accountRes.status,
+      latencyMs: Date.now() - accountStart,
+      failureClass: authFailureClass(accountRes.status),
+    });
     throw new Error(`Lichess account request failed: ${accountRes.status}`);
   }
   const account = await accountRes.json() as AccountResponse;
   const username = account.username ?? account.id;
-  if (!username) throw new Error('Lichess account response did not include a username.');
+  if (!username) {
+    recordBookAuthPhase('account-fetch-failed', Severity.Error, {
+      endpointClass: 'book-oauth-account',
+      latencyMs: Date.now() - accountStart,
+      failureClass: 'missing-username',
+    });
+    throw new Error('Lichess account response did not include a username.');
+  }
+  recordBookAuthPhase('account-fetch-succeeded', Severity.Info, {
+    endpointClass: 'book-oauth-account',
+    latencyMs: Date.now() - accountStart,
+  });
 
   return {
     username,
@@ -356,6 +519,9 @@ async function completePopupLogin(code: string, pending: PendingBookOAuth): Prom
 
 async function runPopupLogin(popup: Window | null): Promise<CompletedBookLogin> {
   if (!window.isSecureContext) {
+    recordBookAuthPhase('insecure-context', Severity.Error, {
+      failureClass: 'insecure-context',
+    });
     closeBookLoginPopup(popup);
     throw new Error('Lichess book login requires HTTPS or localhost.');
   }
@@ -412,6 +578,10 @@ async function runServerPopupLogin(popup: Window | null): Promise<void> {
         if (status?.connected) {
           settled = true;
           window.clearInterval(timer);
+          recordBookAuthPhase('server-lichess-connected', Severity.Info, {
+            endpointClass: 'server-lichess-status',
+            latencyMs: Date.now() - startedAt,
+          });
           closeBookLoginPopup(authPopup);
           resolve();
           return;
@@ -419,6 +589,12 @@ async function runServerPopupLogin(popup: Window | null): Promise<void> {
         if (authPopup.closed && Date.now() - startedAt > 1000) {
           settled = true;
           window.clearInterval(timer);
+          recordBookAuthPhase('server-popup-close-cancelled', Severity.Warn, {
+            endpointClass: 'server-lichess-status',
+            popupClosed: true,
+            latencyMs: Date.now() - startedAt,
+            failureClass: 'popup-closed-before-status',
+          });
           reject(new Error('Lichess book login was cancelled.'));
           return;
         }
@@ -426,6 +602,11 @@ async function runServerPopupLogin(popup: Window | null): Promise<void> {
           settled = true;
           window.clearInterval(timer);
           closeBookLoginPopup(authPopup);
+          recordBookAuthPhase('server-popup-timeout', Severity.Error, {
+            endpointClass: 'server-lichess-status',
+            latencyMs: Date.now() - startedAt,
+            failureClass: 'timeout',
+          });
           reject(new Error('Lichess book login timed out.'));
         }
       });
@@ -434,16 +615,34 @@ async function runServerPopupLogin(popup: Window | null): Promise<void> {
 }
 
 async function saveBookAccess(login: CompletedBookLogin): Promise<void> {
-  await bookAuthFetch<BookAuthResponse>({
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'save',
-      username: login.username,
-      token: login.token,
-      expiresAt: login.expiresAt,
-    }),
+  const startedAt = Date.now();
+  recordBookAuthPhase('book-token-save-started', Severity.Info, {
+    endpointClass: 'book-auth',
   });
+  try {
+    await bookAuthFetch<BookAuthResponse>({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save',
+        username: login.username,
+        token: login.token,
+        expiresAt: login.expiresAt,
+      }),
+    });
+    recordBookAuthPhase('book-token-save-succeeded', Severity.Info, {
+      endpointClass: 'book-auth',
+      latencyMs: Date.now() - startedAt,
+    });
+  } catch (error) {
+    recordBookAuthPhase('book-token-save-failed', Severity.Error, {
+      endpointClass: 'book-auth',
+      latencyMs: Date.now() - startedAt,
+      failureClass: authFailureClass(undefined, error),
+      errorClass: errorClass(error),
+    });
+    throw error;
+  }
 }
 
 export async function getBookAccessStatus(): Promise<BookAccessStatus> {

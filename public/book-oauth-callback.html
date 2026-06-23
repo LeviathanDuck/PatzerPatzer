@@ -40,10 +40,23 @@
       } catch {
         // The opener postMessage path below is the primary same-origin handoff.
       }
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage(payload, window.location.origin);
-      }
-      window.setTimeout(() => window.close(), 250);
+      const notifyOpener = () => {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(payload, window.location.origin);
+        }
+      };
+      notifyOpener();
+      window.setTimeout(notifyOpener, 150);
+      window.setTimeout(() => {
+        window.close();
+      }, 1000);
+      window.addEventListener('pagehide', () => {
+        try {
+          window.localStorage.setItem('patzer.lichess.bookOAuthCallback', JSON.stringify(payload));
+        } catch {
+          // The opener postMessage path above is the primary same-origin handoff.
+        }
+      }, { once: true });
     })();
   </script>
 </body>

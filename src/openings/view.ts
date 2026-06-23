@@ -876,6 +876,7 @@ function renderDetailsStep(redraw: () => void): VNode {
 function renderOpeningsActionMenu(redraw: () => void): VNode | null {
   if (!_openingsMenuOpen) return null;
   const close = () => { _openingsMenuOpen = false; redraw(); };
+  const path = sessionPath();
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
@@ -894,6 +895,13 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
           close();
         } },
       }, 'Flip board'),
+      path.length >= 1 ? h('button', {
+        attrs: { 'data-icon': ICON_BOOK, title: 'Save this line to the Study Library' },
+        on: { click: () => {
+          handleSaveToLibrary(path, redraw);
+          close();
+        } },
+      }, 'Save to Library') : null,
       h('button', {
         attrs: { title: 'Report an issue with the Opponent Research page' },
         on: { click: () => { reportOpeningsIssue(); close(); } },
@@ -2415,14 +2423,8 @@ function renderOpeningsMoveList(
     h('div.analyse__moves.areplay', [
       renderMoveList(root, currentPath, () => undefined, navigate, null, false),
     ]),
-    // Save-line row: Study Library (visible when at least 1 move played)
-    path.length >= 1 ? h('div.openings__save-line-row', [
-      _saveLibFeedback
-        ? h('span.openings__save-feedback', _saveLibFeedback)
-        : h('button.openings__save-lib-btn', {
-            attrs: { title: 'Save this line to the Study Library' },
-            on: { click: () => handleSaveToLibrary(path, redraw) },
-          }, '\uD83D\uDCDA Save to Library'),
+    _saveLibFeedback ? h('div.openings__save-line-row', [
+      h('span.openings__save-feedback', _saveLibFeedback),
     ]) : null,
     renderMoveNavBar([], {
       canPrev,
@@ -3286,7 +3288,7 @@ function renderMoveRow(child: OpeningTreeNode, parentTotal: number, parentFen: s
 function renderMoveEvalSlot(child: OpeningTreeNode, parentFen: string): VNode {
   const entry = isTreeEvalEnabled() ? getTreeEval(child.fen) : undefined;
   const bookIcon = renderMastersBookIcon(parentFen, child.uci);
-  if (!entry?.settled || (entry.cp === undefined && entry.mate === undefined)) {
+  if (!entry || (entry.cp === undefined && entry.mate === undefined)) {
     return h('span.openings__move-eval', bookIcon ? [bookIcon] : []);
   }
   const swing = formatTreeEvalSwing(entry.swing);
