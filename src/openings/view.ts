@@ -27,7 +27,7 @@ import type { ChessAccount } from '../accounts';
 import {
   collections, collectionsLoaded, loadSavedCollections,
   registryAccounts, accountsLoaded, loadRegistryAccounts, openAccountResearch,
-  refreshRegistryAccounts, invalidateImportedSpeeds,
+  refreshRegistryAccounts, invalidateImportedSpeeds, getImportedSpeedsForAccount,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
   routeRecoveryMessage,
@@ -60,7 +60,7 @@ import {
   currentImportDateRangeConfig, importSyncFilterKey,
   type ImportSpeed, type ImportDateRange,
 } from '../import/filters';
-import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
+import { syncAccountGames, peekAccountSync, type AccountSyncResult } from '../import/accountSync';
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode, SampleGameMatch } from './tree';
 import { executeResearchImport } from './import';
@@ -144,6 +144,13 @@ let _dateRangePopupOpen = false;
 let _accountSyncMenuId: string | null = null;
 
 let _expandedCardKey: string | null = null;
+
+interface AccountPeekViewState { scopeKey: string; loading: boolean; supported: boolean; count: number; notImported: boolean; }
+const _peekState = new Map<string, AccountPeekViewState>();
+const _peekGen = new Map<string, number>();
+const _peekTimer = new Map<string, ReturnType<typeof setTimeout>>();
+const _importedSpeedsView = new Map<string, Set<string>>();
+const _importedSpeedsLoading = new Set<string>();
 let _accountSyncRunningId: string | null = null;
 const _accountSyncMessages = new Map<string, string>();
 const _accountSyncErrors = new Map<string, string>();
@@ -279,6 +286,7 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
       ...(needsFallback ? { fallbackDateRange: currentImportDateRangeConfig() } : {}),
     });
     invalidateImportedSpeeds(account.id);
+    resetAccountPeek(account.id);
     const refreshedAccounts = await refreshRegistryAccounts(redraw);
     const refreshedAccount = refreshedAccounts.find(a => a.id === account.id) ?? account;
     if (activeCollection()?.id === `account:${account.id}`) {
@@ -295,6 +303,20 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
   }
 }
 
+
+const _accountSyncPromise = new Map<string, Promise<void>>();
+
+
+function startAccountSync(account: ChessAccount, redraw: () => void): Promise<void> {
+  const existing = _accountSyncPromise.get(account.id);
+  if (existing) return existing;
+  const p = runAccountSync(account, redraw).finally(() => {
+    if (_accountSyncPromise.get(account.id) === p) _accountSyncPromise.delete(account.id);
+  });
+  _accountSyncPromise.set(account.id, p);
+  return p;
+}
+
 function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode {
   const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
   const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
@@ -305,7 +327,7 @@ function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode
 
   const runSync = (event: Event): void => {
     event.stopPropagation();
-    void runAccountSync(account, redraw);
+    void startAccountSync(account, redraw);
   };
 
   return h('div.openings__account-sync-menu', {
@@ -416,32 +438,99 @@ function renderAccountSyncMenu(account: ChessAccount, redraw: () => void): VNode
 
 
 
+const PEEK_STANDARD_SPEEDS: readonly ImportSpeed[] = SPEED_OPTIONS.map(o => o.value);
+
+
+
+
+
+
+function ensureAccountPeek(account: ChessAccount, redraw: () => void): void {
+  const imported = _importedSpeedsView.get(account.id);
+  if (imported === undefined) {
+    if (!_importedSpeedsLoading.has(account.id)) {
+      _importedSpeedsLoading.add(account.id);
+      void getImportedSpeedsForAccount(account.id)
+        .then(set => { _importedSpeedsView.set(account.id, set); _importedSpeedsLoading.delete(account.id); redraw(); })
+        .catch(() => { _importedSpeedsLoading.delete(account.id); });
+    }
+    return;
+  }
+  const selected = speedFilter();
+  const effective = selected.size === 0
+    ? PEEK_STANDARD_SPEEDS.filter(v => imported.has(v))
+    : PEEK_STANDARD_SPEEDS.filter(v => selected.has(v) && imported.has(v));
+  const notImported = selected.size > 0 && effective.length === 0;
+  const canPeek = !notImported && effective.length > 0 && account.newestGameTimestamp !== null;
+  const scopeKey = `${account.newestGameTimestamp}|${importFilters.rated}|${[...effective].sort().join(',')}|${notImported}`;
+  const existing = _peekState.get(account.id);
+  if (existing && existing.scopeKey === scopeKey) return;
+  if (!canPeek) {
+    _peekState.set(account.id, { scopeKey, loading: false, supported: false, count: 0, notImported });
+    return;
+  }
+  const prevTimer = _peekTimer.get(account.id);
+  if (prevTimer) clearTimeout(prevTimer);
+  _peekState.set(account.id, { scopeKey, loading: true, supported: true, count: 0, notImported: false });
+  const gen = (_peekGen.get(account.id) ?? 0) + 1;
+  _peekGen.set(account.id, gen);
+  const timer = setTimeout(() => {
+    _peekTimer.delete(account.id);
+    void peekAccountSync(account, { rated: importFilters.rated, speeds: new Set(effective) })
+      .then(res => {
+        if (_peekGen.get(account.id) !== gen) return;
+        _peekState.set(account.id, { scopeKey, loading: false, supported: res.supported, count: res.newGameCount, notImported: false });
+        redraw();
+      })
+      .catch(() => {
+        if (_peekGen.get(account.id) !== gen) return;
+        _peekState.set(account.id, { scopeKey, loading: false, supported: false, count: 0, notImported: false });
+        redraw();
+      });
+  }, 400);
+  _peekTimer.set(account.id, timer);
+}
+
+
+function resetAccountPeek(accountId: string): void {
+  _peekState.delete(accountId);
+  _importedSpeedsView.delete(accountId);
+  const timer = _peekTimer.get(accountId);
+  if (timer) { clearTimeout(timer); _peekTimer.delete(accountId); }
+}
+
 
 function renderPreLoadSyncArea(account: ChessAccount, redraw: () => void): VNode {
   const message = _accountSyncMessages.get(account.id);
   const error = _accountSyncErrors.get(account.id);
   const running = _accountSyncRunningId === account.id;
+  ensureAccountPeek(account, redraw);
+  const peek = _peekState.get(account.id);
+  const hasNew = !!(peek && peek.supported && peek.count > 0);
+  const peekText = peek?.notImported ? 'Selected time control not imported yet'
+    : peek?.loading ? 'Checking for new games…'
+    : peek?.supported ? (peek.count > 0 ? `Sync in ${peek.count} new game${peek.count === 1 ? '' : 's'}` : 'Up to date')
+    : '';
   return h('div.openings__preload-sync', [
     h('div.openings__preload-sync-row', [
       h('span.openings__preload-sync-date', `Last synced ${formatLongSyncDate(account.lastSyncedAt)}`),
+      h('button.openings__preload-sync-refresh', {
+        attrs: { type: 'button', title: 'Check for new games' },
+        on: { click: (e: Event) => { e.stopPropagation(); resetAccountPeek(account.id); redraw(); } },
+      }, '⟳'),
       h('button.openings__preload-sync-btn', {
         attrs: { type: 'button', disabled: _accountSyncRunningId !== null },
-        on: { click: (e: Event) => { e.stopPropagation(); void runAccountSync(account, redraw); } },
+        on: { click: (e: Event) => { e.stopPropagation(); void startAccountSync(account, redraw); } },
       }, running ? 'Syncing…' : 'Sync'),
     ]),
+    peekText ? h('div.openings__preload-sync-peek', { class: { 'has-new': hasNew } }, peekText) : null,
     error ? h('div.openings__preload-sync-error', error)
       : message ? h('div.openings__preload-sync-msg', message) : null,
   ]);
 }
 
-function renderPreLoadFilterPanel(onBuild: () => void, redraw: () => void, account?: ChessAccount): VNode {
-  const color = colorFilter();
-  const colorBtn = (value: 'white' | 'black' | 'both', label: string): VNode =>
-    h('button.openings__preload-color', {
-      class: { active: color === value },
-      attrs: { type: 'button' },
-      on: { click: (e: Event) => { e.stopPropagation(); presetColorFilter(value); redraw(); } },
-    }, label);
+function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: () => void, account?: ChessAccount): VNode {
+
 
   const speeds = speedFilter();
   const toggleSpeed = (value: string): void => {
@@ -470,14 +559,6 @@ function renderPreLoadFilterPanel(onBuild: () => void, redraw: () => void, accou
     on: { click: (e: Event) => e.stopPropagation() },
   }, [
     h('div.openings__preload-section', [
-      h('div.openings__preload-label', 'Color'),
-      h('div.openings__preload-row', [
-        colorBtn('white', 'White'),
-        colorBtn('black', 'Black'),
-        colorBtn('both', 'Both'),
-      ]),
-    ]),
-    h('div.openings__preload-section', [
       h('div.openings__preload-label', 'Time control'),
       h('div.openings__preload-row', SPEED_OPTIONS.map(({ value, label, icon }) =>
         h('button.openings__preload-speed', {
@@ -497,7 +578,8 @@ function renderPreLoadFilterPanel(onBuild: () => void, redraw: () => void, accou
     account ? renderPreLoadSyncArea(account, redraw) : null,
     h('button.openings__preload-build', {
       attrs: { type: 'button' },
-      on: { click: (e: Event) => { e.stopPropagation(); onBuild(); } },
+
+      on: { click: (e: Event) => { e.stopPropagation(); presetColorFilter('both'); void onBuild(); } },
     }, 'Build tree'),
   ]);
 }
@@ -543,7 +625,12 @@ function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => 
           ? h('p.openings__account-sync-error', _accountSyncErrors.get(account.id))
           : null,
         _expandedCardKey === `account:${account.id}`
-          ? renderPreLoadFilterPanel(() => { _expandedCardKey = null; void openAccountResearch(account, redraw); }, redraw, account)
+          ? renderPreLoadFilterPanel(async () => {
+              _expandedCardKey = null;
+              const pending = _accountSyncPromise.get(account.id);
+              if (pending) { try { await pending; } catch { /* sync failure must not block build */ } }
+              void openAccountResearch(account, redraw);
+            }, redraw, account)
           : null,
       ]),
     )),
