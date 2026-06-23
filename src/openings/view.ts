@@ -2111,11 +2111,13 @@ function renderOpeningTreeTool(
       engineEnabled ? renderPvBox() : null,
       // Move list + nav bar directly under the engine block (mirrors analysis-board column order).
       openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
+      // Opening tree move rows stay in the right panel; only lower context controls move under board.
+      node ? renderPlayedLinesPanel(node, redraw) : null,
     ]),
     h('div.openings__underboard', [
       // Position context lives under the board, mirroring the analysis underboard pattern.
       renderFilterBadge(redraw),
-      node ? renderPlayedLinesPanel(node, redraw) : null,
+      renderOpeningTreeFilterControls(redraw),
       renderDeviationPanel(redraw),
       renderSampleGamesPanel(redraw),
       renderExplorerToggle(node, redraw),
@@ -3190,7 +3192,11 @@ function renderPlayedLinesPanel(node: OpeningTreeNode, redraw: () => void): VNod
           node.children.map(child => renderMoveRow(child, node.total, node.fen, redraw)),
         ),
     renderTreeEvalControls(redraw),
-    // Speed filter chips — below the moves, above the move-nav bar
+  ]);
+}
+
+function renderOpeningTreeFilterControls(redraw: () => void): VNode {
+  return h('div.openings__underboard-filters', [
     renderSpeedFilter(redraw),
     renderDateRangeFilter(redraw),
   ]);
