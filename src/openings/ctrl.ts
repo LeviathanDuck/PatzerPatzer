@@ -420,6 +420,9 @@ export function setActiveTool(tool: OpeningsTool): void {
 
 let _activeCollection: ResearchCollection | null = null;
 let _openingTree: OpeningTreeNode | null = null;
+let _visibleTreeBuilder: OpeningTreeBuilder | null = null;
+let _visibleTreeBuilderGeneration = 0;
+let _openingTreeSnapshotKind: 'full' | 'lazy' = 'full';
 let _sessionPath: string[] = []; // list of UCI moves from root
 let _sessionNode: OpeningTreeNode | null = null;
 let _boardOrientation: 'white' | 'black' = 'white';
@@ -638,6 +641,9 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
   if (!_openingTree) {
     const emptyBuilder = new OpeningTreeBuilder();
     _openingTree = emptyBuilder.freeze();
+    _visibleTreeBuilder = null;
+    _visibleTreeBuilderGeneration = 0;
+    _openingTreeSnapshotKind = 'full';
     _sessionPath = [];
     _sessionNode = _openingTree;
   }
@@ -751,7 +757,7 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
           activeBuildCount: _activeBuildCount,
           positionsCount: builder.positions.size,
           nodeCount: builder.positions.size,
-          snapshotMode: 'final',
+          snapshotMode: 'lazy-current',
         });
         redraw();
       }
@@ -820,43 +826,120 @@ function publishTreeSnapshot(options: {
   resetPath: boolean;
   triggerEval: boolean;
 }): void {
-  const positionsCount = options.builder.positions.size;
-  const freezeStartedAt = monotonicNow();
-  const nextTree = options.builder.freeze();
-  const freezeDurationMs = monotonicNow() - freezeStartedAt;
-  recordOpeningTreeBuildEvent(options.buildContext, {
-    phase: 'snapshot',
-    phaseDetail: 'freeze',
-    progressGames: options.progressGames,
-    freezeDurationMs,
-    positionsCount,
-    nodeCount: positionsCount,
-    snapshotMode: options.snapshotMode,
-  });
-
   const snapshotStartedAt = monotonicNow();
-  _openingTree = nextTree;
-  if (options.resetPath) {
-    _sessionPath = [];
-    _sessionNode = _openingTree;
-  } else {
-    _sessionNode = nodeAtMoves(_openingTree, [..._sessionPath]) ?? _openingTree;
-  }
+  const requestedPath = options.resetPath ? [] : _sessionPath;
+  const snapshot = options.builder.snapshotAtMoves(requestedPath);
+  _openingTree = snapshot.root;
+  _sessionPath = snapshot.appliedPath;
+  _sessionNode = snapshot.current;
+  _visibleTreeBuilder = options.builder;
+  _visibleTreeBuilderGeneration = options.buildContext.buildGeneration;
+  _openingTreeSnapshotKind = 'lazy';
   invalidateSampleCache();
   if (options.triggerEval) triggerTreeEvalForCurrentNode();
   recordOpeningTreeBuildEvent(options.buildContext, {
     phase: 'snapshot',
-    phaseDetail: 'render-snapshot',
+    phaseDetail: 'current-path-snapshot',
     progressGames: options.progressGames,
     snapshotDurationMs: monotonicNow() - snapshotStartedAt,
-    positionsCount,
-    nodeCount: positionsCount,
-    snapshotMode: options.snapshotMode,
+    positionsCount: snapshot.positionsCount,
+    nodeCount: snapshot.nodeCount,
+    snapshotMode: 'lazy-current',
   });
+}
+
+function visibleLazyBuilder(): OpeningTreeBuilder | null {
+  return _openingTreeSnapshotKind === 'lazy' ? _visibleTreeBuilder : null;
+}
+
+function currentVisibleBuildContext(): OpeningTreeBuildContext | null {
+  if (!_lastTreeBuildContext || _lastTreeBuildContext.buildGeneration !== _visibleTreeBuilderGeneration) return null;
+  return _lastTreeBuildContext;
+}
+
+function refreshVisibleLazySnapshot(
+  moves: readonly string[],
+  options: { persist: boolean; triggerEval: boolean; notify: boolean; allowPartial?: boolean },
+): OpeningsRoutePathRestoreResult | null {
+  const builder = visibleLazyBuilder();
+  if (!builder) return null;
+
+  const snapshotStartedAt = monotonicNow();
+  const snapshot = builder.snapshotAtMoves(moves);
+  if (!options.allowPartial && snapshot.status !== 'exact') return null;
+  _openingTree = snapshot.root;
+  _sessionPath = snapshot.appliedPath;
+  _sessionNode = snapshot.current;
+
+  if (options.persist) persistSession();
+  if (options.triggerEval) triggerTreeEvalForCurrentNode();
+  if (options.notify) notifySessionStateChanged();
+
+  const context = currentVisibleBuildContext();
+  if (context) {
+    recordOpeningTreeBuildEvent(context, {
+      phase: 'snapshot',
+      phaseDetail: 'current-path-snapshot',
+      progressGames: _treeBuildProgress,
+      snapshotDurationMs: monotonicNow() - snapshotStartedAt,
+      positionsCount: snapshot.positionsCount,
+      nodeCount: snapshot.nodeCount,
+      snapshotMode: 'lazy-current',
+    });
+  }
+
+  return {
+    status: snapshot.status,
+    requested: snapshot.requestedPath,
+    applied: snapshot.appliedPath,
+  };
+}
+
+function ensureFullOpeningTreeSnapshot(): OpeningTreeNode | null {
+  const builder = visibleLazyBuilder();
+  if (!_openingTree || !builder) return _openingTree;
+
+  const positionsCount = builder.positions.size;
+  const context = currentVisibleBuildContext();
+  const freezeStartedAt = monotonicNow();
+  const nextTree = builder.freeze();
+  const freezeDurationMs = monotonicNow() - freezeStartedAt;
+  if (context) {
+    recordOpeningTreeBuildEvent(context, {
+      phase: 'snapshot',
+      phaseDetail: 'freeze',
+      progressGames: _treeBuildProgress,
+      freezeDurationMs,
+      positionsCount,
+      nodeCount: positionsCount,
+      snapshotMode: 'full-on-demand',
+    });
+  }
+
+  const renderStartedAt = monotonicNow();
+  _openingTree = nextTree;
+  _sessionNode = nodeAtMoves(_openingTree, [..._sessionPath]) ?? _openingTree;
+  _openingTreeSnapshotKind = 'full';
+  if (context) {
+    recordOpeningTreeBuildEvent(context, {
+      phase: 'snapshot',
+      phaseDetail: 'render-snapshot',
+      progressGames: _treeBuildProgress,
+      snapshotDurationMs: monotonicNow() - renderStartedAt,
+      positionsCount,
+      nodeCount: positionsCount,
+      snapshotMode: 'full-on-demand',
+    });
+  }
+
+  return _openingTree;
 }
 
 function navigateToClosestPath(moves: string[], persist: boolean): OpeningsRoutePathRestoreResult {
   const requested = [...moves];
+  const lazyResult = refreshVisibleLazySnapshot(requested, { persist, triggerEval: true, notify: true, allowPartial: true });
+  if (lazyResult) return lazyResult;
+
   if (!_openingTree || moves.length === 0) {
     _sessionPath = [];
     _sessionNode = _openingTree;
@@ -901,6 +984,9 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   cancelTreeEvalWork();
   const emptyBuilder = new OpeningTreeBuilder();
   _openingTree = emptyBuilder.freeze();
+  _visibleTreeBuilder = null;
+  _visibleTreeBuilderGeneration = 0;
+  _openingTreeSnapshotKind = 'full';
   _sessionPath = [];
   _sessionNode = _openingTree;
   invalidateSampleCache();
@@ -1037,7 +1123,7 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
           activeBuildCount: _activeBuildCount,
           positionsCount: builder.positions.size,
           nodeCount: builder.positions.size,
-          snapshotMode: 'final',
+          snapshotMode: 'lazy-current',
         });
         redraw();
       }
@@ -1077,7 +1163,9 @@ export function navigateToMove(uci: string): void {
   if (!_sessionNode) return;
   const child = _sessionNode.children.find(c => c.uci === uci);
   if (child) {
-    _sessionPath = [..._sessionPath, uci];
+    const nextPath = [..._sessionPath, uci];
+    if (refreshVisibleLazySnapshot(nextPath, { persist: true, triggerEval: true, notify: true })) return;
+    _sessionPath = nextPath;
     _sessionNode = child;
     persistSession();
     triggerTreeEvalForCurrentNode();
@@ -1088,7 +1176,9 @@ export function navigateToMove(uci: string): void {
 /** Navigate back one move. */
 export function navigateBack(): void {
   if (_sessionPath.length === 0 || !_openingTree) return;
-  _sessionPath = _sessionPath.slice(0, -1);
+  const nextPath = _sessionPath.slice(0, -1);
+  if (refreshVisibleLazySnapshot(nextPath, { persist: true, triggerEval: true, notify: true })) return;
+  _sessionPath = nextPath;
   _sessionNode = nodeAtMoves(_openingTree, _sessionPath) ?? _openingTree;
   persistSession();
   triggerTreeEvalForCurrentNode();
@@ -1098,6 +1188,7 @@ export function navigateBack(): void {
 /** Navigate to root. */
 export function navigateToRoot(): void {
   if (!_openingTree) return;
+  if (refreshVisibleLazySnapshot([], { persist: true, triggerEval: true, notify: true })) return;
   _sessionPath = [];
   _sessionNode = _openingTree;
   persistSession();
@@ -1108,6 +1199,14 @@ export function navigateToRoot(): void {
 /** Navigate to the deepest position following the most popular child at each step. */
 export function navigateToEnd(): void {
   if (!_openingTree) return;
+  const builder = visibleLazyBuilder();
+  if (builder) {
+    const nextPath = builder.mostPopularPathFromMoves(_sessionPath);
+    if (nextPath.length !== _sessionPath.length) {
+      refreshVisibleLazySnapshot(nextPath, { persist: true, triggerEval: true, notify: true });
+    }
+    return;
+  }
   let node = _sessionNode;
   const newPath = [..._sessionPath];
   while (node && node.children.length > 0) {
@@ -1127,6 +1226,8 @@ export function navigateToEnd(): void {
 /** Navigate to a specific path (list of UCI moves). */
 export function navigateToPath(moves: string[]): void {
   if (!_openingTree) return;
+  const lazyResult = refreshVisibleLazySnapshot(moves, { persist: true, triggerEval: true, notify: true });
+  if (lazyResult) return;
   const target = nodeAtMoves(_openingTree, moves);
   if (target) {
     _sessionPath = [...moves];
@@ -1309,7 +1410,7 @@ export function getPrepReportViewModel(): PrepReportViewModel | null {
     // For line analysis, 'both' falls back to 'white' perspective as the base pass.
     // The Prep Report view can layer color-specific filtering on top if needed.
     const colorPerspective = _colorFilter === 'both' ? 'white' : _colorFilter;
-    const lines = computePrepReportLines(_openingTree, colorPerspective, 8);
+    const lines = computePrepReportLines(ensureFullOpeningTreeSnapshot(), colorPerspective, 8);
     _prepReportCache = { summary, report, lines };
   }
   return _prepReportCache;
@@ -1333,7 +1434,7 @@ export function getStyleViewModel(): StyleViewModel | null {
     const summary = getCollectionSummary()!; // safe: checked above
     _styleCache = computeStyleViewModel(
       _activeGames,
-      _openingTree,
+      ensureFullOpeningTreeSnapshot(),
       _activeCollection.target,
       summary,
     );
@@ -1452,6 +1553,9 @@ export function closeSession(): void {
   invalidateSampleCache();
   _activeCollection = null;
   _openingTree = null;
+  _visibleTreeBuilder = null;
+  _visibleTreeBuilderGeneration = 0;
+  _openingTreeSnapshotKind = 'full';
   _sessionPath = [];
   _sessionNode = null;
   _currentPage = 'library';

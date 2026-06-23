@@ -19,12 +19,13 @@ export type OpeningTreeBuildPhaseDetail =
   | 'load-account-games'
   | 'add-games'
   | 'freeze'
+  | 'current-path-snapshot'
   | 'render-snapshot'
   | 'sample-scan'
   | 'cancelled'
   | 'stale-suppressed'
   | 'complete';
-export type OpeningTreeSnapshotMode = 'empty' | 'interim' | 'final' | 'skipped';
+export type OpeningTreeSnapshotMode = 'empty' | 'interim' | 'final' | 'lazy-current' | 'full-on-demand' | 'skipped';
 
 export const OPENING_TREE_BUILD_MILESTONES = [25, 50, 75, 100] as const;
 

@@ -50,6 +50,18 @@ export interface OpeningTreeNode {
   children: OpeningTreeNode[];
 }
 
+export type OpeningTreePathSnapshotStatus = 'exact' | 'partial' | 'root';
+
+export interface OpeningTreePathSnapshot {
+  root: OpeningTreeNode;
+  current: OpeningTreeNode;
+  requestedPath: string[];
+  appliedPath: string[];
+  status: OpeningTreePathSnapshotStatus;
+  positionsCount: number;
+  nodeCount: number;
+}
+
 /** Result counts for aggregation. */
 interface ResultCounts {
   total: number;
@@ -200,6 +212,110 @@ export class OpeningTreeBuilder {
   freeze(): OpeningTreeNode {
     return freezeGraph(this.root, this.positions, new Set());
   }
+
+  /**
+   * Build only the current visible path plus immediate siblings/children.
+   *
+   * This keeps the Opening Tree surface responsive for large account trees
+   * where recursively cloning every position can block the main thread.
+   */
+  snapshotAtMoves(moves: readonly string[]): OpeningTreePathSnapshot {
+    const requestedPath = [...moves];
+    const walk = this._walkPath(requestedPath);
+    const root = this._buildPathSnapshotRoot(walk.trail);
+    const current = nodeAtMoves(root, walk.appliedPath) ?? root;
+    const status: OpeningTreePathSnapshotStatus = requestedPath.length === 0 || walk.appliedPath.length === requestedPath.length
+      ? 'exact'
+      : walk.appliedPath.length > 0
+        ? 'partial'
+        : 'root';
+    return {
+      root,
+      current,
+      requestedPath,
+      appliedPath: walk.appliedPath,
+      status,
+      positionsCount: this.positions.size,
+      nodeCount: this.positions.size,
+    };
+  }
+
+  /** Return the most-popular continuation from a starting path without freezing the whole graph. */
+  mostPopularPathFromMoves(moves: readonly string[], maxPlies = MAX_PLY): string[] {
+    const walk = this._walkPath(moves);
+    const path = [...walk.appliedPath];
+    let current = walk.current;
+    while (path.length < maxPlies) {
+      const edge = sortedEdges(current)[0];
+      if (!edge) break;
+      const target = this.positions.get(edge.targetPosKey);
+      if (!target) break;
+      path.push(edge.uci);
+      current = target;
+    }
+    return path;
+  }
+
+  private _walkPath(moves: readonly string[]): {
+    appliedPath: string[];
+    current: BuildPosition;
+    trail: Array<{ position: BuildPosition; incomingEdge: BuildEdge | null }>;
+  } {
+    const appliedPath: string[] = [];
+    const trail: Array<{ position: BuildPosition; incomingEdge: BuildEdge | null }> = [
+      { position: this.root, incomingEdge: null },
+    ];
+    let current = this.root;
+
+    for (const uci of moves) {
+      const edge = current.edges.get(uci);
+      if (!edge) break;
+      const target = this.positions.get(edge.targetPosKey);
+      if (!target) break;
+      appliedPath.push(uci);
+      current = target;
+      trail.push({ position: target, incomingEdge: edge });
+    }
+
+    return { appliedPath, current, trail };
+  }
+
+  private _buildPathSnapshotRoot(
+    trail: Array<{ position: BuildPosition; incomingEdge: BuildEdge | null }>,
+  ): OpeningTreeNode {
+    let selectedChild: OpeningTreeNode | null = null;
+
+    for (let index = trail.length - 1; index >= 0; index--) {
+      const entry = trail[index]!;
+      const nextEntry = trail[index + 1];
+      const children = this._shallowChildren(
+        entry.position,
+        nextEntry?.incomingEdge?.uci,
+        selectedChild,
+      );
+      selectedChild = nodeForPosition(entry.position, entry.incomingEdge, children);
+    }
+
+    return selectedChild ?? nodeForPosition(this.root, null, []);
+  }
+
+  private _shallowChildren(
+    position: BuildPosition,
+    selectedUci?: string,
+    selectedChild?: OpeningTreeNode | null,
+  ): OpeningTreeNode[] {
+    const children: OpeningTreeNode[] = [];
+    for (const edge of sortedEdges(position)) {
+      const target = this.positions.get(edge.targetPosKey);
+      if (!target) continue;
+      if (selectedUci && edge.uci === selectedUci && selectedChild) {
+        children.push(selectedChild);
+      } else {
+        children.push(nodeForPosition(target, edge, []));
+      }
+    }
+    return children;
+  }
 }
 
 /**
@@ -273,6 +389,34 @@ function freezeGraph(
     avgRating: 0,
     lastPlayed: '',
     transposition: pos.parentCount > 1,
+    children,
+  };
+}
+
+function sortedEdges(position: BuildPosition): BuildEdge[] {
+  return [...position.edges.values()].sort((a, b) => b.results.total - a.results.total);
+}
+
+function nodeForPosition(
+  position: BuildPosition,
+  incomingEdge: BuildEdge | null,
+  children: OpeningTreeNode[],
+): OpeningTreeNode {
+  const counts = incomingEdge?.results ?? position.results;
+  return {
+    fen: position.fen,
+    posKey: position.posKey,
+    san: incomingEdge?.san ?? '',
+    uci: incomingEdge?.uci ?? '',
+    total: counts.total,
+    white: counts.white,
+    draws: counts.draws,
+    black: counts.black,
+    avgRating: incomingEdge && incomingEdge.ratingCount > 0
+      ? Math.round(incomingEdge.ratingSum / incomingEdge.ratingCount)
+      : 0,
+    lastPlayed: incomingEdge?.lastPlayed ?? '',
+    transposition: position.parentCount > 1,
     children,
   };
 }
