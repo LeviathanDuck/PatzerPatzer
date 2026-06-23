@@ -56,6 +56,13 @@ import type { ImportedGame, ImportCallbacks } from '../import/types';
 import { accountId, getAccount, listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
 import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
+import {
+  getVisibleReleaseIdentity,
+  loadLiveReleaseIdentity,
+  releaseDeployLabel,
+  releaseProductLabel,
+  releaseTooltip,
+} from '../releaseIdentity';
 
 const HEADER_LOGO_SRC = '/images/patzer-pro-review-lens-logo-package/png/app-icons/patzerpro-app-icon-152.png';
 const PLATFORM_DISCLAIMER = 'Patzer Pro is not affiliated with or endorsed by Chess.com or Lichess.';
@@ -1387,6 +1394,21 @@ function renderRetroModal(redraw: () => void): VNode {
   ]);
 }
 
+function renderReleaseIdentityFooter(redraw: () => void): VNode {
+  const identity = getVisibleReleaseIdentity();
+  loadLiveReleaseIdentity(redraw);
+
+  return h('div.global-menu__release', {
+    attrs: {
+      title: releaseTooltip(identity),
+      'aria-label': `${releaseProductLabel(identity)}, ${releaseDeployLabel(identity)}`,
+    },
+  }, [
+    h('span.global-menu__release-product', releaseProductLabel(identity)),
+    h('span.global-menu__release-deploy', releaseDeployLabel(identity)),
+  ]);
+}
+
 function renderGlobalMenu(deps: HeaderDeps): VNode {
   const { downloadPgn, resetAllData, selectedGameId, redraw } = deps;
   const hasGame = selectedGameId !== null;
@@ -1502,6 +1524,8 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       ]),
 
       showBoardSettings ? renderBoardSettings(redraw) : null,
+
+      renderReleaseIdentityFooter(redraw),
     ]) : null,
   ]);
 }

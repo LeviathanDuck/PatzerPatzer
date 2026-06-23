@@ -6,6 +6,7 @@ import type { TreeNode, TreePath } from '../../tree/types';
 import { getSessionId as defaultGetSessionId } from '../id';
 import { record as defaultRecord } from '../record';
 import { Severity, type DiagnosticEvent } from '../types';
+import { getCompileTimeReleaseIdentity } from '../../releaseIdentity';
 import {
   REVIEW_ERROR_PACKAGE_FORMAT_VERSION,
   type ReviewErrorAppIdentity,
@@ -14,10 +15,6 @@ import {
   type ReviewErrorGameMetadata,
   type ReviewErrorPackage,
 } from './types';
-
-declare const __PATZER_RELEASE__: string;
-declare const __PATZER_VERSION__: string;
-declare const __PATZER_BUILD_ID__: string;
 
 export interface ReviewErrorPackageAssemblyInput {
   game: ImportedGame;
@@ -60,12 +57,11 @@ function currentRoute(): string {
 }
 
 function releaseIdentity(): ReviewErrorAppIdentity {
-  const version = typeof __PATZER_VERSION__ === 'string' ? __PATZER_VERSION__ : 'unknown';
-  const buildId = typeof __PATZER_BUILD_ID__ === 'string' ? __PATZER_BUILD_ID__ : 'unknown';
+  const identity = getCompileTimeReleaseIdentity();
   return {
-    release: typeof __PATZER_RELEASE__ === 'string' ? __PATZER_RELEASE__ : `patzer-pro@${version}+${buildId}`,
-    version,
-    buildId,
+    release: identity.release,
+    version: identity.version,
+    buildId: identity.buildId,
   };
 }
 

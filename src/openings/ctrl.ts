@@ -39,7 +39,10 @@ import {
   openingTreeBuildMilestonesForProgress,
   recordOpeningTreeBuildEvent,
   recordOpeningTreeBuildFailure,
+  type OpeningTreeBuildContext,
+  type OpeningTreeSnapshotMode,
 } from './treeBuildDiagnostics';
+import { getDeviceMetadata } from '../diagnostics/session';
 
 export type OpeningsPage = 'library' | 'loading' | 'session';
 
@@ -72,6 +75,11 @@ export interface OpenCollectionOptions {
   initialPath?: string[];
   onInitialPathResolved?: (result: OpeningsRoutePathRestoreResult) => void;
 }
+
+const TREE_BUILD_CHUNK_SIZE = 200;
+const SMALL_TREE_SNAPSHOT_GAME_LIMIT = 1000;
+const LARGE_TREE_SNAPSHOT_INTERVAL_MS = 2500;
+const SAMPLE_GAMES_SCAN_LIMIT = 250;
 
 export type OpeningsSessionStateChangeHandler = (snapshot: OpponentsTreeUrlState | null) => void;
 
@@ -623,12 +631,16 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
   games = filterByDateRange(games, _sessionDateRange);
   _activeGames = games;
 
-  // Clear the tree immediately so the view shows an empty state while building.
+  // Keep an existing tree visible while the rebuild runs. This avoids a blank
+  // panel during expensive large-account filter changes; the final snapshot
+  // still resets to the rebuilt root to preserve existing filter behavior.
   cancelTreeEvalWork();
-  const emptyBuilder = new OpeningTreeBuilder();
-  _openingTree = emptyBuilder.freeze();
-  _sessionPath = [];
-  _sessionNode = _openingTree;
+  if (!_openingTree) {
+    const emptyBuilder = new OpeningTreeBuilder();
+    _openingTree = emptyBuilder.freeze();
+    _sessionPath = [];
+    _sessionNode = _openingTree;
+  }
   invalidateSampleCache();
   notifySessionStateChanged();
 
@@ -640,7 +652,7 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
   _activeBuildCount++;
   redraw();
 
-  const CHUNK = 200;
+  const CHUNK = TREE_BUILD_CHUNK_SIZE;
   const buildContext = createOpeningTreeBuildContext({
     reason: 'filter-rebuild',
     collection: _activeCollection,
@@ -652,10 +664,12 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
     chunkSize: CHUNK,
     buildGeneration: generation,
   });
+  _lastTreeBuildContext = buildContext;
   let nextMilestoneIndex = 0;
   const builder = new OpeningTreeBuilder();
   let index = 0;
   let chunkCount = 0;
+  let lastSnapshotAt = monotonicNow();
   recordOpeningTreeBuildEvent(buildContext, { phase: 'start', progressGames: 0, activeBuildCount: _activeBuildCount });
 
   function processChunk(): void {
@@ -665,20 +679,34 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
     if (generation !== _buildGeneration) {
       recordOpeningTreeBuildEvent(buildContext, {
         phase: 'stale-suppressed',
+        phaseDetail: 'stale-suppressed',
         progressGames: index,
         supersededByGeneration: _buildGeneration,
         cancelReason: _treeBuilding ? 'superseded-by-newer-build' : 'session-closed',
         activeBuildCount: _activeBuildCount,
+        positionsCount: builder.positions.size,
+        nodeCount: builder.positions.size,
       });
       _activeBuildCount = Math.max(0, _activeBuildCount - 1);
       return;
     }
     try {
       const end = Math.min(index + CHUNK, games.length);
+      const chunkStartedAt = monotonicNow();
       builder.addGames(games.slice(index, end));
+      const chunkDurationMs = monotonicNow() - chunkStartedAt;
       index = end;
       chunkCount++;
       _treeBuildProgress = index;
+      recordOpeningTreeBuildEvent(buildContext, {
+        phase: 'chunk',
+        phaseDetail: 'add-games',
+        progressGames: index,
+        chunkIndex: chunkCount,
+        chunkDurationMs,
+        positionsCount: builder.positions.size,
+        nodeCount: builder.positions.size,
+      });
 
       const milestoneResult = openingTreeBuildMilestonesForProgress(games.length, index, nextMilestoneIndex);
       nextMilestoneIndex = milestoneResult.nextIndex;
@@ -691,11 +719,23 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
       }
 
       const done = index >= games.length;
-      if (done || chunkCount % 4 === 0) {
-        _openingTree = builder.freeze();
-        _sessionNode = _openingTree;
-        invalidateSampleCache();
-        triggerTreeEvalForCurrentNode();
+      const snapshotMode = shouldPublishTreeSnapshot({
+        done,
+        chunkCount,
+        totalGames: games.length,
+        lastSnapshotAt,
+        now: monotonicNow(),
+      });
+      if (snapshotMode) {
+        publishTreeSnapshot({
+          builder,
+          buildContext,
+          progressGames: index,
+          snapshotMode,
+          resetPath: snapshotMode === 'final',
+          triggerEval: snapshotMode === 'final',
+        });
+        lastSnapshotAt = monotonicNow();
       }
       redraw();
 
@@ -704,7 +744,15 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
       } else {
         _treeBuilding = false;
         _activeBuildCount = Math.max(0, _activeBuildCount - 1);
-        recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index, activeBuildCount: _activeBuildCount });
+        recordOpeningTreeBuildEvent(buildContext, {
+          phase: 'complete',
+          phaseDetail: 'complete',
+          progressGames: index,
+          activeBuildCount: _activeBuildCount,
+          positionsCount: builder.positions.size,
+          nodeCount: builder.positions.size,
+          snapshotMode: 'final',
+        });
         redraw();
       }
     } catch (error) {
@@ -734,10 +782,78 @@ let _buildGeneration = 0;
 
 
 let _activeBuildCount = 0;
+let _lastTreeBuildContext: OpeningTreeBuildContext | null = null;
 
 export function treeBuildProgress(): number { return _treeBuildProgress; }
 export function treeBuildTotal(): number { return _treeBuildTotal; }
 export function treeBuilding(): boolean { return _treeBuilding; }
+
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function isMobileTreeBuildDevice(): boolean {
+  const deviceClass = getDeviceMetadata().deviceClass;
+  return deviceClass === 'mobile' || deviceClass === 'tablet';
+}
+
+function shouldPublishTreeSnapshot(options: {
+  done: boolean;
+  chunkCount: number;
+  totalGames: number;
+  lastSnapshotAt: number;
+  now: number;
+}): OpeningTreeSnapshotMode | null {
+  if (options.done) return 'final';
+  if (options.totalGames <= SMALL_TREE_SNAPSHOT_GAME_LIMIT) {
+    return options.chunkCount % 4 === 0 ? 'interim' : null;
+  }
+  if (isMobileTreeBuildDevice()) return null;
+  return options.now - options.lastSnapshotAt >= LARGE_TREE_SNAPSHOT_INTERVAL_MS ? 'interim' : null;
+}
+
+function publishTreeSnapshot(options: {
+  builder: OpeningTreeBuilder;
+  buildContext: OpeningTreeBuildContext;
+  progressGames: number;
+  snapshotMode: OpeningTreeSnapshotMode;
+  resetPath: boolean;
+  triggerEval: boolean;
+}): void {
+  const positionsCount = options.builder.positions.size;
+  const freezeStartedAt = monotonicNow();
+  const nextTree = options.builder.freeze();
+  const freezeDurationMs = monotonicNow() - freezeStartedAt;
+  recordOpeningTreeBuildEvent(options.buildContext, {
+    phase: 'snapshot',
+    phaseDetail: 'freeze',
+    progressGames: options.progressGames,
+    freezeDurationMs,
+    positionsCount,
+    nodeCount: positionsCount,
+    snapshotMode: options.snapshotMode,
+  });
+
+  const snapshotStartedAt = monotonicNow();
+  _openingTree = nextTree;
+  if (options.resetPath) {
+    _sessionPath = [];
+    _sessionNode = _openingTree;
+  } else {
+    _sessionNode = nodeAtMoves(_openingTree, [..._sessionPath]) ?? _openingTree;
+  }
+  invalidateSampleCache();
+  if (options.triggerEval) triggerTreeEvalForCurrentNode();
+  recordOpeningTreeBuildEvent(options.buildContext, {
+    phase: 'snapshot',
+    phaseDetail: 'render-snapshot',
+    progressGames: options.progressGames,
+    snapshotDurationMs: monotonicNow() - snapshotStartedAt,
+    positionsCount,
+    nodeCount: positionsCount,
+    snapshotMode: options.snapshotMode,
+  });
+}
 
 function navigateToClosestPath(moves: string[], persist: boolean): OpeningsRoutePathRestoreResult {
   const requested = [...moves];
@@ -816,7 +932,7 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   _activeBuildCount++;
   redraw();
 
-  const CHUNK = 200;
+  const CHUNK = TREE_BUILD_CHUNK_SIZE;
   const buildContext = createOpeningTreeBuildContext({
     reason: 'open-collection',
     collection,
@@ -828,10 +944,12 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
     chunkSize: CHUNK,
     buildGeneration: generation,
   });
+  _lastTreeBuildContext = buildContext;
   let nextMilestoneIndex = 0;
   const builder = new OpeningTreeBuilder();
   let index = 0;
   let chunkCount = 0;
+  let lastSnapshotAt = monotonicNow();
   recordOpeningTreeBuildEvent(buildContext, { phase: 'start', progressGames: 0, activeBuildCount: _activeBuildCount });
 
   function processChunk(): void {
@@ -841,20 +959,34 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
     if (generation !== _buildGeneration) {
       recordOpeningTreeBuildEvent(buildContext, {
         phase: 'stale-suppressed',
+        phaseDetail: 'stale-suppressed',
         progressGames: index,
         supersededByGeneration: _buildGeneration,
         cancelReason: _treeBuilding ? 'superseded-by-newer-build' : 'session-closed',
         activeBuildCount: _activeBuildCount,
+        positionsCount: builder.positions.size,
+        nodeCount: builder.positions.size,
       });
       _activeBuildCount = Math.max(0, _activeBuildCount - 1);
       return;
     }
     try {
       const end = Math.min(index + CHUNK, games.length);
+      const chunkStartedAt = monotonicNow();
       builder.addGames(games.slice(index, end));
+      const chunkDurationMs = monotonicNow() - chunkStartedAt;
       index = end;
       chunkCount++;
       _treeBuildProgress = index;
+      recordOpeningTreeBuildEvent(buildContext, {
+        phase: 'chunk',
+        phaseDetail: 'add-games',
+        progressGames: index,
+        chunkIndex: chunkCount,
+        chunkDurationMs,
+        positionsCount: builder.positions.size,
+        nodeCount: builder.positions.size,
+      });
 
       const milestoneResult = openingTreeBuildMilestonesForProgress(games.length, index, nextMilestoneIndex);
       nextMilestoneIndex = milestoneResult.nextIndex;
@@ -867,13 +999,23 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
       }
 
       const done = index >= games.length;
-      // Freeze the tree periodically (every 4 chunks) or on the final chunk.
-      // freeze() does a full DFS so we don't want to call it on every chunk.
-      if (done || chunkCount % 4 === 0) {
-        _openingTree = builder.freeze();
-        _sessionNode = nodeAtMoves(_openingTree, [..._sessionPath]) ?? _openingTree;
-        invalidateSampleCache();
-        triggerTreeEvalForCurrentNode();
+      const snapshotMode = shouldPublishTreeSnapshot({
+        done,
+        chunkCount,
+        totalGames: games.length,
+        lastSnapshotAt,
+        now: monotonicNow(),
+      });
+      if (snapshotMode) {
+        publishTreeSnapshot({
+          builder,
+          buildContext,
+          progressGames: index,
+          snapshotMode,
+          resetPath: false,
+          triggerEval: snapshotMode === 'final' && !options.initialPath,
+        });
+        lastSnapshotAt = monotonicNow();
       }
       redraw();
 
@@ -888,7 +1030,15 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
         }
         _treeBuilding = false;
         _activeBuildCount = Math.max(0, _activeBuildCount - 1);
-        recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index, activeBuildCount: _activeBuildCount });
+        recordOpeningTreeBuildEvent(buildContext, {
+          phase: 'complete',
+          phaseDetail: 'complete',
+          progressGames: index,
+          activeBuildCount: _activeBuildCount,
+          positionsCount: builder.positions.size,
+          nodeCount: builder.positions.size,
+          snapshotMode: 'final',
+        });
         redraw();
       }
     } catch (error) {
@@ -1014,22 +1164,52 @@ export function sampleGames(redraw?: () => void): SampleGamesState {
   const pathKey = _sessionPath.join('/');
   const total = _sessionNode?.total ?? 0;
   if (!_activeCollection) return { games: [], total: 0, loading: false, pathKey };
+  if (_treeBuilding) return { games: [], total, loading: true, pathKey };
 
   if (pathKey !== _cachedSamplesPath && pathKey !== _cachedSamplesScheduledPath) {
     const collection = _activeCollection;
     const path = [..._sessionPath];
     const generation = ++_cachedSamplesGeneration;
+    const buildContext = _lastTreeBuildContext;
     _cachedSamplesScheduledPath = pathKey;
     _cachedSamplesLoading = true;
     _cachedSamples = [];
     scheduleIdle(() => {
-      if (generation !== _cachedSamplesGeneration || _activeCollection?.id !== collection.id) return;
-      const matches = findSampleGames(collection.games, path);
-      if (generation !== _cachedSamplesGeneration || _sessionPath.join('/') !== pathKey) return;
+      if (generation !== _cachedSamplesGeneration || _activeCollection?.id !== collection.id) {
+        buildContext && recordOpeningTreeBuildEvent(buildContext, {
+          phase: 'sample-stale',
+          phaseDetail: 'sample-scan',
+          progressGames: _treeBuildProgress,
+          sampleLimit: SAMPLE_GAMES_SCAN_LIMIT,
+        });
+        return;
+      }
+      const scanStartedAt = monotonicNow();
+      const matches = findSampleGames(collection.games, path, SAMPLE_GAMES_SCAN_LIMIT);
+      const sampleScanDurationMs = monotonicNow() - scanStartedAt;
+      if (generation !== _cachedSamplesGeneration || _sessionPath.join('/') !== pathKey) {
+        buildContext && recordOpeningTreeBuildEvent(buildContext, {
+          phase: 'sample-stale',
+          phaseDetail: 'sample-scan',
+          progressGames: _treeBuildProgress,
+          sampleScanDurationMs,
+          sampleMatchCount: matches.length,
+          sampleLimit: SAMPLE_GAMES_SCAN_LIMIT,
+        });
+        return;
+      }
       _cachedSamplesPath = pathKey;
       _cachedSamplesScheduledPath = '';
       _cachedSamples = matches;
       _cachedSamplesLoading = false;
+      buildContext && recordOpeningTreeBuildEvent(buildContext, {
+        phase: 'sample-scan',
+        phaseDetail: 'sample-scan',
+        progressGames: _treeBuildProgress,
+        sampleScanDurationMs,
+        sampleMatchCount: matches.length,
+        sampleLimit: SAMPLE_GAMES_SCAN_LIMIT,
+      });
       redraw?.();
     });
   }

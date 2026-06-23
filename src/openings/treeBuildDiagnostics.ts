@@ -5,7 +5,26 @@ import { Severity, type DiagnosticMetadata } from '../diagnostics/types';
 import type { OpeningsTool, ResearchCollection, ResearchSource } from './types';
 
 export type OpeningTreeBuildReason = 'open-collection' | 'filter-rebuild';
-export type OpeningTreeBuildPhase = 'start' | 'milestone' | 'complete' | 'failed' | 'stale-suppressed';
+export type OpeningTreeBuildPhase =
+  | 'start'
+  | 'milestone'
+  | 'chunk'
+  | 'snapshot'
+  | 'sample-scan'
+  | 'sample-stale'
+  | 'complete'
+  | 'failed'
+  | 'stale-suppressed';
+export type OpeningTreeBuildPhaseDetail =
+  | 'load-account-games'
+  | 'add-games'
+  | 'freeze'
+  | 'render-snapshot'
+  | 'sample-scan'
+  | 'cancelled'
+  | 'stale-suppressed'
+  | 'complete';
+export type OpeningTreeSnapshotMode = 'empty' | 'interim' | 'final' | 'skipped';
 
 export const OPENING_TREE_BUILD_MILESTONES = [25, 50, 75, 100] as const;
 
@@ -30,7 +49,18 @@ export interface OpeningTreeBuildContext {
 export interface OpeningTreeBuildEventDetails {
   phase: OpeningTreeBuildPhase;
   progressGames: number;
+  phaseDetail?: OpeningTreeBuildPhaseDetail;
   milestonePercent?: number;
+  chunkIndex?: number;
+  chunkDurationMs?: number;
+  freezeDurationMs?: number;
+  snapshotDurationMs?: number;
+  sampleScanDurationMs?: number;
+  sampleMatchCount?: number;
+  sampleLimit?: number;
+  positionsCount?: number;
+  nodeCount?: number;
+  snapshotMode?: OpeningTreeSnapshotMode;
   errorName?: string;
 
   activeBuildCount?: number;
@@ -124,6 +154,70 @@ function progressPercent(totalGames: number, progressGames: number): number {
   return Math.min(100, Math.max(0, Math.round((progressGames / totalGames) * 100)));
 }
 
+function safeDuration(durationMs: number | undefined): number | undefined {
+  if (durationMs === undefined || !Number.isFinite(durationMs)) return undefined;
+  return Math.max(0, Math.round(durationMs));
+}
+
+function safeCount(count: number | undefined): number | undefined {
+  if (count === undefined || !Number.isFinite(count)) return undefined;
+  return Math.max(0, Math.floor(count));
+}
+
+function countBucket(count: number | undefined): string | undefined {
+  const safe = safeCount(count);
+  if (safe === undefined) return undefined;
+  if (safe === 0) return '0';
+  if (safe <= 100) return '1-100';
+  if (safe <= 500) return '101-500';
+  if (safe <= 1000) return '501-1000';
+  if (safe <= 2500) return '1001-2500';
+  if (safe <= 5000) return '2501-5000';
+  if (safe <= 10000) return '5001-10000';
+  if (safe <= 25000) return '10001-25000';
+  if (safe <= 50000) return '25001-50000';
+  return '50000+';
+}
+
+function bytesBucket(bytes: number | undefined): string | undefined {
+  const safe = safeCount(bytes);
+  if (safe === undefined) return undefined;
+  const mib = safe / (1024 * 1024);
+  if (mib <= 64) return '0-64mb';
+  if (mib <= 128) return '65-128mb';
+  if (mib <= 256) return '129-256mb';
+  if (mib <= 512) return '257-512mb';
+  if (mib <= 1024) return '513mb-1gb';
+  if (mib <= 2048) return '1gb-2gb';
+  return '2gb+';
+}
+
+function ratioBucket(ratio: number | undefined): string | undefined {
+  if (ratio === undefined || !Number.isFinite(ratio)) return undefined;
+  if (ratio <= 0.25) return '0-25';
+  if (ratio <= 0.5) return '26-50';
+  if (ratio <= 0.75) return '51-75';
+  if (ratio <= 0.9) return '76-90';
+  return '91-100';
+}
+
+function heapBuckets(): { heapUsedBucket?: string; heapRatioBucket?: string } {
+  const memory = typeof performance !== 'undefined'
+    ? (performance as Performance & {
+      memory?: { usedJSHeapSize?: number; jsHeapSizeLimit?: number };
+    }).memory
+    : undefined;
+  if (!memory) return {};
+  const buckets: { heapUsedBucket?: string; heapRatioBucket?: string } = {};
+  const heapUsedBucket = bytesBucket(memory.usedJSHeapSize);
+  if (heapUsedBucket) buckets.heapUsedBucket = heapUsedBucket;
+  const heapRatioBucket = memory.usedJSHeapSize !== undefined && memory.jsHeapSizeLimit
+    ? ratioBucket(memory.usedJSHeapSize / memory.jsHeapSizeLimit)
+    : undefined;
+  if (heapRatioBucket) buckets.heapRatioBucket = heapRatioBucket;
+  return buckets;
+}
+
 function errorName(error: unknown): string {
   if (error instanceof Error) return error.name || 'Error';
   return typeof error;
@@ -135,10 +229,18 @@ export function buildOpeningTreeDiagnosticMetadata(
   now = Date.now(),
 ): DiagnosticMetadata {
   const device = getDeviceMetadata();
+  const chunkDurationMs = safeDuration(details.chunkDurationMs);
+  const freezeDurationMs = safeDuration(details.freezeDurationMs);
+  const snapshotDurationMs = safeDuration(details.snapshotDurationMs);
+  const sampleScanDurationMs = safeDuration(details.sampleScanDurationMs);
+  const sampleMatchCountBucket = countBucket(details.sampleMatchCount);
+  const positionsCountBucket = countBucket(details.positionsCount);
+  const nodeCountBucket = countBucket(details.nodeCount);
   return {
     buildId: context.buildId,
     buildGeneration: context.buildGeneration,
     phase: details.phase,
+    ...(details.phaseDetail ? { phaseDetail: details.phaseDetail } : {}),
     reason: context.reason,
     collectionKind: context.collectionKind,
     collectionSource: context.collectionSource,
@@ -156,6 +258,17 @@ export function buildOpeningTreeDiagnosticMetadata(
     deviceClass: device.deviceClass ?? 'unknown',
     viewportWidth: device.viewportWidth ?? '0',
     viewportHeight: device.viewportHeight ?? '0',
+    ...(details.chunkIndex !== undefined ? { chunkIndex: Math.max(0, Math.floor(details.chunkIndex)) } : {}),
+    ...(chunkDurationMs !== undefined ? { chunkDurationMs } : {}),
+    ...(freezeDurationMs !== undefined ? { freezeDurationMs } : {}),
+    ...(snapshotDurationMs !== undefined ? { snapshotDurationMs } : {}),
+    ...(sampleScanDurationMs !== undefined ? { sampleScanDurationMs } : {}),
+    ...(sampleMatchCountBucket ? { sampleMatchCountBucket } : {}),
+    ...(details.sampleLimit !== undefined ? { sampleLimit: Math.max(0, Math.floor(details.sampleLimit)) } : {}),
+    ...(positionsCountBucket ? { positionsCountBucket } : {}),
+    ...(nodeCountBucket ? { nodeCountBucket } : {}),
+    ...(details.snapshotMode ? { snapshotMode: details.snapshotMode } : {}),
+    ...heapBuckets(),
     ...(details.errorName ? { errorName: details.errorName } : {}),
     ...(details.activeBuildCount !== undefined ? { activeBuildCount: Math.max(0, details.activeBuildCount) } : {}),
     ...(details.supersededByGeneration !== undefined ? { supersededByGeneration: Math.max(0, details.supersededByGeneration) } : {}),

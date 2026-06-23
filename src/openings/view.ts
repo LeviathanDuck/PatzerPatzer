@@ -2266,16 +2266,16 @@ function renderOpeningTreeTool(
       })(),
       renderColorToggle(collection?.target ?? '', redraw),
       isFetching() ? renderFetchBar(redraw) : treeBuilding() ? renderTreeBuildBar() : null,
-      // Engine section at the top of the panel, before move list and position-context content.
-      renderCeval(),
-      renderEngineSettings({ showArrowSettings: true }),
-      engineEnabled ? renderPvBox() : null,
-      // Move list directly under the engine block (mirrors analysis-board column order).
-      openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
-      // Opening tree move rows stay in the right panel; only lower context controls move under board.
+      // Opening tree move rows stay above the navigation controls.
       node ? renderPlayedLinesPanel(node, redraw) : null,
       // Board navigation controls render beneath the opening tree list.
       renderOpeningsMoveNavBar(node, path, redraw),
+      // Layout experiment: Stockfish, optional book, and game move list sit beneath nav.
+      renderCeval(),
+      renderEngineSettings({ showArrowSettings: true }),
+      engineEnabled ? renderPvBox() : null,
+      renderExplorerToggle(node, redraw),
+      openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
     ]),
     h('div.openings__underboard', [
       // Position context lives under the board, mirroring the analysis underboard pattern.
@@ -2283,7 +2283,6 @@ function renderOpeningTreeTool(
       renderOpeningTreeFilterControls(redraw),
       renderDeviationPanel(redraw),
       renderSampleGamesPanel(redraw),
-      renderExplorerToggle(node, redraw),
     ]),
   ];
 }
@@ -3365,7 +3364,7 @@ function renderPlayedLinesPanel(node: OpeningTreeNode, redraw: () => void): VNod
     node.children.length === 0
       ? h('div.openings__moves-empty', 'No further moves in this collection.')
       : h('div.openings__moves',
-          node.children.map(child => renderMoveRow(child, node.total, node.fen, redraw)),
+          node.children.map(child => renderMoveRow(child, node.fen, redraw)),
         ),
     renderTreeEvalControls(redraw),
   ]);
@@ -3437,8 +3436,7 @@ function renderTreeEvalControls(redraw: () => void): VNode {
   ]);
 }
 
-function renderMoveRow(child: OpeningTreeNode, parentTotal: number, parentFen: string, redraw: () => void): VNode {
-  const pct = parentTotal > 0 ? ((child.total / parentTotal) * 100).toFixed(1) : '0';
+function renderMoveRow(child: OpeningTreeNode, parentFen: string, redraw: () => void): VNode {
   const gameLabel = child.total === 1 ? 'game' : 'games';
 
   // Check if this move is a known deviation from theory
@@ -3465,7 +3463,7 @@ function renderMoveRow(child: OpeningTreeNode, parentTotal: number, parentFen: s
         }, '\u2197') : null,  // ↗
       ]),
       renderMoveEvalSlot(child, parentFen),
-      h('span.openings__move-count', `${pct}% \u00b7 ${child.total} ${gameLabel}`),
+      h('span.openings__move-count', `${child.total} ${gameLabel}`),
     ]),
     renderResultBar(child),
   ]);

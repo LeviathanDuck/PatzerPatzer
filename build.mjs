@@ -1,10 +1,27 @@
 import * as esbuild from 'esbuild';
 import * as sass from 'sass';
 import fs from 'fs';
+import { execSync } from 'child_process';
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-const buildId = process.env.PATZER_BUILD_ID || new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);
 const version = pkg.version || '0.0.0';
+const builtAt = new Date().toISOString();
+
+function gitValue(args) {
+  try {
+    return execSync(`git ${args}`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+const commit = process.env.PATZER_COMMIT || gitValue('rev-parse HEAD');
+const shortCommit = process.env.PATZER_SHORT_COMMIT || (commit ? commit.slice(0, 12) : gitValue('rev-parse --short=12 HEAD'));
+const branch = process.env.PATZER_BRANCH || gitValue('branch --show-current');
+const buildId = process.env.PATZER_BUILD_ID || shortCommit || builtAt.replace(/[-:T.Z]/g, '').slice(0, 14);
 const release = `patzer-pro@${version}+${buildId}`;
 const sourcemapRoot = 'dist/sourcemaps';
 
@@ -35,6 +52,10 @@ await esbuild.build({
     __PATZER_RELEASE__: JSON.stringify(release),
     __PATZER_VERSION__: JSON.stringify(version),
     __PATZER_BUILD_ID__: JSON.stringify(buildId),
+    __PATZER_COMMIT__: JSON.stringify(commit),
+    __PATZER_SHORT_COMMIT__: JSON.stringify(shortCommit),
+    __PATZER_BRANCH__: JSON.stringify(branch),
+    __PATZER_BUILT_AT__: JSON.stringify(builtAt),
   },
   logLevel: 'info',
 });
