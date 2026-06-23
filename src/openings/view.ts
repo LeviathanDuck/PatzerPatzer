@@ -30,6 +30,7 @@ import {
   refreshRegistryAccounts, invalidateImportedSpeeds,
   openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
+  routeRecoveryMessage,
   sampleGamesSortMode, setSampleGamesSortMode, sampleGamesResultFilter, setSampleGamesResultFilter,
   sessionDateRange, setSessionDateRange, SESSION_DATE_RANGE_OPTIONS,
   treeEvalThoroughness, setTreeEvalThoroughness, TREE_EVAL_THOROUGHNESS_OPTIONS,
@@ -184,8 +185,27 @@ function formatLongSyncDate(timestamp: number | null): string {
 /** Render the openings page (library or session). */
 export function renderOpeningsPage(redraw: () => void): VNode {
   const page = openingsPage();
+  if (page === 'loading') return renderRouteLoadingPage();
   if (page === 'session') return renderSessionPage(redraw);
   return renderLibraryPage(redraw);
+}
+
+function renderRouteRecoveryBanner(): VNode | null {
+  const message = routeRecoveryMessage();
+  return message
+    ? h('div.openings__route-recovery', { attrs: { role: 'status' } }, message)
+    : null;
+}
+
+function renderRouteLoadingPage(): VNode {
+  return h('div.openings', [
+    h('div.openings__header', [
+      h('h1.openings__title', 'Opponent Research'),
+    ]),
+    h('div.openings__body', [
+      h('div.openings__loading', 'Restoring opening tree\u2026'),
+    ]),
+  ]);
 }
 
 // ========== Library page ==========
@@ -217,6 +237,7 @@ function renderLibraryPage(redraw: () => void): VNode {
           }, 'New Research')
         : null,
     ]),
+    renderRouteRecoveryBanner(),
     step !== 'idle'
       ? renderImportWorkflow(redraw)
       : h('div.openings__body', saved.length === 0 && accounts.length === 0
@@ -2331,6 +2352,7 @@ function renderSessionPage(redraw: () => void): VNode {
       },
     },
   }, [
+    renderRouteRecoveryBanner(),
     h('div.openings__session-header', [
       h('button.openings__back-lib-btn', {
         on: { click: () => { _openingsCg = undefined; setCevalFenOverride(null); closeSession(); redraw(); } },

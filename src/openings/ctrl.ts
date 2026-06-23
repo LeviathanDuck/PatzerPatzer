@@ -11,6 +11,7 @@ import {
   saveSessionState, loadSessionState, clearSessionState,
   type StoredOpeningsSession,
 } from './db';
+import { createAccountResearchCollection } from './routeTarget';
 import { getPlayStrengthLevel, exitPlayMode } from '../engine/ctrl';
 
 
@@ -32,6 +33,7 @@ import {
   startTreeEvalDeepening,
   startTreeEvalPass1,
 } from './treeEval';
+import type { OpponentsTreeUrlState, OpponentsUrlRange, OpponentsUrlSpeed, OpponentsUrlTarget } from './urlState';
 import {
   createOpeningTreeBuildContext,
   openingTreeBuildMilestonesForProgress,
@@ -59,12 +61,29 @@ export const TREE_EVAL_THOROUGHNESS_OPTIONS: readonly { value: TreeEvalThoroughn
 
 export type SampleGamesSortMode = 'recent' | 'rating';
 export type SampleGamesResultFilter = 'all' | 'wins' | 'losses';
+export type OpeningsRoutePathRestoreStatus = 'exact' | 'partial' | 'root';
+export interface OpeningsRoutePathRestoreResult {
+  status: OpeningsRoutePathRestoreStatus;
+  requested: string[];
+  applied: string[];
+}
+
+export interface OpenCollectionOptions {
+  initialPath?: string[];
+  onInitialPathResolved?: (result: OpeningsRoutePathRestoreResult) => void;
+}
+
+export type OpeningsSessionStateChangeHandler = (snapshot: OpponentsTreeUrlState | null) => void;
 
 let _currentPage: OpeningsPage = 'library';
 let _collections: ResearchCollection[] = [];
 let _collectionsLoaded = false;
 let _sampleGamesSortMode: SampleGamesSortMode = 'recent';
 let _sampleGamesResultFilter: SampleGamesResultFilter = 'all';
+let _routeRecoveryMessage: string | null = null;
+let _skipNextSavedSessionResume = false;
+let _sessionStateChangeHandler: OpeningsSessionStateChangeHandler | null = null;
+let _sessionStateNotificationSuppression = 0;
 
 
 let _accounts: ChessAccount[] = [];
@@ -151,31 +170,7 @@ export function setSampleGamesResultFilter(filter: SampleGamesResultFilter, redr
 export async function openAccountResearch(account: ChessAccount, redraw: () => void, signal?: AbortSignal): Promise<void> {
   const records = await loadGamesByAccountFromIdb(account.id);
   if (signal?.aborted) return;
-  const games: ResearchGame[] = records.map(r => ({
-    id: r.id,
-    pgn: r.pgn,
-    ...(r.white       !== null ? { white: r.white }             : {}),
-    ...(r.black       !== null ? { black: r.black }             : {}),
-    ...(r.result      !== null ? { result: r.result }           : {}),
-    ...(r.date        !== null ? { date: r.date }               : {}),
-    ...(r.timeClass   !== null ? { timeClass: r.timeClass }     : {}),
-    ...(r.opening     !== null ? { opening: r.opening }         : {}),
-    ...(r.eco         !== null ? { eco: r.eco }                 : {}),
-    ...(r.source      !== null ? { source: r.source }           : {}),
-    ...(r.whiteRating !== null ? { whiteRating: r.whiteRating } : {}),
-    ...(r.blackRating !== null ? { blackRating: r.blackRating } : {}),
-  }));
-  const collection: ResearchCollection = {
-    id: `account:${account.id}`,
-    name: account.displayName,
-    source: account.platform,
-    target: account.username,
-    perspective: 'both',
-    games,
-    createdAt: account.addedAt,
-    updatedAt: Date.now(),
-  };
-  openCollection(collection, redraw);
+  openCollection(createAccountResearchCollection(account, records), redraw);
 }
 
 // --- Import workflow state ---
@@ -221,6 +216,69 @@ export function openingsPage(): OpeningsPage {
 
 export function setOpeningsPage(page: OpeningsPage): void {
   _currentPage = page;
+}
+
+export function routeRecoveryMessage(): string | null {
+  return _routeRecoveryMessage;
+}
+
+export function setRouteRecoveryMessage(message: string | null): void {
+  _routeRecoveryMessage = message;
+}
+
+export function skipNextSavedSessionResume(): void {
+  _skipNextSavedSessionResume = true;
+}
+
+const URL_SPEEDS = new Set<OpponentsUrlSpeed>(['ultrabullet', 'bullet', 'blitz', 'rapid', 'classical']);
+const URL_RANGES = new Set<OpponentsUrlRange>(['last-week', 'last-month', 'last-3months', 'last-6months']);
+
+function sessionUrlTargetFor(collection: ResearchCollection): OpponentsUrlTarget {
+  const accountPrefix = 'account:';
+  if (collection.id.startsWith(accountPrefix)) {
+    return { kind: 'account', id: collection.id.slice(accountPrefix.length) };
+  }
+  return { kind: 'collection', id: collection.id };
+}
+
+function normalizedUrlSpeeds(speeds: ReadonlySet<string>): OpponentsUrlSpeed[] {
+  return [...speeds].filter((speed): speed is OpponentsUrlSpeed => URL_SPEEDS.has(speed as OpponentsUrlSpeed));
+}
+
+function normalizedUrlRange(range: string | null): OpponentsUrlRange | null {
+  return URL_RANGES.has(range as OpponentsUrlRange) ? range as OpponentsUrlRange : null;
+}
+
+export function openingsSessionUrlSnapshot(): OpponentsTreeUrlState | null {
+  if (!_activeCollection || _currentPage !== 'session') return null;
+  return {
+    target:      sessionUrlTargetFor(_activeCollection),
+    tool:        _activeTool,
+    color:       _colorFilter,
+    speeds:      normalizedUrlSpeeds(_speedFilter),
+    range:       normalizedUrlRange(_sessionDateRange),
+    orientation: _boardOrientation,
+    line:        [..._sessionPath],
+  };
+}
+
+export function setOpeningsSessionStateChangeHandler(handler: OpeningsSessionStateChangeHandler | null): void {
+  _sessionStateChangeHandler = handler;
+}
+
+export function beginOpeningsSessionStateNotificationSuppression(): () => void {
+  _sessionStateNotificationSuppression++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    _sessionStateNotificationSuppression = Math.max(0, _sessionStateNotificationSuppression - 1);
+  };
+}
+
+function notifySessionStateChanged(): void {
+  if (_sessionStateNotificationSuppression > 0) return;
+  _sessionStateChangeHandler?.(openingsSessionUrlSnapshot());
 }
 
 /** Whether saved collections have been loaded from IndexedDB. */
@@ -346,7 +404,11 @@ let _activeTool: OpeningsTool = 'opening-tree';
 export function activeTool(): OpeningsTool { return _activeTool; }
 
 /** Switch the active tool in the openings session. */
-export function setActiveTool(tool: OpeningsTool): void { _activeTool = tool; }
+export function setActiveTool(tool: OpeningsTool): void {
+  if (_activeTool === tool) return;
+  _activeTool = tool;
+  notifySessionStateChanged();
+}
 
 let _activeCollection: ResearchCollection | null = null;
 let _openingTree: OpeningTreeNode | null = null;
@@ -375,6 +437,7 @@ export function sessionDateRange(): string | null { return _sessionDateRange; }
 
 /** Set the session date range filter and rebuild the tree. */
 export function setSessionDateRange(range: string | null, redraw: () => void): void {
+  if (_sessionDateRange === range) return;
   _sessionDateRange = range;
   setColorFilter(_colorFilter, redraw);
 }
@@ -463,7 +526,15 @@ export function cancelDeviationScan(): void {
 
 export function activeCollection(): ResearchCollection | null { return _activeCollection; }
 export function boardOrientation(): 'white' | 'black' { return _boardOrientation; }
-export function flipBoard(): void { _boardOrientation = _boardOrientation === 'white' ? 'black' : 'white'; }
+export function setBoardOrientation(orientation: 'white' | 'black'): void {
+  if (_boardOrientation === orientation) return;
+  _boardOrientation = orientation;
+  notifySessionStateChanged();
+}
+export function flipBoard(): void {
+  _boardOrientation = _boardOrientation === 'white' ? 'black' : 'white';
+  notifySessionStateChanged();
+}
 export function openingTree(): OpeningTreeNode | null { return _openingTree; }
 export function colorFilter(): 'white' | 'black' | 'both' { return _colorFilter; }
 export function speedFilter(): ReadonlySet<string> { return _speedFilter; }
@@ -559,6 +630,7 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
   _sessionPath = [];
   _sessionNode = _openingTree;
   invalidateSampleCache();
+  notifySessionStateChanged();
 
   // Start chunked async build — same as openCollection().
   _treeBuildProgress = 0;
@@ -667,8 +739,41 @@ export function treeBuildProgress(): number { return _treeBuildProgress; }
 export function treeBuildTotal(): number { return _treeBuildTotal; }
 export function treeBuilding(): boolean { return _treeBuilding; }
 
+function navigateToClosestPath(moves: string[], persist: boolean): OpeningsRoutePathRestoreResult {
+  const requested = [...moves];
+  if (!_openingTree || moves.length === 0) {
+    _sessionPath = [];
+    _sessionNode = _openingTree;
+    if (persist) persistSession();
+    triggerTreeEvalForCurrentNode();
+    notifySessionStateChanged();
+    return { status: moves.length === 0 ? 'exact' : 'root', requested, applied: [] };
+  }
+
+  const applied: string[] = [];
+  let node: OpeningTreeNode = _openingTree;
+  for (const move of moves) {
+    const child = node.children.find(c => c.uci === move);
+    if (!child) break;
+    applied.push(move);
+    node = child;
+  }
+
+  _sessionPath = applied;
+  _sessionNode = node;
+  if (persist) persistSession();
+  triggerTreeEvalForCurrentNode();
+  notifySessionStateChanged();
+
+  return {
+    status: applied.length === moves.length ? 'exact' : applied.length > 0 ? 'partial' : 'root',
+    requested,
+    applied,
+  };
+}
+
 /** Open a saved research collection: show the board immediately, build tree in background. */
-export function openCollection(collection: ResearchCollection, redraw: () => void): void {
+export function openCollection(collection: ResearchCollection, redraw: () => void, options: OpenCollectionOptions = {}): void {
   _activeTool = 'opening-tree';
   _activeCollection = collection;
 
@@ -685,6 +790,7 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   invalidateSampleCache();
   _importStep = 'idle';
   _currentPage = 'session';
+  notifySessionStateChanged();
 
   // Filter games by color
   const target = collection.target?.toLowerCase() ?? '';
@@ -774,6 +880,12 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
       if (!done) {
         setTimeout(processChunk, 0);
       } else {
+        if (options.initialPath) {
+          const result = navigateToClosestPath(options.initialPath, false);
+          options.onInitialPathResolved?.(result);
+          invalidateSampleCache();
+          notifySessionStateChanged();
+        }
         _treeBuilding = false;
         _activeBuildCount = Math.max(0, _activeBuildCount - 1);
         recordOpeningTreeBuildEvent(buildContext, { phase: 'complete', progressGames: index, activeBuildCount: _activeBuildCount });
@@ -819,6 +931,7 @@ export function navigateToMove(uci: string): void {
     _sessionNode = child;
     persistSession();
     triggerTreeEvalForCurrentNode();
+    notifySessionStateChanged();
   }
 }
 
@@ -829,6 +942,7 @@ export function navigateBack(): void {
   _sessionNode = nodeAtMoves(_openingTree, _sessionPath) ?? _openingTree;
   persistSession();
   triggerTreeEvalForCurrentNode();
+  notifySessionStateChanged();
 }
 
 /** Navigate to root. */
@@ -838,6 +952,7 @@ export function navigateToRoot(): void {
   _sessionNode = _openingTree;
   persistSession();
   triggerTreeEvalForCurrentNode();
+  notifySessionStateChanged();
 }
 
 /** Navigate to the deepest position following the most popular child at each step. */
@@ -855,6 +970,7 @@ export function navigateToEnd(): void {
     _sessionNode = node ?? _sessionNode;
     persistSession();
     triggerTreeEvalForCurrentNode();
+    notifySessionStateChanged();
   }
 }
 
@@ -867,6 +983,7 @@ export function navigateToPath(moves: string[]): void {
     _sessionNode = target;
     persistSession();
     triggerTreeEvalForCurrentNode();
+    notifySessionStateChanged();
   }
 }
 
@@ -1095,6 +1212,7 @@ export function startPractice(
     strengthLevel: strengthLevel ?? getPlayStrengthLevel() ?? DEFAULT_STRENGTH_LEVEL,
   };
   _activeTool = 'practice';
+  notifySessionStateChanged();
 }
 
 /**
@@ -1106,6 +1224,7 @@ export function stopPractice(): void {
   exitPlayMode();
   _practiceSession = null;
   _activeTool = 'opening-tree';
+  notifySessionStateChanged();
 }
 
 /**
@@ -1159,6 +1278,7 @@ export function closeSession(): void {
   _sessionDateRange = null;
   _activeGames = [];
   void clearSessionState();
+  notifySessionStateChanged();
 }
 
 /** Load saved research collections from the openings DB. */
@@ -1172,7 +1292,9 @@ export async function loadSavedCollections(redraw: () => void): Promise<void> {
 
     // Try to resume a saved session
     const session = await loadSessionState();
-    if (session && _currentPage === 'library') {
+    const shouldResumeSession = !_skipNextSavedSessionResume;
+    _skipNextSavedSessionResume = false;
+    if (session && _currentPage === 'library' && shouldResumeSession) {
       const col = _collections.find(c => c.id === session.collectionId);
       if (col) {
         openCollection(col, redraw); // resets _activeTool to 'opening-tree'
