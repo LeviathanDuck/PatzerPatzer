@@ -25,6 +25,7 @@ import {
   createReviewRunManifest,
   hydrateReviewRunFailureCounts,
   isReviewRunStale,
+  normalizeReviewRunManifest,
   reviewSearchIdentityMatches,
   selectNextReviewRunBatch,
   type ReviewRunLifecycleState,
@@ -34,9 +35,12 @@ import {
   type ReviewSearchIdentitySnapshot,
   type ReviewRunSourceContext,
   type ReviewRunTimeControlContext,
+  withReviewRunActiveBatchGameMoved,
   withReviewRunGameComplete,
   withReviewRunGameFailed,
+  withReviewRunGameSkippedFromActiveBatch,
   withReviewRunGameSkipped,
+  withReviewRunAutoRetryEnabled,
 } from './reviewRun';
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
@@ -593,6 +597,9 @@ type ReviewChannelMessage =
   | { type: 'pause'; tabId: string }
   | { type: 'resume'; tabId: string }
   | { type: 'cancel'; tabId: string }
+  | { type: 'auto-retry'; tabId: string; enabled: boolean }
+  | { type: 'move-queue-game'; tabId: string; gameId: string; direction: 'up' | 'down' }
+  | { type: 'remove-queue-game'; tabId: string; gameId: string }
   | { type: 'reset-errored'; tabId: string; gameId: string }
   | { type: 'skip-failed'; tabId: string; gameId: string };
 
@@ -847,7 +854,13 @@ function initLeaderElection(): void {
     leaderChannel = new BroadcastChannel(LEADER_CHANNEL_NAME);
     leaderChannel.onmessage = (ev: MessageEvent) => {
       try {
-        const msg = ev.data as { type?: string; tabId?: string; gameId?: string } | null;
+        const msg = ev.data as {
+          type?: string;
+          tabId?: string;
+          gameId?: string;
+          enabled?: boolean;
+          direction?: 'up' | 'down';
+        } | null;
         if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
           recordReviewChannelError('review-channel-receive-error', new Error('Malformed BroadcastChannel message'));
           return;
@@ -870,6 +883,17 @@ function initLeaderElection(): void {
           resumeBulkReview();
         } else if (msg.type === 'cancel' && isCurrentLeader) {
           cancelBulkReview();
+        } else if (msg.type === 'auto-retry' && isCurrentLeader && typeof msg.enabled === 'boolean') {
+          setReviewAutoRetryEnabled(msg.enabled);
+        } else if (
+          msg.type === 'move-queue-game'
+          && isCurrentLeader
+          && msg.gameId
+          && (msg.direction === 'up' || msg.direction === 'down')
+        ) {
+          moveReviewQueueGame(msg.gameId, msg.direction);
+        } else if (msg.type === 'remove-queue-game' && isCurrentLeader && msg.gameId) {
+          removeReviewQueueGame(msg.gameId);
         } else if (msg.type === 'reset-errored' && isCurrentLeader && msg.gameId) {
           resetErroredGame(msg.gameId);
         } else if (msg.type === 'skip-failed' && isCurrentLeader && msg.gameId) {
@@ -888,10 +912,21 @@ function initLeaderElection(): void {
   // resigns leadership for unload/reload, but ordinary backgrounding keeps the
   // same owner so it can resume when visible again.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && isCurrentLeader) suspendBulkReviewForHiddenTab();
-    else if (document.visibilityState === 'visible') resumeHiddenSuspendedReviewInThisTab();
+    if (document.visibilityState === 'hidden' && isCurrentLeader) {
+      if (isReviewAutoRetryEnabled()) {
+        flushReviewCheckpoint();
+        syncReviewAutoRetryWakeLock();
+      } else {
+        suspendBulkReviewForHiddenTab();
+      }
+    } else if (document.visibilityState === 'visible') {
+      syncReviewAutoRetryWakeLock();
+      resumeHiddenSuspendedReviewInThisTab();
+      resumeAutoRetryReviewInThisTab();
+    }
   });
   window.addEventListener('pagehide', () => {
+    releaseReviewAutoRetryWakeLock();
     if (isCurrentLeader) resignLeadership();
   });
 
@@ -938,9 +973,11 @@ async function takeOverAsLeader(resumeAfterTakeover = false): Promise<void> {
 
 /** Rebuild a read-only mirror of `queue` from the manifest, for observer-tab display only. */
 async function mirrorQueueFromManifest(): Promise<void> {
+  const loadedRun = await loadLatestReviewRunManifest();
+  if (loadedRun) activeReviewRun = normalizeReviewRunManifest(loadedRun);
   const { entries: manifest, errorDetail } = await loadReviewQueueManifestWithDiagnostics();
   if (errorDetail) recordReviewManifestReadFailure(errorDetail, false);
-  queue = manifest.map(record => {
+  queue = sortByActiveBatchOrder(manifest, record => record.gameId).map(record => {
     const game = _libraryGames.find(g => g.id === record.gameId);
     // Fallback placeholder when the library snapshot hasn't caught up yet —
     // display-only fields (done/total/status) below never depend on `pgn`.
@@ -1013,6 +1050,115 @@ export type ReviewPauseReason = 'user' | 'hidden' | 'reload';
 let queuePauseReason: ReviewPauseReason | null = null;
 let hiddenSuspendedOwnerTabId: string | null = null;
 let activeReviewRun: ReviewRunManifest | null = null;
+
+function activeQueueEntry(): ReviewQueueEntry | undefined {
+  return activeIndex >= 0 ? queue[activeIndex] : queue.find(entry => entry.status === 'analyzing');
+}
+
+function reviewQueueEntryLabel(entry: ReviewQueueEntry): string {
+  return `${entry.game.white ?? 'White'} vs ${entry.game.black ?? 'Black'}`;
+}
+
+function isReviewQueueEntryActionable(entry: ReviewQueueEntry): boolean {
+  return entry.status === 'pending' || entry.status === 'error';
+}
+
+function findVisibleQueueTargetIndex(index: number, direction: 'up' | 'down'): number {
+  const step = direction === 'up' ? -1 : 1;
+  for (let target = index + step; target >= 0 && target < queue.length; target += step) {
+    if (queue[target]!.status !== 'complete') return target;
+  }
+  return -1;
+}
+
+function canMoveReviewQueueEntry(entry: ReviewQueueEntry, direction: 'up' | 'down'): boolean {
+  if (!isReviewQueueEntryActionable(entry)) return false;
+  const index = queue.indexOf(entry);
+  if (index < 0) return false;
+  const targetIndex = findVisibleQueueTargetIndex(index, direction);
+  if (targetIndex < 0) return false;
+  const active = activeQueueEntry();
+  return entry !== active && queue[targetIndex] !== active && queue[targetIndex]?.status !== 'analyzing';
+}
+
+function sortByActiveBatchOrder<T>(items: readonly T[], getGameId: (item: T) => string): T[] {
+  const activeBatchIds = activeReviewRun?.activeBatchIds ?? [];
+  if (activeBatchIds.length === 0) return [...items];
+  const orderByGameId = new Map(activeBatchIds.map((gameId, index) => [gameId, index]));
+  return items
+    .map((item, originalIndex) => ({
+      item,
+      originalIndex,
+      order: orderByGameId.get(getGameId(item)) ?? Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((a, b) => a.order - b.order || a.originalIndex - b.originalIndex)
+    .map(({ item }) => item);
+}
+
+type ReviewWakeLockSentinel = {
+  release: () => Promise<void>;
+  addEventListener?: (type: 'release', listener: () => void) => void;
+};
+
+type ReviewWakeLockNavigator = Navigator & {
+  wakeLock?: {
+    request: (type: 'screen') => Promise<ReviewWakeLockSentinel>;
+  };
+};
+
+let reviewAutoRetryWakeLock: ReviewWakeLockSentinel | null = null;
+
+export function isReviewAutoRetryEnabled(): boolean {
+  return activeReviewRun?.autoRetryEnabled === true;
+}
+
+function canHoldReviewAutoRetryWakeLock(): boolean {
+  if (!isCurrentLeader || !isReviewAutoRetryEnabled()) return false;
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
+  return !queuePaused && (isBulkRunning() || hasRetryableFailedGame());
+}
+
+function releaseReviewAutoRetryWakeLock(): void {
+  const lock = reviewAutoRetryWakeLock;
+  if (!lock) return;
+  reviewAutoRetryWakeLock = null;
+  void lock.release().catch(() => {
+    // Wake lock is a best-effort browser affordance; denial/release races are not queue failures.
+  });
+}
+
+function syncReviewAutoRetryWakeLock(): void {
+  if (!canHoldReviewAutoRetryWakeLock()) {
+    releaseReviewAutoRetryWakeLock();
+    return;
+  }
+  if (reviewAutoRetryWakeLock) return;
+  if (typeof navigator === 'undefined') return;
+  const wakeLock = (navigator as ReviewWakeLockNavigator).wakeLock;
+  if (!wakeLock) return;
+  void wakeLock.request('screen').then(lock => {
+    reviewAutoRetryWakeLock = lock;
+    lock.addEventListener?.('release', () => {
+      if (reviewAutoRetryWakeLock === lock) reviewAutoRetryWakeLock = null;
+    });
+  }).catch(() => {
+    // Unsupported, denied, or not visible: keep the review queue running without wake lock.
+  });
+}
+
+export function setReviewAutoRetryEnabled(enabled: boolean): void {
+  if (!isCurrentLeader) {
+    postReviewChannelMessage({ type: 'auto-retry', tabId, enabled });
+    return;
+  }
+  if (!activeReviewRun) return;
+  activeReviewRun = withReviewRunAutoRetryEnabled(activeReviewRun, enabled);
+  persistActiveReviewRun();
+  if (enabled) resumeAutoRetryReviewInThisTab();
+  else syncReviewAutoRetryWakeLock();
+  notifyReviewQueueStateChanged();
+  postReviewChannelMessage({ type: 'manifest-changed', tabId });
+}
 
 export interface ReviewCrashContext {
   safeGameId: string | null;
@@ -1142,6 +1288,14 @@ function markActiveReviewRunGameSkipped(gameId: string): void {
   markReviewQueueProgress();
   persistActiveReviewRun();
 }
+
+function markActiveReviewRunGameSkippedFromActiveBatch(gameId: string): void {
+  if (!activeReviewRun) return;
+  activeReviewRun = withReviewRunGameSkippedFromActiveBatch(activeReviewRun, gameId);
+  markReviewQueueProgress();
+  persistActiveReviewRun();
+}
+
 export type ReviewStorageHealth = 'ok' | 'manifest-write-failed' | 'checkpoint-write-failed' | 'run-manifest-write-failed';
 let reviewStorageHealth: ReviewStorageHealth = 'ok';
 
@@ -1254,9 +1408,11 @@ function scheduleFailedGameRetry(entry: ReviewQueueEntry): void {
     entry.done = entry.cache?.size ?? entry.done;
     persistManifestEntry(entry);
     activeIndex = -1;
+    syncReviewAutoRetryWakeLock();
     notifyReviewQueueStateChanged();
     advanceQueue();
   }, delay);
+  syncReviewAutoRetryWakeLock();
   notifyReviewQueueStateChanged();
 }
 
@@ -2312,6 +2468,7 @@ function advanceQueue(): void {
     activeIndex = -1;
     resetReviewBatchElapsed();
     setActiveReviewRunState(queue.length > 0 ? 'batch-complete' : 'no-more-eligible-games');
+    syncReviewAutoRetryWakeLock();
     notifyReviewQueueStateChanged();
     return;
   }
@@ -2489,7 +2646,8 @@ export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
  */
 export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Promise<void> {
   setLibraryGamesForReviewQueue(games);
-  activeReviewRun = await loadLatestReviewRunManifest();
+  const loadedRun = await loadLatestReviewRunManifest();
+  activeReviewRun = loadedRun ? normalizeReviewRunManifest(loadedRun) : null;
   const failureRecords = await loadReviewFailureRecords();
   failedGameAttempts = new Map(failureRecords.map(record => [record.key, {
     gameId:       record.gameId,
@@ -2518,7 +2676,7 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
   const gamesById = new Map(games.map(g => [g.id, g]));
   const rebuilt: ReviewQueueEntry[] = [];
 
-  for (const record of manifest) {
+  for (const record of sortByActiveBatchOrder(manifest, record => record.gameId)) {
     const game = gamesById.get(record.gameId);
     if (!game) {
       // Game deleted from the library between sessions — drop it out of the resumed queue.
@@ -2579,11 +2737,23 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
 
   queue = rebuilt;
   activeIndex = -1;
+  hiddenSuspendedOwnerTabId = null;
+  for (const entry of rebuilt) persistManifestEntry(entry);
+  if (isReviewAutoRetryEnabled()) {
+    queuePaused = false;
+    queuePauseReason = null;
+    setActiveReviewRunState('running');
+    if (!reviewEngineInitStarted && !reviewEngineFailed) {
+      void initReviewEngine('/stockfish-web');
+    }
+    if (!scheduleNextRetryableFailedGame()) advanceQueue();
+    syncReviewAutoRetryWakeLock();
+    notifyReviewQueueStateChanged();
+    return;
+  }
   queuePaused = true;
   queuePauseReason = 'reload';
-  hiddenSuspendedOwnerTabId = null;
   setActiveReviewRunState('interrupted-after-reload');
-  for (const entry of rebuilt) persistManifestEntry(entry);
   notifyReviewQueueStateChanged();
 }
 
@@ -2627,6 +2797,7 @@ export function cancelBulkReview(): void {
   hiddenSuspendedOwnerTabId = null;
   reviewStorageHealth = 'ok';
   setActiveReviewRunState('canceled');
+  syncReviewAutoRetryWakeLock();
   resetReviewBatchElapsed();
   void clearReviewQueueManifest();
   notifyReviewQueueStateChanged();
@@ -2658,6 +2829,7 @@ export function pauseBulkReview(): void {
   // most recently analyzed positions sitting in the throttle window unsaved.
   flushReviewCheckpoint();
   // The queue is idle until resumeBulkReview; elapsed time restarts on resume.
+  syncReviewAutoRetryWakeLock();
   resetReviewBatchElapsed();
   notifyReviewQueueStateChanged();
 }
@@ -2681,6 +2853,7 @@ export function suspendBulkReviewForHiddenTab(): void {
     invalidateReviewSearchIdentity();
   }
   flushReviewCheckpoint();
+  syncReviewAutoRetryWakeLock();
   resetReviewBatchElapsed();
   notifyReviewQueueStateChanged();
 }
@@ -2710,6 +2883,7 @@ export function resumeBulkReview(): void {
   } else {
     advanceQueue();
   }
+  syncReviewAutoRetryWakeLock();
   notifyReviewQueueStateChanged();
 }
 
@@ -2724,6 +2898,32 @@ export function canResumeHiddenSuspendedReviewInThisTab(): boolean {
 export function resumeHiddenSuspendedReviewInThisTab(): void {
   if (!canResumeHiddenSuspendedReviewInThisTab()) return;
   resumeBulkReview();
+}
+
+export function resumeAutoRetryReviewInThisTab(): void {
+  if (!isCurrentLeader || !isReviewAutoRetryEnabled() || reviewEngineFailed) return;
+  if (queuePaused) {
+    if (queuePauseReason === 'hidden' || queuePauseReason === 'reload') resumeBulkReview();
+    return;
+  }
+  if (!reviewEngineInitStarted) {
+    void initReviewEngine('/stockfish-web');
+  }
+  const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+  if (
+    entry?.status === 'analyzing'
+    && !reviewSearchActive
+    && reviewDispatchDeferTimer === undefined
+    && reviewItemIndex < reviewItemQueue.length
+  ) {
+    sendNextItem();
+  } else if (failedGameRetryTimer === null && scheduleNextRetryableFailedGame()) {
+    // Retry resumes through the normal backoff path.
+  } else if (activeIndex < 0 && queue.some(candidate => candidate.status === 'pending')) {
+    advanceQueue();
+  }
+  syncReviewAutoRetryWakeLock();
+  notifyReviewQueueStateChanged();
 }
 
 export function getReviewProgress(gameId: string): number | undefined {
@@ -2769,7 +2969,8 @@ export function getCurrentFailedReviewStatus(): FailedReviewStatus | undefined {
 export async function getNextReviewRunBatchSelection(
   games: readonly ImportedGame[] = _libraryGames,
 ): Promise<ReviewRunNextBatchSelection | null> {
-  const manifest = activeReviewRun ?? await loadLatestReviewRunManifest();
+  const loaded = activeReviewRun ?? await loadLatestReviewRunManifest();
+  const manifest = loaded ? normalizeReviewRunManifest(loaded) : null;
   if (!manifest) return null;
   const reviewedGameIdsAtRunDepth = new Set<string>();
   for (const gameId of manifest.sourceGameIds) {
@@ -2788,7 +2989,8 @@ export async function getNextReviewRunBatchSelection(
 export async function queueNextReviewRunBatch(
   games: readonly ImportedGame[] = _libraryGames,
 ): Promise<'queued' | 'no-run' | 'no-more-eligible-games'> {
-  const manifest = activeReviewRun ?? await loadLatestReviewRunManifest();
+  const loaded = activeReviewRun ?? await loadLatestReviewRunManifest();
+  const manifest = loaded ? normalizeReviewRunManifest(loaded) : null;
   if (!manifest) return 'no-run';
   activeReviewRun = manifest;
   const selection = await getNextReviewRunBatchSelection(games);
@@ -2827,6 +3029,84 @@ export function dismissReviewRunNotice(): void {
   notifyReviewQueueStateChanged();
 }
 
+export interface ReviewQueueItemView {
+  gameId:      string;
+  label:       string;
+  status:      ReviewQueueEntry['status'];
+  depth:       number;
+  done:        number;
+  total:       number;
+  isActive:    boolean;
+  canMoveUp:   boolean;
+  canMoveDown: boolean;
+  canRemove:   boolean;
+}
+
+export function getReviewQueueItems(): ReviewQueueItemView[] {
+  const active = activeQueueEntry();
+  return sortByActiveBatchOrder(queue, entry => entry.game.id)
+    .filter(entry => entry.status !== 'complete')
+    .map(entry => ({
+      gameId:      entry.game.id,
+      label:       reviewQueueEntryLabel(entry),
+      status:      entry.status,
+      depth:       entry.depth,
+      done:        Math.min(Math.max(0, entry.done), Math.max(0, entry.total)),
+      total:       Math.max(0, entry.total),
+      isActive:    entry === active || entry.status === 'analyzing',
+      canMoveUp:   canMoveReviewQueueEntry(entry, 'up'),
+      canMoveDown: canMoveReviewQueueEntry(entry, 'down'),
+      canRemove:   entry !== active && isReviewQueueEntryActionable(entry),
+    }));
+}
+
+export function moveReviewQueueGame(gameId: string, direction: 'up' | 'down'): void {
+  if (!isCurrentLeader) {
+    postReviewChannelMessage({ type: 'move-queue-game', tabId, gameId, direction });
+    return;
+  }
+  const fromIndex = queue.findIndex(entry => entry.game.id === gameId);
+  if (fromIndex < 0) return;
+  const entry = queue[fromIndex]!;
+  if (!canMoveReviewQueueEntry(entry, direction)) return;
+  const toIndex = findVisibleQueueTargetIndex(fromIndex, direction);
+  if (toIndex < 0) return;
+  [queue[fromIndex], queue[toIndex]] = [queue[toIndex]!, queue[fromIndex]!];
+  if (activeReviewRun) {
+    const activeGameId = activeQueueEntry()?.game.id;
+    activeReviewRun = withReviewRunActiveBatchGameMoved(
+      activeReviewRun,
+      gameId,
+      direction,
+      activeGameId ? [activeGameId] : [],
+    );
+    persistActiveReviewRun();
+  }
+  notifyReviewQueueStateChanged();
+  postReviewChannelMessage({ type: 'manifest-changed', tabId });
+}
+
+export function removeReviewQueueGame(gameId: string): void {
+  if (!isCurrentLeader) {
+    postReviewChannelMessage({ type: 'remove-queue-game', tabId, gameId });
+    return;
+  }
+  const index = queue.findIndex(entry => entry.game.id === gameId);
+  if (index < 0) return;
+  const entry = queue[index]!;
+  if (entry === activeQueueEntry() || !isReviewQueueEntryActionable(entry)) return;
+  if (failedGameRetryEntry === entry) clearFailedGameRetryTimer();
+  if (entry.status === 'error' || getFailedGameState(entry.game.id, entry.depth)) persistSkippedFailedGameState(entry);
+  else clearFailedGameState(entry.game.id, entry.depth);
+  markActiveReviewRunGameSkippedFromActiveBatch(entry.game.id);
+  queue.splice(index, 1);
+  if (activeIndex > index) activeIndex--;
+  void clearReviewQueueManifestEntry(entry.game.id);
+  notifyReviewQueueStateChanged();
+  postReviewChannelMessage({ type: 'manifest-changed', tabId });
+  if (activeIndex < 0) advanceQueue();
+}
+
 export interface QueueSummary {
   total:   number;  // games in the current queue (any status)
   done:    number;  // games with status 'complete'
@@ -2838,6 +3118,7 @@ export interface QueueSummary {
   pauseReason: ReviewPauseReason | null;
   lifecycleState: ReviewRunLifecycleState | null;
   storageHealth: ReviewStorageHealth;
+  autoRetryEnabled: boolean;
   elapsedSeconds: number | null;
   lastProgressSeconds: number | null;
   stale: boolean;
@@ -2897,7 +3178,7 @@ export function getQueueSummary(): QueueSummary {
   const lastProgressSeconds = running && progressAnchor !== null && progressAnchor !== undefined
     ? (now - progressAnchor) / 1000
     : null;
-  const currentEntry = activeIndex >= 0 ? queue[activeIndex] : queue.find(entry => entry.status === 'analyzing');
+  const currentEntry = activeQueueEntry();
   const currentGameId = currentEntry?.game.id ?? null;
   const currentGameLabel = currentEntry
     ? `${currentEntry.game.white ?? 'White'} vs ${currentEntry.game.black ?? 'Black'}`
@@ -2947,6 +3228,7 @@ export function getQueueSummary(): QueueSummary {
     pauseReason: paused ? queuePauseReason : null,
     lifecycleState,
     storageHealth: reviewStorageHealth,
+    autoRetryEnabled: activeReviewRun?.autoRetryEnabled === true,
     elapsedSeconds,
     lastProgressSeconds,
     stale,

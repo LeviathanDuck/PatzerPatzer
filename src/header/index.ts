@@ -22,10 +22,12 @@ import {
   isBulkRunning, isBulkPaused,
   pauseBulkReview, resumeBulkReview, cancelBulkReview,
   getQueueSummary, formatReviewDuration,
+  getReviewQueueItems, moveReviewQueueGame, removeReviewQueueGame,
   queueNextReviewRunBatch, dismissReviewRunNotice,
   isReviewEngineFailed, isReviewEngineInitializing,
   getCurrentFailedReviewStatus, skipCurrentFailedReviewGame,
   isLeaderTab, isReviewOwnerUnavailableForTakeover, takeOverUnavailableReviewOwner,
+  setReviewAutoRetryEnabled,
 } from '../engine/reviewQueue';
 import { reviewDepth, setReviewDepth, reviewMovetime, setReviewMovetime } from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
@@ -585,6 +587,87 @@ function renderReviewProgressLabel(label: string, state: 'active' | 'still'): VN
   ]);
 }
 
+function renderReviewMenuPanelHeader(redraw: () => void): VNode {
+  return h('div.review-menu__panel-header', [
+    h('div.review-menu__panel-title', 'Review Queue'),
+    h('button.review-menu__panel-close', {
+      attrs: { type: 'button', title: 'Close review queue menu', 'aria-label': 'Close review queue menu' },
+      on: { click: () => { showReviewMenu = false; redraw(); } },
+    }, 'x'),
+  ]);
+}
+
+function formatReviewQueueStatus(status: 'pending' | 'analyzing' | 'complete' | 'error', isActive: boolean): string {
+  if (isActive || status === 'analyzing') return 'Active';
+  if (status === 'error') return 'Failed';
+  if (status === 'complete') return 'Done';
+  return 'Waiting';
+}
+
+function formatReviewQueueProgress(done: number, total: number): string | null {
+  if (total <= 0) return null;
+  return `${Math.min(Math.max(0, done), total)}/${total} positions`;
+}
+
+function renderReviewQueueSection(redraw: () => void): VNode {
+  const items = getReviewQueueItems();
+  return h('div.review-menu__section.review-menu__section--queue', [
+    h('div.review-menu__section-title', 'Queue'),
+    items.length === 0
+      ? h('div.review-menu__queue-empty', 'No queued games')
+      : h('div.review-menu__queue-list', items.map(item => {
+          const progress = formatReviewQueueProgress(item.done, item.total);
+          const statusLabel = formatReviewQueueStatus(item.status, item.isActive);
+          return h('div.review-menu__queue-item', { key: item.gameId }, [
+            h('div.review-menu__queue-main', [
+              h('span.review-menu__queue-status', {
+                class: {
+                  'review-menu__queue-status--active': item.isActive,
+                  'review-menu__queue-status--error': item.status === 'error',
+                },
+              }, statusLabel),
+              h('span.review-menu__queue-title', {
+                attrs: { title: item.label },
+              }, item.label),
+              h('span.review-menu__queue-meta', [
+                progress,
+                `Depth ${item.depth}`,
+              ].filter(Boolean).join(' · ')),
+            ]),
+            h('div.review-menu__queue-actions', [
+              h('button.review-menu__queue-action', {
+                attrs: {
+                  type: 'button',
+                  title: item.canMoveUp ? 'Move game up in review queue' : 'Cannot move this game up',
+                  'aria-label': `Move ${item.label} up in review queue`,
+                  disabled: !item.canMoveUp,
+                },
+                on: { click: () => { moveReviewQueueGame(item.gameId, 'up'); redraw(); } },
+              }, '↑'),
+              h('button.review-menu__queue-action', {
+                attrs: {
+                  type: 'button',
+                  title: item.canMoveDown ? 'Move game down in review queue' : 'Cannot move this game down',
+                  'aria-label': `Move ${item.label} down in review queue`,
+                  disabled: !item.canMoveDown,
+                },
+                on: { click: () => { moveReviewQueueGame(item.gameId, 'down'); redraw(); } },
+              }, '↓'),
+              h('button.review-menu__queue-action.review-menu__queue-action--remove', {
+                attrs: {
+                  type: 'button',
+                  title: item.canRemove ? 'Remove game from this review run' : 'Cannot remove the active game',
+                  'aria-label': `Remove ${item.label} from this review run`,
+                  disabled: !item.canRemove,
+                },
+                on: { click: () => { removeReviewQueueGame(item.gameId); redraw(); } },
+              }, '×'),
+            ]),
+          ]);
+        })),
+  ]);
+}
+
 function renderReviewMenu(redraw: () => void): VNode | null {
   const engineFailed       = isReviewEngineFailed();
   const engineInitializing = isReviewEngineInitializing();
@@ -610,6 +693,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         on: { click: () => { showReviewMenu = false; redraw(); } },
       }) : null,
       showReviewMenu ? h('div.review-menu__dropdown', [
+        renderReviewMenuPanelHeader(redraw),
         h('div.review-menu__section', [
           h('div.review-menu__label.review-menu__label--error',
             'Review engine failed to initialise. SharedArrayBuffer or WASM may be unavailable in this browser context (requires COOP/COEP headers). Reload to retry.'),
@@ -698,6 +782,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
     }) : null,
 
     showReviewMenu ? h('div.review-menu__dropdown', [
+      renderReviewMenuPanelHeader(redraw),
 
       // Queue status + controls
       h('div.review-menu__section', [
@@ -800,7 +885,30 @@ function renderReviewMenu(redraw: () => void): VNode | null {
               }, 'Cancel')
             : null,
         ]),
+        h('label.review-menu__toggle.review-menu__toggle--inline', {
+          attrs: {
+            title: 'Persistently retry and auto-resume this active batch. Queue next batch remains manual.',
+          },
+        }, [
+          h('span', 'Auto retry'),
+          h('input', {
+            attrs: { type: 'checkbox', checked: summary.autoRetryEnabled },
+            on: {
+              change: (event: Event) => {
+                const input = event.currentTarget as HTMLInputElement;
+                setReviewAutoRetryEnabled(input.checked);
+                redraw();
+              },
+            },
+          }),
+        ]),
+        summary.autoRetryEnabled
+          ? h('div.review-menu__label.review-menu__label--warning',
+              'Auto retry is on. Background progress depends on browser throttling.')
+          : null,
       ]),
+
+      renderReviewQueueSection(redraw),
 
       h('div.review-menu__section', [
         h('div.review-menu__label', `Depth: ${reviewDepth}`),

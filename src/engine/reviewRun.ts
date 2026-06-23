@@ -36,6 +36,7 @@ export interface ReviewRunManifest {
   sourceMode: ReviewRunSourceMode;
   sourceGameIds: string[];
   reviewDepth: number;
+  autoRetryEnabled: boolean;
   timeControlContext: ReviewRunTimeControlContext;
   orderingContext: ReviewRunOrderingContext;
   activeBatchIds: string[];
@@ -117,6 +118,7 @@ export function createReviewRunManifest(params: {
     sourceMode:         params.sourceMode,
     sourceGameIds:      [...params.sourceGameIds],
     reviewDepth:        params.reviewDepth,
+    autoRetryEnabled:   false,
     timeControlContext: params.timeControlContext ?? { speeds: [] },
     orderingContext:    params.orderingContext ?? { sortKey: 'visible', sortDirection: 'desc' },
     activeBatchIds:     [...(params.activeBatchIds ?? [])],
@@ -126,6 +128,13 @@ export function createReviewRunManifest(params: {
     lifecycleState:     'running',
     createdAt:          now,
     updatedAt:          now,
+  };
+}
+
+export function normalizeReviewRunManifest(manifest: ReviewRunManifest): ReviewRunManifest {
+  return {
+    ...manifest,
+    autoRetryEnabled: manifest.autoRetryEnabled === true,
   };
 }
 
@@ -229,6 +238,65 @@ export function withReviewRunGameSkipped(
       : [...manifest.skippedGameIds, gameId],
     failedAttempts: manifest.failedAttempts.filter(attempt => attempt.gameId !== gameId),
     completedGameIds: manifest.completedGameIds.filter(id => id !== gameId),
+    updatedAt: now,
+  };
+}
+
+export function withReviewRunAutoRetryEnabled(
+  manifest: ReviewRunManifest,
+  enabled: boolean,
+  now = Date.now(),
+): ReviewRunManifest {
+  if (manifest.autoRetryEnabled === enabled) return manifest;
+  return {
+    ...manifest,
+    autoRetryEnabled: enabled,
+    updatedAt: now,
+  };
+}
+
+export function withReviewRunActiveBatchGameMoved(
+  manifest: ReviewRunManifest,
+  gameId: string,
+  direction: 'up' | 'down',
+  lockedGameIds: readonly string[] = [],
+  now = Date.now(),
+): ReviewRunManifest {
+  const fromIndex = manifest.activeBatchIds.indexOf(gameId);
+  if (fromIndex < 0 || lockedGameIds.includes(gameId)) return manifest;
+  const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
+  if (toIndex < 0 || toIndex >= manifest.activeBatchIds.length) return manifest;
+  const targetGameId = manifest.activeBatchIds[toIndex];
+  if (!targetGameId || lockedGameIds.includes(targetGameId)) return manifest;
+  const activeBatchIds = [...manifest.activeBatchIds];
+  activeBatchIds[fromIndex] = targetGameId;
+  activeBatchIds[toIndex] = gameId;
+  return {
+    ...manifest,
+    activeBatchIds,
+    updatedAt: now,
+  };
+}
+
+export function withReviewRunGameSkippedFromActiveBatch(
+  manifest: ReviewRunManifest,
+  gameId: string,
+  now = Date.now(),
+): ReviewRunManifest {
+  const activeBatchIds = manifest.activeBatchIds.filter(id => id !== gameId);
+  const activeChanged = activeBatchIds.length !== manifest.activeBatchIds.length;
+  const skippedChanged = !manifest.skippedGameIds.includes(gameId);
+  const failedAttempts = manifest.failedAttempts.filter(attempt => attempt.gameId !== gameId);
+  const completedGameIds = manifest.completedGameIds.filter(id => id !== gameId);
+  const failureChanged = failedAttempts.length !== manifest.failedAttempts.length;
+  const completionChanged = completedGameIds.length !== manifest.completedGameIds.length;
+  if (!activeChanged && !skippedChanged && !failureChanged && !completionChanged) return manifest;
+  return {
+    ...manifest,
+    activeBatchIds,
+    skippedGameIds: skippedChanged ? [...manifest.skippedGameIds, gameId] : manifest.skippedGameIds,
+    failedAttempts,
+    completedGameIds,
     updatedAt: now,
   };
 }
