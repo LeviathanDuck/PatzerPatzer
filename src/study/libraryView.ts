@@ -291,7 +291,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void): VNode
           h('span.study-tag', { key: tag }, [
             tag,
             h('button.study-tag__remove', {
-              attrs: { title: `Remove tag "${tag}"` },
+              attrs: { title: `Remove tag "${tag}"`, 'aria-label': `Remove tag "${tag}"` },
               on: { click: (e: Event) => {
                 e.stopPropagation();
                 void updateStudy({ id: item.id, tags: item.tags.filter(t => t !== tag) }).then(redraw);
@@ -350,7 +350,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void): VNode
                 h('span.study-folder', [
                   f,
                   h('button.study-folder__remove', {
-                    attrs: { title: `Remove folder "${f}"` },
+                    attrs: { title: `Remove folder "${f}"`, 'aria-label': `Remove folder "${f}"` },
                     on: { click: () => {
                       void updateStudy({ id: item.id, folders: item.folders.filter(x => x !== f) }).then(redraw);
                     } },
@@ -388,7 +388,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void): VNode
 
     // Delete button
     h('button.study-row__delete', {
-      attrs: { title: 'Delete study' },
+      attrs: { title: 'Delete study', 'aria-label': 'Delete study' },
       on: { click: (e: Event) => {
         e.stopPropagation();
         if (confirm(`Delete "${item.title}"?`)) {
@@ -490,7 +490,7 @@ function renderFolderSidebar(redraw: () => void): VNode {
               }, folder.name),
           h('div.study-sidebar__folder-actions', [
             h('button.study-sidebar__folder-action', {
-              attrs: { title: 'Rename folder' },
+              attrs: { title: 'Rename folder', 'aria-label': 'Rename folder' },
               on: { click: (e: Event) => {
                 e.stopPropagation();
                 _renamingFolderId    = folder.id;
@@ -499,7 +499,7 @@ function renderFolderSidebar(redraw: () => void): VNode {
               } },
             }, '✎'),
             h('button.study-sidebar__folder-action.study-sidebar__folder-action--danger', {
-              attrs: { title: 'Delete folder' },
+              attrs: { title: 'Delete folder', 'aria-label': 'Delete folder' },
               on: { click: (e: Event) => {
                 e.stopPropagation();
                 if (confirm(`Delete folder "${folder.name}"? Studies will not be deleted.`)) {
@@ -751,7 +751,10 @@ function renderImportModal(redraw: () => void): VNode {
     h('div.study-modal', { on: { click: (e: Event) => e.stopPropagation() } }, [
       h('div.study-modal__header', [
         h('h2', 'Import PGN'),
-        h('button.study-modal__close', { on: { click: close } }, '×'),
+        h('button.study-modal__close', {
+          attrs: { title: 'Close import dialog', 'aria-label': 'Close import dialog' },
+          on: { click: close },
+        }, '×'),
       ]),
       h('textarea.study-modal__pgn', {
         attrs: { placeholder: 'Paste PGN here (single or multi-game)…', rows: 10 },
@@ -831,12 +834,12 @@ export function renderStudyLibrary(redraw: () => void): VNode {
         h('div.study-view-toggle', [
           h('button.study-view-toggle__btn', {
             class: { active: viewMode() === 'list' },
-            attrs: { title: 'List view' },
+            attrs: { title: 'List view', 'aria-label': 'List view' },
             on: { click: () => { setViewMode('list'); redraw(); } },
           }, '☰'),
           h('button.study-view-toggle__btn', {
             class: { active: viewMode() === 'grid' },
-            attrs: { title: 'Grid view' },
+            attrs: { title: 'Grid view', 'aria-label': 'Grid view' },
             on: { click: () => { setViewMode('grid'); redraw(); } },
           }, '⊞'),
         ]),
@@ -1018,7 +1021,7 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
 
 
     h('button.study-orp-row__drill', {
-      attrs: { title: `Practice this line as ${sequence.trainAs}` },
+      attrs: { title: `Practice this line as ${sequence.trainAs}`, 'aria-label': `Practice this line as ${sequence.trainAs}` },
       on: { click: (e: Event) => {
         e.stopPropagation();
         _orpDrillPending = true;
@@ -1051,7 +1054,10 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
 
 
     h('button.study-orp-row__remove', {
-      attrs: { title: 'Remove this line from Opening Repetition Practice' },
+      attrs: {
+        title: 'Remove this line from Opening Repetition Practice',
+        'aria-label': 'Remove this line from Opening Repetition Practice',
+      },
       on: { click: (e: Event) => {
         e.stopPropagation();
         if (confirm(`Remove "${sequence.label || title}" from Opening Repetition Practice?`)) {

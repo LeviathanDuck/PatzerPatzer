@@ -150,7 +150,10 @@ function renderMoveSpan(
     moveVnode,
     h('button.bookmark-btn', {
       class:  { 'bookmark-btn--active': isBookmarked },
-      attrs:  { title: isBookmarked ? 'Remove bookmark' : 'Bookmark this position' },
+      attrs:  {
+        title: isBookmarked ? 'Remove bookmark' : 'Bookmark this position',
+        'aria-label': isBookmarked ? 'Remove bookmark' : 'Bookmark this position',
+      },
       on:     { click: (e: MouseEvent) => { e.stopPropagation(); onToggleBookmark(path); } },
     }, '★'),
   ]);
@@ -257,7 +260,10 @@ function renderColumnNodes(
       interruptChildren.push(
         h('button.variation-fold', {
           class: { 'variation-fold--open': !isFolded },
-          attrs: { title: isFolded ? 'Show variations' : 'Hide variations' },
+          attrs: {
+            title: isFolded ? 'Show variations' : 'Hide variations',
+            'aria-label': isFolded ? 'Show variations' : 'Hide variations',
+          },
           on:    { click: () => onToggleFold(firstVarPath) },
         }, isFolded ? '▶' : '▼'),
       );
@@ -272,7 +278,7 @@ function renderColumnNodes(
         if (deleteVariation) {
           return h('line', [
             h('button.variation-remove', {
-              attrs: { title: 'Remove variation' },
+              attrs: { title: 'Remove variation', 'aria-label': 'Remove variation' },
               on: { click: () => deleteVariation(varPath) },
             }, '×'),
             ...lineNodes,

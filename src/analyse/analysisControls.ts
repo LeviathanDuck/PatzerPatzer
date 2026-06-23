@@ -121,7 +121,7 @@ export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOv
   const explorerBtn: VNode | null = nav?.onBook !== undefined
     ? h('button.fbt', {
         class: { active: !!nav.bookActive },
-        attrs: { 'data-icon': ICON_BOOK, title: 'Opening explorer' },
+        attrs: { 'data-icon': ICON_BOOK, title: 'Opening explorer', 'aria-label': 'Opening explorer' },
         on:    { click: nav.onBook },
       })
     : null;
@@ -130,13 +130,13 @@ export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOv
   const rightZone: VNode = (nav?.menuTitle !== undefined && nav?.onMenu !== undefined)
     ? h('div.move-nav-bar__right', [h('button.fbt', {
         class: { active: !!nav.menuOpen },
-        attrs: { 'data-icon': ICON_HAMBURGER, title: nav.menuTitle },
+        attrs: { 'data-icon': ICON_HAMBURGER, title: nav.menuTitle, 'aria-label': nav.menuTitle },
         on:    { click: nav.onMenu },
       })])
     : h('div.move-nav-bar__right', [
         h('button.fbt', {
           class: { active: _actionMenuOpen },
-          attrs: { 'data-icon': ICON_HAMBURGER, title: 'Analysis menu' },
+          attrs: { 'data-icon': ICON_HAMBURGER, title: 'Analysis menu', 'aria-label': 'Analysis menu' },
           on:    { click: () => { toggleActionMenu(); deps?.redraw(); } },
         }),
       ]);
@@ -147,19 +147,19 @@ export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOv
     h('div.move-nav-bar__middle', [
       h('div.jumps', [
         h('button.fbt', {
-          attrs: { 'data-icon': ICON_JUMP_FIRST, disabled: !canPrev, title: 'First move' },
+          attrs: { 'data-icon': ICON_JUMP_FIRST, disabled: !canPrev, title: 'First move', 'aria-label': 'First move' },
           on:    { click: first },
         }),
         h('button.fbt', {
-          attrs: { 'data-icon': ICON_PREV, disabled: !canPrev, title: 'Previous move' },
+          attrs: { 'data-icon': ICON_PREV, disabled: !canPrev, title: 'Previous move', 'aria-label': 'Previous move' },
           on:    { click: prev },
         }),
         h('button.fbt', {
-          attrs: { 'data-icon': ICON_NEXT, disabled: !canNext, title: 'Next move' },
+          attrs: { 'data-icon': ICON_NEXT, disabled: !canNext, title: 'Next move', 'aria-label': 'Next move' },
           on:    { click: next },
         }),
         h('button.fbt', {
-          attrs: { 'data-icon': ICON_JUMP_LAST, disabled: !canNext, title: 'Last move' },
+          attrs: { 'data-icon': ICON_JUMP_LAST, disabled: !canNext, title: 'Last move', 'aria-label': 'Last move' },
           on:    { click: last },
         }),
       ]),
@@ -212,7 +212,7 @@ export function renderActionMenu(): VNode | null {
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu' },
+      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
       on:    { click: close },
     }, '×'),
 

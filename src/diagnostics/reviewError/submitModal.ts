@@ -3,7 +3,7 @@ import type { ReviewEngineMetadata } from '../../idb';
 import type { ImportedGame } from '../../import/types';
 import { nodeAtPath } from '../../tree/ops';
 import type { TreeNode } from '../../tree/types';
-import { advancedReproductionToolsEnabled } from '../devTools/faultInjection';
+import { adminDiagnosticsTokenAvailable } from '../adminAccess';
 import { assembleReviewErrorPackage } from './assembler';
 import {
   clearReviewErrorSubmitRequest,
@@ -79,7 +79,7 @@ function submitDisabled(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSu
   return (
     submitBusy ||
     submitSuccess !== null ||
-    !advancedReproductionToolsEnabled() ||
+    !adminDiagnosticsTokenAvailable() ||
     !deps.game ||
     deps.game.id !== request.gameId ||
     !deps.analysisComplete ||
@@ -90,7 +90,7 @@ function submitDisabled(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSu
 function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSubmitRequest): void {
   if (submitDisabled(deps, request)) {
     if (!memoText.trim()) submitError = 'Enter a memo before saving the package.';
-    else if (!advancedReproductionToolsEnabled()) submitError = 'Admin diagnostics controls are not enabled.';
+    else if (!adminDiagnosticsTokenAvailable()) submitError = 'Admin token is required before saving this package.';
     else if (!deps.game || deps.game.id !== request.gameId) submitError = 'The selected game changed. Reopen Review Error Bug from the move list.';
     else if (!deps.analysisComplete) submitError = 'The selected game does not have completed review analysis loaded.';
     deps.redraw();

@@ -890,7 +890,10 @@ export function renderGameList(deps: GamesViewDeps): VNode {
         }, tc.charAt(0).toUpperCase() + tc.slice(1)),
       ),
       anyFilter
-        ? h('button.games-view__clear', { on: { click: clearAll } }, '×')
+        ? h('button.games-view__clear', {
+            attrs: { title: 'Clear filters', 'aria-label': 'Clear filters' },
+            on: { click: clearAll },
+          }, '×')
         : null,
       // Select mode toggle — primary way to multi-select on touch devices.
       // On desktop, ctrl/cmd+click still works alongside this button.
@@ -1055,7 +1058,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                 : isBulkRunning()
                   ? h('div.game-list__row-queue-split', [
                       h('button.game-list__row-queue-btn.--top', {
-                        attrs: { title: 'Review next' },
+                        attrs: { title: 'Review next', 'aria-label': 'Review next' },
                         on: { click: (e: MouseEvent) => {
                           e.stopPropagation();
                           const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
@@ -1066,7 +1069,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                         }},
                       }, '⬆'),
                       h('button.game-list__row-queue-btn.--bottom', {
-                        attrs: { title: 'Add to queue' },
+                        attrs: { title: 'Add to queue', 'aria-label': 'Add to queue' },
                         on: { click: (e: MouseEvent) => {
                           e.stopPropagation();
                           const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
@@ -1404,7 +1407,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                     : isBulkRunning()
                     ? h('div.games-view__review-split', [
                         h('button.games-view__review-queue-btn.--top', {
-                          attrs: { title: 'Review next' },
+                          attrs: { title: 'Review next', 'aria-label': 'Review next' },
                           on: { click: (e: Event) => {
                             e.stopPropagation();
                             const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
@@ -1415,7 +1418,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                           }},
                         }, '⬆'),
                         h('button.games-view__review-queue-btn.--bottom', {
-                          attrs: { title: 'Add to queue' },
+                          attrs: { title: 'Add to queue', 'aria-label': 'Add to queue' },
                           on: { click: (e: Event) => {
                             e.stopPropagation();
                             const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)

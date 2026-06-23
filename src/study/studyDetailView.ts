@@ -243,7 +243,7 @@ function renderStudyActionMenu(redraw: () => void): VNode | null {
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu' },
+      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
       on:    { click: close },
     }, '×'),
 
@@ -444,7 +444,7 @@ function renderGlyphQuickSelect(redraw: () => void): VNode {
       }, glyph.symbol)
     ),
     h('button.glyph-btn', {
-      attrs: { title: 'Cancel' },
+      attrs: { title: 'Cancel', 'aria-label': 'Cancel' },
       on:    { click: () => { _glyphQuickSelectOpen = false; redraw(); } },
     }, '×'),
   ]);
@@ -527,14 +527,17 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
             : null,
           h('div.study-practice-line__actions', [
             h('button.study-practice-line__btn', {
-              attrs: { title: 'Practice now' },
+              attrs: { title: 'Practice now', 'aria-label': 'Practice now' },
               on: { click: () => {
                 initDrillView([line], line.fens[0] ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', line.trainAs, redraw);
                 redraw();
               }},
             }, '▶'),
             h('button.study-practice-line__btn', {
-              attrs: { title: line.status === 'active' ? 'Pause' : 'Resume' },
+              attrs: {
+                title: line.status === 'active' ? 'Pause' : 'Resume',
+                'aria-label': line.status === 'active' ? 'Pause' : 'Resume',
+              },
               on: { click: () => {
                 const newStatus = line.status === 'active' ? 'paused' : 'active';
                 void savePracticeLine({ ...line, status: newStatus }).then(() => {
@@ -544,7 +547,7 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
               }},
             }, line.status === 'active' ? '⏸' : '▶▶'),
             h('button.study-practice-line__btn.study-practice-line__btn--danger', {
-              attrs: { title: 'Delete' },
+              attrs: { title: 'Delete practice line', 'aria-label': 'Delete practice line' },
               on: { click: () => {
                 void deletePracticeLine(line.id).then(() => {
                   _practiceLines = _practiceLines.filter(l => l.id !== line.id);

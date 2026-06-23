@@ -168,7 +168,7 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
     // Settings gear — mirrors button.settings-gear positioning
     h('button.settings-gear', {
       class: { active: showEngineSettings },
-      attrs: { title: 'Engine settings' },
+      attrs: { title: 'Engine settings', 'aria-label': 'Engine settings' },
       on: { click: (e: Event) => { e.stopPropagation(); showEngineSettings = !showEngineSettings; _redraw(); } },
     }, '⚙'),
   ]);

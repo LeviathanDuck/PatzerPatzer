@@ -571,7 +571,7 @@ function renderCollectionCard(c: ResearchCollection, redraw: () => void): VNode 
       h('span.openings__collection-name', c.name),
       h('div.openings__collection-actions', [
         h('button.openings__col-rename', {
-          attrs: { title: 'Rename' },
+          attrs: { title: 'Rename collection', 'aria-label': 'Rename collection' },
           on: { click: (e: Event) => {
             e.stopPropagation();
             const name = prompt('Rename collection:', c.name);
@@ -579,7 +579,7 @@ function renderCollectionCard(c: ResearchCollection, redraw: () => void): VNode 
           } },
         }, '\u270E'),
         h('button.openings__col-delete', {
-          attrs: { title: 'Delete' },
+          attrs: { title: 'Delete collection', 'aria-label': 'Delete collection' },
           on: { click: (e: Event) => {
             e.stopPropagation();
             if (confirm(`Delete "${c.name}"? This cannot be undone.`)) {
@@ -879,7 +879,7 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu' },
+      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
       on:    { click: close },
     }, '×'),
 
@@ -2325,7 +2325,7 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
     // Adapted from lichess-org/lila: ui/analyse/src/view/actionMenu.ts
     //   attrs: { 'data-icon': licon.ChasingArrows, title: 'Hotkey: f' }
     h('button.openings__color-flip', {
-      attrs: { 'data-icon': '\ue020', title: 'Flip board (f)' },
+      attrs: { 'data-icon': '\ue020', title: 'Flip board (f)', 'aria-label': 'Flip board' },
       on: { click: () => {
         flipBoard();
         if (_openingsCg) _openingsCg.set({ orientation: boardOrientation() });
@@ -2857,15 +2857,15 @@ function renderMoveNav(path: readonly string[], redraw: () => void): VNode {
   const canForward = node !== null && node.children.length > 0;
   return h('div.openings__nav', [
     h('button.openings__nav-btn', {
-      attrs: { disabled: path.length === 0, title: 'Go to start' },
+      attrs: { disabled: path.length === 0, title: 'Go to start', 'aria-label': 'Go to start' },
       on: { click: () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); } },
     }, '\u23EE'),
     h('button.openings__nav-btn', {
-      attrs: { disabled: path.length === 0, title: 'Back one move' },
+      attrs: { disabled: path.length === 0, title: 'Back one move', 'aria-label': 'Back one move' },
       on: { click: () => { navigateBack(); syncOpeningsBoard(redraw); redraw(); } },
     }, '\u25C0'),
     h('button.openings__nav-btn', {
-      attrs: { disabled: !canForward, title: 'Most popular continuation' },
+      attrs: { disabled: !canForward, title: 'Most popular continuation', 'aria-label': 'Most popular continuation' },
       on: { click: () => {
         if (node && node.children.length > 0) {
           navigateToMove(node.children[0]!.uci);
@@ -3908,7 +3908,7 @@ function renderExplorerToggle(node: OpeningTreeNode | null, redraw: () => void):
   return h('div.openings__explorer', [
     h('div.openings__explorer-header', [
       h('button.openings__explorer-gear', {
-        attrs: { title: 'Configure explorer' },
+        attrs: { title: 'Configure explorer', 'aria-label': 'Configure explorer' },
         on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
       }, '\u2699\uFE0F'),
     ]),
@@ -4286,7 +4286,7 @@ export function renderAnalysisExplorerSection(
   return h('div.openings__explorer', [
     h('div.openings__explorer-header', [
       h('button.openings__explorer-gear', {
-        attrs: { title: 'Configure explorer' },
+        attrs: { title: 'Configure explorer', 'aria-label': 'Configure explorer' },
         on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
       }, '\u2699\uFE0F'),
     ]),

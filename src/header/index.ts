@@ -53,6 +53,7 @@ import type { Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 import { accountId, getAccount, listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
 import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
+import { reportIssue } from '../diagnostics/reporting/reportAction';
 
 const HEADER_LOGO_SRC = '/images/patzer-pro-review-lens-logo-package/png/app-icons/patzerpro-app-icon-152.png';
 const PLATFORM_DISCLAIMER = 'Patzer Pro is not affiliated with or endorsed by Chess.com or Lichess.';
@@ -363,7 +364,7 @@ function renderLoginModal(redraw: () => void): VNode {
       h('div.auth-modal__header', [
         h('h2', 'RemoteSync Sync Login'),
         h('button.auth-modal__close', {
-          attrs: { type: 'button', title: 'Close' },
+          attrs: { type: 'button', title: 'Close', 'aria-label': 'Close' },
           on: { click: close },
         }, 'x'),
       ]),
@@ -835,6 +836,57 @@ function closeGlobalMenu(redraw: () => void): void {
   redraw();
 }
 
+function routePathFromCurrentHash(): string {
+  try {
+    if (typeof window === 'undefined') return '';
+    const path = window.location.hash.replace(/^#\/?/, '').trim();
+    return path ? `/${path}` : '/analysis';
+  } catch {
+    return '';
+  }
+}
+
+function fallbackReportRoute(route: Route): string {
+  switch (route.name) {
+    case 'analysis-game':
+      return route.params.id ? `/analysis/${route.params.id}` : '/analysis';
+    case 'analysis':
+      return '/analysis';
+    case 'opponents':
+      return '/openings';
+    case 'stats':
+      return '/stats';
+    case 'games':
+      return '/games';
+    case 'puzzle-round':
+      return route.params.id ? `/puzzles/${route.params.id}` : '/puzzles';
+    case 'puzzles':
+      return '/puzzles';
+    case 'study-detail':
+      return route.params.id ? `/study/${route.params.id}` : '/study';
+    case 'study':
+      return '/study';
+    case 'sync':
+      return '/sync';
+    case 'admin-diagnostics':
+      return '/admin/diagnostics';
+    case 'admin':
+      return '/admin';
+    default:
+      return route.name ? `/${route.name}` : '';
+  }
+}
+
+function reportRoute(route: Route): string {
+  return routePathFromCurrentHash() || fallbackReportRoute(route);
+}
+
+function reportGlobalMenuIssue(route: Route, redraw: () => void): void {
+  const session = reportIssue({ triggeredBy: 'global-settings-menu', route: reportRoute(route) });
+  console.info('[diagnostics] report issue session', session);
+  closeGlobalMenu(redraw);
+}
+
 // --- Detection Settings modal ---
 
 interface SliderDef {
@@ -935,7 +987,7 @@ function renderDetectionModal(redraw: () => void): VNode {
       h('div.detection-modal__header', [
         h('h2', 'Detection Settings'),
         h('button.detection-modal__close', {
-          attrs: { title: 'Close' },
+          attrs: { title: 'Close', 'aria-label': 'Close' },
           on: { click: () => { showDetectionModal = false; redraw(); } },
         }, '✕'),
       ]),
@@ -1218,7 +1270,7 @@ function renderRetroModal(redraw: () => void): VNode {
       h('div.detection-modal__header', [
         h('h2', 'Mistake Detection'),
         h('button.detection-modal__close', {
-          attrs: { title: 'Close' },
+          attrs: { title: 'Close', 'aria-label': 'Close' },
           on: { click: () => { showRetroModal = false; redraw(); } },
         }, '✕'),
       ]),
@@ -1234,7 +1286,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
   return h('div.global-menu', [
     h('button.global-menu__trigger', {
       class: { active: showGlobalMenu },
-      attrs: { title: 'Settings' },
+      attrs: { title: 'Settings', 'aria-label': 'Settings' },
       on: { click: () => {
         showGlobalMenu    = !showGlobalMenu;
         showBoardSettings = false;
@@ -1249,6 +1301,11 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
     showGlobalMenu ? h('div.global-menu__dropdown', {
       class: { 'board-open': showBoardSettings },
     }, [
+      h('button.global-menu__item', {
+        attrs: { type: 'button', title: 'Report an issue with the current page' },
+        on: { click: () => reportGlobalMenuIssue(deps.route, redraw) },
+      }, 'Report issue'),
+
       h('button.global-menu__item', {
         on: { click: () => {
           closeGlobalMenu(redraw);

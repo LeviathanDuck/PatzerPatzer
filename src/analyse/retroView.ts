@@ -124,7 +124,7 @@ export function renderRetroChoicePage(deps: RetroChoicePageDeps): VNode | null {
     h('div.retro-box__title', [
       h('span', 'Learn From Your Mistakes'),
       h('span.retro-box__progress', `${choice.candidates.length} found`),
-      h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close' } }, '✕'),
+      h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close', 'aria-label': 'Close' } }, '✕'),
     ]),
     h('div.retro-choice__body', [
       h('div.retro-choice__section', [
@@ -812,7 +812,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
       h('div.retro-box__title-meta', [
         severityBadge,
         h('span.retro-box__progress', { style: { color: countFeedback.color } }, progressText),
-        h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close' } }, '✕'),
+        h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close', 'aria-label': 'Close' } }, '✕'),
       ].filter(Boolean) as VNode[]),
     ]),
     // Feedback area — mirrors lichess-org/lila: retroView.ts div.feedback.{state}

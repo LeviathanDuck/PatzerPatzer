@@ -200,6 +200,7 @@ export function renderKeyboardHelp(): VNode | null {
         ].map(([key, desc]) => h('tr', [h('td', key as string), h('td', desc as string)]))),
       ]),
       h('button.keyboard-help__close', {
+        attrs: { title: 'Close keyboard help', 'aria-label': 'Close keyboard help' },
         on: { click: () => { showKeyboardHelp = false; _redraw(); } },
       }, '✕'),
     ]),

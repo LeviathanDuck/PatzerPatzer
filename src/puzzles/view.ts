@@ -1474,7 +1474,10 @@ function renderMetaPanel(puzzleId: string, redraw: () => void): VNode {
     h('div.puzzle-meta__row.puzzle-meta__favorite', [
       h('button.puzzle-meta__fav-btn', {
         class: { 'puzzle-meta__fav-btn--active': meta.favorite },
-        attrs: { title: meta.favorite ? 'Remove from favorites' : 'Add to favorites' },
+        attrs: {
+          title: meta.favorite ? 'Remove from favorites' : 'Add to favorites',
+          'aria-label': meta.favorite ? 'Remove from favorites' : 'Add to favorites',
+        },
         on: { click: () => { toggleFavorite(puzzleId, redraw); } },
       }, meta.favorite ? '\u2665' : '\u2661'), // filled heart / empty heart
       h('span.puzzle-meta__fav-label', meta.favorite ? 'Favorited' : 'Favorite'),
@@ -1634,7 +1637,7 @@ function renderPuzzleRoundActionMenu(rc: PuzzleRoundCtrl, redraw: () => void): V
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu' },
+      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
       on:    { click: close },
     }, '×'),
 
@@ -1739,7 +1742,7 @@ function renderLibraryPreviewActionMenu(redraw: () => void): VNode | null {
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu' },
+      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
       on:    { click: close },
     }, '×'),
 
@@ -1788,7 +1791,7 @@ function renderLibraryPreviewPanel(redraw: () => void): VNode | null {
         on: { click: () => void selectPuzzleFromList(rc.definition.id, redraw) },
       }, 'Play this puzzle'),
       h('button.puzzle-library__preview-close', {
-        attrs: { title: 'Close preview' },
+        attrs: { title: 'Close preview', 'aria-label': 'Close preview' },
         on: { click: () => { clearPreview(); redraw(); } },
       }, '×'),
     ]),
