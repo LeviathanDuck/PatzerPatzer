@@ -32,11 +32,9 @@ import type { TrainableSequence } from './types';
 import { deleteNodeAt, promoteAt, pathInit } from '../tree/ops';
 import {
   studyDetail, detailRoot, detailPath, detailNode, detailLoaded, detailOrientation,
-  detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
-  handleStudyMove, flipStudyBoard, setCgRef, getCgRef, studyDetailRouteSnapshot,
+  loadStudyDetail, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
+  handleStudyMove, flipStudyBoard, setCgRef, getCgRef,
 } from './studyDetailCtrl';
-import { serializeStudyDetailRouteState } from './detailRouteState';
-import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
@@ -53,12 +51,6 @@ let _practiceLinesLoaded   = false;
 let _practiceLinesStudyId: string | null        = null;
 let _renamingLineId:       string | null        = null;
 let _renamingLineValue     = '';
-
-function writeStudyDetailRoute(): void {
-  const study = studyDetail();
-  if (!study) return;
-  writeHashRoute(serializeStudyDetailRouteState(study.id, studyDetailRouteSnapshot()), { mode: 'replace' });
-}
 
 // --- Standalone dests cache (mirrors src/board/index.ts cachedDests) ---
 const _destsCache = new Map<string, Map<Key, Key[]>>();
@@ -94,7 +86,6 @@ function onStudyMove(orig: string, dest: string): void {
     const uci    = `${orig}${dest}`;
     handleStudyMove(uci, san, newFen, _studyRedraw);
     syncStudyBoard(_studyRedraw);
-    writeStudyDetailRoute();
   } catch (e) {
     console.warn('[studyDetailView] move error', e);
   }
@@ -261,11 +252,7 @@ function renderStudyActionMenu(redraw: () => void): VNode | null {
       // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
       h('button', {
         attrs: { 'data-icon': ICON_FLIP, title: 'Flip board' },
-        on: { click: () => {
-          flipStudyBoard(redraw);
-          writeStudyDetailRoute();
-          close();
-        } },
+        on: { click: () => { flipStudyBoard(redraw); close(); } },
       }, 'Flip board'),
       h('button', {
         attrs: { title: 'Report an issue with the Study page' },
@@ -294,10 +281,10 @@ function renderStudyNavBar(redraw: () => void): VNode {
   const override: MoveNavOverride = {
     canPrev,
     canNext,
-    first:     () => { navigateFirst(redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); },
-    prev:      () => { navigatePrev(redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); },
-    next:      () => { navigateNext(redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); },
-    last:      () => { navigateLast(redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); },
+    first:     () => { navigateFirst(redraw); syncStudyBoard(redraw); },
+    prev:      () => { navigatePrev(redraw); syncStudyBoard(redraw); },
+    next:      () => { navigateNext(redraw); syncStudyBoard(redraw); },
+    last:      () => { navigateLast(redraw); syncStudyBoard(redraw); },
     // No onBook: study view has no explorer plumbing, so the book button is intentionally omitted.
     menuTitle: 'Study menu',
     menuOpen:  _studyMenuOpen,
@@ -384,14 +371,12 @@ function renderStudyContextMenu(redraw: () => void): VNode | null {
       h('div.study-ctx-item', {
         on: { click: () => {
           if (_studyCtxPath && root) { promoteAt(root, _studyCtxPath, false); }
-          writeStudyDetailRoute();
           closeStudyCtxMenu(redraw);
         }},
       }, 'Promote variation'),
       h('div.study-ctx-item', {
         on: { click: () => {
           if (_studyCtxPath && root) { promoteAt(root, _studyCtxPath, true); }
-          writeStudyDetailRoute();
           closeStudyCtxMenu(redraw);
         }},
       }, 'Make main line'),
@@ -415,7 +400,6 @@ function renderStudyContextMenu(redraw: () => void): VNode | null {
           navigateTo(pathInit(_studyCtxPath), redraw);
           syncStudyBoard(redraw);
         }
-        writeStudyDetailRoute();
         closeStudyCtxMenu(redraw);
       }},
     }, 'Delete from here'),
@@ -479,8 +463,8 @@ function handleStudyKeydown(e: KeyboardEvent, redraw: () => void): void {
     redraw();
   }
   // Nav keys
-  if (e.key === 'ArrowLeft')  { navigatePrev(redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); }
-  if (e.key === 'ArrowRight') { navigateNext(redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); }
+  if (e.key === 'ArrowLeft')  { navigatePrev(redraw); syncStudyBoard(redraw); }
+  if (e.key === 'ArrowRight') { navigateNext(redraw); syncStudyBoard(redraw); }
 }
 
 
@@ -661,14 +645,11 @@ function renderColorPicker(title: string, root: import('../tree/types').TreeNode
 }
 
 // --- Detail view entry point ---
-export function renderStudyDetail(id: string, redraw: () => void, routeQuery = ''): VNode {
+export function renderStudyDetail(id: string, redraw: () => void): VNode {
   _studyRedraw = redraw;
 
-  const routeKey = `${id}?${routeQuery}`;
-  if (detailLoadRouteKey() !== routeKey) {
-    hydrateStudyDetailRoute(id, routeQuery, redraw);
-  }
-  if (!detailLoaded()) {
+  if (!detailLoaded() || studyDetail()?.id !== id) {
+    loadStudyDetail(id, redraw);
     return h('div.study-detail', h('div.study-detail__loading', 'Loading…'));
   }
 
@@ -774,20 +755,10 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
               root,
               path,
               () => undefined,        // no eval lookup in study view
-              (p) => { navigateTo(p, redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); },
+              (p) => { navigateTo(p, redraw); syncStudyBoard(redraw); },
               null,                   // no user color
               false,
-              (p) => {
-                deleteNodeAt(root, p);
-                const cur = detailPath();
-                if (cur.startsWith(p)) {
-                  navigateTo(pathInit(p), redraw);
-                  syncStudyBoard(redraw);
-                } else {
-                  redraw();
-                }
-                writeStudyDetailRoute();
-              },
+              (p) => { deleteNodeAt(root, p); const cur = detailPath(); if (cur.startsWith(p)) { navigateTo(pathInit(p), redraw); syncStudyBoard(redraw); } else { redraw(); } },
               _studyCtxPath,
               (p, e) => openStudyCtxMenu(p, e, redraw),
               undefined,

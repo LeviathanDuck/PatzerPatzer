@@ -23,8 +23,6 @@ import {
   getPuzzleListState, openPuzzleList, closePuzzleList,
   filterPuzzleList, loadMorePuzzles, selectPuzzleFromList,
   loadMoreImportedShards, hasMoreImportedShards,
-  replacePuzzleImportedLibraryRoute,
-  writePuzzleRoundRoute,
   startImportedSession,
   getImportedSessionError, clearImportedSessionError,
   getActiveSession, clearActiveSession,
@@ -50,7 +48,6 @@ import { isMainlinePath } from '../analyse/pgnExport';
 import type { Role } from '@lichess-org/chessground/types';
 import { savePuzzleToLibrary } from '../study/saveAction';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
-import { writeHashRoute } from '../router';
 
 // ---------------------------------------------------------------------------
 // Puzzle player strips
@@ -227,7 +224,7 @@ function renderLibrarySidebar(redraw: () => void): VNode {
           h('div.puzzle-library__resume-actions', [
             h('button.puzzle-library__resume-btn', {
               on: { click: () => {
-                writePuzzleRoundRoute(resumeId, 'explicit-durable-selection');
+                window.location.hash = `#/puzzles/${encodeURIComponent(resumeId)}`;
               }},
             }, 'Resume Session'),
             h('button.puzzle-library__resume-end', {
@@ -546,31 +543,6 @@ let _openingSearch = '';
 let _lastPuzzleEngineFen = '';
 let _puzzleContextMenuPath: string | null = null;
 
-window.addEventListener('patzer:puzzle-imported-route-selection', (event: Event) => {
-  const detail = (event as CustomEvent<{
-    themes: string[];
-    openings: string[];
-    ratingMin: number;
-    ratingMax: number;
-    tab: 'themes' | 'openings';
-  }>).detail;
-  _selectedThemes = new Set(detail.themes);
-  _selectedOpenings = new Set(detail.openings);
-  _sessionRatingMin = detail.ratingMin;
-  _sessionRatingMax = detail.ratingMax;
-  _sessionTab = detail.tab;
-  _openingSearch = '';
-});
-
-function writeImportedSessionRoute(): void {
-  replacePuzzleImportedLibraryRoute({
-    themes: [..._selectedThemes],
-    openings: [..._selectedOpenings],
-    ratingMin: _sessionRatingMin,
-    ratingMax: _sessionRatingMax,
-  });
-}
-
 function openPuzzleContextMenu(path: string, e: MouseEvent): void {
   e.preventDefault();
   _puzzleContextMenuPath = path;
@@ -656,7 +628,6 @@ function renderImportedSessionBuilder(
           on: { input: (e: Event) => {
             const v = parseInt((e.target as HTMLInputElement).value, 10);
             _sessionRatingMin = Math.min(v, _sessionRatingMax - 50);
-            writeImportedSessionRoute();
             redraw();
           }},
         }),
@@ -667,7 +638,6 @@ function renderImportedSessionBuilder(
           on: { change: (e: Event) => {
             const v = parseInt((e.target as HTMLInputElement).value, 10);
             if (!isNaN(v)) _sessionRatingMin = Math.max(0, Math.min(v, _sessionRatingMax - 50));
-            writeImportedSessionRoute();
             redraw();
           }},
           hook: { update: (_old, vnode) => { (vnode.elm as HTMLInputElement).value = String(_sessionRatingMin); }},
@@ -682,7 +652,6 @@ function renderImportedSessionBuilder(
           on: { input: (e: Event) => {
             const v = parseInt((e.target as HTMLInputElement).value, 10);
             _sessionRatingMax = Math.max(v, _sessionRatingMin + 50);
-            writeImportedSessionRoute();
             redraw();
           }},
         }),
@@ -693,7 +662,6 @@ function renderImportedSessionBuilder(
           on: { change: (e: Event) => {
             const v = parseInt((e.target as HTMLInputElement).value, 10);
             if (!isNaN(v)) _sessionRatingMax = Math.min(3200, Math.max(v, _sessionRatingMin + 50));
-            writeImportedSessionRoute();
             redraw();
           }},
           hook: { update: (_old, vnode) => { (vnode.elm as HTMLInputElement).value = String(_sessionRatingMax); }},
@@ -764,7 +732,6 @@ function renderThemeList(ls: PuzzleListState, redraw: () => void): VNode {
               const s = new Set(_selectedThemes);
               if (s.has(theme)) s.delete(theme); else s.add(theme);
               _selectedThemes = s;
-              writeImportedSessionRoute();
               redraw();
             }},
           }, [
@@ -825,7 +792,6 @@ function renderOpeningList(ls: PuzzleListState, redraw: () => void): VNode {
               for (const o of openings) s.add(o);
             }
             _selectedOpenings = s;
-            writeImportedSessionRoute();
             redraw();
           }},
         }, [
@@ -840,7 +806,6 @@ function renderOpeningList(ls: PuzzleListState, redraw: () => void): VNode {
               const s = new Set(_selectedOpenings);
               if (s.has(opening)) s.delete(opening); else s.add(opening);
               _selectedOpenings = s;
-              writeImportedSessionRoute();
               redraw();
             }},
           }, [
@@ -2014,7 +1979,7 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
               }, `Retry (${failed + assisted})`)
             : null,
           h('button.session-info__end', {
-            on: { click: () => { clearActiveSession(); writeHashRoute('#/puzzles'); }},
+            on: { click: () => { clearActiveSession(); window.location.hash = '#/puzzles'; }},
             attrs: { title: 'End session' },
           }, 'End'),
         ]),
@@ -2060,7 +2025,7 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
             attrs: { title: `#${i + 1}: ${entry.result}` },
             on: isCompleted && !isCurrent ? {
               click: () => {
-                writePuzzleRoundRoute(entry.puzzleId, 'explicit-durable-selection');
+                window.location.hash = `#/puzzles/${encodeURIComponent(entry.puzzleId)}`;
               },
             } : {},
             style: isCompleted && !isCurrent ? { cursor: 'pointer' } : {},
@@ -2077,7 +2042,7 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
               const currentId = getPuzzleRoundState()?.definition?.id;
               const inProgress = session.history.find(e => e.result === 'in-progress');
               if (inProgress && inProgress.puzzleId !== currentId) {
-                writePuzzleRoundRoute(inProgress.puzzleId, 'explicit-durable-selection');
+                window.location.hash = `#/puzzles/${encodeURIComponent(inProgress.puzzleId)}`;
               } else {
                 void nextPuzzle(redraw);
               }

@@ -53,7 +53,6 @@ interface AnalysisControlsDeps {
   redraw:           () => void;
 
   onFlipBoard:      () => void;
-  onNewBoard:       () => void;
   onToggleRetro:    () => void;
 
   onSaveToLibrary:  () => void;
@@ -220,11 +219,6 @@ export function renderActionMenu(): VNode | null {
     // Tools section — mirrors lichess-org/lila: actionMenu.ts Tools group
     h('h2', 'Tools'),
     h('div.action-menu__tools', [
-      h('button', {
-        attrs: { title: 'Open a fresh standard analysis board' },
-        on:    { click: () => { deps.onNewBoard(); close(); } },
-      }, 'New Board'),
-
 
       h('button', {
         attrs: { title: 'Save this game to Study Library' },

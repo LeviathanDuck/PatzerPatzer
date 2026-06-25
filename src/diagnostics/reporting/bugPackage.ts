@@ -1,7 +1,7 @@
 import { getDiagnosticEvents } from '../../idb';
 import { snapshotBreadcrumbs } from '../record';
 import { redactDiagnosticText, redactEventMetadata, sanitizeRoute } from '../redact';
-import { currentAppRoute, currentSafeRouteQueryParams, sanitizeAppRoute } from '../route';
+import { currentAppRoute, sanitizeAppRoute } from '../route';
 import type { DiagnosticReport } from './reportAssembly';
 import type {
   Breadcrumb,
@@ -64,7 +64,7 @@ function reportMetadata(report: DiagnosticReport): DiagnosticMetadata {
     description: report.userInput.description,
     expectedBehavior: report.userInput.expectedBehavior,
     actualBehavior: report.userInput.actualBehavior,
-    route: sanitizeAppRoute(report.routeContext.route),
+    route: report.routeContext.route,
   });
 }
 
@@ -89,6 +89,24 @@ function errorGroupMetadata(errorGroup: DiagnosticErrorGroup): DiagnosticMetadat
   }
 
   return metadata;
+}
+
+function currentQueryParams(): Record<string, string> {
+  const params: Record<string, string> = {};
+
+  try {
+    if (typeof window === 'undefined') return params;
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.forEach((value, key) => {
+      const safeKey = redactText(key);
+      if (!safeKey || /\[redacted|\[omitted/i.test(safeKey)) return;
+      params[safeKey] = redactText(value);
+    });
+  } catch {
+    return {};
+  }
+
+  return params;
 }
 
 function sanitizeBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
@@ -151,7 +169,7 @@ function routeTransitions(breadcrumbs: Breadcrumb[]): BugPackageRouteTransition[
 function buildRouteContext(breadcrumbs: Breadcrumb[]): BugPackageRouteContext {
   return {
     route: currentAppRoute(),
-    queryParams: currentSafeRouteQueryParams(),
+    queryParams: currentQueryParams(),
     recentTransitions: routeTransitions(breadcrumbs),
   };
 }
