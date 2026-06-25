@@ -17,6 +17,8 @@ import {
 import type { GameSummary } from './types';
 import { diagnoseWeaknesses, type DiagnosedWeakness } from './weakness';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
+import { writeStatsTimeFilterUrl } from './urlState';
+import { writeHashRoute } from '../router';
 
 // ── Time-control filter tabs ──────────────────────────────────────────────────
 
@@ -38,7 +40,13 @@ function renderTimeFilterTabs(redraw: () => void): VNode {
   return h('div.stats-filter-tabs', TIME_FILTERS.map(f =>
     h('button.stats-filter-tab', {
       class: { 'stats-filter-tab--active': f.value === active },
-      on: { click: () => { setTimeFilter(f.value); redraw(); } },
+      on: {
+        click: () => {
+          setTimeFilter(f.value);
+          writeStatsTimeFilterUrl(f.value);
+          redraw();
+        },
+      },
     }, f.label),
   ));
 }
@@ -265,7 +273,7 @@ function renderWeaknessCard(w: DiagnosedWeakness): VNode {
     h('div.weakness-card__meta', `Based on ${w.sampleSize} analyzed game${w.sampleSize === 1 ? '' : 's'}`),
     w.trainingAction ? h('div.weakness-card__action', [
       h('button.weakness-card__action-btn', {
-        on: { click: () => { window.location.hash = trainingActionRoute(w.trainingAction!.type); } },
+        on: { click: () => { writeHashRoute(trainingActionRoute(w.trainingAction!.type)); } },
       }, `${w.trainingAction.label} →`),
     ]) : null,
   ].filter(Boolean) as VNode[]);

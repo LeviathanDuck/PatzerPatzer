@@ -25,6 +25,15 @@ import {
 import { LOSS_THRESHOLDS } from '../engine/winchances';
 import { getMissedMoments, type MissedMoment } from '../engine/tactics';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
+import { serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
+import { writeHashRoute } from '../router';
+import {
+  parseGamesRouteState,
+  resolveGamesRoutePage,
+  serializeGamesRouteState,
+  type GamesRouteAccountOverride,
+  type GamesRouteState,
+} from './routeState';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 const GAME_LIST_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -254,6 +263,7 @@ export interface GamesViewDeps {
   reviewGame:            (game: ImportedGame) => void;
   /** Run batch analysis on an ordered list of games sequentially. */
   reviewAllGames:        (games: ImportedGame[], sourceContext?: ReviewRunSourceContext) => void;
+  routeQuery?:            string;
   redraw:                () => void;
 }
 
@@ -302,6 +312,10 @@ const DEFAULT_ACCOUNT_FILTER: CustomAccountFilterState = { mode: 'custom', inclu
 let accountFilterState: AccountFilterState = loadAccountFilterState();
 let accountFilterMenuOpen = false;
 let unsubscribeQueueHealthStatus: (() => void) | null = null;
+let lastHydratedGamesRouteQuery: string | null = null;
+let pendingGamesRouteState: GamesRouteState | null = null;
+let pendingGamesRouteQuery: string | null = null;
+let gamesRouteAccountOverrideActive = false;
 
 function reportGamesIssue(): void {
   const session = reportIssue({ triggeredBy: 'games-route', route: '/games' });
@@ -479,6 +493,198 @@ function normalizeAccountFilter(accounts: ChessAccount[]): void {
   }
 }
 
+function accountFiltersEqual(a: AccountFilterState, b: AccountFilterState): boolean {
+  if (a.mode !== b.mode) return false;
+  if (a.mode === 'all' || b.mode === 'all') return true;
+  if (a.includeMine !== b.includeMine) return false;
+  if (a.accountIds.length !== b.accountIds.length) return false;
+  return a.accountIds.every((id, index) => id === b.accountIds[index]);
+}
+
+function accountFilterFromRouteOverride(override: GamesRouteAccountOverride): AccountFilterState {
+  return override.mode === 'all'
+    ? { mode: 'all' }
+    : {
+        mode: 'custom',
+        includeMine: override.includeMine || override.accountIds.length === 0,
+        accountIds: [...new Set(override.accountIds)],
+      };
+}
+
+function accountRouteOverrideFromCurrent(): GamesRouteAccountOverride {
+  return accountFilterState.mode === 'all'
+    ? { mode: 'all' }
+    : {
+        mode: 'custom',
+        includeMine: accountFilterState.includeMine,
+        accountIds: [...accountFilterState.accountIds],
+      };
+}
+
+function currentGamesRouteStateSnapshot(): GamesRouteState {
+  return {
+    accountOverride: gamesRouteAccountOverrideActive ? accountRouteOverrideFromCurrent() : null,
+    accountSource: gamesRouteAccountOverrideActive ? 'route-override' : 'saved-default',
+    results: [...gamesFilterResults] as GamesRouteState['results'],
+    speeds: [...gamesFilterSpeeds] as GamesRouteState['speeds'],
+    opponent: gamesFilterOpponent,
+    opening: gamesFilterOpening,
+    color: gamesFilterColor,
+    misses: [...gamesFilterTactics] as GamesRouteState['misses'],
+    review: gamesFilterReviewIssues,
+    sort: { field: gamesSortField, direction: gamesSortDir },
+    page: gamesPage + 1,
+  };
+}
+
+type GamesRouteReplaceWriter = (
+  hashRoute: string,
+  options: { mode: 'replace' },
+) => { changed: boolean } | void;
+
+export function writeGamesRouteStateFromSnapshotForTests(
+  snapshot: GamesRouteState,
+  writer: GamesRouteReplaceWriter,
+): { route: string; changed?: boolean } {
+  const route = serializeGamesRouteState(snapshot);
+  const result = writer(route, { mode: 'replace' });
+  return result ? { route, changed: result.changed } : { route };
+}
+
+function writeCurrentGamesRouteState(deps: GamesViewDeps): void {
+  if (deps.routeQuery === undefined) return;
+  writeHashRoute(serializeGamesRouteState(currentGamesRouteStateSnapshot()), { mode: 'replace' });
+}
+
+function applyGamesRouteStateForView(state: GamesRouteState): void {
+  gamesFilterResults = new Set(state.results);
+  gamesFilterSpeeds = new Set(state.speeds);
+  gamesFilterOpponent = state.opponent;
+  gamesFilterOpening = state.opening;
+  gamesFilterColor = state.color;
+  gamesFilterTactics = new Set(state.misses);
+  gamesFilterReviewIssues = state.review;
+  gamesSortField = state.sort.field;
+  gamesSortDir = state.sort.direction;
+  gamesPage = Math.max(0, state.page - 1);
+  gamesRouteAccountOverrideActive = state.accountSource === 'route-override';
+
+  if (state.accountOverride) {
+    const nextAccountFilter = accountFilterFromRouteOverride(state.accountOverride);
+    if (!accountFiltersEqual(accountFilterState, nextAccountFilter)) {
+      accountFilterState = nextAccountFilter;
+      selectedGameIds = new Set();
+      lastClickedGameId = null;
+    }
+  } else if (state.accountSource === 'saved-default') {
+    const savedAccountFilter = loadAccountFilterState();
+    if (!accountFiltersEqual(accountFilterState, savedAccountFilter)) {
+      accountFilterState = savedAccountFilter;
+      selectedGameIds = new Set();
+      lastClickedGameId = null;
+    }
+  }
+}
+
+export function resetGamesViewRouteStateForTests(): void {
+  gamesFilterResults = new Set();
+  gamesFilterSpeeds = new Set();
+  gamesFilterOpponent = '';
+  gamesFilterOpening = '';
+  gamesFilterColor = '';
+  gamesFilterTactics = new Set();
+  gamesFilterReviewIssues = 'all';
+  gamesSortField = 'date';
+  gamesSortDir = 'desc';
+  gamesPage = 0;
+  accountFilterState = loadAccountFilterState();
+  selectedGameIds = new Set();
+  lastClickedGameId = null;
+  lastHydratedGamesRouteQuery = null;
+  pendingGamesRouteState = null;
+  pendingGamesRouteQuery = null;
+  gamesRouteAccountOverrideActive = false;
+}
+
+export function getGamesViewRouteSnapshotForTests(): {
+  results: GamesResultFilter[];
+  speeds: string[];
+  opponent: string;
+  opening: string;
+  color: '' | 'white' | 'black';
+  misses: string[];
+  review: ReviewIssueFilter;
+  sort: { field: GamesSortField; direction: 'asc' | 'desc' };
+  pageIndex: number;
+  accountFilter: AccountFilterState;
+  compact: {
+    search: string;
+    results: ('win' | 'loss' | 'draw')[];
+    speeds: string[];
+    pageIndex: number;
+  };
+} {
+  return {
+    results: [...gamesFilterResults],
+    speeds: [...gamesFilterSpeeds],
+    opponent: gamesFilterOpponent,
+    opening: gamesFilterOpening,
+    color: gamesFilterColor,
+    misses: [...gamesFilterTactics],
+    review: gamesFilterReviewIssues,
+    sort: { field: gamesSortField, direction: gamesSortDir },
+    pageIndex: gamesPage,
+    accountFilter: accountFilterState.mode === 'all'
+      ? { mode: 'all' }
+      : {
+          mode: 'custom',
+          includeMine: accountFilterState.includeMine,
+          accountIds: [...accountFilterState.accountIds],
+        },
+    compact: {
+      search: gameListSearch,
+      results: [...gameListFilterResults],
+      speeds: [...gameListFilterSpeeds],
+      pageIndex: gameListPage,
+    },
+  };
+}
+
+function hydrateGamesRouteState(deps: GamesViewDeps): void {
+  if (deps.routeQuery === undefined) return;
+  if (deps.routeQuery === lastHydratedGamesRouteQuery) return;
+
+  const parsed = parseGamesRouteState(deps.routeQuery, {
+    validAccountIds: deps.accounts.map(account => account.id),
+  });
+  applyGamesRouteStateForView(parsed.state);
+  lastHydratedGamesRouteQuery = deps.routeQuery;
+  pendingGamesRouteState = parsed.state;
+  pendingGamesRouteQuery = deps.routeQuery;
+}
+
+function canonicalGamesRouteForQuery(query: string): string {
+  return query ? `#/games?${query}` : '#/games';
+}
+
+function finalizeGamesRouteHydration(deps: GamesViewDeps, filteredGameCount: number): void {
+  if (deps.routeQuery === undefined || pendingGamesRouteState === null || pendingGamesRouteQuery !== deps.routeQuery) {
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filteredGameCount / GAMES_PAGE_SIZE));
+  const pageResolution = resolveGamesRoutePage(pendingGamesRouteState, totalPages);
+  gamesPage = pageResolution.internalPageIndex;
+
+  const currentRoute = canonicalGamesRouteForQuery(deps.routeQuery);
+  if (pageResolution.canonicalRoute !== currentRoute) {
+    writeHashRoute(pageResolution.canonicalRoute, { mode: 'replace' });
+  }
+
+  pendingGamesRouteState = null;
+  pendingGamesRouteQuery = null;
+}
+
 function customAccountFilter(accounts: ChessAccount[]): CustomAccountFilterState {
   normalizeAccountFilter(accounts);
   return accountFilterState.mode === 'custom' ? accountFilterState : DEFAULT_ACCOUNT_FILTER;
@@ -498,17 +704,24 @@ function applyAccountFilterState(next: AccountFilterState, deps: GamesViewDeps):
   // Selections must not survive a lens change: hidden-but-selected games
   // would silently leak into the next bulk-review action.
   selectedGameIds = new Set();
+  lastClickedGameId = null;
+  if (deps.routeQuery !== undefined) {
+    gamesRouteAccountOverrideActive = true;
+    writeCurrentGamesRouteState(deps);
+  }
   deps.redraw();
 }
 
-function toggleGamesSort(field: GamesSortField, redraw: () => void): void {
+function toggleGamesSort(field: GamesSortField, deps: GamesViewDeps): void {
   if (gamesSortField === field) {
     gamesSortDir = gamesSortDir === 'desc' ? 'asc' : 'desc';
   } else {
     gamesSortField = field;
     gamesSortDir = 'desc';
   }
-  redraw();
+  gamesPage = 0;
+  writeCurrentGamesRouteState(deps);
+  deps.redraw();
 }
 
 function gamesFilterActive(): boolean {
@@ -518,7 +731,7 @@ function gamesFilterActive(): boolean {
     gamesFilterReviewIssues !== 'all';
 }
 
-function clearGamesFilters(redraw: () => void): void {
+function clearGamesFilters(deps: GamesViewDeps): void {
   gamesFilterResults  = new Set();
   gamesFilterSpeeds   = new Set();
   gamesFilterOpponent = '';
@@ -526,8 +739,11 @@ function clearGamesFilters(redraw: () => void): void {
   gamesFilterTactics  = new Set();
   gamesFilterOpening  = '';
   gamesFilterReviewIssues = 'all';
+  gamesSortField = 'date';
+  gamesSortDir = 'desc';
   gamesPage = 0;
-  redraw();
+  writeCurrentGamesRouteState(deps);
+  deps.redraw();
 }
 
 // Returns the set of tactics severity badges a game has, for filter matching.
@@ -733,12 +949,12 @@ function renderResultIcon(r: 'win' | 'loss' | 'draw' | null): VNode {
   return h('span.games-view__result', '–');
 }
 
-function renderSortTh(label: string, field: GamesSortField, redraw: () => void): VNode {
+function renderSortTh(label: string, field: GamesSortField, deps: GamesViewDeps): VNode {
   const active = gamesSortField === field;
   const arrow  = active ? (gamesSortDir === 'desc' ? ' ↓' : ' ↑') : '';
   return h('th', {
     class: { 'games-view__th--active': active },
-    on:   { click: () => toggleGamesSort(field, redraw) },
+    on:   { click: () => toggleGamesSort(field, deps) },
   }, label + arrow);
 }
 
@@ -789,6 +1005,11 @@ function handleGameRowClick(
     lastClickedGameId = game.id;
     onPlainClick();
   }
+}
+
+function selectAnalysisGame(game: ImportedGame, deps: GamesViewDeps): void {
+  deps.selectGame(game);
+  writeHashRoute(serializeAnalysisSelectedGameRoute(game.id));
 }
 
 // ---------------------------------------------------------------------------
@@ -1096,7 +1317,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                 selected:  selectedGameIds.has(game.id),
                 analyzing: isAnalyzing,
               },
-              on: { click: (e: MouseEvent) => handleGameRowClick(game, visible, e, deps, () => deps.selectGame(game)) },
+              on: { click: (e: MouseEvent) => handleGameRowClick(game, visible, e, deps, () => selectAnalysisGame(game, deps)) },
             }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy)),
             reviewControl,
             srcUrl ? h('a.game-ext-link', {
@@ -1110,7 +1331,9 @@ export function renderGameList(deps: GamesViewDeps): VNode {
 
 /** Full Games tab view: filter bar + sortable table. */
 export function renderGamesView(deps: GamesViewDeps): VNode {
+  hydrateGamesRouteState(deps);
   const games = filteredGames(deps);
+  finalizeGamesRouteHydration(deps, games.length);
   const lensTotal = accountLensGames(deps).length;
   const { redraw } = deps;
 
@@ -1133,6 +1356,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             s.has(r) ? s.delete(r) : s.add(r);
             gamesFilterResults = s;
             gamesPage = 0;
+            writeCurrentGamesRouteState(deps);
             redraw();
           }},
         }, r.charAt(0).toUpperCase() + r.slice(1))
@@ -1151,6 +1375,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             s.has(tc) ? s.delete(tc) : s.add(tc);
             gamesFilterSpeeds = s;
             gamesPage = 0;
+            writeCurrentGamesRouteState(deps);
             redraw();
           }},
         }, tc.charAt(0).toUpperCase() + tc.slice(1))
@@ -1162,11 +1387,21 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       h('span.games-view__filter-label', 'Color'),
       h('button.games-view__pill', {
         class: { active: gamesFilterColor === 'white' },
-        on: { click: () => { gamesFilterColor = gamesFilterColor === 'white' ? '' : 'white'; gamesPage = 0; redraw(); } },
+        on: { click: () => {
+          gamesFilterColor = gamesFilterColor === 'white' ? '' : 'white';
+          gamesPage = 0;
+          writeCurrentGamesRouteState(deps);
+          redraw();
+        } },
       }, 'White'),
       h('button.games-view__pill', {
         class: { active: gamesFilterColor === 'black' },
-        on: { click: () => { gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black'; gamesPage = 0; redraw(); } },
+        on: { click: () => {
+          gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black';
+          gamesPage = 0;
+          writeCurrentGamesRouteState(deps);
+          redraw();
+        } },
       }, 'Black'),
     ]),
 
@@ -1181,6 +1416,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             s.has(sev) ? s.delete(sev) : s.add(sev);
             gamesFilterTactics = s;
             gamesPage = 0;
+            writeCurrentGamesRouteState(deps);
             redraw();
           }},
         }, sev)
@@ -1192,7 +1428,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       h('span.games-view__filter-label', 'Opponent'),
       h('input.games-view__search', {
         attrs: { type: 'search', placeholder: 'Name…', value: gamesFilterOpponent },
-        on: { input: (e: Event) => { gamesFilterOpponent = (e.target as HTMLInputElement).value; gamesPage = 0; redraw(); } },
+        on: { input: (e: Event) => {
+          gamesFilterOpponent = (e.target as HTMLInputElement).value;
+          gamesPage = 0;
+          writeCurrentGamesRouteState(deps);
+          redraw();
+        } },
       }),
     ]),
 
@@ -1201,7 +1442,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       h('span.games-view__filter-label', 'Opening'),
       h('input.games-view__search', {
         attrs: { type: 'search', placeholder: 'Name...', value: gamesFilterOpening },
-        on: { input: (e: Event) => { gamesFilterOpening = (e.target as HTMLInputElement).value; gamesPage = 0; redraw(); } },
+        on: { input: (e: Event) => {
+          gamesFilterOpening = (e.target as HTMLInputElement).value;
+          gamesPage = 0;
+          writeCurrentGamesRouteState(deps);
+          redraw();
+        } },
       }),
     ]),
 
@@ -1217,6 +1463,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         on: { click: () => {
           gamesFilterReviewIssues = gamesFilterReviewIssues === 'failed-skipped' ? 'all' : 'failed-skipped';
           gamesPage = 0;
+          writeCurrentGamesRouteState(deps);
           redraw();
         }},
       }, 'Failed / skipped'),
@@ -1229,7 +1476,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         attrs: { type: 'button', title: 'Report an issue with the Games page' },
         on: { click: reportGamesIssue },
       }, 'Report issue'),
-      gamesFilterActive() ? h('button.games-view__clear', { on: { click: () => clearGamesFilters(redraw) } }, 'Clear filters') : null,
+      gamesFilterActive() ? h('button.games-view__clear', { on: { click: () => clearGamesFilters(deps) } }, 'Clear filters') : null,
       selectedGameIds.size > 1
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
@@ -1287,12 +1534,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
   const paginationBar = totalPages > 1 ? h('div.games-view__pagination', [
     h('button.games-view__page-btn', {
       attrs: { disabled: gamesPage === 0 },
-      on: { click: () => { gamesPage--; redraw(); } },
+      on: { click: () => { gamesPage--; writeCurrentGamesRouteState(deps); redraw(); } },
     }, '← Prev'),
     h('span.games-view__page-info', `Page ${gamesPage + 1} of ${totalPages}`),
     h('button.games-view__page-btn', {
       attrs: { disabled: gamesPage >= totalPages - 1 },
-      on: { click: () => { gamesPage++; redraw(); } },
+      on: { click: () => { gamesPage++; writeCurrentGamesRouteState(deps); redraw(); } },
     }, 'Next →'),
   ]) : null;
   const tableQueueSummaryCandidate = getQueueSummary();
@@ -1308,12 +1555,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
   const table = h('div.games-view__table-wrap', [
     h('table.games-view__table', [
       h('thead', h('tr', [
-        renderSortTh('Result',   'result',    redraw),
-        renderSortTh('Opponent', 'opponent',  redraw),
+        renderSortTh('Result',   'result',    deps),
+        renderSortTh('Opponent', 'opponent',  deps),
         h('th.games-view__rating-th', 'Rating'),
         h('th.games-view__account-th', 'Account'),
-        renderSortTh('Date',     'date',      redraw),
-        renderSortTh('Time',     'timeClass', redraw),
+        renderSortTh('Date',     'date',      deps),
+        renderSortTh('Time',     'timeClass', deps),
         h('th', 'Opening'),
         h('th.games-view__review-th', 'Review'),
         h('th.games-view__puzzles-th', 'Puzzles'),
@@ -1453,8 +1700,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                 selected: selectedGameIds.has(game.id),
               },
               on: { click: (e: MouseEvent) => handleGameRowClick(game, games, e, deps, () => {
-                deps.selectGame(game);
-                window.location.hash = '#/analysis';
+                selectAnalysisGame(game, deps);
               })},
             }, [
               h('td', renderResultIcon(r)),

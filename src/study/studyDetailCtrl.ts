@@ -7,6 +7,14 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import { pgnToTree } from '../tree/pgn';
 import { nodeAtPath, addNode, pathInit, pathLast } from '../tree/ops';
 import { getStudy, saveStudy } from './studyDb';
+import { replaceHashRoute } from '../router';
+import {
+  parseStudyDetailRouteState,
+  resolveStudyDetailPath,
+  serializeStudyDetailRouteState,
+  type StudyDetailOrientation,
+  type StudyDetailRouteState,
+} from './detailRouteState';
 import type { StudyItem } from './types';
 import type { TreeNode } from '../tree/types';
 import { record, Severity } from '../diagnostics';
@@ -52,6 +60,8 @@ let _path:        string          = '';
 let _orientation: 'white' | 'black' = 'white';
 let _dirty        = false;
 let _loaded       = false;
+let _loadTargetId: string | null = null;
+let _loadRouteKey: string | null = null;
 let _cgRef:       CgApi | undefined;
 let _autoSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -66,19 +76,32 @@ export function detailNode():  TreeNode  | null {
 }
 export function detailOrientation(): 'white' | 'black' { return _orientation; }
 export function detailLoaded(): boolean { return _loaded; }
+export function detailLoadTargetId(): string | null { return _loadTargetId; }
+export function detailLoadRouteKey(): string | null { return _loadRouteKey; }
 export function setCgRef(cg: CgApi): void { _cgRef = cg; }
 export function getCgRef(): CgApi | undefined { return _cgRef; }
 
+export function studyDetailRouteSnapshot(): StudyDetailRouteState {
+  return { path: _path, orientation: _orientation };
+}
+
+function setStudyDetailOrientation(orientation: StudyDetailOrientation): void {
+  _orientation = orientation;
+  _cgRef?.set({ orientation: _orientation });
+}
+
 // --- Load ---
 
-export function loadStudyDetail(id: string, redraw: () => void): void {
+export function loadStudyDetail(id: string, redraw: () => void): Promise<void> {
   _loaded = false;
+  _loadTargetId = id;
+  _loadRouteKey = `${id}?`;
   _study  = null;
   _root   = null;
   _path   = '';
   _dirty  = false;
   clearTimeout(_autoSaveTimer);
-  getStudy(id).then(item => {
+  return getStudy(id).then(item => {
     if (!item) {
       recordStudyRouteEmpty();
       _loaded = true;
@@ -96,6 +119,67 @@ export function loadStudyDetail(id: string, redraw: () => void): void {
     _loaded = true;
     redraw();
   }).catch(e => {
+    recordStudyLoadFail(e);
+    recordStudyRouteEmpty();
+    _loaded = true;
+    redraw();
+  });
+}
+
+let _studyDetailHydrationRun = 0;
+
+export function cancelStudyDetailRouteHydration(): void {
+  ++_studyDetailHydrationRun;
+}
+
+export function hydrateStudyDetailRoute(id: string, query: string, redraw: () => void): void {
+  const run = ++_studyDetailHydrationRun;
+  const parsed = parseStudyDetailRouteState(query);
+  _loaded = false;
+  _loadTargetId = id;
+  _loadRouteKey = `${id}?${query}`;
+  _study = null;
+  _root = null;
+  _path = '';
+  _dirty = false;
+  clearTimeout(_autoSaveTimer);
+
+  void getStudy(id).then(item => {
+    if (run !== _studyDetailHydrationRun) return;
+    if (!item) {
+      recordStudyRouteEmpty();
+      _loaded = true;
+      redraw();
+      return;
+    }
+    _study = item;
+    try {
+      _root = pgnToTree(item.pgn);
+    } catch (e) {
+      recordStudyLoadFail(e);
+      _root = pgnToTree('');
+    }
+    const recovery = resolveStudyDetailPath(_root, parsed.state.path);
+    _path = recovery.resolvedPath;
+    setStudyDetailOrientation(parsed.state.orientation);
+    _loaded = true;
+
+    const canonicalState = studyDetailRouteSnapshot();
+    const canonicalRoute = serializeStudyDetailRouteState(id, canonicalState);
+    const needsCanonicalCleanup =
+      parsed.canonical.hadUnknownParams ||
+      parsed.canonical.hadDuplicateParams ||
+      parsed.canonical.hadInvalidParams ||
+      recovery.status === 'deepest-valid' ||
+      recovery.status === 'invalid' ||
+      (parsed.state.path && recovery.resolvedPath !== parsed.state.path) ||
+      window.location.hash !== canonicalRoute;
+    if (needsCanonicalCleanup && window.location.hash.startsWith(`#/study/${encodeURIComponent(id)}`)) {
+      replaceHashRoute(canonicalRoute);
+    }
+    redraw();
+  }).catch(e => {
+    if (run !== _studyDetailHydrationRun) return;
     recordStudyLoadFail(e);
     recordStudyRouteEmpty();
     _loaded = true;
@@ -180,8 +264,7 @@ export function handleStudyMove(uci: string, san: string, fen: string, redraw: (
 // --- Orientation ---
 
 export function flipStudyBoard(redraw: () => void): void {
-  _orientation = _orientation === 'white' ? 'black' : 'white';
-  _cgRef?.set({ orientation: _orientation });
+  setStudyDetailOrientation(_orientation === 'white' ? 'black' : 'white');
   redraw();
 }
 

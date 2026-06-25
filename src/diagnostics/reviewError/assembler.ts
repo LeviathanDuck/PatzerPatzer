@@ -5,6 +5,7 @@ import { nodeAtPath, nodeListAt, pathInit } from '../../tree/ops';
 import type { TreeNode, TreePath } from '../../tree/types';
 import { getSessionId as defaultGetSessionId } from '../id';
 import { record as defaultRecord } from '../record';
+import { currentAppRoute } from '../route';
 import { Severity, type DiagnosticEvent } from '../types';
 import { getCompileTimeReleaseIdentity } from '../../releaseIdentity';
 import {
@@ -49,11 +50,6 @@ function createReviewErrorPackageId(): string {
   if (uuid) return `review-error-${uuid}`;
   const rand = Math.random().toString(36).slice(2);
   return `review-error-${Date.now().toString(36)}-${rand}`;
-}
-
-function currentRoute(): string {
-  if (typeof window === 'undefined') return '';
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
 }
 
 function releaseIdentity(): ReviewErrorAppIdentity {
@@ -214,7 +210,7 @@ export async function assembleReviewErrorPackage(
     app: releaseIdentity(),
     session: {
       sessionId: dependencies.getSessionId?.() ?? defaultGetSessionId(),
-      route: currentRoute(),
+      route: currentAppRoute(),
       capturedAt: createdAt,
     },
     game: {

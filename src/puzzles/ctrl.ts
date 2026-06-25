@@ -43,6 +43,14 @@ import {
 import { evalWinChances, LOSS_THRESHOLDS } from '../engine/winchances';
 import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../board/animation';
 import { record, Severity } from '../diagnostics';
+import { replaceHashRoute, writeHashRoute } from '../router';
+import {
+  defaultPuzzleRouteState,
+  parsePuzzleRouteState,
+  serializePuzzleRouteState,
+  type PuzzleRouteSortToken,
+  type PuzzleRouteState,
+} from './routeState';
 
 // Alt-castle mappings — Lichess puzzles store castling as king-to-rook-square
 // but chessground may emit king-to-destination. Both forms must be accepted.
@@ -106,6 +114,7 @@ export interface PuzzleListFilters {
   ratingMin?: number;
   ratingMax?: number;
   theme?: string;
+  opening?: string;
 }
 
 export interface PuzzleListState {
@@ -117,6 +126,7 @@ export interface PuzzleListState {
   /** Currently visible page of puzzles. */
   visible: PuzzleDefinition[];
   filters: PuzzleListFilters;
+  sort: PuzzleRouteSortToken;
   page: number;
   pageSize: number;
   /** All unique themes found in the source pool (for the theme dropdown). */
@@ -135,6 +145,18 @@ export interface PuzzleRoundState {
   definition: PuzzleDefinition | null;
   status: 'loading' | 'ready' | 'error';
   error?: string;
+}
+
+export type PuzzleRoundRouteValidationFailure =
+  | 'empty'
+  | 'too-long'
+  | 'malformed'
+  | 'payload-like';
+
+export interface PuzzleRoundRouteValidationResult {
+  valid: boolean;
+  id: string | null;
+  reason?: PuzzleRoundRouteValidationFailure;
 }
 
 type PuzzleSetClass =
@@ -1192,7 +1214,7 @@ export class PuzzleRoundCtrl {
             if (next) {
               _ratedStreamCount++;
               _sessionSeenIds.add(next.id);
-              await openPuzzleRound(next.id, redrawFn);
+              await openGeneratedPuzzleRoundRoute(next.id, redrawFn);
             } else {
               _emptyRatedStream = true;
               _ratedStreamActive = false;
@@ -1646,6 +1668,181 @@ let state: PuzzlePageState = { view: 'library' };
 let libraryCounts: LibraryCounts | undefined;
 let roundState: PuzzleRoundState | null = null;
 
+const MAX_PUZZLE_ROUND_ROUTE_ID_LENGTH = 80;
+
+function decodePuzzleRoundRouteId(rawId: string): string | null {
+  try {
+    return decodeURIComponent(rawId);
+  } catch {
+    return null;
+  }
+}
+
+function looksPuzzleRoundPayloadLike(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (/^[{\[]/.test(trimmed)) return true;
+  if (/[\r\n]/.test(trimmed)) return true;
+  if (/\b(FEN|PGN|Event|Site|Date)\b/i.test(trimmed)) return true;
+  if (/^(1\.\s|\*)/.test(trimmed)) return true;
+  if (/\b[prnbqkPRNBQK1-8]{1,8}\/[prnbqkPRNBQK1-8/]+\s[wb]\s[-KQkq]+\s[-a-h1-8]+\s\d+\s\d+\b/.test(trimmed)) {
+    return true;
+  }
+  if (looksPuzzleRoundMoveArrayLike(trimmed)) return true;
+  if (/^[A-Za-z0-9+/]{120,}={0,2}$/.test(trimmed)) return true;
+  return false;
+}
+
+function looksPuzzleRoundMoveArrayLike(value: string): boolean {
+  const parts = value
+    .split(/[.,\s]+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return false;
+  return parts.every(part => looksPuzzleRoundUciMoveLike(part) || looksPuzzleRoundSanMoveLike(part));
+}
+
+function looksPuzzleRoundUciMoveLike(value: string): boolean {
+  return /^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(value);
+}
+
+function looksPuzzleRoundSanMoveLike(value: string): boolean {
+  return /^(?:O-O(?:-O)?|0-0(?:-0)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?[+#]?|[KQRBN]x?[a-h][1-8][+#]?)$/.test(value);
+}
+
+export function validatePuzzleRoundRouteId(rawId: string): PuzzleRoundRouteValidationResult {
+  const decoded = decodePuzzleRoundRouteId(rawId);
+  if (decoded === null) return { valid: false, id: null, reason: 'malformed' };
+
+  const id = decoded.trim();
+  if (!id) return { valid: false, id: null, reason: 'empty' };
+  if (id.length > MAX_PUZZLE_ROUND_ROUTE_ID_LENGTH) return { valid: false, id: null, reason: 'too-long' };
+  if (looksPuzzleRoundPayloadLike(id)) return { valid: false, id: null, reason: 'payload-like' };
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) return { valid: false, id: null, reason: 'malformed' };
+
+  return { valid: true, id };
+}
+
+function setPuzzleRoundRecoveryState(error: string, redraw: () => void): void {
+  state = { view: 'round' };
+  roundState = { definition: null, status: 'error', error };
+  redraw();
+}
+
+function puzzleRoundRecoveryMessage(reason: PuzzleRoundRouteValidationFailure | 'missing'): string {
+  if (reason === 'missing') return 'Could not restore this puzzle. It may have been deleted or is not available in this browser.';
+  return 'Could not restore this puzzle. The puzzle link is invalid or no longer supported.';
+}
+
+export interface PuzzleRoundRouteOpenHooks {
+  openRound?: (id: string, redraw: () => void) => Promise<void>;
+  replaceRoute?: (route: string) => void;
+  recover?: (message: string, reason: PuzzleRoundRouteValidationFailure, redraw: () => void) => void;
+}
+
+export type PuzzleRoundNavigationPolicy =
+  | 'explicit-durable-selection'
+  | 'generated-session-advancement';
+
+export function puzzleRoundHashRoute(id: string): string {
+  return `#/puzzles/${encodeURIComponent(id)}`;
+}
+
+export function writePuzzleRoundRoute(id: string, policy: PuzzleRoundNavigationPolicy): void {
+  const route = puzzleRoundHashRoute(id);
+  if (policy === 'generated-session-advancement') replaceHashRoute(route);
+  else writeHashRoute(route);
+}
+
+interface GeneratedPuzzleRoundNavigationHooks extends PuzzleRoundRouteOpenHooks {
+  saveDefinition?: (def: PuzzleDefinition) => Promise<void>;
+  listDefinitions?: () => Promise<PuzzleDefinition[]>;
+}
+
+export async function openGeneratedPuzzleRoundRoute(
+  id: string,
+  redraw: () => void,
+  hooks: PuzzleRoundRouteOpenHooks = {},
+): Promise<PuzzleRoundRouteValidationResult> {
+  const validation = validatePuzzleRoundRouteId(id);
+  if (!validation.valid || !validation.id) {
+    const reason = validation.reason ?? 'malformed';
+    const message = puzzleRoundRecoveryMessage(reason);
+    if (hooks.recover) hooks.recover(message, reason, redraw);
+    else setPuzzleRoundRecoveryState(message, redraw);
+    return validation;
+  }
+
+  const route = puzzleRoundHashRoute(validation.id);
+  if (hooks.replaceRoute) hooks.replaceRoute(route);
+  else replaceHashRoute(route);
+  return openPuzzleRoundRoute(validation.id, '', redraw, hooks);
+}
+
+export function initPuzzleRoundShell(puzzleId?: string): void {
+  const s: PuzzlePageState = { view: 'round' };
+  if (puzzleId !== undefined) s.puzzleId = puzzleId;
+  state = s;
+}
+
+export async function openPuzzleRoundRoute(
+  rawId: string,
+  rawQuery: string,
+  redraw: () => void,
+  hooks: PuzzleRoundRouteOpenHooks = {},
+): Promise<PuzzleRoundRouteValidationResult> {
+  const validation = validatePuzzleRoundRouteId(rawId);
+  if (!validation.valid || !validation.id) {
+    const reason = validation.reason ?? 'malformed';
+    const message = puzzleRoundRecoveryMessage(reason);
+    if (hooks.recover) hooks.recover(message, reason, redraw);
+    else setPuzzleRoundRecoveryState(message, redraw);
+    return validation;
+  }
+
+  if (rawQuery.trim()) {
+    const route = puzzleRoundHashRoute(validation.id);
+    if (hooks.replaceRoute) hooks.replaceRoute(route);
+    else replaceHashRoute(route);
+  }
+
+  const openRound = hooks.openRound ?? openPuzzleRound;
+  await openRound(validation.id, redraw);
+  return validation;
+}
+
+interface PuzzleRoundOpenRuntimeHooks {
+  getDefinition?: (id: string) => Promise<PuzzleDefinition | undefined>;
+  initializePerf?: () => void;
+  startRound?: (def: PuzzleDefinition, redraw: () => void) => void;
+  recordSessionStart?: (id: string) => void;
+  loadMeta?: (id: string) => Promise<PuzzleUserMeta>;
+  dequeue?: (id: string) => void;
+  loadPgn?: (def: PuzzleDefinition) => Promise<string | undefined>;
+  prefetchPgns?: () => void;
+}
+let puzzleLibraryHydrationRun = 0;
+
+type PuzzleRouteHydrationStalePredicate = () => boolean;
+
+export function cancelPuzzleLibraryRouteHydration(): void {
+  puzzleLibraryHydrationRun++;
+}
+
+interface ImportedSessionRouteSelection {
+  themes: string[];
+  openings: string[];
+  ratingMin: number;
+  ratingMax: number;
+  tab: 'themes' | 'openings';
+}
+
+function dispatchImportedSessionRouteSelection(selection: ImportedSessionRouteSelection): void {
+  window.dispatchEvent(new CustomEvent<ImportedSessionRouteSelection>('patzer:puzzle-imported-route-selection', {
+    detail: selection,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Session mode — rated vs practice
 // Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleSession.scala
@@ -1708,7 +1905,7 @@ export async function startRatedSession(redraw: () => void): Promise<void> {
   if (def) {
     _ratedStreamCount++;
     _sessionSeenIds.add(def.id);
-    await openPuzzleRound(def.id, redraw);
+    await openGeneratedPuzzleRoundRoute(def.id, redraw);
   } else {
     recordPuzzleSetEmpty('rated-stream');
     _emptyRatedStream = true;
@@ -1991,6 +2188,13 @@ export async function loadUserPerfFromStorage(): Promise<void> {
   _currentUserPerf = await getUserPuzzlePerf();
 }
 
+function initializePuzzlePerfFromStorage(): void {
+  loadUserPerfFromStorage().catch(e => console.warn('[puzzle] loadUserPerfFromStorage failed', e));
+  syncRatedLadder()
+    .then(() => loadUserPerfFromStorage())
+    .catch(e => console.warn('[puzzle] syncRatedLadder failed', e));
+}
+
 export function initPuzzlePage(view: PuzzleView, puzzleId?: string): void {
   const s: PuzzlePageState = { view };
   if (puzzleId !== undefined) s.puzzleId = puzzleId;
@@ -1998,10 +2202,7 @@ export function initPuzzlePage(view: PuzzleView, puzzleId?: string): void {
   // Load the user's puzzle rating from IDB in the background.
   // The perf is available immediately via getCurrentUserPerf() (returns the
   // cached default until the async load completes).
-  loadUserPerfFromStorage().catch(e => console.warn('[puzzle] loadUserPerfFromStorage failed', e));
-  syncRatedLadder()
-    .then(() => loadUserPerfFromStorage())
-    .catch(e => console.warn('[puzzle] syncRatedLadder failed', e));
+  initializePuzzlePerfFromStorage();
 }
 
 export function getPuzzlePageState(): PuzzlePageState {
@@ -2023,7 +2224,18 @@ export function getPuzzleRoundState(): PuzzleRoundState | null {
  * Calls redraw once the definition is loaded (or on error).
  * Idempotent — skips if already loading/loaded for the same puzzle id.
  */
-export async function openPuzzleRound(id: string, redraw: () => void): Promise<void> {
+async function openPuzzleRoundWithRuntimeHooks(
+  id: string,
+  redraw: () => void,
+  hooks: PuzzleRoundOpenRuntimeHooks = {},
+): Promise<void> {
+  const validation = validatePuzzleRoundRouteId(id);
+  if (!validation.valid || !validation.id) {
+    setPuzzleRoundRecoveryState(puzzleRoundRecoveryMessage(validation.reason ?? 'malformed'), redraw);
+    return;
+  }
+  id = validation.id;
+
   // Avoid re-fetching if we already have the right puzzle loaded or loading
   if (roundState && state.puzzleId === id && roundState.status !== 'error') return;
 
@@ -2033,19 +2245,20 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
   redraw();
 
   try {
-    const def = await getPuzzleDefinition(id);
+    const def = await (hooks.getDefinition ?? getPuzzleDefinition)(id);
     if (!def) {
       recordPuzzleLoadFail(new Error('PuzzleDefinitionNotFound'), 'round-idb');
-      roundState = { definition: null, status: 'error', error: `Puzzle "${id}" not found` };
+      roundState = { definition: null, status: 'error', error: puzzleRoundRecoveryMessage('missing') };
     } else {
       roundState = { definition: def, status: 'ready' };
-      startPuzzleRound(def, redraw);
-      sessionRecordStart(def.id);
+      (hooks.initializePerf ?? initializePuzzlePerfFromStorage)();
+      (hooks.startRound ?? startPuzzleRound)(def, redraw);
+      (hooks.recordSessionStart ?? sessionRecordStart)(def.id);
       // Pre-load user metadata for the editing surface
-      loadPuzzleMeta(id).then(() => redraw());
+      (hooks.loadMeta ?? loadPuzzleMeta)(id).then(() => redraw());
       // Fetch full game PGN in the background — available for post-solve tree exploration
-      dequeueSessionPuzzle(def.id);
-      loadPuzzlePgn(def).then(pgn => {
+      (hooks.dequeue ?? dequeueSessionPuzzle)(def.id);
+      (hooks.loadPgn ?? loadPuzzlePgn)(def).then(pgn => {
         console.log('[pgn] loadPuzzlePgn resolved', { pgn: !!pgn, defId: def.id, ctrlId: activeRoundCtrl?.definition.id });
         if (pgn && activeRoundCtrl?.definition.id === def.id) {
           activeRoundCtrl.gamePgn = pgn;
@@ -2056,7 +2269,7 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
         }
       });
       // Prefetch PGNs for next puzzles in the session
-      prefetchSessionPgns();
+      (hooks.prefetchPgns ?? prefetchSessionPgns)();
     }
   } catch (e) {
     recordPuzzleLoadFail(e, 'round-idb');
@@ -2069,6 +2282,18 @@ export async function openPuzzleRound(id: string, redraw: () => void): Promise<v
     performance.mark('puzzle-load-end');
   }
   redraw();
+}
+
+export async function openPuzzleRound(id: string, redraw: () => void): Promise<void> {
+  return openPuzzleRoundWithRuntimeHooks(id, redraw);
+}
+
+export async function __testOpenPuzzleRoundWithHooks(
+  id: string,
+  redraw: () => void,
+  hooks: PuzzleRoundOpenRuntimeHooks,
+): Promise<void> {
+  return openPuzzleRoundWithRuntimeHooks(id, redraw, hooks);
 }
 
 // --- Puzzle board ---
@@ -2549,7 +2774,49 @@ export function getPuzzleListState(): PuzzleListState | null {
  */
 export function closePuzzleList(redraw: () => void): void {
   puzzleListState = null;
+  replaceHashRoute('#/puzzles');
   redraw();
+}
+
+function currentPuzzleLibraryRouteState(): PuzzleRouteState {
+  const routeState = defaultPuzzleRouteState();
+  if (!puzzleListState) return routeState;
+  routeState.source = puzzleListState.source;
+  routeState.ratingMin = puzzleListState.filters.ratingMin ?? routeState.ratingMin;
+  routeState.ratingMax = puzzleListState.filters.ratingMax ?? routeState.ratingMax;
+  routeState.theme = puzzleListState.filters.theme ?? null;
+  routeState.opening = puzzleListState.filters.opening ?? null;
+  routeState.sort = puzzleListState.sort;
+  routeState.page = puzzleListState.page;
+  routeState.difficulty = _currentDifficulty;
+  routeState.mode = puzzleListState.source === 'imported-lichess' ? _currentSessionMode : 'practice';
+  return routeState;
+}
+
+function replacePuzzleLibraryRoute(state: PuzzleRouteState): void {
+  replaceHashRoute(serializePuzzleRouteState(state));
+}
+
+function replaceCurrentPuzzleLibraryRoute(): void {
+  replacePuzzleLibraryRoute(currentPuzzleLibraryRouteState());
+}
+
+export function replacePuzzleImportedLibraryRoute(selection: {
+  themes: string[];
+  openings: string[];
+  ratingMin: number;
+  ratingMax: number;
+}): void {
+  const routeState = defaultPuzzleRouteState();
+  routeState.source = 'imported-lichess';
+  routeState.theme = selection.themes.length === 1 ? selection.themes[0]! : null;
+  routeState.opening = selection.openings.length === 1 ? selection.openings[0]! : null;
+  routeState.ratingMin = selection.ratingMin;
+  routeState.ratingMax = selection.ratingMax;
+  routeState.difficulty = _currentDifficulty;
+  routeState.mode = _currentSessionMode;
+  routeState.page = puzzleListState?.source === 'imported-lichess' ? puzzleListState.page : 1;
+  replacePuzzleLibraryRoute(routeState);
 }
 
 /**
@@ -2575,10 +2842,40 @@ function applyListFilters(ls: PuzzleListState): void {
       p.sourceKind === 'imported-lichess' ? p.themes.includes(theme) : false,
     );
   }
+  if (ls.filters.opening) {
+    const opening = ls.filters.opening;
+    filtered = filtered.filter(p =>
+      p.sourceKind === 'imported-lichess' ? p.openingTags.includes(opening) : false,
+    );
+  }
 
   ls.filtered = filtered;
   ls.page = 1;
+  applyPuzzleListSort(ls);
   ls.visible = filtered.slice(0, ls.pageSize);
+}
+
+function applyPuzzleListSort(ls: PuzzleListState): void {
+  const sort = ls.sort;
+  ls.filtered.sort((a, b) => {
+    if (sort === 'rating.asc' || sort === 'rating.desc') {
+      const ar = a.sourceKind === 'imported-lichess' ? a.rating : 0;
+      const br = b.sourceKind === 'imported-lichess' ? b.rating : 0;
+      return sort === 'rating.asc' ? ar - br : br - ar;
+    }
+    if (sort === 'title.asc' || sort === 'title.desc') {
+      const at = puzzleTitleForSort(a);
+      const bt = puzzleTitleForSort(b);
+      return sort === 'title.asc' ? at.localeCompare(bt) : bt.localeCompare(at);
+    }
+    if (sort === 'created.asc') return a.createdAt - b.createdAt;
+    return b.createdAt - a.createdAt;
+  });
+}
+
+function puzzleTitleForSort(def: PuzzleDefinition): string {
+  if (def.sourceKind === 'user-library') return def.title ?? def.sourceReason ?? def.id;
+  return def.lichessPuzzleId ?? def.id;
 }
 
 // State for incremental shard loading
@@ -2593,76 +2890,99 @@ let _importedShardIndex = 0;
 export async function openPuzzleList(
   source: PuzzleSourceKind,
   redraw: () => void,
+  options: { writeRoute?: boolean; isStale?: PuzzleRouteHydrationStalePredicate } = {},
 ): Promise<void> {
-  puzzleListState = {
+  const listState: PuzzleListState = {
     source,
     allForSource: [],
     filtered: [],
     visible: [],
     filters: {},
+    sort: source === 'imported-lichess' ? 'rating.asc' : 'created.desc',
     page: 1,
     pageSize: LIST_PAGE_SIZE,
     availableThemes: [],
     availableOpenings: [],
     loading: true,
   };
+  puzzleListState = listState;
+  if (options.writeRoute !== false) replaceCurrentPuzzleLibraryRoute();
   redraw();
 
   try {
     if (source === 'imported-lichess') {
-      await openImportedList(redraw);
+      await openImportedList(listState, redraw, options.isStale);
     } else {
-      await openUserLibraryList(redraw);
+      await openUserLibraryList(listState, options.isStale);
     }
   } catch (e) {
+    if (options.isStale?.()) return;
     recordPuzzleLoadFail(e, source === 'imported-lichess' ? 'imported-lichess' : 'user-library');
     console.warn('[puzzle-ctrl] openPuzzleList failed', e);
-    if (puzzleListState) puzzleListState.loading = false;
+    if (puzzleListState === listState) puzzleListState.loading = false;
   }
+  if (options.isStale?.() || puzzleListState !== listState) return;
   redraw();
 }
 
 /** Load user-library puzzles from IDB. */
-async function openUserLibraryList(redraw: () => void): Promise<void> {
+async function openUserLibraryList(
+  listState: PuzzleListState,
+  isStale?: PuzzleRouteHydrationStalePredicate,
+): Promise<void> {
   const forSource = await listPuzzleDefinitionsBySource('user-library');
+  if (isStale?.() || puzzleListState !== listState) return;
   forSource.sort((a, b) => b.createdAt - a.createdAt);
   if (forSource.length === 0) recordPuzzleSetEmpty('user-library');
 
-  puzzleListState!.allForSource = forSource;
-  puzzleListState!.availableThemes = [];
-  puzzleListState!.availableOpenings = [];
-  puzzleListState!.loading = false;
-  applyListFilters(puzzleListState!);
+  listState.allForSource = forSource;
+  listState.availableThemes = [];
+  listState.availableOpenings = [];
+  listState.loading = false;
+  applyListFilters(listState);
 }
 
 /** Load imported puzzles from shard files — first shard initially, more on demand. */
-async function openImportedList(redraw: () => void): Promise<void> {
+async function openImportedList(
+  listState: PuzzleListState,
+  redraw: () => void,
+  isStale?: PuzzleRouteHydrationStalePredicate,
+): Promise<void> {
   const manifest = await loadManifest();
+  if (isStale?.() || puzzleListState !== listState) return;
   _importedShards = manifest.shards;
   _importedShardIndex = 0;
-  puzzleListState!.availableThemes = getManifestThemes();
-  puzzleListState!.availableOpenings = getManifestOpenings();
+  listState.availableThemes = getManifestThemes();
+  listState.availableOpenings = getManifestOpenings();
 
   // Load the first shard
   if (_importedShards.length > 0) {
-    await loadNextImportedShard();
+    await loadNextImportedShard({ listState, isStale });
   } else {
     recordPuzzleSetEmpty('imported-lichess');
   }
-  puzzleListState!.loading = false;
-  applyListFilters(puzzleListState!);
-  if (puzzleListState!.filtered.length === 0) recordPuzzleSetEmpty('imported-lichess');
+  if (isStale?.() || puzzleListState !== listState) return;
+  listState.loading = false;
+  applyListFilters(listState);
+  if (listState.filtered.length === 0) recordPuzzleSetEmpty('imported-lichess');
   redraw();
 }
 
 /** Load the next shard of imported puzzles and append to the list. */
-async function loadNextImportedShard(): Promise<boolean> {
+async function loadNextImportedShard(options: {
+  listState?: PuzzleListState;
+  isStale?: PuzzleRouteHydrationStalePredicate | undefined;
+} = {}): Promise<boolean> {
+  if (options.isStale?.()) return false;
+  const listState = options.listState ?? puzzleListState;
+  if (!listState || puzzleListState !== listState) return false;
   if (_importedShardIndex >= _importedShards.length) return false;
   const shard = _importedShards[_importedShardIndex]!;
-  _importedShardIndex++;
 
-  const filters = puzzleListState?.filters ?? {};
+  const filters = listState.filters;
   const records = await loadFilteredShard(shard.id, filters);
+  if (options.isStale?.() || puzzleListState !== listState) return false;
+  _importedShardIndex++;
 
   // Convert shard records to PuzzleDefinitions
   const defs = records
@@ -2670,14 +2990,14 @@ async function loadNextImportedShard(): Promise<boolean> {
     .filter((d): d is NonNullable<typeof d> => d !== undefined);
   if (defs.length === 0) recordPuzzleSetEmpty('imported-lichess');
 
-  puzzleListState!.allForSource.push(...defs);
+  listState.allForSource.push(...defs);
   // Sort by rating ascending
-  puzzleListState!.allForSource.sort((a, b) => {
+  listState.allForSource.sort((a, b) => {
     const ra = a.sourceKind === 'imported-lichess' ? a.rating : 0;
     const rb = b.sourceKind === 'imported-lichess' ? b.rating : 0;
     return ra - rb;
   });
-  applyListFilters(puzzleListState!);
+  applyListFilters(listState);
   return true;
 }
 
@@ -2687,22 +3007,164 @@ async function loadNextImportedShard(): Promise<boolean> {
  */
 export async function loadMoreImportedShards(redraw: () => void): Promise<void> {
   if (!puzzleListState || puzzleListState.source !== 'imported-lichess') return;
-  puzzleListState.loading = true;
+  const listState = puzzleListState;
+  listState.loading = true;
   redraw();
   try {
-    const loaded = await loadNextImportedShard();
-    puzzleListState.loading = false;
+    const loaded = await loadNextImportedShard({ listState });
+    if (puzzleListState !== listState) return;
+    listState.loading = false;
     if (!loaded) console.log('[puzzle-ctrl] all shards loaded');
   } catch (e) {
     recordPuzzleLoadFail(e, 'imported-lichess');
-    puzzleListState.loading = false;
+    if (puzzleListState === listState) listState.loading = false;
     console.warn('[puzzle-ctrl] loadMoreImportedShards failed', e);
   }
+  if (puzzleListState !== listState) return;
   redraw();
 }
 
 export function hasMoreImportedShards(): boolean {
   return _importedShardIndex < _importedShards.length;
+}
+
+function routeStateForRuntime(parsed: PuzzleRouteState): PuzzleRouteState {
+  const routeState = { ...parsed };
+  // Retry, due, rated, favorites, and attempted sorting require broader
+  // metadata/session lenses. Keep this slice honest by dropping them during
+  // hydration instead of reconstructing queues or private metadata views.
+  routeState.lens = 'browse';
+  routeState.fav = false;
+  if (routeState.sort === 'attempted.desc' || routeState.sort === 'due.asc') {
+    routeState.sort = routeState.source === 'imported-lichess' ? 'rating.asc' : 'created.desc';
+  }
+  return routeState;
+}
+
+function applyRouteStateToOpenList(routeState: PuzzleRouteState): void {
+  if (!puzzleListState) return;
+  puzzleListState.sort = routeState.sort;
+  puzzleListState.filters = {};
+  if (puzzleListState.source === 'imported-lichess') {
+    if (routeState.ratingMin !== 0) puzzleListState.filters.ratingMin = routeState.ratingMin;
+    if (routeState.ratingMax !== 3200) puzzleListState.filters.ratingMax = routeState.ratingMax;
+    if (routeState.theme) puzzleListState.filters.theme = routeState.theme;
+    if (routeState.opening) puzzleListState.filters.opening = routeState.opening;
+  }
+  applyListFilters(puzzleListState);
+}
+
+async function revealPuzzleRoutePage(
+  page: number,
+  isStale?: PuzzleRouteHydrationStalePredicate,
+): Promise<void> {
+  if (!puzzleListState) return;
+  const listState = puzzleListState;
+  const targetPage = Math.max(1, page);
+  while (
+    !isStale?.()
+    && puzzleListState === listState
+    && listState.source === 'imported-lichess'
+    && listState.filtered.length < targetPage * listState.pageSize
+    && hasMoreImportedShards()
+  ) {
+    const loaded = await loadNextImportedShard({ listState, isStale });
+    if (!loaded) break;
+  }
+  if (isStale?.() || puzzleListState !== listState) return;
+  const availablePage = Math.max(1, Math.ceil(listState.filtered.length / listState.pageSize));
+  listState.page = Math.min(targetPage, availablePage);
+  listState.visible = listState.filtered.slice(0, listState.page * listState.pageSize);
+}
+
+function validateLoadedRouteState(routeState: PuzzleRouteState): PuzzleRouteState {
+  const next = { ...routeState };
+  if (!puzzleListState || puzzleListState.source !== 'imported-lichess') {
+    next.theme = null;
+    next.opening = null;
+    next.ratingMin = 0;
+    next.ratingMax = 3200;
+    next.mode = 'practice';
+    return next;
+  }
+  if (next.theme && !puzzleListState.availableThemes.includes(next.theme)) next.theme = null;
+  if (next.opening && !puzzleListState.availableOpenings.includes(next.opening)) next.opening = null;
+  return next;
+}
+
+export interface PuzzleLibraryHydrationSmokeResult {
+  applied: boolean;
+  replacedRoute: string | null;
+  stale: boolean;
+}
+
+export async function __testPuzzleLibraryRouteHydrationGuards(
+  query: string,
+  seams: {
+    loadList: () => Promise<void>;
+    applyListState: (routeState: PuzzleRouteState) => void;
+    replaceRoute: (route: string) => void;
+    redraw: () => void;
+  },
+): Promise<PuzzleLibraryHydrationSmokeResult> {
+  const run = ++puzzleLibraryHydrationRun;
+  const isStale = () => run !== puzzleLibraryHydrationRun;
+  const parsed = parsePuzzleRouteState(query);
+  const routeState = routeStateForRuntime(parsed.state);
+
+  await seams.loadList();
+  if (isStale()) return { applied: false, replacedRoute: null, stale: true };
+
+  seams.applyListState(routeState);
+  if (isStale()) return { applied: true, replacedRoute: null, stale: true };
+
+  const replacedRoute = serializePuzzleRouteState(routeState);
+  seams.replaceRoute(replacedRoute);
+  if (!isStale()) seams.redraw();
+  return { applied: true, replacedRoute, stale: false };
+}
+
+export async function hydratePuzzleLibraryRoute(query: string, redraw: () => void): Promise<void> {
+  const run = ++puzzleLibraryHydrationRun;
+  const isStale = () => run !== puzzleLibraryHydrationRun;
+  const redrawIfCurrent = () => {
+    if (!isStale()) redraw();
+  };
+  const parsed = parsePuzzleRouteState(query);
+  let routeState = routeStateForRuntime(parsed.state);
+
+  initPuzzlePage('library');
+  await loadLibraryCounts(redrawIfCurrent);
+  if (isStale()) return;
+
+  setDifficulty(routeState.difficulty);
+  setSessionMode(routeState.mode);
+
+  if (!routeState.source) {
+    puzzleListState = null;
+    replacePuzzleLibraryRoute(routeState);
+    redrawIfCurrent();
+    return;
+  }
+
+  await openPuzzleList(routeState.source, redrawIfCurrent, { writeRoute: false, isStale });
+  if (isStale()) return;
+
+  routeState = validateLoadedRouteState(routeState);
+  dispatchImportedSessionRouteSelection({
+    themes: routeState.theme ? [routeState.theme] : [],
+    openings: routeState.opening ? [routeState.opening] : [],
+    ratingMin: routeState.ratingMin,
+    ratingMax: routeState.ratingMax,
+    tab: routeState.opening ? 'openings' : 'themes',
+  });
+  applyRouteStateToOpenList(routeState);
+  await revealPuzzleRoutePage(routeState.page, isStale);
+  if (isStale()) return;
+
+  routeState.page = puzzleListState?.page ?? 1;
+  replacePuzzleLibraryRoute(routeState);
+  redrawIfCurrent();
 }
 
 /**
@@ -2784,7 +3246,7 @@ export async function startImportedSession(
   saveQueueToStorage();
 
   // Navigate immediately — queue fills behind the scenes.
-  window.location.hash = `#/puzzles/${encodeURIComponent(firstPick.id)}`;
+  await openGeneratedPuzzleRoundRoute(firstPick.id, redraw);
 
   // Background: continue scanning remaining shards to populate the queue.
   // Uses the shard cache so already-fetched shards are free to re-scan.
@@ -2896,7 +3358,7 @@ export async function retryFailedPuzzles(redraw: () => void): Promise<void> {
 
   roundState = null;
   activeRoundCtrl = null;
-  window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+  await openGeneratedPuzzleRoundRoute(pick.id, redraw);
 }
 
 // ---------------------------------------------------------------------------
@@ -3135,6 +3597,7 @@ export function filterPuzzleList(
   if (!puzzleListState) return;
   puzzleListState.filters = filters;
   applyListFilters(puzzleListState);
+  replaceCurrentPuzzleLibraryRoute();
   redraw();
 }
 
@@ -3147,6 +3610,7 @@ export function loadMorePuzzles(redraw: () => void): void {
   const nextEnd = (ls.page + 1) * ls.pageSize;
   ls.page++;
   ls.visible = ls.filtered.slice(0, nextEnd);
+  replaceCurrentPuzzleLibraryRoute();
   redraw();
 }
 
@@ -3168,7 +3632,7 @@ export async function selectPuzzleFromList(
     }
   }
   // Navigate to the puzzle round route
-  window.location.hash = `#/puzzles/${encodeURIComponent(id)}`;
+  writePuzzleRoundRoute(id, 'explicit-durable-selection');
 }
 
 // --- Session navigation ---
@@ -3179,24 +3643,27 @@ export async function selectPuzzleFromList(
  * Picks randomly from the available pool, excluding the current puzzle.
  * If no puzzles remain, stays on the current result screen.
  */
-export async function nextPuzzle(redraw: () => void): Promise<void> {
+export async function nextPuzzle(
+  redraw: () => void,
+  hooks: GeneratedPuzzleRoundNavigationHooks = {},
+): Promise<void> {
   const currentDef = roundState?.definition;
   if (!currentDef) return;
 
   // If there's a session queue, pick the next puzzle from it
   if (_sessionQueue.length > 0) {
     const pick = _sessionQueue[0]!;
-    await savePuzzleDefinition(pick);
+    await (hooks.saveDefinition ?? savePuzzleDefinition)(pick);
     roundState = null;
     activeRoundCtrl = null;
-    window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+    await openGeneratedPuzzleRoundRoute(pick.id, redraw, hooks);
     return;
   }
 
   // Fallback: pick randomly from IDB
   const sourceKind: PuzzleSourceKind = currentDef.sourceKind;
   try {
-    const all = await listPuzzleDefinitions();
+    const all = await (hooks.listDefinitions ?? listPuzzleDefinitions)();
     const candidates = all.filter(
       p => p.sourceKind === sourceKind && p.id !== currentDef.id,
     );
@@ -3208,11 +3675,23 @@ export async function nextPuzzle(redraw: () => void): Promise<void> {
     const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
     roundState = null;
     activeRoundCtrl = null;
-    window.location.hash = `#/puzzles/${encodeURIComponent(pick.id)}`;
+    await openGeneratedPuzzleRoundRoute(pick.id, redraw, hooks);
   } catch (e) {
     recordPuzzleLoadFail(e, 'next-puzzle');
     console.warn('[puzzle-ctrl] nextPuzzle failed', e);
   }
+}
+
+export async function __testNextPuzzleFromSessionQueue(
+  currentDef: PuzzleDefinition,
+  nextDef: PuzzleDefinition,
+  redraw: () => void,
+  hooks: GeneratedPuzzleRoundNavigationHooks,
+): Promise<void> {
+  state = { view: 'round', puzzleId: currentDef.id };
+  roundState = { definition: currentDef, status: 'ready' };
+  _sessionQueue = [nextDef];
+  await nextPuzzle(redraw, hooks);
 }
 
 /**
@@ -3326,7 +3805,7 @@ export async function startRetrySession(redraw: () => void): Promise<void> {
 
     // Navigate to the first puzzle in the queue
     const first = retryQueue[0]!;
-    window.location.hash = `#/puzzles/${encodeURIComponent(first.id)}`;
+    await openGeneratedPuzzleRoundRoute(first.id, redraw);
   } catch (e) {
     recordPuzzleLoadFail(e, 'retry-session');
     console.warn('[puzzle-ctrl] startRetrySession failed', e);
@@ -3357,7 +3836,7 @@ export async function nextRetryPuzzle(redraw: () => void): Promise<void> {
   }
 
   const next = retryQueue[retryIndex]!;
-  window.location.hash = `#/puzzles/${encodeURIComponent(next.id)}`;
+  await openGeneratedPuzzleRoundRoute(next.id, redraw);
 }
 
 // ---------------------------------------------------------------------------
@@ -3518,7 +3997,7 @@ export async function startDueSession(redraw: () => void): Promise<void> {
     retrySessionActive = true;
 
     const first = retryQueue[0]!;
-    window.location.hash = `#/puzzles/${encodeURIComponent(first.id)}`;
+    await openGeneratedPuzzleRoundRoute(first.id, redraw);
   } catch (e) {
     recordPuzzleLoadFail(e, 'due-session');
     console.warn('[puzzle-ctrl] startDueSession failed', e);

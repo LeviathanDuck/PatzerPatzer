@@ -31,6 +31,75 @@ let _getSelectedGameId: () => string | null                      = () => null;
 let _clearGameAnalysis: (gameId: string) => void                 = () => {};
 let _redraw:            () => void                               = () => {};
 
+function renderAnnotatedComment(node: TreeNode, path: TreePath, annotated: boolean): string | null {
+  if (!annotated) return null;
+  const commentParts: string[] = [];
+  const ev = evalCache.get(path);
+  if (ev) {
+    if (ev.mate !== undefined) {
+      commentParts.push(`[%eval #${ev.mate}]`);
+    } else if (ev.cp !== undefined) {
+      const pawns = (ev.cp / 100).toFixed(2);
+      commentParts.push(`[%eval ${pawns}]`);
+    }
+  }
+  if (node.clock !== undefined) {
+    const total = Math.round(node.clock / 100);
+    const hrs = Math.floor(total / 3600);
+    const m   = Math.floor((total % 3600) / 60);
+    const s   = total % 60;
+    commentParts.push(`[%clk ${hrs}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`);
+  }
+  return commentParts.length > 0 ? `{ ${commentParts.join(' ')} }` : null;
+}
+
+function renderPgnLine(
+  firstNode: TreeNode,
+  firstPath: TreePath,
+  annotated: boolean,
+  siblingVariations: Array<{ node: TreeNode; path: TreePath }> = [],
+): string {
+  const parts: string[] = [];
+  let node: TreeNode | undefined = firstNode;
+  let path = firstPath;
+  let needsMoveNum = true;
+  let pendingSiblingVariations = siblingVariations;
+
+  while (node) {
+    const isWhite = node.ply % 2 === 1;
+    const moveNum = Math.ceil(node.ply / 2);
+    if (isWhite || needsMoveNum) {
+      parts.push(isWhite ? `${moveNum}.` : `${moveNum}...`);
+    }
+
+    parts.push(node.san ?? '?');
+
+    const comment = renderAnnotatedComment(node, path, annotated);
+    if (comment) {
+      parts.push(comment);
+      needsMoveNum = isWhite;
+    } else {
+      needsMoveNum = false;
+    }
+
+    for (const variation of pendingSiblingVariations) {
+      parts.push(`(${renderPgnLine(variation.node, variation.path, annotated)})`);
+    }
+    pendingSiblingVariations = [];
+
+    for (const child of node.children.slice(1)) {
+      parts.push(`(${renderPgnLine(child, path + child.id, annotated)})`);
+    }
+
+    const next: TreeNode | undefined = node.children[0];
+    if (!next) break;
+    path += next.id;
+    node = next;
+  }
+
+  return parts.join(' ');
+}
+
 export function initPgnExport(deps: {
   getCtrl:            () => AnalyseCtrl;
   getImportedGames:   () => ImportedGame[];
@@ -71,49 +140,15 @@ export function buildPgn(annotated: boolean): string {
   if (annotated) headers.push(['Annotator', 'PatzerPro']);
   const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join('\n');
 
-  const nodes = ctrl.mainline.slice(1); // skip root (no move)
   const parts: string[] = [];
-  let needsMoveNum = true;
-  let pgnPath = ''; // accumulated path for evalCache lookups
-
-  for (const node of nodes) {
-    pgnPath += node.id;
-    const isWhite = node.ply % 2 === 1;
-    const moveNum = Math.ceil(node.ply / 2);
-
-    if (isWhite || needsMoveNum) {
-      parts.push(isWhite ? `${moveNum}.` : `${moveNum}...`);
-    }
-
-    parts.push(node.san ?? '?');
-
-    if (annotated) {
-      const commentParts: string[] = [];
-      const ev = evalCache.get(pgnPath);
-      if (ev) {
-        if (ev.mate !== undefined) {
-          commentParts.push(`[%eval #${ev.mate}]`);
-        } else if (ev.cp !== undefined) {
-          const pawns = (ev.cp / 100).toFixed(2);
-          commentParts.push(`[%eval ${pawns}]`);
-        }
-      }
-      if (node.clock !== undefined) {
-        const total = Math.round(node.clock / 100);
-        const hrs = Math.floor(total / 3600);
-        const m   = Math.floor((total % 3600) / 60);
-        const s   = total % 60;
-        commentParts.push(`[%clk ${hrs}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`);
-      }
-      if (commentParts.length > 0) {
-        parts.push(`{ ${commentParts.join(' ')} }`);
-        needsMoveNum = isWhite; // black move after white comment needs "N..."
-      } else {
-        needsMoveNum = false;
-      }
-    } else {
-      needsMoveNum = false;
-    }
+  const firstNode = ctrl.root.children[0];
+  if (firstNode) {
+    parts.push(renderPgnLine(
+      firstNode,
+      firstNode.id,
+      annotated,
+      ctrl.root.children.slice(1).map(node => ({ node, path: node.id })),
+    ));
   }
 
   parts.push(game?.result ?? '*');
