@@ -7,6 +7,8 @@ const LICHESS_TOKEN_URL = 'https://lichess.org/api/token';
 const LICHESS_ACCOUNT_URL = 'https://lichess.org/api/account';
 const CLIENT_ID = 'patzer-pro';
 const BOOK_AUTH_ENDPOINT = '/api/patzer-sync/book-auth.php';
+const SERVER_LICHESS_STATUS_ENDPOINT = '/api/lichess/status';
+const SERVER_LICHESS_CONNECT_ENDPOINT = '/api/lichess/connect';
 const CALLBACK_PATH = '/book-oauth-callback.html';
 const CALLBACK_MESSAGE_TYPE = 'patzer:book-oauth-callback';
 const PENDING_STORAGE_KEY = 'patzer.lichess.bookOAuthPending';
@@ -53,6 +55,11 @@ interface BookAuthResponse {
   connected?: boolean;
   username?: string;
   error?: string;
+}
+
+interface ServerLichessStatusResponse {
+  connected?: boolean;
+  username?: string | null;
 }
 
 interface CompletedBookLogin {
@@ -199,6 +206,35 @@ async function bookAuthFetch<T extends BookAuthResponse>(init: RequestInit = {})
   }
   if (!res.ok) recordBookAuthFailure('book-auth', startedAt, res.status);
   return readJsonResponse<T>(res);
+}
+
+async function getServerLichessStatus(): Promise<BookAccessStatus | null> {
+  try {
+    const startedAt = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(SERVER_LICHESS_STATUS_ENDPOINT, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+    } catch (error) {
+      recordBookAuthFailure('server-lichess-status', startedAt, undefined, error);
+      throw error;
+    }
+    if (!res.ok) {
+      recordBookAuthFailure('server-lichess-status', startedAt, res.status);
+      return null;
+    }
+    const contentType = res.headers.get('content-type') ?? '';
+    if (!contentType.toLowerCase().includes('application/json')) return null;
+    const body = await res.json() as ServerLichessStatusResponse;
+    if (!body.connected) return { connected: false };
+    const username = typeof body.username === 'string' && body.username.trim() ? body.username : undefined;
+    return username ? { connected: true, username } : { connected: true };
+  } catch {
+    return null;
+  }
 }
 
 function popupFeatures(): string {
@@ -530,6 +566,54 @@ async function runPopupLogin(popup: Window | null): Promise<CompletedBookLogin> 
   }
 }
 
+async function runServerPopupLogin(popup: Window | null): Promise<void> {
+  const authPopup = navigateBookLoginPopup(popup, SERVER_LICHESS_CONNECT_ENDPOINT);
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      void getServerLichessStatus().then(status => {
+        if (settled) return;
+        if (status?.connected) {
+          settled = true;
+          window.clearInterval(timer);
+          recordBookAuthPhase('server-lichess-connected', Severity.Info, {
+            endpointClass: 'server-lichess-status',
+            latencyMs: Date.now() - startedAt,
+          });
+          closeBookLoginPopup(authPopup);
+          resolve();
+          return;
+        }
+        if (authPopup.closed && Date.now() - startedAt > 1000) {
+          settled = true;
+          window.clearInterval(timer);
+          recordBookAuthPhase('server-popup-close-cancelled', Severity.Warn, {
+            endpointClass: 'server-lichess-status',
+            popupClosed: true,
+            latencyMs: Date.now() - startedAt,
+            failureClass: 'popup-closed-before-status',
+          });
+          reject(new Error('Lichess book login was cancelled.'));
+          return;
+        }
+        if (Date.now() - startedAt > 5 * 60 * 1000) {
+          settled = true;
+          window.clearInterval(timer);
+          closeBookLoginPopup(authPopup);
+          recordBookAuthPhase('server-popup-timeout', Severity.Error, {
+            endpointClass: 'server-lichess-status',
+            latencyMs: Date.now() - startedAt,
+            failureClass: 'timeout',
+          });
+          reject(new Error('Lichess book login timed out.'));
+        }
+      });
+    }, 750);
+  });
+}
+
 async function saveBookAccess(login: CompletedBookLogin): Promise<void> {
   const startedAt = Date.now();
   recordBookAuthPhase('book-token-save-started', Severity.Info, {
@@ -562,7 +646,7 @@ async function saveBookAccess(login: CompletedBookLogin): Promise<void> {
 }
 
 export async function getBookAccessStatus(): Promise<BookAccessStatus> {
-  if (!adminSyncToken()) return { connected: false };
+  if (!adminSyncToken()) return (await getServerLichessStatus()) ?? { connected: false };
   const body = await bookAuthFetch<BookAuthResponse>();
   if (body.connected) {
     const username = typeof body.username === 'string' && body.username.trim() ? body.username : undefined;
@@ -608,11 +692,24 @@ export async function clearLichessApiLoginData(): Promise<LichessApiLoginClearRe
 export async function requestBookLogin(redraw?: () => void): Promise<void> {
   const popup = openBookLoginPopup();
   if (!adminSyncToken()) {
-
-
-
-    closeBookLoginPopup(popup);
-    requireAdminHeaders();
+    try {
+      const serverStatus = await getServerLichessStatus();
+      if (serverStatus?.connected) {
+        closeBookLoginPopup(popup);
+        redraw?.();
+        return;
+      }
+      if (serverStatus) {
+        await runServerPopupLogin(popup);
+        redraw?.();
+        return;
+      }
+      closeBookLoginPopup(popup);
+      requireAdminHeaders();
+    } catch (error) {
+      closeBookLoginPopup(popup);
+      throw error;
+    }
   }
   try {
     const login = await runPopupLogin(popup);
