@@ -7,6 +7,14 @@ import { listStudies, getStudiesPaginated, saveStudy, deleteStudy as deleteStudy
 import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
+import { replaceHashRoute } from '../router';
+import {
+  parseStudyRouteState,
+  resolveStudyRouteAvailability,
+  serializeStudyRouteState,
+  studyRouteNeedsFullLibraryScan,
+  type StudyRouteState,
+} from './routeState';
 import type { StudyItem, TrainableSequence, PositionProgress, StudyFolder } from './types';
 import { record, Severity } from '../diagnostics';
 
@@ -255,6 +263,42 @@ export function setFilterTag(tag: string | null): void { _filterTag = tag; }
 export function setFilterSrc(src: string | null): void { _filterSrc = src; }
 export function setSearch(q: string): void           { _search = q; }
 
+export function loadedStudyPageCount(): number {
+  return Math.max(1, _page + 1);
+}
+
+export function studyLibraryRouteSnapshot(pages: number = loadedStudyPageCount()): StudyRouteState {
+  return {
+    q:       _search,
+    source:  _filterSrc as StudyRouteState['source'],
+    tag:     _filterTag,
+    folder:  _activeFolderName,
+    fav:     _filterFav,
+    sortKey: _sortKey,
+    sortDir: _sortDir,
+    view:    _viewMode,
+    pages,
+  };
+}
+
+function applyStudyLibraryRouteState(state: StudyRouteState): void {
+  _search = state.q;
+  _filterSrc = state.source;
+  _filterTag = state.tag;
+  _activeFolderName = state.folder;
+  _filterFav = state.fav;
+  _sortKey = state.sortKey;
+  _sortDir = state.sortDir;
+  _viewMode = state.view;
+}
+
+function studyFolderRouteNames(): string[] {
+  const names = new Set<string>();
+  for (const folder of _folders) names.add(folder.name);
+  for (const name of studyFolders()) names.add(name);
+  return Array.from(names);
+}
+
 // --- CRUD ---
 
 /**
@@ -262,11 +306,11 @@ export function setSearch(q: string): void           { _search = q; }
  * Uses cursor-based pagination to avoid loading the full store (CR-2, CR-3).
  * Calls redraw() when done. Safe to call multiple times.
  */
-export function initStudyLibrary(redraw: () => void): void {
+export function initStudyLibrary(redraw: () => void): Promise<void> {
   _page = 0;
   const dir: IDBCursorDirection = _sortDir === 'desc' ? 'prev' : 'next';
   const sortIdx = _sortKey === 'title' ? 'createdAt' : _sortKey;
-  getStudiesPaginated(sortIdx, dir, 0, PAGE_SIZE + 1).then(items => {
+  return getStudiesPaginated(sortIdx, dir, 0, PAGE_SIZE + 1).then(items => {
     _hasMore  = items.length > PAGE_SIZE;
     _studies  = _hasMore ? items.slice(0, PAGE_SIZE) : items;
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
@@ -283,28 +327,53 @@ export function initStudyLibrary(redraw: () => void): void {
   });
 }
 
+function loadAllStudiesForRoute(requestedPages: number, redraw: () => void): Promise<void> {
+  return listStudies().then(items => {
+    _studies = items;
+    _hasMore = false;
+    _loadingMore = false;
+    _page = Math.max(0, requestedPages - 1);
+    if (_studies.length === 0) recordStudyRouteEmpty('study-library');
+    _loaded = true;
+    _indexDirty = true;
+    redraw();
+  }).catch(e => {
+    recordStudyLoadFail('study-library', e);
+    _studies = [];
+    _hasMore = false;
+    _loadingMore = false;
+    _page = 0;
+    _loaded = true;
+    _indexDirty = true;
+    redraw();
+  });
+}
+
 /**
  * Load the next page of studies and append to the current list.
  * Filters and sorts are applied client-side after loading.
  */
-export function loadNextPage(redraw: () => void): void {
-  if (!_hasMore || _loadingMore) return;
+export function loadNextPage(redraw: () => void): Promise<boolean> {
+  if (!_hasMore || _loadingMore) return Promise.resolve(false);
   _loadingMore = true;
   _page++;
   redraw();
   const dir: IDBCursorDirection = _sortDir === 'desc' ? 'prev' : 'next';
   const sortIdx = _sortKey === 'title' ? 'createdAt' : _sortKey;
-  getStudiesPaginated(sortIdx, dir, _page * PAGE_SIZE, PAGE_SIZE + 1).then(items => {
+  return getStudiesPaginated(sortIdx, dir, _page * PAGE_SIZE, PAGE_SIZE + 1).then(items => {
     _hasMore     = items.length > PAGE_SIZE;
     _loadingMore = false;
     _studies     = [..._studies, ...(_hasMore ? items.slice(0, PAGE_SIZE) : items)];
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
     _indexDirty  = true;
     redraw();
+    return true;
   }).catch(e => {
     recordStudyLoadFail('study-library', e);
+    _page = Math.max(0, _page - 1);
     _loadingMore = false;
     redraw();
+    return false;
   });
 }
 
@@ -312,25 +381,86 @@ export function loadNextPage(redraw: () => void): void {
  * Reset pagination and reload from page 0.
  * Called when sort key/direction or filters change.
  */
-export function resetPagination(redraw: () => void): void {
+export function resetPagination(redraw: () => void): Promise<void> {
   _studies  = [];
   _loaded   = false;
-  initStudyLibrary(redraw);
+  return initStudyLibrary(redraw);
 }
 
 /**
  * Load persisted StudyFolder entities from IDB.
  * Called once at library init. Safe to call multiple times.
  */
-export function loadFolders(redraw: () => void): void {
-  if (_foldersLoaded) return;
-  listFolders().then(items => {
+export function loadFolders(redraw: () => void): Promise<void> {
+  if (_foldersLoaded) return Promise.resolve();
+  return listFolders().then(items => {
     _folders      = items;
     _foldersLoaded = true;
     redraw();
   }).catch(e => {
     recordStudyLoadFail('study-library', e);
     _foldersLoaded = true;
+  });
+}
+
+let _studyRouteHydrationRun = 0;
+
+export function cancelStudyLibraryRouteHydration(): void {
+  ++_studyRouteHydrationRun;
+}
+
+export function hydrateStudyLibraryRoute(query: string, redraw: () => void): void {
+  const run = ++_studyRouteHydrationRun;
+  const parsed = parseStudyRouteState(query);
+  applyStudyLibraryRouteState(parsed.state);
+  const needsFullLibraryScan = studyRouteNeedsFullLibraryScan(parsed.state);
+  _studies = [];
+  _loaded = false;
+  _hasMore = false;
+  _loadingMore = false;
+
+  const initialLoad = needsFullLibraryScan
+    ? loadAllStudiesForRoute(parsed.state.pages, redraw)
+    : initStudyLibrary(redraw);
+
+  void initialLoad.then(async () => {
+    if (run !== _studyRouteHydrationRun) return;
+    await loadFolders(redraw);
+    if (run !== _studyRouteHydrationRun) return;
+
+    const availability = resolveStudyRouteAvailability(studyLibraryRouteSnapshot(parsed.state.pages), {
+      tags: studyTags(),
+      folders: studyFolderRouteNames(),
+    });
+    if (availability.invalidParams.length > 0) {
+      applyStudyLibraryRouteState(availability.state);
+    }
+
+    const requestedPages = Math.max(1, availability.state.pages);
+    while (run === _studyRouteHydrationRun && loadedStudyPageCount() < requestedPages && _hasMore) {
+      const loaded = await loadNextPage(redraw);
+      if (!loaded) break;
+    }
+    if (run !== _studyRouteHydrationRun) return;
+
+    const actualPages = loadedStudyPageCount();
+    const canonicalState = {
+      ...studyLibraryRouteSnapshot(actualPages),
+      pages: Math.min(requestedPages, actualPages),
+    };
+    const canonicalRoute = serializeStudyRouteState(canonicalState);
+    const needsCanonicalCleanup =
+      parsed.canonical.hadUnknownParams ||
+      parsed.canonical.hadDuplicateParams ||
+      parsed.canonical.hadInvalidParams ||
+      availability.invalidParams.length > 0 ||
+      parsed.state.pages !== canonicalState.pages ||
+      window.location.hash !== canonicalRoute;
+
+    if (needsCanonicalCleanup && window.location.hash.startsWith('#/study') && !window.location.hash.startsWith('#/study/')) {
+      replaceHashRoute(canonicalRoute);
+    }
+    redraw();
   });
 }
 

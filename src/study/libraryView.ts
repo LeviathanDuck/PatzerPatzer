@@ -10,18 +10,20 @@ import {
   studyTags, studyFolders, updateStudy, deleteStudy, importPgnToLibrary,
   practiceLoaded, dueCount, dueCountForStudy,
   reviewSequences, learnSequences, loadPracticeData,
-  hasMore, isLoadingMore, loadNextPage,
+  hasMore, isLoadingMore, loadNextPage, loadedStudyPageCount,
   folders, foldersLoaded, activeFolderName, sidebarCollapsed,
   setActiveFolderName, toggleSidebar, loadFolders,
   createFolder, renameFolder, removeFolderEntity, moveStudyToFolder,
   selectedIds, isSelected, selectionCount, clearSelection,
   handleStudyClick, bulkDeleteStudies, bulkAddToFolder, bulkSetFavorite,
-  viewMode, setViewMode,
+  viewMode, setViewMode, resetPagination, studyLibraryRouteSnapshot,
   seedSampleStudies, isSeeding,
   listOrpPracticeLines,
   type StudySortKey,
   type OrpPracticeLineView,
 } from './studyCtrl';
+import { serializeStudyRouteState, type StudyRouteState } from './routeState';
+import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
 import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
@@ -44,6 +46,20 @@ function sourceLabel(source: string): string {
 
 function formatDate(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function writeStudyLibraryRoute(overrides: Partial<StudyRouteState> = {}, opts: { resetPages?: boolean } = {}): void {
+  const base = studyLibraryRouteSnapshot();
+  const next = {
+    ...base,
+    ...overrides,
+    pages: opts.resetPages ? 1 : (overrides.pages ?? base.pages),
+  };
+  writeHashRoute(serializeStudyRouteState(next), { mode: 'replace' });
+}
+
+function resetStudyLibraryLens(redraw: () => void): void {
+  void resetPagination(redraw);
 }
 
 // --- Inline edit state (ephemeral — module-level since only one edit can be active) ---
@@ -452,7 +468,12 @@ function renderFolderSidebar(redraw: () => void): VNode {
     sidebarCollapsed() ? null : h('div.study-sidebar__folders', [
       h('button.study-sidebar__folder', {
         class: { active: activeFolderName() === null },
-        on: { click: () => { setActiveFolderName(null); redraw(); } },
+        on: { click: () => {
+          setActiveFolderName(null);
+          writeStudyLibraryRoute({ folder: null }, { resetPages: true });
+          resetStudyLibraryLens(redraw);
+          redraw();
+        } },
       }, 'All Studies'),
 
       // Persisted folder entries (with rename + delete controls)
@@ -484,7 +505,13 @@ function renderFolderSidebar(redraw: () => void): VNode {
                   'drag-over':  _dragOverFolderName === folder.name,
                 },
                 on: {
-                  click: () => { setActiveFolderName(activeFolderName() === folder.name ? null : folder.name); redraw(); },
+                  click: () => {
+                    const nextFolder = activeFolderName() === folder.name ? null : folder.name;
+                    setActiveFolderName(nextFolder);
+                    writeStudyLibraryRoute({ folder: nextFolder }, { resetPages: true });
+                    resetStudyLibraryLens(redraw);
+                    redraw();
+                  },
                   ...folderDropHandlers(folder.name, redraw),
                 },
               }, folder.name),
@@ -517,7 +544,13 @@ function renderFolderSidebar(redraw: () => void): VNode {
           key: `inline-${name}`,
           class: { active: activeFolderName() === name, 'drag-over': _dragOverFolderName === name },
           on: {
-            click: () => { setActiveFolderName(activeFolderName() === name ? null : name); redraw(); },
+            click: () => {
+              const nextFolder = activeFolderName() === name ? null : name;
+              setActiveFolderName(nextFolder);
+              writeStudyLibraryRoute({ folder: nextFolder }, { resetPages: true });
+              resetStudyLibraryLens(redraw);
+              redraw();
+            },
             ...folderDropHandlers(name, redraw),
           },
         }, name)
@@ -561,20 +594,36 @@ function renderFilterBar(redraw: () => void): VNode {
     // Search
     h('input.study-filter-bar__search', {
       attrs: { placeholder: 'Search studies…', value: searchQuery() },
-      on: { input: (e: Event) => { setSearch((e.target as HTMLInputElement).value); redraw(); } },
+      on: { input: (e: Event) => {
+        setSearch((e.target as HTMLInputElement).value);
+        writeStudyLibraryRoute({ q: searchQuery() }, { resetPages: true });
+        resetStudyLibraryLens(redraw);
+        redraw();
+      } },
     }),
 
     // Favorite filter
     h('button.study-filter-btn', {
       class: { active: filterFav() },
-      on: { click: () => { setFilterFav(!filterFav()); redraw(); } },
+      on: { click: () => {
+        setFilterFav(!filterFav());
+        writeStudyLibraryRoute({ fav: filterFav() }, { resetPages: true });
+        resetStudyLibraryLens(redraw);
+        redraw();
+      } },
     }, '★ Favorites'),
 
     // Source filter pills
     ...sources.map(src =>
       h('button.study-filter-btn', {
         class: { active: filterSrc() === src },
-        on: { click: () => { setFilterSrc(filterSrc() === src ? null : src); redraw(); } },
+        on: { click: () => {
+          const nextSource = filterSrc() === src ? null : src;
+          setFilterSrc(nextSource);
+          writeStudyLibraryRoute({ source: nextSource as StudyRouteState['source'] }, { resetPages: true });
+          resetStudyLibraryLens(redraw);
+          redraw();
+        } },
       }, sourceLabel(src))
     ),
 
@@ -582,7 +631,13 @@ function renderFilterBar(redraw: () => void): VNode {
     ...tags.map(tag =>
       h('button.study-filter-btn', {
         class: { active: filterTag() === tag },
-        on: { click: () => { setFilterTag(filterTag() === tag ? null : tag); redraw(); } },
+        on: { click: () => {
+          const nextTag = filterTag() === tag ? null : tag;
+          setFilterTag(nextTag);
+          writeStudyLibraryRoute({ tag: nextTag }, { resetPages: true });
+          resetStudyLibraryLens(redraw);
+          redraw();
+        } },
       }, tag)
     ),
   ]);
@@ -720,6 +775,8 @@ function renderSortControls(redraw: () => void): VNode {
             setSortKey(key);
             setSortDir('desc');
           }
+          writeStudyLibraryRoute({ sortKey: sortKey(), sortDir: sortDir() }, { resetPages: true });
+          resetStudyLibraryLens(redraw);
           redraw();
         } },
       }, [
@@ -835,12 +892,20 @@ export function renderStudyLibrary(redraw: () => void): VNode {
           h('button.study-view-toggle__btn', {
             class: { active: viewMode() === 'list' },
             attrs: { title: 'List view', 'aria-label': 'List view' },
-            on: { click: () => { setViewMode('list'); redraw(); } },
+            on: { click: () => {
+              setViewMode('list');
+              writeStudyLibraryRoute({ view: 'list' });
+              redraw();
+            } },
           }, '☰'),
           h('button.study-view-toggle__btn', {
             class: { active: viewMode() === 'grid' },
             attrs: { title: 'Grid view', 'aria-label': 'Grid view' },
-            on: { click: () => { setViewMode('grid'); redraw(); } },
+            on: { click: () => {
+              setViewMode('grid');
+              writeStudyLibraryRoute({ view: 'grid' });
+              redraw();
+            } },
           }, '⊞'),
         ]),
         h('button.study-btn.study-btn--import', {
@@ -886,7 +951,11 @@ export function renderStudyLibrary(redraw: () => void): VNode {
               isLoadingMore()
                 ? h('span.study-list__loading', 'Loading…')
                 : h('button.study-btn.study-btn--load-more', {
-                    on: { click: () => { loadNextPage(redraw); } },
+                    on: { click: () => {
+                      void loadNextPage(redraw).then(loaded => {
+                        if (loaded) writeStudyLibraryRoute({ pages: loadedStudyPageCount() });
+                      });
+                    } },
                   }, 'Load more'),
             ])
           : null,

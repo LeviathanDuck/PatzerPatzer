@@ -51,8 +51,9 @@ import {
   testRemoteSyncConnection,
 } from '../sync/remoteSync';
 import { syncRatedLadder } from '../puzzles/puzzleDb';
-import type { Route } from '../router';
+import { writeHashRoute, type Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
+import { serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { accountId, getAccount, listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
 import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
@@ -1450,7 +1451,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         on: { click: () => {
           if (!hasGame) return;
           closeGlobalMenu(redraw);
-          window.location.hash = '#/analysis';
+          writeHashRoute(serializeAnalysisSelectedGameRoute(selectedGameId));
         }},
       }, 'Game Review'),
 
@@ -1500,7 +1501,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       hasVerifiedSyncSession ? h('button.global-menu__item', {
         on: { click: () => {
           closeGlobalMenu(redraw);
-          window.location.hash = '#/sync';
+          writeHashRoute('#/sync');
         } },
       }, 'Sync Dashboard') : null,
 
