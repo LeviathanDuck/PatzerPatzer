@@ -34,6 +34,7 @@ import {
   startTreeEvalPass1,
 } from './treeEval';
 import type { OpponentsTreeUrlState, OpponentsUrlRange, OpponentsUrlSpeed, OpponentsUrlTarget } from './urlState';
+import { filterGamesByDateCutoff } from './dateFilter';
 import {
   createOpeningTreeBuildContext,
   openingTreeBuildMilestonesForProgress,
@@ -465,19 +466,37 @@ export function presetSessionDateRange(range: string | null): void {
 /** Games currently in the tree (colour + speed + date filtered). */
 export function activeGames(): readonly ResearchGame[] { return _activeGames; }
 
-function dateRangeCutoffMs(range: string): number {
-  const entry = (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === range);
-  return entry ? Date.now() - entry.days * 86_400_000 : 0;
-}
+/** Number of games excluded from the most recent build because their date was missing/unparseable.
+ *  Zero when the current range is all-time (null). Available to the view for a "N undated excluded" label. */
+let _excludedUndatedCount = 0;
+export function excludedUndatedCount(): number { return _excludedUndatedCount; }
+
+
+
+
+
+
+
+
+
+
+
 
 function filterByDateRange(games: ResearchGame[], range: string | null): ResearchGame[] {
-  if (!range) return games;
-  const cutoff = dateRangeCutoffMs(range);
-  return games.filter(g => {
-    if (!g.date) return false;
-    const ts = Date.parse(g.date.replace(/\./g, '-'));
-    return !isNaN(ts) && ts >= cutoff;
-  });
+  if (!range) {
+    _excludedUndatedCount = 0;
+    return games;
+  }
+  // Compute cutoff as a local calendar date string (YYYY-MM-DD) so games on the
+  // boundary day are never wrongly dropped by UTC-midnight timezone arithmetic.
+  const entry = (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === range);
+  const cutoffMs = entry ? Date.now() - entry.days * 86_400_000 : 0;
+  const cd = new Date(cutoffMs);
+  const cutoffDateStr = `${cd.getFullYear()}-${String(cd.getMonth() + 1).padStart(2, '0')}-${String(cd.getDate()).padStart(2, '0')}`;
+
+  const result = filterGamesByDateCutoff(games, cutoffDateStr);
+  _excludedUndatedCount = result.excludedUndated;
+  return result.games;
 }
 
 // --- Deviation scan state ---
@@ -652,6 +671,7 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
 
   // Start chunked async build — same as openCollection().
   _treeBuildProgress = 0;
+  _lastProgressRedrawAt = 0;
   _treeBuildTotal = games.length;
   _treeBuilding = true;
   const generation = ++_buildGeneration;
@@ -743,7 +763,13 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
         });
         lastSnapshotAt = monotonicNow();
       }
-      redraw();
+
+
+      const nowMs = monotonicNow();
+      if (nowMs - _lastProgressRedrawAt >= 200) {
+        _lastProgressRedrawAt = nowMs;
+        redraw();
+      }
 
       if (!done) {
         setTimeout(processChunk, 0);
@@ -778,6 +804,9 @@ export function sessionNode(): OpeningTreeNode | null { return _sessionNode; }
 let _treeBuildProgress = 0;
 let _treeBuildTotal = 0;
 let _treeBuilding = false;
+
+
+let _lastProgressRedrawAt = 0;
 
 
 
@@ -899,6 +928,27 @@ function ensureFullOpeningTreeSnapshot(): OpeningTreeNode | null {
   const builder = visibleLazyBuilder();
   if (!_openingTree || !builder) return _openingTree;
 
+
+
+
+
+
+
+
+  if (isMobileTreeBuildDevice()) {
+    const context = currentVisibleBuildContext();
+    if (context) {
+      recordOpeningTreeBuildEvent(context, {
+        phase: 'snapshot',
+        progressGames: _treeBuildProgress,
+        positionsCount: builder.positions.size,
+        nodeCount: builder.positions.size,
+        snapshotMode: 'skipped',
+      });
+    }
+    return _openingTree;
+  }
+
   const positionsCount = builder.positions.size;
   const context = currentVisibleBuildContext();
   const freezeStartedAt = monotonicNow();
@@ -980,15 +1030,20 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   if (_colorFilter === 'white') _boardOrientation = 'white';
   else if (_colorFilter === 'black') _boardOrientation = 'black';
 
-  // Enter session immediately with an empty tree — board shows starting position
+  // Keep an existing tree visible while the rebuild runs, mirroring setColorFilter().
+  // This prevents a blank panel when switching collections; the first new snapshot from
+  // the incoming build will replace the visible tree. Only initialise an empty root
+  // when no tree exists yet (first open in the session).
   cancelTreeEvalWork();
-  const emptyBuilder = new OpeningTreeBuilder();
-  _openingTree = emptyBuilder.freeze();
-  _visibleTreeBuilder = null;
-  _visibleTreeBuilderGeneration = 0;
-  _openingTreeSnapshotKind = 'full';
-  _sessionPath = [];
-  _sessionNode = _openingTree;
+  if (!_openingTree) {
+    const emptyBuilder = new OpeningTreeBuilder();
+    _openingTree = emptyBuilder.freeze();
+    _visibleTreeBuilder = null;
+    _visibleTreeBuilderGeneration = 0;
+    _openingTreeSnapshotKind = 'full';
+    _sessionPath = [];
+    _sessionNode = _openingTree;
+  }
   invalidateSampleCache();
   _importStep = 'idle';
   _currentPage = 'session';
@@ -1012,6 +1067,7 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
 
   // Start background tree build
   _treeBuildProgress = 0;
+  _lastProgressRedrawAt = 0;
   _treeBuildTotal = games.length;
   _treeBuilding = true;
   const generation = ++_buildGeneration;
@@ -1103,7 +1159,13 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
         });
         lastSnapshotAt = monotonicNow();
       }
-      redraw();
+
+
+      const nowMs = monotonicNow();
+      if (nowMs - _lastProgressRedrawAt >= 200) {
+        _lastProgressRedrawAt = nowMs;
+        redraw();
+      }
 
       if (!done) {
         setTimeout(processChunk, 0);

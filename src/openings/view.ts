@@ -112,8 +112,13 @@ import { saveOrpLineToLibrary } from '../study/saveAction';
 import { clearLichessApiLoginData, requestBookLogin } from '../auth/lichessBookAuth';
 
 let _openingsCg: CgApi | undefined;
+let _lastOpeningsAutoShapesHash: string | null = null;
 let _lastBoardFen: string = '';
 let _lastBoardPractice: boolean = false;
+// Tracks the FEN when the user has played a legal off-tree move in browse mode.
+// null = board is showing the current sessionNode().fen (in-tree position).
+// non-null = board is showing a transient analysis position beyond the tree.
+let _offTreeFen: string | null = null;
 let _sampleRenderPathKey = '';
 let _sampleRenderLimit = 25;
 let _samplePreviewGameId: string | null = null;
@@ -2670,15 +2675,47 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
                   }
                 }
               } else {
-                // Browse mode: navigate tree children only.
+                // Browse mode: tree children navigate the tree; any other legal move
+                // advances as free off-tree analysis (Lichess opening-explorer parity).
                 if (current) {
-                  const match = current.children.find(c =>
-                    c.uci === uci || c.uci.startsWith(uci),
-                  );
-                  if (match) {
-                    navigateToMove(match.uci);
-                    syncOpeningsBoard(redraw);
-                    redraw();
+                  // Only check tree children when we are at a tree position.
+                  // If _offTreeFen is set, the board shows an off-tree position so
+                  // current.children are no longer relevant — continue in off-tree mode.
+                  if (!_offTreeFen) {
+                    const match = current.children.find(c =>
+                      c.uci === uci || c.uci.startsWith(uci),
+                    );
+                    if (match) {
+                      navigateToMove(match.uci);
+                      syncOpeningsBoard(redraw);
+                      redraw();
+                      return;
+                    }
+                  }
+                  // Off-tree legal move (or continuation from an off-tree position):
+                  // compute the resulting FEN and advance the board directly.
+                  const baseFen = _offTreeFen ?? current.fen;
+                  const setup = parseFen(baseFen);
+                  if (setup.isOk) {
+                    const posResult = Chess.fromSetup(setup.value);
+                    if (posResult.isOk) {
+                      const move = parseUci(uci);
+                      if (move) {
+                        posResult.value.play(move);
+                        const newFen = makeFen(posResult.value.toSetup());
+                        _offTreeFen = newFen;
+                        _lastBoardFen = newFen;
+                        _openingsCg?.set({
+                          fen: newFen,
+                          animation: chessBoardAnimationConfig(),
+                          lastMove: [orig, dest],
+                          movable: { dests: destsForFen(newFen), color: 'both' },
+                        });
+                        setCevalFenOverride(newFen);
+                        if (engineEnabled) evalCurrentPosition();
+                        redraw();
+                      }
+                    }
                   }
                 }
               }
@@ -2686,6 +2723,9 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
           },
         });
         bindBoardResizeHandle(vnode.elm as HTMLElement);
+        // Reset the diff-guard so the first push after a remount always fires
+        // (Chessground starts with no shapes after makeChessground).
+        _lastOpeningsAutoShapesHash = null;
         // Draw initial arrows for the starting position.
         syncOpeningsAutoShapes(node);
         // If a fetch is in progress and the animation hasn't started yet, start it
@@ -2697,11 +2737,19 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         }
       },
       postpatch: () => {
-        // Sync arrows on every redraw (tree or engine output may have updated).
+
+
+
+
+
+
+
+
         syncOpeningsAutoShapes(node);
       },
       destroy: () => {
         _lastBoardFen = '';
+        _lastOpeningsAutoShapesHash = null;
         if (_openingsCg) {
           _openingsCg.destroy();
           _openingsCg = undefined;
@@ -2792,6 +2840,8 @@ function scheduleNextAnimMove(redraw: () => void, delay = ANIM_MOVE_MS): void {
 function syncOpeningsBoard(_redraw: () => void): void {
   // Stop any running import animation so the board is cleanly handed back.
   if (!isFetching() && _animGame !== null) stopImportAnimation();
+  // Any explicit tree navigation clears the transient off-tree analysis position.
+  _offTreeFen = null;
 
   const node = sessionNode();
   if (!_openingsCg || !node) return;
@@ -2900,20 +2950,63 @@ for (let i = 0; i < 8; i++) {
 }
 
 /**
- * Openings board auto-shapes combine local frequency arrows with shared engine
- * guidance. Engine arrows are appended last so they remain visible over the
- * opening-tree frequency layer.
+ * Merge tree frequency arrows (keyed to the current node) with engine
+ * evaluation arrows (keyed to the current engine state) into the single
+ * shape array that syncOpeningsAutoShapes pushes to _openingsCg.
+ *
+ * Both sources are independent: tree arrows come from buildFrequencyArrows
+ * (reads node.children); engine arrows come from buildEngineArrowShapes
+ * (reads currentEval in engine/ctrl.ts). They are merged once here and never
+ * pushed separately. Engine arrows are appended last so they stay visible
+ * above the frequency layer.
  */
 function buildOpeningsAutoShapes(node: OpeningTreeNode | null): DrawShape[] {
   return [
-    ...(node ? buildFrequencyArrows(node) : []),
-    ...buildEngineArrowShapes(),
+    ...(node ? buildFrequencyArrows(node) : []),  // tree arrows — current node
+    ...buildEngineArrowShapes(),                   // engine arrows — current eval
   ];
 }
 
+/** Stable string key for a DrawShape array (mirrors engine/ctrl.ts autoShapesHash). */
+function openingsAutoShapesHash(shapes: DrawShape[]): string {
+  return shapes.map(shape => [
+    shape.orig ?? '',
+    shape.dest ?? '',
+    shape.brush ?? '',
+    shape.piece ? `${shape.piece.color}|${shape.piece.role}|${shape.piece.scale ?? ''}` : '',
+    shape.modifiers ? `${shape.modifiers.lineWidth ?? ''}|${shape.modifiers.hilite ?? ''}` : '',
+    shape.customSvg ? '1' : '',
+    shape.label ? `${shape.label.text}|${shape.label.fill ?? ''}` : '',
+    shape.below ? '1' : '',
+  ].join('~')).join(';');
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function syncOpeningsAutoShapes(node: OpeningTreeNode | null): void {
   if (!_openingsCg) return;
-  _openingsCg.setAutoShapes(buildOpeningsAutoShapes(node));
+  const shapes = buildOpeningsAutoShapes(node);
+  const nextHash = openingsAutoShapesHash(shapes);
+  if (nextHash === _lastOpeningsAutoShapesHash) return;
+  _lastOpeningsAutoShapesHash = nextHash;
+  _openingsCg.setAutoShapes(shapes);
 }
 
 /**
@@ -4368,11 +4461,17 @@ function renderExplorerMovesTable(
             const orig = uci.slice(0, 2);
             const dest = uci.slice(2, 4);
             board?.setAutoShapes([{ orig: orig as any, dest: dest as any, brush: 'blue' }]);
+            // Invalidate the diff-guard so the next syncOpeningsAutoShapes call
+            // restores the full shape set after the hover preview clears.
+            _lastOpeningsAutoShapesHash = null;
           }
         });
         el.addEventListener('mouseout', () => {
           explorerCtrl.setHovering(fen, null);
           board?.setAutoShapes([]);
+          // Invalidate the diff-guard so syncOpeningsAutoShapes restores arrows
+          // on the next redraw rather than skipping (board now has no shapes).
+          _lastOpeningsAutoShapesHash = null;
         });
         el.addEventListener('click', (e: MouseEvent) => {
           const tr = (e.target as HTMLElement).closest('tr');
