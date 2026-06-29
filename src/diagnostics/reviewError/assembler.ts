@@ -4,17 +4,22 @@ import type { ImportedGame } from '../../import/types';
 import { nodeAtPath, nodeListAt, pathInit } from '../../tree/ops';
 import type { TreeNode, TreePath } from '../../tree/types';
 import { getSessionId as defaultGetSessionId } from '../id';
-import { record as defaultRecord } from '../record';
-import { currentAppRoute } from '../route';
-import { Severity, type DiagnosticEvent } from '../types';
+import { record as defaultRecord, snapshotBreadcrumbs as defaultSnapshotBreadcrumbs } from '../record';
+import { currentAppRoute, currentSafeRouteQueryParams, sanitizeAppRoute } from '../route';
+import { Severity, type Breadcrumb, type DiagnosticEvent } from '../types';
 import { getCompileTimeReleaseIdentity } from '../../releaseIdentity';
 import {
   REVIEW_ERROR_PACKAGE_FORMAT_VERSION,
+  REVIEW_ERROR_FULL_CONTEXT_CATEGORIES,
+  REVIEW_ERROR_PROHIBITED_DATA_CLASSES,
   type ReviewErrorAppIdentity,
+  type ReviewErrorBoundedContext,
   type ReviewErrorBrowserContext,
   type ReviewErrorCurrentEngineSettings,
   type ReviewErrorGameMetadata,
   type ReviewErrorPackage,
+  type ReviewErrorRemoteUploadConsent,
+  type ReviewErrorScreenshotAttachmentPreview,
 } from './types';
 
 export interface ReviewErrorPackageAssemblyInput {
@@ -23,6 +28,8 @@ export interface ReviewErrorPackageAssemblyInput {
   path: TreePath;
   memo: string;
   currentEngineSettings: ReviewErrorCurrentEngineSettings;
+  screenshotAttachments?: ReviewErrorScreenshotAttachmentPreview[];
+  remoteUploadConsent?: ReviewErrorRemoteUploadConsent;
 }
 
 export interface ReviewErrorPackageAssemblyDependencies {
@@ -32,11 +39,17 @@ export interface ReviewErrorPackageAssemblyDependencies {
   createPackageId?: () => string;
   getSessionId?: () => string;
   getBrowserContext?: () => Promise<ReviewErrorBrowserContext> | ReviewErrorBrowserContext;
+  getBreadcrumbs?: (maxCount: number) => Breadcrumb[];
+  getSafeRouteQueryParams?: () => Record<string, string>;
   now?: () => number;
 }
 
 type NavigatorWithDeviceMemory = Navigator & {
   deviceMemory?: number;
+  connection?: {
+    type?: string;
+    effectiveType?: string;
+  };
 };
 
 function requireTrimmed(value: string, errorCode: string): string {
@@ -63,6 +76,12 @@ function releaseIdentity(): ReviewErrorAppIdentity {
 
 async function defaultBrowserContext(): Promise<ReviewErrorBrowserContext> {
   const nav = typeof navigator === 'undefined' ? undefined : navigator as NavigatorWithDeviceMemory;
+  const navigation = typeof performance !== 'undefined' && typeof performance.getEntriesByType === 'function'
+    ? performance.getEntriesByType('navigation')[0]
+    : undefined;
+  const navTiming = typeof PerformanceNavigationTiming !== 'undefined' && navigation instanceof PerformanceNavigationTiming
+    ? navigation
+    : undefined;
   const storageEstimate = nav?.storage?.estimate
     ? await nav.storage.estimate().then(({ quota, usage }) => ({
         ...(quota !== undefined ? { quota } : {}),
@@ -76,9 +95,22 @@ async function defaultBrowserContext(): Promise<ReviewErrorBrowserContext> {
     language: nav?.language ?? '',
     viewportWidth: typeof window === 'undefined' ? 0 : Math.max(0, Math.floor(window.innerWidth)),
     viewportHeight: typeof window === 'undefined' ? 0 : Math.max(0, Math.floor(window.innerHeight)),
+    ...(typeof window !== 'undefined' && Number.isFinite(window.devicePixelRatio) ? { devicePixelRatio: window.devicePixelRatio } : {}),
     ...(nav?.hardwareConcurrency !== undefined ? { hardwareConcurrency: nav.hardwareConcurrency } : {}),
     ...(nav?.deviceMemory !== undefined ? { deviceMemory: nav.deviceMemory } : {}),
+    ...(nav?.connection ? {
+      connection: {
+        ...(nav.connection.type !== undefined ? { type: nav.connection.type } : {}),
+        ...(nav.connection.effectiveType !== undefined ? { effectiveType: nav.connection.effectiveType } : {}),
+      },
+    } : {}),
     ...(storageEstimate !== undefined ? { storageEstimate } : {}),
+    ...(navTiming ? {
+      performance: {
+        ...(Number.isFinite(navTiming.domContentLoadedEventEnd) ? { domContentLoadedMs: Math.max(0, Math.round(navTiming.domContentLoadedEventEnd)) } : {}),
+        ...(Number.isFinite(navTiming.loadEventEnd) ? { loadMs: Math.max(0, Math.round(navTiming.loadEventEnd)) } : {}),
+      },
+    } : {}),
   };
 }
 
@@ -158,6 +190,64 @@ function filterReviewRelatedSafeEvents(events: DiagnosticEvent[]): DiagnosticEve
     .slice(0, 50);
 }
 
+function recentRouteTransitions(breadcrumbs: Breadcrumb[]): ReviewErrorBoundedContext['route']['recentTransitions'] {
+  return breadcrumbs
+    .filter((breadcrumb): breadcrumb is Breadcrumb & { type: 'route-transition' } => breadcrumb.type === 'route-transition')
+    .slice(-5)
+    .map(breadcrumb => ({
+      from: sanitizeAppRoute(breadcrumb.from),
+      to: sanitizeAppRoute(breadcrumb.to),
+      timestamp: breadcrumb.timestamp,
+    }));
+}
+
+function selectedNodePaths(
+  path: TreePath,
+  selectedNode: StoredNodeEntry | undefined,
+  parentNode: StoredNodeEntry | undefined,
+  neighborNodes: StoredNodeEntry[],
+): string[] {
+  return Array.from(new Set([
+    path,
+    ...(selectedNode?.path ? [selectedNode.path] : []),
+    ...(parentNode?.path ? [parentNode.path] : []),
+    ...neighborNodes.map(node => node.path),
+  ].filter(Boolean)));
+}
+
+function buildBoundedContext(input: {
+  gameId: string;
+  path: TreePath;
+  selectedNode: StoredNodeEntry | undefined;
+  parentNode: StoredNodeEntry | undefined;
+  neighborNodes: StoredNodeEntry[];
+  recentEvents: DiagnosticEvent[];
+  breadcrumbs: Breadcrumb[];
+  safeQueryParams: Record<string, string>;
+  browser: ReviewErrorBrowserContext;
+}): ReviewErrorBoundedContext {
+  return {
+    scope: {
+      gameId: input.gameId,
+      selectedPath: input.path,
+      includedAnalysisNodePaths: selectedNodePaths(input.path, input.selectedNode, input.parentNode, input.neighborNodes),
+      includedDiagnosticEventIds: input.recentEvents.map(event => event.eventId),
+    },
+    route: {
+      currentRoute: currentAppRoute(),
+      safeQueryParams: input.safeQueryParams,
+      recentTransitions: recentRouteTransitions(input.breadcrumbs),
+    },
+    breadcrumbs: input.breadcrumbs,
+    browserSummary: input.browser,
+    exclusions: [...REVIEW_ERROR_PROHIBITED_DATA_CLASSES],
+    notes: [
+      'Package context is bounded to the selected game, selected move path, related stored analysis nodes, and recent safe diagnostics.',
+      'No unrelated full IndexedDB database dump or raw localStorage dump is captured.',
+    ],
+  };
+}
+
 async function defaultRecentSafeEvents(): Promise<DiagnosticEvent[]> {
   const events = await getDiagnosticEvents({ limit: 250 });
   return filterReviewRelatedSafeEvents(events);
@@ -195,6 +285,13 @@ export async function assembleReviewErrorPackage(
   const recentEvents = dependencies.getRecentEvents
     ? filterReviewRelatedSafeEvents(await dependencies.getRecentEvents())
     : await defaultRecentSafeEvents();
+  const breadcrumbs = (dependencies.getBreadcrumbs ?? defaultSnapshotBreadcrumbs)(30);
+  const safeQueryParams = dependencies.getSafeRouteQueryParams?.() ?? currentSafeRouteQueryParams();
+  const screenshotAttachments = input.screenshotAttachments ?? [];
+  const remoteUploadConsent: ReviewErrorRemoteUploadConsent = input.remoteUploadConsent ?? {
+    explicitConsent: false,
+    localSaveOnly: true,
+  };
 
   const pkg: ReviewErrorPackage = {
     packageId,
@@ -242,6 +339,24 @@ export async function assembleReviewErrorPackage(
     browser,
     diagnostics: {
       recentEvents,
+    },
+    boundedContext: buildBoundedContext({
+      gameId,
+      path,
+      selectedNode,
+      parentNode,
+      neighborNodes,
+      recentEvents,
+      breadcrumbs,
+      safeQueryParams,
+      browser,
+    }),
+    preview: {
+      requiredBeforeRemoteUpload: true,
+      fullContextCategories: [...REVIEW_ERROR_FULL_CONTEXT_CATEGORIES],
+      prohibitedDataClasses: [...REVIEW_ERROR_PROHIBITED_DATA_CLASSES],
+      screenshotAttachments,
+      remoteUploadConsent,
     },
   };
 

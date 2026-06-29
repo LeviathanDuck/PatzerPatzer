@@ -1079,12 +1079,23 @@ export async function loadGamePgn(gameId: string): Promise<string | undefined> {
  * errors propagate: import flows must not silently proceed believing an
  * account was registered when the write failed.
  */
+function accountSyncUpdatedAt(account: ChessAccount): number {
+  return Math.max(
+    typeof account.profileUpdatedAt === 'number' && Number.isFinite(account.profileUpdatedAt) ? account.profileUpdatedAt : 0,
+    typeof account.syncCursorUpdatedAt === 'number' && Number.isFinite(account.syncCursorUpdatedAt) ? account.syncCursorUpdatedAt : 0,
+    account.lastSyncedAt ?? 0,
+    account.newestGameTimestamp ?? 0,
+    account.oldestGameTimestamp ?? 0,
+    account.addedAt,
+  );
+}
+
 export async function saveAccountToIdb(account: ChessAccount): Promise<void> {
   const db = await openGameDb();
   const tx = db.transaction('accounts', 'readwrite');
   tx.objectStore('accounts').put(account);
   await txDone(tx);
-  enqueueMainDbPut('accounts', account.id, account, Math.max(account.lastSyncedAt ?? 0, account.addedAt));
+  enqueueMainDbPut('accounts', account.id, account, accountSyncUpdatedAt(account));
 }
 
 /**

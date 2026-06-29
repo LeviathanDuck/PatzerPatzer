@@ -21,6 +21,8 @@ function gitValue(args) {
 const commit = process.env.PATZER_COMMIT || gitValue('rev-parse HEAD');
 const shortCommit = process.env.PATZER_SHORT_COMMIT || (commit ? commit.slice(0, 12) : gitValue('rev-parse --short=12 HEAD'));
 const branch = process.env.PATZER_BRANCH || gitValue('branch --show-current');
+const commitTimestamp = process.env.PATZER_COMMIT_TIMESTAMP || gitValue('show -s --format=%cI HEAD');
+const commitMessage = process.env.PATZER_COMMIT_MESSAGE || gitValue('log -1 --format=%B');
 const buildId = process.env.PATZER_BUILD_ID || shortCommit || builtAt.replace(/[-:T.Z]/g, '').slice(0, 14);
 const release = `patzer-pro@${version}+${buildId}`;
 const sourcemapRoot = 'dist/sourcemaps';
@@ -55,6 +57,8 @@ await esbuild.build({
     __PATZER_COMMIT__: JSON.stringify(commit),
     __PATZER_SHORT_COMMIT__: JSON.stringify(shortCommit),
     __PATZER_BRANCH__: JSON.stringify(branch),
+    __PATZER_COMMIT_TIMESTAMP__: JSON.stringify(commitTimestamp),
+    __PATZER_COMMIT_MESSAGE__: JSON.stringify(commitMessage),
     __PATZER_BUILT_AT__: JSON.stringify(builtAt),
   },
   logLevel: 'info',

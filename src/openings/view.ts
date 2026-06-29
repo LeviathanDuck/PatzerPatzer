@@ -82,7 +82,7 @@ import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
 import { renderMoveNavBar } from '../analyse/analysisControls';
 import {
-  engineEnabled, evalCurrentPosition,
+  engineEnabled, evalCurrentPosition, currentEval,
   buildEngineArrowShapes,
   showEngineArrows, setShowEngineArrows,
   arrowAllLines, setArrowAllLines,
@@ -429,8 +429,7 @@ function renderPreLoadSyncArea(account: ChessAccount, redraw: () => void): VNode
 }
 
 function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: () => void, account?: ChessAccount): VNode {
-
-
+  // Pre-load keeps color implicit; Build starts from the White player perspective.
   const speeds = speedFilter();
   const toggleSpeed = (value: string): void => {
     let next: Set<string>;
@@ -493,8 +492,7 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
     account ? renderPreLoadSyncArea(account, redraw) : null,
     h('button.openings__preload-build', {
       attrs: { type: 'button' },
-
-      on: { click: (e: Event) => { e.stopPropagation(); presetColorFilter('both'); void onBuild(); } },
+      on: { click: (e: Event) => { e.stopPropagation(); presetColorFilter('white'); void onBuild(); } },
     }, 'Build tree'),
   ]);
 }
@@ -2280,6 +2278,7 @@ function renderOpeningTreeTool(
       h('div.openings__board-wrap', [
         renderOpeningsBoard(node, redraw),
       ]),
+      renderOffTreeIndicator(),
       renderPlayerStrip(collection, 'bottom'),
     ]),
     h('div.openings__session-panel', [
@@ -2287,7 +2286,7 @@ function renderOpeningTreeTool(
       // Keep FEN override in sync with the current openings position on every render.
       // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
       (() => {
-        setCevalFenOverride(node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+        setCevalFenOverride(_offTreeFen ?? node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
         return null;
       })(),
       renderColorToggle(collection?.target ?? '', redraw),
@@ -2299,7 +2298,7 @@ function renderOpeningTreeTool(
       // Layout experiment: Stockfish, optional book, and game move list sit beneath nav.
       renderCeval(),
       renderEngineSettings({ showArrowSettings: true }),
-      engineEnabled ? renderPvBox() : null,
+      engineEnabled ? renderOpeningTreePvBox() : null,
       renderExplorerToggle(node, redraw),
       openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
     ]),
@@ -2311,6 +2310,44 @@ function renderOpeningTreeTool(
       renderSampleGamesPanel(redraw),
     ]),
   ];
+}
+
+function renderOffTreeIndicator(): VNode | null {
+  if (!_offTreeFen) return null;
+  return h('div.openings__off-tree-indicator', {
+    attrs: {
+      role: 'status',
+      title: 'The board is showing a legal analysis move outside the imported opening tree.',
+    },
+  }, 'Analysis (off book)');
+}
+
+function hasVisibleOpeningEngineLines(): boolean {
+  if (currentEval.cp !== undefined || currentEval.mate !== undefined || currentEval.moves?.length) {
+    return true;
+  }
+  return currentEval.lines?.some(line =>
+    line.cp !== undefined || line.mate !== undefined || line.moves?.length,
+  ) === true;
+}
+
+function renderOpeningTreePvBox(): VNode | null {
+  const pvBox = renderPvBox();
+  if (!pvBox) return null;
+  const stale = isRapid() && hasVisibleOpeningEngineLines();
+
+  return h('div.openings__engine-lines', {
+    class: { 'openings__engine-lines--stale': stale },
+    attrs: {
+      'data-stale': stale ? 'true' : 'false',
+      'aria-live': 'polite',
+    },
+  }, [
+    stale
+      ? h('div.openings__engine-lines-stale', { attrs: { role: 'status' } }, 'Updating position')
+      : null,
+    pvBox,
+  ]);
 }
 
 /**
@@ -3358,35 +3395,24 @@ function renderSpeedFilter(redraw: () => void): VNode {
 /**
  * Date range filter row — shown below speed chips in the Opening Tree panel.
  * Default: all time. Active: filters tree to games within the selected window.
- * Popup counts are colour-filtered, speed-ignored (raw availability counts).
+ * Popup counts mirror the active tree's filtered game set instead of previewing
+ * independent per-range totals.
  */
 function renderDateRangeFilter(redraw: () => void): VNode {
-  const collection = activeCollection();
-  const color = colorFilter();
-  const target = collection?.target?.toLowerCase() ?? '';
   const activeRange = sessionDateRange();
+  const currentActiveGames = activeGames();
+  const activeCount = currentActiveGames.length;
 
-  // Colour-filtered games (no speed, no date) for popup counts and total.
-  let colourGames = collection?.games ?? [];
-  if (color !== 'both' && target && collection) {
-    colourGames = colourGames.filter(g => {
-      const isWhite = g.white?.toLowerCase() === target;
-      const isBlack = g.black?.toLowerCase() === target;
-      return color === 'white' ? isWhite : isBlack;
-    });
-  }
-  const totalCount = colourGames.length;
-
-  // Compute the actual date span of the colour-filtered game set for the "All" label.
+  // Compute the actual date span of the active tree game set for the "All" label.
   function formatMonthYear(dateStr: string): string {
     const ts = Date.parse(dateStr.replace(/\./g, '-'));
     if (isNaN(ts)) return '';
     return new Date(ts).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   }
   let spanLabel = '';
-  if (colourGames.length > 0) {
+  if (currentActiveGames.length > 0) {
     let earliest = '', latest = '';
-    for (const g of colourGames) {
+    for (const g of currentActiveGames) {
       if (!g.date) continue;
       if (!earliest || g.date < earliest) earliest = g.date;
       if (!latest   || g.date > latest)   latest   = g.date;
@@ -3398,20 +3424,10 @@ function renderDateRangeFilter(redraw: () => void): VNode {
     }
   }
 
-  function countInRange(days: number): number {
-    const cutoff = Date.now() - days * 86_400_000;
-    return colourGames.filter(g => {
-      if (!g.date) return false;
-      const ts = Date.parse(g.date.replace(/\./g, '-'));
-      return !isNaN(ts) && ts >= cutoff;
-    }).length;
-  }
-
 
   function customRangeBtnLabel(): string {
     const from = sessionCustomFrom();
     const to   = sessionCustomTo();
-    const activeCount = activeGames().length;
     const suffix = ` (${activeCount})`;
     if (from && to)  return `${from} – ${to}${suffix}`;
     if (from)        return `From ${from}${suffix}`;
@@ -3441,8 +3457,8 @@ function renderDateRangeFilter(redraw: () => void): VNode {
       }, activeRange === 'custom'
         ? [customRangeBtnLabel()]
         : activeRange
-          ? [activePresetLabel, ` (${countInRange((SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === activeRange)?.days ?? 0)})`]
-          : [spanLabel ? `All (${totalCount}) · ${spanLabel}` : `All (${totalCount})`],
+          ? [activePresetLabel, ` (${activeCount})`]
+          : [spanLabel ? `All (${activeCount}) · ${spanLabel}` : `All (${activeCount})`],
       ),
       // Inline × to clear active range.
       activeRange ? h('button.openings__date-range-clear', {
@@ -3457,7 +3473,7 @@ function renderDateRangeFilter(redraw: () => void): VNode {
             on: { click: () => { setSessionDateRange(opt.value, redraw); _dateRangePopupOpen = false; redraw(); } },
           }, [
             h('span', opt.label),
-            h('span.openings__date-range-count', `${countInRange(opt.days)}`),
+            h('span.openings__date-range-count', `${activeCount}`),
           ]),
         ),
         // Custom absolute range option — keeps popup open so user can fill in dates.

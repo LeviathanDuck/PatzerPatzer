@@ -24,7 +24,7 @@ export interface SubmitResult {
 }
 
 function submissionEnabled(options: SubmitOptions): boolean {
-  return options.enabled === true || Boolean(options.adminToken?.trim());
+  return Boolean(options.adminToken?.trim());
 }
 
 function payloadBytes(json: string): number {

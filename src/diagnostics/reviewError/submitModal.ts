@@ -7,11 +7,23 @@ import { adminDiagnosticsTokenAvailable } from '../adminAccess';
 import { assembleReviewErrorPackage } from './assembler';
 import {
   clearReviewErrorSubmitRequest,
+  checkReviewErrorRemoteUploadGate,
+  createReviewErrorRemoteUploadConsentState,
   getReviewErrorSubmitRequest,
+  markReviewErrorPackagePreviewSeen,
+  reviewErrorRemoteUploadConsentFromState,
+  setReviewErrorRemoteUploadConsent,
+  validateReviewErrorScreenshotFiles,
   type ReviewErrorSubmitRequest,
+  type ReviewErrorRemoteUploadConsentState,
 } from './submitFlow';
 import { putReviewErrorPackage } from './storage';
-import type { ReviewErrorCurrentEngineSettings } from './types';
+import {
+  REVIEW_ERROR_FULL_CONTEXT_CATEGORIES,
+  REVIEW_ERROR_PROHIBITED_DATA_CLASSES,
+  type ReviewErrorCurrentEngineSettings,
+  type ReviewErrorScreenshotAttachmentPreview,
+} from './types';
 
 export interface ReviewErrorSubmitModalDeps {
   game?: ImportedGame;
@@ -28,6 +40,9 @@ let memoText = '';
 let submitBusy = false;
 let submitError: string | null = null;
 let submitSuccess: string | null = null;
+let remoteConsentState: ReviewErrorRemoteUploadConsentState = createReviewErrorRemoteUploadConsentState();
+let screenshotAttachments: ReviewErrorScreenshotAttachmentPreview[] = [];
+let screenshotErrors: string[] = [];
 
 function requestKey(request: ReviewErrorSubmitRequest): string {
   return `${request.gameId}:${request.path}:${request.openedAt}`;
@@ -41,6 +56,9 @@ function syncRequestState(request: ReviewErrorSubmitRequest): void {
   submitBusy = false;
   submitError = null;
   submitSuccess = null;
+  remoteConsentState = markReviewErrorPackagePreviewSeen(createReviewErrorRemoteUploadConsentState());
+  screenshotAttachments = [];
+  screenshotErrors = [];
 }
 
 function close(redraw: () => void): void {
@@ -50,6 +68,9 @@ function close(redraw: () => void): void {
   submitBusy = false;
   submitError = null;
   submitSuccess = null;
+  remoteConsentState = createReviewErrorRemoteUploadConsentState();
+  screenshotAttachments = [];
+  screenshotErrors = [];
   redraw();
 }
 
@@ -79,20 +100,20 @@ function submitDisabled(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSu
   return (
     submitBusy ||
     submitSuccess !== null ||
-    !adminDiagnosticsTokenAvailable() ||
     !deps.game ||
     deps.game.id !== request.gameId ||
     !deps.analysisComplete ||
-    !memoText.trim()
+    !memoText.trim() ||
+    screenshotErrors.length > 0
   );
 }
 
 function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSubmitRequest): void {
   if (submitDisabled(deps, request)) {
     if (!memoText.trim()) submitError = 'Enter a memo before saving the package.';
-    else if (!adminDiagnosticsTokenAvailable()) submitError = 'Admin token is required before saving this package.';
     else if (!deps.game || deps.game.id !== request.gameId) submitError = 'The selected game changed. Reopen Review Error Bug from the move list.';
     else if (!deps.analysisComplete) submitError = 'The selected game does not have completed review analysis loaded.';
+    else if (screenshotErrors.length > 0) submitError = screenshotErrors[0] ?? 'Fix screenshot attachment errors before saving.';
     deps.redraw();
     return;
   }
@@ -113,6 +134,8 @@ function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSub
     path: request.path,
     memo: memoText,
     currentEngineSettings: deps.currentEngineSettings,
+    screenshotAttachments,
+    remoteUploadConsent: reviewErrorRemoteUploadConsentFromState(remoteConsentState),
   }).then(pkg => putReviewErrorPackage(pkg).then(() => pkg))
     .then(pkg => {
       submitSuccess = `Saved package ${pkg.packageId}`;
@@ -125,6 +148,92 @@ function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSub
       submitBusy = false;
       deps.redraw();
     });
+}
+
+function handleScreenshotInput(event: Event, redraw: () => void): void {
+  const files = Array.from((event.target as HTMLInputElement).files ?? []);
+  const result = validateReviewErrorScreenshotFiles(files);
+  screenshotAttachments = result.attachments;
+  screenshotErrors = result.ok ? [] : result.errors;
+  submitError = null;
+  redraw();
+}
+
+function renderPackagePreview(): VNode {
+  return h('section.review-error-modal__preview', [
+    h('h3', 'Full package preview'),
+    h('p',
+      'A remote Review Error Bug package can only be uploaded after this preview is shown and explicit consent is checked. Local save does not upload.'),
+    h('div.review-error-modal__preview-grid', [
+      h('div', [
+        h('h4', 'May include'),
+        h('ul', REVIEW_ERROR_FULL_CONTEXT_CATEGORIES.map(category => h('li', category))),
+      ]),
+      h('div', [
+        h('h4', 'Always excluded'),
+        h('ul', REVIEW_ERROR_PROHIBITED_DATA_CLASSES.map(dataClass => h('li', dataClass))),
+      ]),
+    ]),
+  ]);
+}
+
+function renderScreenshotPreview(submitLocked: boolean, redraw: () => void): VNode {
+  return h('section.review-error-modal__screenshots', [
+    h('h3', 'Screenshots'),
+    h('p', 'Optional admin-only screenshot metadata. Accepted files: PNG, JPEG, WebP; max 10 MB each; max 10 files. File bytes are not uploaded in this slice.'),
+    h('input.review-error-modal__file', {
+      attrs: {
+        type: 'file',
+        accept: 'image/png,image/jpeg,image/webp',
+        multiple: true,
+        disabled: submitLocked,
+      },
+      on: { change: (event: Event) => handleScreenshotInput(event, redraw) },
+    }),
+    screenshotAttachments.length > 0
+      ? h('ul.review-error-modal__attachment-list', screenshotAttachments.map(attachment => (
+        h('li', `${attachment.fileName} - ${attachment.mimeType}, ${Math.round(attachment.sizeBytes / 1024)} KB`)
+      )))
+      : h('p.review-error-modal__muted', 'No screenshots attached.'),
+    ...screenshotErrors.map(error => h('p.review-error-modal__error', error)),
+  ]);
+}
+
+function renderRemoteConsent(redraw: () => void): VNode {
+  const adminTokenReady = adminDiagnosticsTokenAvailable();
+  const remoteGate = checkReviewErrorRemoteUploadGate(remoteConsentState, adminTokenReady);
+
+  return h('section.review-error-modal__remote', [
+    h('label.review-error-modal__checkbox', [
+      h('input', {
+        attrs: {
+          type: 'checkbox',
+          checked: remoteConsentState.explicitConsent,
+        },
+        on: {
+          change: (event: Event) => {
+            remoteConsentState = setReviewErrorRemoteUploadConsent(
+              remoteConsentState,
+              (event.target as HTMLInputElement).checked,
+            );
+            submitError = null;
+            redraw();
+          },
+        },
+      }),
+      h('span', 'I reviewed the full-context categories and consent before any future remote upload of this package.'),
+    ]),
+    h('button.review-error-modal__secondary', {
+      attrs: {
+        type: 'button',
+        disabled: true,
+        title: 'Remote package upload is planned for a later update.',
+      },
+    }, 'Remote upload not available in this slice'),
+    h('p.review-error-modal__muted', remoteGate.ok
+      ? 'Remote upload gate is satisfied for future upload code.'
+      : remoteGate.reason),
+  ]);
 }
 
 export function renderReviewErrorPackageSubmitModal(deps: ReviewErrorSubmitModalDeps): VNode | null {
@@ -163,7 +272,9 @@ export function renderReviewErrorPackageSubmitModal(deps: ReviewErrorSubmitModal
           h('div', [h('span', 'Review'), h('strong', reviewLabel(deps))]),
         ]),
         h('p.review-error-modal__warning',
-          'This saves the full raw PGN and full stored Stockfish review analysis locally for diagnosis. It does not upload or sync the package.'),
+          'This can save a full admin diagnostic package locally. Remote upload requires preview, explicit consent, and an admin token.'),
+        renderPackagePreview(),
+        renderScreenshotPreview(submitBusy || submitSuccess !== null, deps.redraw),
         h('label.review-error-modal__label', { attrs: { for: 'review-error-memo' } }, 'Admin memo'),
         h('textarea.review-error-modal__memo', {
           attrs: {
@@ -181,6 +292,7 @@ export function renderReviewErrorPackageSubmitModal(deps: ReviewErrorSubmitModal
             },
           },
         }),
+        renderRemoteConsent(deps.redraw),
         submitError ? h('p.review-error-modal__error', submitError) : null,
         submitSuccess ? h('p.review-error-modal__success', submitSuccess) : null,
       ]),

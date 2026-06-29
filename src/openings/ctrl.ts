@@ -1143,6 +1143,7 @@ function navigateToClosestPath(moves: string[], persist: boolean): OpeningsRoute
 
 /** Open a saved research collection: show the board immediately, build tree in background. */
 export function openCollection(collection: ResearchCollection, redraw: () => void, options: OpenCollectionOptions = {}): void {
+  const sameCollection = _activeCollection?.id === collection.id;
   _activeTool = 'opening-tree';
   _activeCollection = collection;
 
@@ -1150,12 +1151,11 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   if (_colorFilter === 'white') _boardOrientation = 'white';
   else if (_colorFilter === 'black') _boardOrientation = 'black';
 
-  // Keep an existing tree visible while the rebuild runs, mirroring setColorFilter().
-  // This prevents a blank panel when switching collections; the first new snapshot from
-  // the incoming build will replace the visible tree. Only initialise an empty root
-  // when no tree exists yet (first open in the session).
+  // Keep an existing tree visible only for same-collection rebuilds, mirroring
+  // setColorFilter(). Different collection opens must not show the previous
+  // collection's tree while the incoming build is still loading.
   cancelTreeEvalWork();
-  if (!_openingTree) {
+  if (!sameCollection || !_openingTree) {
     const emptyBuilder = new OpeningTreeBuilder();
     _openingTree = emptyBuilder.freeze();
     _visibleTreeBuilder = null;
@@ -1461,6 +1461,7 @@ export function sampleGames(redraw?: () => void): SampleGamesState {
 
   if (pathKey !== _cachedSamplesPath && pathKey !== _cachedSamplesScheduledPath) {
     const collection = _activeCollection;
+    const games = _activeGames;
     const path = [..._sessionPath];
     const generation = ++_cachedSamplesGeneration;
     const buildContext = _lastTreeBuildContext;
@@ -1478,7 +1479,7 @@ export function sampleGames(redraw?: () => void): SampleGamesState {
         return;
       }
       const scanStartedAt = monotonicNow();
-      const matches = findSampleGames(collection.games, path, SAMPLE_GAMES_SCAN_LIMIT);
+      const matches = findSampleGames(games, path, SAMPLE_GAMES_SCAN_LIMIT);
       const sampleScanDurationMs = monotonicNow() - scanStartedAt;
       if (generation !== _cachedSamplesGeneration || _sessionPath.join('/') !== pathKey) {
         buildContext && recordOpeningTreeBuildEvent(buildContext, {
@@ -1521,7 +1522,7 @@ export function sampleGamesNow(limit = Number.POSITIVE_INFINITY): SampleGameMatc
   const pathKey = _sessionPath.join('/');
   if (pathKey !== _cachedSamplesPath) {
     _cachedSamplesPath = pathKey;
-    _cachedSamples = findSampleGames(_activeCollection.games, _sessionPath, limit);
+    _cachedSamples = findSampleGames(_activeGames, _sessionPath, limit);
     _cachedSamplesLoading = false;
     _cachedSamplesScheduledPath = '';
   }

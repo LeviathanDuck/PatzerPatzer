@@ -48,6 +48,7 @@ function previewText(value: string): string {
 function redactedUserInput(report: DiagnosticReport): DiagnosticReport['userInput'] {
   return {
     description: previewText(report.userInput.description),
+    whatHappened: previewText(report.userInput.whatHappened ?? ''),
     severity: report.userInput.severity,
     expectedBehavior: previewText(report.userInput.expectedBehavior),
     actualBehavior: previewText(report.userInput.actualBehavior),
@@ -163,6 +164,7 @@ export function renderReportPreview(
     renderSection('User report', [
       h('dl.report-preview__fields', [
         renderField('Description', userInput.description),
+        renderField('What happened', userInput.whatHappened ?? ''),
         renderField('Severity', userInput.severity),
         renderField('Expected behavior', userInput.expectedBehavior),
         renderField('Actual behavior', userInput.actualBehavior),
@@ -171,6 +173,7 @@ export function renderReportPreview(
     renderSection('Route context', [
       h('dl.report-preview__fields', [
         renderField('Current route', routeContext.route),
+        renderField('Surface', report.triggerContext?.triggeredBy),
         renderField('Captured at', formattedTimestamp(routeContext.capturedAt)),
       ]),
     ]),

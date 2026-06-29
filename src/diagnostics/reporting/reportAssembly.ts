@@ -5,9 +5,16 @@ import type { ReportFormState, ReportSeverity } from './reportForm';
 
 export interface DiagnosticReportUserInput {
   description: string;
+  whatHappened?: string;
   severity: ReportSeverity;
   expectedBehavior: string;
   actualBehavior: string;
+}
+
+export interface DiagnosticReportTriggerContext {
+  triggeredBy: string;
+  routeAtTrigger: string;
+  extraTags: string[];
 }
 
 export interface DiagnosticReport {
@@ -17,6 +24,7 @@ export interface DiagnosticReport {
   userInput: DiagnosticReportUserInput;
   routeContext: RouteContext;
   environmentContext: EnvironmentContext | null;
+  triggerContext?: DiagnosticReportTriggerContext;
 }
 
 function createReportId(timestamp: number): string {
@@ -54,6 +62,7 @@ export function assembleReport(
     capturedAt: new Date(timestamp).toISOString(),
     userInput: {
       description: normalizeText(formState.description),
+      whatHappened: normalizeText(formState.whatHappened),
       severity: formState.severity,
       expectedBehavior: normalizeText(formState.expectedBehavior),
       actualBehavior: normalizeText(formState.actualBehavior),

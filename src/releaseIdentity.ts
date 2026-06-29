@@ -4,6 +4,8 @@ declare const __PATZER_BUILD_ID__: string;
 declare const __PATZER_COMMIT__: string;
 declare const __PATZER_SHORT_COMMIT__: string;
 declare const __PATZER_BRANCH__: string;
+declare const __PATZER_COMMIT_TIMESTAMP__: string;
+declare const __PATZER_COMMIT_MESSAGE__: string;
 declare const __PATZER_BUILT_AT__: string;
 
 export interface ReleaseIdentity {
@@ -14,6 +16,8 @@ export interface ReleaseIdentity {
   commit?: string;
   shortCommit?: string;
   branch?: string;
+  commitTimestamp?: string;
+  commitMessage?: string;
   builtAt?: string;
   deployedAt?: string;
 }
@@ -35,6 +39,12 @@ function compileTimeIdentity(): ReleaseIdentity {
   const commit = optionalString(typeof __PATZER_COMMIT__ === 'string' ? __PATZER_COMMIT__ : undefined);
   const shortCommit = optionalString(typeof __PATZER_SHORT_COMMIT__ === 'string' ? __PATZER_SHORT_COMMIT__ : undefined);
   const branch = optionalString(typeof __PATZER_BRANCH__ === 'string' ? __PATZER_BRANCH__ : undefined);
+  const commitTimestamp = optionalString(
+    typeof __PATZER_COMMIT_TIMESTAMP__ === 'string' ? __PATZER_COMMIT_TIMESTAMP__ : undefined,
+  );
+  const commitMessage = optionalString(
+    typeof __PATZER_COMMIT_MESSAGE__ === 'string' ? __PATZER_COMMIT_MESSAGE__ : undefined,
+  );
   const builtAt = optionalString(typeof __PATZER_BUILT_AT__ === 'string' ? __PATZER_BUILT_AT__ : undefined);
   return {
     app: 'patzer-pro',
@@ -47,6 +57,8 @@ function compileTimeIdentity(): ReleaseIdentity {
     ...(commit ? { commit } : {}),
     ...(shortCommit ? { shortCommit } : {}),
     ...(branch ? { branch } : {}),
+    ...(commitTimestamp ? { commitTimestamp } : {}),
+    ...(commitMessage ? { commitMessage } : {}),
     ...(builtAt ? { builtAt } : {}),
   };
 }
@@ -61,6 +73,8 @@ function normalizeLiveIdentity(value: unknown): ReleaseIdentity | null {
   const commit = optionalString(data.commit);
   const shortCommit = optionalString(data.shortCommit) ?? buildId;
   const branch = optionalString(data.branch);
+  const commitTimestamp = optionalString(data.commitTimestamp);
+  const commitMessage = optionalString(data.commitMessage);
   const builtAt = optionalString(data.builtAt);
   const deployedAt = optionalString(data.deployedAt);
 
@@ -72,6 +86,8 @@ function normalizeLiveIdentity(value: unknown): ReleaseIdentity | null {
     shortCommit,
     ...(commit ? { commit } : {}),
     ...(branch ? { branch } : {}),
+    ...(commitTimestamp ? { commitTimestamp } : {}),
+    ...(commitMessage ? { commitMessage } : {}),
     ...(builtAt ? { builtAt } : {}),
     ...(deployedAt ? { deployedAt } : {}),
   };
@@ -110,13 +126,32 @@ export function releaseDeployLabel(identity: ReleaseIdentity = getVisibleRelease
   return `Deploy ${identity.shortCommit ?? identity.buildId}`;
 }
 
+function formatReleaseTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  });
+}
+
+export function releaseCommitTimestampLabel(identity: ReleaseIdentity = getVisibleReleaseIdentity()): string | null {
+  return identity.commitTimestamp ? `Committed ${formatReleaseTimestamp(identity.commitTimestamp)}` : null;
+}
+
 export function releaseTooltip(identity: ReleaseIdentity = getVisibleReleaseIdentity()): string {
   const lines = [
     identity.release,
     identity.commit ? `Commit: ${identity.commit}` : null,
+    identity.commitTimestamp ? `Committed: ${identity.commitTimestamp}` : null,
     identity.branch ? `Branch: ${identity.branch}` : null,
     identity.deployedAt ? `Deployed: ${identity.deployedAt}` : null,
     identity.builtAt && !identity.deployedAt ? `Built: ${identity.builtAt}` : null,
+    identity.commitMessage ? `Message: ${identity.commitMessage}` : null,
   ].filter((line): line is string => line !== null);
   return lines.join('\n');
 }

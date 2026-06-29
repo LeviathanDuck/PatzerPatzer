@@ -60,6 +60,7 @@ import { reportIssue } from '../diagnostics/reporting/reportAction';
 import {
   getVisibleReleaseIdentity,
   loadLiveReleaseIdentity,
+  releaseCommitTimestampLabel,
   releaseDeployLabel,
   releaseProductLabel,
   releaseTooltip,
@@ -76,6 +77,7 @@ let showGlobalMenu   = false;
 let showBoardSettings     = false;
 let showDetectionModal    = false;
 let showRetroModal        = false;
+let showReleaseDetails    = false;
 let showLoginModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
@@ -87,6 +89,7 @@ let headerSyncError: string | null = null;
 let headerOlderSyncRunning = false;
 let headerOlderSyncMessage: string | null = null;
 let headerOlderSyncError: string | null = null;
+let headerOlderSyncTargetDate = '';
 
 const CATEGORY_OPTIONS: readonly { value: AccountCategory; label: string }[] = [
   { value: 'mine',     label: 'Mine'     },
@@ -522,6 +525,16 @@ function formatSyncDate(timestamp: number | null): string {
   return new Date(timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function todayDateInputValue(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseDateInputStartMs(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
 // --- Nav ---
 
 function activeSection(route: Route): string {
@@ -952,6 +965,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
 function closeGlobalMenu(redraw: () => void): void {
   showGlobalMenu    = false;
   showBoardSettings = false;
+  showReleaseDetails = false;
   redraw();
 }
 
@@ -1400,16 +1414,49 @@ function renderRetroModal(redraw: () => void): VNode {
 
 function renderReleaseIdentityFooter(redraw: () => void): VNode {
   const identity = getVisibleReleaseIdentity();
+  const timestampLabel = releaseCommitTimestampLabel(identity);
+  const detailRows = [
+    identity.commit ? { label: 'Commit', value: identity.commit } : null,
+    identity.commitTimestamp ? { label: 'Time', value: identity.commitTimestamp } : null,
+    identity.branch ? { label: 'Branch', value: identity.branch } : null,
+    identity.deployedAt ? { label: 'Deployed', value: identity.deployedAt } : null,
+    identity.builtAt && !identity.deployedAt ? { label: 'Built', value: identity.builtAt } : null,
+  ].filter((row): row is { label: string; value: string } => row !== null);
   loadLiveReleaseIdentity(redraw);
 
-  return h('div.global-menu__release', {
+  return h('button.global-menu__release', {
+    class: { 'global-menu__release--expanded': showReleaseDetails },
     attrs: {
+      type: 'button',
       title: releaseTooltip(identity),
       'aria-label': `${releaseProductLabel(identity)}, ${releaseDeployLabel(identity)}`,
+      'aria-expanded': showReleaseDetails ? 'true' : 'false',
+    },
+    on: {
+      click: () => {
+        showReleaseDetails = !showReleaseDetails;
+        redraw();
+      },
     },
   }, [
-    h('span.global-menu__release-product', releaseProductLabel(identity)),
-    h('span.global-menu__release-deploy', releaseDeployLabel(identity)),
+    h('span.global-menu__release-summary', [
+      h('span.global-menu__release-primary', [
+        h('span.global-menu__release-product', releaseProductLabel(identity)),
+        h('span.global-menu__release-chevron', showReleaseDetails ? '▾' : '›'),
+      ]),
+      h('span.global-menu__release-deploy', releaseDeployLabel(identity)),
+      timestampLabel ? h('span.global-menu__release-timestamp', timestampLabel) : null,
+    ]),
+    showReleaseDetails ? h('span.global-menu__release-details', [
+      ...detailRows.map(row => h('span.global-menu__release-detail', [
+        h('span.global-menu__release-detail-label', row.label),
+        h('span.global-menu__release-detail-value', row.value),
+      ])),
+      identity.commitMessage ? h('span.global-menu__release-message-wrap', [
+        h('span.global-menu__release-detail-label', 'Message'),
+        h('span.global-menu__release-message', identity.commitMessage),
+      ]) : null,
+    ]) : null,
   ]);
 }
 
@@ -1424,6 +1471,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       on: { click: () => {
         showGlobalMenu    = !showGlobalMenu;
         showBoardSettings = false;
+        if (!showGlobalMenu) showReleaseDetails = false;
         redraw();
       }},
     }, '⚙'),
@@ -1718,6 +1766,31 @@ function renderSyncMenu(
 
   const runOlderSync = async (): Promise<void> => {
     if (headerOlderSyncRunning || headerSyncRunning) return;
+    const targetDateValue = headerOlderSyncTargetDate.trim();
+    let targetDateStartMs: number | undefined;
+    if (targetDateValue) {
+      const parsedTarget = parseDateInputStartMs(targetDateValue);
+      const todayStart = parseDateInputStartMs(todayDateInputValue());
+      if (parsedTarget === null) {
+        headerOlderSyncMessage = null;
+        headerOlderSyncError = 'Choose a valid target date.';
+        redraw();
+        return;
+      }
+      if (todayStart !== null && parsedTarget > todayStart) {
+        headerOlderSyncMessage = null;
+        headerOlderSyncError = 'Target date cannot be in the future.';
+        redraw();
+        return;
+      }
+      if (account.oldestGameTimestamp !== null && parsedTarget >= account.oldestGameTimestamp) {
+        headerOlderSyncMessage = null;
+        headerOlderSyncError = 'Target date must be older than the oldest imported game.';
+        redraw();
+        return;
+      }
+      targetDateStartMs = parsedTarget;
+    }
     headerOlderSyncRunning = true;
     headerOlderSyncMessage = null;
     headerOlderSyncError = null;
@@ -1726,6 +1799,7 @@ function renderSyncMenu(
       const result = await syncAccountGamesOlder(account, {
         rated: importFilters.rated,
         speeds: importFilters.speeds,
+        ...(targetDateStartMs !== undefined ? { targetDateStartMs } : {}),
         onProgress: count => {
           headerOlderSyncMessage = `Fetched ${count} game${count === 1 ? '' : 's'}...`;
           redraw();
@@ -1738,11 +1812,17 @@ function renderSyncMenu(
       } else if (result.alreadyAtStart) {
         headerOlderSyncMessage = 'Full history already imported.';
       } else if (result.fetchedCount === 0) {
-        headerOlderSyncMessage = 'No older games available.';
+        headerOlderSyncMessage = targetDateStartMs === undefined
+          ? 'No older games available.'
+          : `No older games found back to ${targetDateValue}.`;
       } else if (result.addedCount === 0) {
-        headerOlderSyncMessage = 'No new older games (all already imported).';
+        headerOlderSyncMessage = targetDateStartMs === undefined
+          ? 'No new older games (all already imported).'
+          : `Fetched older games back to ${targetDateValue}; all were already imported.`;
       } else {
-        headerOlderSyncMessage = `Imported ${syncOutcome.addedCount} older game${syncOutcome.addedCount === 1 ? '' : 's'}`;
+        headerOlderSyncMessage = targetDateStartMs === undefined
+          ? `Imported ${syncOutcome.addedCount} older game${syncOutcome.addedCount === 1 ? '' : 's'}`
+          : `Imported ${syncOutcome.addedCount} older game${syncOutcome.addedCount === 1 ? '' : 's'} back to ${targetDateValue}`;
       }
     } catch (err) {
       headerOlderSyncError = err instanceof Error ? err.message : 'Load older games failed.';
@@ -1820,6 +1900,34 @@ function renderSyncMenu(
             ? 'Full history already imported.'
             : `Oldest imported: ${formatSyncDate(account.oldestGameTimestamp)}`)
         : h('p.header__panel-hint', 'Run Sync first to establish a history cursor.'),
+      hasOldestCursor && !oldestCursorAtStart
+        ? h('div.header__panel-row.--mt', [
+            h('input.header__date-input', {
+              attrs: {
+                type: 'date',
+                value: headerOlderSyncTargetDate,
+                max: todayDateInputValue(),
+                disabled: headerOlderSyncRunning || headerSyncRunning,
+                title: 'Optional: fetch older games back to this date',
+              },
+              on: {
+                change: (event: Event) => {
+                  headerOlderSyncTargetDate = (event.target as HTMLInputElement).value;
+                  headerOlderSyncError = null;
+                  redraw();
+                },
+              },
+            }),
+            h('button.header__pill', {
+              attrs: {
+                type: 'button',
+                disabled: headerOlderSyncRunning || headerSyncRunning || !headerOlderSyncTargetDate,
+                title: 'Clear target date and fetch one older batch',
+              },
+              on: { click: () => { headerOlderSyncTargetDate = ''; headerOlderSyncError = null; redraw(); } },
+            }, 'One batch'),
+          ])
+        : null,
       headerOlderSyncError ? h('div.header__panel-error', headerOlderSyncError) : null,
       headerOlderSyncMessage ? h('p.header__panel-hint', headerOlderSyncMessage) : null,
       h('button.header__panel-btn', {
@@ -1829,10 +1937,16 @@ function renderSyncMenu(
             ? 'Run Sync first to establish a history cursor'
             : oldestCursorAtStart
             ? 'Full history already imported'
+            : headerOlderSyncTargetDate
+            ? 'Load older games back to the selected date'
             : 'Load games older than the earliest imported game',
         },
         on: { click: () => { void runOlderSync(); } },
-      }, headerOlderSyncRunning ? 'Loading older...' : 'Load older games'),
+      }, headerOlderSyncRunning
+        ? 'Loading older...'
+        : headerOlderSyncTargetDate
+        ? 'Load back to date'
+        : 'Load older games'),
     ]),
   ]);
 }

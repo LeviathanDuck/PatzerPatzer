@@ -192,6 +192,8 @@ export async function syncAccountGames(account: ChessAccount, options: AccountSy
 export interface AccountSyncOlderOptions {
   rated: boolean;
   speeds: ReadonlySet<ImportSpeed>;
+  /** Optional epoch-ms start of the target day to fetch back to. */
+  targetDateStartMs?: number;
   onProgress?: (count: number) => void;
 }
 
@@ -207,6 +209,8 @@ export interface AccountSyncOlderResult {
   duplicateCount: number;
   /** Epoch ms of the oldest game in the fetched batch, or null when no games returned. */
   newOldestTimestamp: number | null;
+  /** True when a target-date request covered the requested lower bound. */
+  reachedTargetDate: boolean;
 }
 
 /**
@@ -232,6 +236,7 @@ export async function syncAccountGamesOlder(
     newGames: [],
     duplicateCount: 0,
     newOldestTimestamp: oldest,
+    reachedTargetDate: false,
   });
 
   // No oldest cursor means we have no boundary to go back from — must run
@@ -242,33 +247,62 @@ export async function syncAccountGamesOlder(
   if (oldest <= 0) return noOpResult(true, true);
 
   const speedSet = new Set(options.speeds);
+  const targetDateStartMs = options.targetDateStartMs !== undefined
+    ? Math.max(0, options.targetDateStartMs)
+    : null;
+  const hasTargetDate = targetDateStartMs !== null && targetDateStartMs < oldest;
+  let reachedTargetDate = false;
 
-  let fetched: ImportedGame[];
+  const fetched: ImportedGame[] = [];
+  let progressOffset = 0;
+  const onBatchProgress = (count: number): void => {
+    options.onProgress?.(progressOffset + count);
+  };
   if (account.platform === 'lichess') {
     // Fetch games whose start time is strictly before the oldest-imported game.
     // The Lichess API returns games newest-first up to max=300; passing `until`
     // bounds the window so we get the 300 games immediately preceding the cursor.
-    fetched = await fetchLichessGames(
-      account.displayName,
-      options.rated,
-      speedSet,
-      options.onProgress,
-      undefined,       // no since: no lower bound for this backward batch
-      oldest - 1,      // until: exclude the oldest already-imported game
-    );
+    let batchUntil = oldest - 1;
+    while (true) {
+      const batch = await fetchLichessGames(
+        account.displayName,
+        options.rated,
+        speedSet,
+        onBatchProgress,
+        hasTargetDate ? targetDateStartMs : undefined,
+        batchUntil,
+      );
+      fetched.push(...batch);
+      progressOffset = fetched.length;
+      const batchOldest = minTimestamp(account, batch);
+      if (!hasTargetDate || batch.length < LICHESS_MAX_GAMES || batchOldest === null) {
+        reachedTargetDate = hasTargetDate;
+        break;
+      }
+      if (batchOldest <= targetDateStartMs) {
+        reachedTargetDate = true;
+        break;
+      }
+      const nextUntil = batchOldest - 1;
+      if (nextUntil >= batchUntil) break;
+      batchUntil = nextUntil;
+    }
   } else if (account.platform === 'chesscom') {
     // For Chess.com, beforeMonth is an exclusive upper bound on archive months.
     // Fetches all archive months strictly before the month of the oldest cursor.
     const beforeMonth = new Date(oldest).toISOString().slice(0, 7);
-    fetched = await fetchChesscomGames(
+    const cutoffMonth = hasTargetDate ? new Date(targetDateStartMs).toISOString().slice(0, 7) : null;
+    fetched.push(...await fetchChesscomGames(
       account.displayName,
       options.rated,
       speedSet,
-      options.onProgress,
+      onBatchProgress,
       undefined,       // no sinceMonth: no lower bound (fetch all older months)
-      null,            // cutoffMonth: no date-range lower bound
+      cutoffMonth,     // target month lower bound, or no lower bound for one-batch older fetch
       beforeMonth,     // exclusive upper bound on archive months
-    );
+    ));
+    progressOffset = fetched.length;
+    reachedTargetDate = hasTargetDate;
   } else {
     throw new Error(`Unsupported account platform: ${account.platform}`);
   }
@@ -283,7 +317,9 @@ export async function syncAccountGamesOlder(
   // - Games received: cursor moves to the oldest game in this batch (may go further back next call)
   // - No games received: we've reached the beginning of history; record as 0
   const newOldest = minTimestamp(account, fetched);
-  const oldestToRecord = newOldest ?? 0;
+  const oldestToRecord = hasTargetDate && reachedTargetDate
+    ? Math.min(newOldest ?? targetDateStartMs, targetDateStartMs)
+    : newOldest ?? 0;
 
   // Pass null for newestGameTimestamp and syncFilterKey — do not change the
   // forward cursor or filter key, only lower the oldest cursor.
@@ -298,6 +334,7 @@ export async function syncAccountGamesOlder(
     newGames,
     duplicateCount: Math.max(0, fetched.length - newGames.length),
     newOldestTimestamp: newOldest,
+    reachedTargetDate,
   };
 }
 

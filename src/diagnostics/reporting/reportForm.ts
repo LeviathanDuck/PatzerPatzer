@@ -6,6 +6,7 @@ export type ReportSeverity = typeof reportSeverities[number];
 
 export interface ReportFormState {
   description: string;
+  whatHappened: string;
   severity: ReportSeverity;
   expectedBehavior: string;
   actualBehavior: string;
@@ -14,6 +15,7 @@ export interface ReportFormState {
 
 export type ReportFormAction =
   | { type: 'description'; value: string }
+  | { type: 'whatHappened'; value: string }
   | { type: 'severity'; value: ReportSeverity }
   | { type: 'expectedBehavior'; value: string }
   | { type: 'actualBehavior'; value: string }
@@ -34,7 +36,7 @@ function normalizeSeverity(value: string): ReportSeverity {
 }
 
 export function renderReportForm(state: ReportFormState, dispatch: ReportFormDispatch): VNode {
-  const canSubmit = state.description.trim().length > 0 && !state.submitting;
+  const canSubmit = state.description.trim().length > 0 && state.whatHappened.trim().length > 0 && !state.submitting;
 
   return h('form.report-form', {
     on: {
@@ -46,12 +48,12 @@ export function renderReportForm(state: ReportFormState, dispatch: ReportFormDis
   }, [
     h('label.report-form__field', [
       h('span.report-form__label', 'What happened?'),
-      h('textarea.report-form__textarea.report-form__textarea--description', {
+      h('textarea.report-form__textarea.report-form__textarea--description.admin-token-input', {
         attrs: {
           required: true,
           minlength: '1',
           rows: '5',
-          placeholder: 'Describe the issue.',
+          placeholder: 'Short summary of the issue.',
         },
         props: {
           value: state.description,
@@ -62,8 +64,25 @@ export function renderReportForm(state: ReportFormState, dispatch: ReportFormDis
       }),
     ]),
     h('label.report-form__field', [
+      h('span.report-form__label', 'What were you doing?'),
+      h('textarea.report-form__textarea.admin-token-input', {
+        attrs: {
+          required: true,
+          minlength: '1',
+          rows: '4',
+          placeholder: 'Describe the action or workflow that led to the issue.',
+        },
+        props: {
+          value: state.whatHappened,
+        },
+        on: {
+          input: (event: Event) => dispatch({ type: 'whatHappened', value: readInputValue(event) }),
+        },
+      }),
+    ]),
+    h('label.report-form__field', [
       h('span.report-form__label', 'Severity'),
-      h('select.report-form__select', {
+      h('select.report-form__select.admin-token-input', {
         props: {
           value: state.severity,
         },
@@ -79,7 +98,7 @@ export function renderReportForm(state: ReportFormState, dispatch: ReportFormDis
     ]),
     h('label.report-form__field', [
       h('span.report-form__label', 'Expected behavior'),
-      h('textarea.report-form__textarea', {
+      h('textarea.report-form__textarea.admin-token-input', {
         attrs: {
           rows: '4',
           placeholder: 'Optional',
@@ -94,7 +113,7 @@ export function renderReportForm(state: ReportFormState, dispatch: ReportFormDis
     ]),
     h('label.report-form__field', [
       h('span.report-form__label', 'Actual behavior'),
-      h('textarea.report-form__textarea', {
+      h('textarea.report-form__textarea.admin-token-input', {
         attrs: {
           rows: '4',
           placeholder: 'Optional',
@@ -108,13 +127,13 @@ export function renderReportForm(state: ReportFormState, dispatch: ReportFormDis
       }),
     ]),
     h('div.report-form__actions', [
-      h('button.report-form__submit', {
+      h('button.report-form__submit.admin-btn.admin-btn--primary', {
         attrs: {
           type: 'submit',
           disabled: !canSubmit,
         },
       }, state.submitting ? 'Submitting...' : 'Submit'),
-      h('button.report-form__cancel', {
+      h('button.report-form__cancel.admin-btn.admin-btn--muted', {
         attrs: {
           type: 'button',
         },

@@ -69,11 +69,13 @@ export function canTransitionReportTriage(
   return from === to || REPORT_TRIAGE_TRANSITIONS[from].includes(to);
 }
 
-export async function saveReport(report: DiagnosticReport): Promise<void> {
+export async function saveReport(report: DiagnosticReport): Promise<boolean> {
   try {
     await putDiagnosticReport(toStoredReport(report));
+    return true;
   } catch (error) {
     console.warn('[diagnostics] failed to save bug report locally', error);
+    return false;
   }
 }
 

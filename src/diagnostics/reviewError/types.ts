@@ -1,9 +1,31 @@
 import type { StoredAnalysis, StoredNodeEntry, ReviewEngineMetadata } from '../../idb';
 import type { ImportedGame } from '../../import/types';
-import type { DiagnosticEvent } from '../types';
+import type { Breadcrumb, DiagnosticEvent } from '../types';
 import type { ReviewErrorPackageStorageRecord } from './storage';
 
 export const REVIEW_ERROR_PACKAGE_FORMAT_VERSION = 1;
+
+export const REVIEW_ERROR_FULL_CONTEXT_CATEGORIES = [
+  'raw PGN',
+  'FENs',
+  'stored analysis',
+  'engine metadata',
+  'browser/session context',
+  'diagnostics',
+  'screenshots',
+] as const;
+
+export const REVIEW_ERROR_PROHIBITED_DATA_CLASSES = [
+  'tokens',
+  'cookies',
+  'passwords',
+  'OAuth secrets',
+  'admin token values',
+  'raw localStorage dumps',
+] as const;
+
+export type ReviewErrorFullContextCategory = typeof REVIEW_ERROR_FULL_CONTEXT_CATEGORIES[number];
+export type ReviewErrorProhibitedDataClass = typeof REVIEW_ERROR_PROHIBITED_DATA_CLASSES[number];
 
 export interface ReviewErrorAdminMemo {
   message: string;
@@ -73,11 +95,20 @@ export interface ReviewErrorBrowserContext {
   language: string;
   viewportWidth: number;
   viewportHeight: number;
+  devicePixelRatio?: number;
   hardwareConcurrency?: number;
   deviceMemory?: number;
+  connection?: {
+    type?: string;
+    effectiveType?: string;
+  };
   storageEstimate?: {
     quota?: number;
     usage?: number;
+  };
+  performance?: {
+    domContentLoadedMs?: number;
+    loadMs?: number;
   };
 }
 
@@ -89,6 +120,50 @@ export interface ReviewErrorSessionContext {
 
 export interface ReviewErrorDiagnosticContext {
   recentEvents: DiagnosticEvent[];
+}
+
+export interface ReviewErrorScreenshotAttachmentPreview {
+  fileName: string;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+  sizeBytes: number;
+  lastModified?: number;
+}
+
+export interface ReviewErrorRemoteUploadConsent {
+  previewShownAt?: string;
+  explicitConsent: boolean;
+  consentedAt?: string;
+  localSaveOnly: boolean;
+}
+
+export interface ReviewErrorPackagePreview {
+  requiredBeforeRemoteUpload: true;
+  fullContextCategories: ReviewErrorFullContextCategory[];
+  prohibitedDataClasses: ReviewErrorProhibitedDataClass[];
+  screenshotAttachments: ReviewErrorScreenshotAttachmentPreview[];
+  remoteUploadConsent: ReviewErrorRemoteUploadConsent;
+}
+
+export interface ReviewErrorBoundedContext {
+  scope: {
+    gameId: string;
+    selectedPath: string;
+    includedAnalysisNodePaths: string[];
+    includedDiagnosticEventIds: string[];
+  };
+  route: {
+    currentRoute: string;
+    safeQueryParams: Record<string, string>;
+    recentTransitions: Array<{
+      from: string;
+      to: string;
+      timestamp: number;
+    }>;
+  };
+  breadcrumbs: Breadcrumb[];
+  browserSummary: ReviewErrorBrowserContext;
+  exclusions: ReviewErrorProhibitedDataClass[];
+  notes: string[];
 }
 
 /**
@@ -109,4 +184,6 @@ export interface ReviewErrorPackage extends ReviewErrorPackageStorageRecord {
   currentEngineSettings: ReviewErrorCurrentEngineSettings;
   browser: ReviewErrorBrowserContext;
   diagnostics: ReviewErrorDiagnosticContext;
+  boundedContext: ReviewErrorBoundedContext;
+  preview: ReviewErrorPackagePreview;
 }

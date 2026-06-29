@@ -24,10 +24,14 @@ export interface ChessAccount {
   /** Username with original casing, for display. */
   displayName: string;
   category: AccountCategory;
+  /** Date.now() when profile fields such as displayName/category last changed. */
+  profileUpdatedAt?: number;
   /** Date.now() when the account was first registered. */
   addedAt: number;
   /** Date.now() of the last successful import for this account, or null if never synced. */
   lastSyncedAt: number | null;
+  /** Date.now() when import cursor fields last changed. */
+  syncCursorUpdatedAt?: number;
   /**
    * Epoch ms of the newest imported game's end time for this account.
    * Incremental-sync cursor: imports only fetch games newer than this.
@@ -56,6 +60,33 @@ export function accountId(platform: AccountPlatform, username: string): string {
   return `${platform}:${username.trim().toLowerCase()}`;
 }
 
+function timestamp(value: number | null | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function profileTimestamp(account: ChessAccount): number {
+  return Math.max(timestamp(account.profileUpdatedAt), timestamp(account.addedAt));
+}
+
+function cursorTimestamp(account: ChessAccount): number {
+  return Math.max(
+    timestamp(account.syncCursorUpdatedAt),
+    timestamp(account.lastSyncedAt),
+    timestamp(account.newestGameTimestamp),
+    timestamp(account.oldestGameTimestamp),
+  );
+}
+
+function cursorPatchChanged(
+  existing: ChessAccount,
+  patch: Partial<Omit<ChessAccount, 'id' | 'platform' | 'username' | 'addedAt'>>,
+): boolean {
+  return ('lastSyncedAt' in patch && patch.lastSyncedAt !== existing.lastSyncedAt)
+    || ('newestGameTimestamp' in patch && patch.newestGameTimestamp !== existing.newestGameTimestamp)
+    || ('oldestGameTimestamp' in patch && patch.oldestGameTimestamp !== existing.oldestGameTimestamp)
+    || ('syncFilterKey' in patch && patch.syncFilterKey !== existing.syncFilterKey);
+}
+
 /**
  * Create an account, or update the category/display name of an existing one.
  * Preserves `addedAt` and sync cursors on re-registration.
@@ -67,16 +98,28 @@ export async function registerAccount(
 ): Promise<ChessAccount> {
   const id = accountId(platform, username);
   const existing = await getAccountFromIdb(id);
+  const now = Date.now();
+  const displayName = username.trim();
   const account: ChessAccount = existing
-    ? { ...existing, displayName: username.trim(), category }
+    ? {
+        ...existing,
+        displayName,
+        category,
+        profileUpdatedAt: existing.displayName !== displayName || existing.category !== category
+          ? now
+          : profileTimestamp(existing),
+        syncCursorUpdatedAt: cursorTimestamp(existing),
+      }
     : {
         id,
         platform,
-        username: username.trim().toLowerCase(),
-        displayName: username.trim(),
+        username: displayName.toLowerCase(),
+        displayName,
         category,
-        addedAt: Date.now(),
+        profileUpdatedAt: now,
+        addedAt: now,
         lastSyncedAt: null,
+        syncCursorUpdatedAt: now,
         newestGameTimestamp: null,
         oldestGameTimestamp: null,
         syncFilterKey: null,
@@ -107,9 +150,12 @@ export async function recordAccountSync(
 ): Promise<void> {
   const existing = await getAccountFromIdb(id);
   if (!existing) return;
+  const now = Date.now();
   const updated: ChessAccount = {
     ...existing,
-    lastSyncedAt: Date.now(),
+    lastSyncedAt: now,
+    profileUpdatedAt: profileTimestamp(existing),
+    syncCursorUpdatedAt: now,
     newestGameTimestamp: newestGameTimestamp === null
       ? existing.newestGameTimestamp
       : Math.max(existing.newestGameTimestamp ?? 0, newestGameTimestamp),
@@ -132,7 +178,15 @@ export async function updateAccount(
 ): Promise<ChessAccount | undefined> {
   const existing = await getAccountFromIdb(id);
   if (!existing) return undefined;
-  const updated: ChessAccount = { ...existing, ...patch };
+  const now = Date.now();
+  const profileChanged = ('displayName' in patch && patch.displayName !== existing.displayName)
+    || ('category' in patch && patch.category !== existing.category);
+  const updated: ChessAccount = {
+    ...existing,
+    ...patch,
+    profileUpdatedAt: profileChanged ? now : profileTimestamp(existing),
+    syncCursorUpdatedAt: cursorPatchChanged(existing, patch) ? now : cursorTimestamp(existing),
+  };
   await saveAccountToIdb(updated);
   return updated;
 }

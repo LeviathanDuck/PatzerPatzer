@@ -21,6 +21,7 @@ const PUZZLE_DB_NAME = 'patzer-puzzle-v1';
 const PUZZLE_DB_VERSION = 3;
 const TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
 const LAST_SYNC_KEY = 'chesspatzer.remoteSync.lastSyncedAt';
+const LAST_CHECK_KEY = 'chesspatzer.remoteSync.lastCheckedAt';
 const OUTBOX_KEY = 'chesspatzer.remoteSync.outbox';
 const DEVICE_TAG_KEY = 'chesspatzer.remoteSync.deviceTag';
 const SYNC_LOG_KEY = 'chesspatzer.remoteSync.syncLog';
@@ -37,6 +38,7 @@ const PUSH_BATCH_SIZE = 100;
 const RESTORE_CHUNK_SIZE = 100;
 const FLUSH_DEBOUNCE_MS = 250;
 const FLUSH_INTERVAL_MS = 15_000;
+const REMOTE_POLL_INTERVAL_MS = 60_000;
 const SYNC_LOG_LIMIT = 80;
 const BACKUP_FORMAT = 'patzer-sync-backup';
 
@@ -391,6 +393,92 @@ function genericUpdatedAt(record: unknown): number {
   );
 }
 
+const ACCOUNT_PROFILE_FIELDS = ['displayName', 'category'] as const;
+const ACCOUNT_CURSOR_FIELDS = ['lastSyncedAt', 'newestGameTimestamp', 'oldestGameTimestamp', 'syncFilterKey'] as const;
+
+function accountProfileUpdatedAt(record: unknown): number {
+  return maxTimestamp(
+    numberField(record, 'profileUpdatedAt'),
+    numberField(record, 'addedAt'),
+  );
+}
+
+function accountCursorUpdatedAt(record: unknown): number {
+  return maxTimestamp(
+    numberField(record, 'syncCursorUpdatedAt'),
+    numberField(record, 'lastSyncedAt'),
+    numberField(record, 'newestGameTimestamp'),
+    numberField(record, 'oldestGameTimestamp'),
+  );
+}
+
+function accountUpdatedAt(record: unknown): number {
+  return maxTimestamp(
+    accountProfileUpdatedAt(record),
+    accountCursorUpdatedAt(record),
+    numberField(record, 'addedAt'),
+  );
+}
+
+function copyAccountFields(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  fields: readonly string[],
+): void {
+  for (const field of fields) {
+    if (field in source) target[field] = source[field];
+  }
+}
+
+function earliestPositiveTimestamp(left: number, right: number): number {
+  if (left > 0 && right > 0) return Math.min(left, right);
+  return Math.max(left, right);
+}
+
+function normalizeAccountPayload(record: unknown, itemKey?: string): Record<string, unknown> | null {
+  const account = objectValue(record);
+  if (!account) return null;
+  const normalized: Record<string, unknown> = { ...account };
+  if (itemKey && !stringField(normalized, 'id')) normalized.id = itemKey;
+  const profileUpdatedAt = accountProfileUpdatedAt(normalized);
+  const syncCursorUpdatedAt = accountCursorUpdatedAt(normalized);
+  if (profileUpdatedAt > 0) normalized.profileUpdatedAt = profileUpdatedAt;
+  if (syncCursorUpdatedAt > 0) normalized.syncCursorUpdatedAt = syncCursorUpdatedAt;
+  return normalized;
+}
+
+export function mergeRemoteSyncAccountPayload(
+  existingRecord: unknown,
+  incomingRecord: unknown,
+  itemKey?: string,
+): Record<string, unknown> | null {
+  const incoming = normalizeAccountPayload(incomingRecord, itemKey);
+  if (!incoming) return null;
+  const existing = normalizeAccountPayload(existingRecord, itemKey);
+  if (!existing) return incoming;
+
+  const existingProfileUpdatedAt = accountProfileUpdatedAt(existing);
+  const incomingProfileUpdatedAt = accountProfileUpdatedAt(incoming);
+  const existingCursorUpdatedAt = accountCursorUpdatedAt(existing);
+  const incomingCursorUpdatedAt = accountCursorUpdatedAt(incoming);
+  const profileSource = incomingProfileUpdatedAt >= existingProfileUpdatedAt ? incoming : existing;
+  const cursorSource = incomingCursorUpdatedAt >= existingCursorUpdatedAt ? incoming : existing;
+  const merged: Record<string, unknown> = { ...existing, ...incoming };
+
+  merged.id = stringField(existing, 'id') ?? stringField(incoming, 'id') ?? itemKey ?? '';
+  merged.platform = stringField(existing, 'platform') ?? stringField(incoming, 'platform') ?? '';
+  merged.username = stringField(existing, 'username') ?? stringField(incoming, 'username') ?? '';
+  merged.addedAt = earliestPositiveTimestamp(numberField(existing, 'addedAt'), numberField(incoming, 'addedAt'));
+
+  copyAccountFields(merged, profileSource, ACCOUNT_PROFILE_FIELDS);
+  merged.profileUpdatedAt = Math.max(accountProfileUpdatedAt(profileSource), numberField(merged, 'addedAt'));
+
+  copyAccountFields(merged, cursorSource, ACCOUNT_CURSOR_FIELDS);
+  merged.syncCursorUpdatedAt = accountCursorUpdatedAt(cursorSource);
+
+  return merged;
+}
+
 function singletonKey(key: string): () => string {
   return () => key;
 }
@@ -510,12 +598,7 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
     objectStore: 'accounts',
     keyMode: 'keyPath',
     keyForRecord: record => stringField(record, 'id'),
-    updatedAt: record => maxTimestamp(
-      numberField(record, 'lastSyncedAt'),
-      numberField(record, 'addedAt'),
-      numberField(record, 'newestGameTimestamp'),
-      numberField(record, 'oldestGameTimestamp'),
-    ),
+    updatedAt: accountUpdatedAt,
   },
   {
     store: 'puzzle-definitions',
@@ -646,12 +729,16 @@ const SETTINGS_PREFIXES = [
 let autoSyncStarted = false;
 let flushDebounceTimer: number | null = null;
 let flushIntervalTimer: number | null = null;
+let remotePollIntervalTimer: number | null = null;
 let visibilityFlushHandler: (() => void) | null = null;
+let pageShowSyncHandler: (() => void) | null = null;
+let onlineSyncHandler: (() => void) | null = null;
 let settingsObserverInstalled = false;
 let applyingRemoteSync = false;
 let syncGeneration = 0;
 let skipNextStartupPush = false;
 let activeSyncOperationCount = 0;
+let autoPullInFlight = false;
 
 function emitSyncActivityChanged(): void {
   window.dispatchEvent(new CustomEvent(REMOTE_SYNC_ACTIVITY_EVENT, {
@@ -1060,6 +1147,19 @@ export function clearRemoteSyncToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+function runVisibleAutoPull(): void {
+  if (!hasRemoteSyncToken()) return;
+  if (document.visibilityState !== 'visible') return;
+  if (autoPullInFlight) return;
+  autoPullInFlight = true;
+  void pullFromRemoteSync({
+    flushAfter: !isRemoteSyncFullPullRequired(),
+    logNoop: false,
+  }).finally(() => {
+    autoPullInFlight = false;
+  });
+}
+
 export function startRemoteSyncAutoSync(options: { pushAfterHydrate?: boolean } = {}): void {
   if (autoSyncStarted) return;
   autoSyncStarted = true;
@@ -1068,19 +1168,26 @@ export function startRemoteSyncAutoSync(options: { pushAfterHydrate?: boolean } 
   installSettingsObserver();
 
   visibilityFlushHandler = () => {
-    if (document.visibilityState === 'visible') void pullFromRemoteSync({ flushAfter: !isRemoteSyncFullPullRequired() });
+    runVisibleAutoPull();
   };
   window.addEventListener('visibilitychange', visibilityFlushHandler);
+  pageShowSyncHandler = () => runVisibleAutoPull();
+  onlineSyncHandler = () => runVisibleAutoPull();
+  window.addEventListener('pageshow', pageShowSyncHandler);
+  window.addEventListener('online', onlineSyncHandler);
 
   flushIntervalTimer = window.setInterval(() => {
     void flushRemoteSyncOutbox();
   }, FLUSH_INTERVAL_MS);
+  remotePollIntervalTimer = window.setInterval(() => {
+    runVisibleAutoPull();
+  }, REMOTE_POLL_INTERVAL_MS);
 
   void withRemoteSyncActivity(async () => {
     await hydrateFromRemoteSync();
     const shouldPush = pushAfterHydrate && !skipNextStartupPush && !isRemoteSyncFullPullRequired();
     skipNextStartupPush = false;
-    if (shouldPush && syncGeneration === generation && hasRemoteSyncToken()) return pushToRemoteSync();
+    if (shouldPush && syncGeneration === generation && hasRemoteSyncToken()) return pushToRemoteSync({ skipFreshPull: true });
     return { success: true, counts: {} };
   })
     .catch(error => console.warn('[remote-sync] Startup hydrate failed', error));
@@ -1097,10 +1204,23 @@ export function stopRemoteSyncAutoSync(): void {
     window.clearInterval(flushIntervalTimer);
     flushIntervalTimer = null;
   }
+  if (remotePollIntervalTimer !== null) {
+    window.clearInterval(remotePollIntervalTimer);
+    remotePollIntervalTimer = null;
+  }
   if (visibilityFlushHandler) {
     window.removeEventListener('visibilitychange', visibilityFlushHandler);
     visibilityFlushHandler = null;
   }
+  if (pageShowSyncHandler) {
+    window.removeEventListener('pageshow', pageShowSyncHandler);
+    pageShowSyncHandler = null;
+  }
+  if (onlineSyncHandler) {
+    window.removeEventListener('online', onlineSyncHandler);
+    onlineSyncHandler = null;
+  }
+  autoPullInFlight = false;
 }
 
 export function logoutRemoteSync(): void {
@@ -1111,6 +1231,7 @@ export function logoutRemoteSync(): void {
 
 function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneration?: boolean; clearFullPull?: boolean } = {}): void {
   localStorage.removeItem(LAST_SYNC_KEY);
+  localStorage.removeItem(LAST_CHECK_KEY);
   if (options.clearOutbox) localStorage.removeItem(OUTBOX_KEY);
   if (options.clearGeneration) clearServerGeneration();
   if (options.clearFullPull) clearRemoteSyncFullPullRequirement();
@@ -1132,6 +1253,10 @@ export function getRemoteSyncLastSyncedAt(): string | null {
   return localStorage.getItem(LAST_SYNC_KEY);
 }
 
+export function getRemoteSyncLastCheckedAt(): string | null {
+  return localStorage.getItem(LAST_CHECK_KEY);
+}
+
 function getRemoteSyncLastSyncMs(): number | undefined {
   const value = getRemoteSyncLastSyncedAt();
   if (!value) return undefined;
@@ -1142,6 +1267,11 @@ function getRemoteSyncLastSyncMs(): number | undefined {
 function setRemoteSyncLastSyncedAt(updatedAt?: number): void {
   const time = updatedAt && updatedAt > 0 ? updatedAt : Date.now();
   localStorage.setItem(LAST_SYNC_KEY, new Date(time).toISOString());
+}
+
+function setRemoteSyncLastCheckedAt(checkedAt = Date.now()): void {
+  localStorage.setItem(LAST_CHECK_KEY, new Date(checkedAt).toISOString());
+  emitSyncLogChanged();
 }
 
 async function readJsonResponse<T>(res: Response): Promise<T> {
@@ -1158,7 +1288,7 @@ function handleStaleSession(body: ApiErrorBody): never {
   rememberServerGeneration(body.syncGeneration, body.generationReason);
   stopRemoteSyncAutoSync();
   clearRemoteSyncToken();
-  clearRemoteSyncMarkers({ clearOutbox: true });
+  clearRemoteSyncMarkers();
   requireRemoteSyncFullPull();
   const error = new RemoteSyncStaleSessionError(body);
   recordRemoteSyncLog('system', 'error', error.message, body.syncGeneration ? { syncGeneration: body.syncGeneration } : undefined);
@@ -1814,6 +1944,15 @@ async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted'
   const db = await openIdb(spec.dbName, spec.dbVersion);
   try {
     const existing = await readRecordByItemKey(db, spec, item.itemKey);
+    if (item.store === 'accounts' && !isDeletedItem(item)) {
+      if (item.payload === undefined) return 'skipped';
+      const merged = mergeRemoteSyncAccountPayload(existing, item.payload, item.itemKey);
+      if (!merged) return 'skipped';
+      await writeRecordByItemKey(db, spec, item.itemKey, merged);
+      rememberItemUpdatedAt(spec.store, item.itemKey, maxTimestamp(item.updatedAt, accountUpdatedAt(merged)));
+      return 'applied';
+    }
+
     const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing);
     if (item.updatedAt < existingUpdatedAt) return 'skipped';
 
@@ -1960,21 +2099,36 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
   });
 }
 
-export async function pushToRemoteSync(): Promise<SyncResult> {
+export async function pushToRemoteSync(options: { skipFreshPull?: boolean } = {}): Promise<SyncResult> {
   return withRemoteSyncActivity(async () => {
     try {
+      let pullCounts: Record<string, number> | undefined;
+      if (!options.skipFreshPull) {
+        const pull = await pullFromRemoteSync({ since: null, flushAfter: false, logNoop: false });
+        pullCounts = pull.counts;
+        if (!pull.success) {
+          const message = pull.error || 'Fresh pull failed before push.';
+          recordRemoteSyncLog('push', 'error', message);
+          return pull.counts
+            ? { success: false, error: message, counts: pull.counts }
+            : { success: false, error: message };
+        }
+      }
       if (isRemoteSyncFullPullRequired()) {
         const message = 'Pull the token database before pushing from this browser.';
         recordRemoteSyncLog('push', 'error', message);
-        return { success: false, error: message };
+        return pullCounts
+          ? { success: false, error: message, counts: pullCounts }
+          : { success: false, error: message };
       }
       const flush = await flushRemoteSyncOutbox();
       if (!flush.success) return flush;
 
       const items = await readLocalRemoteSyncItems();
       const counts = await pushItems(items);
+      mergeCounts(counts, pullCounts);
       setRemoteSyncLastSyncedAt(maxItemUpdatedAt(items));
-      recordRemoteSyncLog('push', 'success', 'Local cache pushed to database.', counts);
+      recordRemoteSyncLog('push', 'success', 'Database pulled, then local cache pushed.', counts);
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync push failed.';
@@ -1984,7 +2138,7 @@ export async function pushToRemoteSync(): Promise<SyncResult> {
   });
 }
 
-export async function pullFromRemoteSync(options: { since?: number | null; flushAfter?: boolean } = {}): Promise<SyncResult> {
+export async function pullFromRemoteSync(options: { since?: number | null; flushAfter?: boolean; logNoop?: boolean } = {}): Promise<SyncResult> {
   return withRemoteSyncActivity(async () => {
     try {
       await ensureServerGenerationLoaded();
@@ -1994,6 +2148,7 @@ export async function pullFromRemoteSync(options: { since?: number | null; flush
       const path = since !== undefined ? `pull.php?since=${encodeURIComponent(String(since))}` : 'pull.php';
       const result = await remoteSyncFetch<PullResponse>(path);
       if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
+      setRemoteSyncLastCheckedAt();
       if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts: { skipped: 1 } };
 
       const items = result.items ?? [];
@@ -2021,7 +2176,10 @@ export async function pullFromRemoteSync(options: { since?: number | null; flush
         mergeCounts(counts, flush.counts);
       }
 
-      recordRemoteSyncLog('pull', 'success', 'Database changes pulled into local cache.', counts);
+      const shouldLog = options.logNoop !== false
+        || Object.values(counts).some(value => value > 0)
+        || items.length > 0;
+      if (shouldLog) recordRemoteSyncLog('pull', 'success', 'Database changes pulled into local cache.', counts);
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync pull failed.';
