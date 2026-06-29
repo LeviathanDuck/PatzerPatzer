@@ -115,6 +115,7 @@ export async function fetchChesscomGames(
   onProgress?: (count: number) => void,
   sinceMonth?: string, // YYYY-MM sync cursor; only fetch this month and newer
   cutoffMonth: string | null = archiveCutoffMonthFor(currentImportDateRangeConfig()),
+  beforeMonth?: string, // YYYY-MM exclusive upper bound; only fetch months strictly before this
 ): Promise<ImportedGame[]> {
   // 1. Fetch archive list (one URL per month the player has games)
   const archivesRes = await fetchChesscomResponse(
@@ -156,14 +157,17 @@ export async function fetchChesscomGames(
     .filter((m): m is string => m !== null)
     .sort()
     .pop() ?? null;
-  const relevantArchives = effectiveCutoff === null
+  const relevantArchives = (effectiveCutoff === null && beforeMonth === undefined)
     ? archives
     : archives.filter(url => {
         const parts = url.split('/');
         const year  = parts[parts.length - 2];
         const month = parts[parts.length - 1];
         if (!year || !month) return false;
-        return `${year}-${month.padStart(2, '0')}` >= effectiveCutoff;
+        const archiveMonth = `${year}-${month.padStart(2, '0')}`;
+        if (effectiveCutoff !== null && archiveMonth < effectiveCutoff) return false;
+        if (beforeMonth !== undefined && archiveMonth >= beforeMonth) return false;
+        return true;
       });
   if (relevantArchives.length === 0) {
     recordChesscomImportEvent('chesscom-import-empty', Severity.Info, {

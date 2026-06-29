@@ -23,21 +23,23 @@ import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/anim
 import { renderMoveList } from '../analyse/moveList';
 import { formatScore } from '../analyse/evalView';
 import type { TreeNode } from '../tree/types';
-import type { ChessAccount } from '../accounts';
+import { updateAccount, type ChessAccount, type AccountCategory } from '../accounts';
 import {
   collections, collectionsLoaded, loadSavedCollections,
   registryAccounts, accountsLoaded, loadRegistryAccounts, openAccountResearch,
   refreshRegistryAccounts, invalidateImportedSpeeds, getImportedSpeedsForAccount,
-  openingsPage, activeCollection, sessionNode, sessionPath, openingTree, sampleGames,
+  openingsPage, activeCollection, activeGames, sessionNode, sessionPath, openingTree, sampleGames,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
   routeRecoveryMessage,
   sampleGamesSortMode, setSampleGamesSortMode, sampleGamesResultFilter, setSampleGamesResultFilter,
   sessionDateRange, setSessionDateRange, SESSION_DATE_RANGE_OPTIONS,
+  sessionCustomFrom, sessionCustomTo, presetSessionCustomFrom, presetSessionCustomTo,
+  setSessionCustomFrom, setSessionCustomTo, excludedUndatedCount,
   treeEvalThoroughness, setTreeEvalThoroughness, TREE_EVAL_THOROUGHNESS_OPTIONS,
   triggerTreeEvalForCurrentNode,
   openCollection, closeSession, presetColorFilter, presetSpeedFilter, presetSessionDateRange, navigateToMove, navigateBack, navigateToRoot, navigateToPath, navigateToEnd,
   removeCollection, renameCollection,
-  treeBuilding, treeBuildProgress, treeBuildTotal,
+  treeBuilding, treeBuildProgress, treeBuildTotal, cappedGamesCount, loadFullMobileTree,
   isFetching, importStep, importSource, importUsername, importColor, importError,
   importCategory, setImportCategory,
   importProgress, importMonth, cancelImport,
@@ -85,6 +87,7 @@ import {
   showEngineArrows, setShowEngineArrows,
   arrowAllLines, setArrowAllLines,
   showArrowLabels, setShowArrowLabels,
+  stopProtocol,
 } from '../engine/ctrl';
 import {
   cancelTreeEval,
@@ -110,9 +113,19 @@ import {
 import { detectTrapPatterns } from './traps';
 import { saveOrpLineToLibrary } from '../study/saveAction';
 import { clearLichessApiLoginData, requestBookLogin } from '../auth/lichessBookAuth';
+import {
+  markNav, currentGenerationToken, isGenerationCurrent, onSettle, isRapid,
+} from './scheduler';
 
 let _openingsCg: CgApi | undefined;
 let _lastOpeningsAutoShapesHash: string | null = null;
+
+
+
+
+let _showTreeArrows: boolean = true;
+function showTreeArrows(): boolean { return _showTreeArrows; }
+function toggleTreeArrows(): void { _showTreeArrows = !_showTreeArrows; }
 let _lastBoardFen: string = '';
 let _lastBoardPractice: boolean = false;
 // Tracks the FEN when the user has played a legal off-tree move in browse mode.
@@ -459,7 +472,23 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
       h('div.openings__preload-row', [
         periodBtn(null, 'All time'),
         ...SESSION_DATE_RANGE_OPTIONS.map(o => periodBtn(o.value, o.label)),
+        periodBtn('custom', 'Custom'),
       ]),
+      // Custom from/to date inputs — visible only when 'custom' period is selected.
+      range === 'custom' ? h('div.openings__preload-custom-range', [
+        h('span.openings__preload-custom-label', 'From'),
+        h('input.openings__preload-date-input', {
+          attrs: { type: 'date' },
+          props: { value: sessionCustomFrom() },
+          on: { change: (e: Event) => { presetSessionCustomFrom((e.target as HTMLInputElement).value); redraw(); } },
+        }),
+        h('span.openings__preload-custom-label', 'To'),
+        h('input.openings__preload-date-input', {
+          attrs: { type: 'date' },
+          props: { value: sessionCustomTo() },
+          on: { change: (e: Event) => { presetSessionCustomTo((e.target as HTMLInputElement).value); redraw(); } },
+        }),
+      ]) : null,
     ]),
     account ? renderPreLoadSyncArea(account, redraw) : null,
     h('button.openings__preload-build', {
@@ -467,6 +496,32 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
 
       on: { click: (e: Event) => { e.stopPropagation(); presetColorFilter('both'); void onBuild(); } },
     }, 'Build tree'),
+  ]);
+}
+
+
+async function changeAccountCategory(account: ChessAccount, category: AccountCategory, redraw: () => void): Promise<void> {
+  await updateAccount(account.id, { category });
+  await refreshRegistryAccounts(redraw);
+}
+
+
+function renderCategorySelector(account: ChessAccount, redraw: () => void): VNode {
+  return h('select.openings__category-select', {
+    props: { value: account.category },
+    attrs: { title: 'Change classification', 'aria-label': 'Change account classification' },
+    on: {
+      click: (e: Event) => e.stopPropagation(),
+      change: (e: Event) => {
+        e.stopPropagation();
+        const category = (e.target as HTMLSelectElement).value as AccountCategory;
+        void changeAccountCategory(account, category, redraw);
+      },
+    },
+  }, [
+    h('option', { attrs: { value: 'mine'     } }, 'Mine'),
+    h('option', { attrs: { value: 'opponent' } }, 'Opponent'),
+    h('option', { attrs: { value: 'study'    } }, 'Study'),
   ]);
 }
 
@@ -488,7 +543,8 @@ function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => 
         h('div.openings__card-top', [
           h('span.openings__collection-name', account.displayName),
           h('div.openings__account-actions', [
-            h('span.openings__hint', `${platformLabel(account.platform)} · ${account.category}`),
+            h('span.openings__hint', platformLabel(account.platform)),
+            renderCategorySelector(account, redraw),
             h('button.openings__account-open-btn', {
               class: { active: _expandedCardKey === `account:${account.id}` },
               attrs: {
@@ -1042,6 +1098,8 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
       renderToggleRow('op-engine-arrows', 'Engine arrows', showEngineArrows, (v) => { setShowEngineArrows(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }),
       renderToggleRow('op-engine-line-arrows', 'Engine line arrows', arrowAllLines, (v) => { setArrowAllLines(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }, !showEngineArrows),
       renderToggleRow('op-arrow-labels', 'Arrow labels', showArrowLabels, (v) => { setShowArrowLabels(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }),
+
+      renderToggleRow('op-tree-arrows', 'Tree arrows', showTreeArrows(), (_v) => { toggleTreeArrows(); _lastOpeningsAutoShapesHash = null; syncOpeningsAutoShapes(sessionNode()); redraw(); }),
     ]),
   ]);
 }
@@ -2233,7 +2291,7 @@ function renderOpeningTreeTool(
         return null;
       })(),
       renderColorToggle(collection?.target ?? '', redraw),
-      isFetching() ? renderFetchBar(redraw) : treeBuilding() ? renderTreeBuildBar() : null,
+      isFetching() ? renderFetchBar(redraw) : treeBuilding() ? renderTreeBuildBar(redraw) : renderMobileCapNotice(redraw),
       // Opening tree move rows stay above the navigation controls.
       node ? renderPlayedLinesPanel(node, redraw) : null,
       // Board navigation controls render beneath the opening tree list.
@@ -2711,8 +2769,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
                           lastMove: [orig, dest],
                           movable: { dests: destsForFen(newFen), color: 'both' },
                         });
-                        setCevalFenOverride(newFen);
-                        if (engineEnabled) evalCurrentPosition();
+                        scheduleOpeningsEngineEval(newFen);
                         redraw();
                       }
                     }
@@ -2837,6 +2894,39 @@ function scheduleNextAnimMove(redraw: () => void, delay = ANIM_MOVE_MS): void {
   }, delay);
 }
 
+/**
+ * Settle-gated engine eval for the openings board.
+ *
+ * Called on every FEN change during navigation (tree nav and off-tree moves).
+ * - Sets the FEN override immediately so any in-flight search can detect staleness.
+ * - Stops any in-flight search immediately; the engine will restart after settle.
+ * - Records a navigation event (markNav) then schedules eval after SETTLE_QUIET_MS
+ *   of silence, dropping the callback if the user navigates again before it fires.
+ *
+ * Mirrors the Lichess "stop on jump, restart on settle" pattern from
+ * ui/analyse/src/ctrl.ts jump() → ceval.stop() / startCeval(), adapted for the
+ * openings board's main-thread engine and scheduler settle model.
+ */
+function scheduleOpeningsEngineEval(fen: string): void {
+
+  setCevalFenOverride(fen);
+  // Immediate: cancel the in-flight search so we don't waste time on a stale FEN.
+  stopProtocol();
+  // Record the navigation event and schedule eval after the quiet period.
+  markNav();
+  const token = currentGenerationToken();
+  onSettle(() => {
+    if (!isGenerationCurrent(token)) return; // superseded by a later nav event — drop
+
+
+
+
+    if (_openingsCg) syncOpeningsAutoShapes(sessionNode());
+    if (!engineEnabled) return;
+    evalCurrentPosition();
+  });
+}
+
 function syncOpeningsBoard(_redraw: () => void): void {
   // Stop any running import animation so the board is cleanly handed back.
   if (!isFetching() && _animGame !== null) stopImportAnimation();
@@ -2866,9 +2956,8 @@ function syncOpeningsBoard(_redraw: () => void): void {
     ...(node.uci ? { lastMove: [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] } : {}),
   });
   syncOpeningsAutoShapes(node);
-  // Update FEN override and re-evaluate if engine is on.
-  setCevalFenOverride(fen);
-  if (engineEnabled) evalCurrentPosition();
+  // Update FEN override and schedule engine eval after settle.
+  scheduleOpeningsEngineEval(fen);
 }
 
 onBoardAnimationChange('chess', () => {
@@ -2949,21 +3038,32 @@ for (let i = 0; i < 8; i++) {
   FREQ_BRUSHES[`freq${i}`] = { key: `f${i}`, color: '#15781B', opacity, lineWidth: 10 };
 }
 
-/**
- * Merge tree frequency arrows (keyed to the current node) with engine
- * evaluation arrows (keyed to the current engine state) into the single
- * shape array that syncOpeningsAutoShapes pushes to _openingsCg.
- *
- * Both sources are independent: tree arrows come from buildFrequencyArrows
- * (reads node.children); engine arrows come from buildEngineArrowShapes
- * (reads currentEval in engine/ctrl.ts). They are merged once here and never
- * pushed separately. Engine arrows are appended last so they stay visible
- * above the frequency layer.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function buildOpeningsAutoShapes(node: OpeningTreeNode | null): DrawShape[] {
   return [
-    ...(node ? buildFrequencyArrows(node) : []),  // tree arrows — current node
-    ...buildEngineArrowShapes(),                   // engine arrows — current eval
+
+    ...(_showTreeArrows && node ? buildFrequencyArrows(node) : []),
+    ...(isRapid() ? [] : buildEngineArrowShapes()),
   ];
 }
 
@@ -3034,7 +3134,21 @@ function buildFrequencyArrows(node: OpeningTreeNode): DrawShape[] {
   return shapes;
 }
 
-function renderTreeBuildBar(): VNode {
+function renderMobileCapNotice(redraw: () => void): VNode | null {
+  const capped = cappedGamesCount();
+  if (capped <= 0) return null;
+  const shown = treeBuildTotal();
+  const total = shown + capped;
+  return h('div.openings__mobile-cap-notice', [
+    h('span.openings__mobile-cap-label',
+      `Showing ${shown.toLocaleString()} of ${total.toLocaleString()} games (mobile).`),
+    h('button.openings__mobile-cap-btn', {
+      on: { click: () => { loadFullMobileTree(redraw); } },
+    }, 'Load all games'),
+  ]);
+}
+
+function renderTreeBuildBar(redraw: () => void): VNode {
   // When the fetch→tree-build transition fires, stop the board animation and show
   // the standard starting position oriented for the selected colour.
   if ((_animGame !== null || _animTimer !== null) && _openingsCg) {
@@ -3058,6 +3172,8 @@ function renderTreeBuildBar(): VNode {
       }),
     ]),
     h('span.openings__tree-build-label', 'Building opening tree\u2026'),
+
+    renderMobileCapNotice(redraw),
   ]);
 }
 
@@ -3291,9 +3407,24 @@ function renderDateRangeFilter(redraw: () => void): VNode {
     }).length;
   }
 
-  const activeLabel = activeRange
+
+  function customRangeBtnLabel(): string {
+    const from = sessionCustomFrom();
+    const to   = sessionCustomTo();
+    const activeCount = activeGames().length;
+    const suffix = ` (${activeCount})`;
+    if (from && to)  return `${from} – ${to}${suffix}`;
+    if (from)        return `From ${from}${suffix}`;
+    if (to)          return `To ${to}${suffix}`;
+    return `Custom${suffix}`;
+  }
+
+  const activePresetLabel = activeRange && activeRange !== 'custom'
     ? (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; label: string }[]).find(o => o.value === activeRange)?.label ?? activeRange
     : null;
+
+
+  const undated = excludedUndatedCount();
 
   const closePopup = () => { _dateRangePopupOpen = false; redraw(); };
 
@@ -3307,26 +3438,57 @@ function renderDateRangeFilter(redraw: () => void): VNode {
       h('button.openings__date-range-btn', {
         class: { active: !!activeRange },
         on: { click: () => { _dateRangePopupOpen = !_dateRangePopupOpen; redraw(); } },
-      }, activeRange
-        ? [activeLabel, ` (${countInRange((SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === activeRange)?.days ?? 0)})`]
-        : [spanLabel ? `All (${totalCount}) · ${spanLabel}` : `All (${totalCount})`],
+      }, activeRange === 'custom'
+        ? [customRangeBtnLabel()]
+        : activeRange
+          ? [activePresetLabel, ` (${countInRange((SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === activeRange)?.days ?? 0)})`]
+          : [spanLabel ? `All (${totalCount}) · ${spanLabel}` : `All (${totalCount})`],
       ),
       // Inline × to clear active range.
       activeRange ? h('button.openings__date-range-clear', {
         attrs: { title: 'Clear date filter' },
         on: { click: () => { setSessionDateRange(null, redraw); _dateRangePopupOpen = false; redraw(); } },
       }, '\u00d7') : null,
-      // Dropdown popup.
-      _dateRangePopupOpen ? h('div.openings__date-range-popup', SESSION_DATE_RANGE_OPTIONS.map(opt =>
+
+      _dateRangePopupOpen ? h('div.openings__date-range-popup', [
+        ...SESSION_DATE_RANGE_OPTIONS.map(opt =>
+          h('button.openings__date-range-option', {
+            class: { active: activeRange === opt.value },
+            on: { click: () => { setSessionDateRange(opt.value, redraw); _dateRangePopupOpen = false; redraw(); } },
+          }, [
+            h('span', opt.label),
+            h('span.openings__date-range-count', `${countInRange(opt.days)}`),
+          ]),
+        ),
+        // Custom absolute range option — keeps popup open so user can fill in dates.
         h('button.openings__date-range-option', {
-          class: { active: activeRange === opt.value },
-          on: { click: () => { setSessionDateRange(opt.value, redraw); _dateRangePopupOpen = false; redraw(); } },
-        }, [
-          h('span', opt.label),
-          h('span.openings__date-range-count', `${countInRange(opt.days)}`),
-        ]),
-      )) : null,
+          class: { active: activeRange === 'custom' },
+          on: { click: () => { setSessionDateRange('custom', redraw); redraw(); } },
+        }, h('span', 'Custom range')),
+        activeRange === 'custom' ? h('div.openings__date-range-custom', [
+          h('div.openings__date-range-custom-row', [
+            h('label.openings__date-range-custom-label', 'From'),
+            h('input.openings__date-range-custom-input', {
+              attrs: { type: 'date' },
+              props: { value: sessionCustomFrom() },
+              on: { change: (e: Event) => { setSessionCustomFrom((e.target as HTMLInputElement).value, redraw); } },
+            }),
+          ]),
+          h('div.openings__date-range-custom-row', [
+            h('label.openings__date-range-custom-label', 'To'),
+            h('input.openings__date-range-custom-input', {
+              attrs: { type: 'date' },
+              props: { value: sessionCustomTo() },
+              on: { change: (e: Event) => { setSessionCustomTo((e.target as HTMLInputElement).value, redraw); } },
+            }),
+          ]),
+        ]) : null,
+      ]) : null,
     ]),
+    // Excluded-undated count hint — only shown when a bounded (non-all-time) range is active.
+    (activeRange && undated > 0)
+      ? h('span.openings__date-range-undated', `${undated} undated excluded`)
+      : null,
   ]);
 }
 
@@ -3356,7 +3518,17 @@ function renderFilterBadge(redraw: () => void): VNode | null {
   }
 
   if (range) {
-    const rangeLabel = (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; label: string }[]).find(o => o.value === range)?.label ?? range;
+
+    const rangeLabel = range === 'custom'
+      ? (() => {
+          const from = sessionCustomFrom();
+          const to   = sessionCustomTo();
+          if (from && to)  return `${from} \u2013 ${to}`;
+          if (from)        return `From ${from}`;
+          if (to)          return `To ${to}`;
+          return 'Custom range';
+        })()
+      : (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; label: string }[]).find(o => o.value === range)?.label ?? range;
     badges.push(h('span.openings__filter-badge', [
       rangeLabel,
       h('button.openings__filter-badge-clear', {

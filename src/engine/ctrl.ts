@@ -923,7 +923,11 @@ export function evalCurrentPosition(): void {
     // guards can reject output when the override position changes before bestmove arrives.
     _activeOverrideFen = _evalFenOverride;
     protocol.setPosition(_evalFenOverride);
-    protocol.go(analysisDepth, multiPv, searchUntilDepth ? undefined : searchTime);
+
+
+
+    const overrideMultiPv = window.matchMedia('(pointer: coarse)').matches ? 1 : multiPv;
+    protocol.go(analysisDepth, overrideMultiPv, searchUntilDepth ? undefined : searchTime);
     return;
   }
 

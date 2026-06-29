@@ -12,7 +12,7 @@ import {
   type StoredOpeningsSession,
 } from './db';
 import { createAccountResearchCollection } from './routeTarget';
-import { getPlayStrengthLevel, exitPlayMode } from '../engine/ctrl';
+import { getPlayStrengthLevel, exitPlayMode, engineEnabled } from '../engine/ctrl';
 
 
 
@@ -33,8 +33,9 @@ import {
   startTreeEvalDeepening,
   startTreeEvalPass1,
 } from './treeEval';
+import { SETTLE_QUIET_MS } from './scheduler';
 import type { OpponentsTreeUrlState, OpponentsUrlRange, OpponentsUrlSpeed, OpponentsUrlTarget } from './urlState';
-import { filterGamesByDateCutoff } from './dateFilter';
+import { filterGamesByDateCutoff, filterGamesByCustomRange } from './dateFilter';
 import {
   createOpeningTreeBuildContext,
   openingTreeBuildMilestonesForProgress,
@@ -81,6 +82,10 @@ const TREE_BUILD_CHUNK_SIZE = 200;
 const SMALL_TREE_SNAPSHOT_GAME_LIMIT = 1000;
 const LARGE_TREE_SNAPSHOT_INTERVAL_MS = 2500;
 const SAMPLE_GAMES_SCAN_LIMIT = 250;
+
+
+
+const MOBILE_INITIAL_GAME_CAP = 3000;
 
 export type OpeningsSessionStateChangeHandler = (snapshot: OpponentsTreeUrlState | null) => void;
 
@@ -432,9 +437,14 @@ let _colorFilter: 'white' | 'black' | 'both' = 'white';
 let _speedFilter = new Set<string>(); // empty = all speeds
 let _recencyMode: 'recent' | 'all-time' = 'all-time';
 let _sessionDateRange: string | null = null;
+/** Custom absolute date range bounds (YYYY-MM-DD). Used when _sessionDateRange === 'custom'. */
+let _sessionCustomFrom = '';
+let _sessionCustomTo = '';
 let _treeEvalThoroughness: TreeEvalThoroughness = 'balanced';
 const TREE_EVAL_DWELL_MS = 2_500;
 let _treeEvalDwellTimer: ReturnType<typeof setTimeout> | null = null;
+/** Settle timer for tree-eval pass-1 start. Separate from the deepening dwell timer. */
+let _treeEvalPass1SettleTimer: ReturnType<typeof setTimeout> | null = null;
 /** Games currently loaded into the tree (colour + speed + date filtered). */
 let _activeGames: ResearchGame[] = [];
 
@@ -463,6 +473,31 @@ export function presetSessionDateRange(range: string | null): void {
   _sessionDateRange = range;
 }
 
+/** Accessor for the custom-range lower bound (YYYY-MM-DD). Non-empty only when relevant. */
+export function sessionCustomFrom(): string { return _sessionCustomFrom; }
+/** Accessor for the custom-range upper bound (YYYY-MM-DD). Non-empty only when relevant. */
+export function sessionCustomTo(): string { return _sessionCustomTo; }
+
+
+
+
+
+export function presetSessionCustomFrom(v: string): void { _sessionCustomFrom = v; }
+export function presetSessionCustomTo(v: string): void { _sessionCustomTo = v; }
+
+
+
+
+
+export function setSessionCustomFrom(v: string, redraw: () => void): void {
+  _sessionCustomFrom = v;
+  if (_sessionDateRange === 'custom') setColorFilter(_colorFilter, redraw);
+}
+export function setSessionCustomTo(v: string, redraw: () => void): void {
+  _sessionCustomTo = v;
+  if (_sessionDateRange === 'custom') setColorFilter(_colorFilter, redraw);
+}
+
 /** Games currently in the tree (colour + speed + date filtered). */
 export function activeGames(): readonly ResearchGame[] { return _activeGames; }
 
@@ -487,8 +522,18 @@ function filterByDateRange(games: ResearchGame[], range: string | null): Researc
     _excludedUndatedCount = 0;
     return games;
   }
-  // Compute cutoff as a local calendar date string (YYYY-MM-DD) so games on the
-  // boundary day are never wrongly dropped by UTC-midnight timezone arithmetic.
+
+
+  if (range === 'custom') {
+    const from = _sessionCustomFrom || null;
+    const to   = _sessionCustomTo   || null;
+    const result = filterGamesByCustomRange(games, from, to);
+    _excludedUndatedCount = result.excludedUndated;
+    return result.games;
+  }
+
+  // Rolling preset: compute cutoff as a local calendar date string (YYYY-MM-DD) so
+  // games on the boundary day are never wrongly dropped by UTC-midnight timezone arithmetic.
   const entry = (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === range);
   const cutoffMs = entry ? Date.now() - entry.days * 86_400_000 : 0;
   const cd = new Date(cutoffMs);
@@ -578,15 +623,35 @@ export function setTreeEvalThoroughness(level: TreeEvalThoroughness, redraw: () 
 
 export function triggerTreeEvalForCurrentNode(): void {
   cancelTreeEvalDwellTimer();
+  // Cancel any pending pass-1 settle (this nav event supersedes the previous one).
+  cancelTreeEvalPass1SettleTimer();
   if (!_sessionNode || !isTreeEvalEnabled()) {
     cancelTreeEval();
     return;
   }
+
+
+
+
+  if (isMobileTreeBuildDevice() && engineEnabled) {
+    cancelTreeEval();
+    return;
+  }
+  // Gate pass-1 behind settle — rapid navigation must not churn tree-eval pass-1.
+  // Each call cancels and restarts this timer, so only the final navigation position
+  // in a rapid burst starts pass-1. Deepening (pass-2) keeps its TREE_EVAL_DWELL_MS delay.
+  // FEN + pathKey guard drops stale callbacks if the session moves on before the timer fires,
+  // matching the guard pattern used in scheduleTreeEvalDwell.
   const node = _sessionNode;
   const pathKey = _sessionPath.join('/');
-  startTreeEvalPass1(node, _treeEvalThoroughness, {
-    onPass2Complete: () => scheduleTreeEvalDwell(node.fen, pathKey),
-  });
+  _treeEvalPass1SettleTimer = setTimeout(() => {
+    _treeEvalPass1SettleTimer = null;
+    if (!_sessionNode || _sessionNode.fen !== node.fen || _sessionPath.join('/') !== pathKey) return;
+    if (!isTreeEvalEnabled()) return;
+    startTreeEvalPass1(node, _treeEvalThoroughness, {
+      onPass2Complete: () => scheduleTreeEvalDwell(node.fen, pathKey),
+    });
+  }, SETTLE_QUIET_MS);
 }
 
 function cancelTreeEvalDwellTimer(): void {
@@ -596,8 +661,16 @@ function cancelTreeEvalDwellTimer(): void {
   }
 }
 
+function cancelTreeEvalPass1SettleTimer(): void {
+  if (_treeEvalPass1SettleTimer !== null) {
+    clearTimeout(_treeEvalPass1SettleTimer);
+    _treeEvalPass1SettleTimer = null;
+  }
+}
+
 function cancelTreeEvalWork(): void {
   cancelTreeEvalDwellTimer();
+  cancelTreeEvalPass1SettleTimer();
   cancelTreeEval();
 }
 
@@ -651,6 +724,16 @@ export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => 
     games = games.filter(g => _speedFilter.has(g.timeClass ?? ''));
   }
   games = filterByDateRange(games, _sessionDateRange);
+
+
+
+
+  if (shouldUseLightTreeMode() && !_mobileLoadFull && games.length > MOBILE_INITIAL_GAME_CAP) {
+    _cappedGamesCount = games.length - MOBILE_INITIAL_GAME_CAP;
+    games = games.slice(0, MOBILE_INITIAL_GAME_CAP);
+  } else {
+    _cappedGamesCount = 0;
+  }
   _activeGames = games;
 
   // Keep an existing tree visible while the rebuild runs. This avoids a blank
@@ -819,9 +902,27 @@ let _buildGeneration = 0;
 let _activeBuildCount = 0;
 let _lastTreeBuildContext: OpeningTreeBuildContext | null = null;
 
+
+
+let _mobileLoadFull = false;
+
+
+let _cappedGamesCount = 0;
+
 export function treeBuildProgress(): number { return _treeBuildProgress; }
 export function treeBuildTotal(): number { return _treeBuildTotal; }
 export function treeBuilding(): boolean { return _treeBuilding; }
+
+export function cappedGamesCount(): number { return _cappedGamesCount; }
+
+
+
+
+
+export function loadFullMobileTree(redraw: () => void): void {
+  _mobileLoadFull = true;
+  setColorFilter(_colorFilter, redraw);
+}
 
 function monotonicNow(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -830,6 +931,25 @@ function monotonicNow(): number {
 function isMobileTreeBuildDevice(): boolean {
   const deviceClass = getDeviceMetadata().deviceClass;
   return deviceClass === 'mobile' || deviceClass === 'tablet';
+}
+
+
+
+
+
+
+const LOW_MEMORY_HEAP_RATIO = 0.85;
+function isLowMemoryMode(): boolean {
+  const mem = typeof performance !== 'undefined'
+    ? (performance as Performance & { memory?: { usedJSHeapSize?: number; jsHeapSizeLimit?: number } }).memory
+    : undefined;
+  if (!mem || !mem.usedJSHeapSize || !mem.jsHeapSizeLimit) return false;
+  return mem.usedJSHeapSize / mem.jsHeapSizeLimit >= LOW_MEMORY_HEAP_RATIO;
+}
+
+
+function shouldUseLightTreeMode(): boolean {
+  return isMobileTreeBuildDevice() || isLowMemoryMode();
 }
 
 function shouldPublishTreeSnapshot(options: {
@@ -935,7 +1055,7 @@ function ensureFullOpeningTreeSnapshot(): OpeningTreeNode | null {
 
 
 
-  if (isMobileTreeBuildDevice()) {
+  if (shouldUseLightTreeMode()) {
     const context = currentVisibleBuildContext();
     if (context) {
       recordOpeningTreeBuildEvent(context, {
@@ -1063,6 +1183,16 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
     games = games.filter(g => _speedFilter.has(g.timeClass ?? ''));
   }
   games = filterByDateRange(games, _sessionDateRange);
+
+
+
+
+  if (shouldUseLightTreeMode() && !_mobileLoadFull && games.length > MOBILE_INITIAL_GAME_CAP) {
+    _cappedGamesCount = games.length - MOBILE_INITIAL_GAME_CAP;
+    games = games.slice(0, MOBILE_INITIAL_GAME_CAP);
+  } else {
+    _cappedGamesCount = 0;
+  }
   _activeGames = games;
 
   // Start background tree build
@@ -1622,7 +1752,12 @@ export function closeSession(): void {
   _sessionNode = null;
   _currentPage = 'library';
   _sessionDateRange = null;
+  _sessionCustomFrom = '';
+  _sessionCustomTo = '';
   _activeGames = [];
+
+  _mobileLoadFull = false;
+  _cappedGamesCount = 0;
   void clearSessionState();
   notifySessionStateChanged();
 }

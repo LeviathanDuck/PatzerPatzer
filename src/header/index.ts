@@ -55,7 +55,7 @@ import { writeHashRoute, type Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 import { serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { accountId, getAccount, listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
-import { syncAccountGames, type AccountSyncResult } from '../import/accountSync';
+import { syncAccountGames, syncAccountGamesOlder, type AccountSyncResult } from '../import/accountSync';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import {
   getVisibleReleaseIdentity,
@@ -84,6 +84,9 @@ let selectedMineAccountId: string | null = null;
 let headerSyncRunning = false;
 let headerSyncMessage: string | null = null;
 let headerSyncError: string | null = null;
+let headerOlderSyncRunning = false;
+let headerOlderSyncMessage: string | null = null;
+let headerOlderSyncError: string | null = null;
 
 const CATEGORY_OPTIONS: readonly { value: AccountCategory; label: string }[] = [
   { value: 'mine',     label: 'Mine'     },
@@ -1683,7 +1686,7 @@ function renderSyncMenu(
   const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
   const needsFallback = account.newestGameTimestamp === null || filterMismatch;
   const runSync = async (): Promise<void> => {
-    if (headerSyncRunning) return;
+    if (headerSyncRunning || headerOlderSyncRunning) return;
     headerSyncRunning = true;
     headerSyncMessage = null;
     headerSyncError = null;
@@ -1712,6 +1715,45 @@ function renderSyncMenu(
       redraw();
     }
   };
+
+  const runOlderSync = async (): Promise<void> => {
+    if (headerOlderSyncRunning || headerSyncRunning) return;
+    headerOlderSyncRunning = true;
+    headerOlderSyncMessage = null;
+    headerOlderSyncError = null;
+    redraw();
+    try {
+      const result = await syncAccountGamesOlder(account, {
+        rated: importFilters.rated,
+        speeds: importFilters.speeds,
+        onProgress: count => {
+          headerOlderSyncMessage = `Fetched ${count} game${count === 1 ? '' : 's'}...`;
+          redraw();
+        },
+      });
+      const syncOutcome = deps.onSyncGames(result.newGames);
+      deps.refreshAccounts();
+      if (!result.hadCursor) {
+        headerOlderSyncMessage = 'No history cursor yet — run Sync first.';
+      } else if (result.alreadyAtStart) {
+        headerOlderSyncMessage = 'Full history already imported.';
+      } else if (result.fetchedCount === 0) {
+        headerOlderSyncMessage = 'No older games available.';
+      } else if (result.addedCount === 0) {
+        headerOlderSyncMessage = 'No new older games (all already imported).';
+      } else {
+        headerOlderSyncMessage = `Imported ${syncOutcome.addedCount} older game${syncOutcome.addedCount === 1 ? '' : 's'}`;
+      }
+    } catch (err) {
+      headerOlderSyncError = err instanceof Error ? err.message : 'Load older games failed.';
+    } finally {
+      headerOlderSyncRunning = false;
+      redraw();
+    }
+  };
+
+  const hasOldestCursor = account.oldestGameTimestamp !== null;
+  const oldestCursorAtStart = account.oldestGameTimestamp !== null && account.oldestGameTimestamp <= 0;
 
   return h('div.header__panel', [
     h('div.header__panel-section', [
@@ -1766,9 +1808,31 @@ function renderSyncMenu(
       headerSyncError ? h('div.header__panel-error', headerSyncError) : null,
       headerSyncMessage ? h('p.header__panel-hint', headerSyncMessage) : null,
       h('button.header__panel-btn', {
-        attrs: { disabled: headerSyncRunning },
+        attrs: { disabled: headerSyncRunning || headerOlderSyncRunning },
         on: { click: () => { void runSync(); } },
       }, headerSyncRunning ? 'Syncing...' : 'Sync games'),
+    ]),
+    h('div.header__panel-divider'),
+    h('div.header__panel-section', [
+      h('div.header__panel-label', 'Older games'),
+      hasOldestCursor
+        ? h('p.header__panel-hint', oldestCursorAtStart
+            ? 'Full history already imported.'
+            : `Oldest imported: ${formatSyncDate(account.oldestGameTimestamp)}`)
+        : h('p.header__panel-hint', 'Run Sync first to establish a history cursor.'),
+      headerOlderSyncError ? h('div.header__panel-error', headerOlderSyncError) : null,
+      headerOlderSyncMessage ? h('p.header__panel-hint', headerOlderSyncMessage) : null,
+      h('button.header__panel-btn', {
+        attrs: {
+          disabled: headerOlderSyncRunning || headerSyncRunning || !hasOldestCursor || oldestCursorAtStart,
+          title: !hasOldestCursor
+            ? 'Run Sync first to establish a history cursor'
+            : oldestCursorAtStart
+            ? 'Full history already imported'
+            : 'Load games older than the earliest imported game',
+        },
+        on: { click: () => { void runOlderSync(); } },
+      }, headerOlderSyncRunning ? 'Loading older...' : 'Load older games'),
     ]),
   ]);
 }
@@ -1802,6 +1866,13 @@ export function renderHeader(deps: HeaderDeps): VNode {
   const error    = importPlatform === 'chesscom' ? chesscom.error    : lichess.error;
   const username = importPlatform === 'chesscom' ? chesscom.username : lichess.username;
   const selectedMineAccount = syncSelectedMineAccount(deps.accounts);
+
+  // Count only games belonging to 'mine'-category accounts.
+  // Games imported via PGN paste have no accountId and are excluded (not mine).
+  const mineAccountIds = new Set(mineAccounts(deps.accounts).map(a => a.id));
+  const mineGamesCount = importedGames.filter(
+    g => g.accountId !== undefined && mineAccountIds.has(g.accountId),
+  ).length;
   const accountModeActive = selectedMineAccount !== null && headerAccountMode === 'account';
 
   const doImport = () => importPlatform === 'chesscom'
@@ -1811,6 +1882,8 @@ export function renderHeader(deps: HeaderDeps): VNode {
   const openSyncDashboard = (): void => {
     headerSyncMessage = null;
     headerSyncError = null;
+    headerOlderSyncMessage = null;
+    headerOlderSyncError = null;
     showImportPanel = true;
     redraw();
   };
@@ -2006,9 +2079,9 @@ export function renderHeader(deps: HeaderDeps): VNode {
               : ''}`
           : 'Import'),
 
-        importedGames.length > 0 && !error
+        mineGamesCount > 0 && !error
           ? h('span.header__count', { on: { click: () => { showImportPanel = !showImportPanel; redraw(); } } },
-              `${importedGames.length} games`)
+              `${mineGamesCount} games`)
           : null,
         error
           ? h('span.header__error', { attrs: { title: error } }, '⚠')

@@ -189,6 +189,118 @@ export async function syncAccountGames(account: ChessAccount, options: AccountSy
   };
 }
 
+export interface AccountSyncOlderOptions {
+  rated: boolean;
+  speeds: ReadonlySet<ImportSpeed>;
+  onProgress?: (count: number) => void;
+}
+
+export interface AccountSyncOlderResult {
+  accountId: string;
+  /** False when the account has no oldest cursor to go back from. */
+  hadCursor: boolean;
+  /** True when the oldest cursor was already 0 (full history already covered). */
+  alreadyAtStart: boolean;
+  fetchedCount: number;
+  addedCount: number;
+  newGames: ImportedGame[];
+  duplicateCount: number;
+  /** Epoch ms of the oldest game in the fetched batch, or null when no games returned. */
+  newOldestTimestamp: number | null;
+}
+
+/**
+ * Fetch games OLDER than the account's earliest imported game and merge them
+ * into the same account. Uses account.oldestGameTimestamp as the exclusive
+ * upper bound for the backward fetch. Dedupes via dedupeIncoming and lowers
+ * the account's oldest cursor via recordAccountSync.
+ *
+ * Does NOT touch the forward sync cursor (newestGameTimestamp).
+ */
+export async function syncAccountGamesOlder(
+  account: ChessAccount,
+  options: AccountSyncOlderOptions,
+): Promise<AccountSyncOlderResult> {
+  const oldest = account.oldestGameTimestamp;
+
+  const noOpResult = (hadCursor: boolean, alreadyAtStart: boolean): AccountSyncOlderResult => ({
+    accountId: account.id,
+    hadCursor,
+    alreadyAtStart,
+    fetchedCount: 0,
+    addedCount: 0,
+    newGames: [],
+    duplicateCount: 0,
+    newOldestTimestamp: oldest,
+  });
+
+  // No oldest cursor means we have no boundary to go back from — must run
+  // a forward sync first to establish the cursor.
+  if (oldest === null) return noOpResult(false, false);
+
+  // oldest === 0 means coverage already extends to the beginning; nothing to fetch.
+  if (oldest <= 0) return noOpResult(true, true);
+
+  const speedSet = new Set(options.speeds);
+
+  let fetched: ImportedGame[];
+  if (account.platform === 'lichess') {
+    // Fetch games whose start time is strictly before the oldest-imported game.
+    // The Lichess API returns games newest-first up to max=300; passing `until`
+    // bounds the window so we get the 300 games immediately preceding the cursor.
+    fetched = await fetchLichessGames(
+      account.displayName,
+      options.rated,
+      speedSet,
+      options.onProgress,
+      undefined,       // no since: no lower bound for this backward batch
+      oldest - 1,      // until: exclude the oldest already-imported game
+    );
+  } else if (account.platform === 'chesscom') {
+    // For Chess.com, beforeMonth is an exclusive upper bound on archive months.
+    // Fetches all archive months strictly before the month of the oldest cursor.
+    const beforeMonth = new Date(oldest).toISOString().slice(0, 7);
+    fetched = await fetchChesscomGames(
+      account.displayName,
+      options.rated,
+      speedSet,
+      options.onProgress,
+      undefined,       // no sinceMonth: no lower bound (fetch all older months)
+      null,            // cutoffMonth: no date-range lower bound
+      beforeMonth,     // exclusive upper bound on archive months
+    );
+  } else {
+    throw new Error(`Unsupported account platform: ${account.platform}`);
+  }
+
+  const existing = await loadExistingGames();
+  const newGames = dedupeIncoming(existing, fetched);
+  if (newGames.length > 0) {
+    await saveGamesToIdb([...existing, ...newGames]);
+  }
+
+  // Lower the oldest cursor based on what the API returned:
+  // - Games received: cursor moves to the oldest game in this batch (may go further back next call)
+  // - No games received: we've reached the beginning of history; record as 0
+  const newOldest = minTimestamp(account, fetched);
+  const oldestToRecord = newOldest ?? 0;
+
+  // Pass null for newestGameTimestamp and syncFilterKey — do not change the
+  // forward cursor or filter key, only lower the oldest cursor.
+  await recordAccountSync(account.id, null, oldestToRecord, null);
+
+  return {
+    accountId: account.id,
+    hadCursor: true,
+    alreadyAtStart: false,
+    fetchedCount: fetched.length,
+    addedCount: newGames.length,
+    newGames,
+    duplicateCount: Math.max(0, fetched.length - newGames.length),
+    newOldestTimestamp: newOldest,
+  };
+}
+
 function peekAbortError(): Error {
   const error = new Error('Aborted');
   error.name = 'AbortError';

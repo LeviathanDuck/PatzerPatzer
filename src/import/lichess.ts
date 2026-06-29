@@ -97,12 +97,14 @@ export async function fetchLichessGames(
   username: string, rated: boolean, speeds: Set<ImportSpeed>,
   onProgress?: (count: number) => void,
   since?: number,
+  until?: number,
 ): Promise<ImportedGame[]> {
   const params = new URLSearchParams({ max: String(LICHESS_MAX_GAMES) });
   if (rated) params.set('rated', 'true');
   if (speeds.size > 0) params.set('perfType', [...speeds].join(','));
   params.set('clocks', 'true');
   if (since !== undefined) params.set('since', String(since));
+  if (until !== undefined) params.set('until', String(until));
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params.toString()}`;
   const fetchStart = Date.now();
   let res: Response;
