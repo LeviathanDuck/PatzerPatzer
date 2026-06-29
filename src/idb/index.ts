@@ -209,6 +209,13 @@ export interface StoredNodeEntry {
    * Mirrors lichess-org/lila: RetroCandidate solution line (from comp child moves array).
    */
   bestLine?: string[];
+
+
+
+
+
+
+  depth?: number;
 }
 
 export interface StoredAnalysis {
@@ -269,7 +276,23 @@ async function persistAnalysisToIdb(
   void captureStorageEstimate('post-idb-write');
 }
 
-type PositionEvalLike = { cp?: number; mate?: number; best?: string; loss?: number; delta?: number; moves?: string[] };
+type PositionEvalLike = { cp?: number; mate?: number; best?: string; loss?: number; delta?: number; moves?: string[]; depth?: number };
+
+
+
+
+
+
+
+
+export function isDeeperEval(
+  prev: { depth?: number } | undefined,
+  next: { depth?: number },
+): boolean {
+  if (next.depth === undefined) return false;        // nothing to merge without a measured depth
+  if (!prev || prev.depth === undefined) return true; // unknown prior depth → accept
+  return next.depth > prev.depth;                      // strictly deeper wins; equal/shallower rejected
+}
 
 
 
@@ -286,6 +309,8 @@ export function buildAnalysisNodeEntry(nodeId: string, path: string, fen: string
   if (ev.best  !== undefined) entry.best  = ev.best;
   if (ev.loss  !== undefined) entry.loss  = ev.loss;
   if (ev.delta !== undefined) entry.delta = ev.delta;
+
+  if (ev.depth !== undefined) entry.depth = ev.depth;
   // Persist the primary PV line for retrospection answer reveal and near-best parity.
   // Mirrors lichess-org/lila: retroCtrl.ts solution line from comp child moves array.
   if (ev.moves !== undefined && ev.moves.length > 0) entry.bestLine = ev.moves;

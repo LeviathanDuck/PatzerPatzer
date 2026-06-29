@@ -6,6 +6,7 @@ import type { DrawShape } from '@lichess-org/chessground/draw';
 import { annotationShapes as buildBoardGlyphShapes } from '../analyse/boardGlyphs';
 import { StockfishProtocol } from '../ceval/protocol';
 import { evalWinChances, classifyLoss, type MoveLabel } from './winchances';
+import { isDeeperEval } from '../idb/index';
 import { formatScore } from '../analyse/evalView';
 import { pathInit, pathIsMainline } from '../tree/ops';
 import type { AnalyseCtrl } from '../analyse/ctrl';
@@ -797,7 +798,9 @@ function parseEngineLine(line: string): void {
         if (stored.depth !== undefined && (stored.cp !== undefined || stored.mate !== undefined)) {
           const nodePath   = evalNodePath;
           const cached     = evalCache.get(nodePath);
-          if (!cached || !cached.depth || stored.depth > cached.depth) {
+
+
+          if (isDeeperEval(cached, stored)) {
             // Compute delta and loss — same logic as batch.ts onBatchBestmove.
             const parentPath = evalParentPath;
             const parentEval = evalCache.get(parentPath);

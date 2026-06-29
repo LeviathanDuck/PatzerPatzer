@@ -916,7 +916,8 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         }, [
           h('span', 'Auto retry'),
           h('input', {
-            attrs: { type: 'checkbox', checked: summary.autoRetryEnabled },
+            attrs: { type: 'checkbox' },
+            props: { checked: summary.autoRetryEnabled },
             on: {
               change: (event: Event) => {
                 const input = event.currentTarget as HTMLInputElement;
