@@ -65,6 +65,23 @@ export class ExplorerCtrl {
     this.configOpen = !this.configOpen;
   }
 
+  resetRuntimeForDataManagement(): void {
+    this.abortCtrl?.abort();
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = null;
+    this.enabled = false;
+    this.loading = false;
+    this.failing = null;
+    this.hovering = null;
+    this.movesAway = 0;
+    this.gameMenu = null;
+    this.configOpen = false;
+    this.tablebaseData = null;
+    this.cache.clear();
+    this.tablebaseCache.clear();
+    this.config.resetRuntimeForDataManagement();
+  }
+
   setDb(db: import('./explorer').ExplorerDb): void {
     this.config.setDb(db);
     this.cache.clear();

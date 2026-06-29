@@ -2,6 +2,7 @@ import { getSessionId } from '../id';
 import { redactUserAgent } from '../redact';
 import type { EnvironmentContext, RouteContext } from './reportContext';
 import type { ReportFormState, ReportSeverity } from './reportForm';
+import { createReportIssueId } from './reportIssueId';
 
 export interface DiagnosticReportUserInput {
   description: string;
@@ -17,25 +18,36 @@ export interface DiagnosticReportTriggerContext {
   extraTags: string[];
 }
 
+export interface DiagnosticReportScreenshotAttachment {
+  fileName: string;
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
+  sizeBytes: number;
+  assetFilename: string;
+  lastModified?: number;
+}
+
+export interface DiagnosticReportScreenshotPackage {
+  packageId: string;
+  attachments: DiagnosticReportScreenshotAttachment[];
+}
+
 export interface DiagnosticReport {
   reportId: string;
+  issueId?: string;
+  issueOpenedAt?: string;
   sessionId: string;
   capturedAt: string;
   userInput: DiagnosticReportUserInput;
   routeContext: RouteContext;
   environmentContext: EnvironmentContext | null;
   triggerContext?: DiagnosticReportTriggerContext;
+  screenshotPackage?: DiagnosticReportScreenshotPackage;
 }
 
-function createReportId(timestamp: number): string {
-  try {
-    const randomUUID = globalThis.crypto?.randomUUID;
-    if (typeof randomUUID === 'function') return randomUUID.call(globalThis.crypto);
-  } catch {
-    // Fall through to deterministic fallback below.
-  }
-
-  return `report-${timestamp.toString(36)}-${Math.random().toString(36).slice(2)}`;
+export interface AssembleReportOptions {
+  issueId?: string;
+  openedAt?: number;
+  screenshotAttachments?: DiagnosticReportScreenshotAttachment[];
 }
 
 function normalizeText(value: string): string {
@@ -53,11 +65,17 @@ export function assembleReport(
   formState: ReportFormState,
   routeContext: RouteContext,
   environmentContext: EnvironmentContext,
+  options: AssembleReportOptions = {},
 ): DiagnosticReport {
   const timestamp = Date.now();
+  const openedAt = Number.isFinite(options.openedAt) ? options.openedAt! : timestamp;
+  const issueId = options.issueId?.trim() || createReportIssueId(openedAt);
+  const screenshotAttachments = options.screenshotAttachments ?? [];
 
   return {
-    reportId: createReportId(timestamp),
+    reportId: issueId,
+    issueId,
+    issueOpenedAt: new Date(openedAt).toISOString(),
     sessionId: getSessionId(),
     capturedAt: new Date(timestamp).toISOString(),
     userInput: {
@@ -69,5 +87,13 @@ export function assembleReport(
     },
     routeContext,
     environmentContext: redactEnvironmentContext(environmentContext),
+    ...(screenshotAttachments.length > 0
+      ? {
+          screenshotPackage: {
+            packageId: issueId,
+            attachments: screenshotAttachments,
+          },
+        }
+      : {}),
   };
 }

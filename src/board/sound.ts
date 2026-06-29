@@ -33,6 +33,11 @@ export function setSoundVolume(v: number): void {
   localStorage.setItem(SOUND_VOLUME_KEY, String(soundVolume));
 }
 
+export function resetBoardSoundRuntimeForDataManagement(): void {
+  boardSoundEnabled = SOUND_ENABLED_DEFAULT;
+  soundVolume = SOUND_VOLUME_DEFAULT;
+}
+
 // --- AudioContext + buffer loading ---
 // Adapted from lichess-org/lila: ui/site/src/sound.ts makeAudioContext + Sound class
 

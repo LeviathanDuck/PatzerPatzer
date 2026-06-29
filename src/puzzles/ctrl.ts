@@ -3554,6 +3554,86 @@ export function clearActiveSession(): void {
   localStorage.removeItem(QUEUE_STORAGE_KEY);
 }
 
+function resetPuzzleRoundRuntime(): void {
+  activeRoundCtrl = null;
+  _previewPuzzleId = null;
+  _previewRoundCtrl = null;
+  roundState = null;
+}
+
+function clearSessionRuntimeOnly(): void {
+  _activeSession = null;
+  _sessionQueue = [];
+  _autoNext = false;
+  _sessionSeenIds = new Set();
+  _ratedStreamActive = false;
+  _ratedStreamCount = 0;
+  _emptyRatedStream = false;
+  retryQueue = [];
+  retryIndex = 0;
+  retrySessionActive = false;
+  retryCount = undefined;
+  dueCount = undefined;
+  _importedSessionError = null;
+  _prefetchInFlight.clear();
+}
+
+export interface PuzzleDataManagementResetResult {
+  activeRoundCleared: boolean;
+  activeSessionCleared: boolean;
+  metaCacheCleared: boolean;
+  libraryCountsCleared: boolean;
+}
+
+export async function resetGeneratedPuzzleRuntimeForDataManagement(redraw: () => void): Promise<PuzzleDataManagementResetResult> {
+  const activeRoundCleared = activeRoundCtrl?.definition.sourceKind === 'user-library'
+    || _previewRoundCtrl?.definition.sourceKind === 'user-library';
+  clearSessionRuntimeOnly();
+  resetPuzzleRoundRuntime();
+  metaCache = new Map();
+  libraryCounts = undefined;
+  state = { view: 'library' };
+  cancelPuzzleLibraryRouteHydration();
+  await loadUserPerfFromStorage();
+  await loadLibraryCounts(redraw);
+  redraw();
+  return {
+    activeRoundCleared: Boolean(activeRoundCleared),
+    activeSessionCleared: true,
+    metaCacheCleared: true,
+    libraryCountsCleared: true,
+  };
+}
+
+export async function resetPuzzleProgressRuntimeForDataManagement(redraw: () => void): Promise<PuzzleDataManagementResetResult> {
+  const activeSessionCleared = _activeSession !== null || _sessionQueue.length > 0 || retrySessionActive || _ratedStreamActive;
+  clearSessionRuntimeOnly();
+  resetPuzzleRoundRuntime();
+  metaCache = new Map();
+  libraryCounts = undefined;
+  state = { view: 'library' };
+  cancelPuzzleLibraryRouteHydration();
+  await loadUserPerfFromStorage();
+  await loadLibraryCounts(redraw);
+  redraw();
+  return {
+    activeRoundCleared: true,
+    activeSessionCleared,
+    metaCacheCleared: true,
+    libraryCountsCleared: true,
+  };
+}
+
+export function resetPuzzlePgnCacheRuntimeForDataManagement(): PuzzleDataManagementResetResult {
+  _prefetchInFlight.clear();
+  return {
+    activeRoundCleared: false,
+    activeSessionCleared: false,
+    metaCacheCleared: false,
+    libraryCountsCleared: false,
+  };
+}
+
 /**
  * Get the puzzle ID to resume — the last in-progress puzzle,
  * or the last completed one if all are done.

@@ -13,6 +13,14 @@ import type { GameSummary } from '../stats/types';
 import type { PuzzleCandidate } from '../tree/types';
 import type { PuzzleAttempt, PuzzleDefinition, PuzzleUserMeta } from '../puzzles/types';
 import { enqueueRemoteSyncDelete, flushRemoteSyncOutbox, type RemoteSyncStoreName } from './remoteSync';
+import {
+  createDataManagementActionId,
+  emitDataManagementLocalChange,
+  runDataManagementBeforeDelete,
+  type DataManagementActionKind,
+  type DataManagementDomain,
+  type DataManagementLocalChangeDetail,
+} from './dataManagementRuntime';
 
 type AccountManagementRecord = ChessAccount & { fallback: boolean };
 
@@ -83,7 +91,18 @@ const SETTINGS_GROUPS: SettingsResetGroup[] = [
     id: 'board',
     title: 'Board appearance and controls',
     description: 'Theme, pieces, zoom, board filters, wheel navigation, review dots, and sound.',
-    keys: ['boardZoom', 'boardTheme', 'pieceSet', 'boardWheelNavEnabled', 'reviewDotsUserOnly', 'boardSoundEnabled', 'boardSoundVolume'],
+    keys: [
+      'boardZoom',
+      'boardTheme',
+      'pieceSet',
+      'boardWheelNavEnabled',
+      'reviewDotsUserOnly',
+      'boardSoundEnabled',
+      'boardSoundVolume',
+      'patzer.openings.boardSoundEnabled',
+      'chessBoardAnimationSpeed',
+      'puzzleBoardAnimationSpeed',
+    ],
     prefixes: ['boardFilter.'],
   },
   {
@@ -103,6 +122,7 @@ const SETTINGS_GROUPS: SettingsResetGroup[] = [
       'patzer.arrowLabelSize',
       'patzer.playStrengthLevel',
       'patzer.reviewDepth',
+      'patzer.reviewMovetime',
       'patzer.postGameSummaryOpen',
       'patzer.evalGraphHeightPct',
     ],
@@ -337,6 +357,41 @@ function enqueueDelete(store: RemoteSyncStoreName, itemKey: string): void {
   }
 }
 
+function createDeleteAction(
+  kind: DataManagementActionKind,
+  domains: readonly DataManagementDomain[],
+  scope: DataManagementLocalChangeDetail['scope'],
+): DataManagementLocalChangeDetail {
+  return {
+    actionId: createDataManagementActionId(kind),
+    kind,
+    domains,
+    startedAt: Date.now(),
+    scope,
+  };
+}
+
+async function fenceDeleteAction(
+  detail: DataManagementLocalChangeDetail,
+): Promise<DataManagementLocalChangeDetail> {
+  const fence = await runDataManagementBeforeDelete(detail);
+  return { ...detail, fence };
+}
+
+function finishDeleteAction(
+  detail: DataManagementLocalChangeDetail,
+  result: DataManagementResult,
+): DataManagementResult {
+  emitDataManagementLocalChange({
+    ...detail,
+    completedAt: Date.now(),
+    success: result.success,
+    message: result.message,
+    counts: result.counts,
+  });
+  return result;
+}
+
 async function flushTombstones(): Promise<DataManagementResult> {
   const result = await flushRemoteSyncOutbox();
   if (result.success) return { success: true, message: 'Changes queued and flushed to the token database.', counts: result.counts ?? {} };
@@ -381,6 +436,23 @@ function collectReviewKeysForGameIds(
     summaryKeys: summaries.filter(item => gameIds.has(item.gameId)).map(item => item.gameId),
     retroKeys: retroResults.filter(item => gameIds.has(item.gameId)).map(item => item.gameId),
   };
+}
+
+async function deleteReviewKeys(
+  keys: { analysisKeys: string[]; summaryKeys: string[]; retroKeys: string[] },
+): Promise<void> {
+  const { analysisKeys, summaryKeys, retroKeys } = keys;
+  await Promise.all([
+    deleteMainStoreKeys('analysis-library', analysisKeys),
+    deleteMainStoreKeys('game-summaries', summaryKeys),
+    deleteMainStoreKeys('retro-results', retroKeys),
+  ]);
+}
+
+function enqueueReviewDeletes(keys: { analysisKeys: string[]; summaryKeys: string[]; retroKeys: string[] }): void {
+  for (const key of keys.analysisKeys) enqueueDelete('analysis', key);
+  for (const key of keys.summaryKeys) enqueueDelete('game-summaries', key);
+  for (const key of keys.retroKeys) enqueueDelete('retro-results', key);
 }
 
 async function deleteMainStoreKeys(storeName: string, keys: string[]): Promise<number> {
@@ -707,8 +779,14 @@ export async function getDataManagementSnapshot(): Promise<DataManagementSnapsho
 export async function deleteAllReviewData(): Promise<DataManagementResult> {
   const mainDb = await openMainDb();
   try {
-    const [games, analysis, summaries, retroResults] = await Promise.all([
-      readImportedGameRecords(mainDb),
+    const games = await readImportedGameRecords(mainDb);
+    let action = createDeleteAction('review.deleteAll', ['review'], {
+      allReview: true,
+      gameIds: games.map(game => game.id),
+    });
+    action = await fenceDeleteAction(action);
+
+    const [analysis, summaries, retroResults] = await Promise.all([
       readAll<StoredAnalysis>(mainDb, 'analysis-library'),
       readAll<GameSummary>(mainDb, 'game-summaries'),
       readAll<RetroSessionResult>(mainDb, 'retro-results'),
@@ -717,18 +795,13 @@ export async function deleteAllReviewData(): Promise<DataManagementResult> {
     const summaryKeys = summaries.map(item => item.gameId);
     const retroKeys = retroResults.map(item => item.gameId);
 
-    await Promise.all([
-      deleteMainStoreKeys('analysis-library', analysisKeys),
-      deleteMainStoreKeys('game-summaries', summaryKeys),
-      deleteMainStoreKeys('retro-results', retroKeys),
-    ]);
-    for (const key of analysisKeys) enqueueDelete('analysis', key);
-    for (const key of summaryKeys) enqueueDelete('game-summaries', key);
-    for (const key of retroKeys) enqueueDelete('retro-results', key);
+    const reviewKeys = { analysisKeys, summaryKeys, retroKeys };
+    await deleteReviewKeys(reviewKeys);
+    enqueueReviewDeletes(reviewKeys);
     const gameIds = new Set(games.map(game => game.id));
     const reviewedGameIds = new Set([...analysisKeys, ...summaryKeys, ...retroKeys].filter(gameId => gameIds.has(gameId)));
     const flush = await flushTombstones();
-    return {
+    return finishDeleteAction(action, {
       ...flush,
       message: `Reset analysis for ${reviewedGameIds.size} game${reviewedGameIds.size === 1 ? '' : 's'}. ${flush.message}`,
       counts: {
@@ -738,7 +811,7 @@ export async function deleteAllReviewData(): Promise<DataManagementResult> {
         gameSummaries: summaryKeys.length,
         retroResults: retroKeys.length,
       },
-    };
+    });
   } finally {
     mainDb.close();
   }
@@ -750,6 +823,12 @@ export async function deleteAccountReviewData(accountIdValue: string): Promise<D
     const games = await readImportedGameRecords(mainDb);
     const gameIds = reviewGameIdsForAccount(games, accountIdValue);
     const keys = [...gameIds];
+    let action = createDeleteAction('review.deleteAccount', ['review'], {
+      accountId: accountIdValue,
+      gameIds: keys,
+    });
+    action = await fenceDeleteAction(action);
+
     const [analysis, summaries, retroResults] = await Promise.all([
       readAll<StoredAnalysis>(mainDb, 'analysis-library'),
       readAll<GameSummary>(mainDb, 'game-summaries'),
@@ -758,16 +837,10 @@ export async function deleteAccountReviewData(accountIdValue: string): Promise<D
     const scopedReviewKeys = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
     const { analysisKeys, summaryKeys, retroKeys } = scopedReviewKeys;
 
-    await Promise.all([
-      deleteMainStoreKeys('analysis-library', analysisKeys),
-      deleteMainStoreKeys('game-summaries', summaryKeys),
-      deleteMainStoreKeys('retro-results', retroKeys),
-    ]);
-    for (const key of analysisKeys) enqueueDelete('analysis', key);
-    for (const key of summaryKeys) enqueueDelete('game-summaries', key);
-    for (const key of retroKeys) enqueueDelete('retro-results', key);
+    await deleteReviewKeys(scopedReviewKeys);
+    enqueueReviewDeletes(scopedReviewKeys);
     const flush = await flushTombstones();
-    return {
+    return finishDeleteAction(action, {
       ...flush,
       message: `Deleted review data for ${keys.length} account game${keys.length === 1 ? '' : 's'}. ${flush.message}`,
       counts: {
@@ -776,7 +849,7 @@ export async function deleteAccountReviewData(accountIdValue: string): Promise<D
         gameSummaries: summaryKeys.length,
         retroResults: retroKeys.length,
       },
-    };
+    });
   } finally {
     mainDb.close();
   }
@@ -787,6 +860,12 @@ export async function deleteAllGames(): Promise<DataManagementResult> {
   try {
     const games = await readImportedGameRecords(mainDb);
     const gameIds = new Set(games.map(game => game.id));
+    let action = createDeleteAction('games.deleteAll', ['games', 'review', 'puzzles'], {
+      allGames: true,
+      gameIds: [...gameIds],
+    });
+    action = await fenceDeleteAction(action);
+
     const [analysis, summaries, retroResults] = await Promise.all([
       readAll<StoredAnalysis>(mainDb, 'analysis-library'),
       readAll<GameSummary>(mainDb, 'game-summaries'),
@@ -794,11 +873,8 @@ export async function deleteAllGames(): Promise<DataManagementResult> {
     ]);
     const { analysisKeys, summaryKeys, retroKeys } = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
 
-    await Promise.all([
-      deleteMainStoreKeys('analysis-library', analysisKeys),
-      deleteMainStoreKeys('game-summaries', summaryKeys),
-      deleteMainStoreKeys('retro-results', retroKeys),
-    ]);
+    const reviewKeys = { analysisKeys, summaryKeys, retroKeys };
+    await deleteReviewKeys(reviewKeys);
 
     const generatedDefinitions = (await readGeneratedDefinitions())
       .filter(def => {
@@ -816,16 +892,14 @@ export async function deleteAllGames(): Promise<DataManagementResult> {
     const deletedGames = gameIds.size;
 
     for (const gameId of gameIds) enqueueDelete('games', gameId);
-    for (const key of analysisKeys) enqueueDelete('analysis', key);
-    for (const key of summaryKeys) enqueueDelete('game-summaries', key);
-    for (const key of retroKeys) enqueueDelete('retro-results', key);
+    enqueueReviewDeletes(reviewKeys);
     for (const id of generatedIds) {
       enqueueDelete('puzzle-definitions', id);
       enqueueDelete('puzzle-user-meta', id);
     }
     for (const attempt of attempts) enqueueDelete('puzzle-attempts', puzzleAttemptKey(attempt));
     const flush = await flushTombstones();
-    return {
+    return finishDeleteAction(action, {
       ...flush,
       message: `Deleted ${deletedGames} game${deletedGames === 1 ? '' : 's'} and whole-library derived records. ${flush.message}`,
       counts: {
@@ -839,7 +913,7 @@ export async function deleteAllGames(): Promise<DataManagementResult> {
         puzzleMeta: deletedMeta,
         legacySavedReviewPuzzles: legacyPuzzles,
       },
-    };
+    });
   } finally {
     mainDb.close();
   }
@@ -850,7 +924,21 @@ export async function deleteAccountGames(accountIdValue: string): Promise<DataMa
   try {
     const games = await readImportedGameRecords(mainDb);
     const gameIds = reviewGameIdsForAccount(games, accountIdValue);
-    await deleteAccountReviewData(accountIdValue);
+    const scopedGameIds = [...gameIds];
+    let action = createDeleteAction('games.deleteAccount', ['games', 'review', 'puzzles'], {
+      accountId: accountIdValue,
+      gameIds: scopedGameIds,
+    });
+    action = await fenceDeleteAction(action);
+
+    const [analysis, summaries, retroResults] = await Promise.all([
+      readAll<StoredAnalysis>(mainDb, 'analysis-library'),
+      readAll<GameSummary>(mainDb, 'game-summaries'),
+      readAll<RetroSessionResult>(mainDb, 'retro-results'),
+    ]);
+    const reviewKeys = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
+    const { analysisKeys, summaryKeys, retroKeys } = reviewKeys;
+    await deleteReviewKeys(reviewKeys);
 
     const generatedDefinitions = (await readGeneratedDefinitions())
       .filter(def => {
@@ -868,24 +956,28 @@ export async function deleteAccountGames(accountIdValue: string): Promise<DataMa
     const deletedGames = gameIds.size;
 
     for (const gameId of gameIds) enqueueDelete('games', gameId);
+    enqueueReviewDeletes(reviewKeys);
     for (const id of generatedIds) enqueueDelete('puzzle-definitions', id);
     for (const definition of generatedDefinitions) {
       enqueueDelete('puzzle-user-meta', definition.id);
     }
     for (const attempt of attempts) enqueueDelete('puzzle-attempts', puzzleAttemptKey(attempt));
     const flush = await flushTombstones();
-    return {
+    return finishDeleteAction(action, {
       ...flush,
       message: `Deleted ${deletedGames} game${deletedGames === 1 ? '' : 's'} and cascaded derived records. ${flush.message}`,
       counts: {
         ...flush.counts,
         games: deletedGames,
+        analysis: analysisKeys.length,
+        gameSummaries: summaryKeys.length,
+        retroResults: retroKeys.length,
         puzzleDefinitions: deletedDefinitions,
         puzzleAttempts: deletedAttempts,
         puzzleMeta: deletedMeta,
         legacySavedReviewPuzzles: legacyPuzzles,
       },
-    };
+    });
   } finally {
     mainDb.close();
   }
@@ -911,6 +1003,7 @@ async function readAllPuzzleAttempts(): Promise<PuzzleAttempt[]> {
 }
 
 export async function deleteGeneratedPuzzleData(): Promise<DataManagementResult> {
+  const action = createDeleteAction('puzzles.deleteGenerated', ['puzzles'], {});
   const definitions = await readGeneratedDefinitions();
   const definitionIds = new Set(definitions.map(def => def.id));
   const attempts = await readPuzzleAttemptsForIds(definitionIds);
@@ -924,7 +1017,7 @@ export async function deleteGeneratedPuzzleData(): Promise<DataManagementResult>
   }
   for (const attempt of attempts) enqueueDelete('puzzle-attempts', puzzleAttemptKey(attempt));
   const flush = await flushTombstones();
-  return {
+  return finishDeleteAction(action, {
     ...flush,
     message: `Deleted ${deletedDefinitions} generated puzzle${deletedDefinitions === 1 ? '' : 's'}. ${flush.message}`,
     counts: {
@@ -934,10 +1027,11 @@ export async function deleteGeneratedPuzzleData(): Promise<DataManagementResult>
       puzzleMeta: deletedMeta,
       legacySavedReviewPuzzles: legacy,
     },
-  };
+  });
 }
 
 export async function resetPuzzleProgress(): Promise<DataManagementResult> {
+  const action = createDeleteAction('puzzles.resetProgress', ['puzzles'], {});
   const attempts = await readAllPuzzleAttempts();
   const meta = await readPuzzleMetaSnapshot();
   const history = await readRatingHistory();
@@ -949,7 +1043,7 @@ export async function resetPuzzleProgress(): Promise<DataManagementResult> {
   enqueueDelete('puzzle-user-perf', 'puzzle');
   for (const entry of history) enqueueDelete('puzzle-rating-history', ratingHistoryKey(entry));
   const flush = await flushTombstones();
-  return {
+  return finishDeleteAction(action, {
     ...flush,
     message: `Reset puzzle progress while preserving puzzle definitions. ${flush.message}`,
     counts: {
@@ -960,7 +1054,7 @@ export async function resetPuzzleProgress(): Promise<DataManagementResult> {
       ratingHistory: counts['rating-history'] ?? 0,
       sessions: 1,
     },
-  };
+  });
 }
 
 async function readPuzzleMetaSnapshot(): Promise<PuzzleUserMeta[]> {
@@ -982,19 +1076,25 @@ async function readRatingHistory(): Promise<Array<{ timestamp: number; rating: n
 }
 
 export async function clearPuzzlePgnCache(): Promise<DataManagementResult> {
+  const action = createDeleteAction('puzzles.clearPgnCache', ['pgn-cache'], {});
   const db = await openPgnCacheDb();
   try {
     const count = await countStore(db, PGN_CACHE_STORE);
     const tx = db.transaction(PGN_CACHE_STORE, 'readwrite');
     tx.objectStore(PGN_CACHE_STORE).clear();
     await txDone(tx);
-    return { success: true, message: `Cleared ${count} cached puzzle PGN${count === 1 ? '' : 's'}.`, counts: { pgnCache: count } };
+    return finishDeleteAction(action, {
+      success: true,
+      message: `Cleared ${count} cached puzzle PGN${count === 1 ? '' : 's'}.`,
+      counts: { pgnCache: count },
+    });
   } finally {
     db.close();
   }
 }
 
 export async function resetSettingsGroup(groupId: string): Promise<DataManagementResult> {
+  const action = createDeleteAction('settings.resetGroup', ['settings'], { settingsGroupId: groupId });
   const group = SETTINGS_GROUPS.find(item => item.id === groupId);
   if (!group) return { success: false, message: 'Unknown settings group.', counts: {}, error: 'Unknown settings group.' };
   const keys = collectSettingKeys(group);
@@ -1007,9 +1107,9 @@ export async function resetSettingsGroup(groupId: string): Promise<DataManagemen
     localStorage.removeItem(PUZZLE_QUEUE_KEY);
   }
   const flush = await flushTombstones();
-  return {
+  return finishDeleteAction(action, {
     ...flush,
     message: `Reset ${group.title.toLowerCase()} settings. ${flush.message}`,
     counts: { ...flush.counts, settings: keys.length },
-  };
+  });
 }

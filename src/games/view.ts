@@ -16,7 +16,6 @@ import {
   type QueueSummary,
 } from '../engine/reviewQueue';
 import {
-  firstReviewRunBatch,
   reviewRunStartFromContext,
   selectedGameIdsInSourceOrder,
   visibleListReviewRunContext,
@@ -295,6 +294,7 @@ let gamesPage = 0;
 let gameListSearch = '';
 let gameListFilterResults: Set<'win' | 'loss' | 'draw'> = new Set();
 let gameListFilterSpeeds:  Set<string>                   = new Set();
+let gameListFilterColor:   '' | 'white' | 'black'        = '';
 let gameListPage = 0;
 let gameListPageSize: GameListPageSize = loadGameListPageSize();
 
@@ -350,12 +350,17 @@ function selectedGamesInCurrentVisibleOrder(games: readonly ImportedGame[]): Imp
 
 function selectedReviewRunContext(selectedGames: readonly ImportedGame[]): ReviewRunSourceContext {
   const sourceGameIds = selectedGames.map(game => game.id);
-  const activeBatchIds = firstReviewRunBatch(sourceGameIds);
   return {
     sourceMode: 'selected-games',
     sourceGameIds,
-    activeBatchIds,
   };
+}
+
+function selectedReviewRunStart(selectedGames: readonly ImportedGame[]): {
+  batchGames: ImportedGame[];
+  sourceContext: ReviewRunSourceContext;
+} {
+  return reviewRunStartFromContext(selectedGames, selectedReviewRunContext(selectedGames));
 }
 
 type ReviewRowLifecycleLabel = {
@@ -451,6 +456,15 @@ function setGameListPageSize(size: GameListPageSize): void {
 
 function resetGameListPage(): void {
   gameListPage = 0;
+}
+
+export function resetGamesAccountFilterRuntimeForDataManagement(): void {
+  accountFilterState = DEFAULT_ACCOUNT_FILTER;
+  accountFilterMenuOpen = false;
+  selectedGameIds = new Set();
+  lastClickedGameId = null;
+  selectModeActive = false;
+  resetGameListPage();
 }
 
 function loadAccountFilterState(): AccountFilterState {
@@ -597,6 +611,11 @@ export function resetGamesViewRouteStateForTests(): void {
   gamesSortField = 'date';
   gamesSortDir = 'desc';
   gamesPage = 0;
+  gameListSearch = '';
+  gameListFilterResults = new Set();
+  gameListFilterSpeeds = new Set();
+  gameListFilterColor = '';
+  gameListPage = 0;
   accountFilterState = loadAccountFilterState();
   selectedGameIds = new Set();
   lastClickedGameId = null;
@@ -621,6 +640,7 @@ export function getGamesViewRouteSnapshotForTests(): {
     search: string;
     results: ('win' | 'loss' | 'draw')[];
     speeds: string[];
+    color: '' | 'white' | 'black';
     pageIndex: number;
   };
 } {
@@ -645,6 +665,7 @@ export function getGamesViewRouteSnapshotForTests(): {
       search: gameListSearch,
       results: [...gameListFilterResults],
       speeds: [...gameListFilterSpeeds],
+      color: gameListFilterColor,
       pageIndex: gameListPage,
     },
   };
@@ -1047,9 +1068,14 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     visible = visible.filter(g => g.timeClass !== undefined && gameListFilterSpeeds.has(g.timeClass));
   }
 
+  if (gameListFilterColor) {
+    visible = visible.filter(g => deps.getUserColor(g) === gameListFilterColor);
+  }
+
   visible.sort((a, b) => compareByPlayedDate(a, b, 'desc'));
 
-  const anyFilter = q.length > 0 || gameListFilterResults.size > 0 || gameListFilterSpeeds.size > 0;
+  const anyFilter = q.length > 0 || gameListFilterResults.size > 0 ||
+    gameListFilterSpeeds.size > 0 || gameListFilterColor !== '';
 
   const totalPages = Math.max(1, Math.ceil(visible.length / gameListPageSize));
   if (gameListPage >= totalPages) gameListPage = totalPages - 1;
@@ -1080,10 +1106,17 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     deps.redraw();
   };
 
+  const toggleColor = (color: 'white' | 'black') => {
+    gameListFilterColor = gameListFilterColor === color ? '' : color;
+    resetGameListPage();
+    deps.redraw();
+  };
+
   const clearAll = () => {
     gameListSearch = '';
     gameListFilterResults = new Set();
     gameListFilterSpeeds = new Set();
+    gameListFilterColor = '';
     resetGameListPage();
     deps.redraw();
   };
@@ -1102,6 +1135,17 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           class: { active: gameListFilterResults.has(r) },
           on: { click: () => toggleResult(r) },
         }, r.charAt(0).toUpperCase() + r.slice(1)),
+      ),
+      ...(['white', 'black'] as const).map(color =>
+        h('button.games-view__pill', {
+          class: { active: gameListFilterColor === color },
+          attrs: {
+            type: 'button',
+            title: `Show games where this account played ${color}`,
+            'aria-pressed': String(gameListFilterColor === color),
+          },
+          on: { click: () => toggleColor(color) },
+        }, color.charAt(0).toUpperCase() + color.slice(1)),
       ),
       ...(['bullet', 'blitz', 'rapid'] as const).map(tc =>
         h('button.games-view__pill', {
@@ -1131,8 +1175,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
               const selectedGames = selectedGamesInCurrentVisibleOrder(lensGames);
-              const batchGames = firstReviewRunBatch(selectedGames);
-              const sourceContext = selectedReviewRunContext(selectedGames);
+              const { batchGames, sourceContext } = selectedReviewRunStart(selectedGames);
               selectedGameIds = new Set();
               selectModeActive = false;
               deps.reviewAllGames(batchGames, sourceContext);
@@ -1481,8 +1524,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
               const selectedGames = selectedGamesInCurrentVisibleOrder(games);
-              const batchGames = firstReviewRunBatch(selectedGames);
-              const sourceContext = selectedReviewRunContext(selectedGames);
+              const { batchGames, sourceContext } = selectedReviewRunStart(selectedGames);
               selectedGameIds = new Set();
               deps.reviewAllGames(batchGames, sourceContext);
             }},

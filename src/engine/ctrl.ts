@@ -240,6 +240,21 @@ export function setShowArrowLabels(v: boolean): void  { showArrowLabels = v; loc
 export function setShowReviewLabels(v: boolean): void { showReviewLabels = v; localStorage.setItem('patzer.showReviewLabels', String(v)); }
 export function setShowBoardReviewGlyphs(v: boolean): void { showBoardReviewGlyphs = v; localStorage.setItem('patzer.showBoardReviewGlyphs', String(v)); }
 export function setArrowLabelSize(v: number): void    { arrowLabelSize = v; localStorage.setItem('patzer.arrowLabelSize', String(v)); }
+export function resetEngineSettingsRuntimeForDataManagement(): void {
+  multiPv = 3;
+  analysisDepth = 30;
+  searchTime = 10_000;
+  searchUntilDepth = true;
+  showEngineArrows = true;
+  arrowAllLines = true;
+  showArrowLabels = true;
+  showReviewLabels = true;
+  showBoardReviewGlyphs = true;
+  arrowLabelSize = ARROW_LABEL_SIZE_DEFAULT;
+  clearPendingLines();
+  resetCurrentEval();
+  syncArrow();
+}
 export function incrementPendingStopCount(): void { pendingStopCount++; }
 export function stopProtocol(): void              { protocol.stop(); }
 export let _playMoveCallback: ((uci: string) => void) | null = null;

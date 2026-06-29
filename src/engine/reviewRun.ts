@@ -1,4 +1,4 @@
-import type { ImportedGame } from '../import/types';
+import { parsePgnHeader, type ImportedGame } from '../import/types';
 
 export const BULK_REVIEW_TARGET_BATCH_SIZE = 25;
 
@@ -142,6 +142,52 @@ export function gameIdsInVisibleOrder(games: readonly ImportedGame[]): string[] 
   return games.map(game => game.id);
 }
 
+function parsePgnTimestamp(pgn: string, dateTag: string, timeTag: string): number | null {
+  const date = parsePgnHeader(pgn, dateTag);
+  const time = parsePgnHeader(pgn, timeTag);
+  if (!date || !time) return null;
+  const ts = Date.parse(`${date.replace(/\./g, '-')}T${time}Z`);
+  return Number.isNaN(ts) ? null : ts;
+}
+
+function parseGameDateOnly(date: string | undefined): number | null {
+  if (!date) return null;
+  const day = date.slice(0, 10);
+  const ts = Date.parse(`${day}T00:00:00Z`);
+  return Number.isNaN(ts) ? null : ts;
+}
+
+export function reviewPlayedTimestamp(game: ImportedGame): number | null {
+  if (game.source === 'chesscom') {
+    return parsePgnTimestamp(game.pgn, 'EndDate', 'EndTime')
+      ?? parsePgnTimestamp(game.pgn, 'UTCDate', 'UTCTime')
+      ?? parseGameDateOnly(game.date);
+  }
+  return parsePgnTimestamp(game.pgn, 'UTCDate', 'UTCTime')
+    ?? parsePgnTimestamp(game.pgn, 'EndDate', 'EndTime')
+    ?? parseGameDateOnly(game.date);
+}
+
+export function compareGamesByReviewOrder(a: ImportedGame, b: ImportedGame): number {
+  const aPlayed = reviewPlayedTimestamp(a);
+  const bPlayed = reviewPlayedTimestamp(b);
+  const aHasPlayedDate = aPlayed !== null;
+  const bHasPlayedDate = bPlayed !== null;
+
+  if (aHasPlayedDate !== bHasPlayedDate) return aHasPlayedDate ? -1 : 1;
+  if (aPlayed !== null && bPlayed !== null && aPlayed !== bPlayed) return bPlayed - aPlayed;
+
+  const aImported = a.importedAt ?? 0;
+  const bImported = b.importedAt ?? 0;
+  if (aImported !== bImported) return bImported - aImported;
+
+  return 0;
+}
+
+export function reviewGamesInNewestFirstOrder(games: readonly ImportedGame[]): ImportedGame[] {
+  return [...games].sort(compareGamesByReviewOrder);
+}
+
 export function selectedGameIdsInSourceOrder(
   games: readonly ImportedGame[],
   selectedGameIds: ReadonlySet<string>,
@@ -182,11 +228,14 @@ export function reviewRunStartFromContext(
   games: readonly ImportedGame[],
   sourceContext: ReviewRunSourceContext,
 ): ReviewRunStart {
-  const batchGames = firstReviewRunBatch(games);
+  const reviewOrderedGames = reviewGamesInNewestFirstOrder(games);
+  const batchGames = firstReviewRunBatch(reviewOrderedGames);
   return {
     batchGames,
     sourceContext: {
       ...sourceContext,
+      sourceGameIds: reviewOrderedGames.map(game => game.id),
+      orderingContext: { sortKey: 'playedAt', sortDirection: 'desc' },
       activeBatchIds: batchGames.map(game => game.id),
     },
   };

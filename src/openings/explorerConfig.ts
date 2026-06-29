@@ -127,4 +127,16 @@ export class ExplorerConfig {
 
   since(): string { return this.sinceByDb[this.db] || ''; }
   until(): string { return this.untilByDb[this.db] || ''; }
+
+  resetRuntimeForDataManagement(): void {
+    this.db = 'lichess';
+    this.speeds = ALL_SPEEDS.slice(1);
+    this.ratings = ALL_RATINGS.slice(1);
+    this.modes = ALL_MODES;
+    this.playerName = '';
+    this.playerPrevious = [];
+    this.color = 'white';
+    this.sinceByDb = { lichess: '', masters: '', player: '' };
+    this.untilByDb = { lichess: '', masters: '', player: '' };
+  }
 }

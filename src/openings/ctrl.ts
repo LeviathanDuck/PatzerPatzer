@@ -36,6 +36,7 @@ import {
 import { SETTLE_QUIET_MS } from './scheduler';
 import type { OpponentsTreeUrlState, OpponentsUrlRange, OpponentsUrlSpeed, OpponentsUrlTarget } from './urlState';
 import { filterGamesByDateCutoff, filterGamesByCustomRange } from './dateFilter';
+import { playMoveSound } from '../board/sound';
 import {
   createOpeningTreeBuildContext,
   openingTreeBuildMilestonesForProgress,
@@ -67,6 +68,22 @@ export const TREE_EVAL_THOROUGHNESS_OPTIONS: readonly { value: TreeEvalThoroughn
 export type SampleGamesSortMode = 'recent' | 'rating';
 export type SampleGamesResultFilter = 'all' | 'wins' | 'losses';
 export type OpeningsRoutePathRestoreStatus = 'exact' | 'partial' | 'root';
+
+const OPENINGS_BOARD_SOUND_KEY = 'patzer.openings.boardSoundEnabled';
+
+export function openingsBoardSoundEnabled(): boolean {
+  return localStorage.getItem(OPENINGS_BOARD_SOUND_KEY) !== 'false';
+}
+
+export function setOpeningsBoardSoundEnabled(enabled: boolean): void {
+  localStorage.setItem(OPENINGS_BOARD_SOUND_KEY, String(enabled));
+}
+
+export function playOpeningsMoveSound(san: string | undefined): void {
+  if (!openingsBoardSoundEnabled()) return;
+  playMoveSound(san);
+}
+
 export interface OpeningsRoutePathRestoreResult {
   status: OpeningsRoutePathRestoreStatus;
   requested: string[];
@@ -1355,13 +1372,25 @@ export function navigateToMove(uci: string): void {
   if (!_sessionNode) return;
   const child = _sessionNode.children.find(c => c.uci === uci);
   if (child) {
+    const previousPathLength = _sessionPath.length;
     const nextPath = [..._sessionPath, uci];
-    if (refreshVisibleLazySnapshot(nextPath, { persist: true, triggerEval: true, notify: true })) return;
+    const lazyResult = refreshVisibleLazySnapshot(nextPath, { persist: true, triggerEval: true, notify: true });
+    if (lazyResult) {
+      if (
+        nextPath.length === previousPathLength + 1
+        && lazyResult.status === 'exact'
+        && lazyResult.applied.length === nextPath.length
+      ) {
+        playOpeningsMoveSound(child.san);
+      }
+      return;
+    }
     _sessionPath = nextPath;
     _sessionNode = child;
     persistSession();
     triggerTreeEvalForCurrentNode();
     notifySessionStateChanged();
+    if (nextPath.length === previousPathLength + 1) playOpeningsMoveSound(child.san);
   }
 }
 
@@ -1418,8 +1447,16 @@ export function navigateToEnd(): void {
 /** Navigate to a specific path (list of UCI moves). */
 export function navigateToPath(moves: string[]): void {
   if (!_openingTree) return;
+  const previousPath = _sessionPath;
+  const isOneStepForward = moves.length === previousPath.length + 1
+    && previousPath.every((move, index) => moves[index] === move);
   const lazyResult = refreshVisibleLazySnapshot(moves, { persist: true, triggerEval: true, notify: true });
-  if (lazyResult) return;
+  if (lazyResult) {
+    if (isOneStepForward && lazyResult.status === 'exact' && lazyResult.applied.length === moves.length) {
+      playOpeningsMoveSound(_sessionNode?.san);
+    }
+    return;
+  }
   const target = nodeAtMoves(_openingTree, moves);
   if (target) {
     _sessionPath = [...moves];
@@ -1427,6 +1464,7 @@ export function navigateToPath(moves: string[]): void {
     persistSession();
     triggerTreeEvalForCurrentNode();
     notifySessionStateChanged();
+    if (isOneStepForward) playOpeningsMoveSound(target.san);
   }
 }
 

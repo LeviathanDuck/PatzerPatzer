@@ -413,6 +413,12 @@ export function setEvalGraphHeightPct(value: number): void {
   localStorage.setItem('patzer.evalGraphHeightPct', String(graphHeightPct));
 }
 
+export function resetAnalysisViewSettingsRuntimeForDataManagement(): void {
+  graphHeightPct = GRAPH_HEIGHT_MIN;
+  evalGraphScrubPointerId = null;
+  evalGraphLastScrubPath = null;
+}
+
 export function renderEvalGraph(
   mainline:    TreeNode[],
   currentPath: string,

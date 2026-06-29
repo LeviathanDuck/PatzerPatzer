@@ -104,6 +104,11 @@ export function setMissedMomentConfig(patch: Partial<MissedMomentConfig>): void 
   _configChangeCallbacks.forEach(cb => cb());
 }
 
+export function resetMissedMomentConfigRuntimeForDataManagement(): void {
+  Object.assign(missedMomentConfig, MISSED_MOMENT_CONFIG_DEFAULTS);
+  _configChangeCallbacks.forEach(cb => cb());
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type MissedMomentKind = 'swing' | 'missed-mate' | 'collapse';

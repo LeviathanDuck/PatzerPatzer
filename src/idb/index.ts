@@ -10,8 +10,14 @@ import type { RetroOutcome } from '../analyse/retroCtrl';
 import type { GameSummary } from '../stats/types';
 import { classifyOpening } from '../openings/eco';
 import type { RemoteSyncStoreName } from '../sync/remoteSync';
+import {
+  isDataManagementReviewWriteStale,
+  recordDataManagementStaleWriteDrop,
+  type DataManagementReviewStore,
+} from '../sync/dataManagementRuntime';
 import type { DiagnosticAggregate, DiagnosticAggregateKind, DiagnosticEvent, DiagnosticSession } from '../diagnostics/types';
 import type { DiagnosticReport as AssembledDiagnosticReport } from '../diagnostics/reporting/reportAssembly';
+import type { ReportIssueDraft, ReportIssueDraftStatus } from '../diagnostics/reporting/reportDraftTypes';
 import { record, Severity } from '../diagnostics';
 import { captureStorageEstimate } from '../diagnostics/performance/deviceSignals';
 import type { ReviewRunManifest } from '../engine/reviewRun';
@@ -248,16 +254,29 @@ export function buildReviewEngineMetadata(engineName: string | undefined, review
   };
 }
 
+function shouldDropDataManagementReviewWrite(
+  store: DataManagementReviewStore,
+  gameId: string,
+  requestedAt: number,
+): boolean {
+  if (!isDataManagementReviewWriteStale(gameId, requestedAt)) return false;
+  recordDataManagementStaleWriteDrop(store, gameId, requestedAt);
+  return true;
+}
+
 async function persistAnalysisToIdb(
   status: AnalysisStatus,
   gameId: string,
   nodes:  Record<string, StoredNodeEntry>,
   depth:  number,
   reviewEngine?: ReviewEngineMetadata,
+  requestedAt = Date.now(),
 ): Promise<void> {
+  if (shouldDropDataManagementReviewWrite('analysis', gameId, requestedAt)) return;
   const existingReviewEngine = reviewEngine === undefined && status === 'complete'
     ? (await loadAnalysisFromIdb(gameId))?.reviewEngine
     : undefined;
+  if (shouldDropDataManagementReviewWrite('analysis', gameId, requestedAt)) return;
   const storedReviewEngine = reviewEngine ?? existingReviewEngine;
   const db = await openGameDb();
   const record: StoredAnalysis = {
@@ -402,8 +421,8 @@ export interface StoredGameRecord {
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
-// v21 adds local diagnostic aggregate rollups for admin summaries.
-export const DB_VERSION = 21;
+// v22 adds local-only Report Issue draft persistence.
+export const DB_VERSION = 22;
 
 let _idb: IDBDatabase | undefined;
 
@@ -523,6 +542,13 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   const diagnosticAggregatesStore = ensureStore(db, event, 'diagnostic-aggregates', { keyPath: 'aggregateId' });
   ensureIndex(diagnosticAggregatesStore, 'kind', 'kind', { unique: false });
   ensureIndex(diagnosticAggregatesStore, 'lastSeen', 'lastSeen', { unique: false });
+
+
+  const diagnosticReportDraftsStore = ensureStore(db, event, 'diagnostic-report-drafts', { keyPath: 'draftId' });
+  ensureIndex(diagnosticReportDraftsStore, 'issueId', 'issueId', { unique: false });
+  ensureIndex(diagnosticReportDraftsStore, 'status', 'status', { unique: false });
+  ensureIndex(diagnosticReportDraftsStore, 'updatedAt', 'updatedAt', { unique: false });
+  ensureIndex(diagnosticReportDraftsStore, 'routeAtTrigger', 'routeAtTrigger', { unique: false });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
@@ -627,6 +653,9 @@ export interface DiagnosticOutboxEntry {
   attemptCount:  number;
   payload:       string;
 }
+
+export type DiagnosticReportDraft = ReportIssueDraft;
+export type DiagnosticReportDraftStatus = ReportIssueDraftStatus;
 
 export async function putDiagnosticEvent(event: DiagnosticEvent): Promise<void> {
   const db = await openGameDb();
@@ -812,6 +841,62 @@ export async function deleteDiagnosticOutboxEntry(outboxId: string): Promise<voi
   const tx = db.transaction('diagnostic-outbox', 'readwrite');
   tx.objectStore('diagnostic-outbox').delete(outboxId);
   await txDone(tx);
+}
+
+export async function putDiagnosticReportDraft(draft: DiagnosticReportDraft): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-report-drafts', 'readwrite');
+  tx.objectStore('diagnostic-report-drafts').put(draft);
+  await txDone(tx);
+}
+
+export async function getDiagnosticReportDraft(draftId: string): Promise<DiagnosticReportDraft | undefined> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('diagnostic-report-drafts', 'readonly')
+      .objectStore('diagnostic-report-drafts')
+      .get(draftId);
+    req.onsuccess = () => resolve(req.result as DiagnosticReportDraft | undefined);
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-report-drafts', 'read', draftId));
+  });
+}
+
+export async function getActiveDiagnosticReportDraft(): Promise<DiagnosticReportDraft | undefined> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('diagnostic-report-drafts', 'readonly')
+      .objectStore('diagnostic-report-drafts')
+      .index('status')
+      .getAll('active');
+    req.onsuccess = () => {
+      const drafts = ((req.result as DiagnosticReportDraft[] | undefined) ?? [])
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+      resolve(drafts[0]);
+    };
+    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-report-drafts', 'read'));
+  });
+}
+
+export async function updateDiagnosticReportDraftStatus(
+  draftId: string,
+  status: DiagnosticReportDraftStatus,
+): Promise<DiagnosticReportDraft | undefined> {
+  const existing = await getDiagnosticReportDraft(draftId);
+  if (!existing) return undefined;
+  const updated: DiagnosticReportDraft = {
+    ...existing,
+    status,
+    updatedAt: Date.now(),
+  };
+  await putDiagnosticReportDraft(updated);
+  return updated;
+}
+
+export async function deleteDiagnosticReportDraft(draftId: string): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('diagnostic-report-drafts', 'readwrite');
+  tx.objectStore('diagnostic-report-drafts').delete(draftId);
+  await txDone(tx, 'delete');
 }
 
 export async function replaceDiagnosticAggregates(
@@ -1169,8 +1254,9 @@ export async function saveAnalysisToIdb(
   depth:  number,
   reviewEngine?: ReviewEngineMetadata,
 ): Promise<void> {
+  const requestedAt = Date.now();
   try {
-    await persistAnalysisToIdb(status, gameId, nodes, depth, reviewEngine);
+    await persistAnalysisToIdb(status, gameId, nodes, depth, reviewEngine, requestedAt);
   } catch (e) {
     console.warn('[idb] analysis save failed', e);
   }
@@ -1183,7 +1269,8 @@ export async function saveAnalysisToIdbStrict(
   depth:  number,
   reviewEngine?: ReviewEngineMetadata,
 ): Promise<void> {
-  await persistAnalysisToIdb(status, gameId, nodes, depth, reviewEngine);
+  const requestedAt = Date.now();
+  await persistAnalysisToIdb(status, gameId, nodes, depth, reviewEngine, requestedAt);
 }
 
 export async function loadAnalysisFromIdb(gameId: string): Promise<StoredAnalysis | undefined> {
@@ -1254,8 +1341,11 @@ export async function clearAnalysisFromIdb(gameId: string): Promise<void> {
 
 export async function saveRetroResult(result: RetroSessionResult): Promise<void> {
   if (!result.gameId) return;
+  const requestedAt = Date.now();
+  if (shouldDropDataManagementReviewWrite('retro-results', result.gameId, requestedAt)) return;
   try {
     const db = await openGameDb();
+    if (shouldDropDataManagementReviewWrite('retro-results', result.gameId, requestedAt)) return;
     const tx = db.transaction('retro-results', 'readwrite');
     tx.objectStore('retro-results').put(result, result.gameId);
     await txDone(tx);
@@ -1304,9 +1394,10 @@ export async function listRetroResults(): Promise<RetroSessionResult[]> {
 export interface ReviewQueueManifestEntry {
   gameId: string;
   status: 'pending' | 'analyzing' | 'complete' | 'error';
-  depth:  number;
-  done:   number;
-  total:  number;
+  depth:            number;
+  minimumDepthUsed?: number;
+  done:             number;
+  total:            number;
 }
 
 export interface ReviewQueueManifestLoadResult {
@@ -1473,8 +1564,11 @@ export async function loadReviewFailureRecords(): Promise<ReviewFailureRecord[]>
 
 export async function saveGameSummary(summary: GameSummary): Promise<void> {
   if (!summary.gameId) return;
+  const requestedAt = Date.now();
+  if (shouldDropDataManagementReviewWrite('game-summaries', summary.gameId, requestedAt)) return;
   try {
     const db = await openGameDb();
+    if (shouldDropDataManagementReviewWrite('game-summaries', summary.gameId, requestedAt)) return;
     const tx = db.transaction('game-summaries', 'readwrite');
     tx.objectStore('game-summaries').put(summary, summary.gameId);
     await txDone(tx);

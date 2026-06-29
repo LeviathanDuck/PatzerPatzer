@@ -12,6 +12,7 @@ import {
   setPuzzleBoardAnimationSpeed,
   type BoardAnimationSpeed,
 } from './animation';
+import { resetBoardSoundRuntimeForDataManagement } from './sound';
 
 // --- Board wheel navigation ---
 const BOARD_WHEEL_NAV_KEY = 'boardWheelNavEnabled';
@@ -72,6 +73,11 @@ export function applyBoardTheme(name: string): void {
   localStorage.setItem(BOARD_THEME_KEY, name);
 }
 
+function applyBoardThemeRuntimeOnly(name: string): void {
+  document.body.dataset.board = name;
+  boardTheme = name;
+}
+
 // --- Piece set ---
 // Adapted from lichess-org/lila: ui/dasher/src/piece.ts applyPieceSet()
 // Sets 12 CSS custom properties (---white-pawn etc.) on <body> so SCSS rules
@@ -105,6 +111,15 @@ export function applyPieceSet(name: string): void {
   document.body.dataset.pieceSet = name;
   pieceSet = name;
   localStorage.setItem(PIECE_SET_KEY, name);
+}
+
+function applyPieceSetRuntimeOnly(name: string): void {
+  const ext = pieceAssetExtension(name);
+  for (const [cssVar, file] of PIECE_VARS) {
+    document.body.style.setProperty(cssVar, `url(/piece/${name}/${file}.${ext})`);
+  }
+  document.body.dataset.pieceSet = name;
+  pieceSet = name;
 }
 
 // --- Board filters ---
@@ -147,6 +162,22 @@ export function setFilter(prop: string, value: number): void {
 
 export function resetFilters(): void {
   for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) setFilter(prop, def);
+}
+
+export function resetBoardSettingsRuntimeForDataManagement(): void {
+  boardWheelNavEnabled = BOARD_WHEEL_NAV_DEFAULT;
+  reviewDotsUserOnly = true;
+  boardZoom = ZOOM_DEFAULT;
+  applyBoardZoom(boardZoom);
+  applyBoardThemeRuntimeOnly(BOARD_THEME_DEFAULT);
+  applyPieceSetRuntimeOnly(PIECE_SET_DEFAULT);
+  for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
+    boardFilters[prop] = def;
+    document.body.style.setProperty(`---${prop}`, def.toString());
+  }
+  document.body.classList.toggle('simple-board', filtersAtDefault());
+  clearBoardAnimationLocalData();
+  resetBoardSoundRuntimeForDataManagement();
 }
 
 // --- Board settings UI helpers ---

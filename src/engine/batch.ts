@@ -32,6 +32,7 @@ import { extractGameSummary } from '../stats/extract';
 import { invalidateSummariesCache } from '../stats/ctrl';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import type { ImportedGame } from '../import/types';
+import { dataManagementScopeMatchesGameId, type DataManagementLocalChangeDetail } from '../sync/dataManagementRuntime';
 
 // --- Types ---
 
@@ -156,6 +157,16 @@ export function setReviewDepth(v: number): void {
   reviewDepth = v;
   localStorage.setItem('patzer.reviewDepth', String(v));
   window.dispatchEvent(new CustomEvent(REVIEW_DEPTH_CHANGED_EVENT, { detail: { reviewDepth } }));
+}
+
+export function syncReviewDepthSetting(v: number): void {
+  reviewDepth = v;
+  localStorage.setItem('patzer.reviewDepth', String(v));
+}
+
+export function resetReviewSettingsRuntimeForDataManagement(): void {
+  reviewDepth = 16;
+  reviewMovetime = null;
 }
 
 /** Set the per-position time budget. Pass `null` to return to depth-only mode (the default). */
@@ -359,6 +370,22 @@ export function stopBatchAnalysis(): void {
       reviewDepth,
     );
   }
+  syncArrow();
+  _redraw();
+}
+
+export function cancelBatchAnalysisForDataManagement(detail: DataManagementLocalChangeDetail): void {
+  if (!dataManagementScopeMatchesGameId(detail.scope, _getSelectedGameId())) return;
+  if (!batchAnalyzing && !pendingBatchOnReady) return;
+  if (batchAnalyzing || isEngineSearchActive()) {
+    incrementPendingStopCount();
+    protocol.stop();
+    setEngineSearchActive(false);
+  }
+  pendingBatchOnReady = false;
+  resetBatchState();
+  clearPendingLines();
+  resetCurrentEval();
   syncArrow();
   _redraw();
 }

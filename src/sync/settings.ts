@@ -40,6 +40,7 @@ const SETTINGS_KEYS = new Set([
   'puzzleBoardAnimationSpeed',
   'boardSoundEnabled',
   'boardSoundVolume',
+  'patzer.openings.boardSoundEnabled',
   'puzzleAutoNext',
   'patzer.games.accountFilter.v1',
   'analyse.explorer.enabled',

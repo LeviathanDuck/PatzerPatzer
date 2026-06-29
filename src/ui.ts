@@ -20,10 +20,11 @@ export function renderToggleRow(
     h('span.settings-toggle-row__label', label),
     h('span.settings-toggle', [
       h(`input#stg-${id}`, {
-        attrs: { type: 'checkbox', checked, ...(disabled ? { disabled: true } : {}) },
+        attrs: { type: 'checkbox' },
+        props: { checked, disabled: !!disabled },
         on: { change: (e: Event) => onChange((e.target as HTMLInputElement).checked) },
       }),
-      h('label', { attrs: { for: `stg-${id}` } }),
+      h('span.settings-toggle__track', { attrs: { 'aria-hidden': 'true' } }),
     ]),
   ]);
 }

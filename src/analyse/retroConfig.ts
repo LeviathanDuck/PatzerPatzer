@@ -185,3 +185,10 @@ export function setRetroConfig(patch: Partial<RetroConfig>): void {
 export function resetRetroConfig(): void {
   setRetroConfig({ ...RETRO_CONFIG_DEFAULTS });
 }
+
+export function resetRetroConfigRuntimeForDataManagement(): void {
+  const patch = { ...RETRO_CONFIG_DEFAULTS };
+  const affectsCandidateSelection = patchAffectsCandidateSelection(patch);
+  Object.assign(retroConfig, patch);
+  _changeCallbacks.forEach(cb => cb({ patch, affectsCandidateSelection }));
+}

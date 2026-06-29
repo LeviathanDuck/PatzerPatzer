@@ -12,7 +12,7 @@ import type { Key } from '@lichess-org/chessground/types';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { parseFen, makeFen } from 'chessops/fen';
 import { parsePgn, startingPosition } from 'chessops/pgn';
-import { parseSan, makeSanAndPlay } from 'chessops/san';
+import { parseSan, makeSan, makeSanAndPlay } from 'chessops/san';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
@@ -36,7 +36,8 @@ import {
   sessionCustomFrom, sessionCustomTo, presetSessionCustomFrom, presetSessionCustomTo,
   setSessionCustomFrom, setSessionCustomTo, excludedUndatedCount,
   treeEvalThoroughness, setTreeEvalThoroughness, TREE_EVAL_THOROUGHNESS_OPTIONS,
-  triggerTreeEvalForCurrentNode,
+  triggerTreeEvalForCurrentNode, openingsBoardSoundEnabled, setOpeningsBoardSoundEnabled,
+  playOpeningsMoveSound,
   openCollection, closeSession, presetColorFilter, presetSpeedFilter, presetSessionDateRange, navigateToMove, navigateBack, navigateToRoot, navigateToPath, navigateToEnd,
   removeCollection, renameCollection,
   treeBuilding, treeBuildProgress, treeBuildTotal, cappedGamesCount, loadFullMobileTree,
@@ -792,7 +793,7 @@ function renderCollectionCard(c: ResearchCollection, redraw: () => void): VNode 
 
     // Per-speed columns
     activeSpeeds.length > 0 ? h('div.openings__card-speeds', {
-      attrs: { style: `grid-template-columns:repeat(${activeSpeeds.length},1fr)` },
+      attrs: { style: `grid-template-columns:repeat(${activeSpeeds.length},minmax(0,1fr))` },
     }, activeSpeeds.map(speed => {
       const sp  = stats.bySpeed.get(speed)!;
       const opt = SPEED_OPTIONS.find(o => o.value === speed);
@@ -1098,6 +1099,7 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
       renderToggleRow('op-arrow-labels', 'Arrow labels', showArrowLabels, (v) => { setShowArrowLabels(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }),
 
       renderToggleRow('op-tree-arrows', 'Tree arrows', showTreeArrows(), (_v) => { toggleTreeArrows(); _lastOpeningsAutoShapesHash = null; syncOpeningsAutoShapes(sessionNode()); redraw(); }),
+      renderToggleRow('op-opening-tree-sounds', 'Opening tree sounds', openingsBoardSoundEnabled(), (v) => { setOpeningsBoardSoundEnabled(v); redraw(); }),
     ]),
   ]);
 }
@@ -2796,6 +2798,8 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
                     if (posResult.isOk) {
                       const move = parseUci(uci);
                       if (move) {
+                        let san = uci;
+                        try { san = makeSan(posResult.value, move); } catch {}
                         posResult.value.play(move);
                         const newFen = makeFen(posResult.value.toSetup());
                         _offTreeFen = newFen;
@@ -2806,6 +2810,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
                           lastMove: [orig, dest],
                           movable: { dests: destsForFen(newFen), color: 'both' },
                         });
+                        playOpeningsMoveSound(san);
                         scheduleOpeningsEngineEval(newFen);
                         redraw();
                       }

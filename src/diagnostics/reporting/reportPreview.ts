@@ -163,6 +163,7 @@ export function renderReportPreview(
     h('div.report-preview__disclosure', 'This is what will be sent'),
     renderSection('User report', [
       h('dl.report-preview__fields', [
+        renderField('Issue ID', report.issueId ?? report.reportId),
         renderField('Description', userInput.description),
         renderField('What happened', userInput.whatHappened ?? ''),
         renderField('Severity', userInput.severity),
@@ -174,9 +175,18 @@ export function renderReportPreview(
       h('dl.report-preview__fields', [
         renderField('Current route', routeContext.route),
         renderField('Surface', report.triggerContext?.triggeredBy),
+        renderField('Opened at', report.issueOpenedAt),
         renderField('Captured at', formattedTimestamp(routeContext.capturedAt)),
       ]),
     ]),
+    report.screenshotPackage?.attachments.length
+      ? renderSection('Screenshot attachments', [
+          h('dl.report-preview__fields', [
+            renderField('Package ID', report.screenshotPackage.packageId),
+            renderField('Files', report.screenshotPackage.attachments.map(attachment => attachment.fileName).join(', ')),
+          ]),
+        ])
+      : null,
     renderToggleSection('Breadcrumbs', renderToggle(
       'Include Breadcrumbs',
       state.includeBreadcrumbs,
