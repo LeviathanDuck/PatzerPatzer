@@ -47,6 +47,7 @@ import {
 } from './treeBuildDiagnostics';
 import { getDeviceMetadata } from '../diagnostics/session';
 import { contextFromRootAndMoves, type EnginePositionContext } from '../engine/positionContext';
+import { opponentsTreeUrlScopesMatch } from './routeOrchestration';
 
 export type OpeningsPage = 'library' | 'loading' | 'session';
 
@@ -282,7 +283,12 @@ function normalizedUrlRange(range: string | null): OpponentsUrlRange | null {
 }
 
 export function openingsSessionUrlSnapshot(): OpponentsTreeUrlState | null {
-  if (!_activeCollection || _currentPage !== 'session') return null;
+  if (_currentPage !== 'session') return null;
+  return activeOpeningsSessionUrlSnapshot();
+}
+
+function activeOpeningsSessionUrlSnapshot(): OpponentsTreeUrlState | null {
+  if (!_activeCollection) return null;
   return {
     target:      sessionUrlTargetFor(_activeCollection),
     tool:        _activeTool,
@@ -292,6 +298,20 @@ export function openingsSessionUrlSnapshot(): OpponentsTreeUrlState | null {
     orientation: _boardOrientation,
     line:        [..._sessionPath],
   };
+}
+
+export function restoreActiveOpeningsSessionFromUrlState(
+  state: OpponentsTreeUrlState,
+): OpeningsRoutePathRestoreResult | null {
+  const currentSnapshot = activeOpeningsSessionUrlSnapshot();
+  if (!currentSnapshot || !_openingTree) return null;
+  if (!opponentsTreeUrlScopesMatch(currentSnapshot, state)) return null;
+
+  _currentPage = 'session';
+  _importStep = 'idle';
+  _boardOrientation = state.orientation;
+  _activeTool = state.tool;
+  return navigateToClosestPath(state.line, false);
 }
 
 export function setOpeningsSessionStateChangeHandler(handler: OpeningsSessionStateChangeHandler | null): void {

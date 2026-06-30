@@ -18,9 +18,16 @@ $stmt->execute([$config['user_key']]);
 $items = [];
 $counts = ['items' => 0, 'tombstones' => 0, 'stores' => []];
 $skippedMalformedJson = 0;
+$repairedInvalidUpdatedAt = 0;
+$exportedAtMs = patzer_now_ms();
 while ($row = $stmt->fetch()) {
     $store = (string) $row['store'];
     $deleted = $row['deleted_at_ms'] !== null;
+    $updatedAt = (int) $row['updated_at_ms'];
+    if ($updatedAt <= 0) {
+        $updatedAt = $exportedAtMs;
+        $repairedInvalidUpdatedAt++;
+    }
     $payload = null;
     if (!$deleted) {
         $payload = json_decode((string) $row['payload_json'], true);
@@ -32,7 +39,7 @@ while ($row = $stmt->fetch()) {
     $items[] = [
         'store' => $store,
         'itemKey' => $row['item_key'],
-        'updatedAt' => (int) $row['updated_at_ms'],
+        'updatedAt' => $updatedAt,
         'operation' => $deleted ? 'delete' : 'upsert',
         'deleted' => $deleted,
         'payload' => $payload,
@@ -57,4 +64,5 @@ patzer_json(200, [
     'items' => $items,
     'counts' => $counts,
     'skippedMalformedJson' => $skippedMalformedJson,
+    'repairedInvalidUpdatedAt' => $repairedInvalidUpdatedAt,
 ]);

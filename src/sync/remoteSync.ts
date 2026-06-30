@@ -135,6 +135,7 @@ interface RawBackupBundle {
   items?: unknown[];
   counts?: unknown;
   skippedMalformedJson?: number;
+  repairedInvalidUpdatedAt?: number;
   error?: string;
 }
 
@@ -1062,14 +1063,23 @@ function readLocalSettingsItems(): RemoteSyncItem[] {
     if (!key || !isAllowedSettingKey(key)) continue;
     const value = localStorage.getItem(key);
     if (value === null) continue;
+    let updatedAt = settingUpdatedAt(key);
+    if (updatedAt <= 0) {
+      updatedAt = Date.now();
+      setSettingUpdatedAt(key, updatedAt);
+    }
     items.push({
       store: 'settings',
       itemKey: key,
-      updatedAt: settingUpdatedAt(key),
+      updatedAt,
       payload: { key, value },
     });
   }
   return items;
+}
+
+export function readRemoteSyncLocalSettingsItemsForTest(): RemoteSyncItem[] {
+  return readLocalSettingsItems();
 }
 
 function payloadSettingValue(payload: unknown, fallbackKey: string): string | undefined {
@@ -1498,6 +1508,9 @@ function normalizeBackupBundle(raw: unknown, fileName: string): {
   const warnings: string[] = [];
   if ((bundle.skippedMalformedJson ?? 0) > 0) {
     warnings.push(`${bundle.skippedMalformedJson} malformed row${bundle.skippedMalformedJson === 1 ? '' : 's'} were skipped during export.`);
+  }
+  if ((bundle.repairedInvalidUpdatedAt ?? 0) > 0) {
+    warnings.push(`${bundle.repairedInvalidUpdatedAt} row${bundle.repairedInvalidUpdatedAt === 1 ? '' : 's'} with invalid updatedAt were repaired during export.`);
   }
   if (fileName.toLowerCase().endsWith('.json') === false) warnings.push('Backup file does not use a .json extension.');
 

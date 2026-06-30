@@ -117,6 +117,7 @@ try {
         $store = patzer_item_store($item);
         $itemKey = patzer_item_key($item);
         $updatedAt = patzer_item_updated_at($item);
+        if ($updatedAt <= 0) $updatedAt = patzer_now_ms();
         $deleted = patzer_item_deleted($item);
         $payloadJson = patzer_item_payload($item);
 

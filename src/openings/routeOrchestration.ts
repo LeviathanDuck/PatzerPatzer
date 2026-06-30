@@ -21,6 +21,27 @@ export function isOpponentsTreeRoute(route: Route): boolean {
   return route.name === 'opponents' && route.params['view'] === 'tree';
 }
 
+export function opponentsEntryHref(snapshot: OpponentsTreeUrlState | null): string {
+  return snapshot ? serializeOpponentsTreeUrlState(snapshot) : '#/opponents';
+}
+
+function sameOpponentsTarget(a: OpponentsTreeUrlState, b: OpponentsTreeUrlState): boolean {
+  return a.target?.kind === b.target?.kind && a.target?.id === b.target?.id;
+}
+
+function sameOpponentsSpeeds(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const bSet = new Set(b);
+  return a.every(speed => bSet.has(speed));
+}
+
+export function opponentsTreeUrlScopesMatch(a: OpponentsTreeUrlState, b: OpponentsTreeUrlState): boolean {
+  return sameOpponentsTarget(a, b)
+    && a.color === b.color
+    && a.range === b.range
+    && sameOpponentsSpeeds(a.speeds, b.speeds);
+}
+
 export function describeOpponentsInvalidParams(params: readonly OpponentsUrlStateInvalidParam[]): string {
   return params.map(p => `${p.field}=${p.value}`).join(', ');
 }
@@ -66,7 +87,7 @@ export function createOpponentsUrlSnapshotScheduler(
 
     const snapshot = pendingSnapshot;
     pendingSnapshot = undefined;
-    const nextRoute = deps.replaceHashRoute(snapshot ? serializeOpponentsTreeUrlState(snapshot) : '#/opponents').route;
+    const nextRoute = deps.replaceHashRoute(opponentsEntryHref(snapshot)).route;
     deps.setCurrentRoute(nextRoute);
   }
 

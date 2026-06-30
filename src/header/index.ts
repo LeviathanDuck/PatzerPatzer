@@ -463,6 +463,7 @@ export interface HeaderDeps {
   importedGames:       ImportedGame[];
   accounts:            ChessAccount[];
   mobileSubmenus?:     readonly HeaderMobileSubmenu[];
+  navHrefOverrides?:   Partial<Record<string, string>>;
   selectedGameId:      string | null;
   analyzedGameIds:     ReadonlySet<string>;
   missedTacticGameIds: ReadonlySet<string>;
@@ -563,10 +564,10 @@ const navLinks: { label: string; href: string; section: string }[] = [
   { label: 'Study',   href: '#/study',    section: 'study'    },
 ];
 
-function renderNav(route: Route): VNode {
+function renderNav(route: Route, navHrefOverrides: Partial<Record<string, string>> = {}): VNode {
   const active = activeSection(route);
   return h('nav.header__nav', navLinks.map(({ label, href, section }) =>
-    h('a', { attrs: { href }, class: { active: active === section } }, label)
+    h('a', { attrs: { href: navHrefOverrides[section] ?? href }, class: { active: active === section } }, label)
   ));
 }
 
@@ -1610,11 +1611,16 @@ function renderMobileSubmenu(submenu: HeaderMobileSubmenu, redraw: () => void): 
   ]);
 }
 
-function renderMobileNavLinks(active: string, mobileSubmenus: readonly HeaderMobileSubmenu[], redraw: () => void): VNode[] {
+function renderMobileNavLinks(
+  active: string,
+  mobileSubmenus: readonly HeaderMobileSubmenu[],
+  redraw: () => void,
+  navHrefOverrides: Partial<Record<string, string>> = {},
+): VNode[] {
   const nodes: VNode[] = [];
   navLinks.forEach(({ label, href, section }) => {
     nodes.push(h('a.header__mobile-link', {
-      attrs: { href },
+      attrs: { href: navHrefOverrides[section] ?? href },
       class: { active: active === section },
       on: { click: () => { showMobileNav = false; redraw(); } },
     }, label));
@@ -1628,7 +1634,12 @@ function renderMobileNavLinks(active: string, mobileSubmenus: readonly HeaderMob
   return nodes;
 }
 
-function renderMobileNav(route: Route, redraw: () => void, mobileSubmenus: readonly HeaderMobileSubmenu[] = []): VNode {
+function renderMobileNav(
+  route: Route,
+  redraw: () => void,
+  mobileSubmenus: readonly HeaderMobileSubmenu[] = [],
+  navHrefOverrides: Partial<Record<string, string>> = {},
+): VNode {
   const active = activeSection(route);
   return h('div.header__mobile-nav', [
     h('button.header__hamburger', {
@@ -1639,7 +1650,7 @@ function renderMobileNav(route: Route, redraw: () => void, mobileSubmenus: reado
     showMobileNav ? h('div.header__mobile-backdrop', {
       on: { click: () => { showMobileNav = false; redraw(); } },
     }) : null,
-    showMobileNav ? h('div.header__mobile-dropdown', renderMobileNavLinks(active, mobileSubmenus, redraw)) : null,
+    showMobileNav ? h('div.header__mobile-dropdown', renderMobileNavLinks(active, mobileSubmenus, redraw, navHrefOverrides)) : null,
   ]);
 }
 
@@ -2166,7 +2177,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
         },
       }),
     ]),
-    renderMobileNav(route, redraw, deps.mobileSubmenus ?? []),
+    renderMobileNav(route, redraw, deps.mobileSubmenus ?? [], deps.navHrefOverrides ?? {}),
 
     h('div.header__search', { key: 'header-search' }, [
       h('div.header__bar', [
@@ -2217,7 +2228,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
       backdrop,
     ]),
 
-    renderNav(route),
+    renderNav(route, deps.navHrefOverrides ?? {}),
     renderReviewMenu(redraw),
     renderUserArea(redraw),
     renderGlobalMenu(deps),
