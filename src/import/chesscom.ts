@@ -257,6 +257,54 @@ export async function fetchChesscomGames(
   return result;
 }
 
+/** Speeds chess.com's /stats endpoint reports an all-time `best.rating` for. */
+export type ChesscomLifetimeSpeed = 'rapid' | 'blitz' | 'classical' | 'daily';
+
+const CHESSCOM_LIFETIME_STAT_KEYS: Record<string, ChesscomLifetimeSpeed> = {
+  chess_rapid:     'rapid',
+  chess_blitz:     'blitz',
+  // chess.com has no classical time class today, but map it defensively in
+  // case the API adds one — never fabricated, only read if present.
+  chess_classical: 'classical',
+  chess_daily:     'daily',
+};
+
+/**
+ * Fetch the Chess.com player's all-time best rating per speed from the public
+ * stats endpoint (a true lifetime peak, unlike Lichess's current-rating-only
+ * API — see lichess.ts). Best-effort: returns null on any network, HTTP, or
+ * parse failure so callers never overwrite a cached value with a fetch error.
+ */
+export async function fetchChesscomLifetimeBest(
+  username: string,
+): Promise<Partial<Record<ChesscomLifetimeSpeed, number>> | null> {
+  let res: Response;
+  try {
+    res = await fetchChesscomResponse(
+      `${CHESSCOM_BASE}/${username.toLowerCase()}/stats`,
+      'lifetime-stats',
+      'Chess.com lifetime stats fetch failed',
+    );
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  let data: Record<string, { best?: { rating?: unknown } }>;
+  try {
+    data = await res.json() as Record<string, { best?: { rating?: unknown } }>;
+  } catch {
+    return null;
+  }
+  const lifetimeBest: Partial<Record<ChesscomLifetimeSpeed, number>> = {};
+  for (const [statKey, speed] of Object.entries(CHESSCOM_LIFETIME_STAT_KEYS)) {
+    const rating = data[statKey]?.best?.rating;
+    if (typeof rating === 'number' && Number.isFinite(rating)) {
+      lifetimeBest[speed] = rating;
+    }
+  }
+  return Object.keys(lifetimeBest).length > 0 ? lifetimeBest : null;
+}
+
 export async function importChesscom(callbacks: ImportCallbacks): Promise<void> {
   const name = chesscom.username.trim();
   if (!name || chesscom.loading) return;

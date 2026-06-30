@@ -2,6 +2,14 @@
 // Lichess public API: GET /api/games/user/{username}?max=N&rated=true
 // Returns multi-game PGN text when Accept: application/x-chess-pgn is sent.
 // Lichess uses UTCDate rather than Date in PGN headers.
+//
+// Note on ChessAccount.lifetimeBest: Lichess's public API (GET /api/user/{username},
+// perfs.{speed}.rating) only exposes the player's CURRENT Glicko rating, not a
+// true all-time peak. There is no lifetime-best fetch in this file — do not
+// add one that maps current rating into lifetimeBest, since that would
+// mislabel a current value as a lifetime best. lifetimeBest stays unset for
+// lichess accounts; only the chess.com adapter populates it (see chesscom.ts
+// fetchChesscomLifetimeBest, which uses a true all-time best.rating field).
 
 import {
   currentImportDateRangeConfig,

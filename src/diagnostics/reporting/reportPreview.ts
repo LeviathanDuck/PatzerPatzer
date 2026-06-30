@@ -85,9 +85,11 @@ function renderToggle(
       attrs: {
         type: 'checkbox',
         checked,
+        disabled: !dispatch,
       },
       props: {
         checked,
+        disabled: !dispatch,
       },
       on: {
         change: (event: Event) => {

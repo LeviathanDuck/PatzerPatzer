@@ -21,9 +21,11 @@ import type { MasterGame } from '../showcase/masterGames';
 import { bindBoardResizeHandle } from '../board/index';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
 import { renderMoveList } from '../analyse/moveList';
-import { formatScore } from '../analyse/evalView';
+import { formatScore, renderEvalBar } from '../analyse/evalView';
 import type { TreeNode } from '../tree/types';
-import { updateAccount, type ChessAccount, type AccountCategory } from '../accounts';
+import { accountSection, updateAccount, type ChessAccount, type AccountSection } from '../accounts';
+import { deleteImportedAccountAndGames } from '../sync/dataManagement';
+import { computeAccountCardStats, PRIMARY_CARD_SPEEDS, type AccountCardStats, type AccountSpeedStat } from './accountCardStats';
 import {
   collections, collectionsLoaded, loadSavedCollections,
   registryAccounts, accountsLoaded, loadRegistryAccounts, openAccountResearch,
@@ -140,6 +142,160 @@ const STANDARD_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -
 // non-null = board is showing a transient analysis position beyond the tree.
 let _offTreeFen: string | null = null;
 
+type OpeningTreeColumnOrder = 'tree-left' | 'engine-left';
+interface OpeningTreeDesktopLayoutPrefs {
+  order: OpeningTreeColumnOrder;
+  leftSlotPct: number;
+}
+
+const OPENINGS_TREE_LAYOUT_STORAGE_KEY = 'patzer.openings.treeLayout.v1';
+const OPENINGS_TREE_LAYOUT_DEFAULT: OpeningTreeDesktopLayoutPrefs = {
+  order:       'tree-left',
+  leftSlotPct: 60,
+};
+const OPENINGS_TREE_LEFT_SLOT_FALLBACK_MIN = 264;
+const OPENINGS_TREE_RIGHT_SLOT_FALLBACK_MIN = 240;
+
+function clampOpeningTreeLeftSlotPct(pct: number): number {
+  if (!Number.isFinite(pct)) return OPENINGS_TREE_LAYOUT_DEFAULT.leftSlotPct;
+  return Math.max(18, Math.min(82, Math.round(pct * 10) / 10));
+}
+
+function isOpeningTreeColumnOrder(value: unknown): value is OpeningTreeColumnOrder {
+  return value === 'tree-left' || value === 'engine-left';
+}
+
+function readOpeningTreeDesktopLayoutPrefs(): OpeningTreeDesktopLayoutPrefs {
+  try {
+    const raw = localStorage.getItem(OPENINGS_TREE_LAYOUT_STORAGE_KEY);
+    if (!raw) return { ...OPENINGS_TREE_LAYOUT_DEFAULT };
+    const parsed = JSON.parse(raw) as Partial<OpeningTreeDesktopLayoutPrefs>;
+    return {
+      order:       isOpeningTreeColumnOrder(parsed.order) ? parsed.order : OPENINGS_TREE_LAYOUT_DEFAULT.order,
+      leftSlotPct: clampOpeningTreeLeftSlotPct(Number(parsed.leftSlotPct)),
+    };
+  } catch {
+    return { ...OPENINGS_TREE_LAYOUT_DEFAULT };
+  }
+}
+
+let _openingTreeDesktopLayout = readOpeningTreeDesktopLayoutPrefs();
+
+function persistOpeningTreeDesktopLayoutPrefs(): void {
+  try {
+    localStorage.setItem(OPENINGS_TREE_LAYOUT_STORAGE_KEY, JSON.stringify(_openingTreeDesktopLayout));
+  } catch {
+    // Ignore storage failures; the layout remains usable for the current session.
+  }
+}
+
+function openingTreeSlotVars(pct = _openingTreeDesktopLayout.leftSlotPct): string {
+  const left = clampOpeningTreeLeftSlotPct(pct);
+  const right = Math.max(0, 100 - left);
+  return `---openings-left-slot-fr:${left}fr;---openings-right-slot-fr:${right}fr;`;
+}
+
+function applyOpeningTreeSlotVars(workspace: HTMLElement, pct = _openingTreeDesktopLayout.leftSlotPct): void {
+  const left = clampOpeningTreeLeftSlotPct(pct);
+  workspace.style.setProperty('---openings-left-slot-fr', `${left}fr`);
+  workspace.style.setProperty('---openings-right-slot-fr', `${Math.max(0, 100 - left)}fr`);
+}
+
+function openingTreeSlotMinimums(workspace: HTMLElement): { left: number; right: number } {
+  const nav = workspace.querySelector('.openings__nav-slot .move-nav-bar') as HTMLElement | null;
+  const navWidth = nav ? Math.ceil(Math.max(nav.scrollWidth, nav.getBoundingClientRect().width)) + 12 : 0;
+  const moveList = workspace.querySelector('.openings__data-column--engine .openings__move-list') as HTMLElement | null;
+  const moveListWidth = moveList ? Math.ceil(Math.max(moveList.getBoundingClientRect().width, moveList.scrollWidth)) : 0;
+  return {
+    left:  Math.max(OPENINGS_TREE_LEFT_SLOT_FALLBACK_MIN, navWidth),
+    right: Math.max(OPENINGS_TREE_RIGHT_SLOT_FALLBACK_MIN, Math.min(360, moveListWidth)),
+  };
+}
+
+function clampOpeningTreeLeftSlotPctForWorkspace(pct: number, workspace: HTMLElement | null): number {
+  if (!workspace) return clampOpeningTreeLeftSlotPct(pct);
+  const columns = workspace.querySelector('.openings__right-columns') as HTMLElement | null;
+  const width = columns?.getBoundingClientRect().width ?? 0;
+  if (width <= 0) return clampOpeningTreeLeftSlotPct(pct);
+  const mins = openingTreeSlotMinimums(workspace);
+  const minPct = Math.min(48, (mins.left / width) * 100);
+  const maxPct = Math.max(52, 100 - (mins.right / width) * 100);
+  if (minPct >= maxPct) return 50;
+  return Math.round(Math.max(minPct, Math.min(maxPct, pct)) * 10) / 10;
+}
+
+function setOpeningTreeLeftSlotPct(
+  pct: number,
+  redraw: () => void,
+  workspace: HTMLElement | null = null,
+): void {
+  _openingTreeDesktopLayout = {
+    ..._openingTreeDesktopLayout,
+    leftSlotPct: clampOpeningTreeLeftSlotPctForWorkspace(pct, workspace),
+  };
+  persistOpeningTreeDesktopLayoutPrefs();
+  if (workspace) applyOpeningTreeSlotVars(workspace);
+  redraw();
+}
+
+function toggleOpeningTreeColumnOrder(redraw: () => void): void {
+  _openingTreeDesktopLayout = {
+    ..._openingTreeDesktopLayout,
+    order: _openingTreeDesktopLayout.order === 'tree-left' ? 'engine-left' : 'tree-left',
+  };
+  persistOpeningTreeDesktopLayoutPrefs();
+  redraw();
+}
+
+function openingTreePctFromPointer(clientX: number, workspace: HTMLElement): number {
+  const columns = workspace.querySelector('.openings__right-columns') as HTMLElement | null;
+  if (!columns) return _openingTreeDesktopLayout.leftSlotPct;
+  const rect = columns.getBoundingClientRect();
+  const handle = columns.querySelector('.openings__split-handle') as HTMLElement | null;
+  const handleWidth = handle?.getBoundingClientRect().width ?? 10;
+  const available = Math.max(1, rect.width - handleWidth);
+  const rawLeftPx = clientX - rect.left - (handleWidth / 2);
+  return clampOpeningTreeLeftSlotPctForWorkspace((rawLeftPx / available) * 100, workspace);
+}
+
+function beginOpeningTreeColumnResize(event: PointerEvent, redraw: () => void): void {
+  if (event.button !== 0) return;
+  const handle = event.currentTarget as HTMLElement | null;
+  const workspace = handle?.closest('.openings__right-workspace') as HTMLElement | null;
+  if (!handle || !workspace) return;
+  event.preventDefault();
+  handle.setPointerCapture?.(event.pointerId);
+  document.body.classList.add('openings-column-resizing');
+
+  const move = (moveEvent: PointerEvent) => {
+    const pct = openingTreePctFromPointer(moveEvent.clientX, workspace);
+    _openingTreeDesktopLayout = { ..._openingTreeDesktopLayout, leftSlotPct: pct };
+    applyOpeningTreeSlotVars(workspace, pct);
+  };
+
+  const stop = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', stop);
+    window.removeEventListener('pointercancel', stop);
+    document.body.classList.remove('openings-column-resizing');
+    persistOpeningTreeDesktopLayoutPrefs();
+    redraw();
+  };
+
+  move(event);
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', stop);
+  window.addEventListener('pointercancel', stop);
+}
+
+function handleOpeningTreeSplitKeydown(event: KeyboardEvent, redraw: () => void): void {
+  const delta = event.key === 'ArrowLeft' ? -2 : event.key === 'ArrowRight' ? 2 : 0;
+  if (delta === 0) return;
+  event.preventDefault();
+  const workspace = (event.currentTarget as HTMLElement | null)?.closest('.openings__right-workspace') as HTMLElement | null;
+  setOpeningTreeLeftSlotPct(_openingTreeDesktopLayout.leftSlotPct + delta, redraw, workspace);
+}
+
 function openingsPositionContext(fen: string, surface = 'openings-live'): EnginePositionContext {
   const root = openingTree();
   const node = sessionNode();
@@ -203,6 +359,26 @@ let _dateRangePopupOpen = false;
 
 let _expandedCardKey: string | null = null;
 
+
+let _expandedMenuKey: string | null = null;
+// Inline tag-add input state for the edit menu, mirrors src/study/libraryView.ts _editingTagId.
+let _editingAccountTagId: string | null = null;
+let _editingAccountTagValue = '';
+// Busy/error state for the edit menu's destructive delete action.
+let _accountActionRunningId: string | null = null;
+let _accountActionError: string | null = null;
+
+
+
+let _accountReorderMode = false;
+
+
+let _archiveCollapsed = true;
+// Drag state for the in-progress reorder gesture: the account id being dragged,
+// and the current drop target (`anchorId: null` means "append to end of section").
+let _draggingAccountId: string | null = null;
+let _dragOverTarget: { section: AccountSection; anchorId: string | null; before: boolean } | null = null;
+
 interface AccountPeekViewState { scopeKey: string; loading: boolean; supported: boolean; count: number; notImported: boolean; }
 const _peekState = new Map<string, AccountPeekViewState>();
 const _peekGen = new Map<string, number>();
@@ -212,6 +388,11 @@ const _importedSpeedsLoading = new Set<string>();
 let _accountSyncRunningId: string | null = null;
 const _accountSyncMessages = new Map<string, string>();
 const _accountSyncErrors = new Map<string, string>();
+
+
+const _accountCardStats = new Map<string, AccountCardStats>();
+const _accountCardStatsLoading = new Set<string>();
+const _accountCardStatsError = new Set<string>();
 let _bookAuthNotice = '';
 
 // Icon codepoints reused from analysisControls.ts conventions.
@@ -435,8 +616,34 @@ function ensureAccountPeek(account: ChessAccount, redraw: () => void): void {
 function resetAccountPeek(accountId: string): void {
   _peekState.delete(accountId);
   _importedSpeedsView.delete(accountId);
+  _accountCardStats.delete(accountId);
+  _accountCardStatsLoading.delete(accountId);
+  _accountCardStatsError.delete(accountId);
   const timer = _peekTimer.get(accountId);
   if (timer) { clearTimeout(timer); _peekTimer.delete(accountId); }
+}
+
+
+
+
+
+
+function ensureAccountCardStats(account: ChessAccount, redraw: () => void): void {
+  if (_accountCardStats.has(account.id) || _accountCardStatsLoading.has(account.id) || _accountCardStatsError.has(account.id)) {
+    return;
+  }
+  _accountCardStatsLoading.add(account.id);
+  void computeAccountCardStats(account)
+    .then(stats => {
+      _accountCardStatsLoading.delete(account.id);
+      _accountCardStats.set(account.id, stats);
+      redraw();
+    })
+    .catch(() => {
+      _accountCardStatsLoading.delete(account.id);
+      _accountCardStatsError.add(account.id);
+      redraw();
+    });
 }
 
 
@@ -539,77 +746,506 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
 }
 
 
-async function changeAccountCategory(account: ChessAccount, category: AccountCategory, redraw: () => void): Promise<void> {
-  await updateAccount(account.id, { category });
+function accountSectionLabel(section: AccountSection): string {
+  return section === 'research' ? 'Research' : section === 'archive' ? 'Archive' : 'Study';
+}
+
+
+function accountProfileUrl(account: ChessAccount): string {
+  return account.platform === 'chesscom'
+    ? `https://www.chess.com/member/${encodeURIComponent(account.username)}`
+    : `https://lichess.org/@/${encodeURIComponent(account.username)}`;
+}
+
+
+function renderAccountSpeedColumn(
+  speed: typeof PRIMARY_CARD_SPEEDS[number],
+  stat: AccountSpeedStat | undefined,
+  lifetimeBest: number | undefined,
+): VNode {
+  const opt = SPEED_OPTIONS.find(o => o.value === speed);
+  return h('div.openings__card-speed-col', [
+    h('div.openings__card-speed-hdr', [
+      opt ? h('span.openings__card-speed-icon', { attrs: { 'data-icon': opt.icon } }) : null,
+      h('span.openings__card-speed-name', opt?.label ?? speed),
+    ]),
+    stat?.current !== undefined
+      ? h('div.openings__card-stat', [h('span', 'Now'), h('span', `${stat.current}`)]) : null,
+    stat?.peak !== undefined
+      ? h('div.openings__card-stat', [h('span', 'Peak'), h('span', `${stat.peak}`)]) : null,
+
+
+    lifetimeBest !== undefined
+      ? h('div.openings__card-stat.muted', [h('span', 'Life'), h('span', `${lifetimeBest}`)]) : null,
+    h('div.openings__card-stat.muted', [h('span', 'Games'), h('span', `${stat?.games ?? 0}`)]),
+    stat ? renderSparkline(stat.series) : null,
+  ]);
+}
+
+
+
+
+
+
+function renderAccountStatsBody(account: ChessAccount, redraw: () => void): VNode {
+  ensureAccountCardStats(account, redraw);
+  if (_accountCardStatsError.has(account.id)) {
+    return h('p.openings__account-stats-msg.error', 'Stats unavailable right now.');
+  }
+  const stats = _accountCardStats.get(account.id);
+  if (!stats) {
+    return h('div.openings__card-speeds.openings__account-stats-skeleton', {
+      attrs: { style: `grid-template-columns:repeat(${PRIMARY_CARD_SPEEDS.length},minmax(0,1fr))` },
+    }, PRIMARY_CARD_SPEEDS.map(() => h('div.openings__card-speed-col.openings__account-stats-skeleton-col')));
+  }
+  const totalGames = [...stats.bySpeed.values()].reduce((sum, sp) => sum + sp.games, 0);
+  if (totalGames === 0) {
+    return h('p.openings__account-stats-msg', 'No games imported yet.');
+  }
+  return h('div.openings__card-speeds', {
+    attrs: { style: `grid-template-columns:repeat(${PRIMARY_CARD_SPEEDS.length},minmax(0,1fr))` },
+  }, PRIMARY_CARD_SPEEDS.map(speed =>
+    renderAccountSpeedColumn(speed, stats.bySpeed.get(speed), account.lifetimeBest?.[speed])));
+}
+
+
+function accountTotalGamesCached(account: ChessAccount): number | undefined {
+  const stats = _accountCardStats.get(account.id);
+  if (!stats) return undefined;
+  return [...stats.bySpeed.values()].reduce((sum, sp) => sum + sp.games, 0);
+}
+
+
+async function setAccountSection(account: ChessAccount, section: AccountSection, redraw: () => void): Promise<void> {
+  if (accountSection(account) === section) return;
+  await updateAccount(account.id, { section });
   await refreshRegistryAccounts(redraw);
 }
 
 
-function renderCategorySelector(account: ChessAccount, redraw: () => void): VNode {
-  return h('select.openings__category-select', {
-    props: { value: account.category },
-    attrs: { title: 'Change classification', 'aria-label': 'Change account classification' },
-    on: {
-      click: (e: Event) => e.stopPropagation(),
-      change: (e: Event) => {
-        e.stopPropagation();
-        const category = (e.target as HTMLSelectElement).value as AccountCategory;
-        void changeAccountCategory(account, category, redraw);
-      },
-    },
+function sortedSectionAccounts(accounts: readonly ChessAccount[], section: AccountSection): ChessAccount[] {
+  return accounts
+    .filter(a => accountSection(a) === section)
+    .sort((a, b) => (a.order ?? a.addedAt) - (b.order ?? b.addedAt) || a.displayName.localeCompare(b.displayName));
+}
+
+
+
+
+
+
+
+function computeInsertOrder(siblings: readonly ChessAccount[], index: number): number {
+  const before = siblings[index - 1];
+  const after = siblings[index];
+  const beforeOrder = before ? (before.order ?? before.addedAt) : undefined;
+  const afterOrder = after ? (after.order ?? after.addedAt) : undefined;
+  if (beforeOrder !== undefined && afterOrder !== undefined) return (beforeOrder + afterOrder) / 2;
+  if (beforeOrder !== undefined) return beforeOrder + 1;
+  if (afterOrder !== undefined) return afterOrder - 1;
+  return Date.now();
+}
+
+
+
+
+
+
+
+
+
+async function handleAccountDrop(
+  targetSection: AccountSection,
+  anchorId: string | null,
+  before: boolean,
+  redraw: () => void,
+): Promise<void> {
+  const draggedId = _draggingAccountId;
+  _draggingAccountId = null;
+  _dragOverTarget = null;
+  if (!draggedId) { redraw(); return; }
+  const dragged = registryAccounts().find(a => a.id === draggedId);
+  if (!dragged) { redraw(); return; }
+  const siblings = sortedSectionAccounts(registryAccounts(), targetSection).filter(a => a.id !== draggedId);
+  let index = siblings.length;
+  if (anchorId) {
+    const anchorIndex = siblings.findIndex(a => a.id === anchorId);
+    if (anchorIndex !== -1) index = before ? anchorIndex : anchorIndex + 1;
+  }
+  const order = computeInsertOrder(siblings, index);
+  const sectionChanged = accountSection(dragged) !== targetSection;
+  if (!sectionChanged && order === (dragged.order ?? dragged.addedAt)) { redraw(); return; }
+  await updateAccount(draggedId, sectionChanged ? { section: targetSection, order } : { order });
+  await refreshRegistryAccounts(redraw);
+}
+
+
+async function addAccountTag(account: ChessAccount, raw: string, redraw: () => void): Promise<void> {
+  const tag = raw.trim().toLowerCase();
+  if (!tag) return;
+  const existing = account.tags ?? [];
+  if (existing.includes(tag)) return;
+  await updateAccount(account.id, { tags: [...existing, tag] });
+  await refreshRegistryAccounts(redraw);
+}
+
+
+async function removeAccountTag(account: ChessAccount, tag: string, redraw: () => void): Promise<void> {
+  const existing = account.tags ?? [];
+  if (!existing.includes(tag)) return;
+  await updateAccount(account.id, { tags: existing.filter(t => t !== tag) });
+  await refreshRegistryAccounts(redraw);
+}
+
+
+
+
+
+
+
+
+async function deleteAccountFromLibrary(account: ChessAccount, redraw: () => void): Promise<void> {
+  if (_accountActionRunningId !== null) return;
+  const totalGames = accountTotalGamesCached(account);
+  const gamesPhrase = totalGames !== undefined
+    ? `${totalGames} imported game${totalGames === 1 ? '' : 's'}`
+    : 'all of its imported games';
+  const confirmed = confirm(
+    `Delete "${account.displayName}" from the library?\n\n`
+    + `This permanently removes the account record and ${gamesPhrase} for this account, `
+    + `including any analysis, review data, and generated puzzles tied to those games. `
+    + `Other accounts are left untouched. This cannot be undone.`,
+  );
+  if (!confirmed) return;
+  _accountActionRunningId = account.id;
+  _accountActionError = null;
+  redraw();
+  try {
+    const result = await deleteImportedAccountAndGames(account.id);
+    if (!result.success) {
+      _accountActionError = result.message;
+      return;
+    }
+    _expandedMenuKey = null;
+    await refreshRegistryAccounts(redraw);
+  } catch (err) {
+    _accountActionError = err instanceof Error ? err.message : 'Delete failed.';
+  } finally {
+    _accountActionRunningId = null;
+    redraw();
+  }
+}
+
+
+function renderAccountTagChips(account: ChessAccount): VNode | null {
+  const tags = account.tags ?? [];
+  if (tags.length === 0) return null;
+  return h('div.openings__account-tags', tags.map(tag => h('span.study-tag', { key: tag }, tag)));
+}
+
+
+
+
+
+
+function renderAccountEditMenu(account: ChessAccount, redraw: () => void): VNode {
+  const currentSection = accountSection(account);
+  const tags = account.tags ?? [];
+  const isEditingTag = _editingAccountTagId === account.id;
+  const busy = _accountActionRunningId === account.id;
+
+  const sectionBtn = (value: AccountSection, label: string): VNode => h('button.openings__account-menu-section-btn', {
+    class: { active: currentSection === value },
+    attrs: { type: 'button', disabled: busy, title: `Move to ${label}`, 'aria-label': `Move ${account.displayName} to ${label}` },
+    on: { click: (e: Event) => { e.stopPropagation(); void setAccountSection(account, value, redraw); } },
+  }, label);
+
+  return h('div.openings__account-menu', {
+    on: { click: (e: Event) => e.stopPropagation() },
   }, [
-    h('option', { attrs: { value: 'mine'     } }, 'Mine'),
-    h('option', { attrs: { value: 'opponent' } }, 'Opponent'),
-    h('option', { attrs: { value: 'study'    } }, 'Study'),
+    h('div.openings__account-menu-row', [
+      h('div.openings__account-menu-label', 'Move to section'),
+      h('div.openings__account-menu-section-row', [
+        sectionBtn('research', 'Research'),
+        sectionBtn('study', 'Study'),
+        sectionBtn('archive', 'Archive'),
+      ]),
+    ]),
+    h('div.openings__account-menu-row', [
+      h('div.openings__account-menu-label', 'Tags'),
+      h('div.openings__account-menu-tags', [
+        ...tags.map(tag => h('span.study-tag', { key: tag }, [
+          tag,
+          h('button.study-tag__remove', {
+            attrs: { type: 'button', title: `Remove tag "${tag}"`, 'aria-label': `Remove tag "${tag}"` },
+            on: { click: (e: Event) => { e.stopPropagation(); void removeAccountTag(account, tag, redraw); } },
+          }, '×'),
+        ])),
+        isEditingTag
+          ? h('input.study-tag__input', {
+              attrs: { placeholder: 'Add tag…' },
+              props: { value: _editingAccountTagValue },
+              hook: { insert: (vnode) => (vnode.elm as HTMLInputElement).focus() },
+              on: {
+                click: (e: Event) => e.stopPropagation(),
+                input: (e: Event) => { _editingAccountTagValue = (e.target as HTMLInputElement).value; },
+                blur: () => {
+                  const raw = _editingAccountTagValue;
+                  _editingAccountTagId = null;
+                  _editingAccountTagValue = '';
+                  if (raw.trim()) void addAccountTag(account, raw, redraw);
+                  else redraw();
+                },
+                keydown: (e: KeyboardEvent) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  if (e.key === 'Escape') { _editingAccountTagId = null; _editingAccountTagValue = ''; redraw(); }
+                },
+              },
+            })
+          : h('button.study-tag__add', {
+              attrs: { type: 'button', title: 'Add tag', 'aria-label': `Add a tag to ${account.displayName}` },
+              on: { click: (e: Event) => {
+                e.stopPropagation();
+                _editingAccountTagId = account.id;
+                _editingAccountTagValue = '';
+                redraw();
+              } },
+            }, '+'),
+      ]),
+    ]),
+    h('div.openings__account-menu-row', [
+      h('div.openings__account-menu-label', 'Prepped lines'),
+      // Reserved placeholder — no behavior yet; future prepped-line indicator slot.
+      h('span.openings__account-menu-placeholder', { attrs: { title: 'Prepped-line indicators are coming soon' } }, 'Coming soon'),
+    ]),
+    h('div.openings__account-menu-divider'),
+    _accountActionError ? h('p.openings__account-menu-error', _accountActionError) : null,
+    h('button.openings__account-menu-delete', {
+      attrs: {
+        type: 'button',
+        disabled: busy,
+        title: `Delete ${account.displayName} from the library`,
+        'aria-label': `Delete ${account.displayName} from the library`,
+      },
+      on: { click: (e: Event) => { e.stopPropagation(); void deleteAccountFromLibrary(account, redraw); } },
+    }, busy ? 'Deleting…' : 'Delete from library'),
   ]);
 }
 
+
+
+
+
+
+
+
+
+
+function renderAccountCard(
+  account: ChessAccount,
+  redraw: () => void,
+  section: AccountSection,
+  reorderMode: boolean,
+): VNode {
+  const key = `account:${account.id}`;
+  const expanded = _expandedCardKey === key;
+  const menuOpen = _expandedMenuKey === account.id;
+  const dragOver = reorderMode && _dragOverTarget?.section === section && _dragOverTarget.anchorId === account.id
+    ? (_dragOverTarget.before ? 'top' : 'bottom')
+    : null;
+  return h('div.openings__collection-row', {
+    key,
+    class: {
+      'openings__collection-row--dragging': reorderMode && _draggingAccountId === account.id,
+      'openings__collection-row--drag-over-top': dragOver === 'top',
+      'openings__collection-row--drag-over-bottom': dragOver === 'bottom',
+    },
+    attrs: reorderMode ? { draggable: 'true' } : {},
+    on: reorderMode ? {
+      dragstart: (e: DragEvent) => {
+        e.stopPropagation();
+        _draggingAccountId = account.id;
+        e.dataTransfer?.setData('text/plain', account.id);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      },
+      dragend: () => { _draggingAccountId = null; _dragOverTarget = null; redraw(); },
+      dragover: (e: DragEvent) => {
+        if (!_draggingAccountId || _draggingAccountId === account.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        if (_dragOverTarget?.section !== section || _dragOverTarget.anchorId !== account.id || _dragOverTarget.before !== before) {
+          _dragOverTarget = { section, anchorId: account.id, before };
+          redraw();
+        }
+      },
+      drop: (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const before = _dragOverTarget?.anchorId === account.id ? _dragOverTarget.before : true;
+        void handleAccountDrop(section, account.id, before, redraw);
+      },
+    } : {
+      click: () => { _expandedCardKey = expanded ? null : key; _expandedMenuKey = null; redraw(); },
+    },
+  }, [
+    h('div.openings__card-top', [
+      h('span.openings__collection-name', account.displayName),
+      h('div.openings__account-actions', [
+        h('span.openings__account-badge', {
+          attrs: { title: 'Card placement' },
+        }, accountSectionLabel(accountSection(account))),
+        h('button.openings__account-gear-btn', {
+          class: { active: menuOpen },
+          attrs: {
+            type: 'button',
+            title: `Edit account: ${account.displayName}`,
+            'aria-label': `Edit account: ${account.displayName}`,
+            'aria-expanded': String(menuOpen),
+          },
+          on: { click: (e: Event) => {
+            e.stopPropagation();
+            _accountActionError = null;
+            if (menuOpen) {
+              _expandedMenuKey = null;
+            } else {
+              _expandedMenuKey = account.id;
+              _expandedCardKey = null;
+            }
+            redraw();
+          } },
+        }, '⚙️'),
+        h('button.openings__account-open-btn', {
+          class: { active: expanded },
+          attrs: {
+            type: 'button',
+            title: `Open filters for ${account.displayName}`,
+            'aria-label': `Open filters for ${account.displayName}`,
+          },
+          on: { click: (event: Event) => {
+            event.stopPropagation();
+            _expandedCardKey = expanded ? null : key;
+            _expandedMenuKey = null;
+            redraw();
+          }},
+        }, '+'),
+      ]),
+    ]),
+    menuOpen ? renderAccountEditMenu(account, redraw) : null,
+    h('div.openings__account-platform-row', [
+      h('a.openings__account-platform-link', {
+        attrs: {
+          href: accountProfileUrl(account),
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          title: `Open ${account.displayName} on ${platformLabel(account.platform)}`,
+        },
+        on: { click: (e: Event) => e.stopPropagation() },
+      }, `${platformLabel(account.platform)} ↗`),
+    ]),
+    renderAccountTagChips(account),
+    h('div.openings__account-divider'),
+    renderAccountStatsBody(account, redraw),
+    expanded
+      ? renderPreLoadFilterPanel(async () => {
+          _expandedCardKey = null;
+          const pending = _accountSyncPromise.get(account.id);
+          if (pending) { try { await pending; } catch { /* sync failure must not block build */ } }
+          void openAccountResearch(account, redraw);
+        }, redraw, account)
+      : null,
+  ]);
+}
+
+const ACCOUNT_SECTION_DEFS: ReadonlyArray<{ section: AccountSection; title: string; emptyText: string; collapsible: boolean }> = [
+  { section: 'research', title: 'Research', emptyText: 'No research targets yet.', collapsible: false },
+  { section: 'study', title: 'Study', emptyText: 'No study targets yet.', collapsible: false },
+  { section: 'archive', title: 'Archive', emptyText: 'Archive is empty.', collapsible: true },
+];
+
+
+
+
+
+
+
+function renderAccountSectionBlock(
+  def: typeof ACCOUNT_SECTION_DEFS[number],
+  accounts: ChessAccount[],
+  reorderMode: boolean,
+  redraw: () => void,
+): VNode {
+  const collapsed = def.collapsible && _archiveCollapsed;
+  const dragOverEnd = reorderMode && _dragOverTarget?.section === def.section && _dragOverTarget.anchorId === null;
+  const header: VNode[] = [
+    h('span.openings__section-title', def.title),
+    h('span.openings__section-count', `${accounts.length}`),
+  ];
+  if (def.collapsible) {
+    header.push(h('button.openings__section-collapse-btn', {
+      attrs: {
+        type: 'button',
+        title: collapsed ? 'Expand Archive' : 'Collapse Archive',
+        'aria-expanded': String(!collapsed),
+        'aria-label': collapsed ? 'Expand Archive section' : 'Collapse Archive section',
+      },
+      on: { click: () => { _archiveCollapsed = !_archiveCollapsed; redraw(); } },
+    }, collapsed ? '▸' : '▾'));
+  }
+  const body = collapsed ? null : h('div.openings__collections', {
+    class: { 'openings__collections--drag-over-end': dragOverEnd },
+    on: reorderMode ? {
+      dragover: (e: DragEvent) => {
+        if (!_draggingAccountId) return;
+        e.preventDefault();
+        if (_dragOverTarget?.section !== def.section || _dragOverTarget.anchorId !== null) {
+          _dragOverTarget = { section: def.section, anchorId: null, before: true };
+          redraw();
+        }
+      },
+      drop: (e: DragEvent) => { e.preventDefault(); void handleAccountDrop(def.section, null, true, redraw); },
+    } : {},
+  }, accounts.length > 0
+      ? accounts.map(account => renderAccountCard(account, redraw, def.section, reorderMode))
+      : [h('p.openings__account-section-empty', def.emptyText)]);
+  return h('div.openings__account-section', {
+    key: `account-section:${def.section}`,
+    class: { 'openings__account-section--collapsible': def.collapsible },
+  }, [
+    h('div.openings__account-section-header', header),
+    body,
+  ]);
+}
+
+
+
+
+
+
+
 function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => void): VNode {
-  const order = (c: string) => c === 'opponent' ? 0 : c === 'study' ? 1 : c === 'mine' ? 2 : 3;
-  const sorted = [...accounts].sort((a, b) =>
-    order(a.category) - order(b.category) || a.displayName.localeCompare(b.displayName));
+  const reorderMode = _accountReorderMode;
   return h('div.openings__accounts', [
-    h('p.openings__hint', 'Imported accounts — click to research from the shared game library.'),
-    h('div.openings__collections', sorted.map(account =>
-      h('div.openings__collection-row', {
-        key: `account:${account.id}`,
+    h('div.openings__accounts-toolbar', [
+      h('p.openings__hint', reorderMode
+        ? 'Drag cards to reorder within a section, or across sections to move them.'
+        : 'Imported accounts — click to research from the shared game library.'),
+      h('button.openings__reorder-toggle', {
+        class: { active: reorderMode },
+        attrs: { type: 'button', title: reorderMode ? 'Done reordering' : 'Reorder accounts', 'aria-pressed': String(reorderMode) },
         on: { click: () => {
-          const key = `account:${account.id}`;
-          _expandedCardKey = _expandedCardKey === key ? null : key;
+          _accountReorderMode = !_accountReorderMode;
+          _draggingAccountId = null;
+          _dragOverTarget = null;
+          _expandedCardKey = null;
+          _expandedMenuKey = null;
           redraw();
         } },
-      }, [
-        h('div.openings__card-top', [
-          h('span.openings__collection-name', account.displayName),
-          h('div.openings__account-actions', [
-            h('span.openings__hint', platformLabel(account.platform)),
-            renderCategorySelector(account, redraw),
-            h('button.openings__account-open-btn', {
-              class: { active: _expandedCardKey === `account:${account.id}` },
-              attrs: {
-                type: 'button',
-                title: `Open filters for ${account.displayName}`,
-                'aria-label': `Open filters for ${account.displayName}`,
-              },
-              on: { click: (event: Event) => {
-                event.stopPropagation();
-                const key = `account:${account.id}`;
-                _expandedCardKey = _expandedCardKey === key ? null : key;
-                redraw();
-              }},
-            }, '+'),
-          ]),
-        ]),
-        _expandedCardKey === `account:${account.id}`
-          ? renderPreLoadFilterPanel(async () => {
-              _expandedCardKey = null;
-              const pending = _accountSyncPromise.get(account.id);
-              if (pending) { try { await pending; } catch { /* sync failure must not block build */ } }
-              void openAccountResearch(account, redraw);
-            }, redraw, account)
-          : null,
-      ]),
-    )),
+      }, reorderMode ? 'Done' : 'Reorder'),
+    ]),
+    ...ACCOUNT_SECTION_DEFS.map(def =>
+      renderAccountSectionBlock(def, sortedSectionAccounts(accounts, def.section), reorderMode, redraw)),
   ]);
 }
 
@@ -2314,44 +2950,133 @@ function renderOpeningTreeTool(
   path: readonly string[],
   redraw: () => void,
 ): VNode[] {
+  const fen = _offTreeFen ?? node?.fen ?? STANDARD_START_FEN;
+  const treeColumn = renderOpeningTreeStatsColumn(collection, node, redraw);
+  const engineColumn = renderOpeningEngineMoveColumn(node, path, redraw);
+  const leftColumn = _openingTreeDesktopLayout.order === 'tree-left' ? treeColumn : engineColumn;
+  const rightColumn = _openingTreeDesktopLayout.order === 'tree-left' ? engineColumn : treeColumn;
+
   return [
     h('div.openings__board-col', [
       renderPlayerStrip(collection, 'top'),
-      h('div.openings__board-wrap', [
-        renderOpeningsBoard(node, redraw),
+      h('div.openings__board-stage', [
+        engineEnabled ? h('div.openings__eval-slot', [
+          renderEvalBar(engineEnabled, currentEval, fen),
+        ]) : null,
+        h('div.openings__board-wrap', [
+          renderOpeningsBoard(node, redraw),
+        ]),
       ]),
       renderOffTreeIndicator(),
       renderPlayerStrip(collection, 'bottom'),
     ]),
-    h('div.openings__session-panel', [
+    h('div.openings__right-workspace', {
+      attrs: { style: openingTreeSlotVars() },
+    }, [
       renderOpeningsActionMenu(redraw),
       // Keep the engine override in sync with the current openings position on every render.
       (() => {
-        const fen = _offTreeFen ?? node?.fen ?? STANDARD_START_FEN;
         setCevalPositionOverride(openingsPositionContext(fen));
         return null;
       })(),
-      renderColorToggle(collection?.target ?? '', redraw),
-      isFetching() ? renderFetchBar(redraw) : treeBuilding() ? renderTreeBuildBar(redraw) : renderMobileCapNotice(redraw),
-      // Opening tree move rows stay above the navigation controls.
-      node ? renderPlayedLinesPanel(node, redraw) : null,
-      // Board navigation controls render beneath the opening tree list.
-      renderOpeningsMoveNavBar(node, path, redraw),
-      // Layout experiment: Stockfish, optional book, and game move list sit beneath nav.
-      renderCeval(),
-      renderEngineSettings({ showArrowSettings: true }),
-      engineEnabled ? renderOpeningTreePvBox() : null,
-      renderExplorerToggle(node, redraw),
-      openingTree() ? renderOpeningsMoveList(openingTree()!, path, node, redraw) : null,
+      h('div.openings__right-columns', [
+        leftColumn,
+        renderOpeningTreeSplitHandle(redraw),
+        rightColumn,
+      ]),
+      h('div.openings__nav-tools-row', [
+        h('div.openings__nav-slot', [
+          renderOpeningsMoveNavBar(node, path, redraw),
+        ]),
+        h('div.openings__nav-split-spacer'),
+        h('div.openings__future-tools-slot', [
+          renderOpeningTreeSwapButton(redraw),
+        ]),
+      ]),
+      h('div.openings__right-underboard', [
+        renderFilterBadge(redraw),
+        renderOpeningTreeFilterControls(redraw),
+        renderDeviationPanel(redraw),
+      ]),
     ]),
-    h('div.openings__underboard', [
-      // Position context lives under the board, mirroring the analysis underboard pattern.
-      renderFilterBadge(redraw),
-      renderOpeningTreeFilterControls(redraw),
-      renderDeviationPanel(redraw),
+    h('div.openings__underboard.openings__underboard--board', [
       renderSampleGamesPanel(redraw),
     ]),
   ];
+}
+
+function renderOpeningTreeStatsColumn(
+  collection: ResearchCollection | null,
+  node: OpeningTreeNode | null,
+  redraw: () => void,
+): VNode {
+  return h('section.openings__data-column.openings__data-column--tree', { key: 'openings-tree-column' }, [
+    h('div.openings__data-column-inner.openings__data-column-inner--tree', [
+      h('div.openings__tree-top', [
+        renderColorToggle(collection?.target ?? '', redraw),
+        isFetching()
+          ? renderFetchBar(redraw)
+          : treeBuilding()
+            ? renderTreeBuildBar(redraw)
+            : renderMobileCapNotice(redraw),
+      ]),
+      h('div.openings__tree-scroll', [
+        node ? renderPlayedLinesPanel(node, redraw) : null,
+      ]),
+    ]),
+  ]);
+}
+
+function renderOpeningEngineMoveColumn(
+  node: OpeningTreeNode | null,
+  path: readonly string[],
+  redraw: () => void,
+): VNode {
+  const tree = openingTree();
+  return h('section.openings__data-column.openings__data-column--engine', { key: 'openings-engine-column' }, [
+    h('div.openings__data-column-inner.openings__data-column-inner--engine', [
+      h('div.openings__engine-fixed', [
+        renderCeval(),
+        renderEngineSettings({ showArrowSettings: true }),
+        engineEnabled ? renderOpeningTreePvBox() : null,
+        renderExplorerToggle(node, redraw),
+      ]),
+      h('div.openings__engine-played-scroll', [
+        tree ? renderOpeningsMoveList(tree, path, node, redraw) : null,
+      ]),
+    ]),
+  ]);
+}
+
+function renderOpeningTreeSplitHandle(redraw: () => void): VNode {
+  return h('div.openings__split-handle', {
+    attrs: {
+      role:              'separator',
+      tabindex:          '0',
+      'aria-orientation': 'vertical',
+      'aria-label':       'Resize data columns',
+      title:              'Resize data columns',
+    },
+    on: {
+      pointerdown: (event: PointerEvent) => beginOpeningTreeColumnResize(event, redraw),
+      keydown:     (event: KeyboardEvent) => handleOpeningTreeSplitKeydown(event, redraw),
+    },
+  }, [
+    h('span.openings__split-handle-grip', { attrs: { 'aria-hidden': 'true' } }),
+  ]);
+}
+
+function renderOpeningTreeSwapButton(redraw: () => void): VNode {
+  return h('button.openings__swap-columns-btn', {
+    attrs: {
+      type:         'button',
+      title:        'Swap data columns',
+      'aria-label': 'Swap data columns',
+    },
+    on: { click: () => toggleOpeningTreeColumnOrder(redraw) },
+  }, [
+    h('span.openings__swap-columns-icon', { attrs: { 'aria-hidden': 'true' } }, 'Swap'),
+  ]);
 }
 
 function renderOffTreeIndicator(): VNode | null {
@@ -2467,7 +3192,10 @@ function renderSessionPage(redraw: () => void): VNode {
         : ''),
     ]),
     h('div.openings__session-body', {
-      class: { 'openings__session-body--tree': activeTool() === 'opening-tree' },
+      class: {
+        'openings__session-body--tree':    activeTool() === 'opening-tree',
+        'openings__session-body--eval-on': activeTool() === 'opening-tree' && engineEnabled,
+      },
     }, [
       renderToolRail(redraw),
       // Active tool owns the main content area.

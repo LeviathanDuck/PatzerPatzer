@@ -1,7 +1,7 @@
 import type { ChessAccount } from '../accounts';
-import { recordAccountSync } from '../accounts';
+import { recordAccountSync, updateAccount } from '../accounts';
 import { loadGamesFromIdb, saveGamesToIdb } from '../idb';
-import { chesscomGameTimestamp, fetchChesscomGames } from './chesscom';
+import { chesscomGameTimestamp, fetchChesscomGames, fetchChesscomLifetimeBest } from './chesscom';
 import {
   archiveCutoffMonthFor,
   filterGamesByDateRange,
@@ -115,6 +115,28 @@ async function loadExistingGames(): Promise<ImportedGame[]> {
   return (await loadGamesFromIdb())?.games ?? [];
 }
 
+
+
+
+
+
+
+
+
+
+
+async function syncChesscomLifetimeBest(account: ChessAccount): Promise<void> {
+  if (account.platform !== 'chesscom') return;
+  try {
+    const fetched = await fetchChesscomLifetimeBest(account.displayName);
+    if (!fetched) return;
+    const merged = { ...(account.lifetimeBest ?? {}), ...fetched };
+    await updateAccount(account.id, { lifetimeBest: merged });
+  } catch {
+    // Swallow: a failed lifetime-stats fetch must never break account sync.
+  }
+}
+
 export async function syncAccountGames(account: ChessAccount, options: AccountSyncOptions): Promise<AccountSyncResult> {
   const cursor = account.newestGameTimestamp;
   const filterKey = importSyncFilterKey(options.rated, options.speeds);
@@ -173,6 +195,7 @@ export async function syncAccountGames(account: ChessAccount, options: AccountSy
     }
   }
   await recordAccountSync(account.id, newest, oldest, filterKey);
+  await syncChesscomLifetimeBest(account);
 
   return {
     accountId: account.id,

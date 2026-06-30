@@ -421,8 +421,9 @@ export interface StoredGameRecord {
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
-// v22 adds local-only Report Issue draft persistence.
-export const DB_VERSION = 22;
+
+
+export const DB_VERSION = 23;
 
 let _idb: IDBDatabase | undefined;
 
@@ -493,6 +494,31 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   const accountsStore = ensureStore(db, event, 'accounts', { keyPath: 'id' });
   ensureIndex(accountsStore, 'category', 'category', { unique: false });
   ensureIndex(accountsStore, 'platform', 'platform', { unique: false });
+
+
+
+
+
+
+
+
+  const accountsCursorReq = accountsStore.openCursor();
+  accountsCursorReq.onsuccess = () => {
+    const cursor = accountsCursorReq.result;
+    if (!cursor) return;
+    const record = cursor.value as ChessAccount;
+    let changed = false;
+    if (record.section === undefined) {
+      record.section = record.category === 'opponent' ? 'research' : 'study';
+      changed = true;
+    }
+    if (record.order === undefined) {
+      record.order = record.addedAt;
+      changed = true;
+    }
+    if (changed) cursor.update(record);
+    cursor.continue();
+  };
 
 
 

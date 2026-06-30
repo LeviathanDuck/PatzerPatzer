@@ -4,6 +4,16 @@ import type { ImportedGame } from '../../import/types';
 import { nodeAtPath } from '../../tree/ops';
 import type { TreeNode } from '../../tree/types';
 import { adminDiagnosticsTokenAvailable } from '../adminAccess';
+import { currentAppRoute } from '../route';
+import { record } from '../record';
+import { Severity, type DiagnosticMetadata } from '../types';
+import type { DiagnosticReportScreenshotAttachment } from '../reporting/reportAssembly';
+import {
+  packageUploadStatesFromAttachments,
+  packageUploadSummary,
+  uploadReportScreenshotPackage as uploadSharedReportScreenshotPackage,
+  type PackageUploadState,
+} from '../reporting/packageUpload';
 import { assembleReviewErrorPackage } from './assembler';
 import {
   clearReviewErrorSubmitRequest,
@@ -22,6 +32,7 @@ import {
   REVIEW_ERROR_FULL_CONTEXT_CATEGORIES,
   REVIEW_ERROR_PROHIBITED_DATA_CLASSES,
   type ReviewErrorCurrentEngineSettings,
+  type ReviewErrorPackage,
   type ReviewErrorScreenshotAttachmentPreview,
 } from './types';
 
@@ -41,8 +52,11 @@ let submitBusy = false;
 let submitError: string | null = null;
 let submitSuccess: string | null = null;
 let remoteConsentState: ReviewErrorRemoteUploadConsentState = createReviewErrorRemoteUploadConsentState();
+let screenshotFiles: File[] = [];
 let screenshotAttachments: ReviewErrorScreenshotAttachmentPreview[] = [];
 let screenshotErrors: string[] = [];
+let screenshotUploadStates: PackageUploadState[] = [];
+let screenshotUploadSummary = '';
 
 function requestKey(request: ReviewErrorSubmitRequest): string {
   return `${request.gameId}:${request.path}:${request.openedAt}`;
@@ -57,8 +71,11 @@ function syncRequestState(request: ReviewErrorSubmitRequest): void {
   submitError = null;
   submitSuccess = null;
   remoteConsentState = markReviewErrorPackagePreviewSeen(createReviewErrorRemoteUploadConsentState());
+  screenshotFiles = [];
   screenshotAttachments = [];
   screenshotErrors = [];
+  screenshotUploadStates = [];
+  screenshotUploadSummary = '';
 }
 
 function close(redraw: () => void): void {
@@ -69,8 +86,11 @@ function close(redraw: () => void): void {
   submitError = null;
   submitSuccess = null;
   remoteConsentState = createReviewErrorRemoteUploadConsentState();
+  screenshotFiles = [];
   screenshotAttachments = [];
   screenshotErrors = [];
+  screenshotUploadStates = [];
+  screenshotUploadSummary = '';
   redraw();
 }
 
@@ -94,6 +114,111 @@ function reviewLabel(deps: ReviewErrorSubmitModalDeps): string {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function safeReviewErrorAssetFilename(fileName: string, index: number): string {
+  const fallback = `review-error-screenshot-${index + 1}.png`;
+  const trimmed = fileName.trim() || fallback;
+  const normalized = trimmed
+    .replace(/[/\\]+/g, '-')
+    .replace(/\.\.+/g, '.')
+    .replace(/[^A-Za-z0-9._ -]+/g, '_')
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .slice(0, 120);
+  return normalized || fallback;
+}
+
+function sharedScreenshotAttachments(): DiagnosticReportScreenshotAttachment[] {
+  return screenshotAttachments.map((attachment, index) => ({
+    ...attachment,
+    assetFilename: safeReviewErrorAssetFilename(attachment.fileName, index),
+  }));
+}
+
+function validScreenshotFiles(files: File[], attachments: ReviewErrorScreenshotAttachmentPreview[]): File[] {
+  const validByKey = new Set(attachments.map(attachment => `${attachment.fileName}:${attachment.sizeBytes}:${attachment.mimeType}`));
+  return files
+    .slice(0, 10)
+    .filter((file, index) => validByKey.has(`${file.name.trim() || `screenshot-${index + 1}`}:${Math.floor(file.size)}:${file.type}`));
+}
+
+function recordReviewErrorUploadEvent(
+  message: string,
+  severity: Severity = Severity.Info,
+  extraMetadata: DiagnosticMetadata = {},
+): void {
+  try {
+    record({
+      kind: 'user-report',
+      severity,
+      route: currentAppRoute(),
+      source: 'diagnostics.reviewError',
+      sourceTag: 'diagnostics.reviewError',
+      message,
+      metadata: {
+        timestamp: Date.now(),
+        ...extraMetadata,
+      },
+      redactionClass: 'safe',
+    });
+  } catch (error) {
+    console.warn('[diagnostics] review error upload failed to record flow event', error);
+  }
+}
+
+async function uploadReviewErrorScreenshots(pkg: ReviewErrorPackage, redraw: () => void): Promise<void> {
+  const attachments = sharedScreenshotAttachments();
+  if (!attachments.length) return;
+  await uploadSharedReportScreenshotPackage({
+    packageId: pkg.packageId,
+    packageKind: 'review-error',
+    issueId: pkg.packageId,
+    reportId: pkg.packageId,
+    capturedAt: pkg.createdAt,
+    route: pkg.session.route,
+    attachments,
+    files: screenshotFiles,
+    manifestExtras: {
+      localPackageId: pkg.packageId,
+      reviewErrorPackage: pkg,
+      reviewErrorSummary: {
+        gameId: pkg.gameId,
+        selectedPath: pkg.selectedMove.path,
+        selectedMove: {
+          ply: pkg.selectedMove.ply,
+          ...(pkg.selectedMove.san !== undefined ? { san: pkg.selectedMove.san } : {}),
+          ...(pkg.selectedMove.uci !== undefined ? { uci: pkg.selectedMove.uci } : {}),
+          ...(pkg.selectedMove.fenBefore !== undefined ? { fenBefore: pkg.selectedMove.fenBefore } : {}),
+          ...(pkg.selectedMove.fenAfter !== undefined ? { fenAfter: pkg.selectedMove.fenAfter } : {}),
+        },
+        review: {
+          status: pkg.analysis.status,
+          depth: pkg.analysis.analysisDepth,
+          updatedAt: pkg.analysis.updatedAt,
+          ...(pkg.analysis.reviewEngine !== undefined ? { reviewEngine: pkg.analysis.reviewEngine } : {}),
+        },
+      },
+    },
+    setUploadStates: states => {
+      screenshotUploadStates = states;
+    },
+    setUploadSummary: summary => {
+      screenshotUploadSummary = summary;
+    },
+    updateUploadState: (assetFilename, patchState) => {
+      screenshotUploadStates = screenshotUploadStates.map(item => (
+        item.assetFilename === assetFilename ? { ...item, ...patchState } : item
+      ));
+      redraw();
+    },
+    rerender: redraw,
+    recordEvent: (message, severity = Severity.Info, extraMetadata = {}) => recordReviewErrorUploadEvent(message, severity, {
+      ...extraMetadata,
+      reviewErrorPackageId: pkg.packageId,
+      gameId: pkg.gameId,
+      selectedPath: pkg.selectedMove.path,
+    }),
+  });
 }
 
 function submitDisabled(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSubmitRequest): boolean {
@@ -128,19 +253,40 @@ function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSub
   submitError = null;
   deps.redraw();
 
-  void assembleReviewErrorPackage({
-    game,
-    root: deps.root,
-    path: request.path,
-    memo: memoText,
-    currentEngineSettings: deps.currentEngineSettings,
-    screenshotAttachments,
-    remoteUploadConsent: reviewErrorRemoteUploadConsentFromState(remoteConsentState),
-  }).then(pkg => putReviewErrorPackage(pkg).then(() => pkg))
-    .then(pkg => {
-      submitSuccess = `Saved package ${pkg.packageId}`;
+  void (async () => {
+    const pkg = await assembleReviewErrorPackage({
+      game,
+      root: deps.root,
+      path: request.path,
+      memo: memoText,
+      currentEngineSettings: deps.currentEngineSettings,
+      screenshotAttachments,
+      remoteUploadConsent: reviewErrorRemoteUploadConsentFromState(remoteConsentState),
+    });
+    await putReviewErrorPackage(pkg);
+    submitSuccess = `Saved package ${pkg.packageId}`;
+
+    const remoteGate = checkReviewErrorRemoteUploadGate(remoteConsentState, adminDiagnosticsTokenAvailable());
+    if (!remoteGate.ok) {
+      submitSuccess = `Saved package ${pkg.packageId}. Remote upload skipped: ${remoteGate.reason}`;
       memoText = '';
-    })
+      return;
+    }
+    if (screenshotAttachments.length === 0) {
+      submitSuccess = `Saved package ${pkg.packageId}. No screenshots attached for remote upload.`;
+      memoText = '';
+      return;
+    }
+
+    try {
+      await uploadReviewErrorScreenshots(pkg, deps.redraw);
+      submitSuccess = `Saved and uploaded package ${pkg.packageId}`;
+      memoText = '';
+    } catch (error) {
+      submitError = `Review error package saved locally, but remote screenshot upload failed: ${errorText(error)}`;
+      submitSuccess = `Saved package ${pkg.packageId}`;
+    }
+  })()
     .catch(error => {
       submitError = `Review error package save failed: ${errorText(error)}`;
     })
@@ -153,7 +299,10 @@ function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSub
 function handleScreenshotInput(event: Event, redraw: () => void): void {
   const files = Array.from((event.target as HTMLInputElement).files ?? []);
   const result = validateReviewErrorScreenshotFiles(files);
+  screenshotFiles = validScreenshotFiles(files, result.attachments);
   screenshotAttachments = result.attachments;
+  screenshotUploadStates = packageUploadStatesFromAttachments(sharedScreenshotAttachments());
+  screenshotUploadSummary = '';
   screenshotErrors = result.ok ? [] : result.errors;
   submitError = null;
   redraw();
@@ -180,7 +329,7 @@ function renderPackagePreview(): VNode {
 function renderScreenshotPreview(submitLocked: boolean, redraw: () => void): VNode {
   return h('section.review-error-modal__screenshots', [
     h('h3', 'Screenshots'),
-    h('p', 'Optional admin-only screenshot metadata. Accepted files: PNG, JPEG, WebP; max 10 MB each; max 10 files. File bytes are not uploaded in this slice.'),
+    h('p', 'Optional admin-only screenshots. Accepted files: PNG, JPEG, WebP; max 10 MB each; max 10 files. File bytes upload only after consent and local package save.'),
     h('input.review-error-modal__file', {
       attrs: {
         type: 'file',
@@ -196,6 +345,43 @@ function renderScreenshotPreview(submitLocked: boolean, redraw: () => void): VNo
       )))
       : h('p.review-error-modal__muted', 'No screenshots attached.'),
     ...screenshotErrors.map(error => h('p.review-error-modal__error', error)),
+  ]);
+}
+
+function screenshotStatusLabel(item: PackageUploadState): string {
+  if (item.status === 'uploading') return item.progress === null ? 'Uploading' : `Uploading ${item.progress}%`;
+  if (item.status === 'uploaded') return 'Uploaded';
+  if (item.status === 'failed') return `Failed${item.message && item.message !== 'Failed' ? `: ${item.message}` : ''}`;
+  return 'Queued';
+}
+
+function renderScreenshotUploadProgress(): VNode | null {
+  if (screenshotUploadStates.length === 0) return null;
+  const uploaded = screenshotUploadStates.filter(item => item.status === 'uploaded').length;
+  const expected = screenshotUploadStates.length;
+  return h('section.review-error-modal__upload-progress', [
+    h('div.review-error-modal__upload-summary', [
+      h('span.review-error-modal__upload-title', 'Screenshot upload'),
+      h('span.review-error-modal__upload-count', screenshotUploadSummary || packageUploadSummary(uploaded, expected)),
+    ]),
+    h('ul.review-error-modal__upload-list', screenshotUploadStates.map(item => {
+      const progress = Math.max(0, Math.min(100, item.progress ?? (item.status === 'uploaded' ? 100 : 0)));
+      return h(`li.review-error-modal__upload-item.review-error-modal__upload-item--${item.status}`, [
+        h('div.review-error-modal__upload-row', [
+          h('span.review-error-modal__upload-name', item.filename),
+          h('span.review-error-modal__upload-state', screenshotStatusLabel(item)),
+        ]),
+        h('div.review-error-modal__upload-meta', [
+          h('span', item.assetFilename),
+          h('span', `${item.mimeType}, ${Math.round(item.sizeBytes / 1024)} KB`),
+        ]),
+        h('div.review-error-modal__upload-bar', {
+          attrs: { style: `--upload-progress: ${progress}%;` },
+        }, [
+          h('span'),
+        ]),
+      ]);
+    })),
   ]);
 }
 
@@ -223,15 +409,8 @@ function renderRemoteConsent(redraw: () => void): VNode {
       }),
       h('span', 'I reviewed the full-context categories and consent before any future remote upload of this package.'),
     ]),
-    h('button.review-error-modal__secondary', {
-      attrs: {
-        type: 'button',
-        disabled: true,
-        title: 'Remote package upload is planned for a later update.',
-      },
-    }, 'Remote upload not available in this slice'),
     h('p.review-error-modal__muted', remoteGate.ok
-      ? 'Remote upload gate is satisfied for future upload code.'
+      ? 'Remote screenshot upload will run after the local package is saved.'
       : remoteGate.reason),
   ]);
 }
@@ -293,6 +472,7 @@ export function renderReviewErrorPackageSubmitModal(deps: ReviewErrorSubmitModal
           },
         }),
         renderRemoteConsent(deps.redraw),
+        renderScreenshotUploadProgress(),
         submitError ? h('p.review-error-modal__error', submitError) : null,
         submitSuccess ? h('p.review-error-modal__success', submitSuccess) : null,
       ]),

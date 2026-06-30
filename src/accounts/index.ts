@@ -15,6 +15,13 @@ export type AccountPlatform = 'lichess' | 'chesscom';
  */
 export type AccountCategory = 'mine' | 'opponent' | 'study' | (string & {});
 
+/**
+ * Opponent card placement. Section is the single source of truth for where a
+ * card sits on the Opponents page; `category` remains a separate, independent
+ * classification (see `accountSection()` for the legacy-record fallback).
+ */
+export type AccountSection = 'research' | 'study' | 'archive';
+
 export interface ChessAccount {
   /** Canonical id: `${platform}:${lowercased username}`. */
   id: string;
@@ -24,6 +31,26 @@ export interface ChessAccount {
   /** Username with original casing, for display. */
   displayName: string;
   category: AccountCategory;
+  /**
+   * Opponent card placement (research / study / archive). Authoritative for
+   * the Opponents page once set; undefined on legacy records until migrated
+   * or explicitly moved by the user — read via `accountSection()`, never
+   * this field directly, so the UI never sees an undefined section.
+   */
+  section?: AccountSection;
+  /**
+   * Intra-section ascending sort key. New/legacy records default to a stable
+   * value (their `addedAt`) so order is deterministic before the user
+   * reorders cards by hand.
+   */
+  order?: number;
+  /** User-applied tags: lowercased, trimmed, de-duped. Defaults to `[]`. */
+  tags?: string[];
+  /**
+   * Cached platform all-time best rating per speed, populated by a later
+   * prompt's lifetime-rating fetch. Declared here only — not yet populated.
+   */
+  lifetimeBest?: Partial<Record<'rapid' | 'blitz' | 'classical' | 'daily', number>>;
   /** Date.now() when profile fields such as displayName/category last changed. */
   profileUpdatedAt?: number;
   /** Date.now() when the account was first registered. */
@@ -60,6 +87,29 @@ export function accountId(platform: AccountPlatform, username: string): string {
   return `${platform}:${username.trim().toLowerCase()}`;
 }
 
+/**
+ * Maps legacy `category` to a default `section` for accounts that have never
+ * had a placement set. `opponent` -> research; `mine`/`study`/anything else
+ * -> study. Mirrored (intentionally duplicated, not imported) by the IDB
+ * upgrade backfill in `src/idb/index.ts` to keep the storage layer free of a
+ * runtime dependency back on this module.
+ */
+function categoryToSection(category: AccountCategory): AccountSection {
+  return category === 'opponent' ? 'research' : 'study';
+}
+
+/**
+ * Resolves the section an account's card should render in. `section` is
+ * authoritative once set; legacy records without it fall back to mapping
+ * `category`, so this always returns a defined section.
+ */
+export function accountSection(account: Pick<ChessAccount, 'section' | 'category'>): AccountSection {
+  if (account.section === 'research' || account.section === 'study' || account.section === 'archive') {
+    return account.section;
+  }
+  return categoryToSection(account.category);
+}
+
 function timestamp(value: number | null | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
@@ -88,8 +138,59 @@ function cursorPatchChanged(
 }
 
 /**
- * Create an account, or update the category/display name of an existing one.
- * Preserves `addedAt` and sync cursors on re-registration.
+ * Pure merge logic for `registerAccount()`. First-time registration (no
+ * `existing` record) sets `category` from the import input. On
+ * re-registration of an existing account, the user-set `category` is
+ * preserved — only `updateAccount()` (e.g. the Opponents page category
+ * selector) may change it. This keeps a manual classification from being
+ * silently reset by a later import/sync re-registration. Kept IDB-free so it
+ * can be unit-tested directly.
+ */
+export function mergeRegisteredAccount(
+  existing: ChessAccount | undefined,
+  id: string,
+  platform: AccountPlatform,
+  category: AccountCategory,
+  displayName: string,
+  now: number,
+): ChessAccount {
+  if (existing) {
+    return {
+      ...existing,
+      displayName,
+      // order/tags may be absent on a record that bypassed the IDB upgrade
+      // backfill (e.g. direct unit-test construction); default them here too
+      // so re-registration never regresses a previously-backfilled record.
+      order: existing.order ?? existing.addedAt,
+      tags: existing.tags ?? [],
+      profileUpdatedAt: existing.displayName !== displayName
+        ? now
+        : profileTimestamp(existing),
+      syncCursorUpdatedAt: cursorTimestamp(existing),
+    };
+  }
+  return {
+    id,
+    platform,
+    username: displayName.toLowerCase(),
+    displayName,
+    category,
+    order: now,
+    tags: [],
+    profileUpdatedAt: now,
+    addedAt: now,
+    lastSyncedAt: null,
+    syncCursorUpdatedAt: now,
+    newestGameTimestamp: null,
+    oldestGameTimestamp: null,
+    syncFilterKey: null,
+  };
+}
+
+/**
+ * Create an account, or refresh the display name of an existing one.
+ * Preserves `addedAt` and sync cursors on re-registration. See
+ * `mergeRegisteredAccount()` for the category-preservation rule.
  */
 export async function registerAccount(
   platform: AccountPlatform,
@@ -100,30 +201,7 @@ export async function registerAccount(
   const existing = await getAccountFromIdb(id);
   const now = Date.now();
   const displayName = username.trim();
-  const account: ChessAccount = existing
-    ? {
-        ...existing,
-        displayName,
-        category,
-        profileUpdatedAt: existing.displayName !== displayName || existing.category !== category
-          ? now
-          : profileTimestamp(existing),
-        syncCursorUpdatedAt: cursorTimestamp(existing),
-      }
-    : {
-        id,
-        platform,
-        username: displayName.toLowerCase(),
-        displayName,
-        category,
-        profileUpdatedAt: now,
-        addedAt: now,
-        lastSyncedAt: null,
-        syncCursorUpdatedAt: now,
-        newestGameTimestamp: null,
-        oldestGameTimestamp: null,
-        syncFilterKey: null,
-      };
+  const account = mergeRegisteredAccount(existing, id, platform, category, displayName, now);
   await saveAccountToIdb(account);
   return account;
 }
