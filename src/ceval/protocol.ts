@@ -4,6 +4,7 @@
 
 import type { EngineStrengthConfig } from '../engine/types';
 import { record, Severity } from '../diagnostics';
+import { uciPositionCommand, type EnginePositionContext } from '../engine/positionContext';
 //
 // Key change from the previous Worker-based approach:
 // stockfish-web runs in the MAIN THREAD — no new Worker() needed.
@@ -258,11 +259,12 @@ export class StockfishProtocol {
   }
 
   /**
-   * Send a FEN position to the engine.
-   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork position command.
+   * Send a position to the engine.
+   * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts swapWork:
+   * `position fen <initialFen> moves <uci...>`.
    */
-  setPosition(fen: string): void {
-    this.send(`position fen ${fen}`);
+  setPositionContext(context: EnginePositionContext): void {
+    this.send(uciPositionCommand(context));
   }
 
   /**

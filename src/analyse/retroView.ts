@@ -308,7 +308,7 @@ function renderDualEvalBoxes(retro: RetroCtrl): VNode | null {
   if (!snapshot) return null;
 
   // Prefer frozen snapshot values; fall back to live evalCache on each render
-  // so that async evalFenSilent() results populate the vs-Engine-Best box.
+  // so that async evalPositionSilent() results populate the vs-Engine-Best box.
   const liveSolving    = snapshot.solvingPath ? evalCache.get(snapshot.solvingPath)    : undefined;
   const liveEngBest    = snapshot.parentPath  ? evalCache.get(snapshot.parentPath)     : undefined;
   const solvingEval = {

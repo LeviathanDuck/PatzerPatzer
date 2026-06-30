@@ -41,6 +41,7 @@ import {
   type PositionEval,
 } from '../engine/ctrl';
 import { evalWinChances, LOSS_THRESHOLDS } from '../engine/winchances';
+import { contextFromNodeList, type EnginePositionContext } from '../engine/positionContext';
 import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../board/animation';
 import { record, Severity } from '../diagnostics';
 import { replaceHashRoute, writeHashRoute } from '../router';
@@ -1408,10 +1409,19 @@ export class PuzzleRoundCtrl {
   // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts cevalEnabled / doStartCeval
 
   /**
+   * Current puzzle-board engine context.
+   * Uses the active puzzle/analysis tree path so repeated positions preserve
+   * move history when Stockfish searches the post-solve assist position.
+   */
+  currentEnginePositionContext(surface = 'puzzle-engine'): EnginePositionContext {
+    return contextFromNodeList(nodeListAt(this.treeRoot, this.treePath), surface, this.treePath);
+  }
+
+  /**
    * Activate engine evaluation for the current puzzle position.
    * Only permitted after the round has ended (solved or failed).
-   * Uses the shared Stockfish protocol to evaluate the puzzle board's
-   * current FEN — does NOT go through the analysis board's evalCurrentPosition.
+   * Uses the shared Stockfish protocol to evaluate the puzzle board's current
+   * position — does NOT go through the analysis board's evalCurrentPosition.
    */
   enablePuzzleEngine(redraw: () => void): void {
     if (this.status !== 'solved' && this.status !== 'failed') return;
@@ -1421,11 +1431,11 @@ export class PuzzleRoundCtrl {
     setEngineEnabledFlag(true); // makes renderCeval/renderPvBox show as active
 
     // Use the current board position (tracks analysis-mode navigation)
-    const fenStr = this.treeNode.fen;
+    const positionContext = this.currentEnginePositionContext();
 
     if (sharedEngineReady) {
       // Engine already running — send position directly
-      engineProtocol.setPosition(fenStr);
+      engineProtocol.setPositionContext(positionContext);
       engineProtocol.go(analysisDepth, multiPv);
       redraw();
     } else {
@@ -1433,7 +1443,7 @@ export class PuzzleRoundCtrl {
       redraw();
       void engineProtocol.init('/stockfish-web').then(() => {
         if (this.puzzleEngineEnabled) {
-          engineProtocol.setPosition(fenStr);
+          engineProtocol.setPositionContext(this.currentEnginePositionContext());
           engineProtocol.go(analysisDepth, multiPv);
           redraw();
         }

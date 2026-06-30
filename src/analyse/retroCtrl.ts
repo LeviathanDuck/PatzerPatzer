@@ -43,7 +43,7 @@ export interface SolvingMoveSnapshot {
   playerColor:     'white' | 'black';
   // Paths for live evalCache lookup in renderDualEvalBoxes.
   // cp fields above are frozen at move time; these allow the view to re-read
-  // cache on each render after evalFenSilent() populates asynchronously.
+  // cache on each render after evalPositionSilent() populates asynchronously.
   parentPath:      string;
   solvingPath:     string;
   // True when the user played the engine's exact best move.

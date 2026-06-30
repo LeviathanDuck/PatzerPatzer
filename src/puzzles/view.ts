@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { h, type VNode } from 'snabbdom';
-import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
+import { renderCeval, renderPvBox, renderEngineSettings, setCevalPositionOverride } from '../ceval/view';
 import { protocol as sharedProtocol, engineEnabled, engineReady as sharedEngineReady, multiPv, analysisDepth,
   showEngineArrows, setShowEngineArrows, showArrowLabels, setShowArrowLabels, syncArrow,
 } from '../engine/ctrl';
@@ -272,8 +272,8 @@ function renderLibrarySidebar(redraw: () => void): VNode {
 }
 
 export function renderPuzzleLibrary(redraw: () => void): VNode {
-  // Clear puzzle engine FEN override when back on library page
-  setCevalFenOverride(null);
+  // Clear puzzle engine position override when back on library page.
+  setCevalPositionOverride(null);
   _lastPuzzleEngineFen = '';
 
   const listState = getPuzzleListState();
@@ -1928,11 +1928,12 @@ function renderPuzzleMoveList(_def: PuzzleDefinition, rc: PuzzleRoundCtrl | null
  * uses the shared engine toggle and PV box from src/ceval/view.ts.
  */
 function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
-  // Use the current tree node's FEN — this tracks navigation and variations
-  const puzzleFen = rc.treeNode.fen;
+  // Use the current tree position — this tracks navigation and variations.
+  const puzzlePosition = rc.currentEnginePositionContext('puzzle-engine-view');
+  const puzzleFen = puzzlePosition.currentFen;
 
-  // Set FEN override so the shared ceval view renders for the puzzle position
-  setCevalFenOverride(puzzleFen);
+  // Set position override so the shared ceval view renders for the puzzle position.
+  setCevalPositionOverride(puzzlePosition);
 
   // If the shared engine is on during an active solve, mark this round as assisted.
   if (engineEnabled && rc.mode !== 'view') rc.notifyEngineUsedDuringSolve();
@@ -1945,7 +1946,7 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
     if (puzzleFen !== _lastPuzzleEngineFen) {
       _lastPuzzleEngineFen = puzzleFen;
       requestAnimationFrame(() => {
-        sharedProtocol.setPosition(puzzleFen);
+        sharedProtocol.setPositionContext(rc.currentEnginePositionContext('puzzle-engine-view'));
         sharedProtocol.go(analysisDepth, multiPv);
       });
     }

@@ -9,9 +9,10 @@ import {
   setPlayMoveCallback,
   incrementPendingStopCount,
 } from './ctrl';
+import type { EnginePositionContext } from './positionContext';
 
 export interface PlayMoveRequest {
-  fen: string;
+  position: EnginePositionContext;
   strength: EngineStrengthConfig;
   onMove: (uci: string) => void;
   onError?: (reason: string) => void;
@@ -32,7 +33,7 @@ export function requestPlayMove(req: PlayMoveRequest): void {
     enterPlayMode(req.strength);
   }
   setPlayMoveCallback(req.onMove);
-  protocol.setPosition(req.fen);
+  protocol.setPositionContext(req.position);
   protocol.goPlay(req.strength.maxDepth);
 }
 

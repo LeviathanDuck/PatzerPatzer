@@ -46,6 +46,8 @@ import {
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
 import type { TreeNode } from '../tree/types';
+import { contextFromNodeList, type EnginePositionContext } from './positionContext';
+import { uciMoveIsLegalInFen } from './reviewResultBinding';
 import {
   dataManagementScopeMatchesGameId,
   type DataManagementFenceResult,
@@ -92,7 +94,7 @@ const reviewEngineReadyWaiters = new Set<(ready: boolean) => void>();
 export type ReviewProtocolMessageHandler = (line: string) => void;
 
 export interface TreeEvalEngineLease {
-  setPosition(fen: string): void;
+  setPositionContext(context: EnginePositionContext): void;
   go(depth: number, multiPv?: number, movetime?: number): void;
   stop(): void;
   release(): void;
@@ -160,8 +162,8 @@ export async function acquireTreeEvalLease(options: {
   };
   const ownsLease = (): boolean => treeEvalLease?.token === token;
   return {
-    setPosition(fen: string): void {
-      if (ownsLease()) reviewProtocol.setPosition(fen);
+    setPositionContext(context: EnginePositionContext): void {
+      if (ownsLease()) reviewProtocol.setPositionContext(context);
     },
     go(depth: number, multiPv = 1, movetime?: number): void {
       if (ownsLease()) reviewProtocol.go(depth, multiPv, movetime);
@@ -564,6 +566,7 @@ interface ReviewBatchItem {
   nodePath:   string;
   parentPath: string;
   fen:        string;
+  position:   EnginePositionContext;
 }
 
 
@@ -1717,6 +1720,12 @@ let reviewParentPath       = '';
 let reviewSearchActive     = false;
 let reviewItemQueue:       ReviewBatchItem[] = [];
 let reviewItemIndex        = 0;
+// Engine-result→node binding guard (BUG-2026-06-29-019): bounded re-search when a result's best
+// move is illegal in the item's own FEN (the engine answered for a different position). Re-searching
+// the same FEN re-syncs a one-position-behind engine; after the cap, the game errors loudly.
+const REVIEW_MISMATCH_MAX_RETRIES = 2;
+let reviewMismatchRetryIndex = -1;
+let reviewMismatchRetryCount = 0;
 // Depth used for the currently-analyzing entry — set from entry.depth in startEntryBatch.
 let reviewActiveDepth      = reviewDepth;
 
@@ -1791,7 +1800,7 @@ function beginReviewSearch(item: ReviewBatchItem): void {
     depth:      reviewActiveDepth,
     generation: reviewSearchGeneration,
   };
-  reviewProtocol.setPosition(item.fen);
+  reviewProtocol.setPositionContext(item.position);
   reviewProtocol.go(reviewActiveDepth, 1, reviewMovetime ?? undefined);
   armWatchdog();
 }
@@ -2303,6 +2312,10 @@ function parseReviewLine(line: string): void {
 
 // --- Bestmove handler ---
 
+
+
+
+
 function onReviewBestmove(): void {
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (!entry) return;
@@ -2331,6 +2344,48 @@ function onReviewBestmove(): void {
       fen: item?.fen ?? '',
     },
   });
+
+  // Engine-result→node binding guard. The engine's best move must be legal in the exact FEN we asked
+  // it to analyse (item.fen). If it is not, the result was computed for a different position — storing
+  // it would shift the saved eval by a ply and corrupt the graph/accuracy/labels (BUG-2026-06-29-019,
+  // proven signature: 84/88 stored best moves illegal in own FEN, legal in parent). Drop it and
+  // re-search the same FEN; re-searching re-syncs a one-position-behind engine (its next "previous
+  // position" becomes this exact FEN). Bounded so a persistent mismatch errors the game loudly rather
+  // than silently saving corruption.
+  if (item && stored.best && !uciMoveIsLegalInFen(item.fen, stored.best)) {
+    const retriesForItem = reviewMismatchRetryIndex === reviewItemIndex ? reviewMismatchRetryCount : 0;
+    record({
+      kind: 'engine',
+      severity: Severity.Warn,
+      source: 'review-engine',
+      sourceTag: 'review-engine',
+      message: 'review-fen-binding-mismatch',
+      metadata: {
+        role:          reviewDiagnosticRole(),
+        positionIndex: reviewItemIndex,
+        ply:           reviewNodePly,
+        retries:       retriesForItem,
+        timestamp:     Date.now(),
+      },
+      redactionClass: 'safe',
+    });
+    reviewCurrentEval = {};
+    if (retriesForItem >= REVIEW_MISMATCH_MAX_RETRIES) {
+      markActiveEntryErrored(
+        `review-fen-binding-mismatch persisted at ${reviewItemIndex + 1}/${reviewItemQueue.length}`,
+      );
+      return;
+    }
+    reviewMismatchRetryIndex = reviewItemIndex;
+    reviewMismatchRetryCount = retriesForItem + 1;
+    sendNextItem(); // re-search the same item; this re-syncs a one-position-behind engine
+    return;
+  }
+  // Result is bound to the correct position — clear any mismatch retry state for this item.
+  if (reviewMismatchRetryIndex === reviewItemIndex) {
+    reviewMismatchRetryIndex = -1;
+    reviewMismatchRetryCount = 0;
+  }
 
   if (stored.cp !== undefined || stored.mate !== undefined) {
     recordEntryDepthUsed(entry, stored.depth ?? reviewActiveDepth);
@@ -2572,6 +2627,7 @@ async function startEntryBatch(entry: ReviewQueueEntry): Promise<void> {
           nodePath:   path,
           parentPath: prevPath,
           fen:        node.fen,
+          position:   contextFromNodeList(ctrl.mainline.slice(0, i + 1), 'game-review-background', path),
         });
       }
     }

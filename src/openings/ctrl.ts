@@ -46,6 +46,7 @@ import {
   type OpeningTreeSnapshotMode,
 } from './treeBuildDiagnostics';
 import { getDeviceMetadata } from '../diagnostics/session';
+import { contextFromRootAndMoves, type EnginePositionContext } from '../engine/positionContext';
 
 export type OpeningsPage = 'library' | 'loading' | 'session';
 
@@ -667,8 +668,26 @@ export function triggerTreeEvalForCurrentNode(): void {
     if (!isTreeEvalEnabled()) return;
     startTreeEvalPass1(node, _treeEvalThoroughness, {
       onPass2Complete: () => scheduleTreeEvalDwell(node.fen, pathKey),
+      positionContextFor: openingTreeEvalPositionContextFor,
     });
   }, SETTLE_QUIET_MS);
+}
+
+function openingTreeEvalPositionContextFor(target: OpeningTreeNode): EnginePositionContext | undefined {
+  if (!_openingTree || !_sessionNode) return undefined;
+  const moves = target === _sessionNode
+    ? _sessionPath
+    : _sessionNode.children.includes(target)
+      ? [..._sessionPath, target.uci]
+      : null;
+  if (!moves) return undefined;
+  return contextFromRootAndMoves({
+    initialFen: _openingTree.fen,
+    moves,
+    currentFen: target.fen,
+    surface: 'opening-tree-eval',
+    path: moves.join('/'),
+  });
 }
 
 function cancelTreeEvalDwellTimer(): void {
@@ -697,7 +716,7 @@ function scheduleTreeEvalDwell(fen: string, pathKey: string): void {
     _treeEvalDwellTimer = null;
     if (!isTreeEvalEnabled()) return;
     if (!_sessionNode || _sessionNode.fen !== fen || _sessionPath.join('/') !== pathKey) return;
-    startTreeEvalDeepening(_sessionNode, _treeEvalThoroughness);
+    startTreeEvalDeepening(_sessionNode, _treeEvalThoroughness, openingTreeEvalPositionContextFor);
   }, TREE_EVAL_DWELL_MS);
 }
 

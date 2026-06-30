@@ -4,9 +4,11 @@
 // Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts onWin / onFail.
 
 import type { AnalyseCtrl } from './ctrl';
-import { evalCache, evalCurrentPosition, evalFenSilent, engineEnabled, toggleEngine } from '../engine/ctrl';
+import { evalCache, evalCurrentPosition, evalPositionSilent, engineEnabled, toggleEngine } from '../engine/ctrl';
 import { batchAnalyzing, stopBatchAnalysis } from '../engine/batch';
 import { requestRetroBackgroundEval } from './retro';
+import { nodeListAt } from '../tree/ops';
+import { contextFromNodeList, fenOnlyPositionContext } from '../engine/positionContext';
 import {
   onBeforeBoardUserMove,
   onBoardUserMove,
@@ -112,8 +114,13 @@ export function initRetroMoveHandler(getCtrl: () => AnalyseCtrl): { unsubscribe:
       // This populates evalCache at cand.parentPath without any visible engine noise.
       // Mirrors lichess-org/lila: retroCtrl.ts background eval of the candidate FEN.
       if (!updatedDiff || updatedDiff.confidence !== 'cp') {
-        evalFenSilent(
-          cand.fenBefore,
+        const parentNodes = nodeListAt(ctrl.root, cand.parentPath);
+        const parentNode = parentNodes[parentNodes.length - 1];
+        const parentContext = parentNode?.fen === cand.fenBefore
+          ? contextFromNodeList(parentNodes, 'lfym-silent-parent', cand.parentPath)
+          : fenOnlyPositionContext(cand.fenBefore, 'lfym-silent-parent', 'candidate-parent-path-mismatch');
+        evalPositionSilent(
+          parentContext,
           cand.parentPath,
           cand.parentPath.length >= 2 ? cand.parentPath.slice(0, -2) : '',
           cand.ply - 1,

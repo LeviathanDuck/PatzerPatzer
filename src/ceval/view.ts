@@ -26,7 +26,7 @@ import {
   isEngineSearching, getSearchProgress,
   clearPendingLines,
   syncArrow, toggleEngine, evalCurrentPosition,
-  setEvalFenOverride,
+  setEvalPositionOverride,
   type EvalLine, type PositionEval,
 } from '../engine/ctrl';
 import {
@@ -37,6 +37,7 @@ import { formatScore } from '../analyse/evalView';
 import { orientation } from '../board/index';
 import { addNode } from '../tree/ops';
 import type { TreeNode } from '../tree/types';
+import type { EnginePositionContext } from '../engine/positionContext';
 
 // --- Injected deps ---
 
@@ -44,11 +45,11 @@ let _getCtrl:  () => AnalyseCtrl = () => { throw new Error('cevalView not initia
 let _navigate: (path: string) => void = () => {};
 let _redraw:   () => void = () => {};
 
-/** Optional FEN override — bypasses _getCtrl().node.fen in ceval UI and engine eval. */
-let _fenOverride: string | null = null;
-export function setCevalFenOverride(fen: string | null): void {
-  _fenOverride = fen;
-  setEvalFenOverride(fen); // keep engine/ctrl in sync
+/** Optional position override — bypasses _getCtrl().node.fen in ceval UI and engine eval. */
+let _positionOverride: EnginePositionContext | null = null;
+export function setCevalPositionOverride(context: EnginePositionContext | null): void {
+  _positionOverride = context;
+  setEvalPositionOverride(context); // keep engine/ctrl in sync
 }
 
 export function initCevalView(deps: {
@@ -223,7 +224,7 @@ function renderPvMoves(fen: string, moves: string[]): { first: VNode[]; rest: VN
  * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts playUciList / playUci
  */
 function playPvUciList(ucis: string[]): void {
-  if (_fenOverride) return; // In puzzle mode, PV click-to-navigate is not supported
+  if (_positionOverride) return; // In puzzle mode, PV click-to-navigate is not supported
   const ctrl = _getCtrl();
   let path = ctrl.path;
   let node = ctrl.node;
@@ -269,7 +270,7 @@ function playPvUciList(ucis: string[]): void {
 export function renderPvBox(): VNode | null {
   if (!engineEnabled) return null;
 
-  const fen = _fenOverride ?? _getCtrl().node.fen;
+  const fen = _positionOverride?.currentFen ?? _getCtrl().node.fen;
 
   function pvRowForSlot(slotIdx: number): VNode {
     // Slot 0 = primary line (currentEval); slots 1+ = secondary lines (currentEval.lines[i-1])

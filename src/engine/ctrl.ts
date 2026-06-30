@@ -13,6 +13,11 @@ import type { AnalyseCtrl } from '../analyse/ctrl';
 import type { Glyph } from '../tree/types';
 import { type EngineMode, type EngineStrengthConfig, STRENGTH_LEVELS, DEFAULT_STRENGTH_LEVEL } from './types';
 import { record, Severity } from '../diagnostics';
+import {
+  contextFromNodeList,
+  fenOnlyPositionContext,
+  type EnginePositionContext,
+} from './positionContext';
 
 // --- Types ---
 
@@ -112,16 +117,18 @@ export let playStrengthConfig: EngineStrengthConfig | null = null;
 let       engineInitialized  = false;
 export let currentEval: PositionEval = {};
 
-// FEN override for non-analysis-board contexts (openings page, puzzle page).
-// When set, evalCurrentPosition() evaluates this FEN instead of ctrl.node.fen
+// Position override for non-analysis-board contexts (openings page, puzzle page).
+// When set, evalCurrentPosition() evaluates this position instead of ctrl.node.fen
 // and the analysis-board stale-path guards are bypassed.
-let _evalFenOverride: string | null = null;
-export function setEvalFenOverride(fen: string | null): void { _evalFenOverride = fen; }
+let _evalPositionOverride: EnginePositionContext | null = null;
+export function setEvalPositionOverride(context: EnginePositionContext | null): void {
+  _evalPositionOverride = context;
+}
 /**
  * Records the exact FEN that the currently-running override search was started for.
- * Set at protocol.setPosition() call in the override branch; cleared when a normal
+ * Set at protocol.setPositionContext() call in the override branch; cleared when a normal
  * (non-override) search starts.  Used by the three stale guards to reject output from
- * a superseded override search even while _evalFenOverride is still set.
+ * a superseded override search even while _evalPositionOverride is still set.
  * Mirrors the Lichess `onNewCeval` exact-FEN check (node.fen !== ev.fen).
  */
 let _activeOverrideFen: string | null = null;
@@ -697,7 +704,7 @@ function parseEngineLine(line: string): void {
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
       // Override mode: only allow output through when the active search FEN matches the current
       // override FEN — drops stale output for a superseded override position.
-      if (!evalIsThreat && !_isBatchActive() && !(_evalFenOverride && _activeOverrideFen === _evalFenOverride) && evalNodePath !== _getCtrl().path) return;
+      if (!evalIsThreat && !_isBatchActive() && !(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) return;
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== undefined) {
         // Normalize to white's perspective — odd plies are black to move, so negate.
@@ -720,7 +727,7 @@ function parseEngineLine(line: string): void {
     } else if (!evalIsThreat && score !== undefined) {
       // Secondary PV line (MultiPV 2, 3, …).
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts multiPv handling.
-      if (!(_evalFenOverride && _activeOverrideFen === _evalFenOverride) && evalNodePath !== _getCtrl().path) return; // stale path guard (override: only pass when active search FEN matches current override FEN)
+      if (!(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) return; // stale path guard (override: only pass when active search FEN matches current override FEN)
       const s = evalNodePly % 2 === 1 ? -score : score;
       const idx = pvIndex - 1;
       if (!pendingLines[idx]) pendingLines[idx] = {};
@@ -774,7 +781,7 @@ function parseEngineLine(line: string): void {
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
       // Override mode: additionally reject bestmove if the active search FEN no longer matches
       // the current override FEN (i.e. the override position changed mid-search).
-      if (!_isBatchActive() && !(_evalFenOverride && _activeOverrideFen === _evalFenOverride) && evalNodePath !== _getCtrl().path) {
+      if (!_isBatchActive() && !(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) {
 
 
         // Instrument stale bestmove drop for the live engine: record event type, depth, and movetime.
@@ -891,7 +898,11 @@ export function evalThreatPosition(): void {
   threatEval   = {};
   evalIsThreat = true;
   protocol.stop();
-  protocol.setPosition(flipFenColor(_getCtrl().node.fen));
+  protocol.setPositionContext(fenOnlyPositionContext(
+    flipFenColor(_getCtrl().node.fen),
+    'analysis-threat',
+    'threat-mode-flips-side-to-move',
+  ));
   protocol.go(analysisDepth, 1, searchUntilDepth ? undefined : searchTime);
 }
 
@@ -917,9 +928,10 @@ export function evalCurrentPosition(): void {
   if (evalIsThreat) { pendingStopCount++; protocol.stop(); evalIsThreat = false; }
   threatEval = {};
 
-  // Override mode: non-analysis-board contexts (openings page, puzzle page) set a FEN
-  // override. Skip ctrl-based path tracking and cache lookup entirely.
-  if (_evalFenOverride) {
+  // Override mode: non-analysis-board contexts (openings page, puzzle page) set a
+  // position override. Skip ctrl-based path tracking and cache lookup entirely.
+  if (_evalPositionOverride) {
+    const positionOverride = _evalPositionOverride;
     cancelLiveEngineUiRefresh();
     currentEval  = {};
     pendingLines = [];
@@ -939,8 +951,8 @@ export function evalCurrentPosition(): void {
     evalParentPath     = '';
     // Record the FEN this override search is actually evaluating so the three stale
     // guards can reject output when the override position changes before bestmove arrives.
-    _activeOverrideFen = _evalFenOverride;
-    protocol.setPosition(_evalFenOverride);
+    _activeOverrideFen = positionOverride.currentFen;
+    protocol.setPositionContext(positionOverride);
 
 
 
@@ -1003,7 +1015,7 @@ export function evalCurrentPosition(): void {
   // Non-override search: clear the active override FEN so stale override guards
   // do not interfere with normal path-based evaluation.
   _activeOverrideFen = null;
-  protocol.setPosition(ctrl.node.fen);
+  protocol.setPositionContext(contextFromNodeList(ctrl.nodeList, 'analysis-live', ctrl.path));
   protocol.go(analysisDepth, multiPv, searchUntilDepth ? undefined : searchTime);
 }
 
@@ -1072,11 +1084,11 @@ export function isEngineSearchActive(): boolean { return engineSearchActive; }
  * Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts background eval intent
  * (Lichess fires a silent ceval on the candidate's parent position).
  */
-export function evalFenSilent(
-  fen:        string,
-  nodePath:   string,
-  parentPath: string,
-  nodePly:    number,
+export function evalPositionSilent(
+  positionContext: EnginePositionContext,
+  nodePath:        string,
+  parentPath:      string,
+  nodePly:         number,
 ): void {
   if (!engineEnabled || !engineReady) return;
   if (engineMode === 'play') return;
@@ -1128,6 +1140,6 @@ export function evalFenSilent(
   searchStartedAt    = Date.now();
   currentEval        = {};
   pendingLines       = [];
-  protocol.setPosition(fen);
+  protocol.setPositionContext(positionContext);
   protocol.go(analysisDepth, 1, searchUntilDepth ? undefined : searchTime);
 }

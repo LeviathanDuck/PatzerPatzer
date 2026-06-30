@@ -80,7 +80,7 @@ import {
 import { explorerCtrl, MAX_EXPLORER_DEPTH } from './explorerCtrl';
 import { ALL_SPEEDS, ALL_RATINGS, ALL_MODES } from './explorerConfig';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
-import { renderCeval, renderPvBox, renderEngineSettings, setCevalFenOverride } from '../ceval/view';
+import { renderCeval, renderPvBox, renderEngineSettings, setCevalPositionOverride } from '../ceval/view';
 import { renderMoveNavBar } from '../analyse/analysisControls';
 import {
   engineEnabled, evalCurrentPosition, currentEval,
@@ -103,6 +103,11 @@ import { playMoveWithDelay, cancelPlayMove } from '../engine/playMove';
 import { STRENGTH_LEVELS } from '../engine/types';
 import { renderStrengthSelector } from '../engine/strengthView';
 import { setPlayStrengthLevel, getPlayStrengthLevel } from '../engine/ctrl';
+import {
+  contextFromRootAndMoves,
+  fenOnlyPositionContext,
+  type EnginePositionContext,
+} from '../engine/positionContext';
 import {
   computeRepertoireProfile, computePrepReport, computePrepReportLines,
   computeLikelyLineModule, computeWeaknessModule, computePrepNotes,
@@ -129,10 +134,45 @@ function showTreeArrows(): boolean { return _showTreeArrows; }
 function toggleTreeArrows(): void { _showTreeArrows = !_showTreeArrows; }
 let _lastBoardFen: string = '';
 let _lastBoardPractice: boolean = false;
+const STANDARD_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 // Tracks the FEN when the user has played a legal off-tree move in browse mode.
 // null = board is showing the current sessionNode().fen (in-tree position).
 // non-null = board is showing a transient analysis position beyond the tree.
 let _offTreeFen: string | null = null;
+
+function openingsPositionContext(fen: string, surface = 'openings-live'): EnginePositionContext {
+  const root = openingTree();
+  const node = sessionNode();
+  const path = sessionPath();
+  if (!_offTreeFen && root && node && node.fen === fen) {
+    return contextFromRootAndMoves({
+      initialFen: root.fen,
+      moves: path,
+      currentFen: fen,
+      surface,
+      path: path.join('/'),
+    });
+  }
+
+  return fenOnlyPositionContext(
+    fen,
+    surface,
+    _offTreeFen ? 'off-tree-position-no-unique-history' : 'missing-opening-tree-path',
+  );
+}
+
+function practicePlayPositionContext(
+  session: NonNullable<ReturnType<typeof practiceSession>>,
+  node: OpeningTreeNode,
+): EnginePositionContext {
+  return contextFromRootAndMoves({
+    initialFen: session.startFen,
+    moves: session.moveHistory,
+    currentFen: node.fen,
+    surface: 'opening-practice-play',
+    path: session.moveHistory.join('/'),
+  });
+}
 let _sampleRenderPathKey = '';
 let _sampleRenderLimit = 25;
 let _samplePreviewGameId: string | null = null;
@@ -2285,10 +2325,10 @@ function renderOpeningTreeTool(
     ]),
     h('div.openings__session-panel', [
       renderOpeningsActionMenu(redraw),
-      // Keep FEN override in sync with the current openings position on every render.
-      // setCevalFenOverride also calls setEvalFenOverride so engine/ctrl uses the right FEN.
+      // Keep the engine override in sync with the current openings position on every render.
       (() => {
-        setCevalFenOverride(_offTreeFen ?? node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+        const fen = _offTreeFen ?? node?.fen ?? STANDARD_START_FEN;
+        setCevalPositionOverride(openingsPositionContext(fen));
         return null;
       })(),
       renderColorToggle(collection?.target ?? '', redraw),
@@ -2419,7 +2459,7 @@ function renderSessionPage(redraw: () => void): VNode {
     renderRouteRecoveryBanner(),
     h('div.openings__session-header', [
       h('button.openings__back-lib-btn', {
-        on: { click: () => { _openingsCg = undefined; setCevalFenOverride(null); closeSession(); redraw(); } },
+        on: { click: () => { _openingsCg = undefined; setCevalPositionOverride(null); closeSession(); redraw(); } },
       }, '\u2190 Library'),
       h('h2.openings__session-title', collection?.name ?? 'Opponent Research'),
       h('span.openings__session-meta', node
@@ -2699,7 +2739,7 @@ function renderOpeningsMoveNavBar(
 }
 
 function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): VNode {
-  const fen = node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const fen = node?.fen ?? STANDARD_START_FEN;
 
   return h('div.cg-wrap.openings__board', {
     key: 'openings-board',
@@ -2707,7 +2747,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
       insert: (vnode) => {
         const dests = destsForFen(fen);
         _lastBoardFen = fen;
-        setCevalFenOverride(fen);
+        setCevalPositionOverride(openingsPositionContext(fen));
         if (engineEnabled) evalCurrentPosition();
         _openingsCg = makeChessground(vnode.elm as HTMLElement, {
           fen,
@@ -2744,7 +2784,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
               if (session && session.running) {
                 // Practice mode: only accept moves on the user's turn.
                 // The FEN turn character determines whose move it is.
-                const fen = current?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+                const fen = current?.fen ?? STANDARD_START_FEN;
                 const fenTurn = fen.split(' ')[1]; // 'w' or 'b'
                 const isUserTurn =
                   (session.userColor === 'white' && fenTurn === 'w') ||
@@ -2950,8 +2990,8 @@ function scheduleNextAnimMove(redraw: () => void, delay = ANIM_MOVE_MS): void {
  * openings board's main-thread engine and scheduler settle model.
  */
 function scheduleOpeningsEngineEval(fen: string): void {
-
-  setCevalFenOverride(fen);
+  // Immediate: keep the override position current for the stale guard.
+  setCevalPositionOverride(openingsPositionContext(fen));
   // Immediate: cancel the in-flight search so we don't waste time on a stale FEN.
   stopProtocol();
   // Record the navigation event and schedule eval after the quiet period.
@@ -3054,7 +3094,7 @@ function schedulePracticeOpponentResponse(redraw: () => void): void {
       // Engine plays at the session's selected strength level.
       const strengthConfig = STRENGTH_LEVELS[(session.strengthLevel ?? 4) - 1] ?? STRENGTH_LEVELS[3]!;
       playMoveWithDelay({
-        fen: node.fen,
+        position: practicePlayPositionContext(session, node),
         strength: strengthConfig,
         onMove: (uci) => {
           navigateToMove(uci);

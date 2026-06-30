@@ -23,13 +23,13 @@ import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
 import {
   protocol, currentEval, engineReady,
-  setEvalFenOverride, evalCurrentPosition, setOnLiveEvalImproved,
+  setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved,
 } from '../engine/ctrl';
 import { listPracticeLines, savePracticeLine, deletePracticeLine } from './studyDb';
 import { progressMap } from './studyCtrl';
 import { countDuePositions } from './practice/sessionBuilder';
 import type { TrainableSequence } from './types';
-import { deleteNodeAt, promoteAt, pathInit } from '../tree/ops';
+import { deleteNodeAt, promoteAt, pathInit, nodeListAt } from '../tree/ops';
 import {
   studyDetail, detailRoot, detailPath, detailNode, detailLoaded, detailOrientation,
   detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
@@ -41,6 +41,7 @@ import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
+import { contextFromNodeList, fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
 
 
 let _showColorPicker   = false;
@@ -147,11 +148,20 @@ let _studyEngineOn = false;
 
 export function studyEngineOn(): boolean { return _studyEngineOn; }
 
-function startStudyEngine(redraw: () => void): void {
+function studyPositionContext(): EnginePositionContext | null {
+  const root = detailRoot();
   const node = detailNode();
-  if (!node) return;
+  if (!node) return null;
+  if (!root) return fenOnlyPositionContext(node.fen, 'study-detail', 'missing-study-root');
+  const path = detailPath();
+  return contextFromNodeList(nodeListAt(root, path), 'study-detail', path);
+}
+
+function startStudyEngine(redraw: () => void): void {
+  const context = studyPositionContext();
+  if (!context) return;
   _studyEngineOn = true;
-  setEvalFenOverride(node.fen);
+  setEvalPositionOverride(context);
   setOnLiveEvalImproved(redraw);
   evalCurrentPosition();
   redraw();
@@ -160,7 +170,7 @@ function startStudyEngine(redraw: () => void): void {
 function stopStudyEngine(redraw: () => void): void {
   _studyEngineOn = false;
   protocol.stop();
-  setEvalFenOverride(null);
+  setEvalPositionOverride(null);
   setOnLiveEvalImproved(null);
   redraw();
 }
@@ -173,9 +183,9 @@ function toggleStudyEngine(redraw: () => void): void {
 // Called after navigation — restarts engine on the new position if it was on.
 function syncStudyEngine(redraw: () => void): void {
   if (!_studyEngineOn) return;
-  const node = detailNode();
-  if (!node) return;
-  setEvalFenOverride(node.fen);
+  const context = studyPositionContext();
+  if (!context) return;
+  setEvalPositionOverride(context);
   evalCurrentPosition();
 }
 

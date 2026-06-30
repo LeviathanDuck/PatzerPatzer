@@ -4,6 +4,7 @@ import {
   type TreeEvalEngineLease,
 } from '../engine/reviewQueue';
 import { evalWinChances } from '../engine/winchances';
+import { fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
 import type { OpeningTreeNode } from './tree';
 
 export interface TreeEvalEntry {
@@ -29,6 +30,7 @@ export interface TreeEvalStatus {
 
 interface TreeEvalRun {
   fen: string;
+  position: EnginePositionContext;
   depth: number;
   lease: TreeEvalEngineLease | null;
   latest: TreeEvalEntry | null;
@@ -41,6 +43,7 @@ interface TreeEvalRun {
 
 interface TreeEvalPassOptions {
   onPass2Complete?: () => void;
+  positionContextFor?: (target: OpeningTreeNode) => EnginePositionContext | undefined;
 }
 
 let treeEvalEnabled = false;
@@ -115,6 +118,7 @@ export async function evaluateFen(fen: string, depth: number): Promise<TreeEvalR
     commitOnFinish: true,
     settled: true,
     redrawOnCommit: true,
+    position: fenOnlyPositionContext(fen, 'opening-tree-eval', 'standalone-evaluate-fen'),
   });
   return entry ? toResult(entry) : null;
 }
@@ -143,6 +147,7 @@ export function startTreeEvalPass1(
         commitOnFinish: true,
         settled: false,
         redrawOnCommit: false,
+        position: options.positionContextFor?.(target) ?? fenOnlyPositionContext(target.fen, 'opening-tree-eval', 'opening-tree-pass1-no-unique-history'),
       });
       if (!result) break;
       completedInBatch++;
@@ -157,7 +162,7 @@ export function startTreeEvalPass1(
     if (pendingRedraw) scheduleTreeEvalRedraw();
     if (treeEvalEnabled && activeSweepSerial === sweepSerial && !isBulkReviewActive()) {
       setTreeEvalPhase('refining');
-      const completed = await runTreeEvalPass2(node, thoroughness, sweepSerial);
+      const completed = await runTreeEvalPass2(node, thoroughness, sweepSerial, options.positionContextFor);
       if (treeEvalEnabled && activeSweepSerial === sweepSerial) {
         setTreeEvalPhase('idle');
         if (completed && !isBulkReviewActive()) options.onPass2Complete?.();
@@ -166,7 +171,11 @@ export function startTreeEvalPass1(
   })();
 }
 
-export function startTreeEvalDeepening(node: OpeningTreeNode, thoroughness: TreeEvalThoroughness): void {
+export function startTreeEvalDeepening(
+  node: OpeningTreeNode,
+  thoroughness: TreeEvalThoroughness,
+  positionContextFor?: (target: OpeningTreeNode) => EnginePositionContext | undefined,
+): void {
   if (!treeEvalEnabled) return;
   cancelTreeEval();
   const sweepSerial = activeSweepSerial;
@@ -174,7 +183,7 @@ export function startTreeEvalDeepening(node: OpeningTreeNode, thoroughness: Tree
   void (async () => {
     let depth = nextDeepeningDepth(node, thoroughness);
     while (depth !== null && isSweepCurrent(sweepSerial)) {
-      const completed = await runTreeEvalRefinementRound(node, depth, sweepSerial);
+      const completed = await runTreeEvalRefinementRound(node, depth, sweepSerial, positionContextFor);
       if (!completed || !isSweepCurrent(sweepSerial)) break;
       if (!await waitForDeepeningDelay(sweepSerial)) break;
       depth = nextDeepeningDepth(node, thoroughness);
@@ -186,7 +195,7 @@ export function startTreeEvalDeepening(node: OpeningTreeNode, thoroughness: Tree
 async function evaluateFenWithCacheMode(
   fen: string,
   depth: number,
-  options: { commitOnFinish: boolean; settled: boolean; redrawOnCommit: boolean },
+  options: { commitOnFinish: boolean; settled: boolean; redrawOnCommit: boolean; position: EnginePositionContext },
 ): Promise<TreeEvalEntry | null> {
   if (!treeEvalEnabled || isBulkReviewActive()) return null;
   const fenKey = normalizeFenKey(fen);
@@ -199,6 +208,7 @@ async function evaluateFenWithCacheMode(
   return new Promise(resolve => {
     const run: TreeEvalRun = {
       fen: fenKey,
+      position: options.position,
       depth,
       lease: null,
       latest: null,
@@ -224,7 +234,7 @@ async function evaluateFenWithCacheMode(
         return;
       }
       run.lease = lease;
-      lease.setPosition(fenKey);
+      lease.setPositionContext(run.position);
       lease.go(depth, 1);
     })();
   });
@@ -234,18 +244,20 @@ async function runTreeEvalPass2(
   node: OpeningTreeNode,
   thoroughness: TreeEvalThoroughness,
   sweepSerial: number,
+  positionContextFor?: (target: OpeningTreeNode) => EnginePositionContext | undefined,
 ): Promise<boolean> {
   const depth = PASS_2_DEPTH_BY_THOROUGHNESS[thoroughness];
-  return runTreeEvalRefinementRound(node, depth, sweepSerial);
+  return runTreeEvalRefinementRound(node, depth, sweepSerial, positionContextFor);
 }
 
 async function runTreeEvalRefinementRound(
   node: OpeningTreeNode,
   depth: number,
   sweepSerial: number,
+  positionContextFor?: (target: OpeningTreeNode) => EnginePositionContext | undefined,
 ): Promise<boolean> {
   const baselineFen = normalizeFenKey(node.fen);
-  const baseline = await evaluateRefinedEntry(baselineFen, depth);
+  const baseline = await evaluateRefinedEntry(baselineFen, depth, positionContextFor?.(node));
   if (!baseline || !isSweepCurrent(sweepSerial)) return false;
   treeEvalCache.set(baselineFen, { ...baseline, settled: true });
   scheduleTreeEvalRedraw();
@@ -255,7 +267,7 @@ async function runTreeEvalRefinementRound(
     const childFen = normalizeFenKey(child.fen);
     const cached = treeEvalCache.get(childFen);
     if (cached?.settled && cached.depth >= depth && cached.swing !== undefined) continue;
-    const refined = await evaluateRefinedEntry(childFen, depth);
+    const refined = await evaluateRefinedEntry(childFen, depth, positionContextFor?.(child));
     if (!refined || !isSweepCurrent(sweepSerial)) return false;
     const refinedWithSwing: TreeEvalEntry = {
       ...refined,
@@ -270,11 +282,12 @@ async function runTreeEvalRefinementRound(
   return true;
 }
 
-async function evaluateRefinedEntry(fen: string, depth: number): Promise<TreeEvalEntry | null> {
+async function evaluateRefinedEntry(fen: string, depth: number, position?: EnginePositionContext): Promise<TreeEvalEntry | null> {
   return evaluateFenWithCacheMode(fen, depth, {
     commitOnFinish: false,
     settled: true,
     redrawOnCommit: false,
+    position: position ?? fenOnlyPositionContext(fen, 'opening-tree-eval', 'opening-tree-refinement-no-unique-history'),
   });
 }
 

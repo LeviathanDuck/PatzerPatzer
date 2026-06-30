@@ -33,6 +33,7 @@ import { invalidateSummariesCache } from '../stats/ctrl';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import type { ImportedGame } from '../import/types';
 import { dataManagementScopeMatchesGameId, type DataManagementLocalChangeDetail } from '../sync/dataManagementRuntime';
+import { contextFromNodeList, type EnginePositionContext } from './positionContext';
 
 // --- Types ---
 
@@ -42,6 +43,7 @@ export interface BatchItem {
   nodePath:   string;
   parentPath: string;
   fen:        string;
+  position:   EnginePositionContext;
 }
 
 export type BatchState = 'idle' | 'analyzing' | 'complete';
@@ -217,7 +219,7 @@ export function evalBatchItem(item: BatchItem): void {
   clearPendingLines();
   console.log('[batch]', batchDone + 1, '/', batchQueue.length, 'nodeId:', item.nodeId, 'path:', item.nodePath, 'ply:', item.nodePly);
   if (wasActive) protocol.stop();
-  protocol.setPosition(item.fen);
+  protocol.setPositionContext(item.position);
   protocol.go(reviewDepth);
 }
 
@@ -321,7 +323,14 @@ export function startBatchAnalysis(): void {
     prevPath = path;
     if (i > 0) path += node.id;
     if (!evalCache.has(path)) {
-      queue.push({ nodeId: node.id, nodePly: node.ply, nodePath: path, parentPath: prevPath, fen: node.fen });
+      queue.push({
+        nodeId:     node.id,
+        nodePly:    node.ply,
+        nodePath:   path,
+        parentPath: prevPath,
+        fen:        node.fen,
+        position:   contextFromNodeList(ctrl.mainline.slice(0, i + 1), 'game-review-foreground', path),
+      });
     }
   }
 
