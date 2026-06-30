@@ -798,7 +798,11 @@ function renderReviewMenu(redraw: () => void): VNode | null {
     h('button.review-menu__trigger', {
       class: { active: showReviewMenu || active, 'review-menu__trigger--warning': staleNotice },
       attrs: { title: reviewTriggerTitle },
-      on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
+      on: { click: () => {
+        if (ownerUnavailable) takeOverUnavailableReviewOwner();
+        showReviewMenu = !showReviewMenu;
+        redraw();
+      } },
     }, [renderReviewProgressLabel(reviewTriggerLabel, progressIconState)]),
 
     showReviewMenu ? h('div.review-menu__backdrop', {

@@ -681,8 +681,8 @@ export function isLeaderTab(): boolean {
   return isCurrentLeader;
 }
 
-export function isReviewOwnerUnavailableForTakeover(): boolean {
-  if (isCurrentLeader || queue.length === 0) return false;
+function isReviewOwnerUnavailableFromToken(): boolean {
+  if (isCurrentLeader) return false;
   const token = readLeaderToken();
   if (!token) return true;
   const timestamp = Date.now();
@@ -705,12 +705,20 @@ export function isReviewOwnerUnavailableForTakeover(): boolean {
   return true;
 }
 
+export function isReviewOwnerUnavailableForTakeover(): boolean {
+  if (isCurrentLeader || queue.length === 0) return false;
+  return isReviewOwnerUnavailableFromToken();
+}
+
 export function takeOverUnavailableReviewOwner(): void {
   if (!isReviewOwnerUnavailableForTakeover()) return;
   becomeLeader(true);
 }
 
-function becomeLeader(resumeAfterTakeover = false): void {
+function becomeLeader(
+  resumeAfterTakeover = false,
+  opts: { resumeManifestAfterTakeover?: boolean } = {},
+): void {
   if (isCurrentLeader) return;
   isCurrentLeader = true;
   writeLeaderToken();
@@ -791,7 +799,9 @@ function becomeLeader(resumeAfterTakeover = false): void {
   // — see initLeaderElection/`_libraryGames`); the bootstrap caller's own
   // `resumeReviewQueueFromManifest(stored.games)` call handles that case
   // once the real game list is known.
-  if (_libraryGames.length > 0) void takeOverAsLeader(resumeAfterTakeover);
+  if (opts.resumeManifestAfterTakeover !== false && _libraryGames.length > 0) {
+    void takeOverAsLeader(resumeAfterTakeover);
+  }
 }
 
 function resignLeadership(): void {
@@ -2692,17 +2702,43 @@ function advanceQueue(): void {
 
 // --- Public API ---
 
-export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceContext?: ReviewRunSourceContext): void {
-  preemptTreeEvalLease('bulk-review-enqueued');
-  const entryDepth = depth ?? reviewDepth;
-  const orderedGames = reviewGamesInNewestFirstOrder(games);
-  if (!isCurrentLeader) {
-    // Observer tabs never build AnalyseCtrl/eval-cache trees for entries they
-    // will never analyze — write the lightweight manifest record only and
-    // wake whichever tab is the leader to pick the work up.
-    enqueueObserverManifestOnly(orderedGames, entryDepth);
-    return;
-  }
+async function prepareReviewIntentTakeover(ownerUnavailable: boolean): Promise<boolean> {
+  if (isCurrentLeader) return true;
+  if (!ownerUnavailable) return false;
+  becomeLeader(true, { resumeManifestAfterTakeover: false });
+  if (_libraryGames.length > 0) await resumeReviewQueueFromManifest(_libraryGames);
+  return isCurrentLeader;
+}
+
+function resumeReloadedQueueAfterReviewIntent(): void {
+  if (queuePaused && queuePauseReason === 'reload') resumeBulkReview();
+}
+
+function runAfterReviewIntentTakeover(
+  ownerUnavailable: boolean,
+  runAsLeader: () => void,
+  runAsObserver: () => void,
+): void {
+  void (async () => {
+    try {
+      await prepareReviewIntentTakeover(ownerUnavailable);
+    } catch (error) {
+      console.error('[review-queue] failed to prepare review-intent takeover', error);
+    }
+    if (isCurrentLeader) {
+      runAsLeader();
+      resumeReloadedQueueAfterReviewIntent();
+    } else {
+      runAsObserver();
+    }
+  })();
+}
+
+function enqueueBulkReviewAsLeader(
+  orderedGames: ImportedGame[],
+  entryDepth: number,
+  sourceContext?: ReviewRunSourceContext,
+): void {
   ensureActiveReviewRun(orderedGames, entryDepth, sourceContext);
   markReviewQueueProgress();
   const lazy = orderedGames.length > LAZY_BUILD_THRESHOLD;
@@ -2761,23 +2797,36 @@ export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceC
   }
 }
 
+export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceContext?: ReviewRunSourceContext): void {
+  preemptTreeEvalLease('bulk-review-enqueued');
+  const entryDepth = depth ?? reviewDepth;
+  const orderedGames = reviewGamesInNewestFirstOrder(games);
+  if (!isCurrentLeader) {
+    const ownerUnavailable = isReviewOwnerUnavailableFromToken();
+    const runAsObserver = (): void => {
+      // Observer tabs never build AnalyseCtrl/eval-cache trees for entries they
+      // will never analyze — write the lightweight manifest record only and
+      // wake whichever tab is the leader to pick the work up.
+      enqueueObserverManifestOnly(orderedGames, entryDepth);
+    };
+    if (ownerUnavailable) {
+      runAfterReviewIntentTakeover(ownerUnavailable, () => {
+        enqueueBulkReviewAsLeader(orderedGames, entryDepth, sourceContext);
+      }, runAsObserver);
+      return;
+    }
+    runAsObserver();
+    return;
+  }
+  enqueueBulkReviewAsLeader(orderedGames, entryDepth, sourceContext);
+}
+
 /**
  * Add games to the front of the pending queue so they are reviewed next,
  * immediately after any currently-analyzing entry finishes.
  * Games already analyzed or already in the queue are silently skipped.
  */
-export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
-  preemptTreeEvalLease('bulk-review-enqueued');
-  const entryDepth = depth ?? reviewDepth;
-  const orderedGames = reviewGamesInNewestFirstOrder(games);
-  if (!isCurrentLeader) {
-    // See enqueueBulkReview: observer tabs write the manifest only and let
-    // the leader build the real entries. Front-of-queue ordering is a
-    // leader-side scheduling concern, so these still land in the queue but
-    // are not guaranteed to jump ahead of entries the leader already has.
-    enqueueObserverManifestOnly(orderedGames, entryDepth);
-    return;
-  }
+function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number): void {
   ensureActiveReviewRun(orderedGames, entryDepth);
   const lazy = orderedGames.length > LAZY_BUILD_THRESHOLD;
   const newEntries: ReviewQueueEntry[] = [];
@@ -2833,6 +2882,31 @@ export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
   if (activeIndex < 0 && !reviewEngineFailed) {
     advanceQueue();
   }
+}
+
+export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
+  preemptTreeEvalLease('bulk-review-enqueued');
+  const entryDepth = depth ?? reviewDepth;
+  const orderedGames = reviewGamesInNewestFirstOrder(games);
+  if (!isCurrentLeader) {
+    const ownerUnavailable = isReviewOwnerUnavailableFromToken();
+    const runAsObserver = (): void => {
+      // See enqueueBulkReview: observer tabs write the manifest only and let
+      // the leader build the real entries. Front-of-queue ordering is a
+      // leader-side scheduling concern, so these still land in the queue but
+      // are not guaranteed to jump ahead of entries the leader already has.
+      enqueueObserverManifestOnly(orderedGames, entryDepth);
+    };
+    if (ownerUnavailable) {
+      runAfterReviewIntentTakeover(ownerUnavailable, () => {
+        enqueueAtFrontAsLeader(orderedGames, entryDepth);
+      }, runAsObserver);
+      return;
+    }
+    runAsObserver();
+    return;
+  }
+  enqueueAtFrontAsLeader(orderedGames, entryDepth);
 }
 
 /**
