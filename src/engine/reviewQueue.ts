@@ -46,7 +46,15 @@ import {
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
 import type { TreeNode } from '../tree/types';
-import { contextFromNodeList, type EnginePositionContext } from './positionContext';
+import {
+  contextFromNodeList,
+  engineFenEquals,
+  engineFenHash,
+  replayEnginePositionContext,
+  type EnginePositionContext,
+  type EnginePositionReplayFailureReason,
+  type EnginePositionReplayResult,
+} from './positionContext';
 import { uciMoveIsLegalInFen } from './reviewResultBinding';
 import {
   dataManagementScopeMatchesGameId,
@@ -107,6 +115,65 @@ interface TreeEvalLeaseState {
 }
 
 let treeEvalLease: TreeEvalLeaseState | null = null;
+let treeEvalPreemptDrainActive = false;
+let treeEvalPreemptDrainTimer: ReturnType<typeof setTimeout> | null = null;
+const TREE_EVAL_PREEMPT_DRAIN_TIMEOUT_MS = 5_000;
+
+function clearTreeEvalPreemptDrain(): void {
+  if (treeEvalPreemptDrainTimer !== null) {
+    clearTimeout(treeEvalPreemptDrainTimer);
+    treeEvalPreemptDrainTimer = null;
+  }
+  treeEvalPreemptDrainActive = false;
+}
+
+function finishTreeEvalPreemptDrain(reason: 'bestmove' | 'timeout'): void {
+  if (!treeEvalPreemptDrainActive) return;
+  clearTreeEvalPreemptDrain();
+  if (reason === 'timeout') {
+    const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+    if (entry) {
+      record({
+        kind: 'engine',
+        severity: Severity.Error,
+        source: 'review-engine',
+        sourceTag: 'review-engine',
+        message: 'review-tree-eval-preempt-drain-timeout',
+        metadata: {
+          role: reviewDiagnosticRole(),
+          safeGameId: safeReviewGameId(entry.game.id),
+          positionIndex: reviewItemIndex,
+          timeoutMs: TREE_EVAL_PREEMPT_DRAIN_TIMEOUT_MS,
+          timestamp: Date.now(),
+        },
+        redactionClass: 'safe',
+      });
+      markActiveEntryErrored('review-tree-eval-preempt-drain-timeout');
+    }
+    return;
+  }
+
+  if (!queuePaused && !reviewSearchActive && reviewItemQueue[reviewItemIndex]) {
+    sendNextItem();
+  }
+}
+
+function beginTreeEvalPreemptDrain(): void {
+  clearTreeEvalPreemptDrain();
+  treeEvalPreemptDrainActive = true;
+  treeEvalPreemptDrainTimer = setTimeout(
+    () => finishTreeEvalPreemptDrain('timeout'),
+    TREE_EVAL_PREEMPT_DRAIN_TIMEOUT_MS,
+  );
+}
+
+function handleTreeEvalPreemptDrainLine(line: string): boolean {
+  if (!treeEvalPreemptDrainActive) return false;
+  if (line.trim().split(/\s+/)[0] === 'bestmove') {
+    finishTreeEvalPreemptDrain('bestmove');
+  }
+  return true;
+}
 
 function isSharedArrayBufferAvailable(): boolean {
   return typeof SharedArrayBuffer !== 'undefined';
@@ -135,25 +202,27 @@ export function isBulkReviewActive(): boolean {
   return isBulkRunning() || reviewSearchActive || activeIndex >= 0;
 }
 
-function preemptTreeEvalLease(reason: string): void {
+function preemptTreeEvalLease(reason: string): boolean {
   const lease = treeEvalLease;
-  if (!lease) return;
+  if (!lease) return false;
   treeEvalLease = null;
+  beginTreeEvalPreemptDrain();
   reviewProtocol.stop();
   lease.onPreempt(reason);
+  return true;
 }
 
 export async function acquireTreeEvalLease(options: {
   onMessage: ReviewProtocolMessageHandler;
   onPreempt: (reason: string) => void;
 }): Promise<TreeEvalEngineLease | null> {
-  if (reviewEngineFailed || isBulkReviewActive() || treeEvalLease) return null;
+  if (reviewEngineFailed || isBulkReviewActive() || treeEvalLease || treeEvalPreemptDrainActive) return null;
   if (!reviewEngineReady) {
     if (!reviewEngineInitStarted) void initReviewEngine('/stockfish-web');
     const ready = await waitForReviewEngineReady();
     if (!ready) return null;
   }
-  if (reviewEngineFailed || !reviewEngineReady || isBulkReviewActive() || treeEvalLease) return null;
+  if (reviewEngineFailed || !reviewEngineReady || isBulkReviewActive() || treeEvalLease || treeEvalPreemptDrainActive) return null;
   const token = Symbol('tree-eval-lease');
   treeEvalLease = {
     token,
@@ -289,6 +358,57 @@ function recordReviewGameErrored(entry: ReviewQueueEntry, error: unknown, lastPo
       errorClass: reviewErrorClass(error),
       lastPositionIndex,
       requeued,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+type ReviewPositionContextMismatchReason =
+  | EnginePositionReplayFailureReason
+  | 'position-current-fen-mismatch';
+
+function reviewPositionContextMetadata(
+  item: ReviewBatchItem,
+  replay: EnginePositionReplayResult,
+  reason: ReviewPositionContextMismatchReason | null,
+): Record<string, unknown> {
+  return {
+    positionIndex: reviewItemIndex,
+    ply: item.nodePly,
+    nodePath: item.nodePath,
+    parentPath: item.parentPath,
+    positionSource: item.position.source,
+    positionSurface: item.position.surface,
+    moveCount: replay.moveCount,
+    replayOk: replay.ok,
+    replayReason: reason,
+    failedMoveIndex: replay.failedMoveIndex ?? null,
+    failedMove: replay.failedMove ?? null,
+    itemFenHash: engineFenHash(item.fen),
+    positionCurrentFenHash: engineFenHash(item.position.currentFen),
+    expectedFenHash: replay.expectedFenHash,
+    replayedFenHash: replay.replayedFenHash,
+    positionCurrentFenMatchesItemFen: engineFenEquals(item.position.currentFen, item.fen),
+  };
+}
+
+function recordReviewPositionContextMismatch(
+  entry: ReviewQueueEntry,
+  item: ReviewBatchItem,
+  replay: EnginePositionReplayResult,
+  reason: ReviewPositionContextMismatchReason,
+): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-position-context-mismatch',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeGameId: safeReviewGameId(entry.game.id),
+      ...reviewPositionContextMetadata(item, replay, reason),
       timestamp: Date.now(),
     },
     redactionClass: 'safe',
@@ -1785,9 +1905,20 @@ function currentReviewSearchIdentityMatches(): boolean {
 }
 
 function beginReviewSearch(item: ReviewBatchItem): void {
-  preemptTreeEvalLease('bulk-review-started');
+  if (preemptTreeEvalLease('bulk-review-started') || treeEvalPreemptDrainActive) return;
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (!entry) return;
+  const positionReplay = replayEnginePositionContext(item.position, item.fen);
+  const positionCurrentFenMatchesItemFen = engineFenEquals(item.position.currentFen, item.fen);
+  if (!positionReplay.ok || !positionCurrentFenMatchesItemFen) {
+    const reason = positionReplay.reason ?? 'position-current-fen-mismatch';
+    recordReviewPositionContextMismatch(entry, item, positionReplay, reason);
+    reviewCurrentEval = {};
+    markActiveEntryErrored(
+      `review-position-context-mismatch at ${reviewItemIndex + 1}/${reviewItemQueue.length}: ${reason}`,
+    );
+    return;
+  }
   performance.mark('position-analysis-start', {
     detail: {
       index: reviewItemIndex,
@@ -1903,6 +2034,7 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
   const lastPositionIndex = Math.max(0, reviewItemIndex - 1);
   clearWatchdog();
   clearDispatchDefer();
+  clearTreeEvalPreemptDrain();
   reviewWatchdogRetries = 0;
   reviewWatchdogTriggeredAt = null;
   reviewSearchActive = false;
@@ -1910,6 +2042,8 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
   reviewCurrentEval = {};
   reviewItemQueue = [];
   reviewItemIndex = 0;
+  reviewMismatchRetryIndex = -1;
+  reviewMismatchRetryCount = 0;
 
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (error !== undefined) {
@@ -2150,7 +2284,11 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
       treeEvalLease.onMessage(line);
       return;
     }
-    if (treeEvalLease && isBulkReviewActive()) preemptTreeEvalLease('bulk-review-active');
+    if (handleTreeEvalPreemptDrainLine(line)) return;
+    if (treeEvalLease && isBulkReviewActive()) {
+      preemptTreeEvalLease('bulk-review-active');
+      return;
+    }
     parseReviewLine(line);
   });
 
@@ -2364,6 +2502,9 @@ function onReviewBestmove(): void {
   // than silently saving corruption.
   if (item && stored.best && !uciMoveIsLegalInFen(item.fen, stored.best)) {
     const retriesForItem = reviewMismatchRetryIndex === reviewItemIndex ? reviewMismatchRetryCount : 0;
+    const positionReplay = replayEnginePositionContext(item.position, item.fen);
+    const positionReplayReason = positionReplay.reason
+      ?? (engineFenEquals(item.position.currentFen, item.fen) ? null : 'position-current-fen-mismatch');
     record({
       kind: 'engine',
       severity: Severity.Warn,
@@ -2372,8 +2513,7 @@ function onReviewBestmove(): void {
       message: 'review-fen-binding-mismatch',
       metadata: {
         role:          reviewDiagnosticRole(),
-        positionIndex: reviewItemIndex,
-        ply:           reviewNodePly,
+        ...reviewPositionContextMetadata(item, positionReplay, positionReplayReason),
         retries:       retriesForItem,
         timestamp:     Date.now(),
       },
@@ -2442,6 +2582,7 @@ function onReviewBestmove(): void {
 function sendNextItem(): void {
   const item = reviewItemQueue[reviewItemIndex];
   if (!item) return;
+  if (treeEvalPreemptDrainActive) return;
 
   if (shouldDeferDispatch()) {
     reviewDispatchDeferCount++;
@@ -2653,6 +2794,8 @@ async function startEntryBatch(entry: ReviewQueueEntry): Promise<void> {
     reviewItemQueue   = items;
     reviewItemIndex   = 0;
     reviewCurrentEval = {};
+    reviewMismatchRetryIndex = -1;
+    reviewMismatchRetryCount = 0;
     reviewActiveDepth = entry.depth;
 
     // Ensure engine is ready before sending first position.
@@ -3055,6 +3198,7 @@ export function isBulkPaused(): boolean {
 function stopActiveReviewSearchForDataManagement(): void {
   clearWatchdog();
   clearDispatchDefer();
+  clearTreeEvalPreemptDrain();
   if (reviewSearchActive) {
     reviewSearchGeneration++;
     reviewProtocol.stop();
@@ -3127,6 +3271,7 @@ export function cancelBulkReview(): void {
   }
   clearWatchdog();
   clearDispatchDefer();
+  clearTreeEvalPreemptDrain();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
   reviewWatchdogTriggeredAt = null;
@@ -3166,6 +3311,7 @@ export function pauseBulkReview(): void {
   setActiveReviewRunState('user-paused');
   clearWatchdog();
   clearDispatchDefer();
+  clearTreeEvalPreemptDrain();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
   reviewWatchdogTriggeredAt = null;
@@ -3194,6 +3340,7 @@ export function suspendBulkReviewForHiddenTab(): void {
   setActiveReviewRunState('hidden-suspended');
   clearWatchdog();
   clearDispatchDefer();
+  clearTreeEvalPreemptDrain();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
   reviewWatchdogTriggeredAt = null;

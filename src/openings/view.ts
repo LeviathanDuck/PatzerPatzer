@@ -23,7 +23,7 @@ import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/anim
 import { renderMoveList } from '../analyse/moveList';
 import { formatScore, renderEvalBar } from '../analyse/evalView';
 import type { TreeNode } from '../tree/types';
-import { accountSection, updateAccount, type ChessAccount, type AccountSection } from '../accounts';
+import { accountSection, updateAccount, type ChessAccount, type AccountSection, type AccountCategory } from '../accounts';
 import { deleteImportedAccountAndGames } from '../sync/dataManagement';
 import { computeAccountCardStats, PRIMARY_CARD_SPEEDS, type AccountCardStats, type AccountSpeedStat } from './accountCardStats';
 import {
@@ -373,7 +373,7 @@ let _accountActionError: string | null = null;
 let _accountReorderMode = false;
 
 
-let _archiveCollapsed = true;
+let _archiveCollapsed = false;
 // Drag state for the in-progress reorder gesture: the account id being dragged,
 // and the current drop target (`anchorId: null` means "append to end of section").
 let _draggingAccountId: string | null = null;
@@ -746,8 +746,16 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
 }
 
 
-function accountSectionLabel(section: AccountSection): string {
-  return section === 'research' ? 'Research' : section === 'archive' ? 'Archive' : 'Study';
+
+
+
+
+function accountCategoryLabel(category: AccountCategory): string {
+  if (category === 'mine') return 'Mine';
+  if (category === 'opponent') return 'Opponent';
+  if (category === 'study') return 'Study';
+  const raw = String(category);
+  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Mine';
 }
 
 
@@ -798,13 +806,15 @@ function renderAccountStatsBody(account: ChessAccount, redraw: () => void): VNod
       attrs: { style: `grid-template-columns:repeat(${PRIMARY_CARD_SPEEDS.length},minmax(0,1fr))` },
     }, PRIMARY_CARD_SPEEDS.map(() => h('div.openings__card-speed-col.openings__account-stats-skeleton-col')));
   }
-  const totalGames = [...stats.bySpeed.values()].reduce((sum, sp) => sum + sp.games, 0);
-  if (totalGames === 0) {
+
+
+  const displayedSpeeds = PRIMARY_CARD_SPEEDS.filter(speed => (stats.bySpeed.get(speed)?.games ?? 0) > 0);
+  if (displayedSpeeds.length === 0) {
     return h('p.openings__account-stats-msg', 'No games imported yet.');
   }
   return h('div.openings__card-speeds', {
-    attrs: { style: `grid-template-columns:repeat(${PRIMARY_CARD_SPEEDS.length},minmax(0,1fr))` },
-  }, PRIMARY_CARD_SPEEDS.map(speed =>
+    attrs: { style: `grid-template-columns:repeat(${displayedSpeeds.length},minmax(0,1fr))` },
+  }, displayedSpeeds.map(speed =>
     renderAccountSpeedColumn(speed, stats.bySpeed.get(speed), account.lifetimeBest?.[speed])));
 }
 
@@ -819,6 +829,13 @@ function accountTotalGamesCached(account: ChessAccount): number | undefined {
 async function setAccountSection(account: ChessAccount, section: AccountSection, redraw: () => void): Promise<void> {
   if (accountSection(account) === section) return;
   await updateAccount(account.id, { section });
+  await refreshRegistryAccounts(redraw);
+}
+
+
+async function setAccountCategory(account: ChessAccount, category: AccountCategory, redraw: () => void): Promise<void> {
+  if (account.category === category) return;
+  await updateAccount(account.id, { category });
   await refreshRegistryAccounts(redraw);
 }
 
@@ -960,9 +977,23 @@ function renderAccountEditMenu(account: ChessAccount, redraw: () => void): VNode
     on: { click: (e: Event) => { e.stopPropagation(); void setAccountSection(account, value, redraw); } },
   }, label);
 
+  const categoryBtn = (value: AccountCategory, label: string): VNode => h('button.openings__account-menu-section-btn', {
+    class: { active: account.category === value },
+    attrs: { type: 'button', disabled: busy, title: `Set category to ${label}`, 'aria-label': `Set ${account.displayName} category to ${label}` },
+    on: { click: (e: Event) => { e.stopPropagation(); void setAccountCategory(account, value, redraw); } },
+  }, label);
+
   return h('div.openings__account-menu', {
     on: { click: (e: Event) => e.stopPropagation() },
   }, [
+    h('div.openings__account-menu-row', [
+      h('div.openings__account-menu-label', 'Category'),
+      h('div.openings__account-menu-section-row', [
+        categoryBtn('mine', 'Mine'),
+        categoryBtn('study', 'Study'),
+        categoryBtn('opponent', 'Opponent'),
+      ]),
+    ]),
     h('div.openings__account-menu-row', [
       h('div.openings__account-menu-label', 'Move to section'),
       h('div.openings__account-menu-section-row', [
@@ -1094,8 +1125,8 @@ function renderAccountCard(
       h('span.openings__collection-name', account.displayName),
       h('div.openings__account-actions', [
         h('span.openings__account-badge', {
-          attrs: { title: 'Card placement' },
-        }, accountSectionLabel(accountSection(account))),
+          attrs: { title: 'Account category' },
+        }, accountCategoryLabel(account.category)),
         h('button.openings__account-gear-btn', {
           class: { active: menuOpen },
           attrs: {
@@ -1115,7 +1146,7 @@ function renderAccountCard(
             }
             redraw();
           } },
-        }, '⚙️'),
+        }, '✎'),
         h('button.openings__account-open-btn', {
           class: { active: expanded },
           attrs: {
@@ -1178,21 +1209,16 @@ function renderAccountSectionBlock(
 ): VNode {
   const collapsed = def.collapsible && _archiveCollapsed;
   const dragOverEnd = reorderMode && _dragOverTarget?.section === def.section && _dragOverTarget.anchorId === null;
-  const header: VNode[] = [
+
+
+  const header: (VNode | null)[] = [
+    def.collapsible
+      ? h('span.openings__section-chevron', { attrs: { 'aria-hidden': 'true' } }, collapsed ? '▸' : '▾')
+      : null,
     h('span.openings__section-title', def.title),
     h('span.openings__section-count', `${accounts.length}`),
   ];
-  if (def.collapsible) {
-    header.push(h('button.openings__section-collapse-btn', {
-      attrs: {
-        type: 'button',
-        title: collapsed ? 'Expand Archive' : 'Collapse Archive',
-        'aria-expanded': String(!collapsed),
-        'aria-label': collapsed ? 'Expand Archive section' : 'Collapse Archive section',
-      },
-      on: { click: () => { _archiveCollapsed = !_archiveCollapsed; redraw(); } },
-    }, collapsed ? '▸' : '▾'));
-  }
+  const toggleCollapse = () => { _archiveCollapsed = !_archiveCollapsed; redraw(); };
   const body = collapsed ? null : h('div.openings__collections', {
     class: { 'openings__collections--drag-over-end': dragOverEnd },
     on: reorderMode ? {
@@ -1213,7 +1239,22 @@ function renderAccountSectionBlock(
     key: `account-section:${def.section}`,
     class: { 'openings__account-section--collapsible': def.collapsible },
   }, [
-    h('div.openings__account-section-header', header),
+    h('div.openings__account-section-header', def.collapsible ? {
+      class: { 'openings__account-section-header--toggle': true },
+      attrs: {
+        role: 'button',
+        tabindex: '0',
+        title: collapsed ? 'Expand Archive' : 'Collapse Archive',
+        'aria-expanded': String(!collapsed),
+        'aria-label': collapsed ? 'Expand Archive section' : 'Collapse Archive section',
+      },
+      on: {
+        click: toggleCollapse,
+        keydown: (e: KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(); }
+        },
+      },
+    } : {}, header),
     body,
   ]);
 }
