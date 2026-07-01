@@ -34,6 +34,7 @@ export const REMOTE_SYNC_ACTIVITY_EVENT = 'chesspatzer:remoteSync-sync-activity-
 const RELOAD_ON_SETTINGS_PULL_KEY = 'chesspatzer.remoteSync.settingsReloadedAt';
 const SETTING_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.settingUpdatedAt.';
 const ITEM_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.itemUpdatedAt.';
+const ITEM_DELETED_AT_PREFIX = 'chesspatzer.remoteSync.itemDeletedAt.';
 const PUSH_BATCH_SIZE = 100;
 const RESTORE_CHUNK_SIZE = 100;
 const FLUSH_DEBOUNCE_MS = 250;
@@ -783,14 +784,34 @@ function itemUpdatedAtKey(store: RemoteSyncStoreName, itemKey: string): string {
   return `${ITEM_UPDATED_AT_PREFIX}${store}.${itemKey}`;
 }
 
+function itemDeletedAtKey(store: RemoteSyncStoreName, itemKey: string): string {
+  return `${ITEM_DELETED_AT_PREFIX}${store}.${itemKey}`;
+}
+
 function rememberedItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string): number {
   const raw = localStorage.getItem(itemUpdatedAtKey(store, itemKey));
   const value = raw ? Number.parseInt(raw, 10) : 0;
   return Number.isFinite(value) ? value : 0;
 }
 
+function rememberedItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): number {
+  const raw = localStorage.getItem(itemDeletedAtKey(store, itemKey));
+  const value = raw ? Number.parseInt(raw, 10) : 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
 function rememberItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): void {
   localStorage.setItem(itemUpdatedAtKey(store, itemKey), String(Math.max(0, Math.floor(updatedAt))));
+}
+
+function rememberItemDeletedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): void {
+  const value = String(Math.max(0, Math.floor(updatedAt)));
+  localStorage.setItem(itemDeletedAtKey(store, itemKey), value);
+  localStorage.setItem(itemUpdatedAtKey(store, itemKey), value);
+}
+
+function clearItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): void {
+  localStorage.removeItem(itemDeletedAtKey(store, itemKey));
 }
 
 function pendingOutboxItem(store: RemoteSyncStoreName, itemKey: string): RemoteSyncItem | undefined {
@@ -801,8 +822,26 @@ function localVersionForItem(spec: IdbStoreSpec, itemKey: string, existing: unkn
   return Math.max(
     existing === undefined ? 0 : spec.updatedAt(existing),
     rememberedItemUpdatedAt(spec.store, itemKey),
+    rememberedItemDeletedAt(spec.store, itemKey),
     pendingOutboxItem(spec.store, itemKey)?.updatedAt ?? 0,
   );
+}
+
+function pendingDeleteUpdatedAt(store: RemoteSyncStoreName, itemKey: string): number {
+  const pending = pendingOutboxItem(store, itemKey);
+  return pending && isDeletedItem(pending) ? pending.updatedAt : 0;
+}
+
+function shouldSuppressLocalSnapshotItem(
+  store: RemoteSyncStoreName,
+  itemKey: string,
+  payloadUpdatedAt: number,
+): boolean {
+  const deletedAt = Math.max(
+    rememberedItemDeletedAt(store, itemKey),
+    pendingDeleteUpdatedAt(store, itemKey),
+  );
+  return deletedAt > 0 && payloadUpdatedAt <= deletedAt;
 }
 
 function ensureIndex(
@@ -989,6 +1028,37 @@ function deleteRecordByItemKey(db: IDBDatabase, spec: IdbStoreSpec, itemKey: str
   });
 }
 
+function deleteLegacyImportedGameById(db: IDBDatabase, gameId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains('game-library')) return resolve();
+    const tx = db.transaction('game-library', 'readwrite');
+    const store = tx.objectStore('game-library');
+    const gamesReq = store.get('imported-games');
+    const navReq = store.get('imported-nav');
+
+    gamesReq.onsuccess = () => {
+      const value = gamesReq.result as { games?: unknown[] } | undefined;
+      const games = Array.isArray(value?.games) ? value.games : [];
+      if (games.length === 0) return;
+      const next = games.filter(game => objectValue(game)?.id !== gameId);
+      if (next.length === games.length) return;
+      if (next.length === 0) store.delete('imported-games');
+      else store.put({ ...(value ?? {}), games: next }, 'imported-games');
+    };
+    gamesReq.onerror = () => reject(gamesReq.error);
+
+    navReq.onsuccess = () => {
+      const nav = objectValue(navReq.result);
+      if (nav?.selectedId === gameId) store.delete('imported-nav');
+    };
+    navReq.onerror = () => reject(navReq.error);
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 async function writeRecordByItemKey(db: IDBDatabase, spec: IdbStoreSpec, itemKey: string, payload: unknown): Promise<void> {
   if (spec.keyMode !== 'explicit') {
     const payloadKey = spec.keyForRecord(payload);
@@ -1068,6 +1138,7 @@ function readLocalSettingsItems(): RemoteSyncItem[] {
       updatedAt = Date.now();
       setSettingUpdatedAt(key, updatedAt);
     }
+    if (shouldSuppressLocalSnapshotItem('settings', key, updatedAt)) continue;
     items.push({
       store: 'settings',
       itemKey: key,
@@ -1080,6 +1151,22 @@ function readLocalSettingsItems(): RemoteSyncItem[] {
 
 export function readRemoteSyncLocalSettingsItemsForTest(): RemoteSyncItem[] {
   return readLocalSettingsItems();
+}
+
+export function readRemoteSyncLocalSnapshotItemForTest(
+  store: RemoteSyncStoreName,
+  itemKey: string,
+  payload: unknown,
+  payloadUpdatedAt: number,
+): RemoteSyncItem | null {
+  if (shouldSuppressLocalSnapshotItem(store, itemKey, payloadUpdatedAt)) return null;
+  return {
+    store,
+    itemKey,
+    payload,
+    updatedAt: Math.max(payloadUpdatedAt, rememberedItemUpdatedAt(store, itemKey)),
+    operation: 'upsert',
+  };
 }
 
 function payloadSettingValue(payload: unknown, fallbackKey: string): string | undefined {
@@ -1099,6 +1186,7 @@ function applySettingItem(item: RemoteSyncItem): 'applied' | 'skipped' {
     withSettingsRemoteApplySuppressed(() => {
       localStorage.removeItem(item.itemKey);
       setSettingUpdatedAt(item.itemKey, item.updatedAt);
+      rememberItemDeletedAt('settings', item.itemKey, item.updatedAt);
     });
     return 'applied';
   }
@@ -1107,6 +1195,7 @@ function applySettingItem(item: RemoteSyncItem): 'applied' | 'skipped' {
   withSettingsRemoteApplySuppressed(() => {
     localStorage.setItem(item.itemKey, value);
     setSettingUpdatedAt(item.itemKey, item.updatedAt);
+    clearItemDeletedAt('settings', item.itemKey);
   });
   return 'applied';
 }
@@ -1250,7 +1339,11 @@ function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneratio
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key) continue;
-    if (key.startsWith(ITEM_UPDATED_AT_PREFIX) || key.startsWith(SETTING_UPDATED_AT_PREFIX)) keysToRemove.push(key);
+    if (
+      key.startsWith(ITEM_UPDATED_AT_PREFIX)
+      || key.startsWith(ITEM_DELETED_AT_PREFIX)
+      || key.startsWith(SETTING_UPDATED_AT_PREFIX)
+    ) keysToRemove.push(key);
   }
   for (const key of keysToRemove) localStorage.removeItem(key);
 }
@@ -1626,7 +1719,11 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   if (applyingRemoteSync) return;
   const normalized = normalizeSyncItem(item);
   if (!normalized) throw new Error('Invalid Remote sync item.');
-  rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
+  if (isDeletedItem(normalized)) rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
+  else {
+    rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
+    clearItemDeletedAt(normalized.store, normalized.itemKey);
+  }
   const snapshot = readOutboxSnapshot({ logInvalid: true });
   writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
   scheduleRemoteSyncFlush();
@@ -1916,7 +2013,9 @@ function recordsToSyncItems(spec: IdbStoreSpec, records: IdbRecord[]): RemoteSyn
   return records.flatMap(record => {
     const itemKey = spec.keyForRecord(record.value, record.primaryKey);
     if (!itemKey) return [];
-    const updatedAt = Math.max(spec.updatedAt(record.value), rememberedItemUpdatedAt(spec.store, itemKey));
+    const payloadUpdatedAt = spec.updatedAt(record.value);
+    if (shouldSuppressLocalSnapshotItem(spec.store, itemKey, payloadUpdatedAt)) return [];
+    const updatedAt = Math.max(payloadUpdatedAt, rememberedItemUpdatedAt(spec.store, itemKey));
     return [{
       store: spec.store,
       itemKey,
@@ -1935,8 +2034,10 @@ async function readLocalStoreItems(spec: IdbStoreSpec): Promise<RemoteSyncItem[]
       const legacyGames = flattenLegacyGameLibrary(await readAllFromStore(db, 'game-library'));
       return legacyGames.flatMap(record => {
         const itemKey = stringField(record, 'id');
+        const payloadUpdatedAt = genericUpdatedAt(record);
+        if (itemKey && shouldSuppressLocalSnapshotItem('games', itemKey, payloadUpdatedAt)) return [];
         return itemKey
-          ? [{ store: 'games' as const, itemKey, updatedAt: genericUpdatedAt(record), payload: record, operation: 'upsert' as const }]
+          ? [{ store: 'games' as const, itemKey, updatedAt: Math.max(payloadUpdatedAt, rememberedItemUpdatedAt('games', itemKey)), payload: record, operation: 'upsert' as const }]
           : [];
       });
     }
@@ -1964,6 +2065,7 @@ async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted'
       if (!merged) return 'skipped';
       await writeRecordByItemKey(db, spec, item.itemKey, merged);
       rememberItemUpdatedAt(spec.store, item.itemKey, maxTimestamp(item.updatedAt, accountUpdatedAt(merged)));
+      clearItemDeletedAt(spec.store, item.itemKey);
       return 'applied';
     }
 
@@ -1972,12 +2074,14 @@ async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted'
 
     if (isDeletedItem(item)) {
       await deleteRecordByItemKey(db, spec, item.itemKey);
-      rememberItemUpdatedAt(spec.store, item.itemKey, item.updatedAt);
+      if (spec.store === 'games') await deleteLegacyImportedGameById(db, item.itemKey);
+      rememberItemDeletedAt(spec.store, item.itemKey, item.updatedAt);
       return 'deleted';
     }
     if (item.payload === undefined) return 'skipped';
     await writeRecordByItemKey(db, spec, item.itemKey, item.payload);
     rememberItemUpdatedAt(spec.store, item.itemKey, item.updatedAt);
+    clearItemDeletedAt(spec.store, item.itemKey);
     return 'applied';
   } finally {
     db.close();
