@@ -44,11 +44,12 @@ async function fetchChesscomResponse(
   url: string,
   requestClass: string,
   failureMessage: string,
+  options: { recordHttpErrors?: boolean } = {},
 ): Promise<Response> {
   const startedAt = Date.now();
   try {
     const res = await fetch(url);
-    if (!res.ok) {
+    if (!res.ok && options.recordHttpErrors !== false) {
       recordChesscomImportEvent(failureMessage, Severity.Error, {
         requestClass,
         errorClass: 'http-error',
@@ -65,6 +66,14 @@ async function fetchChesscomResponse(
     });
     throw error;
   }
+}
+
+function archiveMonthFromUrl(url: string): string | null {
+  const parts = url.split('/');
+  const year = parts[parts.length - 2];
+  const month = parts[parts.length - 1];
+  if (!year || !month || !/^\d{4}$/.test(year) || !/^\d{1,2}$/.test(month)) return null;
+  return `${year}-${month.padStart(2, '0')}`;
 }
 
 /**
@@ -157,14 +166,15 @@ export async function fetchChesscomGames(
     .filter((m): m is string => m !== null)
     .sort()
     .pop() ?? null;
+  const archiveEntries = archives.map(url => ({
+    url,
+    archiveMonth: archiveMonthFromUrl(url),
+  }));
   const relevantArchives = (effectiveCutoff === null && beforeMonth === undefined)
-    ? archives
-    : archives.filter(url => {
-        const parts = url.split('/');
-        const year  = parts[parts.length - 2];
-        const month = parts[parts.length - 1];
-        if (!year || !month) return false;
-        const archiveMonth = `${year}-${month.padStart(2, '0')}`;
+    ? archiveEntries
+    : archiveEntries.filter(entry => {
+        const { archiveMonth } = entry;
+        if (archiveMonth === null) return false;
         if (effectiveCutoff !== null && archiveMonth < effectiveCutoff) return false;
         if (beforeMonth !== undefined && archiveMonth >= beforeMonth) return false;
         return true;
@@ -178,12 +188,34 @@ export async function fetchChesscomGames(
   }
 
   // 3. Fetch all relevant archive months in parallel.
-  const archiveResponses = await Promise.all(relevantArchives.map(url =>
-    fetchChesscomResponse(url, 'monthly-archive', 'Chess.com archive month fetch failed'),
+  const archiveResponses = await Promise.all(relevantArchives.map(entry =>
+    fetchChesscomResponse(
+      entry.url,
+      'monthly-archive',
+      'Chess.com archive month fetch failed',
+      { recordHttpErrors: false },
+    ).then(res => ({ entry, res })),
   ));
   const rawGames: any[] = [];
-  for (const res of archiveResponses) {
+  for (const { entry, res } of archiveResponses) {
     if (!res.ok) {
+      if (res.status === 404) {
+        recordChesscomImportEvent('chesscom-monthly-archive-skipped', Severity.Warn, {
+          requestClass: 'monthly-archive',
+          reason: 'monthly-archive-404',
+          archiveMonth: entry.archiveMonth,
+          httpStatus: res.status,
+          skippedMonthly404: true,
+        });
+        continue;
+      }
+      recordChesscomImportEvent('Chess.com archive month fetch failed', Severity.Error, {
+        requestClass: 'monthly-archive',
+        archiveMonth: entry.archiveMonth,
+        errorClass: 'http-error',
+        httpStatus: res.status,
+        latencyMs: null,
+      });
       throw new Error(`Chess.com API error ${res.status}`);
     }
     let data: { games?: any[] };
