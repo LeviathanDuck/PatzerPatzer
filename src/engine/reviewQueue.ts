@@ -17,8 +17,11 @@ import {
   loadReviewQueueManifestWithDiagnostics, loadAnalysisFromIdb, type StoredNodeEntry,
   saveReviewFailureRecord, deleteReviewFailureRecord, loadReviewFailureRecords,
   saveReviewRunManifest, loadLatestReviewRunManifest,
+  saveGameSummary,
   ANALYSIS_VERSION,
 } from '../idb/index';
+import { extractGameSummary } from '../stats/extract';
+import { invalidateSummariesCache } from '../stats/ctrl';
 import { pgnToTree } from '../tree/pgn';
 import { reviewDepth, reviewMovetime, syncReviewDepthSetting } from './batch';
 import {
@@ -2895,6 +2898,23 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
       });
     }
     _setReviewEngineMetadata(entry.game.id, reviewEngine);
+
+    // Stats-page parity with the foreground Review path (src/engine/batch.ts
+    // advanceBatch): write the game summary from the entry's own ctrl/cache/
+    // moments before they are evicted below. Skip cleanly when user color is
+    // unresolvable, matching foreground behavior.
+    if (userColor) {
+      const gameSummary = extractGameSummary(
+        entry.game,
+        ctrl.mainline,
+        p => cache.get(p),
+        userColor,
+        moments,
+        completionDepth,
+      );
+      void saveGameSummary(gameSummary);
+      invalidateSummariesCache();
+    }
 
     // Results are now durably saved (and resumable per T05/T06), so the heavy
     // per-entry AnalyseCtrl/eval-cache objects are no longer needed in memory —

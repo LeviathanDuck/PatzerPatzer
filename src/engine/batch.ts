@@ -33,7 +33,9 @@ import { invalidateSummariesCache } from '../stats/ctrl';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import type { ImportedGame } from '../import/types';
 import { dataManagementScopeMatchesGameId, type DataManagementLocalChangeDetail } from '../sync/dataManagementRuntime';
-import { contextFromNodeList, type EnginePositionContext } from './positionContext';
+import { contextFromNodeList, engineFenHash, type EnginePositionContext } from './positionContext';
+import { uciMoveIsLegalInFen } from './reviewResultBinding';
+import { record, Severity } from '../diagnostics';
 
 // --- Types ---
 
@@ -223,6 +225,54 @@ export function evalBatchItem(item: BatchItem): void {
   protocol.go(reviewDepth);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+function safeBatchGameId(gameId: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < gameId.length; i++) {
+    hash ^= gameId.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `game-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function recordForegroundBindingMismatch(item: BatchItem): void {
+  const gameId = _getSelectedGameId();
+  record({
+    kind: 'engine',
+    severity: Severity.Error,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-foreground-binding-mismatch',
+    metadata: {
+      safeGameId:     gameId ? safeBatchGameId(gameId) : null,
+      positionIndex:  batchDone,
+      queueLength:    batchQueue.length,
+      ply:            item.nodePly,
+      nodePath:       item.nodePath,
+      parentPath:     item.parentPath,
+      positionSource: item.position.source,
+      positionSurface: item.position.surface,
+      moveCount:      item.position.moves.length,
+      itemFenHash:    engineFenHash(item.fen),
+      positionCurrentFenHash: engineFenHash(item.position.currentFen),
+      timestamp:      Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
 /**
  * Called from ctrl.ts via the _onBatchBestmove callback when a batch bestmove arrives.
  * Handles both the Review eval storage and the queue advance.
@@ -233,6 +283,17 @@ function onBatchBestmove(): void {
   const nodePath   = getEvalNodePath();
   const nodePly    = getEvalNodePly();
   const parentPath = getEvalParentPath();
+
+  // Engine-result→node binding guard (interim tripwire — see comment above). batchDone has not
+  // advanced past this item yet, so batchQueue[batchDone] is the position we just searched.
+  const item = batchQueue[batchDone];
+  if (item && stored.best && !uciMoveIsLegalInFen(item.fen, stored.best)) {
+    recordForegroundBindingMismatch(item);
+    resetCurrentEval();
+    clearPendingLines();
+    stopBatchAnalysis();
+    return;
+  }
 
   if (stored.cp !== undefined || stored.mate !== undefined) {
     const parentEval = evalCache.get(parentPath);
