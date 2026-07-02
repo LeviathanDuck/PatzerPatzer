@@ -137,6 +137,29 @@ function cursorPatchChanged(
     || ('syncFilterKey' in patch && patch.syncFilterKey !== existing.syncFilterKey);
 }
 
+function tagsPatchChanged(existing: readonly string[] | undefined, incoming: readonly string[] | undefined): boolean {
+  const a = (existing ?? []).slice().sort();
+  const b = (incoming ?? []).slice().sort();
+  return a.length !== b.length || a.some((tag, i) => tag !== b[i]);
+}
+
+
+
+
+
+
+
+export function accountProfilePatchChanged(
+  existing: ChessAccount,
+  patch: Partial<Omit<ChessAccount, 'id' | 'platform' | 'username' | 'addedAt'>>,
+): boolean {
+  return ('displayName' in patch && patch.displayName !== existing.displayName)
+    || ('category' in patch && patch.category !== existing.category)
+    || ('section' in patch && patch.section !== existing.section)
+    || ('order' in patch && patch.order !== existing.order)
+    || ('tags' in patch && tagsPatchChanged(existing.tags, patch.tags));
+}
+
 /**
  * Pure merge logic for `registerAccount()`. First-time registration (no
  * `existing` record) sets `category` from the import input. On
@@ -257,8 +280,7 @@ export async function updateAccount(
   const existing = await getAccountFromIdb(id);
   if (!existing) return undefined;
   const now = Date.now();
-  const profileChanged = ('displayName' in patch && patch.displayName !== existing.displayName)
-    || ('category' in patch && patch.category !== existing.category);
+  const profileChanged = accountProfilePatchChanged(existing, patch);
   const updated: ChessAccount = {
     ...existing,
     ...patch,

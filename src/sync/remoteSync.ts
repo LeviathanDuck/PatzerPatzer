@@ -395,7 +395,11 @@ function genericUpdatedAt(record: unknown): number {
   );
 }
 
-const ACCOUNT_PROFILE_FIELDS = ['displayName', 'category'] as const;
+
+
+
+
+const ACCOUNT_PROFILE_FIELDS = ['displayName', 'category', 'section', 'order', 'tags', 'lifetimeBest'] as const;
 const ACCOUNT_CURSOR_FIELDS = ['lastSyncedAt', 'newestGameTimestamp', 'oldestGameTimestamp', 'syncFilterKey'] as const;
 
 function accountProfileUpdatedAt(record: unknown): number {
