@@ -46,6 +46,11 @@ const BACKUP_FORMAT = 'patzer-sync-backup';
 export type { RemoteSyncItem, RemoteSyncOperation, RemoteSyncStoreName };
 export type RemoteStoreName = RemoteSyncStoreName;
 
+export interface RemoteSyncDeleteKey {
+  store: RemoteSyncStoreName;
+  itemKey: string;
+}
+
 export interface RemoteSyncPersistenceOperation {
   operation: 'put' | 'delete';
   dbName:    string;
@@ -57,6 +62,7 @@ export interface RemoteSyncPersistenceOperation {
 
 export type RemoteSyncLogAction =
   | 'backup'
+  | 'data-management'
   | 'restore'
   | 'invalidate'
   | 'login'
@@ -88,6 +94,16 @@ interface PullResponse {
   error?: string;
 }
 
+interface DataManagementDeleteResponse {
+  ok?: boolean;
+  items?: unknown[];
+  counts?: Record<string, number>;
+  latestUpdatedAt?: number;
+  syncGeneration?: number;
+  generationReason?: string;
+  error?: string;
+}
+
 interface ApiErrorBody {
   error?: string;
   code?: string;
@@ -98,6 +114,13 @@ interface ApiErrorBody {
 interface OutboxSnapshot {
   valid: RemoteSyncItem[];
   preservedInvalid: unknown[];
+}
+
+export interface RemoteSyncDataManagementDeleteTransaction {
+  readonly actionId: string;
+  stageKeys(keys: readonly RemoteSyncDeleteKey[]): void;
+  commit(keys: readonly RemoteSyncDeleteKey[]): Promise<SyncResult>;
+  release(): void;
 }
 
 interface StatusStoreSummary {
@@ -683,6 +706,33 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
     keyForRecord: record => stringField(record, 'id'),
     updatedAt: record => maxTimestamp(numberField(objectValue(record)?.stats, 'lastAttempt'), numberField(record, 'createdAt')),
   },
+  {
+    store: 'repertoire-sources',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'repertoire-sources',
+    keyMode: 'keyPath',
+    keyForRecord: record => stringField(record, 'id'),
+    updatedAt: record => numberField(record, 'updatedAt'),
+  },
+  {
+    store: 'repertoire-match-records',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'repertoire-match-records',
+    keyMode: 'keyPath',
+    keyForRecord: record => stringField(record, 'key'),
+    updatedAt: record => maxTimestamp(numberField(record, 'scannedAt'), numberField(record, 'updatedAt')),
+  },
+  {
+    store: 'repertoire-scan-runs',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'repertoire-scan-runs',
+    keyMode: 'keyPath',
+    keyForRecord: record => stringField(record, 'runId'),
+    updatedAt: record => numberField(record, 'updatedAt'),
+  },
 ];
 
 const IDB_SPECS_BY_STORE = new Map<RemoteSyncStoreName, IdbStoreSpec>(
@@ -747,6 +797,41 @@ let skipNextStartupPush = false;
 let activeSyncOperationCount = 0;
 let autoPullInFlight = false;
 
+interface ActiveDataManagementDelete {
+  actionId: string;
+  keyIds: Set<string>;
+}
+
+let activeDataManagementDelete: ActiveDataManagementDelete | null = null;
+
+function deleteKeyId(store: RemoteSyncStoreName, itemKey: string): string {
+  return `${store}\u0000${itemKey}`;
+}
+
+function normalizeDeleteKeys(keys: readonly RemoteSyncDeleteKey[]): RemoteSyncDeleteKey[] {
+  const normalized: RemoteSyncDeleteKey[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (!REMOTE_SYNC_STORE_NAMES.includes(key.store)) throw new Error(`Unsupported Remote sync store: ${key.store}`);
+    if (!key.itemKey.trim()) throw new Error('RemoteSync delete key is missing itemKey.');
+    const id = deleteKeyId(key.store, key.itemKey);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    normalized.push({ store: key.store, itemKey: key.itemKey });
+  }
+  return normalized;
+}
+
+function isActiveDataManagementDeleteKey(store: RemoteSyncStoreName, itemKey: string): boolean {
+  return activeDataManagementDelete?.keyIds.has(deleteKeyId(store, itemKey)) ?? false;
+}
+
+function stageActiveDataManagementDeleteKeys(keys: readonly RemoteSyncDeleteKey[]): void {
+  const active = activeDataManagementDelete;
+  if (!active) return;
+  for (const key of normalizeDeleteKeys(keys)) active.keyIds.add(deleteKeyId(key.store, key.itemKey));
+}
+
 function emitSyncActivityChanged(): void {
   window.dispatchEvent(new CustomEvent(REMOTE_SYNC_ACTIVITY_EVENT, {
     detail: { active: isRemoteSyncActive() },
@@ -777,6 +862,7 @@ function specForPersistenceOperation(operation: RemoteSyncPersistenceOperation):
 function scheduleRemoteSyncFlush(delayMs = FLUSH_DEBOUNCE_MS): void {
   if (!hasRemoteSyncToken()) return;
   if (isRemoteSyncFullPullRequired()) return;
+  if (activeDataManagementDelete) return;
   if (flushDebounceTimer !== null) window.clearTimeout(flushDebounceTimer);
   flushDebounceTimer = window.setTimeout(() => {
     flushDebounceTimer = null;
@@ -841,11 +927,22 @@ function shouldSuppressLocalSnapshotItem(
   itemKey: string,
   payloadUpdatedAt: number,
 ): boolean {
+  if (isActiveDataManagementDeleteKey(store, itemKey)) return true;
   const deletedAt = Math.max(
     rememberedItemDeletedAt(store, itemKey),
     pendingDeleteUpdatedAt(store, itemKey),
   );
   return deletedAt > 0 && payloadUpdatedAt <= deletedAt;
+}
+
+export function shouldSuppressRemoteSyncUpsert(
+  store: RemoteSyncStoreName,
+  itemKey: string,
+  updatedAt: number,
+): boolean {
+  if (isActiveDataManagementDeleteKey(store, itemKey)) return true;
+  const deletedAt = rememberedItemDeletedAt(store, itemKey);
+  return deletedAt > 0 && updatedAt <= deletedAt;
 }
 
 function ensureIndex(
@@ -1186,6 +1283,7 @@ function payloadSettingValue(payload: unknown, fallbackKey: string): string | un
 function applySettingItem(item: RemoteSyncItem): 'applied' | 'skipped' {
   if (!isAllowedSettingKey(item.itemKey)) return 'skipped';
   if (item.updatedAt < settingUpdatedAt(item.itemKey)) return 'skipped';
+  if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert('settings', item.itemKey, item.updatedAt)) return 'skipped';
   if (isDeletedItem(item)) {
     withSettingsRemoteApplySuppressed(() => {
       localStorage.removeItem(item.itemKey);
@@ -1255,6 +1353,7 @@ function runVisibleAutoPull(): void {
   if (!hasRemoteSyncToken()) return;
   if (document.visibilityState !== 'visible') return;
   if (autoPullInFlight) return;
+  if (activeDataManagementDelete) return;
   autoPullInFlight = true;
   void pullFromRemoteSync({
     flushAfter: !isRemoteSyncFullPullRequired(),
@@ -1426,6 +1525,7 @@ function payloadClassForEndpoint(endpoint: string): string {
     case 'restore-start': return 'restore-start';
     case 'restore-chunk': return 'restore-chunk';
     case 'restore-commit': return 'restore-commit';
+    case 'data-management-delete': return 'delete-tombstones';
     case 'invalidate': return 'invalidate-sessions';
     default: return endpoint;
   }
@@ -1709,6 +1809,34 @@ function writeOutbox(items: RemoteSyncItem[]): void {
   writeOutboxSnapshot(items);
 }
 
+function sameOutboxItem(left: RemoteSyncItem, right: RemoteSyncItem): boolean {
+  return left.store === right.store
+    && left.itemKey === right.itemKey
+    && left.updatedAt === right.updatedAt
+    && isDeletedItem(left) === isDeletedItem(right)
+    && (isDeletedItem(left) || JSON.stringify(left.payload) === JSON.stringify(right.payload));
+}
+
+function removeOutboxSnapshotItems(items: RemoteSyncItem[]): void {
+  if (items.length === 0) return;
+  const current = readOutboxSnapshot({ logInvalid: true });
+  const valid = current.valid.filter(item => !items.some(pushed => sameOutboxItem(item, pushed)));
+  writeOutboxSnapshot(valid, current.preservedInvalid);
+}
+
+function removeOutboxItemsForCommittedDeletes(items: RemoteSyncItem[]): void {
+  const tombstones = items
+    .filter(isDeletedItem)
+    .map(item => ({ ...item, id: deleteKeyId(item.store, item.itemKey) }));
+  if (tombstones.length === 0) return;
+  const current = readOutboxSnapshot({ logInvalid: true });
+  const valid = current.valid.filter(item => {
+    const tombstone = tombstones.find(entry => entry.id === deleteKeyId(item.store, item.itemKey));
+    return !tombstone || item.updatedAt > tombstone.updatedAt;
+  });
+  writeOutboxSnapshot(valid, current.preservedInvalid);
+}
+
 function mergeOutboxItem(outbox: RemoteSyncItem[], item: RemoteSyncItem): RemoteSyncItem[] {
   const index = outbox.findIndex(existing => existing.store === item.store && existing.itemKey === item.itemKey);
   if (index === -1) return [...outbox, item];
@@ -1725,6 +1853,7 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   if (!normalized) throw new Error('Invalid Remote sync item.');
   if (isDeletedItem(normalized)) rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
   else {
+    if (shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt)) return;
     rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
     clearItemDeletedAt(normalized.store, normalized.itemKey);
   }
@@ -2004,6 +2133,94 @@ async function pushItems(items: RemoteSyncItem[]): Promise<Record<string, number
   return counts;
 }
 
+async function commitDataManagementDeleteKeys(
+  actionId: string,
+  keys: readonly RemoteSyncDeleteKey[],
+): Promise<SyncResult> {
+  const items = normalizeDeleteKeys(keys);
+  if (items.length === 0) return { success: true, counts: {} };
+  if (isRemoteSyncFullPullRequired()) {
+    const message = 'Pull the token database before deleting server data from this browser.';
+    const counts = { queued: items.length };
+    recordRemoteSyncLog('data-management', 'error', message, counts);
+    return { success: false, error: message, counts };
+  }
+  if (!hasRemoteSyncToken()) {
+    const counts = { queued: items.length };
+    const message = 'Enter the admin sync token first.';
+    recordRemoteSyncLog('data-management', 'error', message, counts);
+    return { success: false, error: message, counts };
+  }
+
+  return withRemoteSyncActivity(async () => {
+    try {
+      await ensureServerGenerationLoaded();
+      const result = await postJson<DataManagementDeleteResponse>('data-management-delete.php', {
+        actionId,
+        items,
+      });
+      if (!result.ok) throw new Error(result.error || 'RemoteSync data delete failed.');
+
+      const tombstones = (result.items ?? [])
+        .map(raw => normalizeSyncItem(raw, { logInvalid: true, requireUpdatedAt: true, logAction: 'data-management' }))
+        .filter((item): item is RemoteSyncItem => item !== null && isDeletedItem(item));
+      if (tombstones.length !== items.length) {
+        throw new Error(`RemoteSync data delete confirmed ${tombstones.length} of ${items.length} requested tombstone${items.length === 1 ? '' : 's'}.`);
+      }
+      for (const tombstone of tombstones) rememberItemDeletedAt(tombstone.store, tombstone.itemKey, tombstone.updatedAt);
+      removeOutboxItemsForCommittedDeletes(tombstones);
+
+      const latestUpdatedAt = result.latestUpdatedAt ?? maxItemUpdatedAt(tombstones);
+      if (latestUpdatedAt > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
+      setRemoteSyncLastCheckedAt();
+      rememberServerGeneration(result.syncGeneration, result.generationReason);
+
+      const counts = {
+        ...(result.counts ?? {}),
+        tombstonesCommitted: tombstones.length,
+      };
+      recordRemoteSyncLog('data-management', 'success', 'Data Management delete tombstones committed to the token database.', counts);
+      emitRemoteSyncApplied(counts, latestUpdatedAt);
+      return { success: true, counts };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'RemoteSync data delete failed.';
+      const counts = { queued: items.length };
+      recordRemoteSyncLog('data-management', 'error', message, counts);
+      return { success: false, error: message, counts };
+    }
+  });
+}
+
+export function beginRemoteSyncDataManagementDelete(actionId: string): RemoteSyncDataManagementDeleteTransaction {
+  if (activeDataManagementDelete) throw new Error('Another Data Management delete is already in progress.');
+  syncGeneration++;
+  if (flushDebounceTimer !== null) {
+    window.clearTimeout(flushDebounceTimer);
+    flushDebounceTimer = null;
+  }
+  activeDataManagementDelete = { actionId, keyIds: new Set() };
+  return {
+    actionId,
+    stageKeys(keys: readonly RemoteSyncDeleteKey[]): void {
+      if (activeDataManagementDelete?.actionId !== actionId) return;
+      stageActiveDataManagementDeleteKeys(keys);
+    },
+    async commit(keys: readonly RemoteSyncDeleteKey[]): Promise<SyncResult> {
+      if (activeDataManagementDelete?.actionId !== actionId) {
+        return { success: false, error: 'Data Management delete transaction is no longer active.', counts: {} };
+      }
+      stageActiveDataManagementDeleteKeys(keys);
+      return commitDataManagementDeleteKeys(actionId, keys);
+    },
+    release(): void {
+      if (activeDataManagementDelete?.actionId === actionId) {
+        activeDataManagementDelete = null;
+        syncGeneration++;
+      }
+    },
+  };
+}
+
 function flattenLegacyGameLibrary(records: IdbRecord[]): unknown[] {
   const games: unknown[] = [];
   for (const record of records) {
@@ -2063,6 +2280,7 @@ async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted'
   const db = await openIdb(spec.dbName, spec.dbVersion);
   try {
     const existing = await readRecordByItemKey(db, spec, item.itemKey);
+    if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert(spec.store, item.itemKey, item.updatedAt)) return 'skipped';
     if (item.store === 'accounts' && !isDeletedItem(item)) {
       if (item.payload === undefined) return 'skipped';
       const merged = mergeRemoteSyncAccountPayload(existing, item.payload, item.itemKey);
@@ -2192,6 +2410,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
   const snapshot = readOutboxSnapshot({ logInvalid: true });
   const outbox = snapshot.valid;
   if (outbox.length === 0) return { success: true, counts: {} };
+  if (activeDataManagementDelete) return { success: true, counts: { paused: 1, queued: outbox.length } };
   if (isRemoteSyncFullPullRequired()) {
     const message = 'Pull the token database before pushing from this browser.';
     const counts = { queued: outbox.length };
@@ -2207,12 +2426,11 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
   return withRemoteSyncActivity(async () => {
     try {
       const counts = await pushItems(outbox);
-      writeOutboxSnapshot([], snapshot.preservedInvalid);
+      removeOutboxSnapshotItems(outbox);
       setRemoteSyncLastSyncedAt(maxItemUpdatedAt(outbox));
       recordRemoteSyncLog('flush', 'success', 'Queued changes flushed.', counts);
       return { success: true, counts };
     } catch (error) {
-      if (!(error instanceof RemoteSyncStaleSessionError)) writeOutboxSnapshot(outbox, snapshot.preservedInvalid);
       const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
       const counts = { queued: outbox.length };
       recordRemoteSyncLog('flush', 'error', message, counts);
@@ -2222,6 +2440,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
 }
 
 export async function pushToRemoteSync(options: { skipFreshPull?: boolean } = {}): Promise<SyncResult> {
+  if (activeDataManagementDelete) return { success: true, counts: { paused: 1 } };
   return withRemoteSyncActivity(async () => {
     try {
       let pullCounts: Record<string, number> | undefined;
@@ -2261,6 +2480,7 @@ export async function pushToRemoteSync(options: { skipFreshPull?: boolean } = {}
 }
 
 export async function pullFromRemoteSync(options: { since?: number | null; flushAfter?: boolean; logNoop?: boolean } = {}): Promise<SyncResult> {
+  if (activeDataManagementDelete) return { success: true, counts: { paused: 1 } };
   return withRemoteSyncActivity(async () => {
     try {
       await ensureServerGenerationLoaded();

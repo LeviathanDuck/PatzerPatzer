@@ -89,8 +89,18 @@ $genericStmt = $pdo->prepare(
     'INSERT INTO patzer_sync_items (user_key, `store`, item_key, payload_json, updated_at_ms, deleted_at_ms)
      VALUES (:user_key, :store_name, :item_key, :payload_json, :updated_at_ms, :deleted_at_ms)
      ON DUPLICATE KEY UPDATE
-       payload_json = IF(VALUES(updated_at_ms) >= updated_at_ms, VALUES(payload_json), payload_json),
-       deleted_at_ms = IF(VALUES(updated_at_ms) >= updated_at_ms, VALUES(deleted_at_ms), deleted_at_ms),
+       payload_json = IF(
+         VALUES(updated_at_ms) > updated_at_ms
+         OR (VALUES(updated_at_ms) = updated_at_ms AND VALUES(deleted_at_ms) IS NOT NULL),
+         VALUES(payload_json),
+         payload_json
+       ),
+       deleted_at_ms = IF(
+         VALUES(updated_at_ms) > updated_at_ms
+         OR (VALUES(updated_at_ms) = updated_at_ms AND VALUES(deleted_at_ms) IS NOT NULL),
+         VALUES(deleted_at_ms),
+         deleted_at_ms
+       ),
        updated_at_ms = GREATEST(updated_at_ms, VALUES(updated_at_ms))'
 );
 $readAccountStmt = $pdo->prepare(

@@ -26,6 +26,9 @@ export const REMOTE_SYNC_STORE_NAMES = [
   'opening-collections',
   'opening-session',
   'opening-training-variations',
+  'repertoire-sources',
+  'repertoire-match-records',
+  'repertoire-scan-runs',
   'settings',
 ] as const;
 

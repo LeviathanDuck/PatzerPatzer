@@ -8,6 +8,7 @@ import {
   type AccountSettingSyncItem,
   type AuthStatus,
 } from './client';
+import { shouldSuppressRemoteSyncUpsert } from './remoteSync';
 import { isSettingsRemoteApplySuppressed, withSettingsRemoteApplySuppressed } from './settingsSuppression';
 
 const SETTING_UPDATED_AT_PREFIX = 'patzer.account.settingUpdatedAt.';
@@ -209,6 +210,7 @@ function applyRemoteSettings(items: AccountSettingSyncItem[]): boolean {
         const item = normalizeRemoteSetting(raw);
         if (!item) continue;
         if (item.updatedAt < settingUpdatedAt(item.key)) continue;
+        if (!item.deleted && shouldSuppressRemoteSyncUpsert('settings', item.key, item.updatedAt)) continue;
         const currentValue = localStorage.getItem(item.key);
         if (item.deleted) {
           if (currentValue !== null) {

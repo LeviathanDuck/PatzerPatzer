@@ -16,7 +16,12 @@ import type { GameSummary } from '../stats/types';
 import type { PuzzleCandidate } from '../tree/types';
 import type { PuzzleAttempt, PuzzleDefinition, PuzzleUserMeta } from '../puzzles/types';
 import type { StudyItem, TrainableSequence } from '../study/types';
-import { enqueueRemoteSyncDelete, flushRemoteSyncOutbox, type RemoteSyncStoreName } from './remoteSync';
+import {
+  beginRemoteSyncDataManagementDelete,
+  type RemoteSyncDataManagementDeleteTransaction,
+  type RemoteSyncDeleteKey,
+  type RemoteSyncStoreName,
+} from './remoteSync';
 import {
   createDataManagementActionId,
   emitDataManagementLocalChange,
@@ -25,6 +30,7 @@ import {
   type DataManagementDomain,
   type DataManagementLocalChangeDetail,
 } from './dataManagementRuntime';
+import { withSettingsRemoteApplySuppressed } from './settingsSuppression';
 
 type AccountManagementRecord = ChessAccount & { fallback: boolean };
 
@@ -89,12 +95,14 @@ export type DataManagementCompletionStatus =
   | 'Deleted locally and verified'
   | 'Deleted locally; remote sync pending'
   | 'Deleted locally; remote sync failed'
+  | 'Deleted locally; server tombstones committed'
   | 'Deleted locally; remote verification unavailable'
   | 'Delete failed before local verification';
 
 export interface DataManagementTombstoneSummary {
   queued: number;
   failed: number;
+  items: RemoteSyncDeleteKey[];
 }
 
 export interface DataManagementVerificationSummary {
@@ -398,23 +406,25 @@ function legacySavedPuzzleKey(): string {
   return 'saved-puzzles';
 }
 
-function enqueueDelete(store: RemoteSyncStoreName, itemKey: string): boolean {
-  try {
-    enqueueRemoteSyncDelete(store, itemKey, Date.now());
-    return true;
-  } catch (error) {
-    console.warn('[data-management] RemoteSync tombstone enqueue failed', store, itemKey, error);
-    return false;
-  }
-}
-
 function emptyTombstoneSummary(): DataManagementTombstoneSummary {
-  return { queued: 0, failed: 0 };
+  return { queued: 0, failed: 0, items: [] };
 }
 
 function trackTombstone(summary: DataManagementTombstoneSummary, store: RemoteSyncStoreName, itemKey: string): void {
-  if (enqueueDelete(store, itemKey)) summary.queued++;
-  else summary.failed++;
+  if (!itemKey.trim()) {
+    summary.failed++;
+    return;
+  }
+  if (summary.items.some(item => item.store === store && item.itemKey === itemKey)) return;
+  summary.items.push({ store, itemKey });
+  summary.queued = summary.items.length;
+}
+
+function stageTombstones(
+  transaction: RemoteSyncDataManagementDeleteTransaction,
+  tombstones: DataManagementTombstoneSummary,
+): void {
+  if (tombstones.items.length > 0) transaction.stageKeys(tombstones.items);
 }
 
 function verificationPassed(remaining: Record<string, number>): boolean {
@@ -431,12 +441,12 @@ function verificationWarningsMessage(warnings: Record<string, number> | undefine
   return parts.length > 0 ? ` Remaining user-authored references: ${parts.join(', ')}.` : '';
 }
 
-function remoteSyncFromFlush(flush: DataManagementResult): DataManagementRemoteSyncSummary {
-  if (flush.success) return { status: 'flushed', counts: flush.counts };
+function remoteSyncFromCommit(commit: DataManagementResult): DataManagementRemoteSyncSummary {
+  if (commit.success) return { status: 'flushed', counts: commit.counts };
   return {
     status: 'failed',
-    counts: flush.counts,
-    ...(flush.error !== undefined ? { error: flush.error } : {}),
+    counts: commit.counts,
+    ...(commit.error !== undefined ? { error: commit.error } : {}),
   };
 }
 
@@ -460,31 +470,31 @@ function localVerificationFailureResult(
 }
 
 function verifiedDeleteResult(
-  flush: DataManagementResult,
+  commit: DataManagementResult,
   messagePrefix: string,
   counts: Record<string, number>,
   localVerification: DataManagementVerificationSummary,
   tombstones: DataManagementTombstoneSummary,
 ): DataManagementResult {
-  const remoteSync = remoteSyncFromFlush(flush);
-  const status: DataManagementCompletionStatus = flush.success
-    ? 'Deleted locally; remote verification unavailable'
+  const remoteSync = remoteSyncFromCommit(commit);
+  const status: DataManagementCompletionStatus = commit.success
+    ? 'Deleted locally; server tombstones committed'
     : 'Deleted locally; remote sync failed';
   return {
-    ...flush,
-    success: localVerification.success && flush.success,
-    message: `${messagePrefix} ${flush.message}${flush.success ? ' Remote verification unavailable.' : ''}${verificationWarningsMessage(localVerification.warnings)}`,
+    ...commit,
+    success: localVerification.success && commit.success,
+    message: `${messagePrefix} ${commit.message}${verificationWarningsMessage(localVerification.warnings)}`,
     counts: {
-      ...flush.counts,
+      ...commit.counts,
       ...counts,
       tombstonesQueued: tombstones.queued,
-      tombstoneEnqueueFailures: tombstones.failed,
+      tombstoneStageFailures: tombstones.failed,
     },
     status,
     tombstones,
     localVerification,
     remoteSync,
-    remoteVerification: { status: 'unavailable' },
+    remoteVerification: { status: commit.success ? 'verified' : 'unavailable' },
   };
 }
 
@@ -523,12 +533,18 @@ function finishDeleteAction(
   return result;
 }
 
-async function flushTombstones(): Promise<DataManagementResult> {
-  const result = await flushRemoteSyncOutbox();
-  if (result.success) return { success: true, message: 'Changes queued and flushed to the token database.', counts: result.counts ?? {} };
+async function commitTombstones(
+  transaction: RemoteSyncDataManagementDeleteTransaction,
+  tombstones: DataManagementTombstoneSummary,
+): Promise<DataManagementResult> {
+  if (tombstones.items.length === 0) {
+    return { success: true, message: 'No token database tombstones were needed.', counts: {} };
+  }
+  const result = await transaction.commit(tombstones.items);
+  if (result.success) return { success: true, message: 'Server tombstones committed to the token database.', counts: result.counts ?? {} };
   return {
     success: false,
-    message: result.error || 'Changes were made locally, but tombstones did not flush.',
+    message: result.error || 'Changes were made locally, but server tombstones did not commit.',
     counts: result.counts ?? {},
     ...(result.error !== undefined ? { error: result.error } : {}),
   };
@@ -832,19 +848,23 @@ async function deleteLegacySavedReviewPuzzles(): Promise<number> {
     tx.objectStore('puzzle-library').delete(legacySavedPuzzleKey());
     await txDone(tx);
     setSavedPuzzles([]);
-    enqueueDelete('saved-review-puzzles', legacySavedPuzzleKey());
     return count;
   } finally {
     db.close();
   }
 }
 
-async function filterLegacySavedReviewPuzzles(gameIds: Set<string>): Promise<number> {
+async function filterLegacySavedReviewPuzzles(
+  gameIds: Set<string>,
+  tombstones?: DataManagementTombstoneSummary,
+): Promise<number> {
   const current = await readLegacySavedReviewPuzzles();
   const next = current.filter(puzzle => !puzzle.gameId || !gameIds.has(puzzle.gameId));
   if (next.length === current.length) return 0;
   await writeLegacySavedReviewPuzzles(next);
-  if (next.length === 0) enqueueDelete('saved-review-puzzles', legacySavedPuzzleKey());
+  if (next.length === 0) {
+    if (tombstones) trackTombstone(tombstones, 'saved-review-puzzles', legacySavedPuzzleKey());
+  }
   else {
     try {
       const { enqueueRemoteSyncUpsert } = await import('./remoteSync');
@@ -967,6 +987,53 @@ async function verifyImportedAccountAndGamesDeleted(
       success: verificationPassed(remaining),
       remaining,
       ...(warnings.studyReferences > 0 || warnings.practiceReferences > 0 ? { warnings } : {}),
+    };
+  } finally {
+    mainDb.close();
+    puzzleDb.close();
+  }
+}
+
+async function verifyAllGamesDeleted(
+  gameIds: Set<string>,
+  generatedPuzzleIds: Set<string>,
+): Promise<DataManagementVerificationSummary> {
+  const mainDb = await openMainDb();
+  const puzzleDb = await openPuzzleDb();
+  try {
+    const [games, legacyGames, analysis, summaries, retroResults, adjacent, nav] = await Promise.all([
+      readAll<StoredGameRecord>(mainDb, 'games'),
+      readLegacyImportedGames(mainDb),
+      readAll<StoredAnalysis>(mainDb, 'analysis-library'),
+      readAll<GameSummary>(mainDb, 'game-summaries'),
+      readAll<RetroSessionResult>(mainDb, 'retro-results'),
+      readReviewAdjacentRecords(mainDb),
+      readImportedNavState(mainDb),
+    ]);
+    const [definitions, attempts, meta] = await Promise.all([
+      readAll<PuzzleDefinition>(puzzleDb, 'definitions'),
+      readAll<PuzzleAttempt>(puzzleDb, 'attempts'),
+      readAll<PuzzleUserMeta>(puzzleDb, 'user-meta'),
+    ]);
+    const reviewKeys = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
+    const adjacentKeys = collectReviewAdjacentKeysForGameIds(gameIds, adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
+    const sourceGeneratedDefinitions = definitions.filter(def => {
+      const sourceGameId = puzzleDefinitionSourceGameId(def);
+      return sourceGameId ? gameIds.has(sourceGameId) : false;
+    });
+    const generatedIds = new Set([...generatedPuzzleIds, ...sourceGeneratedDefinitions.map(def => def.id)]);
+    const remaining = {
+      games: games.filter(game => gameIds.has(game.id)).length,
+      legacyImportedGames: legacyGames.filter(game => gameIds.has(game.id)).length,
+      importedNav: nav?.selectedId && gameIds.has(nav.selectedId) ? 1 : 0,
+      ...reviewCounts(reviewKeys, adjacentKeys),
+      puzzleDefinitions: sourceGeneratedDefinitions.length,
+      puzzleAttempts: attempts.filter(attempt => generatedIds.has(attempt.puzzleId)).length,
+      puzzleMeta: meta.filter(item => generatedIds.has(item.puzzleId)).length,
+    };
+    return {
+      success: verificationPassed(remaining),
+      remaining,
     };
   } finally {
     mainDb.close();
@@ -1098,46 +1165,52 @@ export async function deleteAllReviewData(): Promise<DataManagementResult> {
       gameIds: games.map(game => game.id),
     });
     action = await fenceDeleteAction(action);
+    const transaction = beginRemoteSyncDataManagementDelete(action.actionId);
 
-    const [analysis, summaries, retroResults, adjacent] = await Promise.all([
-      readAll<StoredAnalysis>(mainDb, 'analysis-library'),
-      readAll<GameSummary>(mainDb, 'game-summaries'),
-      readAll<RetroSessionResult>(mainDb, 'retro-results'),
-      readReviewAdjacentRecords(mainDb),
-    ]);
-    const analysisKeys = analysis.map(item => item.gameId);
-    const summaryKeys = summaries.map(item => item.gameId);
-    const retroKeys = retroResults.map(item => item.gameId);
+    try {
+      const [analysis, summaries, retroResults, adjacent] = await Promise.all([
+        readAll<StoredAnalysis>(mainDb, 'analysis-library'),
+        readAll<GameSummary>(mainDb, 'game-summaries'),
+        readAll<RetroSessionResult>(mainDb, 'retro-results'),
+        readReviewAdjacentRecords(mainDb),
+      ]);
+      const analysisKeys = analysis.map(item => item.gameId);
+      const summaryKeys = summaries.map(item => item.gameId);
+      const retroKeys = retroResults.map(item => item.gameId);
 
-    const reviewKeys = { analysisKeys, summaryKeys, retroKeys };
-    const adjacentKeys = collectAllReviewAdjacentKeys(adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
-    await deleteReviewKeys(reviewKeys);
-    await deleteReviewAdjacentKeys(adjacentKeys);
-    const tombstones = emptyTombstoneSummary();
-    enqueueReviewDeletes(reviewKeys, tombstones);
-    const gameIds = new Set(games.map(game => game.id));
-    const reviewedGameIds = new Set([...analysisKeys, ...summaryKeys, ...retroKeys].filter(gameId => gameIds.has(gameId)));
-    const localVerification = await verifyReviewDataDeleted(gameIds, 'all');
-    const counts = {
-      reviewGames: reviewedGameIds.size,
-      ...reviewCounts(reviewKeys, adjacentKeys),
-    };
-    if (!localVerification.success) {
-      return finishDeleteAction(action, localVerificationFailureResult(
-        `Reset analysis attempted for ${reviewedGameIds.size} game${reviewedGameIds.size === 1 ? '' : 's'}, but local verification found remaining review records.`,
+      const reviewKeys = { analysisKeys, summaryKeys, retroKeys };
+      const adjacentKeys = collectAllReviewAdjacentKeys(adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
+      const tombstones = emptyTombstoneSummary();
+      enqueueReviewDeletes(reviewKeys, tombstones);
+      stageTombstones(transaction, tombstones);
+      await deleteReviewKeys(reviewKeys);
+      await deleteReviewAdjacentKeys(adjacentKeys);
+      const gameIds = new Set(games.map(game => game.id));
+      const reviewedGameIds = new Set([...analysisKeys, ...summaryKeys, ...retroKeys].filter(gameId => gameIds.has(gameId)));
+      const localVerification = await verifyReviewDataDeleted(gameIds, 'all');
+      const counts = {
+        reviewGames: reviewedGameIds.size,
+        ...reviewCounts(reviewKeys, adjacentKeys),
+      };
+      if (!localVerification.success) {
+        return finishDeleteAction(action, localVerificationFailureResult(
+          `Reset analysis attempted for ${reviewedGameIds.size} game${reviewedGameIds.size === 1 ? '' : 's'}, but local verification found remaining review records.`,
+          counts,
+          localVerification,
+          tombstones,
+        ));
+      }
+      const commit = await commitTombstones(transaction, tombstones);
+      return finishDeleteAction(action, verifiedDeleteResult(
+        commit,
+        `Reset analysis for ${reviewedGameIds.size} game${reviewedGameIds.size === 1 ? '' : 's'}.`,
         counts,
         localVerification,
         tombstones,
       ));
+    } finally {
+      transaction.release();
     }
-    const flush = await flushTombstones();
-    return finishDeleteAction(action, verifiedDeleteResult(
-      flush,
-      `Reset analysis for ${reviewedGameIds.size} game${reviewedGameIds.size === 1 ? '' : 's'}.`,
-      counts,
-      localVerification,
-      tombstones,
-    ));
   } finally {
     mainDb.close();
   }
@@ -1154,38 +1227,44 @@ export async function deleteAccountReviewData(accountIdValue: string): Promise<D
       gameIds: keys,
     });
     action = await fenceDeleteAction(action);
+    const transaction = beginRemoteSyncDataManagementDelete(action.actionId);
 
-    const [analysis, summaries, retroResults, adjacent] = await Promise.all([
-      readAll<StoredAnalysis>(mainDb, 'analysis-library'),
-      readAll<GameSummary>(mainDb, 'game-summaries'),
-      readAll<RetroSessionResult>(mainDb, 'retro-results'),
-      readReviewAdjacentRecords(mainDb),
-    ]);
-    const scopedReviewKeys = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
-    const adjacentKeys = collectReviewAdjacentKeysForGameIds(gameIds, adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
+    try {
+      const [analysis, summaries, retroResults, adjacent] = await Promise.all([
+        readAll<StoredAnalysis>(mainDb, 'analysis-library'),
+        readAll<GameSummary>(mainDb, 'game-summaries'),
+        readAll<RetroSessionResult>(mainDb, 'retro-results'),
+        readReviewAdjacentRecords(mainDb),
+      ]);
+      const scopedReviewKeys = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
+      const adjacentKeys = collectReviewAdjacentKeysForGameIds(gameIds, adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
 
-    await deleteReviewKeys(scopedReviewKeys);
-    await deleteReviewAdjacentKeys(adjacentKeys);
-    const tombstones = emptyTombstoneSummary();
-    enqueueReviewDeletes(scopedReviewKeys, tombstones);
-    const localVerification = await verifyReviewDataDeleted(gameIds, 'scoped');
-    const counts = reviewCounts(scopedReviewKeys, adjacentKeys);
-    if (!localVerification.success) {
-      return finishDeleteAction(action, localVerificationFailureResult(
-        `Deleted review data attempted for ${keys.length} account game${keys.length === 1 ? '' : 's'}, but local verification found remaining review records.`,
+      const tombstones = emptyTombstoneSummary();
+      enqueueReviewDeletes(scopedReviewKeys, tombstones);
+      stageTombstones(transaction, tombstones);
+      await deleteReviewKeys(scopedReviewKeys);
+      await deleteReviewAdjacentKeys(adjacentKeys);
+      const localVerification = await verifyReviewDataDeleted(gameIds, 'scoped');
+      const counts = reviewCounts(scopedReviewKeys, adjacentKeys);
+      if (!localVerification.success) {
+        return finishDeleteAction(action, localVerificationFailureResult(
+          `Deleted review data attempted for ${keys.length} account game${keys.length === 1 ? '' : 's'}, but local verification found remaining review records.`,
+          counts,
+          localVerification,
+          tombstones,
+        ));
+      }
+      const commit = await commitTombstones(transaction, tombstones);
+      return finishDeleteAction(action, verifiedDeleteResult(
+        commit,
+        `Deleted review data for ${keys.length} account game${keys.length === 1 ? '' : 's'}.`,
         counts,
         localVerification,
         tombstones,
       ));
+    } finally {
+      transaction.release();
     }
-    const flush = await flushTombstones();
-    return finishDeleteAction(action, verifiedDeleteResult(
-      flush,
-      `Deleted review data for ${keys.length} account game${keys.length === 1 ? '' : 's'}.`,
-      counts,
-      localVerification,
-      tombstones,
-    ));
   } finally {
     mainDb.close();
   }
@@ -1201,50 +1280,53 @@ export async function deleteAllGames(): Promise<DataManagementResult> {
       gameIds: [...gameIds],
     });
     action = await fenceDeleteAction(action);
+    const transaction = beginRemoteSyncDataManagementDelete(action.actionId);
 
-    const [analysis, summaries, retroResults, adjacent] = await Promise.all([
-      readAll<StoredAnalysis>(mainDb, 'analysis-library'),
-      readAll<GameSummary>(mainDb, 'game-summaries'),
-      readAll<RetroSessionResult>(mainDb, 'retro-results'),
-      readReviewAdjacentRecords(mainDb),
-    ]);
-    const { analysisKeys, summaryKeys, retroKeys } = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
+    try {
+      const [analysis, summaries, retroResults, adjacent] = await Promise.all([
+        readAll<StoredAnalysis>(mainDb, 'analysis-library'),
+        readAll<GameSummary>(mainDb, 'game-summaries'),
+        readAll<RetroSessionResult>(mainDb, 'retro-results'),
+        readReviewAdjacentRecords(mainDb),
+      ]);
+      const { analysisKeys, summaryKeys, retroKeys } = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
 
-    const reviewKeys = { analysisKeys, summaryKeys, retroKeys };
-    const adjacentKeys = collectReviewAdjacentKeysForGameIds(gameIds, adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
-    await deleteReviewKeys(reviewKeys);
-    await deleteReviewAdjacentKeys(adjacentKeys);
+      const reviewKeys = { analysisKeys, summaryKeys, retroKeys };
+      const adjacentKeys = collectReviewAdjacentKeysForGameIds(gameIds, adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
+      const generatedDefinitions = (await readGeneratedDefinitions())
+        .filter(def => {
+          const sourceGameId = puzzleDefinitionSourceGameId(def);
+          return sourceGameId ? gameIds.has(sourceGameId) : false;
+        });
+      const generatedIds = new Set(generatedDefinitions.map(def => def.id));
+      const attempts = await readPuzzleAttemptsForIds(generatedIds);
+      const legacyBefore = await readLegacySavedReviewPuzzles();
+      const legacyAfter = legacyBefore.filter(puzzle => !puzzle.gameId || !gameIds.has(puzzle.gameId));
+      const tombstones = emptyTombstoneSummary();
+      for (const gameId of gameIds) trackTombstone(tombstones, 'games', gameId);
+      enqueueReviewDeletes(reviewKeys, tombstones);
+      for (const id of generatedIds) {
+        trackTombstone(tombstones, 'puzzle-definitions', id);
+        trackTombstone(tombstones, 'puzzle-user-meta', id);
+      }
+      for (const attempt of attempts) trackTombstone(tombstones, 'puzzle-attempts', puzzleAttemptKey(attempt));
+      if (legacyBefore.length > 0 && legacyAfter.length === 0) {
+        trackTombstone(tombstones, 'saved-review-puzzles', legacySavedPuzzleKey());
+      }
+      stageTombstones(transaction, tombstones);
 
-    const generatedDefinitions = (await readGeneratedDefinitions())
-      .filter(def => {
-        const sourceGameId = puzzleDefinitionSourceGameId(def);
-        return sourceGameId ? gameIds.has(sourceGameId) : false;
-      });
-    const generatedIds = new Set(generatedDefinitions.map(def => def.id));
-    const attempts = await readPuzzleAttemptsForIds(generatedIds);
-    const deletedDefinitions = await deletePuzzleDefinitionsByIds(generatedIds);
-    const deletedAttempts = await deletePuzzleAttemptsByPuzzleIds(generatedIds);
-    const deletedMeta = await deletePuzzleMetaByIds(generatedIds);
-    const legacyPuzzles = await filterLegacySavedReviewPuzzles(gameIds);
-    await deleteMainStoreKeys('games', [...gameIds]);
-    await deleteLegacyImportedGames();
-    const deletedNav = await deleteImportedNavIfPointsAt(gameIds);
-    const deletedGames = gameIds.size;
-
-    const tombstones = emptyTombstoneSummary();
-    for (const gameId of gameIds) trackTombstone(tombstones, 'games', gameId);
-    enqueueReviewDeletes(reviewKeys, tombstones);
-    for (const id of generatedIds) {
-      trackTombstone(tombstones, 'puzzle-definitions', id);
-      trackTombstone(tombstones, 'puzzle-user-meta', id);
-    }
-    for (const attempt of attempts) trackTombstone(tombstones, 'puzzle-attempts', puzzleAttemptKey(attempt));
-    const flush = await flushTombstones();
-    return finishDeleteAction(action, {
-      ...flush,
-      message: `Deleted ${deletedGames} game${deletedGames === 1 ? '' : 's'} and whole-library derived records. ${flush.message}`,
-      counts: {
-        ...flush.counts,
+      await deleteReviewKeys(reviewKeys);
+      await deleteReviewAdjacentKeys(adjacentKeys);
+      const deletedDefinitions = await deletePuzzleDefinitionsByIds(generatedIds);
+      const deletedAttempts = await deletePuzzleAttemptsByPuzzleIds(generatedIds);
+      const deletedMeta = await deletePuzzleMetaByIds(generatedIds);
+      const legacyPuzzles = await filterLegacySavedReviewPuzzles(gameIds, tombstones);
+      await deleteMainStoreKeys('games', [...gameIds]);
+      await deleteLegacyImportedGames();
+      const deletedNav = await deleteImportedNavIfPointsAt(gameIds);
+      const deletedGames = gameIds.size;
+      const localVerification = await verifyAllGamesDeleted(gameIds, generatedIds);
+      const counts = {
         games: deletedGames,
         ...reviewCounts(reviewKeys, adjacentKeys),
         puzzleDefinitions: deletedDefinitions,
@@ -1252,11 +1334,26 @@ export async function deleteAllGames(): Promise<DataManagementResult> {
         puzzleMeta: deletedMeta,
         legacySavedReviewPuzzles: legacyPuzzles,
         importedNav: deletedNav,
-        tombstonesQueued: tombstones.queued,
-        tombstoneEnqueueFailures: tombstones.failed,
-      },
-      tombstones,
-    });
+      };
+      if (!localVerification.success) {
+        return finishDeleteAction(action, localVerificationFailureResult(
+          `Deleted ${deletedGames} game${deletedGames === 1 ? '' : 's'} attempted, but local verification found remaining records.`,
+          counts,
+          localVerification,
+          tombstones,
+        ));
+      }
+      const commit = await commitTombstones(transaction, tombstones);
+      return finishDeleteAction(action, verifiedDeleteResult(
+        commit,
+        `Deleted ${deletedGames} game${deletedGames === 1 ? '' : 's'} and whole-library derived records.`,
+        counts,
+        localVerification,
+        tombstones,
+      ));
+    } finally {
+      transaction.release();
+    }
   } finally {
     mainDb.close();
   }
@@ -1275,72 +1372,83 @@ export async function deleteImportedAccountAndGames(accountIdValue: string): Pro
       gameIds: scopedGameIds,
     });
     action = await fenceDeleteAction(action);
+    const transaction = beginRemoteSyncDataManagementDelete(action.actionId);
 
-    const [analysis, summaries, retroResults, adjacent] = await Promise.all([
-      readAll<StoredAnalysis>(mainDb, 'analysis-library'),
-      readAll<GameSummary>(mainDb, 'game-summaries'),
-      readAll<RetroSessionResult>(mainDb, 'retro-results'),
-      readReviewAdjacentRecords(mainDb),
-    ]);
-    const reviewKeys = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
-    const adjacentKeys = collectReviewAdjacentKeysForGameIds(gameIds, adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
-    await deleteReviewKeys(reviewKeys);
-    await deleteReviewAdjacentKeys(adjacentKeys);
+    try {
+      const [analysis, summaries, retroResults, adjacent] = await Promise.all([
+        readAll<StoredAnalysis>(mainDb, 'analysis-library'),
+        readAll<GameSummary>(mainDb, 'game-summaries'),
+        readAll<RetroSessionResult>(mainDb, 'retro-results'),
+        readReviewAdjacentRecords(mainDb),
+      ]);
+      const reviewKeys = collectReviewKeysForGameIds(gameIds, analysis, summaries, retroResults);
+      const adjacentKeys = collectReviewAdjacentKeysForGameIds(gameIds, adjacent.queueEntries, adjacent.reviewRuns, adjacent.failures);
+      const generatedDefinitions = (await readGeneratedDefinitions())
+        .filter(def => {
+          const sourceGameId = puzzleDefinitionSourceGameId(def);
+          return sourceGameId ? gameIds.has(sourceGameId) : false;
+        });
+      const generatedIds = new Set(generatedDefinitions.map(def => def.id));
+      const attempts = await readPuzzleAttemptsForIds(generatedIds);
+      const legacyBefore = await readLegacySavedReviewPuzzles();
+      const legacyAfter = legacyBefore.filter(puzzle => !puzzle.gameId || !gameIds.has(puzzle.gameId));
+      const tombstones = emptyTombstoneSummary();
+      for (const gameId of gameIds) trackTombstone(tombstones, 'games', gameId);
+      enqueueReviewDeletes(reviewKeys, tombstones);
+      for (const id of generatedIds) trackTombstone(tombstones, 'puzzle-definitions', id);
+      for (const definition of generatedDefinitions) {
+        trackTombstone(tombstones, 'puzzle-user-meta', definition.id);
+      }
+      for (const attempt of attempts) trackTombstone(tombstones, 'puzzle-attempts', puzzleAttemptKey(attempt));
+      if (legacyBefore.length > 0 && legacyAfter.length === 0) {
+        trackTombstone(tombstones, 'saved-review-puzzles', legacySavedPuzzleKey());
+      }
+      trackTombstone(tombstones, 'accounts', accountIdValue);
+      stageTombstones(transaction, tombstones);
 
-    const generatedDefinitions = (await readGeneratedDefinitions())
-      .filter(def => {
-        const sourceGameId = puzzleDefinitionSourceGameId(def);
-        return sourceGameId ? gameIds.has(sourceGameId) : false;
-      });
-    const generatedIds = new Set(generatedDefinitions.map(def => def.id));
-    const attempts = await readPuzzleAttemptsForIds(generatedIds);
-    const deletedDefinitions = await deletePuzzleDefinitionsByIds(generatedIds);
-    const deletedAttempts = await deletePuzzleAttemptsByPuzzleIds(generatedIds);
-    const deletedMeta = await deletePuzzleMetaByIds(generatedIds);
-    const legacyPuzzles = await filterLegacySavedReviewPuzzles(gameIds);
-    await deleteMainStoreKeys('games', [...gameIds]);
-    await filterLegacyImportedGames(gameIds);
-    const deletedNav = await deleteImportedNavIfPointsAt(gameIds);
-    await deleteMainStoreKeys('accounts', [accountIdValue]);
-    const deletedGames = gameIds.size;
+      await deleteReviewKeys(reviewKeys);
+      await deleteReviewAdjacentKeys(adjacentKeys);
+      const deletedDefinitions = await deletePuzzleDefinitionsByIds(generatedIds);
+      const deletedAttempts = await deletePuzzleAttemptsByPuzzleIds(generatedIds);
+      const deletedMeta = await deletePuzzleMetaByIds(generatedIds);
+      const legacyPuzzles = await filterLegacySavedReviewPuzzles(gameIds, tombstones);
+      await deleteMainStoreKeys('games', [...gameIds]);
+      await filterLegacyImportedGames(gameIds);
+      const deletedNav = await deleteImportedNavIfPointsAt(gameIds);
+      await deleteMainStoreKeys('accounts', [accountIdValue]);
+      const deletedGames = gameIds.size;
 
-    const tombstones = emptyTombstoneSummary();
-    for (const gameId of gameIds) trackTombstone(tombstones, 'games', gameId);
-    enqueueReviewDeletes(reviewKeys, tombstones);
-    for (const id of generatedIds) trackTombstone(tombstones, 'puzzle-definitions', id);
-    for (const definition of generatedDefinitions) {
-      trackTombstone(tombstones, 'puzzle-user-meta', definition.id);
-    }
-    for (const attempt of attempts) trackTombstone(tombstones, 'puzzle-attempts', puzzleAttemptKey(attempt));
-    trackTombstone(tombstones, 'accounts', accountIdValue);
-    const localVerification = await verifyImportedAccountAndGamesDeleted(accountIdValue, gameIds, generatedIds);
-    const counts = {
-      games: deletedGames,
-      accountRecords: accountExisted ? 1 : 0,
-      ...reviewCounts(reviewKeys, adjacentKeys),
-      puzzleDefinitions: deletedDefinitions,
-      puzzleAttempts: deletedAttempts,
-      puzzleMeta: deletedMeta,
-      legacySavedReviewPuzzles: legacyPuzzles,
-      importedNav: deletedNav,
-      ...(localVerification.warnings ?? {}),
-    };
-    if (!localVerification.success) {
-      return finishDeleteAction(action, localVerificationFailureResult(
-        `Deleted imported account and games attempted for ${accountIdValue}, but local verification found remaining records.`,
+      const localVerification = await verifyImportedAccountAndGamesDeleted(accountIdValue, gameIds, generatedIds);
+      const counts = {
+        games: deletedGames,
+        accountRecords: accountExisted ? 1 : 0,
+        ...reviewCounts(reviewKeys, adjacentKeys),
+        puzzleDefinitions: deletedDefinitions,
+        puzzleAttempts: deletedAttempts,
+        puzzleMeta: deletedMeta,
+        legacySavedReviewPuzzles: legacyPuzzles,
+        importedNav: deletedNav,
+        ...(localVerification.warnings ?? {}),
+      };
+      if (!localVerification.success) {
+        return finishDeleteAction(action, localVerificationFailureResult(
+          `Deleted imported account and games attempted for ${accountIdValue}, but local verification found remaining records.`,
+          counts,
+          localVerification,
+          tombstones,
+        ));
+      }
+      const commit = await commitTombstones(transaction, tombstones);
+      return finishDeleteAction(action, verifiedDeleteResult(
+        commit,
+        `Deleted imported account and ${deletedGames} game${deletedGames === 1 ? '' : 's'}.`,
         counts,
         localVerification,
         tombstones,
       ));
+    } finally {
+      transaction.release();
     }
-    const flush = await flushTombstones();
-    return finishDeleteAction(action, verifiedDeleteResult(
-      flush,
-      `Deleted imported account and ${deletedGames} game${deletedGames === 1 ? '' : 's'}.`,
-      counts,
-      localVerification,
-      tombstones,
-    ));
   } finally {
     mainDb.close();
   }
@@ -1366,58 +1474,98 @@ async function readAllPuzzleAttempts(): Promise<PuzzleAttempt[]> {
 }
 
 export async function deleteGeneratedPuzzleData(): Promise<DataManagementResult> {
-  const action = createDeleteAction('puzzles.deleteGenerated', ['puzzles'], {});
-  const definitions = await readGeneratedDefinitions();
-  const definitionIds = new Set(definitions.map(def => def.id));
-  const attempts = await readPuzzleAttemptsForIds(definitionIds);
-  const deletedDefinitions = await deletePuzzleDefinitionsByIds(definitionIds);
-  const deletedAttempts = await deletePuzzleAttemptsByPuzzleIds(definitionIds);
-  const deletedMeta = await deletePuzzleMetaByIds(definitionIds);
-  const legacy = await deleteLegacySavedReviewPuzzles();
-  for (const id of definitionIds) {
-    enqueueDelete('puzzle-definitions', id);
-    enqueueDelete('puzzle-user-meta', id);
-  }
-  for (const attempt of attempts) enqueueDelete('puzzle-attempts', puzzleAttemptKey(attempt));
-  const flush = await flushTombstones();
-  return finishDeleteAction(action, {
-    ...flush,
-    message: `Deleted ${deletedDefinitions} generated puzzle${deletedDefinitions === 1 ? '' : 's'}. ${flush.message}`,
-    counts: {
-      ...flush.counts,
+  let action = createDeleteAction('puzzles.deleteGenerated', ['puzzles'], {});
+  action = await fenceDeleteAction(action);
+  const transaction = beginRemoteSyncDataManagementDelete(action.actionId);
+  try {
+    const definitions = await readGeneratedDefinitions();
+    const definitionIds = new Set(definitions.map(def => def.id));
+    const attempts = await readPuzzleAttemptsForIds(definitionIds);
+    const legacyBefore = await readLegacySavedReviewPuzzles();
+    const tombstones = emptyTombstoneSummary();
+    for (const id of definitionIds) {
+      trackTombstone(tombstones, 'puzzle-definitions', id);
+      trackTombstone(tombstones, 'puzzle-user-meta', id);
+    }
+    for (const attempt of attempts) trackTombstone(tombstones, 'puzzle-attempts', puzzleAttemptKey(attempt));
+    if (legacyBefore.length > 0) trackTombstone(tombstones, 'saved-review-puzzles', legacySavedPuzzleKey());
+    stageTombstones(transaction, tombstones);
+    const deletedDefinitions = await deletePuzzleDefinitionsByIds(definitionIds);
+    const deletedAttempts = await deletePuzzleAttemptsByPuzzleIds(definitionIds);
+    const deletedMeta = await deletePuzzleMetaByIds(definitionIds);
+    const legacy = await deleteLegacySavedReviewPuzzles();
+    const localVerification = await verifyGeneratedPuzzleDataDeleted(definitionIds);
+    const counts = {
       puzzleDefinitions: deletedDefinitions,
       puzzleAttempts: deletedAttempts,
       puzzleMeta: deletedMeta,
       legacySavedReviewPuzzles: legacy,
-    },
-  });
+    };
+    if (!localVerification.success) {
+      return finishDeleteAction(action, localVerificationFailureResult(
+        `Deleted generated puzzles attempted, but local verification found remaining records.`,
+        counts,
+        localVerification,
+        tombstones,
+      ));
+    }
+    const commit = await commitTombstones(transaction, tombstones);
+    return finishDeleteAction(action, verifiedDeleteResult(
+      commit,
+      `Deleted ${deletedDefinitions} generated puzzle${deletedDefinitions === 1 ? '' : 's'}.`,
+      counts,
+      localVerification,
+      tombstones,
+    ));
+  } finally {
+    transaction.release();
+  }
 }
 
 export async function resetPuzzleProgress(): Promise<DataManagementResult> {
-  const action = createDeleteAction('puzzles.resetProgress', ['puzzles'], {});
-  const attempts = await readAllPuzzleAttempts();
-  const meta = await readPuzzleMetaSnapshot();
-  const history = await readRatingHistory();
-  const counts = await clearPuzzleStores(['attempts', 'user-meta', 'user-perf', 'rating-history']);
-  localStorage.removeItem(PUZZLE_SESSION_KEY);
-  localStorage.removeItem(PUZZLE_QUEUE_KEY);
-  for (const attempt of attempts) enqueueDelete('puzzle-attempts', puzzleAttemptKey(attempt));
-  for (const item of meta) enqueueDelete('puzzle-user-meta', item.puzzleId);
-  enqueueDelete('puzzle-user-perf', 'puzzle');
-  for (const entry of history) enqueueDelete('puzzle-rating-history', ratingHistoryKey(entry));
-  const flush = await flushTombstones();
-  return finishDeleteAction(action, {
-    ...flush,
-    message: `Reset puzzle progress while preserving puzzle definitions. ${flush.message}`,
-    counts: {
-      ...flush.counts,
+  let action = createDeleteAction('puzzles.resetProgress', ['puzzles'], {});
+  action = await fenceDeleteAction(action);
+  const transaction = beginRemoteSyncDataManagementDelete(action.actionId);
+  try {
+    const attempts = await readAllPuzzleAttempts();
+    const meta = await readPuzzleMetaSnapshot();
+    const history = await readRatingHistory();
+    const tombstones = emptyTombstoneSummary();
+    for (const attempt of attempts) trackTombstone(tombstones, 'puzzle-attempts', puzzleAttemptKey(attempt));
+    for (const item of meta) trackTombstone(tombstones, 'puzzle-user-meta', item.puzzleId);
+    trackTombstone(tombstones, 'puzzle-user-perf', 'puzzle');
+    for (const entry of history) trackTombstone(tombstones, 'puzzle-rating-history', ratingHistoryKey(entry));
+    stageTombstones(transaction, tombstones);
+    const counts = await clearPuzzleStores(['attempts', 'user-meta', 'user-perf', 'rating-history']);
+    localStorage.removeItem(PUZZLE_SESSION_KEY);
+    localStorage.removeItem(PUZZLE_QUEUE_KEY);
+    const localVerification = await verifyPuzzleProgressReset();
+    const resultCounts = {
       attempts: counts.attempts ?? 0,
       meta: counts['user-meta'] ?? 0,
       userPerf: counts['user-perf'] ?? 0,
       ratingHistory: counts['rating-history'] ?? 0,
       sessions: 1,
-    },
-  });
+    };
+    if (!localVerification.success) {
+      return finishDeleteAction(action, localVerificationFailureResult(
+        `Reset puzzle progress attempted, but local verification found remaining records.`,
+        resultCounts,
+        localVerification,
+        tombstones,
+      ));
+    }
+    const commit = await commitTombstones(transaction, tombstones);
+    return finishDeleteAction(action, verifiedDeleteResult(
+      commit,
+      'Reset puzzle progress while preserving puzzle definitions.',
+      resultCounts,
+      localVerification,
+      tombstones,
+    ));
+  } finally {
+    transaction.release();
+  }
 }
 
 async function readPuzzleMetaSnapshot(): Promise<PuzzleUserMeta[]> {
@@ -1436,6 +1584,59 @@ async function readRatingHistory(): Promise<Array<{ timestamp: number; rating: n
   } finally {
     db.close();
   }
+}
+
+async function verifyGeneratedPuzzleDataDeleted(definitionIds: Set<string>): Promise<DataManagementVerificationSummary> {
+  const puzzleDb = await openPuzzleDb();
+  try {
+    const [definitions, attempts, meta, legacy] = await Promise.all([
+      readAll<PuzzleDefinition>(puzzleDb, 'definitions'),
+      readAll<PuzzleAttempt>(puzzleDb, 'attempts'),
+      readAll<PuzzleUserMeta>(puzzleDb, 'user-meta'),
+      readLegacySavedReviewPuzzles(),
+    ]);
+    const remaining = {
+      puzzleDefinitions: definitions.filter(def => definitionIds.has(def.id)).length,
+      puzzleAttempts: attempts.filter(attempt => definitionIds.has(attempt.puzzleId)).length,
+      puzzleMeta: meta.filter(item => definitionIds.has(item.puzzleId)).length,
+      legacySavedReviewPuzzles: legacy.length,
+    };
+    return {
+      success: verificationPassed(remaining),
+      remaining,
+    };
+  } finally {
+    puzzleDb.close();
+  }
+}
+
+async function verifyPuzzleProgressReset(): Promise<DataManagementVerificationSummary> {
+  const puzzleDb = await openPuzzleDb();
+  try {
+    const remaining = {
+      attempts: await countStore(puzzleDb, 'attempts'),
+      meta: await countStore(puzzleDb, 'user-meta'),
+      userPerf: await countStore(puzzleDb, 'user-perf'),
+      ratingHistory: await countStore(puzzleDb, 'rating-history'),
+      sessions: localStorage.getItem(PUZZLE_SESSION_KEY) === null && localStorage.getItem(PUZZLE_QUEUE_KEY) === null ? 0 : 1,
+    };
+    return {
+      success: verificationPassed(remaining),
+      remaining,
+    };
+  } finally {
+    puzzleDb.close();
+  }
+}
+
+function verifySettingsGroupReset(keys: string[]): DataManagementVerificationSummary {
+  const remaining = {
+    settings: keys.filter(key => localStorage.getItem(key) !== null).length,
+  };
+  return {
+    success: verificationPassed(remaining),
+    remaining,
+  };
 }
 
 export async function clearPuzzlePgnCache(): Promise<DataManagementResult> {
@@ -1457,22 +1658,42 @@ export async function clearPuzzlePgnCache(): Promise<DataManagementResult> {
 }
 
 export async function resetSettingsGroup(groupId: string): Promise<DataManagementResult> {
-  const action = createDeleteAction('settings.resetGroup', ['settings'], { settingsGroupId: groupId });
+  let action = createDeleteAction('settings.resetGroup', ['settings'], { settingsGroupId: groupId });
   const group = SETTINGS_GROUPS.find(item => item.id === groupId);
   if (!group) return { success: false, message: 'Unknown settings group.', counts: {}, error: 'Unknown settings group.' };
-  const keys = collectSettingKeys(group);
-  for (const key of keys) {
-    localStorage.removeItem(key);
-    enqueueDelete('settings', key);
+  action = await fenceDeleteAction(action);
+  const transaction = beginRemoteSyncDataManagementDelete(action.actionId);
+  try {
+    const keys = collectSettingKeys(group);
+    const tombstones = emptyTombstoneSummary();
+    for (const key of keys) trackTombstone(tombstones, 'settings', key);
+    stageTombstones(transaction, tombstones);
+    withSettingsRemoteApplySuppressed(() => {
+      for (const key of keys) localStorage.removeItem(key);
+      if (group.id === 'puzzle-ui') {
+        localStorage.removeItem(PUZZLE_SESSION_KEY);
+        localStorage.removeItem(PUZZLE_QUEUE_KEY);
+      }
+    });
+    const localVerification = verifySettingsGroupReset(keys);
+    const counts = { settings: keys.length };
+    if (!localVerification.success) {
+      return finishDeleteAction(action, localVerificationFailureResult(
+        `Reset ${group.title.toLowerCase()} settings attempted, but local verification found remaining keys.`,
+        counts,
+        localVerification,
+        tombstones,
+      ));
+    }
+    const commit = await commitTombstones(transaction, tombstones);
+    return finishDeleteAction(action, verifiedDeleteResult(
+      commit,
+      `Reset ${group.title.toLowerCase()} settings.`,
+      counts,
+      localVerification,
+      tombstones,
+    ));
+  } finally {
+    transaction.release();
   }
-  if (group.id === 'puzzle-ui') {
-    localStorage.removeItem(PUZZLE_SESSION_KEY);
-    localStorage.removeItem(PUZZLE_QUEUE_KEY);
-  }
-  const flush = await flushTombstones();
-  return finishDeleteAction(action, {
-    ...flush,
-    message: `Reset ${group.title.toLowerCase()} settings. ${flush.message}`,
-    counts: { ...flush.counts, settings: keys.length },
-  });
 }
