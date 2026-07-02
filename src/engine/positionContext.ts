@@ -216,7 +216,10 @@ export function stockfishUciMoves(context: EnginePositionContext): string[] {
   for (const uci of context.moves) {
     const move = parseUci(uci);
     if (!move || !position.isLegal(move)) return [...context.moves];
-    moves.push(isStockfishCastlingAlias(uci) ? STOCKFISH_CASTLING_UCI[uci] : uci);
+    const movingPieceIsKing = 'from' in move && position.board.get(move.from)?.role === 'king';
+    moves.push(
+      isStockfishCastlingAlias(uci) && movingPieceIsKing ? STOCKFISH_CASTLING_UCI[uci] : uci,
+    );
     position.play(move);
   }
   return moves;
