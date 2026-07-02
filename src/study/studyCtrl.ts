@@ -10,12 +10,21 @@ import { positionKey } from './practice/scheduler';
 import {
   deleteRepertoireSource as deleteRepertoireSourceFromIdb,
   importRepertoireSource,
+  listRepertoireDivergenceMatchRecords,
+  listRepertoireReportGames,
   listRepertoireSources as listRepertoireSourcesFromIdb,
   renameRepertoireSource as renameRepertoireSourceInIdb,
   replaceRepertoireSourceFile as replaceRepertoireSourceFileInIdb,
   setRepertoireSourceEnabled as setRepertoireSourceEnabledInIdb,
   setRepertoireSourceSideOverride as setRepertoireSourceSideOverrideInIdb,
 } from '../repertoire/sourceDb';
+import {
+  getRepertoireScanProgressSnapshot,
+  isRepertoireComplianceScanRunning,
+  requestRepertoireComplianceScanPause,
+  runRepertoireComplianceScan,
+  type RepertoireScanProgressSnapshot,
+} from '../repertoire/scanRunner';
 import { replaceHashRoute } from '../router';
 import {
   parseStudyRouteState,
@@ -25,7 +34,14 @@ import {
   type StudyRouteState,
 } from './routeState';
 import type { StudyItem, TrainableSequence, PositionProgress, StudyFolder } from './types';
-import type { RepertoireSide, RepertoireSource } from '../repertoire';
+import type { ImportedGame } from '../import/types';
+import type { RepertoireMatchRecord, RepertoireSide, RepertoireSource } from '../repertoire';
+import {
+  buildRepertoireComplianceReport,
+  DEFAULT_REPERTOIRE_COMPLIANCE_REPORT_FILTERS,
+  type RepertoireComplianceReport,
+  type RepertoireComplianceReportFilters,
+} from '../repertoire/report';
 import { record, Severity } from '../diagnostics';
 
 function classifyStudyError(error: unknown): string {
@@ -91,6 +107,21 @@ function recordRepertoireLoadFail(route: string, error: unknown): void {
   });
 }
 
+function recordRepertoireReportLoadFail(route: string, error: unknown): void {
+  record({
+    kind: 'render',
+    severity: Severity.Error,
+    source: 'study/studyCtrl',
+    sourceTag: 'repertoire-report-load-fail',
+    message: 'repertoire-report-load-fail',
+    metadata: {
+      errorClass: classifyStudyError(error),
+      route,
+    },
+    redactionClass: 'safe',
+  });
+}
+
 let _importIdSeq = 0;
 function nextImportId(): string {
   return `study_import_${Date.now()}_${_importIdSeq++}`;
@@ -123,6 +154,18 @@ let _repertoireSources: RepertoireSource[] = [];
 let _repertoireSourcesLoaded = false;
 let _repertoireSourcesError = false;
 let _repertoireSourcesLoadPending = false;
+let _repertoireScanProgress: RepertoireScanProgressSnapshot | null = null;
+let _repertoireScanProgressLoaded = false;
+let _repertoireScanProgressLoadPending = false;
+let _repertoireScanBusy = false;
+let _repertoireComplianceReportRecords: RepertoireMatchRecord[] = [];
+let _repertoireComplianceReportGames: ImportedGame[] = [];
+let _repertoireComplianceReportLoaded = false;
+let _repertoireComplianceReportLoadPending = false;
+let _repertoireComplianceReportError = false;
+let _repertoireComplianceReportFilters: RepertoireComplianceReportFilters = {
+  ...DEFAULT_REPERTOIRE_COMPLIANCE_REPORT_FILTERS,
+};
 
 // --- Folder sidebar state ---
 
@@ -203,6 +246,35 @@ export function isLoadingMore(): boolean { return _loadingMore; }
 export function repertoireSources(): RepertoireSource[] { return _repertoireSources; }
 export function repertoireSourcesLoaded(): boolean { return _repertoireSourcesLoaded; }
 export function repertoireSourcesError(): boolean { return _repertoireSourcesError; }
+export function repertoireScanProgress(): RepertoireScanProgressSnapshot | null { return _repertoireScanProgress; }
+export function repertoireScanProgressLoaded(): boolean { return _repertoireScanProgressLoaded; }
+export function repertoireScanBusy(): boolean { return _repertoireScanBusy || isRepertoireComplianceScanRunning(); }
+export function repertoireComplianceReportLoaded(): boolean { return _repertoireComplianceReportLoaded; }
+export function repertoireComplianceReportError(): boolean { return _repertoireComplianceReportError; }
+export function repertoireComplianceReportFilters(): RepertoireComplianceReportFilters {
+  return { ..._repertoireComplianceReportFilters };
+}
+export function repertoireComplianceReport(): RepertoireComplianceReport {
+  return buildRepertoireComplianceReport({
+    records: _repertoireComplianceReportRecords,
+    sources: _repertoireSources,
+    games: _repertoireComplianceReportGames,
+    filters: _repertoireComplianceReportFilters,
+  });
+}
+
+export function setRepertoireComplianceReportFilters(
+  filters: Partial<RepertoireComplianceReportFilters>,
+): void {
+  _repertoireComplianceReportFilters = {
+    ..._repertoireComplianceReportFilters,
+    ...filters,
+  };
+}
+
+export function resetRepertoireComplianceReportFilters(): void {
+  _repertoireComplianceReportFilters = { ...DEFAULT_REPERTOIRE_COMPLIANCE_REPORT_FILTERS };
+}
 
 // Folder sidebar accessors
 export function folders(): StudyFolder[]          { return _folders; }
@@ -455,6 +527,19 @@ function replaceRepertoireSourceInMemory(source: RepertoireSource): void {
   ];
 }
 
+export function invalidateRepertoireScanProgress(): void {
+  _repertoireScanProgressLoaded = false;
+  _repertoireScanProgressLoadPending = false;
+}
+
+export function invalidateRepertoireComplianceReport(): void {
+  _repertoireComplianceReportLoaded = false;
+  _repertoireComplianceReportLoadPending = false;
+  _repertoireComplianceReportError = false;
+  _repertoireComplianceReportRecords = [];
+  _repertoireComplianceReportGames = [];
+}
+
 export function loadRepertoireSources(redraw: () => void): void {
   if (_repertoireSourcesLoadPending) return;
   _repertoireSourcesLoadPending = true;
@@ -481,6 +566,8 @@ export async function uploadRepertoireSourceFile(
   replaceRepertoireSourceInMemory(source);
   _repertoireSourcesLoaded = true;
   _repertoireSourcesError = false;
+  invalidateRepertoireScanProgress();
+  invalidateRepertoireComplianceReport();
   return source;
 }
 
@@ -496,6 +583,8 @@ export async function setRepertoireSourceSideOverride(
 ): Promise<RepertoireSource> {
   const source = await setRepertoireSourceSideOverrideInIdb(id, sideOverride);
   replaceRepertoireSourceInMemory(source);
+  invalidateRepertoireScanProgress();
+  invalidateRepertoireComplianceReport();
   return source;
 }
 
@@ -514,12 +603,109 @@ export async function replaceRepertoireSourceFile(
 ): Promise<RepertoireSource> {
   const result = await replaceRepertoireSourceFileInIdb(id, rawPgn);
   replaceRepertoireSourceInMemory(result.source);
+  invalidateRepertoireScanProgress();
+  invalidateRepertoireComplianceReport();
   return result.source;
 }
 
 export async function deleteRepertoireSource(id: string): Promise<void> {
   await deleteRepertoireSourceFromIdb(id);
   _repertoireSources = _repertoireSources.filter(source => source.id !== id);
+  invalidateRepertoireScanProgress();
+  invalidateRepertoireComplianceReport();
+}
+
+export function loadRepertoireComplianceReport(redraw: () => void): void {
+  if (_repertoireComplianceReportLoadPending) return;
+  _repertoireComplianceReportLoadPending = true;
+  void listRepertoireDivergenceMatchRecords()
+    .then(async records => {
+      const games = await listRepertoireReportGames(records.map(record => record.gameId));
+      _repertoireComplianceReportRecords = records;
+      _repertoireComplianceReportGames = games;
+      _repertoireComplianceReportLoaded = true;
+      _repertoireComplianceReportError = false;
+    })
+    .catch(error => {
+      recordRepertoireReportLoadFail('study-library-repertoire-report', error);
+      _repertoireComplianceReportRecords = [];
+      _repertoireComplianceReportGames = [];
+      _repertoireComplianceReportLoaded = true;
+      _repertoireComplianceReportError = true;
+    })
+    .finally(() => {
+      _repertoireComplianceReportLoadPending = false;
+      redraw();
+    });
+}
+
+export function loadRepertoireScanProgress(redraw: () => void): void {
+  if (_repertoireScanProgressLoadPending) return;
+  _repertoireScanProgressLoadPending = true;
+  void getRepertoireScanProgressSnapshot().then(snapshot => {
+    _repertoireScanProgress = snapshot;
+    _repertoireScanProgressLoaded = true;
+  }).catch(error => {
+    _repertoireScanProgress = {
+      state: 'error',
+      scannedGameCount: 0,
+      totalGameCount: 0,
+      sourceCount: 0,
+      runId: null,
+      updatedAt: null,
+      message: error instanceof Error ? error.message : 'Could not load scan status.',
+    };
+    _repertoireScanProgressLoaded = true;
+  }).finally(() => {
+    _repertoireScanProgressLoadPending = false;
+    redraw();
+  });
+}
+
+export function runRepertoireScanFromStudy(redraw: () => void): void {
+  if (_repertoireScanBusy || isRepertoireComplianceScanRunning()) return;
+  _repertoireScanBusy = true;
+  void runRepertoireComplianceScan({
+    onProgress: snapshot => {
+      _repertoireScanProgress = snapshot;
+      _repertoireScanProgressLoaded = true;
+      redraw();
+    },
+  }).then(result => {
+    _repertoireScanProgress = {
+      state: result.paused ? 'paused' : 'complete',
+      scannedGameCount: result.scannedGameCount,
+      totalGameCount: result.totalGameCount,
+      sourceCount: result.sourceCount,
+      runId: result.manifest.runId,
+      updatedAt: result.manifest.updatedAt,
+      message: null,
+    };
+  }).catch(error => {
+    _repertoireScanProgress = {
+      state: 'error',
+      scannedGameCount: _repertoireScanProgress?.scannedGameCount ?? 0,
+      totalGameCount: _repertoireScanProgress?.totalGameCount ?? 0,
+      sourceCount: _repertoireScanProgress?.sourceCount ?? 0,
+      runId: _repertoireScanProgress?.runId ?? null,
+      updatedAt: Date.now(),
+      message: error instanceof Error ? error.message : 'Could not run scan.',
+    };
+  }).finally(() => {
+    _repertoireScanBusy = false;
+    _repertoireScanProgressLoaded = true;
+    invalidateRepertoireComplianceReport();
+    loadRepertoireComplianceReport(redraw);
+    redraw();
+  });
+}
+
+export function pauseRepertoireScanFromStudy(redraw: () => void): void {
+  requestRepertoireComplianceScanPause();
+  _repertoireScanProgress = _repertoireScanProgress
+    ? { ..._repertoireScanProgress, state: 'paused', message: 'Pausing after this chunk.' }
+    : _repertoireScanProgress;
+  redraw();
 }
 
 let _studyRouteHydrationRun = 0;

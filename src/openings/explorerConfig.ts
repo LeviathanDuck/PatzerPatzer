@@ -8,7 +8,7 @@
  * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerConfig.ts
  */
 
-import type { ExplorerDb, ExplorerSpeed, ExplorerMode } from './explorer';
+import type { ExplorerDb, ExplorerSpeed, ExplorerMode, RemoteExplorerDb } from './explorer';
 
 // localStorage keys — matching Lichess key names for future compatibility
 const LS_DB          = 'explorer.db2.standard';
@@ -42,8 +42,8 @@ export class ExplorerConfig {
   playerName: string;
   playerPrevious: string[];
   color: 'white' | 'black';
-  sinceByDb: Record<ExplorerDb, string>;
-  untilByDb: Record<ExplorerDb, string>;
+  sinceByDb: Record<RemoteExplorerDb, string>;
+  untilByDb: Record<RemoteExplorerDb, string>;
 
   constructor() {
     this.db = (localStorage.getItem(LS_DB) as ExplorerDb | null) || 'lichess';
@@ -116,17 +116,19 @@ export class ExplorerConfig {
   }
 
   setSince(since: string): void {
+    if (this.db === 'repertoire') return;
     this.sinceByDb[this.db] = since;
     localStorage.setItem(LS_SINCE_PFX + this.db, since);
   }
 
   setUntil(until: string): void {
+    if (this.db === 'repertoire') return;
     this.untilByDb[this.db] = until;
     localStorage.setItem(LS_UNTIL_PFX + this.db, until);
   }
 
-  since(): string { return this.sinceByDb[this.db] || ''; }
-  until(): string { return this.untilByDb[this.db] || ''; }
+  since(): string { return this.db === 'repertoire' ? '' : this.sinceByDb[this.db] || ''; }
+  until(): string { return this.db === 'repertoire' ? '' : this.untilByDb[this.db] || ''; }
 
   resetRuntimeForDataManagement(): void {
     this.db = 'lichess';

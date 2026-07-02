@@ -22,9 +22,24 @@ import {
   repertoireSources, repertoireSourcesLoaded, repertoireSourcesError, loadRepertoireSources,
   uploadRepertoireSourceFile, renameRepertoireSource, setRepertoireSourceSideOverride,
   setRepertoireSourceEnabled, replaceRepertoireSourceFile, deleteRepertoireSource,
+  repertoireScanProgress, repertoireScanProgressLoaded, repertoireScanBusy,
+  loadRepertoireScanProgress, runRepertoireScanFromStudy, pauseRepertoireScanFromStudy,
+  repertoireComplianceReport, repertoireComplianceReportLoaded, repertoireComplianceReportError,
+  repertoireComplianceReportFilters, setRepertoireComplianceReportFilters,
+  resetRepertoireComplianceReportFilters, loadRepertoireComplianceReport,
   type StudySortKey,
   type OrpPracticeLineView,
 } from './studyCtrl';
+import { serializeAnalysisRouteWithPly, serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
+import { renderCompactGameRow } from '../games/view';
+import {
+  repertoireComplianceReportFiltersActive,
+  type RepertoireComplianceDateFilter,
+  type RepertoireComplianceOutcome,
+  type RepertoireComplianceOwnerColorFilter,
+  type RepertoireComplianceReport,
+  type RepertoireComplianceReportGroup,
+} from '../repertoire/report';
 import { serializeStudyRouteState, type StudyRouteState } from './routeState';
 import { writeHashRoute } from '../router';
 import {
@@ -91,6 +106,7 @@ let _repertoireSourceBusy = false;
 let _openRepertoireMenuId: string | null = null;
 let _editingRepertoireSourceId: string | null = null;
 let _editingRepertoireSourceValue = '';
+const _expandedRepertoireReportRows = new Set<string>();
 
 
 
@@ -361,12 +377,16 @@ function renderRepertoireUploadControl(redraw: () => void): VNode {
   ]);
 }
 
-function renderRepertoireChip(source: RepertoireSource, accentIndex: number): VNode {
+function renderRepertoireIdentityChip(name: string, side: RepertoireSide, accentIndex: number): VNode {
   return h(`span.repertoire__chip.repertoire__accent--${accentIndex % 8}`, [
     h('span.repertoire__chip-dot'),
-    h('span.repertoire__chip-name', source.name),
-    h('span.repertoire__side-badge', sideBadge(source.side)),
+    h('span.repertoire__chip-name', name),
+    h('span.repertoire__side-badge', sideBadge(side)),
   ]);
+}
+
+function renderRepertoireChip(source: RepertoireSource, accentIndex: number): VNode {
+  return renderRepertoireIdentityChip(source.name, source.side, accentIndex);
 }
 
 function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void): VNode | null {
@@ -551,6 +571,275 @@ function renderRepertoireSourcesSection(redraw: () => void): VNode {
           sources.map((source, index) => renderRepertoireSourceRow(source, index, redraw))
         ),
     _repertoireSourceStatus ? h('div.repertoire__source-status', _repertoireSourceStatus) : null,
+  ]);
+}
+
+function repertoireScanActionLabel(): string {
+  const progress = repertoireScanProgress();
+  if (repertoireScanBusy() || progress?.state === 'running') return 'Pause scan';
+  if (progress?.state === 'paused') return 'Resume';
+  return 'Run scan';
+}
+
+const REPORT_DATE_OPTIONS: { value: RepertoireComplianceDateFilter; label: string }[] = [
+  { value: 'all', label: 'All dates' },
+  { value: 'last-30', label: 'Last 30 days' },
+  { value: 'last-90', label: 'Last 90 days' },
+  { value: 'last-365', label: 'Last year' },
+  { value: 'undated', label: 'Undated' },
+];
+
+function updateReportFilters(filters: Parameters<typeof setRepertoireComplianceReportFilters>[0], redraw: () => void): void {
+  setRepertoireComplianceReportFilters(filters);
+  redraw();
+}
+
+function renderReportSelect(
+  label: string,
+  value: string,
+  options: { value: string; label: string; count?: number }[],
+  onChange: (value: string) => void,
+): VNode {
+  return h('div.games-view__filter-group.repertoire__filter-group', [
+    h('span.games-view__filter-label', label),
+    h('select.repertoire__filter-select', {
+      attrs: {
+        title: `Filter repertoire report by ${label.toLowerCase()}`,
+        'aria-label': `Filter repertoire report by ${label.toLowerCase()}`,
+      },
+      props: { value },
+      on: { change: (e: Event) => onChange((e.target as HTMLSelectElement).value) },
+    }, options.map(option =>
+      h('option', { attrs: { value: option.value } },
+        option.count === undefined ? option.label : `${option.label} (${option.count})`)
+    )),
+  ]);
+}
+
+function renderReportPill<T extends string>(
+  label: string,
+  value: T,
+  activeValue: T | null,
+  redraw: () => void,
+  key: 'ownerColor' | 'result',
+): VNode {
+  const active = activeValue === value;
+  const next = active ? null : value;
+  const title = active ? `Clear ${label} repertoire report filter` : `Filter repertoire report by ${label}`;
+  const apply = (): void => {
+    if (key === 'ownerColor') {
+      updateReportFilters({ ownerColor: next as RepertoireComplianceOwnerColorFilter | null }, redraw);
+      return;
+    }
+    updateReportFilters({ result: next as RepertoireComplianceOutcome | null }, redraw);
+  };
+  return h('button.games-view__pill.repertoire__filter-pill', {
+    class: { active },
+    attrs: {
+      type: 'button',
+      title,
+      'aria-label': title,
+      'aria-pressed': String(active),
+    },
+    on: { click: apply },
+  }, label);
+}
+
+function renderRepertoireReportFilters(report: RepertoireComplianceReport, redraw: () => void): VNode {
+  const filters = repertoireComplianceReportFilters();
+  const accountOptions = [
+    { value: '', label: 'All accounts' },
+    ...report.filterOptions.accounts,
+  ];
+  const timeOptions = [
+    { value: '', label: 'All time controls' },
+    ...report.filterOptions.timeClasses,
+  ];
+
+  return h('div.games-view__controls.repertoire__report-filters', [
+    renderReportSelect('Account', filters.accountId ?? '', accountOptions, value =>
+      updateReportFilters({ accountId: value || null }, redraw)
+    ),
+    h('div.games-view__filter-group.repertoire__filter-group', [
+      h('span.games-view__filter-label', 'Color'),
+      renderReportPill('White', 'white', filters.ownerColor, redraw, 'ownerColor'),
+      renderReportPill('Black', 'black', filters.ownerColor, redraw, 'ownerColor'),
+    ]),
+    h('div.games-view__filter-group.repertoire__filter-group', [
+      h('span.games-view__filter-label', 'Result'),
+      renderReportPill('Win', 'win', filters.result, redraw, 'result'),
+      renderReportPill('Loss', 'loss', filters.result, redraw, 'result'),
+      renderReportPill('Draw', 'draw', filters.result, redraw, 'result'),
+    ]),
+    renderReportSelect('Time', filters.timeClass ?? '', timeOptions, value =>
+      updateReportFilters({ timeClass: value || null }, redraw)
+    ),
+    renderReportSelect('Date', filters.date, REPORT_DATE_OPTIONS, value =>
+      updateReportFilters({ date: value as RepertoireComplianceDateFilter }, redraw)
+    ),
+    repertoireComplianceReportFiltersActive(filters)
+      ? h('div.games-view__filter-group.--right.repertoire__filter-clear-wrap', [
+          h('button.games-view__clear', {
+            attrs: {
+              type: 'button',
+              title: 'Clear repertoire report filters',
+              'aria-label': 'Clear repertoire report filters',
+            },
+            on: { click: () => { resetRepertoireComplianceReportFilters(); redraw(); } },
+          }, 'Clear filters'),
+        ])
+      : null,
+  ]);
+}
+
+function renderLossRatioToken(group: RepertoireComplianceReportGroup): VNode {
+  const lostPct = group.seenCount > 0 ? (group.lostCount / group.seenCount) * 100 : 0;
+  const nonLossPct = 100 - lostPct;
+  const label = `${group.seenCount.toLocaleString()} seen · ${group.lostCount.toLocaleString()} lost`;
+  return h('span.repertoire__loss-ratio', {
+    attrs: { title: label, 'aria-label': label },
+  }, [
+    h('span.repertoire__loss-ratio-bar', [
+      h('span.wdl-w.repertoire__loss-ratio-segment', {
+        attrs: { style: `width:${nonLossPct.toFixed(1)}%` },
+      }),
+      h('span.wdl-l.repertoire__loss-ratio-segment', {
+        attrs: { style: `width:${lostPct.toFixed(1)}%` },
+      }),
+    ]),
+    h('span.repertoire__loss-ratio-counts', label),
+  ]);
+}
+
+function reportGameHref(gameId: string, ply: number | null): string {
+  return serializeAnalysisRouteWithPly(serializeAnalysisSelectedGameRoute(gameId), ply);
+}
+
+function renderRepertoireReportGameList(group: RepertoireComplianceReportGroup): VNode {
+  return h('div.repertoire__line-games', group.games.map(entry => {
+    const href = reportGameHref(entry.gameId, entry.firstDivergencePly);
+    const title = entry.firstDivergencePly === null
+      ? `Open ${entry.gameId} in Analysis`
+      : `Open ${entry.gameId} in Analysis at ply ${entry.firstDivergencePly}`;
+    return h('a.repertoire__line-game.game-list__row', {
+      key: entry.gameId,
+      attrs: {
+        href,
+        title,
+        'aria-label': title,
+      },
+    }, entry.game
+      ? renderCompactGameRow(entry.game, false, false)
+      : [h('span.grl__opponent', entry.gameId), h('span.grl__date', 'Game metadata unavailable')]);
+  }));
+}
+
+function renderRepertoireReportRow(group: RepertoireComplianceReportGroup, redraw: () => void): VNode {
+  const expanded = _expandedRepertoireReportRows.has(group.key);
+  const toggleTitle = expanded
+    ? `Hide ${group.seenCount} matching games for ${group.lineLabel}`
+    : `Show ${group.seenCount} matching games for ${group.lineLabel}`;
+  return h('div.repertoire__line-row', { key: group.key }, [
+    h('button.repertoire__line-summary', {
+      attrs: {
+        type: 'button',
+        title: toggleTitle,
+        'aria-label': toggleTitle,
+        'aria-expanded': String(expanded),
+      },
+      on: { click: () => {
+        if (expanded) _expandedRepertoireReportRows.delete(group.key);
+        else _expandedRepertoireReportRows.add(group.key);
+        redraw();
+      } },
+    }, [
+      h('span.repertoire__line-main', [
+        h('span.repertoire__line-text', [
+          h('span.repertoire__line-prefix', `${group.sourceName} · ${group.firstDivergencePly === null ? 'ply ?' : `ply ${group.firstDivergencePly}`} · `),
+          h('span.repertoire__line-highlight', group.playedUci ? `played ${group.playedUci}` : 'played ?'),
+          h('span.repertoire__line-expected', group.missedUci ? ` expected ${group.missedUci}` : ' expected ?'),
+        ]),
+        h('span.repertoire__category-badge', group.categoryLabel),
+        renderRepertoireIdentityChip(group.sourceName, group.sourceSide, group.sourceAccentIndex),
+      ]),
+      h('span.repertoire__line-metrics', [
+        renderLossRatioToken(group),
+        h('span.repertoire__line-game-count', `${expanded ? '▾' : '▸'} ${group.seenCount.toLocaleString()} game${group.seenCount === 1 ? '' : 's'}`),
+      ]),
+    ]),
+    expanded ? renderRepertoireReportGameList(group) : null,
+  ]);
+}
+
+function renderRepertoireReportBody(redraw: () => void): VNode {
+  if (repertoireComplianceReportError()) {
+    return h('div.repertoire__source-error', 'Could not load stored divergence records.');
+  }
+
+  if (!repertoireComplianceReportLoaded()) {
+    return h('div.repertoire__source-loading', 'Loading stored divergence records...');
+  }
+
+  const report = repertoireComplianceReport();
+  const summary = report.filteredDivergenceCount === report.totalDivergenceCount
+    ? `${report.filteredDivergenceCount.toLocaleString()} stored divergence${report.filteredDivergenceCount === 1 ? '' : 's'}`
+    : `${report.filteredDivergenceCount.toLocaleString()} of ${report.totalDivergenceCount.toLocaleString()} stored divergences`;
+
+  return h('div.repertoire__report', [
+    renderRepertoireReportFilters(report, redraw),
+    h('div.repertoire__report-summary', summary),
+    report.groups.length === 0
+      ? h('div.repertoire__source-empty',
+          report.totalDivergenceCount === 0
+            ? 'No stored divergence records yet.'
+            : 'No divergence rows match these filters.'
+        )
+      : h('div.repertoire__line-list',
+          report.groups.map(group => renderRepertoireReportRow(group, redraw))
+        ),
+  ]);
+}
+
+function renderRepertoireComplianceSection(redraw: () => void): VNode {
+  const progress = repertoireScanProgress();
+  const loaded = repertoireScanProgressLoaded();
+  const busy = repertoireScanBusy() || progress?.state === 'running';
+  const scanned = progress?.scannedGameCount ?? 0;
+  const total = progress?.totalGameCount ?? 0;
+  const progressLabel = loaded
+    ? `${scanned.toLocaleString()}/${total.toLocaleString()} games scanned`
+    : 'Loading scan status...';
+  const disabled =
+    !loaded ||
+    progress?.state === 'empty' ||
+    progress?.state === 'error';
+  const actionLabel = repertoireScanActionLabel();
+  const actionTitle = busy ? 'Pause repertoire compliance scan' : `${actionLabel} repertoire compliance scan`;
+
+  return h('section.repertoire__scan-section', [
+    h('div.repertoire__scan-header', [
+      h('h2.repertoire__section-title', 'Repertoire Compliance'),
+      h('button.study-btn.repertoire__scan-action', {
+        attrs: {
+          type: 'button',
+          title: actionTitle,
+          'aria-label': actionTitle,
+          disabled,
+        },
+        on: { click: () => {
+          if (disabled) return;
+          if (busy) pauseRepertoireScanFromStudy(redraw);
+          else runRepertoireScanFromStudy(redraw);
+        } },
+      }, actionLabel),
+      h('span.repertoire__scan-progress', {
+        attrs: { title: progressLabel },
+      }, progressLabel),
+    ]),
+    progress?.message
+      ? h(`div.repertoire__scan-message.repertoire__scan-message--${progress.state}`, progress.message)
+      : null,
+    renderRepertoireReportBody(redraw),
   ]);
 }
 
@@ -1214,6 +1503,12 @@ export function renderStudyLibrary(redraw: () => void): VNode {
   // Lazy-load repertoire sources for Surface D.
   if (!repertoireSourcesLoaded()) loadRepertoireSources(redraw);
 
+  // Lazy-load repertoire compliance scan state for Surface E.
+  if (!repertoireScanProgressLoaded()) loadRepertoireScanProgress(redraw);
+
+  // Lazy-load stored repertoire divergence records for Surface E.
+  if (!repertoireComplianceReportLoaded()) loadRepertoireComplianceReport(redraw);
+
 
   if (isDrillActive() || isDrillSummary()) {
     return h('div.study-page', [
@@ -1246,6 +1541,7 @@ export function renderStudyLibrary(redraw: () => void): VNode {
   const libraryMainNodes = isRepertoireSourceBrowseOpen()
     ? [renderRepertoireSourceBrowse(redraw)]
     : [
+        renderRepertoireComplianceSection(redraw),
         renderRepertoireSourcesSection(redraw),
         h('div.repertoire__studies-heading', 'Studies'),
         renderFilterBar(redraw),

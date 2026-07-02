@@ -20,6 +20,7 @@ import type { ImportedGame } from '../import/types';
 import { addNode } from '../tree/ops';
 import type { Clock, TreeNode } from '../tree/types';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from './animation';
+import { REPERTOIRE_ALT_ARROW_BRUSH, REPERTOIRE_ARROW_BRUSH } from './arrowBrushes';
 
 // --- Injected deps ---
 
@@ -286,8 +287,9 @@ export function playUciMove(uci: string): void {
   if (!parsed) return;
   const setup = parseFen(ctrl.node.fen).unwrap();
   const pos = Chess.fromSetup(setup).unwrap();
-  const move = normalizeMove(pos, parsed) as NormalMove;
-  applyMoveToTree(move, pos);
+  const move = normalizeMove(pos, parsed);
+  if (!('from' in move) || !pos.isLegal(move)) return;
+  applyMoveToTree(move as NormalMove, pos);
 }
 
 /**
@@ -627,6 +629,8 @@ export function renderBoard(): VNode {
               paleBlue: { key: 'pb',  color: '#003088', opacity: 0.65, lineWidth: 15 },
               paleGrey: { key: 'pgr', color: '#4a4a4a', opacity: 0.35, lineWidth: 15 },
               red:      { key: 'r',   color: '#882020', opacity: 1,    lineWidth: 10 },
+              repertoire: REPERTOIRE_ARROW_BRUSH,
+              repertoireAlt: REPERTOIRE_ALT_ARROW_BRUSH,
             },
           },
           fen: node.fen,

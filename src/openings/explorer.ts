@@ -36,7 +36,8 @@ export function isExplorerBookAuthError(error: unknown): boolean {
 // Types — adapted from lichess-org/lila: ui/analyse/src/explorer/interfaces.ts
 // ============================================================
 
-export type ExplorerDb = 'lichess' | 'masters' | 'player';
+export type RemoteExplorerDb = 'lichess' | 'masters' | 'player';
+export type ExplorerDb = RemoteExplorerDb | 'repertoire';
 export type ExplorerMode = 'casual' | 'rated';
 export type ExplorerSpeed =
   | 'ultraBullet' | 'bullet' | 'blitz' | 'rapid' | 'classical' | 'correspondence';
@@ -195,7 +196,7 @@ function recordExplorerFailure(ctx: ExplorerFailureContext): void {
   });
 }
 
-function openingRequestTarget(db: ExplorerDb): { url: URL; headers: Headers } {
+function openingRequestTarget(db: RemoteExplorerDb): { url: URL; headers: Headers } {
   const token = getRemoteSyncToken().trim();
   const headers = new Headers();
   const localDevHost = window.location.hostname === 'localhost'

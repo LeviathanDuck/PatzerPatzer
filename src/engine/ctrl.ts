@@ -65,6 +65,7 @@ export interface PositionEval {
 let _getCtrl: () => AnalyseCtrl = () => { throw new Error('engine not initialised'); };
 let _getCgInstance: () => CgApi | undefined = () => undefined;
 let _redraw: () => void = () => {};
+let _repertoireArrowShapeProvider: () => DrawShape[] = () => [];
 
 export function initEngine(deps: {
   getCtrl:       () => AnalyseCtrl;
@@ -76,6 +77,10 @@ export function initEngine(deps: {
   _getCgInstance = deps.getCgInstance;
   _redraw        = deps.redraw;
   performance.mark('engine-init-end');
+}
+
+export function setRepertoireArrowShapeProvider(provider: (() => DrawShape[]) | null): void {
+  _repertoireArrowShapeProvider = provider ?? (() => []);
 }
 
 // --- Batch callback hooks (avoids circular import with engine/batch.ts) ---
@@ -321,6 +326,10 @@ export function buildArrowShapes(): DrawShape[] {
   // when retro.hideComputerLine(node) is true for unsolved candidate plies.
   const retroHidden = ctrl.retro !== undefined && !ctrl.retro.guidanceRevealed();
 
+  if (ctrl.retro === undefined) {
+    shapes.push(..._repertoireArrowShapeProvider());
+  }
+
   shapes.push(...buildEngineArrowShapes({ suppress: retroHidden, includeThreat: false }));
 
   if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
@@ -557,6 +566,11 @@ export function syncArrow(): void {
   if (arrowDebounceTimer !== null) { clearTimeout(arrowDebounceTimer); arrowDebounceTimer = null; }
   arrowSuppressUntil = 0;
   applyAutoShapes(buildArrowShapes());
+}
+
+export function syncArrowForced(): void {
+  lastAutoShapesHash = null;
+  syncArrow();
 }
 
 /**

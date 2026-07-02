@@ -1,7 +1,10 @@
-import { DB_NAME, DB_VERSION, upgradeGameDbSchema } from '../idb/index';
+import { DB_NAME, DB_VERSION, upgradeGameDbSchema, type StoredGameRecord } from '../idb/index';
+import type { ImportedGame } from '../import/types';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert } from '../sync/remoteSync';
 import {
   createRepertoireSource,
+  repertoireMatchRecordKey,
+  type RepertoireMatchRecord,
   withRepertoireSourceContent,
   withRepertoireSourceSideOverride,
   type RepertoireScanRun,
@@ -28,6 +31,12 @@ export interface RepertoireSourceCleanupResult {
 
 export interface RepertoireSourceReplaceResult extends RepertoireSourceCleanupResult {
   source: RepertoireSource;
+}
+
+export interface RepertoireScanGamePage {
+  games: ImportedGame[];
+  nextAfterGameId: string | null;
+  hasMore: boolean;
 }
 
 let _db: IDBDatabase | undefined;
@@ -70,8 +79,34 @@ function enqueueSourceUpsert(source: RepertoireSource): void {
   enqueueRemoteSyncUpsert('repertoire-sources', source.id, source, source.updatedAt);
 }
 
+function enqueueMatchRecordUpsert(record: RepertoireMatchRecord): void {
+  enqueueRemoteSyncUpsert('repertoire-match-records', record.key, record, record.scannedAt);
+}
+
+function enqueueScanRunUpsert(run: RepertoireScanRun): void {
+  enqueueRemoteSyncUpsert('repertoire-scan-runs', run.runId, run, run.updatedAt);
+}
+
 function enqueueDelete(store: RepertoireStoreName, itemKey: string, updatedAt: number): void {
   enqueueRemoteSyncDelete(store, itemKey, updatedAt);
+}
+
+function storedGameRecordToImportedGame(record: StoredGameRecord): ImportedGame {
+  const game: ImportedGame = { id: record.id, pgn: record.pgn };
+  if (record.white            !== null) game.white            = record.white;
+  if (record.black            !== null) game.black            = record.black;
+  if (record.result           !== null) game.result           = record.result;
+  if (record.date             !== null) game.date             = record.date;
+  if (record.timeClass        !== null) game.timeClass        = record.timeClass;
+  if (record.opening          !== null) game.opening          = record.opening;
+  if (record.eco              !== null) game.eco              = record.eco;
+  if (record.source === 'chesscom' || record.source === 'lichess') game.source = record.source;
+  if (record.whiteRating      !== null) game.whiteRating      = record.whiteRating;
+  if (record.blackRating      !== null) game.blackRating      = record.blackRating;
+  if (record.importedUsername !== null) game.importedUsername = record.importedUsername;
+  if (record.accountId        !== null) game.accountId        = record.accountId;
+  game.importedAt = record.importedAt;
+  return game;
 }
 
 async function listMatchRecordKeysForSource(db: IDBDatabase, sourceId: string): Promise<string[]> {
@@ -109,6 +144,159 @@ export async function listRepertoireSources(): Promise<RepertoireSource[]> {
     req.onsuccess = () => {
       const sources = (req.result as RepertoireSource[] | undefined) ?? [];
       resolve([...sources].sort(sourceSort));
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function countRepertoireScanGames(): Promise<number> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('games', 'readonly').objectStore('games').count();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function loadRepertoireScanGamePage(
+  limit: number,
+  afterGameId: string | null = null,
+): Promise<RepertoireScanGamePage> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const games: ImportedGame[] = [];
+    let lastGameId: string | null = null;
+    const range = afterGameId ? IDBKeyRange.lowerBound(afterGameId, true) : undefined;
+    const req = db.transaction('games', 'readonly').objectStore('games').openCursor(range);
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve({ games, nextAfterGameId: lastGameId, hasMore: false });
+        return;
+      }
+      if (games.length >= limit) {
+        resolve({ games, nextAfterGameId: lastGameId, hasMore: true });
+        return;
+      }
+      const record = cursor.value as StoredGameRecord;
+      games.push(storedGameRecordToImportedGame(record));
+      lastGameId = record.id;
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function listRepertoireMatchRecordsForGameIds(
+  gameIds: readonly string[],
+): Promise<RepertoireMatchRecord[]> {
+  if (gameIds.length === 0) return [];
+  const db = await openDb();
+  const results = await Promise.all(gameIds.map(gameId => new Promise<RepertoireMatchRecord[]>((resolve, reject) => {
+    const req = db
+      .transaction('repertoire-match-records', 'readonly')
+      .objectStore('repertoire-match-records')
+      .index('gameId')
+      .getAll(gameId);
+    req.onsuccess = () => resolve((req.result as RepertoireMatchRecord[] | undefined) ?? []);
+    req.onerror = () => reject(req.error);
+  })));
+  return results.flat();
+}
+
+export async function listRepertoireDivergenceMatchRecords(): Promise<RepertoireMatchRecord[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const req = db
+      .transaction('repertoire-match-records', 'readonly')
+      .objectStore('repertoire-match-records')
+      .index('status')
+      .getAll('diverged');
+    req.onsuccess = () => resolve((req.result as RepertoireMatchRecord[] | undefined) ?? []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function listRepertoireReportGames(
+  gameIds: readonly string[],
+): Promise<ImportedGame[]> {
+  const uniqueGameIds = [...new Set(gameIds.filter(id => id.trim() !== ''))];
+  if (uniqueGameIds.length === 0) return [];
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const games: ImportedGame[] = [];
+    let pending = uniqueGameIds.length;
+    let settled = false;
+    const tx = db.transaction('games', 'readonly');
+    const store = tx.objectStore('games');
+    const rejectOnce = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const maybeResolve = (): void => {
+      if (settled || pending > 0) return;
+      settled = true;
+      resolve(games);
+    };
+
+    tx.onabort = () => rejectOnce(tx.error);
+    tx.onerror = () => rejectOnce(tx.error);
+
+    for (const gameId of uniqueGameIds) {
+      const req = store.get(gameId);
+      req.onsuccess = () => {
+        const record = req.result as StoredGameRecord | undefined;
+        if (record) games.push(storedGameRecordToImportedGame(record));
+        pending -= 1;
+        maybeResolve();
+      };
+      req.onerror = () => rejectOnce(req.error);
+    }
+  });
+}
+
+export async function listRepertoireScanRuns(): Promise<RepertoireScanRun[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('repertoire-scan-runs', 'readonly').objectStore('repertoire-scan-runs').getAll();
+    req.onsuccess = () => resolve((req.result as RepertoireScanRun[] | undefined) ?? []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function saveRepertoireMatchRecords(records: readonly RepertoireMatchRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  const db = await openDb();
+  const tx = db.transaction('repertoire-match-records', 'readwrite');
+  const store = tx.objectStore('repertoire-match-records');
+  for (const record of records) store.put(record);
+  await txDone(tx);
+  for (const record of records) enqueueMatchRecordUpsert(record);
+}
+
+export async function saveRepertoireScanRun(run: RepertoireScanRun): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction('repertoire-scan-runs', 'readwrite');
+  tx.objectStore('repertoire-scan-runs').put(run);
+  await txDone(tx);
+  enqueueScanRunUpsert(run);
+}
+
+export async function getCurrentRepertoireMatchRecord(
+  sourceId: string,
+  sourceVersion: string,
+  gameId: string,
+): Promise<RepertoireMatchRecord | undefined> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const req = db
+      .transaction('repertoire-match-records', 'readonly')
+      .objectStore('repertoire-match-records')
+      .get(repertoireMatchRecordKey(sourceId, gameId));
+    req.onsuccess = () => {
+      const record = req.result as RepertoireMatchRecord | undefined;
+      resolve(record?.sourceVersion === sourceVersion ? record : undefined);
     };
     req.onerror = () => reject(req.error);
   });
@@ -153,7 +341,10 @@ export async function setRepertoireSourceSideOverride(
 ): Promise<RepertoireSource> {
   const source = await getRepertoireSource(id);
   if (!source) throw new Error('Repertoire source not found.');
-  return saveRepertoireSource(withRepertoireSourceSideOverride(source, sideOverride, now));
+  const updated = withRepertoireSourceSideOverride(source, sideOverride, now);
+  const saved = await saveRepertoireSource(updated);
+  if (source.side !== updated.side) await deleteRepertoireSourceScanRecords(id, now);
+  return saved;
 }
 
 export async function setRepertoireSourceEnabled(

@@ -14,15 +14,17 @@ import { parseFen, makeFen } from 'chessops/fen';
 import { parsePgn, startingPosition } from 'chessops/pgn';
 import { parseSan, makeSan, makeSanAndPlay } from 'chessops/san';
 import { chessgroundDests } from 'chessops/compat';
-import { Chess } from 'chessops/chess';
+import { Chess, normalizeMove } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { randomMasterGame } from '../showcase/masterGames';
 import type { MasterGame } from '../showcase/masterGames';
 import { bindBoardResizeHandle } from '../board/index';
+import { REPERTOIRE_ALT_ARROW_BRUSH, REPERTOIRE_ARROW_BRUSH } from '../board/arrowBrushes';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
 import { renderMoveList } from '../analyse/moveList';
 import { formatScore, renderEvalBar } from '../analyse/evalView';
-import type { TreeNode } from '../tree/types';
+import type { TreeComment, TreeNode } from '../tree/types';
+import { nagToGlyph } from '../tree/pgn';
 import { accountSection, updateAccount, type ChessAccount, type AccountSection, type AccountCategory } from '../accounts';
 import { deleteImportedAccountAndGames } from '../sync/dataManagement';
 import { computeAccountCardStats, PRIMARY_CARD_SPEEDS, type AccountCardStats, type AccountSpeedStat } from './accountCardStats';
@@ -91,6 +93,7 @@ import {
   arrowAllLines, setArrowAllLines,
   showArrowLabels, setShowArrowLabels,
   stopProtocol,
+  syncArrowForced,
 } from '../engine/ctrl';
 import {
   cancelTreeEval,
@@ -120,6 +123,22 @@ import {
 } from './analytics';
 import { detectTrapPatterns } from './traps';
 import { saveOrpLineToLibrary } from '../study/saveAction';
+import {
+  repertoireSources,
+  repertoireSourcesLoaded,
+  repertoireSourcesError,
+  loadRepertoireSources,
+  setRepertoireSourceEnabled,
+} from '../study/studyCtrl';
+import {
+  buildRepertoireExplorerModel,
+  repertoireSourceSideBadge,
+  type RepertoireExplorerLinePosition,
+  type RepertoireExplorerPositionAnnotation,
+  type RepertoireExplorerPriorMatch,
+  type RepertoireExplorerSourceGroup,
+} from '../repertoire/explorerViewModel';
+import { buildRepertoireArrowShapes } from '../repertoire/arrowShapes';
 import { clearLichessApiLoginData, requestBookLogin } from '../auth/lichessBookAuth';
 import {
   markNav, currentGenerationToken, isGenerationCurrent, onSettle, isRapid,
@@ -394,6 +413,8 @@ const _accountCardStats = new Map<string, AccountCardStats>();
 const _accountCardStatsLoading = new Set<string>();
 const _accountCardStatsError = new Set<string>();
 let _bookAuthNotice = '';
+let _repertoireExplorerNotice = '';
+let _expandedRepertoireAnnotationKey: string | null = null;
 
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
@@ -3496,11 +3517,12 @@ function renderOpeningsMoveNavBar(
     },
     last:       () => { navigateToEnd(); syncOpeningsBoard(redraw); redraw(); },
     bookActive: explorerCtrl.enabled,
-    onBook:     () => {
-      explorerCtrl.toggle();
-      if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw);
-      redraw();
-    },
+	    onBook:     () => {
+	      explorerCtrl.toggle();
+	      if (explorerCtrl.enabled && node) explorerCtrl.setNode(node.fen, redraw);
+	      syncOpeningsAutoShapes(node);
+	      redraw();
+	    },
     menuTitle: 'Opponents menu',
     menuOpen:  _openingsMenuOpen,
     onMenu:    () => { _openingsMenuOpen = !_openingsMenuOpen; redraw(); },
@@ -3541,6 +3563,8 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
               paleBlue: { key: 'pb', color: '#003088', opacity: 0.65, lineWidth: 15 },
               yellow:   { key: 'y',  color: '#e6a520', opacity: 0.55, lineWidth: 8 },
               paleGrey: { key: 'pg', color: '#888888', opacity: 0.35, lineWidth: 6 },
+              repertoire: REPERTOIRE_ARROW_BRUSH,
+              repertoireAlt: REPERTOIRE_ALT_ARROW_BRUSH,
               ...FREQ_BRUSHES,
             },
           },
@@ -3787,6 +3811,7 @@ function syncOpeningsBoard(_redraw: () => void): void {
   const node = sessionNode();
   if (!_openingsCg || !node) return;
   const fen = node.fen;
+  explorerCtrl.clearStaleHovering(fen);
   const session = practiceSession();
   const isPractice = !!session;
   // Skip only if neither FEN nor practice mode has changed.
@@ -3911,9 +3936,13 @@ for (let i = 0; i < 8; i++) {
 
 
 function buildOpeningsAutoShapes(node: OpeningTreeNode | null): DrawShape[] {
+  const fen = currentOpeningsBoardFen() ?? node?.fen ?? null;
   return [
 
     ...(_showTreeArrows && node ? buildFrequencyArrows(node) : []),
+    ...(explorerCtrl.enabled && explorerCtrl.config.db === 'repertoire' && !isRapid()
+      ? buildRepertoireArrowShapes(repertoireSources(), fen)
+      : []),
     ...(isRapid() ? [] : buildEngineArrowShapes()),
   ];
 }
@@ -4562,6 +4591,488 @@ function renderMastersBookIcon(parentFen: string, uci: string): VNode | null {
   });
 }
 
+type ExplorerMoveRowInteractionOptions = {
+  fen: string;
+  rowSelector: string;
+  board: () => CgApi | undefined;
+  getCurrentFen: () => string | null | undefined;
+  restoreAutoShapes: () => void;
+  onMoveClick?: ((uci: string) => void) | undefined;
+  ignoreClickSelector?: string | undefined;
+  onDirectAutoShapesSet?: (() => void) | undefined;
+};
+
+type ExplorerMoveRowsElement = HTMLElement & {
+  _explorerMoveRowInteractionOptions?: ExplorerMoveRowInteractionOptions;
+  _explorerMoveRowInteractionsBound?: boolean;
+};
+
+function currentOpeningsBoardFen(): string | null {
+  return _offTreeFen ?? sessionNode()?.fen ?? null;
+}
+
+function rowFromEventTarget(target: EventTarget | null, root: HTMLElement, selector: string): HTMLElement | null {
+  if (!(target instanceof HTMLElement)) return null;
+  const row = target.closest(selector);
+  return row instanceof HTMLElement && root.contains(row) ? row : null;
+}
+
+function eventStayedWithinRow(event: MouseEvent, row: HTMLElement): boolean {
+  return event.relatedTarget instanceof Node && row.contains(event.relatedTarget);
+}
+
+function explorerHoverShape(uci: string): DrawShape | null {
+  if (uci.length < 4) return null;
+  return {
+    orig: uci.slice(0, 2) as Key,
+    dest: uci.slice(2, 4) as Key,
+    brush: 'blue',
+  };
+}
+
+function restoreOpeningsExplorerAutoShapes(): void {
+  _lastOpeningsAutoShapesHash = null;
+  syncOpeningsAutoShapes(sessionNode());
+}
+
+function restoreAnalysisExplorerAutoShapes(): void {
+  syncArrowForced();
+}
+
+function clearExplorerMoveHover(opts: ExplorerMoveRowInteractionOptions): void {
+  explorerCtrl.setHovering(opts.fen, null);
+  opts.board()?.setAutoShapes([]);
+  opts.onDirectAutoShapesSet?.();
+  opts.restoreAutoShapes();
+}
+
+function fenMatchesExplorerRow(opts: ExplorerMoveRowInteractionOptions): boolean {
+  return opts.getCurrentFen() === opts.fen;
+}
+
+function showExplorerMoveHover(uci: string, opts: ExplorerMoveRowInteractionOptions): void {
+  if (!fenMatchesExplorerRow(opts)) {
+    clearExplorerMoveHover(opts);
+    return;
+  }
+  const shape = explorerHoverShape(uci);
+  if (!shape) return;
+  explorerCtrl.setHovering(opts.fen, uci);
+  opts.board()?.setAutoShapes([shape]);
+  opts.onDirectAutoShapesSet?.();
+}
+
+function handleExplorerMoveClick(uci: string, opts: ExplorerMoveRowInteractionOptions): void {
+  if (!fenMatchesExplorerRow(opts)) {
+    clearExplorerMoveHover(opts);
+    return;
+  }
+  opts.onMoveClick?.(uci);
+}
+
+function currentExplorerMoveRowOptions(root: ExplorerMoveRowsElement): ExplorerMoveRowInteractionOptions | null {
+  return root._explorerMoveRowInteractionOptions ?? null;
+}
+
+function bindExplorerMoveRowInteractions(root: ExplorerMoveRowsElement, opts: ExplorerMoveRowInteractionOptions): void {
+  root._explorerMoveRowInteractionOptions = opts;
+  if (root._explorerMoveRowInteractionsBound) return;
+  root._explorerMoveRowInteractionsBound = true;
+
+  root.addEventListener('mouseover', (event: MouseEvent) => {
+    const opts = currentExplorerMoveRowOptions(root);
+    if (!opts) return;
+    const row = rowFromEventTarget(event.target, root, opts.rowSelector);
+    if (!row || eventStayedWithinRow(event, row)) return;
+    const uci = row.getAttribute('data-uci');
+    if (uci) showExplorerMoveHover(uci, opts);
+  });
+
+  root.addEventListener('mouseout', (event: MouseEvent) => {
+    const opts = currentExplorerMoveRowOptions(root);
+    if (!opts) return;
+    const row = rowFromEventTarget(event.target, root, opts.rowSelector);
+    if (!row || eventStayedWithinRow(event, row)) return;
+    clearExplorerMoveHover(opts);
+  });
+
+  root.addEventListener('mouseleave', () => {
+    const opts = currentExplorerMoveRowOptions(root);
+    if (opts) clearExplorerMoveHover(opts);
+  });
+
+  root.addEventListener('click', (event: MouseEvent) => {
+    const opts = currentExplorerMoveRowOptions(root);
+    if (!opts) return;
+    const target = event.target as HTMLElement | null;
+    if (target && opts.ignoreClickSelector && target.closest(opts.ignoreClickSelector)) return;
+    const row = rowFromEventTarget(event.target, root, opts.rowSelector);
+    const uci = row?.getAttribute('data-uci');
+    if (uci) handleExplorerMoveClick(uci, opts);
+  });
+}
+
+function playOpeningsExplorerMove(uci: string, redraw: () => void): void {
+  const current = sessionNode();
+  if (!current) return;
+
+  if (!_offTreeFen) {
+    const child = current.children.find(candidate => candidate.uci === uci || candidate.uci.startsWith(uci));
+    if (child) {
+      navigateToMove(child.uci);
+      const newNode = sessionNode();
+      if (newNode) explorerCtrl.setNode(newNode.fen, redraw);
+      syncOpeningsBoard(redraw);
+      redraw();
+      return;
+    }
+  }
+
+  const baseFen = _offTreeFen ?? current.fen;
+  const setup = parseFen(baseFen);
+  if (!setup.isOk) return;
+  const posResult = Chess.fromSetup(setup.value);
+  if (!posResult.isOk) return;
+  const parsed = parseUci(uci);
+  if (!parsed) return;
+  const move = normalizeMove(posResult.value, parsed);
+  if (!('from' in move) || !posResult.value.isLegal(move)) return;
+
+  const san = makeSan(posResult.value, move);
+  posResult.value.play(move);
+  const newFen = makeFen(posResult.value.toSetup());
+  _offTreeFen = newFen;
+  _lastBoardFen = newFen;
+  explorerCtrl.clearStaleHovering(newFen);
+  _openingsCg?.set({
+    fen: newFen,
+    animation: chessBoardAnimationConfig(),
+    lastMove: [uci.slice(0, 2) as Key, uci.slice(2, 4) as Key],
+    movable: { dests: destsForFen(newFen), color: 'both' },
+  });
+  explorerCtrl.setNode(newFen, redraw);
+  playOpeningsMoveSound(san);
+  scheduleOpeningsEngineEval(newFen);
+  redraw();
+}
+
+function repertoireLineForOpenings(path: readonly string[]): RepertoireExplorerLinePosition<readonly string[]>[] {
+  const tree = openingTree();
+  if (!tree) return [];
+  const line: RepertoireExplorerLinePosition<readonly string[]>[] = [
+    { fen: tree.fen, path: [], ply: 0 },
+  ];
+  let current: OpeningTreeNode | undefined = tree;
+  const currentPath: string[] = [];
+  for (const uci of path) {
+    const child: OpeningTreeNode | undefined = current?.children.find(candidate => candidate.uci === uci);
+    if (!child) break;
+    currentPath.push(uci);
+    line.push({
+      fen: child.fen,
+      path: [...currentPath],
+      uci: child.uci,
+      san: child.san,
+      ply: currentPath.length,
+    });
+    current = child;
+  }
+  return line;
+}
+
+function nagSymbols(nags: readonly number[]): string {
+  return nags.map(nag => nagToGlyph(nag)?.symbol ?? `$${nag}`).join(' ');
+}
+
+function annotationCommentTexts(comments: readonly TreeComment[]): string[] {
+  return comments.map(comment => comment.text.trim()).filter(text => text.length > 0);
+}
+
+function firstCommentLine(comments: readonly TreeComment[]): string {
+  for (const comment of comments) {
+    const line = comment.text.split(/\r?\n/).map(part => part.trim()).find(Boolean);
+    if (line) return line;
+  }
+  return '';
+}
+
+function repertoireAnnotationKey(
+  fen: string,
+  group: RepertoireExplorerSourceGroup,
+  entry: RepertoireExplorerSourceGroup['entries'][number],
+  entryIndex: number,
+): string {
+  return `${group.source.id}:${fen}:${entry.uci}:${entryIndex}`;
+}
+
+function renderRepertoireAnnotationBlock(
+  nags: readonly number[],
+  comments: readonly TreeComment[],
+  modifier: string,
+): VNode | null {
+  const nagText = nagSymbols(nags);
+  const texts = annotationCommentTexts(comments);
+  if (!nagText && texts.length === 0) return null;
+  return h(`div.repertoire__annotation.${modifier}`, [
+    nagText ? h('div.repertoire__annotation-nags', nagText) : null,
+    ...texts.map((text, index) => h('div.repertoire__annotation-text', { key: String(index) }, text)),
+  ]);
+}
+
+function renderRepertoireChip(source: RepertoireExplorerSourceGroup['source'], accentIndex: number): VNode {
+  return h(`span.repertoire__chip.repertoire__accent--${accentIndex % 8}`, [
+    h('span.repertoire__chip-dot'),
+    h('span.repertoire__chip-name', source.name),
+    h('span.repertoire__side-badge', repertoireSourceSideBadge(source.side)),
+  ]);
+}
+
+function toggleRepertoireSourceFromExplorer(
+  source: RepertoireExplorerSourceGroup['source'],
+  redraw: () => void,
+  restoreAutoShapes?: () => void,
+): void {
+  _repertoireExplorerNotice = '';
+  void setRepertoireSourceEnabled(source.id, !source.enabled)
+    .then(() => {
+      restoreAutoShapes?.();
+      redraw();
+    })
+    .catch(() => {
+      _repertoireExplorerNotice = `Could not update ${source.name}.`;
+      redraw();
+    });
+}
+
+function repertoireMoveListHook(
+  fen: string,
+  onMoveClick?: (uci: string) => void,
+  cgBoard?: CgApi,
+  getCurrentFen: () => string | null | undefined = currentOpeningsBoardFen,
+  restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes,
+) {
+  const bind = (vnode: import('snabbdom').VNode) => {
+    const el = vnode.elm as ExplorerMoveRowsElement;
+    const usesOpeningsBoard = restoreAutoShapes === restoreOpeningsExplorerAutoShapes;
+    bindExplorerMoveRowInteractions(el, {
+      fen,
+      rowSelector: '.repertoire__move-row',
+      board: () => cgBoard ?? (usesOpeningsBoard ? _openingsCg : undefined),
+      getCurrentFen,
+      restoreAutoShapes,
+      onMoveClick,
+      ignoreClickSelector: '.repertoire__annotation-toggle',
+      onDirectAutoShapesSet: usesOpeningsBoard ? () => { _lastOpeningsAutoShapesHash = null; } : undefined,
+    });
+  };
+  return {
+    insert: bind,
+    postpatch: (_old: import('snabbdom').VNode, vnode: import('snabbdom').VNode) => bind(vnode),
+  };
+}
+
+function renderRepertoireMoveRows(
+  group: RepertoireExplorerSourceGroup,
+  fen: string,
+  redraw: () => void,
+  onMoveClick?: (uci: string) => void,
+  cgBoard?: CgApi,
+  getCurrentFen?: () => string | null | undefined,
+  restoreAutoShapes?: () => void,
+): VNode | null {
+  if (group.error) return h('div.repertoire__source-error.repertoire__source-error--inline', group.error);
+  if (!group.entries.length) return null;
+  return h('div.repertoire__move-list', {
+    hook: repertoireMoveListHook(fen, onMoveClick, cgBoard, getCurrentFen, restoreAutoShapes),
+  }, group.entries.map((entry, entryIndex) => {
+    const nags = nagSymbols(entry.nags);
+    const preview = firstCommentLine(entry.comments);
+    const annotationKey = repertoireAnnotationKey(fen, group, entry, entryIndex);
+    const expanded = _expandedRepertoireAnnotationKey === annotationKey;
+    const expandedLabel = expanded ? `Collapse annotation for ${entry.san}` : `Expand annotation for ${entry.san}`;
+    return h('div.repertoire__move-row', {
+      key: annotationKey,
+      class: { 'repertoire__move-row--expanded': expanded },
+      attrs: {
+        'data-uci': entry.uci,
+        title: `Play repertoire move ${entry.san}`,
+        'aria-label': `Play repertoire move ${entry.san}`,
+      },
+    }, [
+      h('div.repertoire__move-main', [
+        h('span.repertoire__move-san', entry.san),
+        entry.isMain ? h('span.repertoire__main-tag', 'main') : null,
+        nags ? h('span.repertoire__nags', nags) : null,
+        group.expectedReply ? h('span.repertoire__reply-tag', 'expected reply') : null,
+      ]),
+      preview ? h('button.repertoire__comment-preview.repertoire__annotation-toggle', {
+        attrs: {
+          type: 'button',
+          title: expandedLabel,
+          'aria-label': expandedLabel,
+          'aria-expanded': String(expanded),
+        },
+        on: {
+          click: (e: MouseEvent) => {
+            e.stopPropagation();
+            _expandedRepertoireAnnotationKey = expanded ? null : annotationKey;
+            redraw();
+          },
+        },
+      }, preview) : null,
+      expanded ? renderRepertoireAnnotationBlock(entry.nags, entry.comments, 'repertoire__annotation--expanded') : null,
+    ]);
+  }));
+}
+
+function renderRepertoirePositionAnnotations(annotations: readonly RepertoireExplorerPositionAnnotation[]): VNode | null {
+  const visible = annotations.filter(annotation =>
+    annotation.nags.length > 0 || annotationCommentTexts(annotation.comments).length > 0,
+  );
+  if (!visible.length) return null;
+
+  return h('div.annotation-panel.repertoire__position-annotations', [
+    h('h3.annotation-panel__title', 'Position comments'),
+    ...visible.map((annotation, annotationIndex) => h('div.repertoire__position-annotation', {
+      key: `${annotation.source.id}:${annotation.sourceGameIndex}:${annotation.chapterIndex}:${annotationIndex}`,
+    }, [
+      renderRepertoireChip(annotation.source, annotation.accentIndex),
+      renderRepertoireAnnotationBlock(annotation.nags, annotation.comments, 'repertoire__annotation--position'),
+    ])),
+  ]);
+}
+
+function renderRepertoireSourceGroup(
+  group: RepertoireExplorerSourceGroup,
+  fen: string,
+  redraw: () => void,
+  onMoveClick?: (uci: string) => void,
+  cgBoard?: CgApi,
+  getCurrentFen?: () => string | null | undefined,
+  restoreAutoShapes?: () => void,
+): VNode {
+  return h(`section.repertoire__explorer-group.repertoire__accent--${group.accentIndex}`, { key: group.source.id }, [
+    h('div.repertoire__explorer-group-header', [
+      renderRepertoireChip(group.source, group.accentIndex),
+      h('button.repertoire__source-toggle', {
+        attrs: {
+          title: group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
+          'aria-label': group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
+        },
+        class: { active: group.source.enabled },
+        on: { click: () => toggleRepertoireSourceFromExplorer(group.source, redraw, restoreAutoShapes) },
+      }, group.source.enabled ? 'On' : 'Off'),
+    ]),
+    group.expectedReply
+      ? h('div.repertoire__expected-reply', 'Expected replies from the opponent line')
+      : null,
+    renderRepertoireMoveRows(group, fen, redraw, onMoveClick, cgBoard, getCurrentFen, restoreAutoShapes),
+  ]);
+}
+
+function moveNumberLabel(position: RepertoireExplorerLinePosition<unknown> | null): string {
+  if (!position?.ply) return '';
+  return `move ${Math.max(1, Math.ceil(position.ply / 2))}`;
+}
+
+function renderRepertoireOutOfLine<Path>(
+  match: RepertoireExplorerPriorMatch<Path> | null,
+  onJumpToPrior?: (path: Path) => void,
+): VNode {
+  const leftBy = match?.leftBy ?? null;
+  const moveLabel = leftBy?.san
+    ? ` since ${leftBy.san}${moveNumberLabel(leftBy) ? ` (${moveNumberLabel(leftBy)})` : ''}`
+    : '';
+  const canJump = match?.matched.path !== undefined && onJumpToPrior;
+  return h('div.repertoire__out-of-line', [
+    h('span', match ? `Out of repertoire${moveLabel}.` : 'No repertoire match for this line.'),
+    canJump
+      ? h('button.repertoire__jump', {
+          attrs: {
+            title: 'Jump to deepest repertoire match',
+            'aria-label': 'Jump to deepest repertoire match',
+          },
+          on: { click: () => onJumpToPrior(match.matched.path as Path) },
+        }, 'Jump')
+      : null,
+  ]);
+}
+
+function renderRepertoireExplorerPanel<Path = unknown>(
+  fen: string | null,
+  redraw: () => void,
+  opts: {
+    line?: RepertoireExplorerLinePosition<Path>[];
+    onMoveClick?: (uci: string) => void;
+    onJumpToPrior?: (path: Path) => void;
+    cgBoard?: CgApi;
+    getCurrentFen?: () => string | null | undefined;
+    restoreAutoShapes?: () => void;
+  } = {},
+): VNode {
+  if (!fen) return h('div.openings__explorer-empty', 'No position selected.');
+  if (!repertoireSourcesLoaded()) {
+    loadRepertoireSources(redraw);
+    return h('div.openings__explorer-box', { class: { loading: true } }, [
+      h('div.overlay'),
+      h('div.openings__explorer-message', h('p', 'Loading repertoire sources...')),
+    ]);
+  }
+  if (repertoireSourcesError()) {
+    return h('div.openings__explorer-box', [
+      h('div.openings__explorer-message', [
+        h('strong', 'Could not load repertoire sources'),
+        h('p.openings__explorer-explanation', 'Open Study Library and try again.'),
+      ]),
+    ]);
+  }
+
+  const model = buildRepertoireExplorerModel(repertoireSources(), fen, opts.line);
+  if (model.sources.length === 0) {
+    return h('div.openings__explorer-box', [
+      h('div.openings__explorer-message', [
+        h('strong', 'No repertoire sources'),
+        h('p.openings__explorer-explanation', [
+          'Upload a repertoire PGN in ',
+          h('a.repertoire__empty-link', {
+            attrs: {
+              href: '#/study',
+              title: 'Open Study Library to upload a repertoire PGN',
+              'aria-label': 'Open Study Library to upload a repertoire PGN',
+            },
+          }, 'Study Library'),
+          '.',
+        ]),
+      ]),
+    ]);
+  }
+  if (model.enabledSources.length === 0) {
+    return h('div.openings__explorer-box', [
+      h('div.openings__explorer-message', [
+        h('strong', 'No sources enabled'),
+        h('p.openings__explorer-explanation', 'Enable a repertoire source in Study Library.'),
+      ]),
+    ]);
+  }
+
+  return h('div.openings__explorer-box.repertoire__explorer-box', [
+    h('div.repertoire__explorer-list',
+      model.groups.map(group => renderRepertoireSourceGroup(
+        group,
+        fen,
+        redraw,
+        opts.onMoveClick,
+        opts.cgBoard,
+        opts.getCurrentFen,
+        opts.restoreAutoShapes,
+      )),
+    ),
+    !model.hasCurrentMatch ? renderRepertoireOutOfLine(model.deepestPriorMatch, opts.onJumpToPrior) : null,
+    renderRepertoirePositionAnnotations(model.positionAnnotations),
+    _repertoireExplorerNotice ? h('div.repertoire__source-status', _repertoireExplorerNotice) : null,
+  ]);
+}
+
 function treeEvalScoreClasses(entry: TreeEvalEntry, fen: string): Record<string, boolean> {
   const isKo = entry.mate === 0;
   const isPositive = entry.cp !== undefined ? entry.cp > 0 : entry.mate !== undefined ? entry.mate > 0 : null;
@@ -5152,17 +5663,31 @@ function renderExplorerToggle(node: OpeningTreeNode | null, redraw: () => void):
   ]);
 }
 
-function renderExplorerDbTabs(node: OpeningTreeNode | null, redraw: () => void): VNode {
+function renderExplorerDbTabs(node: OpeningTreeNode | null, redraw: () => void, restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes): VNode {
   const db = explorerCtrl.config.db;
   const setDb = (d: ExplorerDb) => {
     explorerCtrl.setDb(d);
-    if (node) explorerCtrl.setNode(node.fen, redraw);
+    if (node && d !== 'repertoire') explorerCtrl.setNode(node.fen, redraw);
+    restoreAutoShapes();
     redraw();
   };
   return h('div.openings__explorer-tabs', [
-    h(`button.openings__explorer-tab${db === 'masters' ? '.active' : ''}`, { on: { click: () => setDb('masters') } }, 'Masters'),
-    h(`button.openings__explorer-tab${db === 'lichess' ? '.active' : ''}`, { on: { click: () => setDb('lichess') } }, 'Lichess'),
-    h(`button.openings__explorer-tab${db === 'player' ? '.active' : ''}`, { on: { click: () => setDb('player') } }, 'Player'),
+    h(`button.openings__explorer-tab${db === 'masters' ? '.active' : ''}`, {
+      attrs: { title: 'Show Masters explorer', 'aria-label': 'Show Masters explorer' },
+      on: { click: () => setDb('masters') },
+    }, 'Masters'),
+    h(`button.openings__explorer-tab${db === 'lichess' ? '.active' : ''}`, {
+      attrs: { title: 'Show Lichess explorer', 'aria-label': 'Show Lichess explorer' },
+      on: { click: () => setDb('lichess') },
+    }, 'Lichess'),
+    h(`button.openings__explorer-tab${db === 'player' ? '.active' : ''}`, {
+      attrs: { title: 'Show Player explorer', 'aria-label': 'Show Player explorer' },
+      on: { click: () => setDb('player') },
+    }, 'Player'),
+    h(`button.openings__explorer-tab${db === 'repertoire' ? '.active' : ''}`, {
+      attrs: { title: 'Show Repertoire explorer', 'aria-label': 'Show Repertoire explorer' },
+      on: { click: () => setDb('repertoire') },
+    }, 'Repertoire'),
   ]);
 }
 
@@ -5266,6 +5791,21 @@ function renderExplorerConfigPanel(redraw: () => void): VNode {
  */
 function renderExplorerPanel(node: OpeningTreeNode | null, redraw: () => void): VNode {
   if (!node) return h('div.openings__explorer-empty', 'No position selected.');
+  if (explorerCtrl.config.db === 'repertoire') {
+    return renderRepertoireExplorerPanel(node.fen, redraw, {
+      line: repertoireLineForOpenings(sessionPath()),
+      onMoveClick: (uci: string) => {
+        playOpeningsExplorerMove(uci, redraw);
+      },
+      onJumpToPrior: (path: readonly string[]) => {
+        navigateToPath([...path]);
+        syncOpeningsBoard(redraw);
+        redraw();
+      },
+      getCurrentFen: currentOpeningsBoardFen,
+      restoreAutoShapes: restoreOpeningsExplorerAutoShapes,
+    });
+  }
 
   const data = explorerCtrl.current(node.fen);
   if (!data && !explorerCtrl.loading && !explorerCtrl.failing && !explorerCtrl.needsPlayerName) {
@@ -5433,6 +5973,8 @@ function renderExplorerMovesTable(
   redraw: () => void,
   onMoveClick?: (uci: string) => void,
   cgBoard?: CgApi,
+  getCurrentFen: () => string | null | undefined = currentOpeningsBoardFen,
+  restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes,
 ): VNode {
   const sumTotal = (data.white ?? 0) + (data.draws ?? 0) + (data.black ?? 0) || 1;
 
@@ -5442,45 +5984,28 @@ function renderExplorerMovesTable(
     ? [...data.moves, { uci: '' as '', san: '\u03A3', white: data.white ?? 0, black: data.black ?? 0, draws: data.draws ?? 0 }]
     : [...data.moves];
 
-  const board = cgBoard ?? _openingsCg;
   const defaultMoveClick = (uci: string) => {
-    navigateToMove(uci);
-    const newNode = sessionNode();
-    if (newNode) explorerCtrl.setNode(newNode.fen, redraw);
-    redraw();
+    playOpeningsExplorerMove(uci, redraw);
   };
   const handleMoveClick = onMoveClick ?? defaultMoveClick;
+  const usesOpeningsBoard = restoreAutoShapes === restoreOpeningsExplorerAutoShapes;
+  const bind = (vnode: import('snabbdom').VNode) => {
+    const el = vnode.elm as ExplorerMoveRowsElement;
+    bindExplorerMoveRowInteractions(el, {
+      fen,
+      rowSelector: 'tr',
+      board: () => cgBoard ?? (usesOpeningsBoard ? _openingsCg : undefined),
+      getCurrentFen,
+      restoreAutoShapes,
+      onMoveClick: handleMoveClick,
+      onDirectAutoShapesSet: usesOpeningsBoard ? () => { _lastOpeningsAutoShapesHash = null; } : undefined,
+    });
+  };
 
   return h('table.explorer-moves', {
     hook: {
-      insert(vnode: import('snabbdom').VNode) {
-        const el = vnode.elm as HTMLElement;
-        el.addEventListener('mouseover', (e: MouseEvent) => {
-          const tr = (e.target as HTMLElement).closest('tr');
-          const uci = tr?.getAttribute('data-uci');
-          if (uci) {
-            explorerCtrl.setHovering(fen, uci);
-            const orig = uci.slice(0, 2);
-            const dest = uci.slice(2, 4);
-            board?.setAutoShapes([{ orig: orig as any, dest: dest as any, brush: 'blue' }]);
-            // Invalidate the diff-guard so the next syncOpeningsAutoShapes call
-            // restores the full shape set after the hover preview clears.
-            _lastOpeningsAutoShapesHash = null;
-          }
-        });
-        el.addEventListener('mouseout', () => {
-          explorerCtrl.setHovering(fen, null);
-          board?.setAutoShapes([]);
-          // Invalidate the diff-guard so syncOpeningsAutoShapes restores arrows
-          // on the next redraw rather than skipping (board now has no shapes).
-          _lastOpeningsAutoShapesHash = null;
-        });
-        el.addEventListener('click', (e: MouseEvent) => {
-          const tr = (e.target as HTMLElement).closest('tr');
-          const uci = tr?.getAttribute('data-uci');
-          if (uci) handleMoveClick(uci);
-        });
-      },
+      insert: bind,
+      postpatch: (_old: import('snabbdom').VNode, vnode: import('snabbdom').VNode) => bind(vnode),
     },
   }, [
     h('thead', h('tr', [
@@ -5519,6 +6044,9 @@ export function renderAnalysisExplorerSection(
   cg: CgApi | undefined,
   onMoveClick: (uci: string) => void,
   redraw: () => void,
+  line?: RepertoireExplorerLinePosition<string>[],
+  onJumpToPath?: (path: string) => void,
+  getCurrentFen: () => string | null | undefined = () => fen,
 ): VNode | null {
   if (!explorerCtrl.enabled) return null;
 
@@ -5531,10 +6059,10 @@ export function renderAnalysisExplorerSection(
         on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
       }, '\u2699\uFE0F'),
     ]),
-    renderExplorerDbTabs(null, redraw),
+    renderExplorerDbTabs(null, redraw, restoreAnalysisExplorerAutoShapes),
     explorerCtrl.configOpen
       ? renderExplorerConfigPanel(redraw)
-      : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw),
+      : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw, line, onJumpToPath, getCurrentFen),
   ]);
 }
 
@@ -5548,7 +6076,29 @@ function renderAnalysisExplorerPanel(
   cg: CgApi | undefined,
   onMoveClick: (uci: string) => void,
   redraw: () => void,
+  line?: RepertoireExplorerLinePosition<string>[],
+  onJumpToPath?: (path: string) => void,
+  getCurrentFen: () => string | null | undefined = () => fen,
 ): VNode {
+  if (explorerCtrl.config.db === 'repertoire') {
+    const opts: {
+      line?: RepertoireExplorerLinePosition<string>[];
+      onMoveClick: (uci: string) => void;
+      onJumpToPrior?: (path: string) => void;
+      cgBoard?: CgApi;
+      getCurrentFen: () => string | null | undefined;
+      restoreAutoShapes: () => void;
+    } = {
+      onMoveClick,
+      getCurrentFen,
+      restoreAutoShapes: restoreAnalysisExplorerAutoShapes,
+    };
+    if (line) opts.line = line;
+    if (onJumpToPath) opts.onJumpToPrior = onJumpToPath;
+    if (cg) opts.cgBoard = cg;
+    return renderRepertoireExplorerPanel(fen, redraw, opts);
+  }
+
   const data = explorerCtrl.current(fen);
   if (!data && !explorerCtrl.loading && !explorerCtrl.failing && !explorerCtrl.needsPlayerName) {
     explorerCtrl.setNode(fen, redraw);
@@ -5579,7 +6129,7 @@ function renderAnalysisExplorerPanel(
     const content = hasContent
       ? h('div.openings__explorer-data', [
           data.opening ? h('div.openings__explorer-opening', data.opening.name) : null,
-          renderExplorerMovesTable(data, fen, redraw, onMoveClick, cg),
+          renderExplorerMovesTable(data, fen, redraw, onMoveClick, cg, getCurrentFen, restoreAnalysisExplorerAutoShapes),
           renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
           renderExplorerGamesTable('Recent games', data.recentGames ?? [], isMasters),
         ])

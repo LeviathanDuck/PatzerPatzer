@@ -86,10 +86,22 @@ export class ExplorerCtrl {
     this.config.setDb(db);
     this.cache.clear();
     this.movesAway = 0;
+    if (db === 'repertoire') {
+      this.abortCtrl?.abort();
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+      this.loading = false;
+      this.failing = null;
+      this.tablebaseData = null;
+    }
   }
 
   setHovering(fen: string, uci: string | null): void {
     this.hovering = uci ? { fen, uci } : null;
+  }
+
+  clearStaleHovering(currentFen: string): void {
+    if (this.hovering && this.hovering.fen !== currentFen) this.hovering = null;
   }
 
   current(fen: string): OpeningData | undefined {
@@ -110,6 +122,15 @@ export class ExplorerCtrl {
    */
   setNode(fen: string, redraw: () => void): void {
     if (!this.enabled) return;
+    if (this.config.db === 'repertoire') {
+      this.abortCtrl?.abort();
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+      this.loading = false;
+      this.failing = null;
+      this.tablebaseData = null;
+      return;
+    }
 
     this.gameMenu = null;
     const cached = this.cache.get(fen);
@@ -161,6 +182,7 @@ export class ExplorerCtrl {
         recentGames: withGames,
       };
     }
+    if (db === 'repertoire') throw new Error('Repertoire tab uses local data only.');
     // player DB
     if (!playerName) throw new Error('No player name set for explorer player DB');
     return {
