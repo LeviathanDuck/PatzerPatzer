@@ -99,6 +99,118 @@ export interface ReviewSearchIdentitySnapshot {
   generation: number;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+export type ReviewSearchOwnerKind = 'review' | 'tree-eval';
+
+export interface ReviewSearchDescriptor {
+  token: number;
+  kind: ReviewSearchOwnerKind;
+  fen: string;
+  nodePath: string;
+  ply: number;
+  stale: boolean;
+  issuedAt: number;
+}
+
+export interface ReviewSearchOwnerState {
+  nextToken: number;
+  pending: ReviewSearchDescriptor[];
+}
+
+export function createReviewSearchOwner(): ReviewSearchOwnerState {
+  return { nextToken: 1, pending: [] };
+}
+
+/** Register one issued `go`. Returns the descriptor whose token identifies that search. */
+export function searchOwnerRegisterGo(
+  state: ReviewSearchOwnerState,
+  args: { kind: ReviewSearchOwnerKind; fen: string; nodePath?: string; ply?: number; now?: number },
+): ReviewSearchDescriptor {
+  const descriptor: ReviewSearchDescriptor = {
+    token: state.nextToken++,
+    kind: args.kind,
+    fen: args.fen,
+    nodePath: args.nodePath ?? '',
+    ply: args.ply ?? 0,
+    stale: false,
+    issuedAt: args.now ?? Date.now(),
+  };
+  state.pending.push(descriptor);
+  return descriptor;
+}
+
+/** Count of issued searches still owed a bestmove. */
+export function searchOwnerOutstanding(state: ReviewSearchOwnerState): number {
+  return state.pending.length;
+}
+
+/** Oldest outstanding descriptor — the search the next engine line belongs to. */
+export function searchOwnerHead(state: ReviewSearchOwnerState): ReviewSearchDescriptor | null {
+  return state.pending[0] ?? null;
+}
+
+/** Consume the oldest outstanding search for an arriving bestmove. Null = unexpected reply. */
+export function searchOwnerConsumeBestmove(state: ReviewSearchOwnerState): ReviewSearchDescriptor | null {
+  return state.pending.shift() ?? null;
+}
+
+/** Mark every outstanding search stale (stopped/superseded/preempted). Returns count marked. */
+export function searchOwnerMarkAllStale(state: ReviewSearchOwnerState): number {
+  let marked = 0;
+  for (const descriptor of state.pending) {
+    if (!descriptor.stale) {
+      descriptor.stale = true;
+      marked++;
+    }
+  }
+  return marked;
+}
+
+/** Mark outstanding searches of one kind stale (e.g. tree-eval on lease stop/release). */
+export function searchOwnerMarkKindStale(state: ReviewSearchOwnerState, kind: ReviewSearchOwnerKind): number {
+  let marked = 0;
+  for (const descriptor of state.pending) {
+    if (descriptor.kind === kind && !descriptor.stale) {
+      descriptor.stale = true;
+      marked++;
+    }
+  }
+  return marked;
+}
+
+/**
+ * Hard reset after an unrecoverable pipeline fault (barrier timeout, engine error/hang). Returns
+ * the number of descriptors dropped. Replies for dropped searches, if they ever arrive, must be
+ * treated as unexpected and ignored by the caller.
+ */
+export function searchOwnerReset(state: ReviewSearchOwnerState): number {
+  const dropped = state.pending.length;
+  state.pending = [];
+  return dropped;
+}
+
+/** True when `descriptor` is the reply the active review search is waiting for. */
+export function searchOwnerDescriptorIsActive(
+  descriptor: ReviewSearchDescriptor | null,
+  activeToken: number | null,
+): boolean {
+  return descriptor !== null
+    && activeToken !== null
+    && !descriptor.stale
+    && descriptor.kind === 'review'
+    && descriptor.token === activeToken;
+}
+
 export function createReviewRunId(now = Date.now()): string {
   return `review-run-${now}-${Math.random().toString(36).slice(2, 10)}`;
 }

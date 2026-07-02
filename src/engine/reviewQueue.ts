@@ -23,12 +23,22 @@ import { pgnToTree } from '../tree/pgn';
 import { reviewDepth, reviewMovetime, syncReviewDepthSetting } from './batch';
 import {
   createReviewRunManifest,
+  createReviewSearchOwner,
   hydrateReviewRunFailureCounts,
   isReviewRunStale,
   normalizeReviewRunManifest,
   reviewGamesInNewestFirstOrder,
   reviewSearchIdentityMatches,
+  searchOwnerConsumeBestmove,
+  searchOwnerDescriptorIsActive,
+  searchOwnerHead,
+  searchOwnerMarkAllStale,
+  searchOwnerMarkKindStale,
+  searchOwnerOutstanding,
+  searchOwnerRegisterGo,
+  searchOwnerReset,
   selectNextReviewRunBatch,
+  type ReviewSearchDescriptor,
   type ReviewRunLifecycleState,
   type ReviewRunManifest,
   type ReviewRunNextBatchSelection,
@@ -169,7 +179,10 @@ function beginTreeEvalPreemptDrain(): void {
 
 function handleTreeEvalPreemptDrainLine(line: string): boolean {
   if (!treeEvalPreemptDrainActive) return false;
-  if (line.trim().split(/\s+/)[0] === 'bestmove') {
+
+
+
+  if (line.trim().split(/\s+/)[0] === 'bestmove' && searchOwnerOutstanding(reviewSearchOwner) === 0) {
     finishTreeEvalPreemptDrain('bestmove');
   }
   return true;
@@ -206,6 +219,9 @@ function preemptTreeEvalLease(reason: string): boolean {
   const lease = treeEvalLease;
   if (!lease) return false;
   treeEvalLease = null;
+  // Mark every outstanding search stale so the owner FIFO drops their replies; residual
+  // tree-eval output without a live lease is handled by the dispatch barrier instead.
+  searchOwnerMarkAllStale(reviewSearchOwner);
   beginTreeEvalPreemptDrain();
   reviewProtocol.stop();
   lease.onPreempt(reason);
@@ -230,18 +246,32 @@ export async function acquireTreeEvalLease(options: {
     onPreempt: options.onPreempt,
   };
   const ownsLease = (): boolean => treeEvalLease?.token === token;
+  let leaseContext: EnginePositionContext | null = null;
   return {
     setPositionContext(context: EnginePositionContext): void {
-      if (ownsLease()) reviewProtocol.setPositionContext(context);
+      if (!ownsLease()) return;
+      leaseContext = context;
+      reviewProtocol.setPositionContext(context);
     },
     go(depth: number, multiPv = 1, movetime?: number): void {
-      if (ownsLease()) reviewProtocol.go(depth, multiPv, movetime);
+      if (!ownsLease()) return;
+      // Tree-eval searches share reviewProtocol, so they must register with the search-owner
+      // FIFO too — otherwise a residual tree-eval bestmove could be consumed as a review result.
+      searchOwnerRegisterGo(reviewSearchOwner, {
+        kind: 'tree-eval',
+        fen:  leaseContext?.currentFen ?? '',
+      });
+      reviewProtocol.go(depth, multiPv, movetime);
     },
     stop(): void {
-      if (ownsLease()) reviewProtocol.stop();
+      if (!ownsLease()) return;
+      searchOwnerMarkKindStale(reviewSearchOwner, 'tree-eval');
+      reviewProtocol.stop();
     },
     release(): void {
-      if (ownsLease()) treeEvalLease = null;
+      if (!ownsLease()) return;
+      searchOwnerMarkKindStale(reviewSearchOwner, 'tree-eval');
+      treeEvalLease = null;
     },
   };
 }
@@ -390,6 +420,7 @@ function reviewPositionContextMetadata(
     expectedFenHash: replay.expectedFenHash,
     replayedFenHash: replay.replayedFenHash,
     positionCurrentFenMatchesItemFen: engineFenEquals(item.position.currentFen, item.fen),
+    outstandingSearches: searchOwnerOutstanding(reviewSearchOwner),
   };
 }
 
@@ -1879,8 +1910,77 @@ type ReviewSearchIdentity = ReviewSearchIdentitySnapshot;
 
 let reviewActiveSearchIdentity: ReviewSearchIdentity | null = null;
 
+
+
+
+
+
+
+
+
+
+
+
+const reviewSearchOwner = createReviewSearchOwner();
+let reviewActiveSearchToken: number | null = null;
+
+// Dispatch barrier: when a new search wants to start while previous searches are still owed a
+// bestmove, mark them stale, stop the engine, and wait for the FIFO to drain before sending the
+// next `position`/`go`. Bounded: if the owed replies never arrive (engine died mid-search), reset
+// the owner and dispatch anyway — the per-position watchdog still bounds a truly dead engine.
+const REVIEW_DISPATCH_BARRIER_TIMEOUT_MS = 4_000;
+let reviewDispatchBarrierTimer: ReturnType<typeof setTimeout> | null = null;
+let reviewDispatchBarrierWaiting = false;
+
+function recordReviewSearchOwnerReset(reason: 'barrier-timeout' | 'engine-error', droppedSearches: number): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Warn,
+    source: 'review-engine',
+    sourceTag: 'review-engine',
+    message: 'review-search-owner-reset',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      resetReason: reason,
+      droppedSearches,
+      positionIndex: reviewItemIndex,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function clearDispatchBarrier(): void {
+  if (reviewDispatchBarrierTimer !== null) {
+    clearTimeout(reviewDispatchBarrierTimer);
+    reviewDispatchBarrierTimer = null;
+  }
+  reviewDispatchBarrierWaiting = false;
+}
+
+function beginDispatchBarrier(): void {
+  if (reviewDispatchBarrierWaiting) return;
+  reviewDispatchBarrierWaiting = true;
+  reviewDispatchBarrierTimer = setTimeout(() => {
+    reviewDispatchBarrierTimer = null;
+    reviewDispatchBarrierWaiting = false;
+    const dropped = searchOwnerReset(reviewSearchOwner);
+    recordReviewSearchOwnerReset('barrier-timeout', dropped);
+    if (!queuePaused && reviewItemQueue[reviewItemIndex]) sendNextItem();
+  }, REVIEW_DISPATCH_BARRIER_TIMEOUT_MS);
+}
+
+/** After each consumed bestmove: if the pipeline just drained and a dispatch is waiting, send it. */
+function maybeFinishDispatchBarrier(): void {
+  if (!reviewDispatchBarrierWaiting) return;
+  if (searchOwnerOutstanding(reviewSearchOwner) > 0) return;
+  clearDispatchBarrier();
+  if (!queuePaused && reviewItemQueue[reviewItemIndex]) sendNextItem();
+}
+
 function clearReviewSearchIdentity(): void {
   reviewActiveSearchIdentity = null;
+  reviewActiveSearchToken = null;
   reviewInflightFen = '';
 }
 
@@ -1908,6 +2008,17 @@ function beginReviewSearch(item: ReviewBatchItem): void {
   if (preemptTreeEvalLease('bulk-review-started') || treeEvalPreemptDrainActive) return;
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (!entry) return;
+  // One search in flight per engine: if previous searches are still owed a bestmove (stopped
+  // watchdog/pause search, residual tree-eval go), mark them stale and wait for the pipeline to
+  // drain before sending the next position/go. Their replies are consumed and dropped by the
+  // owner FIFO; dispatch resumes from maybeFinishDispatchBarrier or the bounded barrier timeout.
+  if (searchOwnerOutstanding(reviewSearchOwner) > 0) {
+    searchOwnerMarkAllStale(reviewSearchOwner);
+    reviewProtocol.stop();
+    beginDispatchBarrier();
+    return;
+  }
+  clearDispatchBarrier();
   const positionReplay = replayEnginePositionContext(item.position, item.fen);
   const positionCurrentFenMatchesItemFen = engineFenEquals(item.position.currentFen, item.fen);
   if (!positionReplay.ok || !positionCurrentFenMatchesItemFen) {
@@ -1941,6 +2052,14 @@ function beginReviewSearch(item: ReviewBatchItem): void {
     depth:      reviewActiveDepth,
     generation: reviewSearchGeneration,
   };
+  // Register this go with the search-owner FIFO; the arriving bestmove that consumes this
+  // descriptor is the only reply that may be stored for this item.
+  reviewActiveSearchToken = searchOwnerRegisterGo(reviewSearchOwner, {
+    kind:     'review',
+    fen:      item.fen,
+    nodePath: item.nodePath,
+    ply:      item.nodePly,
+  }).token;
   reviewProtocol.setPositionContext(item.position);
   reviewProtocol.go(reviewActiveDepth, 1, reviewMovetime ?? undefined);
   armWatchdog();
@@ -2034,9 +2153,17 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
   const lastPositionIndex = Math.max(0, reviewItemIndex - 1);
   clearWatchdog();
   clearDispatchDefer();
+  clearDispatchBarrier();
   clearTreeEvalPreemptDrain();
   reviewWatchdogRetries = 0;
   reviewWatchdogTriggeredAt = null;
+
+
+
+  if (searchOwnerOutstanding(reviewSearchOwner) > 0) {
+    searchOwnerMarkAllStale(reviewSearchOwner);
+    reviewProtocol.stop();
+  }
   reviewSearchActive = false;
   clearReviewSearchIdentity();
   reviewCurrentEval = {};
@@ -2097,8 +2224,11 @@ function onWatchdogExpiry(): void {
 
   if (reviewSearchActive) {
     // Increment generation before stop() so any late bestmove from the timed-out search
-    // is recognised as stale when it arrives.
+    // is recognised as stale when it arrives. Marking the outstanding searches stale is what
+    // actually guarantees the drop: the retry below re-frames immediately, and the stopped
+    // search's bestmove must be rejected by its own (stale) descriptor, not by frame state.
     reviewSearchGeneration++;
+    searchOwnerMarkAllStale(reviewSearchOwner);
     reviewProtocol.stop();
     reviewSearchActive = false;
     invalidateReviewSearchIdentity();
@@ -2273,12 +2403,25 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
       reviewEngineReady = true;
       resolveReviewEngineReadyWaiters(true);
       console.log('[review-engine] ready');
-      // If a game is waiting for the engine, kick off its batch now.
+      // If a game is waiting for the engine, kick off its batch now — but never while a search
+      // is already framed or the pipeline is still draining (double-dispatch guard).
       const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
-      if (entry && entry.status === 'analyzing' && reviewItemQueue.length > 0) {
+      if (
+        entry && entry.status === 'analyzing' && reviewItemQueue.length > 0
+        && !reviewSearchActive && !reviewDispatchBarrierWaiting
+        && searchOwnerOutstanding(reviewSearchOwner) === 0
+      ) {
         sendNextItem();
       }
       return;
+    }
+    // Single consumption point for the search-owner FIFO: every bestmove pops the oldest
+    // outstanding search descriptor, regardless of how the line is routed below. Attribution
+    // decisions downstream use the consumed descriptor, never the currently-framed search.
+    let consumedSearch: ReviewSearchDescriptor | null = null;
+    if (line.trim().split(/\s+/)[0] === 'bestmove') {
+      consumedSearch = searchOwnerConsumeBestmove(reviewSearchOwner);
+      maybeFinishDispatchBarrier();
     }
     if (treeEvalLease && !isBulkReviewActive()) {
       treeEvalLease.onMessage(line);
@@ -2289,7 +2432,7 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
       preemptTreeEvalLease('bulk-review-active');
       return;
     }
-    parseReviewLine(line);
+    parseReviewLine(line, consumedSearch);
   });
 
   // Wire the protocol's onError signal into a module-level failure state.
@@ -2300,6 +2443,9 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     reviewEngineReady  = false;
     resolveReviewEngineReadyWaiters(false);
     preemptTreeEvalLease('review-engine-error');
+    const dropped = searchOwnerReset(reviewSearchOwner);
+    if (dropped > 0) recordReviewSearchOwnerReset('engine-error', dropped);
+    clearDispatchBarrier();
     _failAnalyzingEntries();
     notifyReviewQueueStateChanged();
   };
@@ -2344,9 +2490,14 @@ export function isReviewEngineInitializing(): boolean {
 // --- UCI line parser for the background engine ---
 // Mirrors parseEngineLine in engine/ctrl.ts, single-PV only (batch always uses MultiPV=1).
 
-function parseReviewLine(line: string): void {
+function parseReviewLine(line: string, consumedSearch: ReviewSearchDescriptor | null = null): void {
   const parts = line.trim().split(/\s+/);
   if (parts[0] === 'info') {
+
+
+
+
+    if (!searchOwnerDescriptorIsActive(searchOwnerHead(reviewSearchOwner), reviewActiveSearchToken)) return;
     if (!currentReviewSearchIdentityMatches()) return;
     // Engine is alive and searching — reset the silence watchdog.
     petWatchdog();
@@ -2400,42 +2551,66 @@ function parseReviewLine(line: string): void {
       reviewCurrentEval.depth = depth;
     }
   } else if (parts[0] === 'bestmove') {
-    clearWatchdog();
-    if (reviewSearchStartGeneration !== reviewSearchGeneration || !currentReviewSearchIdentityMatches()) {
-      // This bestmove belongs to a stopped/superseded search — discard it and reset
-      // eval state so the next legitimate result is not contaminated.
-      console.log('[review-engine] stale bestmove discarded (gen', reviewSearchStartGeneration,
-        '!== current', reviewSearchGeneration, 'fen', reviewInflightFen, ')');
-      const staleEntry = activeIndex >= 0 ? queue[activeIndex] : undefined;
-      if (staleEntry) {
-        const timestamp = Date.now();
-        recordReviewStaleBestmoveDropped(staleEntry, timestamp, reviewSearchInvalidatedAt ?? timestamp);
+    // Attribution: this reply belongs to the search descriptor consumed from the owner FIFO in
+    // the onMessage handler — never to "whatever search is currently framed". The generation and
+    // identity checks are retained as secondary consistency guards.
+    const ownedByActiveSearch = searchOwnerDescriptorIsActive(consumedSearch, reviewActiveSearchToken);
+    const legacyChecksPass = reviewSearchStartGeneration === reviewSearchGeneration && currentReviewSearchIdentityMatches();
+    if (!ownedByActiveSearch || !legacyChecksPass) {
+      // This bestmove belongs to a stopped/superseded/tree-eval search (or the checks disagree) —
+      // discard it. Do NOT reset the active frame or eval when our own search is still owed a
+      // reply: its info lines are valid and its bestmove is still coming.
+      const activeSearchStillPending = reviewActiveSearchToken !== null
+        && reviewSearchOwner.pending.some(descriptor => descriptor.token === reviewActiveSearchToken);
+      if (activeSearchStillPending) {
+        petWatchdog();
+      } else {
+        clearWatchdog();
+      }
+      const silentTreeEvalReply = consumedSearch?.kind === 'tree-eval' && reviewActiveSearchToken === null;
+      if (!silentTreeEvalReply) {
+        console.log('[review-engine] stale bestmove discarded (owned', ownedByActiveSearch,
+          'gen', reviewSearchStartGeneration, '/', reviewSearchGeneration,
+          'consumedKind', consumedSearch?.kind ?? 'none', 'fen', reviewInflightFen, ')');
+        const staleEntry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+        if (staleEntry) {
+          const timestamp = Date.now();
+          recordReviewStaleBestmoveDropped(staleEntry, timestamp, reviewSearchInvalidatedAt ?? timestamp);
+        }
+
+        // Instrument stale bestmove drop: record event type, depth reached, and movetime limit.
+        // Position context is ply only — never raw FEN.
+        record({
+          kind: 'engine',
+          severity: Severity.Info,
+          source: 'engine.reviewQueue',
+          sourceTag: 'engine',
+          message: 'stale-bestmove-drop',
+          metadata: {
+            role:         reviewDiagnosticRole(),
+            eventType:    'stale-bestmove-drop',
+            depthTarget:  reviewActiveDepth,
+            depthReached: reviewCurrentEval.depth ?? null,
+            movetimeMs:   reviewMovetime ?? null,
+            ply:          reviewNodePly,
+            consumedKind: consumedSearch?.kind ?? null,
+            consumedStale: consumedSearch?.stale ?? null,
+            ownedByActiveSearch,
+            legacyChecksPass,
+            outstandingSearches: searchOwnerOutstanding(reviewSearchOwner),
+          },
+          redactionClass: 'safe',
+        });
       }
 
-      // Instrument stale bestmove drop: record event type, depth reached, and movetime limit.
-      // Position context is ply only — never raw FEN.
-      record({
-        kind: 'engine',
-        severity: Severity.Info,
-        source: 'engine.reviewQueue',
-        sourceTag: 'engine',
-        message: 'stale-bestmove-drop',
-        metadata: {
-          role:         reviewDiagnosticRole(),
-          eventType:    'stale-bestmove-drop',
-          depthTarget:  reviewActiveDepth,
-          depthReached: reviewCurrentEval.depth ?? null,
-          movetimeMs:   reviewMovetime ?? null,
-          ply:          reviewNodePly,
-        },
-        redactionClass: 'safe',
-      });
-
-      reviewCurrentEval = {};
-      clearReviewSearchIdentity();
-      reviewSearchInvalidatedAt = null;
+      if (!activeSearchStillPending) {
+        reviewCurrentEval = {};
+        clearReviewSearchIdentity();
+        reviewSearchInvalidatedAt = null;
+      }
       return;
     }
+    clearWatchdog();
     reviewSearchActive = false;
     clearReviewSearchIdentity();
     reviewSearchInvalidatedAt = null;
@@ -3198,9 +3373,11 @@ export function isBulkPaused(): boolean {
 function stopActiveReviewSearchForDataManagement(): void {
   clearWatchdog();
   clearDispatchDefer();
+  clearDispatchBarrier();
   clearTreeEvalPreemptDrain();
   if (reviewSearchActive) {
     reviewSearchGeneration++;
+    searchOwnerMarkAllStale(reviewSearchOwner);
     reviewProtocol.stop();
     reviewSearchActive = false;
     invalidateReviewSearchIdentity();
@@ -3271,6 +3448,7 @@ export function cancelBulkReview(): void {
   }
   clearWatchdog();
   clearDispatchDefer();
+  clearDispatchBarrier();
   clearTreeEvalPreemptDrain();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
@@ -3278,6 +3456,7 @@ export function cancelBulkReview(): void {
   if (reviewSearchActive) {
     // Invalidate any in-flight search before stopping so a late bestmove is discarded.
     reviewSearchGeneration++;
+    searchOwnerMarkAllStale(reviewSearchOwner);
     reviewProtocol.stop();
     reviewSearchActive = false;
     invalidateReviewSearchIdentity();
@@ -3311,6 +3490,7 @@ export function pauseBulkReview(): void {
   setActiveReviewRunState('user-paused');
   clearWatchdog();
   clearDispatchDefer();
+  clearDispatchBarrier();
   clearTreeEvalPreemptDrain();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
@@ -3318,6 +3498,7 @@ export function pauseBulkReview(): void {
   if (reviewSearchActive) {
     // Invalidate any in-flight search before stopping so a late bestmove is discarded.
     reviewSearchGeneration++;
+    searchOwnerMarkAllStale(reviewSearchOwner);
     reviewProtocol.stop();
     reviewSearchActive = false;
     invalidateReviewSearchIdentity();
@@ -3340,12 +3521,14 @@ export function suspendBulkReviewForHiddenTab(): void {
   setActiveReviewRunState('hidden-suspended');
   clearWatchdog();
   clearDispatchDefer();
+  clearDispatchBarrier();
   clearTreeEvalPreemptDrain();
   clearFailedGameRetryTimer();
   reviewWatchdogRetries = 0;
   reviewWatchdogTriggeredAt = null;
   if (reviewSearchActive) {
     reviewSearchGeneration++;
+    searchOwnerMarkAllStale(reviewSearchOwner);
     reviewProtocol.stop();
     reviewSearchActive = false;
     invalidateReviewSearchIdentity();
@@ -3412,6 +3595,7 @@ export function resumeAutoRetryReviewInThisTab(): void {
     entry?.status === 'analyzing'
     && !reviewSearchActive
     && reviewDispatchDeferTimer === undefined
+    && !reviewDispatchBarrierWaiting
     && reviewItemIndex < reviewItemQueue.length
   ) {
     sendNextItem();
