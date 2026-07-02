@@ -345,7 +345,7 @@ export function determineArchetype(
   style: StyleData, 
   psych: PsychologyModule, 
   clock: ClockProfile,
-  profile: RepertoireProfile
+  profile: OpponentRepertoireProfile
 ): Archetype {
   if (clock.flagRate > 15) return 'The Time Scrambler';
   if (psych.tiltScore > 40) return 'The Unpredictable';
@@ -477,10 +477,10 @@ export function computePrepReportLines(
 }
 
 // ---------------------------------------------------------------------------
-// Repertoire profile
+// Opponent repertoire profile
 // ---------------------------------------------------------------------------
 
-export interface RepertoireProfile {
+export interface OpponentRepertoireProfile {
   distinctFirstMoves: number;
   distinctEcos: number;
   firstMoveEntropy: number;
@@ -491,7 +491,11 @@ export interface RepertoireProfile {
   isSampleSmall: boolean;
 }
 
-export function computeRepertoireProfile(games: ResearchGame[], treeRoot: OpeningTreeNode | null, target: string): RepertoireProfile {
+export function computeOpponentRepertoireProfile(
+  games: ResearchGame[],
+  treeRoot: OpeningTreeNode | null,
+  target: string,
+): OpponentRepertoireProfile {
   const total = treeRoot?.total || 0;
   const firstMoves = treeRoot?.children || [];
   let entropy = 0, topFirstMovePct = 0;
@@ -523,14 +527,14 @@ export function computeRepertoireProfile(games: ResearchGame[], treeRoot: Openin
 
 export interface StyleAxisSignal { label: string; type: SignalType; confidence: ConfidenceLevel; caveat?: string; }
 export interface StyleViewModel {
-  style: StyleData; form: FormData; profile: RepertoireProfile; psychology: PsychologyModule; clock: ClockProfile;
+  style: StyleData; form: FormData; profile: OpponentRepertoireProfile; psychology: PsychologyModule; clock: ClockProfile;
   stalkerScore: number; archetype: Archetype; signals: StyleAxisSignal[]; overallConfidence: ConfidenceLevel;
 }
 export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'insufficient';
 export type SignalType = 'descriptive' | 'interpretive' | 'cautious';
 
 export function computeStyleViewModel(games: ResearchGame[], treeRoot: OpeningTreeNode | null, target: string, summary: CollectionSummary): StyleViewModel {
-  const style = computeStyle(games, treeRoot, target), form = computeFormData(games, target), profile = computeRepertoireProfile(games, treeRoot, target);
+  const style = computeStyle(games, treeRoot, target), form = computeFormData(games, target), profile = computeOpponentRepertoireProfile(games, treeRoot, target);
   const psychology = computePsychology(games, target), clock = computeClockProfile(games, target), archetype = determineArchetype(style, psychology, clock, profile);
   let stalkerScore = 50;
   if (summary.totalGames >= 5) {
@@ -633,7 +637,7 @@ export interface PrepNote { title: string; body: string; confidence: ConfidenceL
 
 export function computePrepNotes(
   summary: CollectionSummary,
-  profile: RepertoireProfile,
+  profile: OpponentRepertoireProfile,
   lines: PrepReportLines,
 ): PrepNote[] {
   const notes: PrepNote[] = [];
@@ -651,15 +655,15 @@ export function computePrepNotes(
   });
   if (profile.sampleSize >= 10) {
     const breadthDesc = profile.normalizedEntropy < 0.35
-      ? 'a narrow, predictable repertoire'
+      ? 'a narrow, predictable opponent repertoire'
       : profile.normalizedEntropy < 0.65
-        ? 'a moderately varied repertoire'
-        : 'a broad, less predictable repertoire';
+        ? 'a moderately varied opponent repertoire'
+        : 'a broad, less predictable opponent repertoire';
     const topMoveDesc = profile.topFirstMovePct > 0.7
       ? ` Most games (${(profile.topFirstMovePct * 100).toFixed(0)}%) start with the same first move.`
       : '';
     notes.push({
-      title: 'Repertoire shape',
+      title: 'Opponent repertoire shape',
       body: `Opponent shows ${breadthDesc} across ${profile.distinctFirstMoves} distinct opening lines.${topMoveDesc}`,
       confidence: profile.sampleSize >= 30 ? 'high' : 'medium',
     });
@@ -685,7 +689,7 @@ export function computePrepNotes(
   } else if (recent === 0 && total >= 10) {
     notes.push({
       title: 'Stale collection',
-      body: `No games in the last 90 days. This prep may not reflect the opponent's current repertoire.`,
+      body: `No games in the last 90 days. This prep may not reflect the opponent's current opening repertoire.`,
       confidence: 'high',
     });
   }

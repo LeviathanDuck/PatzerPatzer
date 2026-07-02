@@ -6,7 +6,27 @@
  */
 
 /** The top-level tools available inside an openings research session. */
-export type OpeningsTool = 'opening-tree' | 'repertoire' | 'prep-report' | 'style' | 'practice';
+export const OPENINGS_TOOL_IDS = [
+  'opening-tree',
+  'opponent-repertoire',
+  'prep-report',
+  'style',
+  'practice',
+] as const;
+
+export type OpeningsTool = typeof OPENINGS_TOOL_IDS[number];
+
+/** Previous persisted/URL tool ids that still need to restore safely. */
+export type LegacyOpeningsTool = 'repertoire';
+
+export type PersistedOpeningsTool = OpeningsTool | LegacyOpeningsTool;
+
+const OPENINGS_TOOL_ID_SET = new Set<string>(OPENINGS_TOOL_IDS);
+
+export function normalizeOpeningsTool(value: string): OpeningsTool | null {
+  if (value === 'repertoire') return 'opponent-repertoire';
+  return OPENINGS_TOOL_ID_SET.has(value) ? value as OpeningsTool : null;
+}
 
 /** Source platform for opponent research games. */
 export type ResearchSource = 'lichess' | 'chesscom' | 'pgn';
@@ -124,15 +144,15 @@ export interface SavedVariation {
 // ---------------------------------------------------------------------------
 
 /**
- * Whether the opponent's next move is covered by the imported repertoire
+ * Whether the opponent's next move is covered by the imported opponent repertoire
  * or has been handed off to the engine.
  *
- *  'repertoire' — the current position has at least one child node with
- *                 sufficient game frequency to make a weighted repertoire pick.
- *  'engine'     — the repertoire has no data here; engine plays best move.
- *  'exhausted'  — the tree has run out of moves AND no engine is available.
+ *  'opponent-repertoire' — the current position has at least one child node with
+ *                          sufficient game frequency to make a weighted opponent-repertoire pick.
+ *  'engine'              — the opponent repertoire has no data here; engine plays best move.
+ *  'exhausted'           — the tree has run out of moves AND no engine is available.
  */
-export type PracticeOpponentSource = 'repertoire' | 'engine' | 'exhausted';
+export type PracticeOpponentSource = 'opponent-repertoire' | 'engine' | 'exhausted';
 
 /**
  * Active practice session state.
@@ -165,11 +185,11 @@ export interface PracticeSession {
   opponentSource: PracticeOpponentSource;
   /**
    * Minimum game frequency a tree child must have to be eligible
-   * for repertoire play. Positions below this threshold are treated as
+   * for opponent-repertoire play. Positions below this threshold are treated as
    * `'engine'` handoff even if children exist.
    * Default: 2 (opponent has played this move at least twice in imported games).
    */
-  minRepertoireFreq: number;
+  minOpponentRepertoireFreq: number;
   /**
    * Engine strength level (1–8) used when opponentSource transitions to 'engine'.
    * Index into STRENGTH_LEVELS from src/engine/types.ts.

@@ -1,7 +1,7 @@
 /**
  * Practice Against Them — handoff policy and opponent turn planning.
  *
- * This module owns the decision of when the opponent follows imported repertoire
+ * This module owns the decision of when the opponent follows imported opponent-repertoire
  * data versus when the engine should take over. It is deliberately kept separate
  * from view.ts (rendering) and ctrl.ts (session state) so the policy remains
  * easy to read, test, and change without touching either layer.
@@ -9,14 +9,14 @@
  * Usage contract:
  *   1. The view/ctrl layer calls `planOpponentTurn()` when it is the opponent's turn.
  *   2. `planOpponentTurn()` returns an `OpponentTurnPlan` with what to do next.
- *   3. The caller acts on the plan: either play the repertoire move immediately
+ *   3. The caller acts on the plan: either play the opponent-repertoire move immediately
  *      (after a short delay for UX) or request an engine best-move.
  *   4. After acting, the caller calls `setPracticeOpponentSource()` in ctrl.ts
  *      with the resolved source so the UI banner stays accurate.
  *
  * Reference: lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts
  *   - Engine-side equivalent: `if (!played() && playable(node)) root.playUci(nodeBestUci(node)!)`
- *   - Here we add a repertoire-first layer before falling back to engine.
+ *   - Here we add an opponent-repertoire-first layer before falling back to engine.
  */
 
 import {
@@ -35,19 +35,19 @@ import { engineEnabled } from '../engine/ctrl';
  * Determine the `PracticeOpponentSource` from a move selection result.
  *
  * Policy rules (in priority order):
- *   1. If selection succeeded ('selected') → 'repertoire'.
+ *   1. If selection succeeded ('selected') → 'opponent-repertoire'.
  *   2. If selection failed ('sparse-handoff' or 'empty-handoff') AND engine is enabled
  *      → 'engine'.
  *   3. If selection failed AND engine is NOT available → 'exhausted'.
  *
- * The `'exhausted'` state is honest: neither repertoire data nor engine can provide a
+ * The `'exhausted'` state is honest: neither opponent-repertoire data nor engine can provide a
  * credible opponent response. The UI should surface this clearly so the user knows
  * the practice value of continuing is limited.
  */
 export function determineOpponentSource(
   result: PracticeSelectionResult,
 ): PracticeOpponentSource {
-  if (result.outcome === 'selected') return 'repertoire';
+  if (result.outcome === 'selected') return 'opponent-repertoire';
   return engineEnabled ? 'engine' : 'exhausted';
 }
 
@@ -58,17 +58,17 @@ export function determineOpponentSource(
 /**
  * What the practice driver should do on the opponent's turn.
  *
- *  'play-repertoire' — play `move.uci` from the repertoire selection; update source to 'repertoire'.
- *  'request-engine'  — ask the engine for its best move (caller navigates when engine responds).
- *  'exhausted'       — neither repertoire nor engine can provide a move; stop or show message.
+ *  'play-opponent-repertoire' — play `move.uci` from the opponent-repertoire selection.
+ *  'request-engine'           — ask the engine for its best move (caller navigates when engine responds).
+ *  'exhausted'                — neither opponent repertoire nor engine can provide a move; stop or show message.
  */
-export type OpponentTurnAction = 'play-repertoire' | 'request-engine' | 'exhausted';
+export type OpponentTurnAction = 'play-opponent-repertoire' | 'request-engine' | 'exhausted';
 
 export interface OpponentTurnPlan {
   /** What the practice driver should do. */
   action: OpponentTurnAction;
   /**
-   * The move to play immediately, when action is 'play-repertoire'.
+   * The move to play immediately, when action is 'play-opponent-repertoire'.
    * Null for 'request-engine' and 'exhausted'.
    */
   moveUci: string | null;
@@ -87,7 +87,7 @@ export interface OpponentTurnPlan {
  * Accepts the current tree node and active session state.
  * Returns an `OpponentTurnPlan` the view layer can act on directly.
  *
- * Relies on `session.minRepertoireFreq` as the confidence threshold.
+ * Relies on `session.minOpponentRepertoireFreq` as the confidence threshold.
  * If the session is null (practice not active), returns an exhausted plan.
  */
 export function planOpponentTurn(
@@ -108,12 +108,12 @@ export function planOpponentTurn(
     };
   }
 
-  const result = selectPracticeMove(node, session.minRepertoireFreq);
+  const result = selectPracticeMove(node, session.minOpponentRepertoireFreq);
   const source  = determineOpponentSource(result);
 
   if (result.outcome === 'selected' && result.move) {
     return {
-      action: 'play-repertoire',
+      action: 'play-opponent-repertoire',
       moveUci: result.move.uci,
       source,
       selectionResult: result,

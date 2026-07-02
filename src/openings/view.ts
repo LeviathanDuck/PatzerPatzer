@@ -111,7 +111,7 @@ import {
   type EnginePositionContext,
 } from '../engine/positionContext';
 import {
-  computeRepertoireProfile, computePrepReport, computePrepReportLines,
+  computeOpponentRepertoireProfile, computePrepReport, computePrepReportLines,
   computeLikelyLineModule, computeWeaknessModule, computePrepNotes,
   computeTerminationProfile, computeGameLengthProfile,
   computeOpeningRecommendations, buildPracticeCandidates,
@@ -1823,7 +1823,7 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
 
 // Tool rail icon codepoints — Adapted from lichess-org/lila: ui/lib/src/licon.ts
 const ICON_BRANCH    = '\ue003'; // licon.Branch     → Opening Tree (branching variations)
-const ICON_BOOK      = '\ue03b'; // licon.Book       → Repertoire
+const ICON_BOOK      = '\ue03b'; // licon.Book       → Opponent's Repertoire
 const ICON_BAR_GRAPH = '\ue03c'; // licon.BarGraph   → Prep Report
 const ICON_EYE       = '\ue054'; // licon.Eye        → Style
 const ICON_SWORDS    = '\ue033'; // licon.Swords     → Practice Against Them
@@ -1831,11 +1831,11 @@ const ICON_SWORDS    = '\ue033'; // licon.Swords     → Practice Against Them
 export interface OpeningsToolDef { id: OpeningsTool; label: string; icon: string }
 
 export const OPENINGS_TOOL_DEFS: OpeningsToolDef[] = [
-  { id: 'opening-tree', label: 'Tree',        icon: ICON_BRANCH },
-  { id: 'repertoire',   label: 'Repertoire',  icon: ICON_BOOK },
-  { id: 'prep-report',  label: 'Report',      icon: ICON_BAR_GRAPH },
-  { id: 'style',        label: 'Style',        icon: ICON_EYE },
-  { id: 'practice',     label: 'Practice',     icon: ICON_SWORDS },
+  { id: 'opening-tree',         label: 'Tree',                  icon: ICON_BRANCH },
+  { id: 'opponent-repertoire',  label: "Opponent's Repertoire", icon: ICON_BOOK },
+  { id: 'prep-report',          label: 'Report',                icon: ICON_BAR_GRAPH },
+  { id: 'style',                label: 'Style',                 icon: ICON_EYE },
+  { id: 'practice',             label: 'Practice',              icon: ICON_SWORDS },
 ];
 
 /**
@@ -1857,11 +1857,11 @@ function renderToolRail(redraw: () => void): VNode {
 }
 
 const TOOL_NAMES: Record<OpeningsTool, string> = {
-  'opening-tree': 'Opening Tree',
-  'repertoire':   'Repertoire',
-  'prep-report':  'Prep Report',
-  'style':        'Style',
-  'practice':     'Practice Against Them',
+  'opening-tree':         'Opening Tree',
+  'opponent-repertoire':  "Opponent's Repertoire",
+  'prep-report':          'Prep Report',
+  'style':                'Style',
+  'practice':             'Practice Against Them',
 };
 
 /**
@@ -1878,16 +1878,16 @@ function renderToolPlaceholder(tool: OpeningsTool): VNode {
 }
 
 /**
- * High-signal Repertoire overview strip.
- * Shows opponent W/D/L, repertoire breadth, and recency from the analytics cache.
+ * High-signal opponent-repertoire overview strip.
+ * Shows opponent W/D/L, opponent-repertoire breadth, and recency from the analytics cache.
  * Returns null if analytics are not yet available (tree still building).
  */
-function renderRepertoireOverview(collection: ResearchCollection): VNode | null {
+function renderOpponentRepertoireOverview(collection: ResearchCollection): VNode | null {
   const summary = getCollectionSummary();
   if (!summary) return null;
 
   const tree    = openingTree();
-  const profile = computeRepertoireProfile(collection.games, tree, collection.target ?? '');
+  const profile = computeOpponentRepertoireProfile(collection.games, tree, collection.target ?? '');
   const report  = computePrepReport(collection.games, collection.target ?? '', summary);
 
   const wdl   = report.overall;
@@ -1905,7 +1905,7 @@ function renderRepertoireOverview(collection: ResearchCollection): VNode | null 
 
   const recentGames = summary.recency.last90;
 
-  return h('div.openings__repertoire-overview', [
+  return h('div.openings__opponent-repertoire-overview', [
     // W/D/L bar
     h('div.openings__overview-wdl', [
       h('div.openings__overview-wdl-bar', [
@@ -1922,7 +1922,7 @@ function renderRepertoireOverview(collection: ResearchCollection): VNode | null 
     // Quick stats row
     h('div.openings__overview-stats', [
       h('div.openings__overview-stat', [
-        h('span.openings__overview-stat-label', 'Repertoire'),
+        h('span.openings__overview-stat-label', "Opponent's Repertoire"),
         h('span.openings__overview-stat-value', breadthLabel),
       ]),
       h('div.openings__overview-stat', [
@@ -1945,11 +1945,11 @@ const SPEED_LABELS: Record<string, string> = {
 };
 
 /**
- * Repertoire summary modules: perspective split and time-control breakdown.
+ * Opponent-repertoire summary modules: perspective split and time-control breakdown.
  * Speed cards are clickable to filter the session to that time control.
  * All data from cached CollectionSummary — no additional computation.
  */
-function renderRepertoireSummaryModules(redraw: () => void): VNode | null {
+function renderOpponentRepertoireSummaryModules(redraw: () => void): VNode | null {
   const summary = getCollectionSummary();
   if (!summary) return null;
 
@@ -2018,7 +2018,7 @@ function renderRepertoireSummaryModules(redraw: () => void): VNode | null {
     ]),
   ]);
 
-  return h('div.openings__repertoire-summary', [
+  return h('div.openings__opponent-repertoire-summary', [
     perspSection,
     speedSection,
     recencySection,
@@ -2026,7 +2026,7 @@ function renderRepertoireSummaryModules(redraw: () => void): VNode | null {
 }
 
 /**
- * Interactive line-insight cards for the Repertoire panel.
+ * Interactive line-insight cards for the Opponent's Repertoire panel.
  * Cards are derived from PrepReportLines (Phase 3 analytics) and are clickable
  * to navigate the board/tree to the target branch position.
  */
@@ -2137,7 +2137,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
 
   // Weakness module
   const tree = openingTree();
-  const profile = computeRepertoireProfile(collection.games, tree, collection.target ?? '');
+  const profile = computeOpponentRepertoireProfile(collection.games, tree, collection.target ?? '');
   const weaknessModule = computeWeaknessModule(lines, summary.overall.total);
 
   // Prep notes
@@ -2156,7 +2156,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
     const boostFresh   = line.recencyBoost >= 1.5 && line.recencyBoost < 2.0;  // ≤90d
     return h('button.openings__pr-line-row', {
       class: { 'openings__pr-unreliable': !isStatReliable(line.frequency) },
-      attrs: { title: 'Open in Repertoire' },
+      attrs: { title: "Open in Opponent's Repertoire" },
       on: { click: onClick },
     }, [
       h('span.openings__pr-line-moves', moveSan),
@@ -2179,7 +2179,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
     const oppWinPct  = (line.opponentWinPct * 100).toFixed(0);
     return h('button.openings__pr-target-row', {
       class: { 'openings__pr-unreliable': !isStatReliable(line.frequency) },
-      attrs: { title: 'Open in Repertoire' },
+      attrs: { title: "Open in Opponent's Repertoire" },
       on: { click: onClick },
     }, [
       h('span.openings__pr-line-moves', moveSan),
@@ -2294,7 +2294,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
               ))
             : h('div.openings__pr-empty', 'No reliable target lines found.'),
           lines.weakLines.length > 0
-            ? h('div.openings__pr-caveat', 'Lines where opponent wins under 30%. Click to open in Repertoire.')
+            ? h('div.openings__pr-caveat', "Lines where opponent wins under 30%. Click to open in Opponent's Repertoire.")
             : weaknessModule.entries.length > 0
               ? h('div.openings__pr-caveat', `${weaknessModule.entries.length} prep signal${weaknessModule.entries.length > 1 ? 's' : ''} detected below.`)
               : null,
@@ -2553,15 +2553,15 @@ function deriveArchetype(vm: StyleViewModel): { label: string; qualifier: string
     };
   }
   if (profile.normalizedEntropy < 0.45) {
-    return { label: 'Book Player', qualifier: 'Consistent, narrow opening repertoire' };
+    return { label: 'Book Player', qualifier: 'Consistent, narrow opponent opening repertoire' };
   }
   if (drawRate >= 0.35) {
     return { label: 'Draw Specialist', qualifier: `${Math.round(drawRate * 100)}% draw rate` };
   }
   if (profile.normalizedEntropy > 0.65) {
-    return { label: 'Versatile Opponent', qualifier: 'Broad, unpredictable repertoire' };
+    return { label: 'Versatile Opponent', qualifier: 'Broad, unpredictable opponent repertoire' };
   }
-  return { label: 'Solid Repertoire', qualifier: 'Moderate opening variety' };
+  return { label: 'Solid Opponent Repertoire', qualifier: 'Moderate opening variety' };
 }
 
 /**
@@ -2619,7 +2619,7 @@ function renderStyleAxesBars(vm: StyleViewModel): VNode | null {
   const axes: Array<{ label: string; leftPole: string; rightPole: string; pct: number }> = [];
 
   if (profile.distinctFirstMoves > 1) {
-    axes.push({ label: 'Repertoire breadth', leftPole: 'Narrow', rightPole: 'Broad', pct: predictPct });
+    axes.push({ label: 'Opponent repertoire breadth', leftPole: 'Narrow', rightPole: 'Broad', pct: predictPct });
   }
   if (profile.top3EcoPct > 0) {
     axes.push({ label: 'Opening variety', leftPole: 'Concentrated', rightPole: 'Varied', pct: comfortPct });
@@ -2774,8 +2774,8 @@ function renderStyleForm(vm: StyleViewModel): VNode | null {
 }
 
 /**
- * Behavioral tendency module — shows opening commitment, repertoire switching signals,
- * and stability indicators derived from FormData and RepertoireProfile.
+ * Behavioral tendency module — shows opening commitment, opponent-repertoire switching signals,
+ * and stability indicators derived from FormData and OpponentRepertoireProfile.
  *
  * Deliberately avoids psychological claims. Language stays at the level of
  * observable patterns in the game history.
@@ -2833,7 +2833,7 @@ function renderStyleBehavioral(vm: StyleViewModel): VNode | null {
  *   Shows color picker + "Start" button.
  *
  * Active session:
- *   Shows opponent source banner (repertoire / engine / exhausted),
+ *   Shows opponent source banner (opponent-repertoire / engine / exhausted),
  *   session info, and a Stop button.
  *
  * Game loop automation (opponent auto-play) is NOT wired in this prompt.
@@ -2891,7 +2891,7 @@ function renderPracticeSetupPanel(
   return h('div.openings__practice-setup', [
     h('div.openings__practice-setup-title', `Practice Against ${target}`),
     h('div.openings__practice-setup-desc',
-      `Play from the current position. ${target} will respond using their imported opening lines while repertoire data is available, then the engine takes over.`),
+      `Play from the current position. ${target} will respond using their imported opening lines while opponent-repertoire data is available, then the engine takes over.`),
     h('div.openings__practice-color-picker', [
       h('span.openings__practice-color-label', 'You play as'),
       h('div.openings__practice-color-btns', [
@@ -2933,16 +2933,16 @@ function renderPracticeActivePanel(
   const engineStrength = source === 'engine'
     ? STRENGTH_LEVELS[(session.strengthLevel ?? 4) - 1] ?? STRENGTH_LEVELS[3]!
     : null;
-  const sourceBannerText = source === 'repertoire'
-    ? 'Playing from imported repertoire'
+  const sourceBannerText = source === 'opponent-repertoire'
+    ? 'Playing from imported opponent repertoire'
     : source === 'engine' && engineStrength
       ? `Engine playing at Level ${engineStrength.level} (${engineStrength.label} ~${engineStrength.uciElo} Elo)`
       : source === 'engine'
-        ? 'Engine has taken over — repertoire data exhausted'
+        ? 'Engine has taken over — opponent repertoire data exhausted'
         : 'No moves available — practice has ended at this branch';
 
-  const sourceBannerClass = source === 'repertoire'
-    ? 'openings__practice-source--repertoire'
+  const sourceBannerClass = source === 'opponent-repertoire'
+    ? 'openings__practice-source--opponent-repertoire'
     : source === 'engine'
       ? 'openings__practice-source--engine'
       : 'openings__practice-source--exhausted';
@@ -2957,7 +2957,7 @@ function renderPracticeActivePanel(
       class: { [sourceBannerClass]: true },
     }, [
       h('span.openings__practice-source-icon',
-        source === 'repertoire' ? '●' : source === 'engine' ? '⚡' : '✕'),
+        source === 'opponent-repertoire' ? '●' : source === 'engine' ? '⚡' : '✕'),
       h('span.openings__practice-source-text', sourceBannerText),
     ]),
 
@@ -2978,7 +2978,7 @@ function renderPracticeActivePanel(
 }
 
 /**
- * Repertoire tool owner — renders the board column and session panel that make up
+ * Practice tool owner — renders the board column and session panel that make up
  * the current opening-tree experience. Returns two grid children so the session body
  * can spread them into the layout alongside the tool rail.
  *
@@ -3159,11 +3159,11 @@ function renderOpeningTreePvBox(): VNode | null {
 }
 
 /**
- * Repertoire dashboard — shows the prep-zone analytics for the active collection.
+ * Opponent's Repertoire dashboard — shows the prep-zone analytics for the active collection.
  * Overview, summary modules, and line insight cards without a board.
  * Spans the full content area via openings__tool-content grid layout.
  */
-function renderRepertoireDashboard(
+function renderOpponentRepertoireDashboard(
   collection: ResearchCollection | null,
   redraw: () => void,
 ): VNode {
@@ -3171,8 +3171,8 @@ function renderRepertoireDashboard(
     h('div.openings__prep-zone', treeBuilding()
       ? [h('div.openings__prep-zone-loading', 'Building tree\u2026')]
       : [
-          collection ? renderRepertoireOverview(collection) : null,
-          renderRepertoireSummaryModules(redraw),
+          collection ? renderOpponentRepertoireOverview(collection) : null,
+          renderOpponentRepertoireSummaryModules(redraw),
           renderLineInsightCards(redraw),
         ]
     ),
@@ -3242,8 +3242,8 @@ function renderSessionPage(redraw: () => void): VNode {
       // Active tool owns the main content area.
       ...(activeTool() === 'opening-tree'
         ? renderOpeningTreeTool(collection, node, path, redraw)
-        : activeTool() === 'repertoire'
-          ? [renderRepertoireDashboard(collection, redraw)]
+        : activeTool() === 'opponent-repertoire'
+          ? [renderOpponentRepertoireDashboard(collection, redraw)]
           : activeTool() === 'prep-report'
             ? [renderPrepReportTool(redraw)]
             : activeTool() === 'style'
@@ -3825,7 +3825,7 @@ let _practiceOpponentTimer: ReturnType<typeof setTimeout> | null = null;
  * Schedule the opponent's practice response after the user's move.
  * Cancels any pending timer first (prevents double-responses on rapid input).
  *
- * Repertoire phase: picks a weighted move from the current node's children
+ * Opponent-repertoire phase: picks a weighted move from the current node's children
  * and navigates to it after PRACTICE_OPPONENT_DELAY_MS.
  *
  * Engine phase: updates the source banner and defers auto-play to a future prompt.
@@ -3852,8 +3852,8 @@ function schedulePracticeOpponentResponse(redraw: () => void): void {
     // Always update the source so the banner stays accurate.
     setPracticeOpponentSource(plan.source);
 
-    if (plan.action === 'play-repertoire' && plan.moveUci) {
-      // Opponent plays from imported repertoire.
+    if (plan.action === 'play-opponent-repertoire' && plan.moveUci) {
+      // Opponent plays from imported opponent repertoire.
       navigateToMove(plan.moveUci);
       recordPracticeMove(plan.moveUci);
       syncOpeningsBoard(redraw);

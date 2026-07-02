@@ -1,3 +1,4 @@
+import { normalizeOpeningsTool } from './types';
 import type { OpeningsTool } from './types';
 
 export type OpponentsUrlTargetKind = 'account' | 'collection';
@@ -44,7 +45,6 @@ const DEFAULT_STATE: OpponentsTreeUrlState = {
 
 const KNOWN_PARAMS = new Set(['target', 'tool', 'color', 'speeds', 'range', 'orientation', 'line']);
 const TARGET_KINDS = new Set<OpponentsUrlTargetKind>(['account', 'collection']);
-const TOOLS = new Set<OpeningsTool>(['opening-tree', 'repertoire', 'prep-report', 'style', 'practice']);
 const COLORS = new Set<OpponentsUrlColor>(['white', 'black', 'both']);
 const SPEEDS: readonly OpponentsUrlSpeed[] = ['ultrabullet', 'bullet', 'blitz', 'rapid', 'classical'];
 const SPEED_SET = new Set<OpponentsUrlSpeed>(SPEEDS);
@@ -108,8 +108,8 @@ export function parseOpponentsTreeUrlState(input: string): OpponentsTreeUrlState
 
   const tool = params.get('tool');
   if (tool !== null) {
-    const normalized = tool.toLowerCase();
-    if (TOOLS.has(normalized as OpeningsTool)) state.tool = normalized as OpeningsTool;
+    const normalized = normalizeOpeningsTool(tool.toLowerCase());
+    if (normalized) state.tool = normalized;
     else invalidParams.push(invalid('tool', tool, DEFAULT_STATE.tool));
   }
 

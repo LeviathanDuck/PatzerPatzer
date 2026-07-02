@@ -5,7 +5,7 @@
  * touches the main analysis/puzzle persistence in 'patzer-pro'.
  */
 
-import type { ResearchCollection, ResearchGame, OpeningsTool, SavedVariation } from './types';
+import type { ResearchCollection, ResearchGame, PersistedOpeningsTool, SavedVariation } from './types';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
 import { record, Severity } from '../diagnostics';
 
@@ -115,9 +115,10 @@ export interface StoredOpeningsSession {
   orientation: 'white' | 'black';
   /**
    * Active tool at time of save. Optional for backward compatibility with
-   * records written before this field existed. Falls back to 'repertoire' on restore.
+   * records written before this field existed. Legacy 'repertoire' values
+   * restore as 'opponent-repertoire'.
    */
-  activeTool?: OpeningsTool;
+  activeTool?: PersistedOpeningsTool;
   /** Timestamp of last save. */
   savedAt: number;
 }

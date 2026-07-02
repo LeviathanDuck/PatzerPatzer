@@ -6,7 +6,8 @@ import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import { showReviewLabels } from '../engine/ctrl';
 import { missedMomentConfig } from '../engine/tactics';
 import { pathInit } from '../tree/ops';
-import type { TreeNode, TreePath } from '../tree/types';
+import { nagToGlyph } from '../tree/pgn';
+import type { Glyph, TreeNode, TreePath } from '../tree/types';
 
 // True on touch/stylus devices — used to decide which context-menu trigger to attach.
 // Mirrors lichess-org/lila: ui/lib/src/device.ts isTouchDevice()
@@ -39,6 +40,11 @@ function buildContextHandlers(
 // Typed structurally so callers don't need to import PositionEval.
 // label is present when analysis was saved and restored from IDB; absent during live analysis.
 type EvalLookup = (path: string) => { loss?: number; best?: string; mate?: number; label?: MoveLabel } | undefined;
+
+export interface MoveListRenderOptions {
+  showComments?: boolean;
+  renderRawNags?: boolean;
+}
 
 function shouldShowReviewAnnotation(
   userColor: 'white' | 'black' | null,
@@ -77,6 +83,7 @@ function renderMoveSpan(
   worstMissPath:     string | undefined,
   bookmarkedPaths?:  Set<string>,
   onToggleBookmark?: (path: string) => void,
+  options?:          MoveListRenderOptions,
 ): VNode {
   const cached       = getEval(path);
   const parentCached = getEval(pathInit(path));
@@ -86,7 +93,9 @@ function renderMoveSpan(
   // a saved-and-restored analysis session shows exactly the labels that were persisted.
   // Falls back to classifyLoss(loss) for live analysis sessions and older records without label.
   // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode glyph priority.
-  const pgnGlyph   = node.glyphs?.[0];
+  const pgnGlyphs: Glyph[] = options?.renderRawNags
+    ? (node.nags ?? []).map(nagToGlyph).filter((g): g is Glyph => g !== undefined)
+    : (node.glyphs ?? []);
   const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
 
   // Missed forced mate: the parent position had a short forced mate for the mover,
@@ -111,8 +120,9 @@ function renderMoveSpan(
     : computedLabel === 'inaccuracy' ? '?!'
     : null;
 
-  const symbol = pgnGlyph?.symbol ?? computedSymbol;
-  const color  = symbol ? (GLYPH_COLORS[symbol] ?? '#aaa') : undefined;
+  const renderedGlyphs: Array<Pick<Glyph, 'symbol'>> = pgnGlyphs.length > 0
+    ? pgnGlyphs
+    : (computedSymbol ? [{ symbol: computedSymbol }] : []);
   const mate   = cached?.mate;
 
   // Build children matching Lichess tview2: index? + san + glyph? + eval?
@@ -123,7 +133,9 @@ function renderMoveSpan(
     inner.push(h('index', node.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
   }
   inner.push(h('san', node.san ?? ''));
-  if (symbol) inner.push(h('glyph', { attrs: { style: `color:${color}` } }, symbol));
+  for (const glyph of renderedGlyphs) {
+    inner.push(h('glyph', { attrs: { style: `color:${GLYPH_COLORS[glyph.symbol] ?? '#aaa'}` } }, glyph.symbol));
+  }
   // mate === 0 = terminal checkmate position; use KO notation instead of +M0.
   if (mate !== undefined) inner.push(h('eval', mate === 0 ? '#KO!' : `+M${Math.abs(mate)}`));
 
@@ -159,6 +171,13 @@ function renderMoveSpan(
   ]);
 }
 
+function renderCommentNodes(node: TreeNode, options: MoveListRenderOptions | undefined): VNode[] {
+  if (!options?.showComments || !node.comments?.length) return [];
+  return node.comments
+    .filter(comment => comment.text.trim().length > 0)
+    .map(comment => h('comment', comment.text));
+}
+
 /**
  * Inline helper: renders a variation line as a flat sequence of moves with
  * embedded move numbers. Used inside column-view interrupt blocks.
@@ -179,6 +198,7 @@ function renderInlineNodes(
   worstMissPath:     string | undefined,
   bookmarkedPaths?:  Set<string>,
   onToggleBookmark?: (path: string) => void,
+  options?:          MoveListRenderOptions,
 ): VNode[] {
   if (nodes.length === 0) return [];
   const main       = nodes[0]!;
@@ -187,16 +207,17 @@ function renderInlineNodes(
   const out: VNode[] = [];
 
   const showIndex = needsMoveNum || main.ply % 2 === 1;
-  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark));
+  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
+  out.push(...renderCommentNodes(main, options));
 
   for (const variant of variations) {
-    out.push(h('inline', renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark)));
+    out.push(h('inline', renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options)));
   }
 
   const hasVariations = variations.length > 0;
   const firstCont = main.children[0];
   const contNeedsNum = hasVariations && firstCont !== undefined && firstCont.ply % 2 === 0;
-  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark));
+  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
 
   return out;
 }
@@ -229,6 +250,7 @@ function renderColumnNodes(
   onToggleFold?:      (path: string) => void,
   bookmarkedPaths?:   Set<string>,
   onToggleBookmark?:  (path: string) => void,
+  options?:           MoveListRenderOptions,
 ): void {
   if (nodes.length === 0) return;
   const main       = nodes[0]!;
@@ -241,22 +263,23 @@ function renderColumnNodes(
   if (isWhite) out.push(h('index', String(Math.ceil(main.ply / 2))));
 
   // The move — no embedded index for column view.
-  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark));
+  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
+  const comments = renderCommentNodes(main, options);
 
   // Variations — emit as full-width interrupt block.
   // Mirrors lichess-org/lila: columnView.ts interrupt > lines > line structure
-  if (variations.length > 0) {
+  if (variations.length > 0 || comments.length > 0) {
     // Fill the unused black slot with an empty placeholder so the interrupt
     // starts on a new row. Mirrors columnView.ts isWhite && emptyMove().
     if (isWhite) out.push(h('move.empty', '\u2026'));
 
     // Fold toggle: triangle button before the lines block.
     // Adapted from lichess-org/lila: ui/analyse/src/treeView/treeView.ts variation fold.
-    const firstVarPath = parentPath + variations[0]!.id;
-    const isFolded = foldedVariations?.has(firstVarPath) ?? false;
+    const firstVarPath = variations[0] ? parentPath + variations[0].id : '';
+    const isFolded = firstVarPath ? (foldedVariations?.has(firstVarPath) ?? false) : false;
     const interruptChildren: VNode[] = [];
 
-    if (onToggleFold) {
+    if (onToggleFold && firstVarPath) {
       interruptChildren.push(
         h('button.variation-fold', {
           class: { 'variation-fold--open': !isFolded },
@@ -270,9 +293,10 @@ function renderColumnNodes(
     }
 
     if (!isFolded) {
+      interruptChildren.push(...comments);
       const varLines = variations.map(v => {
         const varPath = parentPath + v.id;
-        const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark);
+        const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options);
         // Variation remove affordance: small × button at start of each non-mainline line.
         // Mirrors lichess-org/lila: ui/analyse/src/treeView/contextMenu.ts deleteNode action.
         if (deleteVariation) {
@@ -286,7 +310,7 @@ function renderColumnNodes(
         }
         return h('line', lineNodes);
       });
-      interruptChildren.push(h('lines', varLines));
+      if (varLines.length > 0) interruptChildren.push(h('lines', varLines));
     }
 
     out.push(h('interrupt', interruptChildren));
@@ -300,7 +324,7 @@ function renderColumnNodes(
     }
   }
 
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark, options);
 }
 
 /**
@@ -357,10 +381,12 @@ export function renderMoveList(
   onToggleFold?:      (path: string) => void,
   bookmarkedPaths?:   Set<string>,
   onToggleBookmark?:  (path: string) => void,
+  options?:           MoveListRenderOptions,
 ): VNode {
   // div.tview2.tview2-column: flex-wrap grid, index | white | black per row.
   // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts renderColumnView
-  const nodes: VNode[] = [];
-  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark);
+  const rootComments = renderCommentNodes(root, options);
+  const nodes: VNode[] = rootComments.length > 0 ? [h('interrupt', rootComments)] : [];
+  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark, options);
   return h('div.move-list-inner', [h('div.tview2.tview2-column', nodes)]);
 }

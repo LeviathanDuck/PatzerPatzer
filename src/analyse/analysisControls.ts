@@ -102,6 +102,7 @@ export interface MoveNavOverride {
   menuTitle?:   string;
   menuOpen?:    boolean;
   onMenu?:      () => void;
+  menuHidden?:  boolean;
 }
 
 export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOverride): VNode {
@@ -128,7 +129,9 @@ export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOv
     : null;
 
   // Right zone: hamburger from override when provided, otherwise analysis hamburger.
-  const rightZone: VNode = (nav?.menuTitle !== undefined && nav?.onMenu !== undefined)
+  const rightZone: VNode = nav?.menuHidden
+    ? h('div.move-nav-bar__right')
+    : (nav?.menuTitle !== undefined && nav?.onMenu !== undefined)
     ? h('div.move-nav-bar__right', [h('button.fbt', {
         class: { active: !!nav.menuOpen },
         attrs: { 'data-icon': ICON_HAMBURGER, title: nav.menuTitle, 'aria-label': nav.menuTitle },

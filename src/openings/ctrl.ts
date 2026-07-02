@@ -5,6 +5,7 @@
  * Separated from analysis/puzzle persistence by design.
  */
 
+import { normalizeOpeningsTool } from './types';
 import type { ResearchCollection, ResearchGame, ResearchSource, OpeningsTool, PracticeSession } from './types';
 import {
   loadCollections, saveCollection, deleteCollection as dbDeleteCollection,
@@ -1687,7 +1688,7 @@ export function getPrepReportViewModel(): PrepReportViewModel | null {
 }
 
 // --- Style view-model ---
-// Wraps StyleData + FormData + RepertoireProfile with confidence annotations.
+// Wraps StyleData + FormData + OpponentRepertoireProfile with confidence annotations.
 // Cached and invalidated on the same contract as _prepReportCache.
 // Only available when the tree is fully built and a collection is open.
 
@@ -1758,8 +1759,8 @@ export function startPractice(
     moveHistory: [],
     startFen,
     running: true,
-    opponentSource: 'repertoire',
-    minRepertoireFreq: 2,
+    opponentSource: 'opponent-repertoire',
+    minOpponentRepertoireFreq: 2,
     strengthLevel: strengthLevel ?? getPlayStrengthLevel() ?? DEFAULT_STRENGTH_LEVEL,
   };
   _activeTool = 'practice';
@@ -1790,7 +1791,7 @@ export function setPracticeRunning(running: boolean): void {
  * Update the opponent source state at the current board position.
  * Called after each half-move so the UI can show the correct coverage banner.
  *
- * @param source  'repertoire' | 'engine' | 'exhausted'
+ * @param source  'opponent-repertoire' | 'engine' | 'exhausted'
  */
 export function setPracticeOpponentSource(source: PracticeSession['opponentSource']): void {
   if (_practiceSession) _practiceSession = { ..._practiceSession, opponentSource: source };
@@ -1860,12 +1861,9 @@ export async function loadSavedCollections(redraw: () => void): Promise<void> {
         if (session.path.length > 0) navigateToPath(session.path);
         if (session.orientation) _boardOrientation = session.orientation;
         // Restore active tool — fall back to 'opening-tree' if missing or invalid.
-        // 'repertoire' is kept for backwards compatibility with saved sessions.
-        const validTools: OpeningsTool[] = ['opening-tree', 'repertoire', 'prep-report', 'style', 'practice'];
-        if (session.activeTool && (validTools as string[]).includes(session.activeTool)) {
-          // Map legacy 'repertoire' sessions to 'opening-tree'.
-          _activeTool = session.activeTool === 'repertoire' ? 'opening-tree' : session.activeTool as OpeningsTool;
-        }
+        // Legacy 'repertoire' sessions migrate to 'opponent-repertoire'.
+        const restoredTool = session.activeTool ? normalizeOpeningsTool(session.activeTool) : null;
+        if (restoredTool) _activeTool = restoredTool;
       }
     }
   } catch (e) {
