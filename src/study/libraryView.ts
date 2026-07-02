@@ -19,16 +19,27 @@ import {
   viewMode, setViewMode, resetPagination, studyLibraryRouteSnapshot,
   seedSampleStudies, isSeeding,
   listOrpPracticeLines,
+  repertoireSources, repertoireSourcesLoaded, repertoireSourcesError, loadRepertoireSources,
+  uploadRepertoireSourceFile, renameRepertoireSource, setRepertoireSourceSideOverride,
+  setRepertoireSourceEnabled, replaceRepertoireSourceFile, deleteRepertoireSource,
   type StudySortKey,
   type OrpPracticeLineView,
 } from './studyCtrl';
 import { serializeStudyRouteState, type StudyRouteState } from './routeState';
 import { writeHashRoute } from '../router';
+import {
+  closeRepertoireSourceBrowse,
+  isRepertoireSourceBrowseOpen,
+  openRepertoireSourceBrowse,
+  renderRepertoireSourceBrowse,
+  repertoireBrowseSourceId,
+} from './repertoireBrowseView';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
 import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { StudyItem } from './types';
+import type { RepertoireSide, RepertoireSource } from '../repertoire';
 
 // --- Source label helpers ---
 
@@ -75,6 +86,11 @@ const _expandedRows = new Set<string>();
 let _showImportModal = false;
 let _importPgnText   = '';
 let _importStatus: string | null = null;
+let _repertoireSourceStatus: string | null = null;
+let _repertoireSourceBusy = false;
+let _openRepertoireMenuId: string | null = null;
+let _editingRepertoireSourceId: string | null = null;
+let _editingRepertoireSourceValue = '';
 
 
 
@@ -194,6 +210,348 @@ function loadOrpLines(redraw: () => void): void {
     _orpLoadPending = false;
     redraw();
   });
+}
+
+// --- Repertoire source section ---
+
+function sideBadge(side: RepertoireSide): string {
+  if (side === 'white') return 'W';
+  if (side === 'black') return 'B';
+  return 'WB';
+}
+
+function chapterCountLabel(count: number): string {
+  return `${count} chapter${count === 1 ? '' : 's'}`;
+}
+
+function safeErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function uploadRepertoireFile(file: File, redraw: () => void): void {
+  if (_repertoireSourceBusy) return;
+  _repertoireSourceBusy = true;
+  _repertoireSourceStatus = 'Importing repertoire source...';
+  redraw();
+  void file.text()
+    .then(text => uploadRepertoireSourceFile(file.name, text))
+    .then(source => {
+      _repertoireSourceStatus = `Imported ${source.name} (${chapterCountLabel(source.chapterCount)}).`;
+    })
+    .catch(error => {
+      _repertoireSourceStatus = `Could not import repertoire source: ${safeErrorMessage(error, 'unknown error')}`;
+    })
+    .finally(() => {
+      _repertoireSourceBusy = false;
+      redraw();
+    });
+}
+
+function replaceSourceFile(source: RepertoireSource, file: File, redraw: () => void): void {
+  if (_repertoireSourceBusy) return;
+  if (!confirm(`Replace repertoire file for "${source.name}"? Existing scan records for this source will be removed.`)) return;
+  _repertoireSourceBusy = true;
+  _repertoireSourceStatus = `Replacing ${source.name}...`;
+  redraw();
+  void file.text()
+    .then(text => replaceRepertoireSourceFile(source.id, text))
+    .then(updated => {
+      _repertoireSourceStatus = `Replaced ${updated.name} (${chapterCountLabel(updated.chapterCount)}).`;
+    })
+    .catch(error => {
+      _repertoireSourceStatus = `Could not replace repertoire source: ${safeErrorMessage(error, 'unknown error')}`;
+    })
+    .finally(() => {
+      _repertoireSourceBusy = false;
+      redraw();
+    });
+}
+
+function saveRepertoireSourceRename(source: RepertoireSource, redraw: () => void): void {
+  const name = _editingRepertoireSourceValue.trim();
+  _editingRepertoireSourceId = null;
+  _editingRepertoireSourceValue = '';
+  if (!name || name === source.name) { redraw(); return; }
+  _repertoireSourceBusy = true;
+  void renameRepertoireSource(source.id, name)
+    .then(updated => {
+      _repertoireSourceStatus = `Renamed repertoire source to ${updated.name}.`;
+    })
+    .catch(error => {
+      _repertoireSourceStatus = `Could not rename repertoire source: ${safeErrorMessage(error, 'unknown error')}`;
+    })
+    .finally(() => {
+      _repertoireSourceBusy = false;
+      redraw();
+    });
+}
+
+function changeRepertoireSourceSide(source: RepertoireSource, value: string, redraw: () => void): void {
+  const sideOverride = value === 'auto' ? null : (value as RepertoireSide);
+  _repertoireSourceBusy = true;
+  void setRepertoireSourceSideOverride(source.id, sideOverride)
+    .then(updated => {
+      _repertoireSourceStatus = `${updated.name} side set to ${sideBadge(updated.side)}.`;
+    })
+    .catch(error => {
+      _repertoireSourceStatus = `Could not update source side: ${safeErrorMessage(error, 'unknown error')}`;
+    })
+    .finally(() => {
+      _repertoireSourceBusy = false;
+      redraw();
+    });
+}
+
+function toggleRepertoireSourceEnabled(source: RepertoireSource, redraw: () => void): void {
+  _repertoireSourceBusy = true;
+  void setRepertoireSourceEnabled(source.id, !source.enabled)
+    .then(updated => {
+      _repertoireSourceStatus = `${updated.name} ${updated.enabled ? 'enabled' : 'disabled'}.`;
+    })
+    .catch(error => {
+      _repertoireSourceStatus = `Could not update source state: ${safeErrorMessage(error, 'unknown error')}`;
+    })
+    .finally(() => {
+      _repertoireSourceBusy = false;
+      redraw();
+    });
+}
+
+function removeRepertoireSource(source: RepertoireSource, redraw: () => void): void {
+  if (!confirm(`Delete "${source.name}"? The source and its scan records will be removed.`)) return;
+  _repertoireSourceBusy = true;
+  void deleteRepertoireSource(source.id)
+    .then(() => {
+      _openRepertoireMenuId = null;
+      if (repertoireBrowseSourceId() === source.id) closeRepertoireSourceBrowse();
+      _repertoireSourceStatus = `Deleted ${source.name}.`;
+    })
+    .catch(error => {
+      _repertoireSourceStatus = `Could not delete repertoire source: ${safeErrorMessage(error, 'unknown error')}`;
+    })
+    .finally(() => {
+      _repertoireSourceBusy = false;
+      redraw();
+    });
+}
+
+function renderRepertoireUploadControl(redraw: () => void): VNode {
+  return h('label.study-btn.study-btn--import.repertoire__upload', {
+    attrs: {
+      title: 'Upload repertoire PGN',
+      'aria-label': 'Upload repertoire PGN',
+    },
+  }, [
+    _repertoireSourceBusy ? 'Working...' : 'Upload repertoire PGN',
+    h('input.repertoire__file-input', {
+      attrs: {
+        type: 'file',
+        accept: '.pgn,text/plain',
+        disabled: _repertoireSourceBusy,
+        title: 'Choose repertoire PGN file',
+        'aria-label': 'Choose repertoire PGN file',
+      },
+      on: { change: (e: Event) => {
+        const input = e.target as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (file) uploadRepertoireFile(file, redraw);
+      }},
+    }),
+  ]);
+}
+
+function renderRepertoireChip(source: RepertoireSource, accentIndex: number): VNode {
+  return h(`span.repertoire__chip.repertoire__accent--${accentIndex % 8}`, [
+    h('span.repertoire__chip-dot'),
+    h('span.repertoire__chip-name', source.name),
+    h('span.repertoire__side-badge', sideBadge(source.side)),
+  ]);
+}
+
+function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void): VNode | null {
+  if (_openRepertoireMenuId !== source.id) return null;
+  const selectedSide = source.sideOverride ?? 'auto';
+  return h('div.repertoire__source-menu', [
+    h('button.repertoire__source-menu-item', {
+      attrs: {
+        title: `Rename ${source.name}`,
+        'aria-label': `Rename ${source.name}`,
+        disabled: _repertoireSourceBusy,
+      },
+      on: { click: (e: Event) => {
+        e.stopPropagation();
+        _editingRepertoireSourceId = source.id;
+        _editingRepertoireSourceValue = source.name;
+        _openRepertoireMenuId = null;
+        redraw();
+      }},
+    }, 'Rename'),
+    h('label.repertoire__source-menu-label', [
+      h('span', 'Side'),
+      h('select.repertoire__side-select', {
+        attrs: {
+          title: `Set side for ${source.name}`,
+          'aria-label': `Set side for ${source.name}`,
+          disabled: _repertoireSourceBusy,
+        },
+        props: { value: selectedSide },
+        on: { change: (e: Event) => {
+          e.stopPropagation();
+          changeRepertoireSourceSide(source, (e.target as HTMLSelectElement).value, redraw);
+        }},
+      }, [
+        h('option', { attrs: { value: 'auto' } }, `Auto (${sideBadge(source.inferredSide)})`),
+        h('option', { attrs: { value: 'white' } }, 'White'),
+        h('option', { attrs: { value: 'black' } }, 'Black'),
+        h('option', { attrs: { value: 'both' } }, 'White + Black'),
+      ]),
+    ]),
+    h('label.repertoire__source-menu-item.repertoire__replace-label', {
+      attrs: {
+        title: `Replace PGN file for ${source.name}`,
+        'aria-label': `Replace PGN file for ${source.name}`,
+      },
+    }, [
+      'Replace file',
+      h('input.repertoire__file-input', {
+        attrs: {
+          type: 'file',
+          accept: '.pgn,text/plain',
+          disabled: _repertoireSourceBusy,
+          title: `Choose replacement PGN for ${source.name}`,
+          'aria-label': `Choose replacement PGN for ${source.name}`,
+        },
+        on: { change: (e: Event) => {
+          const input = e.target as HTMLInputElement;
+          const file = input.files?.[0];
+          input.value = '';
+          if (file) replaceSourceFile(source, file, redraw);
+        }},
+      }),
+    ]),
+    h('button.repertoire__source-menu-item.repertoire__source-menu-item--danger', {
+      attrs: {
+        title: `Delete ${source.name}`,
+        'aria-label': `Delete ${source.name}`,
+        disabled: _repertoireSourceBusy,
+      },
+      on: { click: (e: Event) => {
+        e.stopPropagation();
+        removeRepertoireSource(source, redraw);
+      }},
+    }, 'Delete'),
+  ]);
+}
+
+function renderRepertoireSourceRow(source: RepertoireSource, index: number, redraw: () => void): VNode {
+  const isEditingName = _editingRepertoireSourceId === source.id;
+  const sourceMainChildren = [
+    h('div.repertoire__source-title-row', [
+      isEditingName
+        ? h('input.repertoire__source-name-input', {
+            attrs: {
+              value: _editingRepertoireSourceValue,
+              title: `Rename ${source.name}`,
+              'aria-label': `Rename ${source.name}`,
+            },
+            hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
+            on: {
+              input: (e: Event) => { _editingRepertoireSourceValue = (e.target as HTMLInputElement).value; },
+              blur: () => saveRepertoireSourceRename(source, redraw),
+              keydown: (e: KeyboardEvent) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                if (e.key === 'Escape') {
+                  _editingRepertoireSourceId = null;
+                  _editingRepertoireSourceValue = '';
+                  redraw();
+                }
+              },
+            },
+          })
+        : renderRepertoireChip(source, index),
+      h('span.repertoire__chapter-count', chapterCountLabel(source.chapterCount)),
+    ]),
+    h('div.repertoire__source-meta', [
+      h('span', source.enabled ? 'Enabled' : 'Disabled'),
+      h('span.repertoire__source-sep', '·'),
+      h('span', `version ${source.contentVersion.slice(0, 8)}`),
+    ]),
+  ];
+  return h(`div.repertoire__source-row.repertoire__accent--${index % 8}`, { key: source.id }, [
+    isEditingName
+      ? h('div.repertoire__source-main', sourceMainChildren)
+      : h('button.repertoire__source-main.repertoire__source-open', {
+          attrs: {
+            title: `Open ${source.name}`,
+            'aria-label': `Open ${source.name}`,
+          },
+          on: { click: () => {
+            openRepertoireSourceBrowse(source, index);
+            redraw();
+          }},
+        }, sourceMainChildren),
+    h('button.repertoire__source-toggle', {
+      attrs: {
+        title: source.enabled ? `Disable ${source.name}` : `Enable ${source.name}`,
+        'aria-label': source.enabled ? `Disable ${source.name}` : `Enable ${source.name}`,
+        disabled: _repertoireSourceBusy,
+      },
+      class: { active: source.enabled },
+      on: { click: (e: Event) => {
+        e.stopPropagation();
+        toggleRepertoireSourceEnabled(source, redraw);
+      }},
+    }, source.enabled ? 'On' : 'Off'),
+    h('div.repertoire__source-menu-wrap', [
+      h('button.repertoire__source-menu-button', {
+        attrs: {
+          title: `Source actions for ${source.name}`,
+          'aria-label': `Source actions for ${source.name}`,
+          disabled: _repertoireSourceBusy,
+        },
+        on: { click: (e: Event) => {
+          e.stopPropagation();
+          _openRepertoireMenuId = _openRepertoireMenuId === source.id ? null : source.id;
+          redraw();
+        }},
+      }, '⋮'),
+      renderRepertoireSourceMenu(source, redraw),
+    ]),
+  ]);
+}
+
+function renderRepertoireSourcesSection(redraw: () => void): VNode {
+  const header = h('div.repertoire__section-header', [
+    h('h2.repertoire__section-title', 'Repertoire Sources'),
+    renderRepertoireUploadControl(redraw),
+  ]);
+
+  if (!repertoireSourcesLoaded()) {
+    return h('section.repertoire__source-section', [
+      header,
+      h('div.repertoire__source-loading', 'Loading...'),
+    ]);
+  }
+
+  if (repertoireSourcesError()) {
+    return h('section.repertoire__source-section', [
+      header,
+      h('div.repertoire__source-error', 'Could not load repertoire sources.'),
+      _repertoireSourceStatus ? h('div.repertoire__source-status', _repertoireSourceStatus) : null,
+    ]);
+  }
+
+  const sources = repertoireSources();
+  return h('section.repertoire__source-section', [
+    header,
+    sources.length === 0
+      ? h('div.repertoire__source-empty', 'No repertoire sources yet.')
+      : h('div.repertoire__source-list',
+          sources.map((source, index) => renderRepertoireSourceRow(source, index, redraw))
+        ),
+    _repertoireSourceStatus ? h('div.repertoire__source-status', _repertoireSourceStatus) : null,
+  ]);
 }
 
 // --- Row rendering ---
@@ -853,6 +1211,9 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
   if (!_orpLoaded) loadOrpLines(redraw);
 
+  // Lazy-load repertoire sources for Surface D.
+  if (!repertoireSourcesLoaded()) loadRepertoireSources(redraw);
+
 
   if (isDrillActive() || isDrillSummary()) {
     return h('div.study-page', [
@@ -882,6 +1243,45 @@ export function renderStudyLibrary(redraw: () => void): VNode {
   if (!foldersLoaded()) loadFolders(redraw);
 
   const items = studies();
+  const libraryMainNodes = isRepertoireSourceBrowseOpen()
+    ? [renderRepertoireSourceBrowse(redraw)]
+    : [
+        renderRepertoireSourcesSection(redraw),
+        h('div.repertoire__studies-heading', 'Studies'),
+        renderFilterBar(redraw),
+        renderSortControls(redraw),
+        renderBulkActionBar(redraw),
+
+        items.length === 0
+          ? h('div.study-page__empty', [
+              h('p', 'No studies yet.'),
+              h('p', 'Right-click any move on the analysis board to save it here.'),
+              allStudies().length === 0
+                ? isSeeding()
+                  ? h('p.study-page__seeding', 'Seeding sample studies…')
+                  : h('button.study-btn.study-btn--seed', {
+                      on: { click: () => { void seedSampleStudies(redraw); } },
+                    }, 'Seed sample studies')
+                : null,
+            ])
+          : viewMode() === 'grid'
+            ? h('div.study-grid', items.map((item, idx) => renderStudyCard(item, idx, redraw)))
+            : h('div.study-list', items.map((item, idx) => renderStudyRow(item, idx, redraw))),
+
+        hasMore()
+          ? h('div.study-list__load-more', [
+              isLoadingMore()
+                ? h('span.study-list__loading', 'Loading…')
+                : h('button.study-btn.study-btn--load-more', {
+                    on: { click: () => {
+                      void loadNextPage(redraw).then(loaded => {
+                        if (loaded) writeStudyLibraryRoute({ pages: loadedStudyPageCount() });
+                      });
+                    } },
+                  }, 'Load more'),
+            ])
+          : null,
+      ];
 
   return h('div.study-page', [
     h('div.study-page__header', [
@@ -924,42 +1324,7 @@ export function renderStudyLibrary(redraw: () => void): VNode {
     h('div.study-library-layout', [
       renderFolderSidebar(redraw),
 
-      h('div.study-library-main', [
-        renderFilterBar(redraw),
-        renderSortControls(redraw),
-        renderBulkActionBar(redraw),
-
-        items.length === 0
-          ? h('div.study-page__empty', [
-              h('p', 'No studies yet.'),
-              h('p', 'Right-click any move on the analysis board to save it here.'),
-              allStudies().length === 0
-                ? isSeeding()
-                  ? h('p.study-page__seeding', 'Seeding sample studies…')
-                  : h('button.study-btn.study-btn--seed', {
-                      on: { click: () => { void seedSampleStudies(redraw); } },
-                    }, 'Seed sample studies')
-                : null,
-            ])
-          : viewMode() === 'grid'
-            ? h('div.study-grid', items.map((item, idx) => renderStudyCard(item, idx, redraw)))
-            : h('div.study-list', items.map((item, idx) => renderStudyRow(item, idx, redraw))),
-
-        // Pagination: Load more button (hidden when no more pages available)
-        hasMore()
-          ? h('div.study-list__load-more', [
-              isLoadingMore()
-                ? h('span.study-list__loading', 'Loading…')
-                : h('button.study-btn.study-btn--load-more', {
-                    on: { click: () => {
-                      void loadNextPage(redraw).then(loaded => {
-                        if (loaded) writeStudyLibraryRoute({ pages: loadedStudyPageCount() });
-                      });
-                    } },
-                  }, 'Load more'),
-            ])
-          : null,
-      ]),
+      h('div.study-library-main', libraryMainNodes),
     ]),
 
     _showImportModal ? renderImportModal(redraw) : null,

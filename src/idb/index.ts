@@ -422,8 +422,7 @@ export interface StoredGameRecord {
 
 export const DB_NAME = 'patzer-pro';
 
-
-export const DB_VERSION = 23;
+export const DB_VERSION = 24;
 
 let _idb: IDBDatabase | undefined;
 
@@ -575,6 +574,27 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   ensureIndex(diagnosticReportDraftsStore, 'status', 'status', { unique: false });
   ensureIndex(diagnosticReportDraftsStore, 'updatedAt', 'updatedAt', { unique: false });
   ensureIndex(diagnosticReportDraftsStore, 'routeAtTrigger', 'routeAtTrigger', { unique: false });
+
+
+
+  const repertoireSourcesStore = ensureStore(db, event, 'repertoire-sources', { keyPath: 'id' });
+  ensureIndex(repertoireSourcesStore, 'contentVersion', 'contentVersion', { unique: false });
+  ensureIndex(repertoireSourcesStore, 'side', 'side', { unique: false });
+  ensureIndex(repertoireSourcesStore, 'enabled', 'enabled', { unique: false });
+  ensureIndex(repertoireSourcesStore, 'updatedAt', 'updatedAt', { unique: false });
+
+  const repertoireMatchRecordsStore = ensureStore(db, event, 'repertoire-match-records', { keyPath: 'key' });
+  ensureIndex(repertoireMatchRecordsStore, 'sourceId', 'sourceId', { unique: false });
+  ensureIndex(repertoireMatchRecordsStore, 'sourceVersion', 'sourceVersion', { unique: false });
+  ensureIndex(repertoireMatchRecordsStore, 'gameId', 'gameId', { unique: false });
+  ensureIndex(repertoireMatchRecordsStore, 'status', 'status', { unique: false });
+  ensureIndex(repertoireMatchRecordsStore, 'accountId', 'accountId', { unique: false });
+  ensureIndex(repertoireMatchRecordsStore, 'timeClass', 'timeClass', { unique: false });
+  ensureIndex(repertoireMatchRecordsStore, 'scannedAt', 'scannedAt', { unique: false });
+
+  const repertoireScanRunsStore = ensureStore(db, event, 'repertoire-scan-runs', { keyPath: 'runId' });
+  ensureIndex(repertoireScanRunsStore, 'lifecycleState', 'lifecycleState', { unique: false });
+  ensureIndex(repertoireScanRunsStore, 'updatedAt', 'updatedAt', { unique: false });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
@@ -1687,7 +1707,7 @@ export async function backfillOpenings(): Promise<number> {
 export async function clearAllIdbData(): Promise<void> {
   try {
     const db = await openGameDb();
-    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts', 'review-queue', 'review-failures', 'review-runs'], 'readwrite');
+    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts', 'review-queue', 'review-failures', 'review-runs', 'repertoire-sources', 'repertoire-match-records', 'repertoire-scan-runs'], 'readwrite');
     tx.objectStore('game-library').clear();
     tx.objectStore('puzzle-library').clear();
     tx.objectStore('analysis-library').clear();
@@ -1703,6 +1723,9 @@ export async function clearAllIdbData(): Promise<void> {
     tx.objectStore('review-queue').clear();
     tx.objectStore('review-failures').clear();
     tx.objectStore('review-runs').clear();
+    tx.objectStore('repertoire-sources').clear();
+    tx.objectStore('repertoire-match-records').clear();
+    tx.objectStore('repertoire-scan-runs').clear();
     await txDone(tx, 'clear');
   } catch (e) {
     console.warn('[idb] clearAllIdbData failed', e);

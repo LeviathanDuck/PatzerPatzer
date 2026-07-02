@@ -73,6 +73,7 @@ export interface TreeNodeBase {
   eval?: ServerEval;
   ceval?: ClientEval;
   glyphs?: Glyph[];
+  nags?: GlyphId[];
   comments?: TreeComment[];
   clock?: Clock;
   moveTime?: Clock;

@@ -7,6 +7,15 @@ import { listStudies, getStudiesPaginated, saveStudy, deleteStudy as deleteStudy
 import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
+import {
+  deleteRepertoireSource as deleteRepertoireSourceFromIdb,
+  importRepertoireSource,
+  listRepertoireSources as listRepertoireSourcesFromIdb,
+  renameRepertoireSource as renameRepertoireSourceInIdb,
+  replaceRepertoireSourceFile as replaceRepertoireSourceFileInIdb,
+  setRepertoireSourceEnabled as setRepertoireSourceEnabledInIdb,
+  setRepertoireSourceSideOverride as setRepertoireSourceSideOverrideInIdb,
+} from '../repertoire/sourceDb';
 import { replaceHashRoute } from '../router';
 import {
   parseStudyRouteState,
@@ -16,6 +25,7 @@ import {
   type StudyRouteState,
 } from './routeState';
 import type { StudyItem, TrainableSequence, PositionProgress, StudyFolder } from './types';
+import type { RepertoireSide, RepertoireSource } from '../repertoire';
 import { record, Severity } from '../diagnostics';
 
 function classifyStudyError(error: unknown): string {
@@ -66,6 +76,21 @@ function recordOrpLoadFail(route: string, error: unknown): void {
   });
 }
 
+function recordRepertoireLoadFail(route: string, error: unknown): void {
+  record({
+    kind: 'render',
+    severity: Severity.Error,
+    source: 'study/studyCtrl',
+    sourceTag: 'repertoire-source-load-fail',
+    message: 'repertoire-source-load-fail',
+    metadata: {
+      errorClass: classifyStudyError(error),
+      route,
+    },
+    redactionClass: 'safe',
+  });
+}
+
 let _importIdSeq = 0;
 function nextImportId(): string {
   return `study_import_${Date.now()}_${_importIdSeq++}`;
@@ -91,6 +116,13 @@ let _search:     string          = '';
 let _page:       number          = 0;
 let _hasMore:    boolean         = false;
 let _loadingMore: boolean        = false;
+
+// --- Repertoire source state ---
+
+let _repertoireSources: RepertoireSource[] = [];
+let _repertoireSourcesLoaded = false;
+let _repertoireSourcesError = false;
+let _repertoireSourcesLoadPending = false;
 
 // --- Folder sidebar state ---
 
@@ -166,6 +198,11 @@ export function filterSrc(): string | null { return _filterSrc; }
 export function searchQuery(): string   { return _search; }
 export function hasMore(): boolean      { return _hasMore; }
 export function isLoadingMore(): boolean { return _loadingMore; }
+
+// Repertoire source accessors
+export function repertoireSources(): RepertoireSource[] { return _repertoireSources; }
+export function repertoireSourcesLoaded(): boolean { return _repertoireSourcesLoaded; }
+export function repertoireSourcesError(): boolean { return _repertoireSourcesError; }
 
 // Folder sidebar accessors
 export function folders(): StudyFolder[]          { return _folders; }
@@ -401,6 +438,88 @@ export function loadFolders(redraw: () => void): Promise<void> {
     recordStudyLoadFail('study-library', e);
     _foldersLoaded = true;
   });
+}
+
+function replaceRepertoireSourceInMemory(source: RepertoireSource): void {
+  const idx = _repertoireSources.findIndex(item => item.id === source.id);
+  if (idx === -1) {
+    _repertoireSources = [..._repertoireSources, source].sort((a, b) =>
+      a.createdAt - b.createdAt || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+    );
+    return;
+  }
+  _repertoireSources = [
+    ..._repertoireSources.slice(0, idx),
+    source,
+    ..._repertoireSources.slice(idx + 1),
+  ];
+}
+
+export function loadRepertoireSources(redraw: () => void): void {
+  if (_repertoireSourcesLoadPending) return;
+  _repertoireSourcesLoadPending = true;
+  void listRepertoireSourcesFromIdb().then(sources => {
+    _repertoireSources = sources;
+    _repertoireSourcesLoaded = true;
+    _repertoireSourcesError = false;
+  }).catch(e => {
+    recordRepertoireLoadFail('study-library-repertoire-sources', e);
+    _repertoireSources = [];
+    _repertoireSourcesLoaded = true;
+    _repertoireSourcesError = true;
+  }).finally(() => {
+    _repertoireSourcesLoadPending = false;
+    redraw();
+  });
+}
+
+export async function uploadRepertoireSourceFile(
+  filename: string,
+  rawPgn: string,
+): Promise<RepertoireSource> {
+  const source = await importRepertoireSource({ filename, rawPgn });
+  replaceRepertoireSourceInMemory(source);
+  _repertoireSourcesLoaded = true;
+  _repertoireSourcesError = false;
+  return source;
+}
+
+export async function renameRepertoireSource(id: string, name: string): Promise<RepertoireSource> {
+  const source = await renameRepertoireSourceInIdb(id, name);
+  replaceRepertoireSourceInMemory(source);
+  return source;
+}
+
+export async function setRepertoireSourceSideOverride(
+  id: string,
+  sideOverride: RepertoireSide | null,
+): Promise<RepertoireSource> {
+  const source = await setRepertoireSourceSideOverrideInIdb(id, sideOverride);
+  replaceRepertoireSourceInMemory(source);
+  return source;
+}
+
+export async function setRepertoireSourceEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<RepertoireSource> {
+  const source = await setRepertoireSourceEnabledInIdb(id, enabled);
+  replaceRepertoireSourceInMemory(source);
+  return source;
+}
+
+export async function replaceRepertoireSourceFile(
+  id: string,
+  rawPgn: string,
+): Promise<RepertoireSource> {
+  const result = await replaceRepertoireSourceFileInIdb(id, rawPgn);
+  replaceRepertoireSourceInMemory(result.source);
+  return result.source;
+}
+
+export async function deleteRepertoireSource(id: string): Promise<void> {
+  await deleteRepertoireSourceFromIdb(id);
+  _repertoireSources = _repertoireSources.filter(source => source.id !== id);
 }
 
 let _studyRouteHydrationRun = 0;
