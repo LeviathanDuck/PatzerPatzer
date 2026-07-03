@@ -741,6 +741,8 @@ const IDB_SPECS_BY_STORE = new Map<RemoteSyncStoreName, IdbStoreSpec>(
 
 const SETTINGS_KEYS = new Set([
   'patzer.reviewDepth',
+  'patzer.reviewDepth.bulk',
+  'patzer.reviewMovetime',
   'patzer.multiPv',
   'patzer.analysisDepth',
   'patzer.searchTime',

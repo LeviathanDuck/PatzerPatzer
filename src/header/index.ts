@@ -29,7 +29,10 @@ import {
   isLeaderTab, isReviewOwnerUnavailableForTakeover, takeOverUnavailableReviewOwner,
   setReviewAutoRetryEnabled,
 } from '../engine/reviewQueue';
-import { reviewDepth, setReviewDepth, reviewMovetime, setReviewMovetime } from '../engine/batch';
+import {
+  reviewDepth, setReviewDepth,
+  bulkReviewDepth, setBulkReviewDepth, bulkReviewMovetime, setBulkReviewMovetime,
+} from '../engine/batch';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
 import {
@@ -940,25 +943,43 @@ function renderReviewMenu(redraw: () => void): VNode | null {
 
       renderReviewQueueSection(redraw),
 
+
+
+
+
       h('div.review-menu__section', [
-        h('div.review-menu__label', `Depth: ${reviewDepth}`),
+        h('div.review-menu__label', {
+          attrs: { title: 'Depth used by the background bulk review queue.' },
+        }, `Bulk depth: ${bulkReviewDepth}`),
         h('div.review-menu__row', REVIEW_DEPTHS.map(d =>
           h('button.review-menu__pill', {
-            class: { active: reviewDepth === d },
-            on: { click: () => { setReviewDepth(d); redraw(); } },
+            class: { active: bulkReviewDepth === d },
+            on: { click: () => { setBulkReviewDepth(d); redraw(); } },
           }, String(d)),
         )),
       ]),
 
       h('div.review-menu__section', [
         h('div.review-menu__label', {
-          attrs: { title: 'Caps search time per position alongside depth, trading some accuracy for faster bulk review. Off (default) searches to depth only.' },
-        }, `Time budget: ${reviewMovetime === null ? 'Off (depth only)' : `${reviewMovetime}ms`}`),
+          attrs: { title: 'Caps search time per position alongside depth, trading some accuracy for faster bulk review.' },
+        }, `Bulk time budget: ${bulkReviewMovetime === null ? 'Off (depth only)' : `${bulkReviewMovetime}ms`}`),
         h('div.review-menu__row', REVIEW_MOVETIME_OPTIONS.map(({ value, label }) =>
           h('button.review-menu__pill', {
-            class: { active: reviewMovetime === value },
-            on: { click: () => { setReviewMovetime(value); redraw(); } },
+            class: { active: bulkReviewMovetime === value },
+            on: { click: () => { setBulkReviewMovetime(value); redraw(); } },
           }, label),
+        )),
+      ]),
+
+      h('div.review-menu__section', [
+        h('div.review-menu__label', {
+          attrs: { title: 'Depth used by the analysis-board Review button. Always searches depth-only (no time cap).' },
+        }, `One-off depth: ${reviewDepth}`),
+        h('div.review-menu__row', REVIEW_DEPTHS.map(d =>
+          h('button.review-menu__pill', {
+            class: { active: reviewDepth === d },
+            on: { click: () => { setReviewDepth(d); redraw(); } },
+          }, String(d)),
         )),
       ]),
 

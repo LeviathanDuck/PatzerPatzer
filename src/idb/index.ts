@@ -321,6 +321,38 @@ export function isDeeperEval(
 
 
 
+
+export function isStoredAnalysisLoadable(
+  stored: Pick<StoredAnalysis, 'analysisVersion'> | undefined,
+): boolean {
+  return stored !== undefined && stored.analysisVersion === ANALYSIS_VERSION;
+}
+
+
+
+
+
+
+
+
+
+export function storedAnalysisSatisfiesAskingDepth(
+  stored: Pick<StoredAnalysis, 'status' | 'analysisVersion' | 'analysisDepth'> | undefined,
+  askingDepth: number,
+): boolean {
+  return stored?.status === 'complete'
+    && stored.analysisVersion === ANALYSIS_VERSION
+    && stored.analysisDepth >= askingDepth;
+}
+
+
+
+
+
+
+
+
+
 export function buildAnalysisNodeEntry(nodeId: string, path: string, fen: string, ev: PositionEvalLike): StoredNodeEntry {
   const entry: StoredNodeEntry = { nodeId, path, fen };
   if (ev.cp    !== undefined) entry.cp    = ev.cp;
@@ -1334,9 +1366,13 @@ export async function loadAnalysisFromIdb(gameId: string): Promise<StoredAnalysi
   }
 }
 
+
+
+
+
+
 export async function listCompletedAnalysisMetadataFromIdb(
   analysisVersion: number,
-  analysisDepth: number,
 ): Promise<CompletedAnalysisMetadata[]> {
   const db = await openGameDb();
   return new Promise((resolve, reject) => {
@@ -1352,9 +1388,8 @@ export async function listCompletedAnalysisMetadataFromIdb(
       }
       const stored = cursor.value as StoredAnalysis;
       if (
-        stored?.status === 'complete'
-        && stored.analysisVersion === analysisVersion
-        && stored.analysisDepth === analysisDepth
+        isStoredAnalysisLoadable(stored)
+        && stored.status === 'complete'
         && typeof stored.gameId === 'string'
         && stored.gameId.trim()
       ) {

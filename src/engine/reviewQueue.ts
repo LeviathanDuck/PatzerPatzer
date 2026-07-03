@@ -18,12 +18,16 @@ import {
   saveReviewFailureRecord, deleteReviewFailureRecord, loadReviewFailureRecords,
   saveReviewRunManifest, loadLatestReviewRunManifest,
   saveGameSummary,
-  ANALYSIS_VERSION,
+  storedAnalysisSatisfiesAskingDepth,
 } from '../idb/index';
 import { extractGameSummary } from '../stats/extract';
 import { invalidateSummariesCache } from '../stats/ctrl';
 import { pgnToTree } from '../tree/pgn';
-import { reviewDepth, reviewMovetime, syncReviewDepthSetting } from './batch';
+
+
+
+
+import { bulkReviewDepth, bulkReviewMovetime, syncBulkReviewDepthSetting } from './batch';
 import {
   createReviewRunManifest,
   createReviewSearchOwner,
@@ -462,7 +466,7 @@ function recordReviewWatchdogTriggered(entry: ReviewQueueEntry, timestamp: numbe
       positionIndex: reviewItemIndex,
       elapsedSinceLastBestmoveMs: Math.max(1, Math.round(timestamp - (reviewLastProgressAt ?? timestamp))),
       depth: reviewActiveDepth ?? null,
-      movetime: reviewMovetime ?? null,
+      movetime: bulkReviewMovetime ?? null,
       timestamp,
     },
     redactionClass: 'safe',
@@ -1064,7 +1068,7 @@ function initLeaderElection(): void {
         } else if (msg.type === 'auto-retry' && isCurrentLeader && typeof msg.enabled === 'boolean') {
           setReviewAutoRetryEnabled(msg.enabled);
         } else if (msg.type === 'review-depth' && isCurrentLeader && typeof msg.depth === 'number') {
-          syncReviewDepthSetting(msg.depth);
+          syncBulkReviewDepthSetting(msg.depth);
           applyReviewDepthToActiveQueue(msg.depth, { source: 'channel' });
         } else if (msg.type === 'data-management-fence' && isCurrentLeader && msg.detail) {
           void fenceReviewQueueForDataManagement(msg.detail);
@@ -1415,13 +1419,19 @@ function setActiveReviewRunState(lifecycleState: ReviewRunLifecycleState): void 
   persistActiveReviewRun();
 }
 
+
+
+
+
+
+
+
+
 function storedAnalysisMatchesReviewDepth(
   stored: Awaited<ReturnType<typeof loadAnalysisFromIdb>> | undefined,
   depth: number,
 ): boolean {
-  return stored?.status === 'complete'
-    && stored.analysisVersion === ANALYSIS_VERSION
-    && stored.analysisDepth === depth;
+  return storedAnalysisSatisfiesAskingDepth(stored, depth);
 }
 
 function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, sourceContext?: ReviewRunSourceContext): void {
@@ -1891,7 +1901,7 @@ const REVIEW_MISMATCH_MAX_RETRIES = 2;
 let reviewMismatchRetryIndex = -1;
 let reviewMismatchRetryCount = 0;
 // Depth used for the currently-analyzing entry — set from entry.depth in startEntryBatch.
-let reviewActiveDepth      = reviewDepth;
+let reviewActiveDepth      = bulkReviewDepth;
 
 // --- Stop/bestmove race hardening ---
 // Instead of a raw pending-stop counter (which can desync across rapid pause/resume/cancel
@@ -2064,7 +2074,7 @@ function beginReviewSearch(item: ReviewBatchItem): void {
     ply:      item.nodePly,
   }).token;
   reviewProtocol.setPositionContext(item.position);
-  reviewProtocol.go(reviewActiveDepth, 1, reviewMovetime ?? undefined);
+  reviewProtocol.go(reviewActiveDepth, 1, bulkReviewMovetime ?? undefined);
   armWatchdog();
 }
 
@@ -2217,7 +2227,7 @@ function onWatchdogExpiry(): void {
       eventType:   'watchdog-expiry',
       depthTarget: reviewActiveDepth,
       depthReached: reviewCurrentEval.depth ?? null,
-      movetimeMs:  reviewMovetime ?? null,
+      movetimeMs:  bulkReviewMovetime ?? null,
       ply:         reviewNodePly,
       retries:     reviewWatchdogRetries,
       ...reviewProtocol.deviceCapabilityMetadata(),
@@ -2594,7 +2604,7 @@ function parseReviewLine(line: string, consumedSearch: ReviewSearchDescriptor | 
             eventType:    'stale-bestmove-drop',
             depthTarget:  reviewActiveDepth,
             depthReached: reviewCurrentEval.depth ?? null,
-            movetimeMs:   reviewMovetime ?? null,
+            movetimeMs:   bulkReviewMovetime ?? null,
             ply:          reviewNodePly,
             consumedKind: consumedSearch?.kind ?? null,
             consumedStale: consumedSearch?.stale ?? null,
@@ -2774,6 +2784,15 @@ function sendNextItem(): void {
 
   beginReviewSearch(item);
 }
+
+
+
+
+
+
+
+
+
 
 export function applyReviewDepthToActiveQueue(
   newDepth: number,
@@ -3137,7 +3156,7 @@ function enqueueBulkReviewAsLeader(
 
 export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceContext?: ReviewRunSourceContext): void {
   preemptTreeEvalLease('bulk-review-enqueued');
-  const entryDepth = depth ?? reviewDepth;
+  const entryDepth = depth ?? bulkReviewDepth;
   const orderedGames = reviewGamesInNewestFirstOrder(games);
   if (!isCurrentLeader) {
     const ownerUnavailable = isReviewOwnerUnavailableFromToken();
@@ -3224,7 +3243,7 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
 
 export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
   preemptTreeEvalLease('bulk-review-enqueued');
-  const entryDepth = depth ?? reviewDepth;
+  const entryDepth = depth ?? bulkReviewDepth;
   const orderedGames = reviewGamesInNewestFirstOrder(games);
   if (!isCurrentLeader) {
     const ownerUnavailable = isReviewOwnerUnavailableFromToken();
@@ -3636,7 +3655,7 @@ export function getReviewProgress(gameId: string): number | undefined {
   return Math.round((entry.done / entry.total) * 100);
 }
 
-export function getFailedReviewStatus(gameId: string, depth = reviewDepth): FailedReviewStatus | undefined {
+export function getFailedReviewStatus(gameId: string, depth = bulkReviewDepth): FailedReviewStatus | undefined {
   const state = getFailedGameState(gameId, depth);
   return state ? toFailedReviewStatus(state) : undefined;
 }

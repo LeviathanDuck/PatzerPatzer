@@ -130,56 +130,137 @@ function storedInt(key: string, def: number, min: number, max: number): number {
   return (!isNaN(v) && v >= min && v <= max) ? v : def;
 }
 
-export let reviewDepth      = storedInt('patzer.reviewDepth', 16, 12, 20);
-export let pendingBatchOnReady = false;
-export const REVIEW_DEPTH_CHANGED_EVENT = 'patzer:review-depth-changed';
 
-/**
- * Optional per-position time budget (movetime, in ms) for the background bulk
- * review queue. `null` (the default) means depth-only search, matching prior
- * behavior exactly — the engine searches each position to `reviewDepth` with
- * no time cap. When set, `StockfishProtocol.go(depth, multiPv, movetime)`
- * stops a search early at whichever limit is hit first, trading some accuracy
- * for throughput on large bulk-review runs.
- */
-function storedReviewMovetime(): number | null {
-  const raw = localStorage.getItem('patzer.reviewMovetime');
-  if (raw === null) return null;
-  const v = parseInt(raw, 10);
-  return (!isNaN(v) && v >= REVIEW_MOVETIME_MIN && v <= REVIEW_MOVETIME_MAX) ? v : null;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const LEGACY_REVIEW_DEPTH_KEY  = 'patzer.reviewDepth';
+const BULK_REVIEW_DEPTH_KEY    = 'patzer.reviewDepth.bulk';
+const BULK_REVIEW_MOVETIME_KEY = 'patzer.reviewMovetime';
 
 export const REVIEW_MOVETIME_MIN = 50;
 export const REVIEW_MOVETIME_MAX = 5_000;
 
-export let reviewMovetime: number | null = storedReviewMovetime();
 
 
-// --- Setters (used by main.ts render code and loadGame) ---
 
+
+
+
+
+
+
+export const BULK_REVIEW_MOVETIME_DEFAULT_MS = 750;
+
+/** One-off profile depth. */
+export let reviewDepth = storedInt(LEGACY_REVIEW_DEPTH_KEY, 16, 12, 20);
+export let pendingBatchOnReady = false;
+// Fires ONLY when the Bulk profile's depth changes (setBulkReviewDepth below) — main.ts's
+// listener retargets the active bulk run via applyReviewDepthToActiveQueue. setReviewDepth
+// (One-off) deliberately never dispatches this event, so a One-off setting change can never
+// retarget or re-gate a bulk run — "which profile changed" is encoded structurally (only Bulk
+// ever publishes on this channel) rather than by an extra field on the event detail.
+export const REVIEW_DEPTH_CHANGED_EVENT = 'patzer:review-depth-changed';
+
+/**
+ * Pure migration resolver for the Bulk profile's depth: prefers the Bulk-specific key when
+ * present, otherwise seeds from the legacy shared `patzer.reviewDepth` value (or the shared 16
+ * default when neither key has ever been set). Exposed standalone, taking raw localStorage
+ * strings rather than reading storage itself, so the migration decision can be exercised
+ * directly by tests without a browser localStorage global.
+ */
+export function resolveBulkReviewDepth(bulkRaw: string | null, legacyRaw: string | null): number {
+  if (bulkRaw !== null) {
+    const v = parseInt(bulkRaw, 10);
+    if (!isNaN(v) && v >= 12 && v <= 20) return v;
+  }
+  const legacy = parseInt(legacyRaw ?? '', 10);
+  return (!isNaN(legacy) && legacy >= 12 && legacy <= 20) ? legacy : 16;
+}
+
+/**
+ * Pure resolver for the Bulk profile's movetime: the legacy `patzer.reviewMovetime` key is
+ * reused unchanged (no key migration needed — it was already background-queue-only), but an
+ * absent/never-set value now defaults ON at BULK_REVIEW_MOVETIME_DEFAULT_MS instead of null,
+ * per the sprint decision that bulk runs use the movetime cap by default.
+ */
+export function resolveBulkReviewMovetime(raw: string | null): number | null {
+  if (raw === null) return BULK_REVIEW_MOVETIME_DEFAULT_MS;
+  const v = parseInt(raw, 10);
+  return (!isNaN(v) && v >= REVIEW_MOVETIME_MIN && v <= REVIEW_MOVETIME_MAX) ? v : BULK_REVIEW_MOVETIME_DEFAULT_MS;
+}
+
+function migrateBulkReviewDepth(): number {
+  const bulkRaw = localStorage.getItem(BULK_REVIEW_DEPTH_KEY);
+  const resolved = resolveBulkReviewDepth(bulkRaw, localStorage.getItem(LEGACY_REVIEW_DEPTH_KEY));
+  // Persist the migrated value once so it becomes a real, independent Bulk setting from here on
+  // — a later change to the legacy One-off key must not silently drag Bulk's depth along with it.
+  if (bulkRaw === null) localStorage.setItem(BULK_REVIEW_DEPTH_KEY, String(resolved));
+  return resolved;
+}
+
+export let bulkReviewDepth: number = migrateBulkReviewDepth();
+export let bulkReviewMovetime: number | null = resolveBulkReviewMovetime(localStorage.getItem(BULK_REVIEW_MOVETIME_KEY));
+
+
+// --- Setters (used by main.ts render code, ceval/view.ts, header/index.ts, and loadGame) ---
+
+/** One-off profile depth — the analysis-board Review button. */
 export function setReviewDepth(v: number): void {
   reviewDepth = v;
-  localStorage.setItem('patzer.reviewDepth', String(v));
-  window.dispatchEvent(new CustomEvent(REVIEW_DEPTH_CHANGED_EVENT, { detail: { reviewDepth } }));
+  localStorage.setItem(LEGACY_REVIEW_DEPTH_KEY, String(v));
 }
 
 export function syncReviewDepthSetting(v: number): void {
   reviewDepth = v;
-  localStorage.setItem('patzer.reviewDepth', String(v));
+  localStorage.setItem(LEGACY_REVIEW_DEPTH_KEY, String(v));
+}
+
+/** Bulk profile depth — the background review queue. Dispatches REVIEW_DEPTH_CHANGED_EVENT so an active run retargets. */
+export function setBulkReviewDepth(v: number): void {
+  bulkReviewDepth = v;
+  localStorage.setItem(BULK_REVIEW_DEPTH_KEY, String(v));
+  window.dispatchEvent(new CustomEvent(REVIEW_DEPTH_CHANGED_EVENT, { detail: { reviewDepth: v } }));
+}
+
+export function syncBulkReviewDepthSetting(v: number): void {
+  bulkReviewDepth = v;
+  localStorage.setItem(BULK_REVIEW_DEPTH_KEY, String(v));
 }
 
 export function resetReviewSettingsRuntimeForDataManagement(): void {
   reviewDepth = 16;
-  reviewMovetime = null;
+  bulkReviewDepth = 16;
+  bulkReviewMovetime = BULK_REVIEW_MOVETIME_DEFAULT_MS;
 }
 
-/** Set the per-position time budget. Pass `null` to return to depth-only mode (the default). */
-export function setReviewMovetime(v: number | null): void {
-  reviewMovetime = v;
+/** Bulk profile per-position time budget. Pass `null` to return to depth-only mode. */
+export function setBulkReviewMovetime(v: number | null): void {
+  bulkReviewMovetime = v;
   if (v === null) {
-    localStorage.removeItem('patzer.reviewMovetime');
+    localStorage.removeItem(BULK_REVIEW_MOVETIME_KEY);
   } else {
-    localStorage.setItem('patzer.reviewMovetime', String(v));
+    localStorage.setItem(BULK_REVIEW_MOVETIME_KEY, String(v));
   }
 }
 export function setBatchAnalyzing(v: boolean): void  { batchAnalyzing = v; }

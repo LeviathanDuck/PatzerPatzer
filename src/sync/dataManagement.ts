@@ -179,6 +179,7 @@ const SETTINGS_GROUPS: SettingsResetGroup[] = [
       'patzer.arrowLabelSize',
       'patzer.playStrengthLevel',
       'patzer.reviewDepth',
+      'patzer.reviewDepth.bulk',
       'patzer.reviewMovetime',
       'patzer.postGameSummaryOpen',
       'patzer.evalGraphHeightPct',
@@ -1696,4 +1697,10 @@ export async function resetSettingsGroup(groupId: string): Promise<DataManagemen
   } finally {
     transaction.release();
   }
+}
+
+/** Test-only accessor for a settings reset group's key list (allowlist-consistency assertions). */
+export function getSettingsResetGroupKeysForTest(groupId: string): string[] | null {
+  const group = SETTINGS_GROUPS.find(item => item.id === groupId);
+  return group ? [...group.keys] : null;
 }

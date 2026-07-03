@@ -17,6 +17,8 @@ const FLUSH_DEBOUNCE_MS = 300;
 
 const SETTINGS_KEYS = new Set([
   'patzer.reviewDepth',
+  'patzer.reviewDepth.bulk',
+  'patzer.reviewMovetime',
   'patzer.multiPv',
   'patzer.analysisDepth',
   'patzer.searchTime',
