@@ -38,6 +38,12 @@ export interface RepertoireSource {
   updatedAt: number;
 }
 
+export interface RepertoireLinePrefixMove {
+  ply: number;
+  san: San;
+  uci: Uci;
+}
+
 export interface RepertoireMatchRecord {
   key: string;
   sourceId: string;
@@ -48,6 +54,8 @@ export interface RepertoireMatchRecord {
   category: RepertoireDivergenceCategory;
   playedUci: Uci | null;
   missedUci: Uci | null;
+  missedSan?: San | null;
+  linePrefix?: RepertoireLinePrefixMove[];
   matchedDepthPly: number;
   ownerColor: 'white' | 'black';
   gameResult: string | null;

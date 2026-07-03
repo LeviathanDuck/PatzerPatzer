@@ -1,11 +1,12 @@
 import type { ImportedGame } from '../import/types';
 import type {
   RepertoireDivergenceCategory,
+  RepertoireLinePrefixMove,
   RepertoireMatchRecord,
   RepertoireSide,
   RepertoireSource,
 } from './index';
-import type { Uci } from '../tree/types';
+import type { San, Uci } from '../tree/types';
 
 export type RepertoireComplianceOutcome = 'win' | 'loss' | 'draw';
 export type RepertoireComplianceOwnerColorFilter = 'white' | 'black';
@@ -50,6 +51,8 @@ export interface RepertoireComplianceReportGroup {
   matchedDepthPly: number;
   playedUci: Uci | null;
   missedUci: Uci | null;
+  missedSan: San | null;
+  linePrefix: RepertoireLinePrefixMove[];
   lineLabel: string;
   seenCount: number;
   lostCount: number;
@@ -60,6 +63,7 @@ export interface RepertoireComplianceReportGroup {
 
 export interface RepertoireComplianceReport {
   groups: RepertoireComplianceReportGroup[];
+  studyNextGroups: RepertoireComplianceReportGroup[];
   filters: RepertoireComplianceReportFilters;
   filterOptions: RepertoireComplianceReportFilterOptions;
   totalDivergenceCount: number;
@@ -208,6 +212,44 @@ function optionList(
     .sort((a, b) => a.label.localeCompare(b.label) || a.value.localeCompare(b.value));
 }
 
+function validLinePrefixMove(move: unknown): move is RepertoireLinePrefixMove {
+  if (!move || typeof move !== 'object') return false;
+  const candidate = move as Partial<RepertoireLinePrefixMove>;
+  return Number.isFinite(candidate.ply)
+    && typeof candidate.san === 'string'
+    && candidate.san.trim() !== ''
+    && typeof candidate.uci === 'string'
+    && candidate.uci.trim() !== '';
+}
+
+function recordLinePrefix(record: RepertoireMatchRecord): RepertoireLinePrefixMove[] {
+  return Array.isArray(record.linePrefix)
+    ? record.linePrefix.filter(validLinePrefixMove).map(move => ({
+        ply: move.ply,
+        san: move.san,
+        uci: move.uci,
+      }))
+    : [];
+}
+
+function lineMoveLabel(move: RepertoireLinePrefixMove, isFirst: boolean): string {
+  const turn = Math.ceil(move.ply / 2);
+  const prefix = move.ply % 2 === 1 ? `${turn}.` : isFirst ? `${turn}...` : '';
+  return `${prefix}${move.san}`;
+}
+
+function linePrefixText(linePrefix: readonly RepertoireLinePrefixMove[]): string {
+  return linePrefix.map((move, index) => lineMoveLabel(move, index === 0)).join(' ');
+}
+
+function linePrefixIdentity(record: RepertoireMatchRecord): string {
+  const linePrefix = recordLinePrefix(record);
+  if (linePrefix.length === 0) return 'legacy';
+  return linePrefix
+    .map(move => `${move.ply}:${move.uci}:${move.san}`)
+    .join('|');
+}
+
 function buildFilterOptions(
   records: readonly RepertoireMatchRecord[],
   games: readonly ImportedGame[],
@@ -229,6 +271,7 @@ function groupKey(record: RepertoireMatchRecord): string {
   return [
     record.sourceId,
     record.category ?? 'unknown',
+    linePrefixIdentity(record),
     record.firstDivergencePly ?? 'na',
     record.matchedDepthPly,
     record.playedUci ?? '-',
@@ -242,7 +285,14 @@ function lineLabel(params: {
   firstDivergencePly: number | null;
   playedUci: Uci | null;
   missedUci: Uci | null;
+  missedSan: San | null;
+  linePrefix: readonly RepertoireLinePrefixMove[];
 }): string {
+  const line = linePrefixText(params.linePrefix);
+  if (line) {
+    const missed = params.missedSan ?? params.missedUci ?? '?';
+    return `${line} - ${params.categoryLabel} - expected ${missed}`;
+  }
   const plyLabel = params.firstDivergencePly === null ? 'ply ?' : `ply ${params.firstDivergencePly}`;
   const played = params.playedUci ? `played ${params.playedUci}` : 'played ?';
   const missed = params.missedUci ? `expected ${params.missedUci}` : 'expected ?';
@@ -266,6 +316,20 @@ function sortGroups(
     const bOrder = sourceIdentity(b.sourceId, sourceById).order;
     return aOrder - bOrder || a.lineLabel.localeCompare(b.lineLabel) || a.key.localeCompare(b.key);
   };
+}
+
+function repertoireStudyNextScore(group: RepertoireComplianceReportGroup): number {
+  return group.seenCount * group.lostCount;
+}
+
+function sortStudyNextGroups(a: RepertoireComplianceReportGroup, b: RepertoireComplianceReportGroup): number {
+  const aScore = repertoireStudyNextScore(a);
+  const bScore = repertoireStudyNextScore(b);
+  return bScore - aScore
+    || b.lostCount - a.lostCount
+    || b.seenCount - a.seenCount
+    || a.lineLabel.localeCompare(b.lineLabel)
+    || a.key.localeCompare(b.key);
 }
 
 export function buildRepertoireComplianceReport(
@@ -306,6 +370,7 @@ export function buildRepertoireComplianceReport(
 
     const identity = sourceIdentity(record.sourceId, sourceById);
     const categoryLabel = repertoireDivergenceCategoryLabel(category);
+    const linePrefix = recordLinePrefix(record);
     const lostCount = outcome === 'loss' ? 1 : 0;
     grouped.set(key, {
       key,
@@ -319,12 +384,16 @@ export function buildRepertoireComplianceReport(
       matchedDepthPly: record.matchedDepthPly,
       playedUci: record.playedUci,
       missedUci: record.missedUci,
+      missedSan: record.missedSan ?? null,
+      linePrefix,
       lineLabel: lineLabel({
         sourceName: identity.name,
         categoryLabel,
         firstDivergencePly: record.firstDivergencePly,
         playedUci: record.playedUci,
         missedUci: record.missedUci,
+        missedSan: record.missedSan ?? null,
+        linePrefix,
       }),
       seenCount: 1,
       lostCount,
@@ -337,10 +406,11 @@ export function buildRepertoireComplianceReport(
   const groups = [...grouped.values()].map(group => ({
     ...group,
     games: [...group.games].sort(sortReportGames),
-  })).sort(sortGroups(sourceById));
+  }));
 
   return {
-    groups,
+    groups: [...groups].sort(sortGroups(sourceById)),
+    studyNextGroups: [...groups].sort(sortStudyNextGroups),
     filters,
     filterOptions: buildFilterOptions(divergenceRecords, input.games),
     totalDivergenceCount: divergenceRecords.length,

@@ -163,6 +163,7 @@ let _repertoireComplianceReportGames: ImportedGame[] = [];
 let _repertoireComplianceReportLoaded = false;
 let _repertoireComplianceReportLoadPending = false;
 let _repertoireComplianceReportError = false;
+let _repertoireComplianceReportLoadGeneration = 0;
 let _repertoireComplianceReportFilters: RepertoireComplianceReportFilters = {
   ...DEFAULT_REPERTOIRE_COMPLIANCE_REPORT_FILTERS,
 };
@@ -533,6 +534,7 @@ export function invalidateRepertoireScanProgress(): void {
 }
 
 export function invalidateRepertoireComplianceReport(): void {
+  _repertoireComplianceReportLoadGeneration += 1;
   _repertoireComplianceReportLoaded = false;
   _repertoireComplianceReportLoadPending = false;
   _repertoireComplianceReportError = false;
@@ -617,16 +619,20 @@ export async function deleteRepertoireSource(id: string): Promise<void> {
 
 export function loadRepertoireComplianceReport(redraw: () => void): void {
   if (_repertoireComplianceReportLoadPending) return;
+  const generation = ++_repertoireComplianceReportLoadGeneration;
   _repertoireComplianceReportLoadPending = true;
   void listRepertoireDivergenceMatchRecords()
     .then(async records => {
+      if (generation !== _repertoireComplianceReportLoadGeneration) return;
       const games = await listRepertoireReportGames(records.map(record => record.gameId));
+      if (generation !== _repertoireComplianceReportLoadGeneration) return;
       _repertoireComplianceReportRecords = records;
       _repertoireComplianceReportGames = games;
       _repertoireComplianceReportLoaded = true;
       _repertoireComplianceReportError = false;
     })
     .catch(error => {
+      if (generation !== _repertoireComplianceReportLoadGeneration) return;
       recordRepertoireReportLoadFail('study-library-repertoire-report', error);
       _repertoireComplianceReportRecords = [];
       _repertoireComplianceReportGames = [];
@@ -634,6 +640,7 @@ export function loadRepertoireComplianceReport(redraw: () => void): void {
       _repertoireComplianceReportError = true;
     })
     .finally(() => {
+      if (generation !== _repertoireComplianceReportLoadGeneration) return;
       _repertoireComplianceReportLoadPending = false;
       redraw();
     });

@@ -54,7 +54,7 @@ import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder
 import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { StudyItem } from './types';
-import type { RepertoireSide, RepertoireSource } from '../repertoire';
+import type { RepertoireLinePrefixMove, RepertoireSide, RepertoireSource } from '../repertoire';
 
 // --- Source label helpers ---
 
@@ -107,6 +107,8 @@ let _openRepertoireMenuId: string | null = null;
 let _editingRepertoireSourceId: string | null = null;
 let _editingRepertoireSourceValue = '';
 const _expandedRepertoireReportRows = new Set<string>();
+type RepertoireReportMode = 'divergences' | 'study-next';
+let _repertoireReportMode: RepertoireReportMode = 'divergences';
 
 
 
@@ -715,6 +717,64 @@ function reportGameHref(gameId: string, ply: number | null): string {
   return serializeAnalysisRouteWithPly(serializeAnalysisSelectedGameRoute(gameId), ply);
 }
 
+function repertoireReportGroupSource(group: RepertoireComplianceReportGroup): RepertoireSource | null {
+  return repertoireSources().find(source => source.id === group.sourceId) ?? null;
+}
+
+function openRepertoireReportGroupOnBoard(group: RepertoireComplianceReportGroup, redraw: () => void): void {
+  const source = repertoireReportGroupSource(group);
+  if (!source) return;
+  openRepertoireSourceBrowse(source, group.sourceAccentIndex, {
+    uciPrefix: group.linePrefix.slice(0, -1).map(move => move.uci),
+  });
+  redraw();
+}
+
+function renderStudyNextFormula(group: RepertoireComplianceReportGroup): VNode {
+  const label = `seen ${group.seenCount.toLocaleString()} x lost ${group.lostCount.toLocaleString()}`;
+  return h('span.repertoire__study-next-formula', {
+    attrs: { title: label, 'aria-label': label },
+  }, label);
+}
+
+function repertoireLineMoveLabel(move: RepertoireLinePrefixMove, isFirst: boolean): string {
+  const turn = Math.ceil(move.ply / 2);
+  const prefix = move.ply % 2 === 1 ? `${turn}.` : isFirst ? `${turn}...` : '';
+  return `${prefix}${move.san}`;
+}
+
+function renderRepertoireLinePrefixMoves(moves: readonly RepertoireLinePrefixMove[]): (VNode | string)[] {
+  return moves.flatMap((move, index) => [
+    index > 0 ? ' ' : '',
+    h('span.repertoire__line-move', repertoireLineMoveLabel(move, index === 0)),
+  ]);
+}
+
+function renderRepertoireLineText(group: RepertoireComplianceReportGroup): VNode[] {
+  const linePrefix = group.linePrefix;
+  const divergenceMove = linePrefix[linePrefix.length - 1] ?? null;
+  if (!divergenceMove) {
+    return [
+      h('span.repertoire__line-prefix', `${group.sourceName} · ${group.firstDivergencePly === null ? 'ply ?' : `ply ${group.firstDivergencePly}`} · `),
+      h('span.repertoire__line-highlight', group.playedUci ? `played ${group.playedUci}` : 'played ?'),
+      h('span.repertoire__line-expected', group.missedUci ? ` expected ${group.missedUci}` : ' expected ?'),
+    ];
+  }
+
+  const prefixMoves = linePrefix.slice(0, -1);
+  const expected = group.missedSan ?? group.missedUci ?? '?';
+  return [
+    prefixMoves.length > 0
+      ? h('span.repertoire__line-prefix', [
+          ...renderRepertoireLinePrefixMoves(prefixMoves),
+          ' ',
+        ])
+      : h('span.repertoire__line-prefix'),
+    h('span.repertoire__line-highlight', repertoireLineMoveLabel(divergenceMove, prefixMoves.length === 0)),
+    h('span.repertoire__line-expected', ` · repertoire ${expected}`),
+  ];
+}
+
 function renderRepertoireReportGameList(group: RepertoireComplianceReportGroup): VNode {
   return h('div.repertoire__line-games', group.games.map(entry => {
     const href = reportGameHref(entry.gameId, entry.firstDivergencePly);
@@ -734,7 +794,38 @@ function renderRepertoireReportGameList(group: RepertoireComplianceReportGroup):
   }));
 }
 
-function renderRepertoireReportRow(group: RepertoireComplianceReportGroup, redraw: () => void): VNode {
+function renderRepertoireStudyNextActions(group: RepertoireComplianceReportGroup, redraw: () => void): VNode {
+  const source = repertoireReportGroupSource(group);
+  const openTitle = source
+    ? `Open ${group.sourceName} at the repertoire prefix before this divergence`
+    : `Source ${group.sourceName} is not available`;
+  const orpTitle = 'Send to ORP is not wired yet; internal update owns record creation.';
+  return h('div.repertoire__line-actions', [
+    h('button.study-btn.repertoire__line-action', {
+      attrs: {
+        type: 'button',
+        title: openTitle,
+        'aria-label': openTitle,
+        disabled: !source,
+      },
+      on: { click: () => openRepertoireReportGroupOnBoard(group, redraw) },
+    }, 'Open on board'),
+    h('button.study-btn.repertoire__line-action', {
+      attrs: {
+        type: 'button',
+        title: orpTitle,
+        'aria-label': orpTitle,
+        disabled: true,
+      },
+    }, 'Send to ORP'),
+  ]);
+}
+
+function renderRepertoireReportRow(
+  group: RepertoireComplianceReportGroup,
+  redraw: () => void,
+  mode: RepertoireReportMode,
+): VNode {
   const expanded = _expandedRepertoireReportRows.has(group.key);
   const toggleTitle = expanded
     ? `Hide ${group.seenCount} matching games for ${group.lineLabel}`
@@ -754,21 +845,44 @@ function renderRepertoireReportRow(group: RepertoireComplianceReportGroup, redra
       } },
     }, [
       h('span.repertoire__line-main', [
-        h('span.repertoire__line-text', [
-          h('span.repertoire__line-prefix', `${group.sourceName} · ${group.firstDivergencePly === null ? 'ply ?' : `ply ${group.firstDivergencePly}`} · `),
-          h('span.repertoire__line-highlight', group.playedUci ? `played ${group.playedUci}` : 'played ?'),
-          h('span.repertoire__line-expected', group.missedUci ? ` expected ${group.missedUci}` : ' expected ?'),
-        ]),
+        h('span.repertoire__line-text', renderRepertoireLineText(group)),
         h('span.repertoire__category-badge', group.categoryLabel),
         renderRepertoireIdentityChip(group.sourceName, group.sourceSide, group.sourceAccentIndex),
       ]),
       h('span.repertoire__line-metrics', [
         renderLossRatioToken(group),
+        mode === 'study-next' ? renderStudyNextFormula(group) : null,
         h('span.repertoire__line-game-count', `${expanded ? '▾' : '▸'} ${group.seenCount.toLocaleString()} game${group.seenCount === 1 ? '' : 's'}`),
       ]),
     ]),
+    mode === 'study-next' ? renderRepertoireStudyNextActions(group, redraw) : null,
     expanded ? renderRepertoireReportGameList(group) : null,
   ]);
+}
+
+function renderRepertoireReportTabs(redraw: () => void): VNode {
+  const tabs: { mode: RepertoireReportMode; label: string }[] = [
+    { mode: 'divergences', label: 'Divergences' },
+    { mode: 'study-next', label: 'Study next' },
+  ];
+  return h('div.repertoire__report-tabs', {
+    attrs: { role: 'tablist', 'aria-label': 'Repertoire compliance report view' },
+  }, tabs.map(tab => {
+    const active = _repertoireReportMode === tab.mode;
+    return h('button.repertoire__report-tab', {
+      class: { active },
+      attrs: {
+        type: 'button',
+        role: 'tab',
+        'aria-selected': String(active),
+        'aria-label': tab.label,
+      },
+      on: { click: () => {
+        _repertoireReportMode = tab.mode;
+        redraw();
+      } },
+    }, tab.label);
+  }));
 }
 
 function renderRepertoireReportBody(redraw: () => void): VNode {
@@ -781,6 +895,7 @@ function renderRepertoireReportBody(redraw: () => void): VNode {
   }
 
   const report = repertoireComplianceReport();
+  const groups = _repertoireReportMode === 'study-next' ? report.studyNextGroups : report.groups;
   const summary = report.filteredDivergenceCount === report.totalDivergenceCount
     ? `${report.filteredDivergenceCount.toLocaleString()} stored divergence${report.filteredDivergenceCount === 1 ? '' : 's'}`
     : `${report.filteredDivergenceCount.toLocaleString()} of ${report.totalDivergenceCount.toLocaleString()} stored divergences`;
@@ -788,14 +903,15 @@ function renderRepertoireReportBody(redraw: () => void): VNode {
   return h('div.repertoire__report', [
     renderRepertoireReportFilters(report, redraw),
     h('div.repertoire__report-summary', summary),
-    report.groups.length === 0
+    renderRepertoireReportTabs(redraw),
+    groups.length === 0
       ? h('div.repertoire__source-empty',
           report.totalDivergenceCount === 0
             ? 'No stored divergence records yet.'
             : 'No divergence rows match these filters.'
         )
       : h('div.repertoire__line-list',
-          report.groups.map(group => renderRepertoireReportRow(group, redraw))
+          groups.map(group => renderRepertoireReportRow(group, redraw, _repertoireReportMode))
         ),
   ]);
 }

@@ -9,7 +9,7 @@ import { renderMoveList } from '../analyse/moveList';
 import { renderMoveNavBar, type MoveNavOverride } from '../analyse/analysisControls';
 import { chessBoardAnimationConfig } from '../board/animation';
 import { nodeAtPath, pathInit } from '../tree/ops';
-import type { TreeNode, TreePath } from '../tree/types';
+import type { TreeNode, TreePath, Uci } from '../tree/types';
 import { parseRepertoirePgn, type ParsedRepertoireGame } from '../repertoire/parse';
 import type { RepertoireSource } from '../repertoire';
 
@@ -62,6 +62,43 @@ function activeRoot(): TreeNode | null {
 function activeNode(): TreeNode | null {
   const root = activeRoot();
   return root ? (nodeAtPath(root, _state.path) ?? root) : null;
+}
+
+interface RepertoireBrowsePrefixMatch {
+  path: TreePath;
+  matchedCount: number;
+}
+
+function pathForUciPrefix(root: TreeNode, uciPrefix: readonly Uci[]): RepertoireBrowsePrefixMatch {
+  let node = root;
+  let path = '';
+  let matchedCount = 0;
+  for (const uci of uciPrefix) {
+    const child = node.children.find(candidate => candidate.uci === uci);
+    if (!child) break;
+    path += child.id;
+    node = child;
+    matchedCount += 1;
+  }
+  return { path, matchedCount };
+}
+
+function browseTargetForUciPrefix(
+  chapters: readonly ParsedRepertoireGame[],
+  uciPrefix: readonly Uci[],
+): { chapterIndex: number | null; path: TreePath } {
+  if (uciPrefix.length > 0) {
+    let best: { chapterIndex: number; path: TreePath; matchedCount: number } | null = null;
+    for (let index = 0; index < chapters.length; index += 1) {
+      const match = pathForUciPrefix(chapters[index]!.tree, uciPrefix);
+      if (match.matchedCount === uciPrefix.length) return { chapterIndex: index, path: match.path };
+      if (match.matchedCount > 0 && (!best || match.matchedCount > best.matchedCount)) {
+        best = { chapterIndex: index, path: match.path, matchedCount: match.matchedCount };
+      }
+    }
+    if (best) return { chapterIndex: best.chapterIndex, path: best.path };
+  }
+  return { chapterIndex: chapters.length > 0 ? 0 : null, path: '' };
 }
 
 function turnColorForPly(ply: number): 'white' | 'black' {
@@ -145,7 +182,11 @@ export function closeRepertoireSourceBrowse(): void {
   _state = emptyState();
 }
 
-export function openRepertoireSourceBrowse(source: RepertoireSource, accentIndex: number): void {
+export function openRepertoireSourceBrowse(
+  source: RepertoireSource,
+  accentIndex: number,
+  options: { uciPrefix?: readonly Uci[] } = {},
+): void {
   _state = {
     source,
     accentIndex,
@@ -158,10 +199,12 @@ export function openRepertoireSourceBrowse(source: RepertoireSource, accentIndex
   };
   try {
     const chapters = parseRepertoirePgn(source.rawPgn);
+    const target = browseTargetForUciPrefix(chapters, options.uciPrefix ?? []);
     _state = {
       ..._state,
       chapters,
-      chapterIndex: chapters.length > 0 ? 0 : null,
+      chapterIndex: target.chapterIndex,
+      path: target.path,
       loading: false,
       error: false,
     };

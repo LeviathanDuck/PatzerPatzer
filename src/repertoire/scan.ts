@@ -7,6 +7,7 @@ import {
   buildRepertoireIndexFromSource,
   repertoireMatchRecordKey,
   type RepertoireDivergenceCategory,
+  type RepertoireLinePrefixMove,
   type RepertoireMatchRecord,
   type RepertoirePositionIndex,
   type RepertoireSource,
@@ -155,8 +156,9 @@ function maxEntryDepth(entries: readonly { depthPly: number }[]): number {
   return entries.reduce((max, entry) => Math.max(max, entry.depthPly), 0);
 }
 
-function preferredMissedUci(entries: readonly { uci: Uci; isMain: boolean }[]): Uci | null {
-  return entries.find(entry => entry.isMain)?.uci ?? entries[0]?.uci ?? null;
+function preferredMissedMove(entries: readonly { uci: Uci; san: string; isMain: boolean }[]): { uci: Uci; san: string } | null {
+  const entry = entries.find(candidate => candidate.isMain) ?? entries[0];
+  return entry ? { uci: entry.uci, san: entry.san } : null;
 }
 
 function divergenceCategory(
@@ -166,6 +168,23 @@ function divergenceCategory(
 ): RepertoireDivergenceCategory {
   if (mover !== ownerColor) return 'opponent-left';
   return availableMoveCount > 0 ? 'owner-missed-available' : 'owner-left';
+}
+
+function linePrefixMove(node: TreeNode): RepertoireLinePrefixMove | null {
+  if (!node.uci || !node.san) return null;
+  return {
+    ply: node.ply,
+    san: node.san,
+    uci: node.uci,
+  };
+}
+
+function appendLinePrefixMove(
+  linePrefix: readonly RepertoireLinePrefixMove[],
+  node: TreeNode,
+): RepertoireLinePrefixMove[] {
+  const move = linePrefixMove(node);
+  return move ? [...linePrefix, move] : [...linePrefix];
 }
 
 export function computeRepertoireMatchRecord(input: ComputeRepertoireMatchRecordInput): RepertoireMatchRecord {
@@ -192,10 +211,12 @@ export function computeRepertoireMatchRecord(input: ComputeRepertoireMatchRecord
   let node = root;
   let matchedDepthPly = 0;
   let enteredSource = false;
+  let linePrefix: RepertoireLinePrefixMove[] = [];
 
   while (true) {
     const played = node.children[0];
     if (!played?.uci) break;
+    const nextLinePrefix = appendLinePrefixMove(linePrefix, played);
 
     const mover = sideToMoveFromFen(node.fen);
     const key = safePositionKey(node.fen);
@@ -209,21 +230,26 @@ export function computeRepertoireMatchRecord(input: ComputeRepertoireMatchRecord
       const matchingEntries = entries.filter(entry => entry.uci === played.uci);
       if (matchingEntries.length > 0) {
         matchedDepthPly = Math.max(matchedDepthPly, maxEntryDepth(matchingEntries));
+        linePrefix = nextLinePrefix;
         node = played;
         continue;
       }
 
+      const missedMove = preferredMissedMove(entries);
       return {
         ...baseRecord(input, resolvedOwnerColor),
         status:             'diverged',
         firstDivergencePly: played.ply,
         category:           divergenceCategory(mover, resolvedOwnerColor, entries.length),
         playedUci:          played.uci,
-        missedUci:          preferredMissedUci(entries),
+        missedUci:          missedMove?.uci ?? null,
+        missedSan:          missedMove?.san ?? null,
+        linePrefix:         nextLinePrefix,
         matchedDepthPly,
       };
     }
 
+    linePrefix = nextLinePrefix;
     node = played;
   }
 
