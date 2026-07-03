@@ -1,6 +1,9 @@
 import { parseRepertoirePgn, type ParsedRepertoireGame } from './parse';
 import { positionKeyFromFen, type PositionKey } from '../tree/fenKey';
+import type { AccountPlatform } from '../accounts';
 import type { GlyphId, TreeComment, TreeNode, Uci, San } from '../tree/types';
+
+export type RepertoireSourceKind = 'pgn' | 'account';
 
 export type RepertoireSide = 'white' | 'black' | 'both';
 
@@ -22,8 +25,26 @@ export interface RepertoireSideInference {
   hintText: string | null;
 }
 
+export type RepertoireAccountResultFilter = 'wins' | 'wins-draws' | 'all' | 'losses';
+
+export interface RepertoireAccountFilters {
+  result: RepertoireAccountResultFilter;
+  timeClass: string | null;
+  minRating: number | null;
+  maxRating: number | null;
+}
+
+export interface RepertoireAccountBuildInfo {
+  builtAt: number;
+  durationMs: number;
+  totalGameCount: number;
+  filteredGameCount: number;
+}
+
 export interface RepertoireSource {
   id: string;
+  /** Missing on legacy uploaded-PGN records; treat as 'pgn'. */
+  kind?: RepertoireSourceKind;
   name: string;
   rawPgn: string;
   side: RepertoireSide;
@@ -34,6 +55,11 @@ export interface RepertoireSource {
   contentVersion: string;
   chapterCount: number;
   gameCount: number;
+  accountId?: string;
+  accountLabel?: string;
+  accountPlatform?: AccountPlatform;
+  accountFilters?: RepertoireAccountFilters;
+  accountBuild?: RepertoireAccountBuildInfo;
   createdAt: number;
   updatedAt: number;
 }
@@ -86,13 +112,30 @@ export interface RepertoireEntry {
   nodePathHint: string;
   comments: TreeComment[];
   nags: GlyphId[];
+  accountStats?: RepertoireAccountMoveStats;
 }
 
 export type RepertoirePositionIndex = Map<PositionKey, RepertoireEntry[]>;
 
+export interface RepertoireAccountMoveStats {
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  winPercent: number;
+}
+
 export const REPERTOIRE_SOURCE_STORE_NAME = 'repertoire-sources';
 export const REPERTOIRE_MATCH_RECORD_STORE_NAME = 'repertoire-match-records';
 export const REPERTOIRE_SCAN_RUN_STORE_NAME = 'repertoire-scan-runs';
+export const ACCOUNT_REPERTOIRE_DIRECT_GAME_LIMIT = 5_000;
+
+export const DEFAULT_REPERTOIRE_ACCOUNT_FILTERS: RepertoireAccountFilters = {
+  result: 'wins',
+  timeClass: null,
+  minRating: null,
+  maxRating: null,
+};
 
 export interface CreateRepertoireSourceInput {
   rawPgn: string;
@@ -105,6 +148,90 @@ export interface CreateRepertoireSourceInput {
 
 export function repertoireMatchRecordKey(sourceId: string, gameId: string): string {
   return `${sourceId}::${gameId}`;
+}
+
+export function repertoireSourceKind(source: Pick<RepertoireSource, 'kind'>): RepertoireSourceKind {
+  return source.kind === 'account' ? 'account' : 'pgn';
+}
+
+export function isAccountRepertoireSource(source: Pick<RepertoireSource, 'kind'>): boolean {
+  return repertoireSourceKind(source) === 'account';
+}
+
+export function isUploadedRepertoireSource(source: Pick<RepertoireSource, 'kind'>): boolean {
+  return repertoireSourceKind(source) === 'pgn';
+}
+
+function normalizeRatingFilter(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : null;
+}
+
+export function normalizeRepertoireAccountFilters(
+  filters: Partial<RepertoireAccountFilters> | null | undefined,
+): RepertoireAccountFilters {
+  const result = filters?.result === 'wins-draws'
+    || filters?.result === 'all'
+    || filters?.result === 'losses'
+    ? filters.result
+    : DEFAULT_REPERTOIRE_ACCOUNT_FILTERS.result;
+  const timeClass = typeof filters?.timeClass === 'string' && filters.timeClass.trim()
+    ? filters.timeClass.trim()
+    : null;
+  const minRating = normalizeRatingFilter(filters?.minRating);
+  const maxRating = normalizeRatingFilter(filters?.maxRating);
+  return {
+    result,
+    timeClass,
+    minRating,
+    maxRating,
+  };
+}
+
+function accountSourceIdPart(accountId: string): string {
+  return accountId.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'account';
+}
+
+export function accountRepertoireSourceId(accountId: string): string {
+  return `rep-account-${accountSourceIdPart(accountId)}`;
+}
+
+export function accountRepertoireContentVersion(
+  accountId: string,
+  filters: Partial<RepertoireAccountFilters> | null | undefined,
+): string {
+  const normalized = normalizeRepertoireAccountFilters(filters);
+  return [
+    'account-v1',
+    accountId.trim().toLowerCase(),
+    `result=${normalized.result}`,
+    `time=${normalized.timeClass ?? 'all'}`,
+    `min=${normalized.minRating ?? 'any'}`,
+    `max=${normalized.maxRating ?? 'any'}`,
+  ].join(':');
+}
+
+export function repertoireAccountFilterSummary(
+  source: Pick<RepertoireSource, 'accountFilters'>,
+): string {
+  const filters = normalizeRepertoireAccountFilters(source.accountFilters);
+  const parts = [
+    filters.result === 'wins'
+      ? 'wins'
+      : filters.result === 'wins-draws'
+        ? 'wins+draws'
+        : filters.result === 'losses'
+          ? 'losses'
+          : 'all results',
+  ];
+  if (filters.timeClass) parts.push(filters.timeClass);
+  if (filters.minRating !== null || filters.maxRating !== null) {
+    if (filters.minRating !== null && filters.maxRating !== null) parts.push(`${filters.minRating}-${filters.maxRating}`);
+    else if (filters.minRating !== null) parts.push(`${filters.minRating}+`);
+    else parts.push(`<=${filters.maxRating}`);
+  }
+  return parts.join(' · ');
 }
 
 function hex(bytes: ArrayBuffer): string {
@@ -243,6 +370,7 @@ export async function createRepertoireSource(input: CreateRepertoireSourceInput)
 
   return {
     id: repertoireSourceIdFromContentVersion(contentVersion),
+    kind: 'pgn',
     name,
     rawPgn,
     side: sideOverride ?? sideInference.side,
@@ -258,11 +386,55 @@ export async function createRepertoireSource(input: CreateRepertoireSourceInput)
   };
 }
 
+export interface CreateAccountRepertoireSourceInput {
+  accountId: string;
+  accountLabel: string;
+  accountPlatform: AccountPlatform;
+  gameCount: number;
+  enabled?: boolean;
+  now?: number;
+}
+
+export function createAccountRepertoireSource(input: CreateAccountRepertoireSourceInput): RepertoireSource {
+  const now = input.now ?? Date.now();
+  const filters = normalizeRepertoireAccountFilters(null);
+  const label = input.accountLabel.trim() || input.accountId;
+  return {
+    id: accountRepertoireSourceId(input.accountId),
+    kind: 'account',
+    name: label,
+    rawPgn: '',
+    side: 'both',
+    inferredSide: 'both',
+    sideOverride: null,
+    sideInference: {
+      side: 'both',
+      method: 'ambiguous',
+      whiteAnnotatedMoves: 0,
+      blackAnnotatedMoves: 0,
+      hintText: label,
+    },
+    enabled: input.enabled ?? true,
+    contentVersion: accountRepertoireContentVersion(input.accountId, filters),
+    chapterCount: 0,
+    gameCount: Math.max(0, input.gameCount),
+    accountId: input.accountId,
+    accountLabel: label,
+    accountPlatform: input.accountPlatform,
+    accountFilters: filters,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function withRepertoireSourceSideOverride(
   source: RepertoireSource,
   sideOverride: RepertoireSide | null,
   now = Date.now(),
 ): RepertoireSource {
+  if (isAccountRepertoireSource(source)) {
+    throw new Error('Account-backed repertoire sources derive color per game and do not support side overrides.');
+  }
   return {
     ...source,
     sideOverride,
@@ -276,6 +448,9 @@ export async function withRepertoireSourceContent(
   rawPgn: string,
   now = Date.now(),
 ): Promise<RepertoireSource> {
+  if (isAccountRepertoireSource(source)) {
+    throw new Error('Account-backed repertoire sources do not have replaceable PGN content.');
+  }
   const contentVersion = await hashRepertoirePgnContent(rawPgn);
   const games = parseRepertoirePgn(rawPgn);
   const sideInference = inferRepertoireSide(games, source.name);
@@ -288,6 +463,41 @@ export async function withRepertoireSourceContent(
     side: source.sideOverride ?? sideInference.side,
     chapterCount: games.length,
     gameCount: games.length,
+    updatedAt: now,
+  };
+}
+
+export function withRepertoireAccountFilters(
+  source: RepertoireSource,
+  filters: Partial<RepertoireAccountFilters>,
+  now = Date.now(),
+): RepertoireSource {
+  if (!isAccountRepertoireSource(source) || !source.accountId) {
+    throw new Error('Repertoire source is not account-backed.');
+  }
+  const normalized = normalizeRepertoireAccountFilters({
+    ...source.accountFilters,
+    ...filters,
+  });
+  const { accountBuild: _staleBuild, ...sourceWithoutBuild } = source;
+  return {
+    ...sourceWithoutBuild,
+    accountFilters: normalized,
+    contentVersion: accountRepertoireContentVersion(source.accountId, normalized),
+    updatedAt: now,
+  };
+}
+
+export function withRepertoireAccountBuildInfo(
+  source: RepertoireSource,
+  build: RepertoireAccountBuildInfo,
+  now = Date.now(),
+): RepertoireSource {
+  if (!isAccountRepertoireSource(source)) return source;
+  return {
+    ...source,
+    gameCount: build.totalGameCount,
+    accountBuild: build,
     updatedAt: now,
   };
 }
@@ -367,7 +577,8 @@ export function buildRepertoireIndexFromPgn(rawPgn: string): RepertoirePositionI
   return buildRepertoireIndex(parseRepertoirePgn(rawPgn));
 }
 
-export function buildRepertoireIndexFromSource(source: Pick<RepertoireSource, 'rawPgn'>): RepertoirePositionIndex {
+export function buildRepertoireIndexFromSource(source: Pick<RepertoireSource, 'rawPgn' | 'kind'>): RepertoirePositionIndex {
+  if (isAccountRepertoireSource(source)) return new Map();
   return buildRepertoireIndexFromPgn(source.rawPgn);
 }
 

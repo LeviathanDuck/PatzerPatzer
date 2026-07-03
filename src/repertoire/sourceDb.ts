@@ -1,10 +1,20 @@
 import { DB_NAME, DB_VERSION, upgradeGameDbSchema, type StoredGameRecord } from '../idb/index';
 import type { ImportedGame } from '../import/types';
+import { getAccount, listAccounts, type AccountPlatform } from '../accounts';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert } from '../sync/remoteSync';
 import {
+  ACCOUNT_REPERTOIRE_DIRECT_GAME_LIMIT,
+  createAccountRepertoireSource,
   createRepertoireSource,
+  isAccountRepertoireSource,
+  isUploadedRepertoireSource,
   repertoireMatchRecordKey,
+  type CreateAccountRepertoireSourceInput,
+  type RepertoireAccountBuildInfo,
+  type RepertoireAccountFilters,
   type RepertoireMatchRecord,
+  withRepertoireAccountFilters,
+  withRepertoireAccountBuildInfo,
   withRepertoireSourceContent,
   withRepertoireSourceSideOverride,
   type RepertoireScanRun,
@@ -39,6 +49,14 @@ export interface RepertoireScanGamePage {
   hasMore: boolean;
 }
 
+export interface RepertoireAccountSourceCandidate {
+  accountId: string;
+  accountLabel: string;
+  accountPlatform: AccountPlatform;
+  gameCount: number;
+  alreadySource: boolean;
+}
+
 let _db: IDBDatabase | undefined;
 
 function openDb(): Promise<IDBDatabase> {
@@ -70,6 +88,11 @@ function sourceSort(a: RepertoireSource, b: RepertoireSource): number {
 }
 
 function ensureSourceHasGames(source: RepertoireSource): void {
+  if (isAccountRepertoireSource(source)) {
+    if (source.gameCount <= 0) throw new Error('No stored games found for this account.');
+    if (!source.accountId) throw new Error('Account-backed repertoire source is missing its account id.');
+    return;
+  }
   if (source.gameCount <= 0 || source.chapterCount <= 0) {
     throw new Error('No repertoire games found in PGN.');
   }
@@ -107,6 +130,17 @@ function storedGameRecordToImportedGame(record: StoredGameRecord): ImportedGame 
   if (record.accountId        !== null) game.accountId        = record.accountId;
   game.importedAt = record.importedAt;
   return game;
+}
+
+async function countGamesForAccount(db: IDBDatabase, accountId: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('games', 'readonly')
+      .objectStore('games')
+      .index('accountId')
+      .count(accountId);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
 }
 
 async function listMatchRecordKeysForSource(db: IDBDatabase, sourceId: string): Promise<string[]> {
@@ -149,6 +183,38 @@ export async function listRepertoireSources(): Promise<RepertoireSource[]> {
   });
 }
 
+export async function listUploadedRepertoireSources(): Promise<RepertoireSource[]> {
+  return (await listRepertoireSources()).filter(isUploadedRepertoireSource);
+}
+
+export async function listRepertoireAccountSourceCandidates(): Promise<RepertoireAccountSourceCandidate[]> {
+  const db = await openDb();
+  const [accounts, sources] = await Promise.all([
+    listAccounts(),
+    listRepertoireSources(),
+  ]);
+  const existingAccountSourceIds = new Set(
+    sources
+      .filter(isAccountRepertoireSource)
+      .map(source => source.accountId)
+      .filter((accountId): accountId is string => typeof accountId === 'string' && accountId.length > 0),
+  );
+  const candidates = await Promise.all(accounts.map(async account => {
+    const gameCount = await countGamesForAccount(db, account.id);
+    if (gameCount <= 0) return null;
+    return {
+      accountId: account.id,
+      accountLabel: account.displayName,
+      accountPlatform: account.platform,
+      gameCount,
+      alreadySource: existingAccountSourceIds.has(account.id),
+    };
+  }));
+  return candidates
+    .filter((candidate): candidate is RepertoireAccountSourceCandidate => candidate !== null)
+    .sort((a, b) => a.accountLabel.localeCompare(b.accountLabel) || a.accountId.localeCompare(b.accountId));
+}
+
 export async function countRepertoireScanGames(): Promise<number> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
@@ -181,6 +247,27 @@ export async function loadRepertoireScanGamePage(
       const record = cursor.value as StoredGameRecord;
       games.push(storedGameRecordToImportedGame(record));
       lastGameId = record.id;
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function loadRepertoireAccountGames(accountId: string): Promise<ImportedGame[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const games: ImportedGame[] = [];
+    const req = db.transaction('games', 'readonly')
+      .objectStore('games')
+      .index('accountId')
+      .openCursor(accountId);
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(games);
+        return;
+      }
+      games.push(storedGameRecordToImportedGame(cursor.value as StoredGameRecord));
       cursor.continue();
     };
     req.onerror = () => reject(req.error);
@@ -326,6 +413,31 @@ export async function importRepertoireSource(input: RepertoireSourceImportInput)
   return saveRepertoireSource(source);
 }
 
+export async function importAccountRepertoireSource(
+  accountId: string,
+  options: { allowLargeAccount?: boolean; now?: number } = {},
+): Promise<RepertoireSource> {
+  const db = await openDb();
+  const account = await getAccount(accountId);
+  if (!account) throw new Error('Account not found.');
+  const gameCount = await countGamesForAccount(db, account.id);
+  if (gameCount <= 0) throw new Error('This account has no stored games.');
+  if (gameCount > ACCOUNT_REPERTOIRE_DIRECT_GAME_LIMIT && !options.allowLargeAccount) {
+    throw new Error(`Account has ${gameCount.toLocaleString()} stored games and needs confirmation before building.`);
+  }
+  const sourceInput: CreateAccountRepertoireSourceInput = {
+    accountId: account.id,
+    accountLabel: account.displayName,
+    accountPlatform: account.platform,
+    gameCount,
+  };
+  if (options.now !== undefined) sourceInput.now = options.now;
+  const source = createAccountRepertoireSource(sourceInput);
+  const existing = await getRepertoireSource(source.id);
+  if (existing) throw new Error('This account is already a repertoire source.');
+  return saveRepertoireSource(source);
+}
+
 export async function renameRepertoireSource(id: string, name: string, now = Date.now()): Promise<RepertoireSource> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Repertoire source name is required.');
@@ -341,9 +453,43 @@ export async function setRepertoireSourceSideOverride(
 ): Promise<RepertoireSource> {
   const source = await getRepertoireSource(id);
   if (!source) throw new Error('Repertoire source not found.');
+  if (isAccountRepertoireSource(source)) throw new Error('Account-backed repertoire sources do not support side overrides.');
   const updated = withRepertoireSourceSideOverride(source, sideOverride, now);
   const saved = await saveRepertoireSource(updated);
   if (source.side !== updated.side) await deleteRepertoireSourceScanRecords(id, now);
+  return saved;
+}
+
+export async function setRepertoireAccountSourceFilters(
+  id: string,
+  filters: Partial<RepertoireAccountFilters>,
+  now = Date.now(),
+): Promise<RepertoireSource> {
+  const source = await getRepertoireSource(id);
+  if (!source) throw new Error('Repertoire source not found.');
+  const updated = withRepertoireAccountFilters(source, filters, now);
+  return saveRepertoireSource(updated);
+}
+
+export async function saveRepertoireAccountBuildInfo(
+  id: string,
+  sourceVersion: string,
+  buildInfo: RepertoireAccountBuildInfo,
+  now = Date.now(),
+): Promise<RepertoireSource | null> {
+  const db = await openDb();
+  let saved: RepertoireSource | null = null;
+  const tx = db.transaction('repertoire-sources', 'readwrite');
+  const store = tx.objectStore('repertoire-sources');
+  const req = store.get(id);
+  req.onsuccess = () => {
+    const source = req.result as RepertoireSource | undefined;
+    if (!source || !isAccountRepertoireSource(source) || source.contentVersion !== sourceVersion) return;
+    saved = withRepertoireAccountBuildInfo(source, buildInfo, now);
+    store.put(saved);
+  };
+  await txDone(tx);
+  if (saved) enqueueSourceUpsert(saved);
   return saved;
 }
 
@@ -394,6 +540,7 @@ export async function replaceRepertoireSourceFile(
 ): Promise<RepertoireSourceReplaceResult> {
   const source = await getRepertoireSource(id);
   if (!source) throw new Error('Repertoire source not found.');
+  if (isAccountRepertoireSource(source)) throw new Error('Account-backed repertoire sources do not have replaceable PGN files.');
   const updated = await withRepertoireSourceContent(source, rawPgn, now);
   ensureSourceHasGames(updated);
   await saveRepertoireSource(updated);

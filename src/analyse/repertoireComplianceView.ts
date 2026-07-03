@@ -3,6 +3,7 @@ import type { ImportedGame } from '../import/types';
 import type { TreeNode } from '../tree/types';
 import {
   buildRepertoireIndexFromSource,
+  isUploadedRepertoireSource,
   type RepertoireMatchRecord,
   type RepertoirePositionIndex,
   type RepertoireSource,
@@ -78,7 +79,7 @@ const orpFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function enabledSourcesWithIndex(sources: readonly RepertoireSource[]): Array<{ source: RepertoireSource; sourceIndex: number }> {
   return sources
     .map((source, sourceIndex) => ({ source, sourceIndex }))
-    .filter(item => item.source.enabled);
+    .filter(item => item.source.enabled && isUploadedRepertoireSource(item.source));
 }
 
 export function analysisRepertoireComplianceLoadKey(

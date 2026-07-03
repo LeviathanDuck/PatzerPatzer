@@ -20,6 +20,9 @@ import {
   seedSampleStudies, isSeeding,
   listOrpPracticeLines,
   repertoireSources, repertoireSourcesLoaded, repertoireSourcesError, loadRepertoireSources,
+  repertoireAccountCandidates, repertoireAccountCandidatesLoaded, repertoireAccountCandidatesError,
+  loadRepertoireAccountCandidates, addRepertoireAccountSource, setRepertoireAccountSourceFilters,
+  ensureRepertoireAccountSourceBuilds,
   uploadRepertoireSourceFile, renameRepertoireSource, setRepertoireSourceSideOverride,
   setRepertoireSourceEnabled, replaceRepertoireSourceFile, deleteRepertoireSource,
   repertoireScanProgress, repertoireScanProgressLoaded, repertoireScanBusy,
@@ -56,7 +59,16 @@ import { saveRepertoireLineToOrpLibrary } from './saveAction';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { StudyItem } from './types';
 import type { RepertoireLinePrefixMove, RepertoireSide, RepertoireSource } from '../repertoire';
+import {
+  ACCOUNT_REPERTOIRE_DIRECT_GAME_LIMIT,
+  isAccountRepertoireSource,
+  normalizeRepertoireAccountFilters,
+  repertoireAccountFilterSummary,
+  type RepertoireAccountFilters,
+  type RepertoireAccountResultFilter,
+} from '../repertoire';
 import { resolveRepertoireReportGroupOrpLine } from '../repertoire/orp';
+import { getAccountRepertoireBuildState } from '../repertoire/accountSource';
 
 // --- Source label helpers ---
 
@@ -108,6 +120,7 @@ let _repertoireSourceBusy = false;
 let _openRepertoireMenuId: string | null = null;
 let _editingRepertoireSourceId: string | null = null;
 let _editingRepertoireSourceValue = '';
+let _showAccountSourcePicker = false;
 const _expandedRepertoireReportRows = new Set<string>();
 type RepertoireReportMode = 'divergences' | 'study-next';
 let _repertoireReportMode: RepertoireReportMode = 'divergences';
@@ -325,6 +338,57 @@ function changeRepertoireSourceSide(source: RepertoireSource, value: string, red
     });
 }
 
+function changeRepertoireAccountFilters(
+  source: RepertoireSource,
+  filters: Partial<RepertoireAccountFilters>,
+  redraw: () => void,
+): void {
+  _repertoireSourceBusy = true;
+  void setRepertoireAccountSourceFilters(source.id, filters)
+    .then(updated => {
+      _repertoireSourceStatus = `${updated.name} filters: ${repertoireAccountFilterSummary(updated)}.`;
+      ensureRepertoireAccountSourceBuilds(redraw);
+    })
+    .catch(error => {
+      _repertoireSourceStatus = `Could not update account filters: ${safeErrorMessage(error, 'unknown error')}`;
+    })
+    .finally(() => {
+      _repertoireSourceBusy = false;
+      redraw();
+    });
+}
+
+function parseRatingInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function addAccountSource(accountId: string, gameCount: number, redraw: () => void): void {
+  if (_repertoireSourceBusy) return;
+  const allowLargeAccount = gameCount > ACCOUNT_REPERTOIRE_DIRECT_GAME_LIMIT
+    ? confirm(`Build an account-backed repertoire source from ${gameCount.toLocaleString()} stored games? This may take a moment and will run cooperatively.`)
+    : true;
+  if (!allowLargeAccount) return;
+  _repertoireSourceBusy = true;
+  _repertoireSourceStatus = 'Adding account source...';
+  redraw();
+  void addRepertoireAccountSource(accountId, allowLargeAccount)
+    .then(source => {
+      _showAccountSourcePicker = false;
+      _repertoireSourceStatus = `Added account source ${source.name}.`;
+      ensureRepertoireAccountSourceBuilds(redraw);
+    })
+    .catch(error => {
+      _repertoireSourceStatus = `Could not add account source: ${safeErrorMessage(error, 'unknown error')}`;
+    })
+    .finally(() => {
+      _repertoireSourceBusy = false;
+      redraw();
+    });
+}
+
 function toggleRepertoireSourceEnabled(source: RepertoireSource, redraw: () => void): void {
   _repertoireSourceBusy = true;
   void setRepertoireSourceEnabled(source.id, !source.enabled)
@@ -341,7 +405,10 @@ function toggleRepertoireSourceEnabled(source: RepertoireSource, redraw: () => v
 }
 
 function removeRepertoireSource(source: RepertoireSource, redraw: () => void): void {
-  if (!confirm(`Delete "${source.name}"? The source and its scan records will be removed.`)) return;
+  const detail = isAccountRepertoireSource(source)
+    ? 'The account-backed source will be removed from repertoire suggestions.'
+    : 'The source and its scan records will be removed.';
+  if (!confirm(`Delete "${source.name}"? ${detail}`)) return;
   _repertoireSourceBusy = true;
   void deleteRepertoireSource(source.id)
     .then(() => {
@@ -384,6 +451,74 @@ function renderRepertoireUploadControl(redraw: () => void): VNode {
   ]);
 }
 
+function renderAccountSourceAddButton(redraw: () => void): VNode {
+  return h('button.study-btn.repertoire__account-add', {
+    attrs: {
+      type: 'button',
+      title: 'Add account-backed repertoire source',
+      'aria-label': 'Add account-backed repertoire source',
+      disabled: _repertoireSourceBusy,
+      'aria-expanded': String(_showAccountSourcePicker),
+    },
+    on: { click: () => {
+      _showAccountSourcePicker = !_showAccountSourcePicker;
+      if (_showAccountSourcePicker && !repertoireAccountCandidatesLoaded()) loadRepertoireAccountCandidates(redraw);
+      redraw();
+    } },
+  }, 'Add account');
+}
+
+function renderAccountSourcePicker(redraw: () => void): VNode | null {
+  if (!_showAccountSourcePicker) return null;
+  if (!repertoireAccountCandidatesLoaded()) {
+    loadRepertoireAccountCandidates(redraw);
+    return h('div.repertoire__account-picker', [
+      h('div.repertoire__source-loading', 'Loading imported accounts...'),
+    ]);
+  }
+  if (repertoireAccountCandidatesError()) {
+    return h('div.repertoire__account-picker', [
+      h('div.repertoire__source-error', 'Could not load imported accounts.'),
+    ]);
+  }
+
+  const candidates = repertoireAccountCandidates();
+  if (candidates.length === 0) {
+    return h('div.repertoire__account-picker', [
+      h('div.repertoire__source-empty', 'No imported accounts with stored games.'),
+    ]);
+  }
+
+  return h('div.repertoire__account-picker', candidates.map(candidate => {
+    const disabled = candidate.alreadySource || _repertoireSourceBusy;
+    const title = candidate.alreadySource
+      ? `${candidate.accountLabel} is already a repertoire source`
+      : `Add ${candidate.accountLabel} as an account-backed repertoire source`;
+    return h('button.repertoire__account-candidate', {
+      key: candidate.accountId,
+      attrs: {
+        type: 'button',
+        title,
+        'aria-label': title,
+        disabled,
+      },
+      on: { click: () => {
+        if (disabled) return;
+        addAccountSource(candidate.accountId, candidate.gameCount, redraw);
+      } },
+    }, [
+      h('span.repertoire__account-candidate-name', candidate.accountLabel),
+      h('span.repertoire__account-candidate-meta', [
+        candidate.accountPlatform,
+        ' · ',
+        `${candidate.gameCount.toLocaleString()} games`,
+        candidate.gameCount > ACCOUNT_REPERTOIRE_DIRECT_GAME_LIMIT ? ' · confirm build' : '',
+        candidate.alreadySource ? ' · added' : '',
+      ]),
+    ]);
+  }));
+}
+
 function renderRepertoireIdentityChip(name: string, side: RepertoireSide, accentIndex: number): VNode {
   return h(`span.repertoire__chip.repertoire__accent--${accentIndex % 8}`, [
     h('span.repertoire__chip-dot'),
@@ -399,6 +534,14 @@ function renderRepertoireChip(source: RepertoireSource, accentIndex: number): VN
 function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void): VNode | null {
   if (_openRepertoireMenuId !== source.id) return null;
   const selectedSide = source.sideOverride ?? 'auto';
+  const accountSource = isAccountRepertoireSource(source);
+  const accountFilters = normalizeRepertoireAccountFilters(source.accountFilters);
+  const resultOptions: { value: RepertoireAccountResultFilter; label: string }[] = [
+    { value: 'wins', label: 'Wins' },
+    { value: 'wins-draws', label: 'Wins + draws' },
+    { value: 'all', label: 'All' },
+    { value: 'losses', label: 'Losses' },
+  ];
   return h('div.repertoire__source-menu', [
     h('button.repertoire__source-menu-item', {
       attrs: {
@@ -414,7 +557,21 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
         redraw();
       }},
     }, 'Rename'),
-    h('label.repertoire__source-menu-label', [
+    accountSource ? h('label.repertoire__source-menu-label', [
+      h('span', 'Result'),
+      h('select.repertoire__side-select', {
+        attrs: {
+          title: `Filter ${source.name} by account result`,
+          'aria-label': `Filter ${source.name} by account result`,
+          disabled: _repertoireSourceBusy,
+        },
+        props: { value: accountFilters.result },
+        on: { change: (e: Event) => {
+          e.stopPropagation();
+          changeRepertoireAccountFilters(source, { result: (e.target as HTMLSelectElement).value as RepertoireAccountResultFilter }, redraw);
+        } },
+      }, resultOptions.map(option => h('option', { attrs: { value: option.value } }, option.label))),
+    ]) : h('label.repertoire__source-menu-label', [
       h('span', 'Side'),
       h('select.repertoire__side-select', {
         attrs: {
@@ -434,7 +591,64 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
         h('option', { attrs: { value: 'both' } }, 'White + Black'),
       ]),
     ]),
-    h('label.repertoire__source-menu-item.repertoire__replace-label', {
+    accountSource ? h('label.repertoire__source-menu-label', [
+      h('span', 'Time'),
+      h('select.repertoire__side-select', {
+        attrs: {
+          title: `Filter ${source.name} by time class`,
+          'aria-label': `Filter ${source.name} by time class`,
+          disabled: _repertoireSourceBusy,
+        },
+        props: { value: accountFilters.timeClass ?? '' },
+        on: { change: (e: Event) => {
+          e.stopPropagation();
+          const value = (e.target as HTMLSelectElement).value;
+          changeRepertoireAccountFilters(source, { timeClass: value || null }, redraw);
+        } },
+      }, [
+        h('option', { attrs: { value: '' } }, 'All'),
+        h('option', { attrs: { value: 'bullet' } }, 'Bullet'),
+        h('option', { attrs: { value: 'blitz' } }, 'Blitz'),
+        h('option', { attrs: { value: 'rapid' } }, 'Rapid'),
+        h('option', { attrs: { value: 'classical' } }, 'Classical'),
+      ]),
+    ]) : null,
+    accountSource ? h('label.repertoire__source-menu-label.repertoire__rating-filter', [
+      h('span', 'Rating'),
+      h('span.repertoire__rating-inputs', [
+        h('input.repertoire__rating-input', {
+          attrs: {
+            type: 'number',
+            min: '1',
+            placeholder: 'min',
+            title: `Minimum account rating for ${source.name}`,
+            'aria-label': `Minimum account rating for ${source.name}`,
+            disabled: _repertoireSourceBusy,
+          },
+          props: { value: accountFilters.minRating === null ? '' : String(accountFilters.minRating) },
+          on: { change: (e: Event) => {
+            e.stopPropagation();
+            changeRepertoireAccountFilters(source, { minRating: parseRatingInput((e.target as HTMLInputElement).value) }, redraw);
+          } },
+        }),
+        h('input.repertoire__rating-input', {
+          attrs: {
+            type: 'number',
+            min: '1',
+            placeholder: 'max',
+            title: `Maximum account rating for ${source.name}`,
+            'aria-label': `Maximum account rating for ${source.name}`,
+            disabled: _repertoireSourceBusy,
+          },
+          props: { value: accountFilters.maxRating === null ? '' : String(accountFilters.maxRating) },
+          on: { change: (e: Event) => {
+            e.stopPropagation();
+            changeRepertoireAccountFilters(source, { maxRating: parseRatingInput((e.target as HTMLInputElement).value) }, redraw);
+          } },
+        }),
+      ]),
+    ]) : null,
+    accountSource ? null : h('label.repertoire__source-menu-item.repertoire__replace-label', {
       attrs: {
         title: `Replace PGN file for ${source.name}`,
         'aria-label': `Replace PGN file for ${source.name}`,
@@ -473,6 +687,22 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
 
 function renderRepertoireSourceRow(source: RepertoireSource, index: number, redraw: () => void): VNode {
   const isEditingName = _editingRepertoireSourceId === source.id;
+  const accountSource = isAccountRepertoireSource(source);
+  const accountBuildState = accountSource ? getAccountRepertoireBuildState(source) : null;
+  const sourceCountLabel = accountSource
+    ? `${source.gameCount.toLocaleString()} stored game${source.gameCount === 1 ? '' : 's'}`
+    : chapterCountLabel(source.chapterCount);
+  const accountBuildLabel = accountBuildState
+    ? accountBuildState.state === 'ready'
+      ? `built ${accountBuildState.filteredGameCount.toLocaleString()} games in ${accountBuildState.durationMs ?? 0}ms`
+      : accountBuildState.state === 'building' || accountBuildState.state === 'publishing'
+        ? `building ${accountBuildState.processedGameCount.toLocaleString()}/${accountBuildState.filteredGameCount.toLocaleString()}`
+        : accountBuildState.state === 'empty'
+          ? 'empty after filters'
+          : accountBuildState.state === 'error'
+            ? 'build error'
+            : null
+    : null;
   const sourceMainChildren = [
     h('div.repertoire__source-title-row', [
       isEditingName
@@ -497,16 +727,18 @@ function renderRepertoireSourceRow(source: RepertoireSource, index: number, redr
             },
           })
         : renderRepertoireChip(source, index),
-      h('span.repertoire__chapter-count', chapterCountLabel(source.chapterCount)),
+      h('span.repertoire__chapter-count', sourceCountLabel),
     ]),
     h('div.repertoire__source-meta', [
       h('span', source.enabled ? 'Enabled' : 'Disabled'),
       h('span.repertoire__source-sep', '·'),
-      h('span', `version ${source.contentVersion.slice(0, 8)}`),
+      accountSource ? h('span', repertoireAccountFilterSummary(source)) : h('span', `version ${source.contentVersion.slice(0, 8)}`),
+      accountBuildLabel ? h('span.repertoire__source-sep', '·') : null,
+      accountBuildLabel ? h('span', accountBuildLabel) : null,
     ]),
   ];
   return h(`div.repertoire__source-row.repertoire__accent--${index % 8}`, { key: source.id }, [
-    isEditingName
+    isEditingName || accountSource
       ? h('div.repertoire__source-main', sourceMainChildren)
       : h('button.repertoire__source-main.repertoire__source-open', {
           attrs: {
@@ -551,6 +783,7 @@ function renderRepertoireSourceRow(source: RepertoireSource, index: number, redr
 function renderRepertoireSourcesSection(redraw: () => void): VNode {
   const header = h('div.repertoire__section-header', [
     h('h2.repertoire__section-title', 'Repertoire Sources'),
+    renderAccountSourceAddButton(redraw),
     renderRepertoireUploadControl(redraw),
   ]);
 
@@ -572,6 +805,7 @@ function renderRepertoireSourcesSection(redraw: () => void): VNode {
   const sources = repertoireSources();
   return h('section.repertoire__source-section', [
     header,
+    renderAccountSourcePicker(redraw),
     sources.length === 0
       ? h('div.repertoire__source-empty', 'No repertoire sources yet.')
       : h('div.repertoire__source-list',
@@ -1686,6 +1920,9 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
   // Lazy-load repertoire sources for Surface D.
   if (!repertoireSourcesLoaded()) loadRepertoireSources(redraw);
+  else ensureRepertoireAccountSourceBuilds(redraw);
+
+  if (_showAccountSourcePicker && !repertoireAccountCandidatesLoaded()) loadRepertoireAccountCandidates(redraw);
 
   // Lazy-load repertoire compliance scan state for Surface E.
   if (!repertoireScanProgressLoaded()) loadRepertoireScanProgress(redraw);

@@ -8,16 +8,26 @@ import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
 import {
+  importAccountRepertoireSource,
   deleteRepertoireSource as deleteRepertoireSourceFromIdb,
   importRepertoireSource,
+  listRepertoireAccountSourceCandidates,
   listRepertoireDivergenceMatchRecords,
   listRepertoireReportGames,
   listRepertoireSources as listRepertoireSourcesFromIdb,
+  loadRepertoireAccountGames,
   renameRepertoireSource as renameRepertoireSourceInIdb,
   replaceRepertoireSourceFile as replaceRepertoireSourceFileInIdb,
+  saveRepertoireAccountBuildInfo,
+  setRepertoireAccountSourceFilters as setRepertoireAccountSourceFiltersInIdb,
   setRepertoireSourceEnabled as setRepertoireSourceEnabledInIdb,
   setRepertoireSourceSideOverride as setRepertoireSourceSideOverrideInIdb,
+  type RepertoireAccountSourceCandidate,
 } from '../repertoire/sourceDb';
+import {
+  ensureAccountRepertoireBuild,
+  invalidateAccountRepertoireBuilds,
+} from '../repertoire/accountSource';
 import {
   getRepertoireScanProgressSnapshot,
   isRepertoireComplianceScanRunning,
@@ -35,7 +45,7 @@ import {
 } from './routeState';
 import type { StudyItem, TrainableSequence, PositionProgress, StudyFolder } from './types';
 import type { ImportedGame } from '../import/types';
-import type { RepertoireMatchRecord, RepertoireSide, RepertoireSource } from '../repertoire';
+import { isAccountRepertoireSource, type RepertoireAccountFilters, type RepertoireMatchRecord, type RepertoireSide, type RepertoireSource } from '../repertoire';
 import {
   buildRepertoireComplianceReport,
   DEFAULT_REPERTOIRE_COMPLIANCE_REPORT_FILTERS,
@@ -154,6 +164,10 @@ let _repertoireSources: RepertoireSource[] = [];
 let _repertoireSourcesLoaded = false;
 let _repertoireSourcesError = false;
 let _repertoireSourcesLoadPending = false;
+let _repertoireAccountCandidates: RepertoireAccountSourceCandidate[] = [];
+let _repertoireAccountCandidatesLoaded = false;
+let _repertoireAccountCandidatesError = false;
+let _repertoireAccountCandidatesLoadPending = false;
 let _repertoireScanProgress: RepertoireScanProgressSnapshot | null = null;
 let _repertoireScanProgressLoaded = false;
 let _repertoireScanProgressLoadPending = false;
@@ -247,6 +261,9 @@ export function isLoadingMore(): boolean { return _loadingMore; }
 export function repertoireSources(): RepertoireSource[] { return _repertoireSources; }
 export function repertoireSourcesLoaded(): boolean { return _repertoireSourcesLoaded; }
 export function repertoireSourcesError(): boolean { return _repertoireSourcesError; }
+export function repertoireAccountCandidates(): RepertoireAccountSourceCandidate[] { return _repertoireAccountCandidates; }
+export function repertoireAccountCandidatesLoaded(): boolean { return _repertoireAccountCandidatesLoaded; }
+export function repertoireAccountCandidatesError(): boolean { return _repertoireAccountCandidatesError; }
 export function repertoireScanProgress(): RepertoireScanProgressSnapshot | null { return _repertoireScanProgress; }
 export function repertoireScanProgressLoaded(): boolean { return _repertoireScanProgressLoaded; }
 export function repertoireScanBusy(): boolean { return _repertoireScanBusy || isRepertoireComplianceScanRunning(); }
@@ -560,6 +577,29 @@ export function loadRepertoireSources(redraw: () => void): void {
   });
 }
 
+export function loadRepertoireAccountCandidates(redraw: () => void): void {
+  if (_repertoireAccountCandidatesLoadPending) return;
+  _repertoireAccountCandidatesLoadPending = true;
+  void listRepertoireAccountSourceCandidates().then(candidates => {
+    _repertoireAccountCandidates = candidates;
+    _repertoireAccountCandidatesLoaded = true;
+    _repertoireAccountCandidatesError = false;
+  }).catch(e => {
+    recordRepertoireLoadFail('study-library-repertoire-account-candidates', e);
+    _repertoireAccountCandidates = [];
+    _repertoireAccountCandidatesLoaded = true;
+    _repertoireAccountCandidatesError = true;
+  }).finally(() => {
+    _repertoireAccountCandidatesLoadPending = false;
+    redraw();
+  });
+}
+
+function invalidateRepertoireAccountCandidates(): void {
+  _repertoireAccountCandidatesLoaded = false;
+  _repertoireAccountCandidatesLoadPending = false;
+}
+
 export async function uploadRepertoireSourceFile(
   filename: string,
   rawPgn: string,
@@ -570,6 +610,19 @@ export async function uploadRepertoireSourceFile(
   _repertoireSourcesError = false;
   invalidateRepertoireScanProgress();
   invalidateRepertoireComplianceReport();
+  invalidateRepertoireAccountCandidates();
+  return source;
+}
+
+export async function addRepertoireAccountSource(
+  accountId: string,
+  allowLargeAccount = false,
+): Promise<RepertoireSource> {
+  const source = await importAccountRepertoireSource(accountId, { allowLargeAccount });
+  replaceRepertoireSourceInMemory(source);
+  _repertoireSourcesLoaded = true;
+  _repertoireSourcesError = false;
+  invalidateRepertoireAccountCandidates();
   return source;
 }
 
@@ -590,10 +643,21 @@ export async function setRepertoireSourceSideOverride(
   return source;
 }
 
+export async function setRepertoireAccountSourceFilters(
+  id: string,
+  filters: Partial<RepertoireAccountFilters>,
+): Promise<RepertoireSource> {
+  invalidateAccountRepertoireBuilds(id);
+  const source = await setRepertoireAccountSourceFiltersInIdb(id, filters);
+  replaceRepertoireSourceInMemory(source);
+  return source;
+}
+
 export async function setRepertoireSourceEnabled(
   id: string,
   enabled: boolean,
 ): Promise<RepertoireSource> {
+  invalidateAccountRepertoireBuilds(id);
   const source = await setRepertoireSourceEnabledInIdb(id, enabled);
   replaceRepertoireSourceInMemory(source);
   return source;
@@ -611,10 +675,38 @@ export async function replaceRepertoireSourceFile(
 }
 
 export async function deleteRepertoireSource(id: string): Promise<void> {
+  invalidateAccountRepertoireBuilds(id);
   await deleteRepertoireSourceFromIdb(id);
   _repertoireSources = _repertoireSources.filter(source => source.id !== id);
+  invalidateRepertoireAccountCandidates();
   invalidateRepertoireScanProgress();
   invalidateRepertoireComplianceReport();
+}
+
+export function ensureRepertoireAccountSourceBuilds(redraw: () => void): void {
+  for (const source of _repertoireSources) {
+    if (!source.enabled || !isAccountRepertoireSource(source)) continue;
+    ensureAccountRepertoireBuild({
+      source,
+      loadGames: loadRepertoireAccountGames,
+      saveBuildInfo: async updated => {
+        const saved = await saveRepertoireAccountBuildInfo(
+          updated.id,
+          updated.contentVersion,
+          updated.accountBuild!,
+          updated.accountBuild?.builtAt,
+        );
+        if (saved) replaceRepertoireSourceInMemory(saved);
+        return saved;
+      },
+      onProgress: () => redraw(),
+      onComplete: updated => {
+        replaceRepertoireSourceInMemory(updated);
+        redraw();
+      },
+      onError: () => redraw(),
+    });
+  }
 }
 
 export function loadRepertoireComplianceReport(redraw: () => void): void {

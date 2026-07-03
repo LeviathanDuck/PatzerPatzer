@@ -26,6 +26,8 @@ import type { ImportDateRange } from '../import/filters';
 import { registerAccount, recordAccountSync } from '../accounts';
 import { saveGamesToIdb } from '../idb';
 import type { ImportedGame } from '../import/types';
+import { accountRepertoireSourceId } from '../repertoire';
+import { invalidateAccountRepertoireBuilds } from '../repertoire/accountSource';
 
 let _researchIdCounter = 0;
 function nextResearchId(): string {
@@ -371,6 +373,7 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
       const importedAt = Date.now();
       const shared = games.map(g => researchGameToImportedGame(g, source, username, account.id, importedAt));
       await saveGamesToIdb(shared);
+      invalidateAccountRepertoireBuilds(accountRepertoireSourceId(account.id));
       await recordAccountSync(account.id, null, null);
       if (abort.signal.aborted) return; // cancelled during writes — cancelImport cleaned up
       presetColorFilter(color);

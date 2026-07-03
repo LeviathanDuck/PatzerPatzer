@@ -57,9 +57,11 @@ let screenshotAttachments: ReviewErrorScreenshotAttachmentPreview[] = [];
 let screenshotErrors: string[] = [];
 let screenshotUploadStates: PackageUploadState[] = [];
 let screenshotUploadSummary = '';
+let submittedPackage: ReviewErrorPackage | null = null;
+let copyMessage = '';
 
 function requestKey(request: ReviewErrorSubmitRequest): string {
-  return `${request.gameId}:${request.path}:${request.openedAt}`;
+  return `${request.issueId}:${request.gameId}:${request.path}:${request.openedAt}`;
 }
 
 function syncRequestState(request: ReviewErrorSubmitRequest): void {
@@ -76,6 +78,8 @@ function syncRequestState(request: ReviewErrorSubmitRequest): void {
   screenshotErrors = [];
   screenshotUploadStates = [];
   screenshotUploadSummary = '';
+  submittedPackage = null;
+  copyMessage = '';
 }
 
 function close(redraw: () => void): void {
@@ -91,6 +95,8 @@ function close(redraw: () => void): void {
   screenshotErrors = [];
   screenshotUploadStates = [];
   screenshotUploadSummary = '';
+  submittedPackage = null;
+  copyMessage = '';
   redraw();
 }
 
@@ -114,6 +120,102 @@ function reviewLabel(deps: ReviewErrorSubmitModalDeps): string {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function setCopyMessage(request: ReviewErrorSubmitRequest, message: string, redraw: () => void): void {
+  if (activeRequestKey !== requestKey(request)) return;
+  copyMessage = message;
+  redraw();
+}
+
+function copyTextToClipboard(
+  request: ReviewErrorSubmitRequest,
+  text: string,
+  successMessage: string,
+  redraw: () => void,
+): void {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) throw new Error('clipboard-unavailable');
+    copyMessage = 'Copying...';
+    redraw();
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopyMessage(request, successMessage, redraw);
+    }).catch(() => {
+      setCopyMessage(request, 'Copy failed.', redraw);
+    });
+  } catch {
+    copyMessage = 'Copy failed.';
+    redraw();
+  }
+}
+
+function packageGameLabel(pkg: ReviewErrorPackage): string {
+  const { metadata } = pkg.game;
+  const names = metadata.white && metadata.black ? `${metadata.white} vs ${metadata.black}` : pkg.gameId;
+  return metadata.result ? `${names}, ${metadata.result}` : names;
+}
+
+function packageMoveLabel(pkg: ReviewErrorPackage): string {
+  return `${movePrefix(pkg.selectedMove.ply)} ${pkg.selectedMove.san ?? pkg.selectedMove.uci ?? pkg.selectedMove.path}`;
+}
+
+function packageReviewLabel(pkg: ReviewErrorPackage): string {
+  if (pkg.analysis.reviewEngine) {
+    return `${pkg.analysis.reviewEngine.engineName}, depth ${pkg.analysis.reviewEngine.reviewDepth}`;
+  }
+  return `${pkg.analysis.status}, depth ${pkg.analysis.analysisDepth}`;
+}
+
+function screenshotUploadText(): string {
+  if (screenshotUploadStates.length === 0) return 'none';
+  const uploaded = screenshotUploadStates.filter(item => item.status === 'uploaded').length;
+  return screenshotUploadSummary || packageUploadSummary(uploaded, screenshotUploadStates.length);
+}
+
+function packageTextForCopy(pkg: ReviewErrorPackage): string {
+  const screenshotNames = pkg.preview.screenshotAttachments.map(attachment => attachment.fileName).join(', ') || 'none';
+  return [
+    `Issue ID: ${pkg.packageId}`,
+    `Package ID: ${pkg.packageId}`,
+    `Package kind: ${pkg.packageKind}`,
+    `Route: ${pkg.session.route}`,
+    `Game: ${packageGameLabel(pkg)}`,
+    `Game ID: ${pkg.gameId}`,
+    `Move: ${packageMoveLabel(pkg)}`,
+    `Path: ${pkg.selectedMove.path}`,
+    `Review: ${packageReviewLabel(pkg)}`,
+    `Screenshots: ${screenshotNames}`,
+    `Screenshot upload: ${screenshotUploadText()}`,
+    `Captured at: ${pkg.createdAt}`,
+  ].join('\n');
+}
+
+function renderIssueCopyPanel(request: ReviewErrorSubmitRequest, redraw: () => void): VNode {
+  return h('div.report-issue-modal__copy-panel', [
+    h('div.report-issue-modal__issue-id', [
+      h('span', 'Issue ID'),
+      h('code', request.issueId),
+    ]),
+    h('div.report-issue-modal__copy-actions', [
+      h('button.admin-btn.admin-btn--muted', {
+        attrs: { type: 'button' },
+        on: { click: () => copyTextToClipboard(request, request.issueId, 'Issue ID copied.', redraw) },
+      }, 'Copy ID'),
+      h('button.admin-btn.admin-btn--muted', {
+        attrs: { type: 'button', disabled: !submittedPackage },
+        on: {
+          click: () => {
+            if (!submittedPackage) {
+              setCopyMessage(request, 'Save the package before copying package text.', redraw);
+              return;
+            }
+            copyTextToClipboard(request, packageTextForCopy(submittedPackage), 'Package text copied.', redraw);
+          },
+        },
+      }, 'Copy package text'),
+    ]),
+    copyMessage ? h('p.report-issue-modal__copy-status', copyMessage) : null,
+  ]);
 }
 
 function safeReviewErrorAssetFilename(fileName: string, index: number): string {
@@ -255,6 +357,7 @@ function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSub
 
   void (async () => {
     const pkg = await assembleReviewErrorPackage({
+      packageId: request.issueId,
       game,
       root: deps.root,
       path: request.path,
@@ -264,6 +367,7 @@ function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSub
       remoteUploadConsent: reviewErrorRemoteUploadConsentFromState(remoteConsentState),
     });
     await putReviewErrorPackage(pkg);
+    submittedPackage = pkg;
     submitSuccess = `Saved package ${pkg.packageId}`;
 
     const remoteGate = checkReviewErrorRemoteUploadGate(remoteConsentState, adminDiagnosticsTokenAvailable());
@@ -444,6 +548,7 @@ export function renderReviewErrorPackageSubmitModal(deps: ReviewErrorSubmitModal
         }, 'Close'),
       ]),
       h('div.review-error-modal__body', [
+        renderIssueCopyPanel(request, deps.redraw),
         h('div.review-error-modal__summary', [
           h('div', [h('span', 'Game'), h('strong', gameLabel(deps.game))]),
           h('div', [h('span', 'Move'), h('strong', moveLabel)]),

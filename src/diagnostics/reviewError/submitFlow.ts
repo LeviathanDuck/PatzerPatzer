@@ -1,4 +1,5 @@
 import type { TreePath } from '../../tree/types';
+import { createReportIssueId } from '../reporting/reportIssueId';
 import type { ReviewErrorRemoteUploadConsent, ReviewErrorScreenshotAttachmentPreview } from './types';
 
 export const REVIEW_ERROR_SCREENSHOT_ALLOWED_TYPES = new Set([
@@ -37,6 +38,7 @@ export type ReviewErrorScreenshotValidationResult =
   | { ok: false; errors: string[]; attachments: ReviewErrorScreenshotAttachmentPreview[] };
 
 export interface ReviewErrorSubmitRequest {
+  issueId: string;
   gameId: string;
   path: TreePath;
   openedAt: number;
@@ -154,6 +156,7 @@ export function openReviewErrorSubmitFlow(input: { gameId: string; path: TreePat
   if (!gameId) throw new Error('review-error-submit-game-id-required');
   if (!path) throw new Error('review-error-submit-path-required');
   activeReviewErrorSubmitRequest = {
+    issueId: createReportIssueId(openedAt),
     gameId,
     path,
     openedAt,

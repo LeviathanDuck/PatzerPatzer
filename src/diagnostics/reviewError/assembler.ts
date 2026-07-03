@@ -23,6 +23,7 @@ import {
 } from './types';
 
 export interface ReviewErrorPackageAssemblyInput {
+  packageId?: string;
   game: ImportedGame;
   root: TreeNode;
   path: TreePath;
@@ -280,7 +281,10 @@ export async function assembleReviewErrorPackage(
   const neighborNodes = relatedStoredNodes(input.root, selectedTreeNode, path, storedAnalysis.nodes);
   const now = dependencies.now?.() ?? Date.now();
   const createdAt = new Date(now).toISOString();
-  const packageId = dependencies.createPackageId?.() ?? createReviewErrorPackageId();
+  const packageId = requireTrimmed(
+    input.packageId ?? dependencies.createPackageId?.() ?? createReviewErrorPackageId(),
+    'review-error-package-id-required',
+  );
   const browser = await (dependencies.getBrowserContext?.() ?? defaultBrowserContext());
   const recentEvents = dependencies.getRecentEvents
     ? filterReviewRelatedSafeEvents(await dependencies.getRecentEvents())

@@ -70,6 +70,22 @@ interface ResultCounts {
   black: number;
 }
 
+export interface OpeningTreeBuildEdgeSnapshot {
+  san: string;
+  uci: string;
+  targetPosKey: string;
+  total: number;
+  white: number;
+  draws: number;
+  black: number;
+}
+
+export interface OpeningTreeBuildPositionSnapshot {
+  fen: string;
+  posKey: string;
+  edges: OpeningTreeBuildEdgeSnapshot[];
+}
+
 // Internal mutable position node for building phase.
 interface BuildPosition {
   fen: string;
@@ -211,6 +227,24 @@ export class OpeningTreeBuilder {
   /** Freeze the mutable graph into an immutable tree. */
   freeze(): OpeningTreeNode {
     return freezeGraph(this.root, this.positions, new Set());
+  }
+
+  *positionSnapshots(): IterableIterator<OpeningTreeBuildPositionSnapshot> {
+    for (const position of this.positions.values()) {
+      yield {
+        fen: position.fen,
+        posKey: position.posKey,
+        edges: sortedEdges(position).map(edge => ({
+          san: edge.san,
+          uci: edge.uci,
+          targetPosKey: edge.targetPosKey,
+          total: edge.results.total,
+          white: edge.results.white,
+          draws: edge.results.draws,
+          black: edge.results.black,
+        })),
+      };
+    }
   }
 
   /**

@@ -12,6 +12,8 @@ import {
 } from './filters';
 import { fetchLichessGames, lichessGameTimestamp } from './lichess';
 import type { ImportedGame } from './types';
+import { accountRepertoireSourceId } from '../repertoire';
+import { invalidateAccountRepertoireBuilds } from '../repertoire/accountSource';
 
 const SYNC_OVERLAP_MS = 86_400_000;
 const LICHESS_MAX_GAMES = 300;
@@ -183,6 +185,7 @@ export async function syncAccountGames(account: ChessAccount, options: AccountSy
   const newGames = dedupeIncoming(existing, fetched);
   if (newGames.length > 0) {
     await saveGamesToIdb([...existing, ...newGames]);
+    invalidateAccountRepertoireBuilds(accountRepertoireSourceId(account.id));
   }
 
   const newest = maxTimestamp(account, fetched);
@@ -334,6 +337,7 @@ export async function syncAccountGamesOlder(
   const newGames = dedupeIncoming(existing, fetched);
   if (newGames.length > 0) {
     await saveGamesToIdb([...existing, ...newGames]);
+    invalidateAccountRepertoireBuilds(accountRepertoireSourceId(account.id));
   }
 
   // Lower the oldest cursor based on what the API returned:

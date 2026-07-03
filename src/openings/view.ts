@@ -129,6 +129,7 @@ import {
   repertoireSourcesError,
   loadRepertoireSources,
   setRepertoireSourceEnabled,
+  ensureRepertoireAccountSourceBuilds,
 } from '../study/studyCtrl';
 import {
   buildRepertoireExplorerModel,
@@ -138,6 +139,7 @@ import {
   type RepertoireExplorerPriorMatch,
   type RepertoireExplorerSourceGroup,
 } from '../repertoire/explorerViewModel';
+import { isAccountRepertoireSource, repertoireAccountFilterSummary } from '../repertoire';
 import { buildRepertoireArrowShapes } from '../repertoire/arrowShapes';
 import { clearLichessApiLoginData, requestBookLogin } from '../auth/lichessBookAuth';
 import {
@@ -4827,6 +4829,38 @@ function renderRepertoireChip(source: RepertoireExplorerSourceGroup['source'], a
   ]);
 }
 
+function renderAccountResultBar(stats: NonNullable<RepertoireExplorerSourceGroup['entries'][number]['accountStats']>): VNode {
+  const total = stats.games || 1;
+  const winPct = (stats.wins * 100) / total;
+  const drawPct = (stats.draws * 100) / total;
+  const lossPct = (stats.losses * 100) / total;
+  const label = `${stats.wins}W ${stats.draws}D ${stats.losses}L`;
+  return h('span.repertoire__account-result', {
+    attrs: {
+      title: label,
+      'aria-label': label,
+    },
+  }, [
+    h('span.repertoire__account-result-bar', [
+      h('span.wdl-w.repertoire__account-result-segment', { attrs: { style: `width:${winPct.toFixed(1)}%` } }),
+      h('span.wdl-d.repertoire__account-result-segment', { attrs: { style: `width:${drawPct.toFixed(1)}%` } }),
+      h('span.wdl-l.repertoire__account-result-segment', { attrs: { style: `width:${lossPct.toFixed(1)}%` } }),
+    ]),
+    h('span.repertoire__account-result-counts', label),
+  ]);
+}
+
+function renderAccountMoveStats(entry: RepertoireExplorerSourceGroup['entries'][number]): VNode | null {
+  const stats = entry.accountStats;
+  if (!stats) return null;
+  return h('span.repertoire__account-stats', [
+    h('span', `${stats.games.toLocaleString()} game${stats.games === 1 ? '' : 's'}`),
+    h('span.repertoire__source-sep', '·'),
+    h('span', `${stats.winPercent}% wins`),
+    renderAccountResultBar(stats),
+  ]);
+}
+
 function toggleRepertoireSourceFromExplorer(
   source: RepertoireExplorerSourceGroup['source'],
   redraw: () => void,
@@ -4901,9 +4935,10 @@ function renderRepertoireMoveRows(
     }, [
       h('div.repertoire__move-main', [
         h('span.repertoire__move-san', entry.san),
-        entry.isMain ? h('span.repertoire__main-tag', 'main') : null,
+        entry.accountStats ? null : entry.isMain ? h('span.repertoire__main-tag', 'main') : null,
         nags ? h('span.repertoire__nags', nags) : null,
         group.expectedReply ? h('span.repertoire__reply-tag', 'expected reply') : null,
+        renderAccountMoveStats(entry),
       ]),
       preview ? h('button.repertoire__comment-preview.repertoire__annotation-toggle', {
         attrs: {
@@ -4951,9 +4986,29 @@ function renderRepertoireSourceGroup(
   getCurrentFen?: () => string | null | undefined,
   restoreAutoShapes?: () => void,
 ): VNode {
+  const accountSource = isAccountRepertoireSource(group.source);
+  const accountState = group.accountBuildState;
+  const accountMessage = accountSource && accountState
+    ? accountState.state === 'loading'
+      ? 'Loading account games...'
+      : accountState.state === 'building' || accountState.state === 'publishing'
+        ? `Building account model ${accountState.processedGameCount.toLocaleString()}/${accountState.filteredGameCount.toLocaleString()} games...`
+        : accountState.state === 'empty'
+          ? accountState.filteredGameCount === 0
+            ? 'No account games match these filters.'
+            : 'No account moves found after filters.'
+          : accountState.state === 'error'
+            ? accountState.message ?? 'Could not build this account source.'
+            : group.entries.length === 0
+              ? 'No account move at this position.'
+              : null
+    : null;
   return h(`section.repertoire__explorer-group.repertoire__accent--${group.accentIndex}`, { key: group.source.id }, [
     h('div.repertoire__explorer-group-header', [
-      renderRepertoireChip(group.source, group.accentIndex),
+      h('span.repertoire__source-summary', [
+        renderRepertoireChip(group.source, group.accentIndex),
+        accountSource ? h('span.repertoire__filter-summary', repertoireAccountFilterSummary(group.source)) : null,
+      ]),
       h('button.repertoire__source-toggle', {
         attrs: {
           title: group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
@@ -4967,6 +5022,7 @@ function renderRepertoireSourceGroup(
       ? h('div.repertoire__expected-reply', 'Expected replies from the opponent line')
       : null,
     renderRepertoireMoveRows(group, fen, redraw, onMoveClick, cgBoard, getCurrentFen, restoreAutoShapes),
+    accountMessage ? h('div.repertoire__account-empty', accountMessage) : null,
   ]);
 }
 
@@ -5027,6 +5083,7 @@ function renderRepertoireExplorerPanel<Path = unknown>(
     ]);
   }
 
+  ensureRepertoireAccountSourceBuilds(redraw);
   const model = buildRepertoireExplorerModel(repertoireSources(), fen, opts.line);
   if (model.sources.length === 0) {
     return h('div.openings__explorer-box', [
@@ -5067,7 +5124,9 @@ function renderRepertoireExplorerPanel<Path = unknown>(
         opts.restoreAutoShapes,
       )),
     ),
-    !model.hasCurrentMatch ? renderRepertoireOutOfLine(model.deepestPriorMatch, opts.onJumpToPrior) : null,
+    !model.hasCurrentMatch && !model.hasPendingAccountBuild
+      ? renderRepertoireOutOfLine(model.deepestPriorMatch, opts.onJumpToPrior)
+      : null,
     renderRepertoirePositionAnnotations(model.positionAnnotations),
     _repertoireExplorerNotice ? h('div.repertoire__source-status', _repertoireExplorerNotice) : null,
   ]);

@@ -1,5 +1,6 @@
 import {
   buildRepertoireIndex,
+  isAccountRepertoireSource,
   lookupRepertoireEntriesByFen,
   parseRepertoirePgn,
   type RepertoireEntry,
@@ -7,6 +8,11 @@ import {
   type RepertoireSide,
   type RepertoireSource,
 } from './index';
+import {
+  getAccountRepertoireBuildState,
+  lookupAccountRepertoireEntriesByFen,
+  type AccountRepertoireBuildState,
+} from './accountSource';
 import { positionKeyFromFen, type PositionKey } from '../tree/fenKey';
 import type { GlyphId, San, TreeComment, TreeNode, Uci } from '../tree/types';
 
@@ -30,6 +36,7 @@ export interface RepertoireExplorerSourceGroup {
   expectedReply: boolean;
   entries: RepertoireEntry[];
   error: string | null;
+  accountBuildState: AccountRepertoireBuildState | null;
 }
 
 export interface RepertoireExplorerPositionAnnotation {
@@ -55,6 +62,7 @@ export interface RepertoireExplorerModel<Path = unknown> {
   groups: RepertoireExplorerSourceGroup[];
   positionAnnotations: RepertoireExplorerPositionAnnotation[];
   hasCurrentMatch: boolean;
+  hasPendingAccountBuild: boolean;
   deepestPriorMatch: RepertoireExplorerPriorMatch<Path> | null;
 }
 
@@ -124,6 +132,7 @@ function addPositionAnnotations(
 }
 
 function cachedForSource(source: RepertoireSource): CachedIndex {
+  if (isAccountRepertoireSource(source)) throw new Error('Account-backed sources use the account model cache.');
   const cached = sourceIndexCache.get(source.id);
   if (cached?.contentVersion === source.contentVersion) return cached;
   const games = parseRepertoirePgn(source.rawPgn);
@@ -154,6 +163,13 @@ function dedupeEntries(entries: RepertoireEntry[]): RepertoireEntry[] {
 }
 
 function entriesForSource(source: RepertoireSource, fen: string): { entries: RepertoireEntry[]; error: string | null } {
+  if (isAccountRepertoireSource(source)) {
+    try {
+      return { entries: dedupeEntries(lookupAccountRepertoireEntriesByFen(source, fen)), error: null };
+    } catch {
+      return { entries: [], error: 'Could not build this account source.' };
+    }
+  }
   try {
     return { entries: dedupeEntries(lookupRepertoireEntriesByFen(indexForSource(source), fen)), error: null };
   } catch {
@@ -167,6 +183,7 @@ function positionAnnotationsForSource(
   sourceIndex: number,
   accentIndex: number,
 ): RepertoireExplorerPositionAnnotation[] {
+  if (isAccountRepertoireSource(source)) return [];
   try {
     return (cachedForSource(source).positionAnnotations.get(positionKeyFromFen(fen)) ?? []).map(annotation => ({
       source,
@@ -236,13 +253,15 @@ export function buildRepertoireExplorerModel<Path = unknown>(
   const groups = enabledSources.map((source, enabledIndex) => {
     const sourceIndex = sources.findIndex(candidate => candidate.id === source.id);
     const { entries, error } = entriesForSource(source, fen);
+    const accountBuildState = isAccountRepertoireSource(source) ? getAccountRepertoireBuildState(source) : null;
     return {
       source,
       sourceIndex,
       accentIndex: (sourceIndex === -1 ? enabledIndex : sourceIndex) % 8,
-      expectedReply: repertoireSourceIsExpectedReply(source, fen),
+      expectedReply: !isAccountRepertoireSource(source) && repertoireSourceIsExpectedReply(source, fen),
       entries,
       error,
+      accountBuildState,
     };
   });
   const positionAnnotations = enabledSources.flatMap((source, enabledIndex) => {
@@ -252,12 +271,17 @@ export function buildRepertoireExplorerModel<Path = unknown>(
     return positionAnnotationsForSource(source, fen, effectiveSourceIndex, accentIndex);
   });
   const hasCurrentMatch = groups.some(group => group.entries.length > 0);
+  const hasPendingAccountBuild = groups.some(group => {
+    const state = group.accountBuildState?.state;
+    return state === 'idle' || state === 'loading' || state === 'building' || state === 'publishing';
+  });
   return {
     sources,
     enabledSources,
     groups,
     positionAnnotations,
     hasCurrentMatch,
-    deepestPriorMatch: hasCurrentMatch ? null : deepestPriorMatch(enabledSources, line),
+    hasPendingAccountBuild,
+    deepestPriorMatch: hasCurrentMatch || hasPendingAccountBuild ? null : deepestPriorMatch(enabledSources, line),
   };
 }

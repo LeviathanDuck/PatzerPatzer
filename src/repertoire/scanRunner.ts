@@ -1,6 +1,7 @@
 import type { ImportedGame } from '../import/types';
 import {
   buildRepertoireIndexFromSource,
+  isUploadedRepertoireSource,
   repertoireMatchRecordKey,
   type RepertoireMatchRecord,
   type RepertoirePositionIndex,
@@ -23,7 +24,7 @@ import {
   countRepertoireScanGames,
   listRepertoireMatchRecordsForGameIds,
   listRepertoireScanRuns,
-  listRepertoireSources,
+  listUploadedRepertoireSources,
   loadRepertoireScanGamePage,
   saveRepertoireMatchRecords,
   saveRepertoireScanRun,
@@ -96,7 +97,7 @@ export function requestRepertoireComplianceScanPause(): void {
 }
 
 export const browserRepertoireScanStorage: RepertoireScanStorage = {
-  listSources: listRepertoireSources,
+  listSources: listUploadedRepertoireSources,
   countGames: countRepertoireScanGames,
   loadGamePage: loadRepertoireScanGamePage,
   listMatchRecordsForGameIds: listRepertoireMatchRecordsForGameIds,
@@ -153,10 +154,11 @@ async function currentSourcesAndGameCount(storage: RepertoireScanStorage): Promi
   sources: RepertoireSource[];
   totalGameCount: number;
 }> {
-  const [sources, totalGameCount] = await Promise.all([
+  const [allSources, totalGameCount] = await Promise.all([
     storage.listSources(),
     storage.countGames(),
   ]);
+  const sources = allSources.filter(isUploadedRepertoireSource);
   return { sources, totalGameCount };
 }
 
